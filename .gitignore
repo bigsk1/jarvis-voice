@@ -1,0 +1,50 @@
+# Jarvis Voice Assistant - Git Ignore
+
+# ===== Secrets & Config =====
+config/*.env
+*.env
+!config/*.env.template
+*.key
+*.pem
+
+# ===== Audio Files =====
+audio/
+*.wav
+*.mp3
+*.ogg
+*.flac
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+.eggs/
+dist/
+build/
+jarvis-venv/
+
+# ===== Logs & Runtime =====
+*.log
+logs/
+*.tmp
+.cache/
+tmp/
+
+# ===== IDE & Editors =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ===== System =====
+.Trash/
+Thumbs.db
+
