@@ -34,6 +34,11 @@ def main():
         memories = db.search_memory(query=query, limit=limit)
         db.close()
         
+        # Remove embedding blobs (not JSON serializable)
+        for mem in memories:
+            if 'embedding' in mem:
+                del mem['embedding']
+        
         if not memories:
             result = {
                 "ok": True,

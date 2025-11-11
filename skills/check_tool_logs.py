@@ -14,10 +14,10 @@ from tool_logger import ToolLogger
 
 def main():
     """Check tool logs."""
-    # Read input from stdin
+    # Read input from command line argument
     try:
-        input_data = json.load(sys.stdin)
-    except json.JSONDecodeError:
+        input_data = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
+    except (json.JSONDecodeError, IndexError):
         input_data = {}
     
     # Extract parameters

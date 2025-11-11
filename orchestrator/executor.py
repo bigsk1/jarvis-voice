@@ -100,12 +100,15 @@ class ToolExecutor:
                 # Run bash scripts or other executables directly
                 cmd = [str(tool_script)]
             
+            # Use longer timeout for local mode (Ollama can be slower)
+            timeout = 30 if self.mode == "local" else 15
+            
             result = subprocess.run(
                 cmd,
                 input=input_json if tool_script.suffix != '.py' else None,
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=timeout,
                 cwd=self.skills_dir
             )
             
