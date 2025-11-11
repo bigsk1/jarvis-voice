@@ -76,11 +76,27 @@ class Orchestrator:
                     print(f"✅ Tool succeeded")
                     print(f"📊 Tool result: {json.dumps(result.get('data', {}), indent=2)[:200]}...")
                 
-                # For memory tools, get natural response from LLM
-                if tool_name in ['remember', 'recall', 'search_memory', 'semantic_recall', 'update_memory', 'forget']:
+                # Get response style from environment (casual, detailed, or auto)
+                response_style = os.environ.get('JARVIS_RESPONSE_STYLE', 'casual').lower()
+                
+                # Determine if we should format with LLM
+                should_format = False
+                if response_style == 'casual':
+                    # Always format for casual conversational responses
+                    should_format = True
+                elif response_style == 'detailed':
+                    # Use raw tool output for detailed mode
+                    should_format = False
+                elif response_style == 'auto':
+                    # Smart mode: format for certain tool types
+                    memory_tools = ['remember', 'recall', 'search_memory', 'semantic_recall', 'update_memory', 'forget']
+                    search_tools = [t for t in self.executor.registry.list_tools() if 'search' in t or 'fetch' in t or t.startswith('mcp_')]
+                    should_format = tool_name in memory_tools or tool_name in search_tools
+                
+                if should_format:
                     speech = self._format_natural_response(transcript, tool_name, result)
                 else:
-                    # For other tools, use their built-in speech
+                    # Use tool's built-in speech
                     speech = result.get("speech", f"Completed {tool_name}")
                 
                 if sys.stdout.isatty():
@@ -179,13 +195,21 @@ class Orchestrator:
 Tool executed: {tool_name}
 Tool result: {json.dumps(data, indent=2)}
 
-Respond naturally and conversationally to the user's question based on this tool result. Be concise, helpful, and speak in first person as Jarvis."""
+Format this into a natural, conversational response suitable for VOICE OUTPUT (text-to-speech).
+
+Guidelines:
+- Be concise and helpful, like talking to a friend
+- DO NOT speak URLs unless specifically asked
+- For search results: Summarize what you found and ask if they want more details
+- For tasks: Confirm what was done
+- For data lookups: Share the key information naturally
+- Keep it brief - you can always provide more if asked"""
             
             # Get natural response from LLM (without tools)
             text_response, _ = self.router.provider.chat_with_tools(
                 messages=[{"role": "user", "content": context}],
                 tools=[],  # No tools for response formatting
-                system_prompt="You are Jarvis, a helpful AI assistant. Format the tool result into natural speech."
+                system_prompt="You are Jarvis, a conversational AI assistant. Format tool results for voice output - concise, natural, no URLs unless asked."
             )
             
             if text_response:
