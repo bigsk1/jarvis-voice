@@ -49,3 +49,6 @@ tmp/
 Thumbs.db
 
 data/*.db
+# Cursor chat history files
+cursor_*.md
+*.cursor.*
