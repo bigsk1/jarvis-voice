@@ -90,7 +90,7 @@ nano config/local.env
 
 Activate your Python environment:
 ```bash
-conda activate jarvis-venv
+source ~/jarvis-venv/bin/activate
 ```
 
 Run Jarvis:

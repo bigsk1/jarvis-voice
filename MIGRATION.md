@@ -25,14 +25,14 @@ This will:
 
 **Test Cloud Mode:**
 ```bash
-conda activate jarvis-venv
+source ~/jarvis-venv/bin/activate
 cd /home/boss/jarvis-voice
 ./jarvis  # or ./bin/wake_jarvis.py
 ```
 
 **Test Local Mode:**
 ```bash
-conda activate jarvis-venv
+source ~/jarvis-venv/bin/activate
 cd /home/boss/jarvis-voice
 ./jarvis-local  # or ./bin/wake_jarvis_local.py
 ```
@@ -165,7 +165,7 @@ If something goes wrong, simply go back to your old scripts:
 
 ```bash
 cd /home/boss
-conda activate jarvis-venv
+source ~/jarvis-venv/bin/activate
 python3 wake_jarvis.py   # or wake_jarvis_local.py
 ```
 

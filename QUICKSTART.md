@@ -16,7 +16,7 @@ Find `OPENAI_API_KEY` and paste your key.
 
 ### 3. Run Jarvis!
 ```bash
-conda activate jarvis-venv
+source ~/jarvis-venv/bin/activate
 ./jarvis
 ```
 
@@ -36,6 +36,9 @@ For more details:
 ## Quick Commands
 
 ```bash
+# Activate venv first
+source ~/jarvis-venv/bin/activate
+
 # Cloud mode (OpenAI - powerful)
 ./jarvis
 

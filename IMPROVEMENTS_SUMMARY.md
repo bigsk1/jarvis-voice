@@ -122,7 +122,7 @@ cd /home/boss/jarvis-voice
 nano config/cloud.env  # Add your OPENAI_API_KEY
 
 # Activate environment
-conda activate jarvis-venv
+source ~/jarvis-venv/bin/activate
 
 # Run!
 ./jarvis

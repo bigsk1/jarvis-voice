@@ -5,7 +5,7 @@ Use these commands to verify your Jarvis setup works correctly.
 ## Prerequisites
 ```bash
 cd /home/boss/jarvis-voice
-conda activate jarvis-venv
+source ~/jarvis-venv/bin/activate
 ```
 
 ---
@@ -245,7 +245,7 @@ git branch -d test/verify-git
 ### Test 6 Failed (Wake Word)
 - Check Test 7 (audio devices) first
 - Check microphone permissions
-- Verify `conda activate jarvis-venv` worked
+- Verify venv is activated: `source ~/jarvis-venv/bin/activate`
 - Check `openwakeword` is installed: `pip list | grep openwakeword`
 
 ---
