@@ -1,6 +1,6 @@
 {
   "name": "get_time",
-  "description": "Get the current date and time. Use this when the user asks what time it is, what day it is, or wants to know the current date.",
+  "description": "Get the current date and time. Use this when the user asks: 'what time is it', 'what's the time', 'what day is it', 'what's today's date', 'what is the date', or any time/date related question.",
   "script": "time.sh",
   "parameters": {
     "type": "object",

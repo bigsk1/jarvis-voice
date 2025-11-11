@@ -169,9 +169,13 @@ If the request doesn't match any tool, respond normally in plain text.
 Available Tools:
 {tools_text}
 
-IMPORTANT: 
-- If using a tool, ONLY respond with the JSON tool call, nothing else.
-- If not using a tool, respond normally without JSON.
+CRITICAL RULES: 
+- If using a tool, output ONLY the JSON object on a single line, nothing else.
+- NO markdown formatting like **bold** or code blocks
+- NO explanatory text before or after the JSON
+- NO newlines or extra whitespace
+- JUST the JSON: {{"tool": "name", "arguments": {{}}}}
+- If not using a tool, respond in plain conversational text without any JSON.
 """
         
         # Build full messages
@@ -194,15 +198,35 @@ IMPORTANT:
             content = result["message"]["content"]
             
             # Try to parse as tool call
+            # Handle both pure JSON and markdown-wrapped JSON
             try:
-                if content.strip().startswith("{") and "tool" in content:
-                    tool_call = json.loads(content.strip())
+                # Strip whitespace and try direct JSON parse
+                stripped = content.strip()
+                
+                # Remove markdown code blocks if present
+                if stripped.startswith("```json"):
+                    stripped = stripped[7:]
+                    if stripped.endswith("```"):
+                        stripped = stripped[:-3]
+                elif stripped.startswith("```"):
+                    stripped = stripped[3:]
+                    if stripped.endswith("```"):
+                        stripped = stripped[:-3]
+                
+                # Extract JSON if wrapped in markdown or text
+                if "{" in stripped and "}" in stripped:
+                    # Find the JSON object
+                    start = stripped.index("{")
+                    end = stripped.rindex("}") + 1
+                    json_str = stripped[start:end]
+                    
+                    tool_call = json.loads(json_str)
                     if "tool" in tool_call and "arguments" in tool_call:
                         return None, {
                             "name": tool_call["tool"],
                             "arguments": tool_call["arguments"]
                         }
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError):
                 pass
             
             # Otherwise return as text

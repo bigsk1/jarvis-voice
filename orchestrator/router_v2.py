@@ -101,7 +101,7 @@ Be decisive and proactive - remember what's important, use tools when needed."""
             return create_provider(
                 "ollama",
                 base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                model=get_config_value("OLLAMA_MODEL", "llama3.1:latest")
+                model=get_config_value("OLLAMA_MODEL", "mistral-nemo:latest")
             )
         else:
             raise ValueError(f"Unknown LLM provider: {provider_type}")
