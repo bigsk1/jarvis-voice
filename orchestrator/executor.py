@@ -214,13 +214,13 @@ class ToolExecutor:
                     "error": "Invalid tool name format"
                 }
             
-            # Get MCP client
+            # Get MCP client (should be initialized at startup)
             mcp_client = self.registry.mcp_clients.get(server_name)
             
             if not mcp_client:
                 return {
                     "ok": False,
-                    "speech": f"MCP server {server_name} not available",
+                    "speech": f"MCP server {server_name} not available. Server may have failed to start.",
                     "error": "MCP server not connected"
                 }
             

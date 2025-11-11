@@ -157,9 +157,10 @@ class ToolRegistry:
         self.mcp_config_path = mcp_config_path
         self.tools: Dict[str, ToolSchema] = {}
         self.mcp_clients: Dict[str, Any] = {}
+        self.mcp_manager = None
         self._discover_tools()
         
-        # Discover MCP tools if config provided
+        # Discover MCP tools at startup (with proper timeouts)
         if mcp_config_path and os.path.exists(mcp_config_path):
             self._discover_mcp_tools()
     
@@ -207,62 +208,102 @@ class ToolRegistry:
         return "\n\n".join(tools_desc)
     
     def _discover_mcp_tools(self):
-        """Discover tools from MCP servers."""
-        try:
-            # Import MCP manager
-            import sys
-            from mcp_client import MCPManager
-            
-            # Load MCP servers
-            manager = MCPManager(self.mcp_config_path)
-            
-            # Get all tools from all servers
-            for server_name, client in manager.servers.items():
-                try:
-                    # Check if server is enabled
-                    with open(self.mcp_config_path, 'r') as f:
-                        config = json.load(f)
-                        server_config = config.get("mcpServers", {}).get(server_name, {})
-                        if not server_config.get("enabled", False):
-                            continue
-                    
-                    # Start server and get tools
-                    tools = client.list_tools()
-                    
-                    # Store client for later use
-                    self.mcp_clients[server_name] = client
-                    
-                    # Register each MCP tool
-                    for tool_info in tools:
-                        tool_name = f"mcp.{server_name}.{tool_info['name']}"
-                        
-                        # Convert MCP tool to our ToolSchema format
-                        schema = ToolSchema(
-                            name=tool_name,
-                            description=tool_info.get('description', ''),
-                            parameters=tool_info.get('inputSchema', {}),
-                            script_path=f"__mcp__{server_name}__{tool_info['name']}",  # Special marker
-                            permissions={
-                                "dangerous": False,
-                                "bash": False,
-                                "network": True,  # MCP tools often use network
-                                "filesystem": False,
-                                "auto_approve": True  # Most MCP tools are safe
-                            }
-                        )
-                        
-                        self.tools[tool_name] = schema
-                        
-                        if sys.stdout.isatty():
-                            print(f"✓ Registered MCP tool: {tool_name}")
-                
-                except Exception as e:
-                    if sys.stdout.isatty():
-                        print(f"✗ Failed to load MCP server {server_name}: {e}")
+        """Discover tools from MCP servers with timeout and graceful failure."""
+        import signal
+        import sys
         
+        def timeout_handler(signum, frame):
+            raise TimeoutError("MCP discovery timed out")
+        
+        verbose = sys.stdout.isatty()
+        
+        try:
+            # Set overall timeout for MCP discovery (10 seconds total)
+            if hasattr(signal, 'SIGALRM'):  # Unix only
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(10)
+            
+            try:
+                # Import MCP manager
+                from mcp_client import MCPManager
+                
+                # Load MCP servers
+                manager = MCPManager(self.mcp_config_path)
+                self.mcp_manager = manager
+                
+                # Get all tools from all enabled servers
+                for server_name, client in manager.servers.items():
+                    try:
+                        # Check if server is enabled
+                        with open(self.mcp_config_path, 'r') as f:
+                            config = json.load(f)
+                            server_config = config.get("mcpServers", {}).get(server_name, {})
+                            if not server_config.get("enabled", False):
+                                if verbose:
+                                    print(f"⊝ Skipped MCP server (disabled): {server_name}")
+                                continue
+                        
+                        if verbose:
+                            print(f"🔌 Connecting to MCP server: {server_name}...")
+                        
+                        # Start server and get tools
+                        tools = client.list_tools()
+                        
+                        if not tools:
+                            if verbose:
+                                print(f"⚠️  MCP server {server_name} has no tools")
+                            continue
+                        
+                        # Store client for later use
+                        self.mcp_clients[server_name] = client
+                        
+                        # Register each MCP tool
+                        for tool_info in tools:
+                            tool_name = f"mcp.{server_name}.{tool_info['name']}"
+                            
+                            # Convert MCP tool to our ToolSchema format
+                            schema = ToolSchema(
+                                name=tool_name,
+                                description=tool_info.get('description', ''),
+                                parameters=tool_info.get('inputSchema', {}),
+                                script_path=f"__mcp__{server_name}__{tool_info['name']}",
+                                permissions={
+                                    "dangerous": False,
+                                    "bash": False,
+                                    "network": True,
+                                    "filesystem": False,
+                                    "auto_approve": True
+                                }
+                            )
+                            
+                            self.tools[tool_name] = schema
+                            
+                            if verbose:
+                                print(f"✓ Registered MCP tool: {tool_name}")
+                        
+                        if verbose:
+                            print(f"✅ MCP server {server_name}: {len(tools)} tools registered")
+                    
+                    except Exception as e:
+                        if verbose:
+                            print(f"✗ Failed to load MCP server {server_name}: {str(e)[:100]}")
+                        # Clean up failed client
+                        try:
+                            client.stop()
+                        except:
+                            pass
+            
+            finally:
+                # Cancel alarm
+                if hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)
+        
+        except TimeoutError:
+            if verbose:
+                print(f"⏱️  MCP discovery timed out (continuing without MCP tools)")
         except Exception as e:
-            if sys.stdout.isatty():
-                print(f"✗ Failed to discover MCP tools: {e}")
+            if verbose:
+                print(f"✗ MCP discovery failed: {str(e)[:100]} (continuing without MCP tools)")
     
     def is_mcp_tool(self, tool_name: str) -> bool:
         """Check if a tool is an MCP tool."""

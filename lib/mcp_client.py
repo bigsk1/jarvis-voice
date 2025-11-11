@@ -74,9 +74,9 @@ class MCPClient:
                 self.process = None
     
     def _initialize(self):
-        """Initialize MCP connection with handshake."""
+        """Initialize MCP connection with handshake (optional, some servers don't need it)."""
         try:
-            # Send initialize request
+            # Send initialize request with short timeout
             result = self._send_request("initialize", {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
@@ -90,8 +90,9 @@ class MCPClient:
             self._send_notification("notifications/initialized")
             
         except Exception as e:
-            print(f"Warning: MCP initialization failed: {e}")
-            # Continue anyway, some servers might not need it
+            # Many MCP servers work without explicit initialization
+            # Just log and continue
+            pass
     
     def _send_notification(self, method: str, params: Optional[Dict] = None):
         """Send JSON-RPC notification (no response expected)."""
@@ -140,7 +141,16 @@ class MCPClient:
             
             # Read response (may need to skip notifications)
             max_attempts = 10  # Avoid infinite loop
+            timeout_seconds = 5  # Timeout per read attempt
+            
             for attempt in range(max_attempts):
+                # Use select to timeout on readline
+                import select
+                ready, _, _ = select.select([self.process.stdout], [], [], timeout_seconds)
+                
+                if not ready:
+                    raise Exception(f"MCP server response timeout after {timeout_seconds}s")
+                
                 response_line = self.process.stdout.readline()
                 
                 if not response_line:

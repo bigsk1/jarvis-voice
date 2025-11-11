@@ -12,6 +12,19 @@
       ],
       "description": "Web search and content fetching via DuckDuckGo",
       "enabled": false
+    },
+    "fetch": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "host",
+        "mcp/fetch"
+      ],
+      "description": "Fetch and extract content from URLs as markdown",
+      "enabled": false
     }
   }
 }
