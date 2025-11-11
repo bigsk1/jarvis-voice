@@ -2,10 +2,12 @@
 """
 Jarvis Memory Database
 SQLite-based memory system for storing facts, conversations, and learned patterns.
+Supports semantic search with vector embeddings.
 """
 import sqlite3
 import json
 import os
+import pickle
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -50,7 +52,8 @@ class MemoryDB:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 source TEXT,
-                metadata TEXT
+                metadata TEXT,
+                embedding BLOB
             )
         """)
         
@@ -102,9 +105,9 @@ class MemoryDB:
     
     # ========== Knowledge Base Operations ==========
     
-    def remember(self, category: str, key: str, value: str, importance: int = 5, source: str = None) -> int:
+    def remember(self, category: str, key: str, value: str, importance: int = 5, source: str = None, generate_embedding: bool = True) -> int:
         """
-        Store a fact in memory.
+        Store a fact in memory with optional semantic embedding.
         
         Args:
             category: Type of information (contact, fact, preference, etc.)
@@ -112,11 +115,26 @@ class MemoryDB:
             value: The information to remember
             importance: 1-10 scale (higher = more important)
             source: Where this came from
+            generate_embedding: Whether to generate vector embedding for semantic search
             
         Returns:
             ID of the stored memory
         """
         cursor = self.conn.cursor()
+        
+        # Generate embedding if requested
+        embedding_blob = None
+        if generate_embedding:
+            try:
+                from embeddings import get_embedding
+                # Combine key and value for richer semantic context
+                text = f"{key}: {value}"
+                embedding_vector = get_embedding(text)
+                # Serialize vector as blob
+                embedding_blob = pickle.dumps(embedding_vector)
+            except Exception as e:
+                # Silently fail - memory still gets stored without embedding
+                pass
         
         # Check if similar memory exists
         existing = cursor.execute(
@@ -128,17 +146,17 @@ class MemoryDB:
             # Update existing memory
             cursor.execute("""
                 UPDATE knowledge_base 
-                SET value = ?, importance = ?, updated_at = CURRENT_TIMESTAMP, source = ?
+                SET value = ?, importance = ?, updated_at = CURRENT_TIMESTAMP, source = ?, embedding = ?
                 WHERE id = ?
-            """, (value, importance, source, existing['id']))
+            """, (value, importance, source, embedding_blob, existing['id']))
             self.conn.commit()
             return existing['id']
         else:
             # Insert new memory
             cursor.execute("""
-                INSERT INTO knowledge_base (category, key, value, importance, source)
-                VALUES (?, ?, ?, ?, ?)
-            """, (category, key, value, importance, source))
+                INSERT INTO knowledge_base (category, key, value, importance, source, embedding)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (category, key, value, importance, source, embedding_blob))
             self.conn.commit()
             return cursor.lastrowid
     
@@ -235,6 +253,58 @@ class MemoryDB:
             ).fetchall()
         
         return [dict(row) for row in results]
+    
+    def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = 0.45) -> List[Dict]:
+        """
+        Semantic search using vector embeddings.
+        Finds memories similar in meaning, not just keywords.
+        
+        Args:
+            query: Search query (can be natural language)
+            limit: Maximum number of results
+            similarity_threshold: Minimum similarity score (0-1)
+            
+        Returns:
+            List of memories with similarity scores, sorted by relevance
+        """
+        try:
+            from embeddings import get_embedding, cosine_similarity
+            
+            # Generate embedding for query
+            query_embedding = get_embedding(query)
+            
+            # Get all memories with embeddings
+            cursor = self.conn.cursor()
+            results = cursor.execute(
+                "SELECT * FROM knowledge_base WHERE embedding IS NOT NULL"
+            ).fetchall()
+            
+            # Calculate similarity scores
+            scored_memories = []
+            for row in results:
+                memory = dict(row)
+                
+                # Deserialize embedding
+                stored_embedding = pickle.loads(memory['embedding'])
+                
+                # Calculate similarity
+                similarity = cosine_similarity(query_embedding, stored_embedding)
+                
+                # Only include if above threshold
+                if similarity >= similarity_threshold:
+                    memory['similarity'] = similarity
+                    # Remove the embedding blob from result (too large)
+                    del memory['embedding']
+                    scored_memories.append(memory)
+            
+            # Sort by similarity (highest first), then by importance
+            scored_memories.sort(key=lambda x: (x['similarity'], x['importance']), reverse=True)
+            
+            return scored_memories[:limit]
+            
+        except Exception as e:
+            # Fallback to keyword search if embedding fails
+            return self.recall(query, limit=limit)
     
     # ========== Conversation History ==========
     

@@ -71,10 +71,20 @@ class Orchestrator:
             result = self.executor.execute(tool_name, arguments)
             
             if result["ok"]:
-                # Success - speak the result
-                speech = result.get("speech", f"Completed {tool_name}")
+                # Success - let LLM format natural response based on tool result
                 if sys.stdout.isatty():
-                    print(f"✅ Tool succeeded: {speech}")
+                    print(f"✅ Tool succeeded")
+                    print(f"📊 Tool result: {json.dumps(result.get('data', {}), indent=2)[:200]}...")
+                
+                # For memory tools, get natural response from LLM
+                if tool_name in ['remember', 'recall', 'search_memory', 'semantic_recall', 'update_memory', 'forget']:
+                    speech = self._format_natural_response(transcript, tool_name, result)
+                else:
+                    # For other tools, use their built-in speech
+                    speech = result.get("speech", f"Completed {tool_name}")
+                
+                if sys.stdout.isatty():
+                    print(f"💬 Natural response: {speech}")
                 
                 # Auto-log conversation
                 self._log_conversation(transcript, speech, [tool_name], success=True)
@@ -146,6 +156,48 @@ class Orchestrator:
                 "ok": False,
                 "error": error
             }
+    
+    def _format_natural_response(self, user_query: str, tool_name: str, tool_result: Dict[str, Any]) -> str:
+        """
+        Use LLM to format tool results into natural conversational speech.
+        
+        Args:
+            user_query: Original user question
+            tool_name: Name of the tool that was executed
+            tool_result: The tool's result dict
+            
+        Returns:
+            Natural language response
+        """
+        try:
+            # Extract relevant data
+            data = tool_result.get("data", {})
+            
+            # Build context for LLM
+            context = f"""User asked: "{user_query}"
+
+Tool executed: {tool_name}
+Tool result: {json.dumps(data, indent=2)}
+
+Respond naturally and conversationally to the user's question based on this tool result. Be concise, helpful, and speak in first person as Jarvis."""
+            
+            # Get natural response from LLM (without tools)
+            text_response, _ = self.router.provider.chat_with_tools(
+                messages=[{"role": "user", "content": context}],
+                tools=[],  # No tools for response formatting
+                system_prompt="You are Jarvis, a helpful AI assistant. Format the tool result into natural speech."
+            )
+            
+            if text_response:
+                return text_response
+            else:
+                return tool_result.get("speech", "Done")
+            
+        except Exception as e:
+            # Fallback to tool's built-in speech
+            if sys.stdout.isatty():
+                print(f"⚠️ Failed to format natural response: {e}", file=sys.stderr)
+            return tool_result.get("speech", "Completed")
     
     def _log_conversation(self, user_query: str, response: str, tools_used: list, success: bool = True):
         """Auto-log conversation to memory database."""

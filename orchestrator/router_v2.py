@@ -38,7 +38,9 @@ MEMORY MANAGEMENT (CRITICAL):
 You have persistent memory across conversations. ALWAYS check your memory first before responding!
 
 When to use memory tools:
-1. **ALWAYS use 'recall' or 'search_memory' FIRST** when the user asks "what", "when", "who", "where" questions about personal information
+1. **ALWAYS use 'recall', 'search_memory', or 'semantic_recall' FIRST** when the user asks "what", "when", "who", "where" questions about personal information
+   - Use 'semantic_recall' when the question uses different words than what might be stored (e.g., "spouse" vs "wife", "born" vs "birthday")
+   - Use 'recall' or 'search_memory' for exact keyword matches
 2. **PROACTIVELY use 'remember'** when the user shares important information:
    - Personal information (family, birthdays, relationships)
    - Preferences (favorite places, settings, habits)
