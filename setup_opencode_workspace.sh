@@ -6,11 +6,12 @@ set -e
 echo "🏗️  Creating OpenCode workspace structure..."
 
 # Create workspace directories
-mkdir -p ~/jarvis-workspace/projects/websites
-mkdir -p ~/jarvis-workspace/projects/scripts
-mkdir -p ~/jarvis-workspace/projects/experiments
-mkdir -p ~/jarvis-workspace/temp
-mkdir -p ~/jarvis-workspace/deployments
+WORKSPACE_ROOT="$HOME/jarvis-workspace"
+mkdir -p "$WORKSPACE_ROOT/projects/websites"
+mkdir -p "$WORKSPACE_ROOT/projects/scripts"
+mkdir -p "$WORKSPACE_ROOT/projects/experiments"
+mkdir -p "$WORKSPACE_ROOT/temp"
+mkdir -p "$WORKSPACE_ROOT/deployments"
 
 # Create README files for each directory
 cat > ~/jarvis-workspace/README.md << 'EOF'
