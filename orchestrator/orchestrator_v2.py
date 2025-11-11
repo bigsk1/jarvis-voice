@@ -233,6 +233,8 @@ def main():
     json_only = "--json" in sys.argv
     if json_only:
         sys.argv.remove("--json")
+        # Set env var to suppress verbose MCP output
+        os.environ['JARVIS_JSON_MODE'] = '1'
     
     transcript = " ".join(sys.argv[2:])
     

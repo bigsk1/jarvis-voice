@@ -169,8 +169,8 @@ class ToolRegistry:
     def _discover_tools(self):
         """Auto-discover tools by finding .tool.json files."""
         import sys
-        # Only print registration if stdout is a TTY (interactive mode)
-        verbose = sys.stdout.isatty()
+        # Only print registration if stdout is a TTY and not in JSON mode
+        verbose = sys.stdout.isatty() and not os.environ.get('JARVIS_JSON_MODE')
         
         for tool_file in self.skills_dir.glob("*.tool.json"):
             try:
@@ -215,7 +215,8 @@ class ToolRegistry:
         import time
         from mcp_client import MCPManager
         
-        verbose = True  # Always show MCP startup progress
+        # Only show verbose output if in TTY mode or not in JSON mode
+        verbose = sys.stdout.isatty() and not os.environ.get('JARVIS_JSON_MODE')
         
         try:
             if verbose:
