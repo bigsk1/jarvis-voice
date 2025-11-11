@@ -1,0 +1,29 @@
+{
+  "name": "update_memory",
+  "description": "Update or correct an existing memory. Use this when you realize a stored fact is outdated, incorrect, or needs to be changed. First use 'recall' to find the memory ID, then update it.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "memory_id": {
+        "type": "integer",
+        "description": "The ID of the memory to update (from recall results)"
+      },
+      "new_value": {
+        "type": "string",
+        "description": "The corrected or updated information"
+      },
+      "importance": {
+        "type": "integer",
+        "description": "Updated importance (1-10)",
+        "minimum": 1,
+        "maximum": 10
+      }
+    },
+    "required": ["memory_id", "new_value"]
+  },
+  "permissions": {
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+

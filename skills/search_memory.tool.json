@@ -1,0 +1,24 @@
+{
+  "name": "search_memory",
+  "description": "Search all stored memories by keyword. Use this to see what you know about a topic, find related memories, or check if you've already stored similar information before storing new data.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search term to find in stored memories"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of results",
+        "default": 10
+      }
+    },
+    "required": ["query"]
+  },
+  "permissions": {
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+

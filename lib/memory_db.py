@@ -1,0 +1,328 @@
+#!/usr/bin/env python3
+"""
+Jarvis Memory Database
+SQLite-based memory system for storing facts, conversations, and learned patterns.
+"""
+import sqlite3
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+
+
+class MemoryDB:
+    """Manages Jarvis's persistent memory."""
+    
+    def __init__(self, db_path: str = None):
+        """
+        Initialize memory database.
+        
+        Args:
+            db_path: Path to SQLite database file
+        """
+        if db_path is None:
+            # Default to project data directory
+            project_root = Path(__file__).parent.parent.resolve()
+            data_dir = project_root / "data"
+            data_dir.mkdir(exist_ok=True)
+            db_path = str(data_dir / "jarvis_memory.db")
+        
+        self.db_path = db_path
+        self.conn = None
+        self._init_db()
+    
+    def _init_db(self):
+        """Initialize database and create tables."""
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row  # Return rows as dictionaries
+        
+        cursor = self.conn.cursor()
+        
+        # Knowledge base - facts the AI should remember
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_base (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                importance INTEGER DEFAULT 5,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                source TEXT,
+                metadata TEXT
+            )
+        """)
+        
+        # Conversation history
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                session_id TEXT,
+                user_query TEXT NOT NULL,
+                jarvis_response TEXT,
+                tools_used TEXT,
+                success BOOLEAN DEFAULT 1,
+                metadata TEXT
+            )
+        """)
+        
+        # Learned patterns - what tools work for what queries
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tool_patterns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query_pattern TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                args_template TEXT,
+                success_count INTEGER DEFAULT 0,
+                failure_count INTEGER DEFAULT 0,
+                avg_duration_ms REAL,
+                last_used TIMESTAMP,
+                confidence REAL DEFAULT 0.5
+            )
+        """)
+        
+        # User preferences
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS preferences (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge_base(category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_key ON knowledge_base(key)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_patterns_query ON tool_patterns(query_pattern)")
+        
+        self.conn.commit()
+    
+    # ========== Knowledge Base Operations ==========
+    
+    def remember(self, category: str, key: str, value: str, importance: int = 5, source: str = None) -> int:
+        """
+        Store a fact in memory.
+        
+        Args:
+            category: Type of information (contact, fact, preference, etc.)
+            key: What this is about
+            value: The information to remember
+            importance: 1-10 scale (higher = more important)
+            source: Where this came from
+            
+        Returns:
+            ID of the stored memory
+        """
+        cursor = self.conn.cursor()
+        
+        # Check if similar memory exists
+        existing = cursor.execute(
+            "SELECT id FROM knowledge_base WHERE category = ? AND key = ?",
+            (category, key)
+        ).fetchone()
+        
+        if existing:
+            # Update existing memory
+            cursor.execute("""
+                UPDATE knowledge_base 
+                SET value = ?, importance = ?, updated_at = CURRENT_TIMESTAMP, source = ?
+                WHERE id = ?
+            """, (value, importance, source, existing['id']))
+            self.conn.commit()
+            return existing['id']
+        else:
+            # Insert new memory
+            cursor.execute("""
+                INSERT INTO knowledge_base (category, key, value, importance, source)
+                VALUES (?, ?, ?, ?, ?)
+            """, (category, key, value, importance, source))
+            self.conn.commit()
+            return cursor.lastrowid
+    
+    def recall(self, query: str, category: str = None, limit: int = 5) -> List[Dict]:
+        """
+        Search memories by query.
+        
+        Args:
+            query: What to search for
+            category: Optional category filter
+            limit: Maximum results
+            
+        Returns:
+            List of matching memories
+        """
+        cursor = self.conn.cursor()
+        
+        if category:
+            results = cursor.execute("""
+                SELECT * FROM knowledge_base
+                WHERE category = ? AND (key LIKE ? OR value LIKE ?)
+                ORDER BY importance DESC, updated_at DESC
+                LIMIT ?
+            """, (category, f"%{query}%", f"%{query}%", limit)).fetchall()
+        else:
+            results = cursor.execute("""
+                SELECT * FROM knowledge_base
+                WHERE key LIKE ? OR value LIKE ?
+                ORDER BY importance DESC, updated_at DESC
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", limit)).fetchall()
+        
+        return [dict(row) for row in results]
+    
+    def update_memory(self, memory_id: int, value: str = None, importance: int = None) -> bool:
+        """Update an existing memory."""
+        cursor = self.conn.cursor()
+        
+        updates = []
+        params = []
+        
+        if value is not None:
+            updates.append("value = ?")
+            params.append(value)
+        
+        if importance is not None:
+            updates.append("importance = ?")
+            params.append(importance)
+        
+        if not updates:
+            return False
+        
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(memory_id)
+        
+        query = f"UPDATE knowledge_base SET {', '.join(updates)} WHERE id = ?"
+        cursor.execute(query, params)
+        self.conn.commit()
+        
+        return cursor.rowcount > 0
+    
+    def forget(self, memory_id: int) -> bool:
+        """Delete a memory."""
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM knowledge_base WHERE id = ?", (memory_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+    
+    def search_memory(self, query: str, limit: int = 10) -> List[Dict]:
+        """
+        Search all memories by query.
+        
+        Args:
+            query: Search term
+            limit: Max results
+            
+        Returns:
+            List of memories with relevance
+        """
+        return self.recall(query, limit=limit)
+    
+    def get_all_memories(self, category: str = None) -> List[Dict]:
+        """Get all stored memories, optionally filtered by category."""
+        cursor = self.conn.cursor()
+        
+        if category:
+            results = cursor.execute(
+                "SELECT * FROM knowledge_base WHERE category = ? ORDER BY importance DESC, updated_at DESC",
+                (category,)
+            ).fetchall()
+        else:
+            results = cursor.execute(
+                "SELECT * FROM knowledge_base ORDER BY importance DESC, updated_at DESC"
+            ).fetchall()
+        
+        return [dict(row) for row in results]
+    
+    # ========== Conversation History ==========
+    
+    def log_conversation(self, user_query: str, jarvis_response: str, 
+                        tools_used: List[str] = None, session_id: str = None,
+                        success: bool = True) -> int:
+        """Log a conversation exchange."""
+        cursor = self.conn.cursor()
+        
+        tools_json = json.dumps(tools_used) if tools_used else None
+        
+        cursor.execute("""
+            INSERT INTO conversations (user_query, jarvis_response, tools_used, session_id, success)
+            VALUES (?, ?, ?, ?, ?)
+        """, (user_query, jarvis_response, tools_json, session_id, success))
+        
+        self.conn.commit()
+        return cursor.lastrowid
+    
+    def get_recent_conversations(self, limit: int = 10, session_id: str = None) -> List[Dict]:
+        """Get recent conversation history."""
+        cursor = self.conn.cursor()
+        
+        if session_id:
+            results = cursor.execute("""
+                SELECT * FROM conversations 
+                WHERE session_id = ?
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            """, (session_id, limit)).fetchall()
+        else:
+            results = cursor.execute("""
+                SELECT * FROM conversations 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            """, (limit,)).fetchall()
+        
+        return [dict(row) for row in results]
+    
+    def search_conversations(self, query: str, limit: int = 5) -> List[Dict]:
+        """Search conversation history."""
+        cursor = self.conn.cursor()
+        
+        results = cursor.execute("""
+            SELECT * FROM conversations
+            WHERE user_query LIKE ? OR jarvis_response LIKE ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (f"%{query}%", f"%{query}%", limit)).fetchall()
+        
+        return [dict(row) for row in results]
+    
+    # ========== Preferences ==========
+    
+    def set_preference(self, key: str, value: str):
+        """Set a user preference."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO preferences (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        """, (key, value))
+        self.conn.commit()
+    
+    def get_preference(self, key: str, default: str = None) -> Optional[str]:
+        """Get a user preference."""
+        cursor = self.conn.cursor()
+        result = cursor.execute(
+            "SELECT value FROM preferences WHERE key = ?",
+            (key,)
+        ).fetchone()
+        
+        return result['value'] if result else default
+    
+    # ========== Utility ==========
+    
+    def close(self):
+        """Close database connection."""
+        if self.conn:
+            self.conn.close()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+
+def get_memory_db() -> MemoryDB:
+    """Get memory database instance."""
+    return MemoryDB()
+

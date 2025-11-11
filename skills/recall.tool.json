@@ -1,0 +1,29 @@
+{
+  "name": "recall",
+  "description": "Search and retrieve stored memories. Use this when you need to remember something from a previous conversation, or when the user asks 'what did I tell you about X' or 'what do you know about Y'. This searches across all stored knowledge.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "What to search for in stored memories"
+      },
+      "category": {
+        "type": "string",
+        "enum": ["contact", "personal", "preference", "location", "fact", "other"],
+        "description": "Optional: filter by category"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of results to return",
+        "default": 5
+      }
+    },
+    "required": ["query"]
+  },
+  "permissions": {
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+

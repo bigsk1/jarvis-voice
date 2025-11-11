@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""
+Test MCP Server Connection
+Quick script to test MCP server connectivity and tool discovery.
+"""
+import sys
+import os
+import json
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from mcp_client import MCPClient, MCPManager
+
+
+def test_single_server():
+    """Test a single MCP server (DuckDuckGo)."""
+    print("🧪 Testing DuckDuckGo MCP Server")
+    print("=" * 60)
+    
+    # Create client
+    client = MCPClient(
+        name="duckduckgo",
+        command="docker",
+        args=["run", "-i", "--rm", "mcp/duckduckgo"]
+    )
+    
+    try:
+        # Start server
+        print("🚀 Starting MCP server...")
+        client.start()
+        print("✅ Server started")
+        
+        # List tools
+        print("\n📋 Listing available tools...")
+        tools = client.list_tools()
+        print(f"✅ Found {len(tools)} tools:")
+        
+        for tool in tools:
+            print(f"\n  Tool: {tool['name']}")
+            print(f"  Description: {tool['description']}")
+            print(f"  Parameters: {json.dumps(tool.get('inputSchema', {}), indent=4)}")
+        
+        # Test search
+        if tools:
+            print(f"\n🔍 Testing search tool...")
+            result = client.call_tool("search", {"query": "bitcoin price"})
+            print(f"Result OK: {result.get('ok')}")
+            print(f"Result Speech: {result.get('speech', 'N/A')[:200]}")
+            if result.get('error'):
+                print(f"Error: {result['error']}")
+            if result.get('data'):
+                print(f"Data keys: {list(result['data'].keys())}")
+        
+        print("\n✅ MCP server test successful!")
+        
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    finally:
+        client.stop()
+        print("\n🛑 Server stopped")
+
+
+def test_manager():
+    """Test MCP manager with config file."""
+    print("\n🧪 Testing MCP Manager")
+    print("=" * 60)
+    
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'mcp-servers.json')
+    
+    try:
+        manager = MCPManager(config_path)
+        print(f"✅ Loaded {len(manager.servers)} MCP servers from config")
+        
+        all_tools = manager.list_all_tools()
+        for server_name, tools in all_tools.items():
+            print(f"\n📦 {server_name}: {len(tools)} tools")
+            for tool in tools:
+                print(f"  - {tool['name']}: {tool['description']}")
+        
+        print("\n✅ MCP manager test successful!")
+        
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    finally:
+        if 'manager' in locals():
+            manager.stop_all()
+
+
+def main():
+    """Main test runner."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Test MCP server connectivity")
+    parser.add_argument("--server", action="store_true", help="Test single server")
+    parser.add_argument("--manager", action="store_true", help="Test MCP manager")
+    parser.add_argument("--all", action="store_true", help="Run all tests")
+    
+    args = parser.parse_args()
+    
+    if args.all or args.server or (not args.server and not args.manager):
+        test_single_server()
+    
+    if args.all or args.manager:
+        test_manager()
+
+
+if __name__ == "__main__":
+    main()
+

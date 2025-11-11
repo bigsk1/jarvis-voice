@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""
+Jarvis Memory CLI - View and manage memories
+"""
+import sys
+import os
+import json
+from datetime import datetime
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from memory_db import get_memory_db
+
+
+def print_memory(mem, show_full=False):
+    """Pretty print a memory."""
+    timestamp = mem['updated_at'] if 'updated_at' in mem else mem['created_at']
+    importance = mem.get('importance', 5)
+    importance_bar = '★' * importance + '☆' * (10 - importance)
+    
+    print(f"  [{mem['id']}] {mem['category'].upper()}")
+    print(f"      {importance_bar} ({importance}/10)")
+    print(f"      Key: {mem['key']}")
+    print(f"      Value: {mem['value']}")
+    if show_full and mem.get('source'):
+        print(f"      Source: {mem['source']}")
+    print(f"      Updated: {timestamp}")
+    print()
+
+
+def cmd_list(args):
+    """List all memories."""
+    db = get_memory_db()
+    
+    category = args[0] if args else None
+    memories = db.get_all_memories(category=category)
+    db.close()
+    
+    if not memories:
+        print("📭 No memories stored yet")
+        return
+    
+    print(f"🧠 Stored Memories ({len(memories)} total)")
+    print("=" * 60)
+    
+    for mem in memories:
+        print_memory(mem)
+
+
+def cmd_search(args):
+    """Search memories."""
+    if not args:
+        print("Usage: memory search <query>")
+        return
+    
+    query = ' '.join(args)
+    db = get_memory_db()
+    memories = db.search_memory(query)
+    db.close()
+    
+    if not memories:
+        print(f"🔍 No memories found for '{query}'")
+        return
+    
+    print(f"🔍 Search results for '{query}' ({len(memories)} found)")
+    print("=" * 60)
+    
+    for mem in memories:
+        print_memory(mem)
+
+
+def cmd_conversations(args):
+    """View recent conversations."""
+    limit = int(args[0]) if args else 10
+    
+    db = get_memory_db()
+    convos = db.get_recent_conversations(limit=limit)
+    db.close()
+    
+    if not convos:
+        print("📭 No conversations logged yet")
+        return
+    
+    print(f"💬 Recent Conversations (last {len(convos)})")
+    print("=" * 60)
+    
+    for convo in convos:
+        status = "✅" if convo['success'] else "❌"
+        tools = json.loads(convo['tools_used']) if convo['tools_used'] else []
+        tools_str = f" [{', '.join(tools)}]" if tools else ""
+        
+        print(f"{status} {convo['timestamp']}{tools_str}")
+        print(f"   User: {convo['user_query']}")
+        print(f"   Jarvis: {convo['jarvis_response'][:100]}...")
+        print()
+
+
+def cmd_stats(args):
+    """Show memory statistics."""
+    db = get_memory_db()
+    memories = db.get_all_memories()
+    convos = db.get_recent_conversations(limit=1000)
+    db.close()
+    
+    # Memory stats
+    by_category = {}
+    by_importance = {i: 0 for i in range(1, 11)}
+    
+    for mem in memories:
+        cat = mem['category']
+        by_category[cat] = by_category.get(cat, 0) + 1
+        by_importance[mem['importance']] += 1
+    
+    # Conversation stats
+    success_count = sum(1 for c in convos if c['success'])
+    fail_count = len(convos) - success_count
+    
+    print("📊 Memory Statistics")
+    print("=" * 60)
+    print(f"\n🧠 Knowledge Base: {len(memories)} memories")
+    for cat, count in sorted(by_category.items()):
+        print(f"   {cat}: {count}")
+    
+    print(f"\n⭐ By Importance:")
+    for imp in range(10, 0, -1):
+        if by_importance[imp] > 0:
+            bar = '█' * by_importance[imp]
+            print(f"   {imp:2d}: {bar} ({by_importance[imp]})")
+    
+    print(f"\n💬 Conversations: {len(convos)} logged")
+    print(f"   ✅ Successful: {success_count}")
+    print(f"   ❌ Failed: {fail_count}")
+    if convos:
+        success_rate = (success_count / len(convos)) * 100
+        print(f"   Success rate: {success_rate:.1f}%")
+
+
+def cmd_delete(args):
+    """Delete a memory by ID."""
+    if not args:
+        print("Usage: memory delete <id>")
+        return
+    
+    try:
+        memory_id = int(args[0])
+    except ValueError:
+        print("Error: ID must be a number")
+        return
+    
+    db = get_memory_db()
+    success = db.forget(memory_id)
+    db.close()
+    
+    if success:
+        print(f"✅ Deleted memory {memory_id}")
+    else:
+        print(f"❌ Memory {memory_id} not found")
+
+
+def cmd_help(args):
+    """Show help."""
+    print("""
+🧠 Jarvis Memory CLI
+
+Usage: memory <command> [args]
+
+Commands:
+  list [category]       List all memories (optionally filter by category)
+  search <query>        Search memories by keyword
+  conversations [N]     Show recent N conversations (default 10)
+  stats                 Show memory statistics
+  delete <id>           Delete a memory by ID
+  help                  Show this help
+
+Categories: contact, personal, preference, location, fact, other
+
+Examples:
+  memory list                    # Show all memories
+  memory list personal           # Show only personal memories
+  memory search "birthday"       # Search for birthday-related memories
+  memory conversations 20        # Show last 20 conversations
+  memory delete 5                # Delete memory with ID 5
+  memory stats                   # Show statistics
+""")
+
+
+def main():
+    """Main CLI."""
+    if len(sys.argv) < 2:
+        cmd_help([])
+        return
+    
+    command = sys.argv[1]
+    args = sys.argv[2:]
+    
+    commands = {
+        'list': cmd_list,
+        'search': cmd_search,
+        'conversations': cmd_conversations,
+        'stats': cmd_stats,
+        'delete': cmd_delete,
+        'help': cmd_help,
+    }
+    
+    if command not in commands:
+        print(f"Unknown command: {command}")
+        print("Run 'memory help' for usage")
+        return
+    
+    commands[command](args)
+
+
+if __name__ == "__main__":
+    main()
+

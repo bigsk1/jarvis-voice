@@ -1,0 +1,34 @@
+{
+  "name": "remember",
+  "description": "Store important information in persistent memory. Use this when the user shares information that should be remembered for future conversations, such as: personal facts (name, birthday, family), preferences (favorite places, settings), important contacts (doctor, dentist), locations (home address, work), or any other information that would be useful to recall later. You should proactively decide what's important to remember - don't wait to be told.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "category": {
+        "type": "string",
+        "enum": ["contact", "personal", "preference", "location", "fact", "other"],
+        "description": "Type of information being stored"
+      },
+      "key": {
+        "type": "string",
+        "description": "What this information is about (e.g., 'wife_birthday', 'favorite_restaurant', 'doctor')"
+      },
+      "value": {
+        "type": "string",
+        "description": "The actual information to remember"
+      },
+      "importance": {
+        "type": "integer",
+        "description": "How important this is (1-10, where 10 is critical)",
+        "minimum": 1,
+        "maximum": 10
+      }
+    },
+    "required": ["category", "key", "value"]
+  },
+  "permissions": {
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+

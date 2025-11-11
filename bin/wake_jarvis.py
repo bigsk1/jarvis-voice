@@ -50,6 +50,27 @@ print("🔊 Loading openWakeWord model…")
 oww = Model(vad_threshold=VAD_THRESHOLD)
 print("Available wakewords:", list(oww.models.keys()))
 
+# Display available tools
+print("\n🛠️  Available Tools:")
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "lib"))
+from tool_schema import ToolRegistry
+mcp_config = os.path.join(PROJECT_ROOT, "config", "mcp-servers.json")
+registry = ToolRegistry(os.path.join(PROJECT_ROOT, "skills"), mcp_config)
+tools = sorted(registry.list_tools())
+for i, tool_name in enumerate(tools, 1):
+    tool_schema = registry.get_tool(tool_name)
+    # Show tool with icon based on permissions
+    if tool_schema.permissions.get("dangerous"):
+        icon = "🚨"
+    elif tool_schema.permissions.get("network"):
+        icon = "🌐"
+    elif tool_schema.permissions.get("bash"):
+        icon = "⚡"
+    else:
+        icon = "✅"
+    print(f"  {i:2d}. {icon} {tool_name:20s} - {tool_schema.description[:60]}...")
+print()
+
 
 def pick_input_device():
     try:

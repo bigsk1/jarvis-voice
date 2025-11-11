@@ -48,3 +48,4 @@ tmp/
 .Trash/
 Thumbs.db
 
+data/*.db

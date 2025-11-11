@@ -143,18 +143,25 @@ Parameters:
 
 
 class ToolRegistry:
-    """Registry of all available tools."""
+    """Registry of all available tools (local + MCP)."""
     
-    def __init__(self, skills_dir: str):
+    def __init__(self, skills_dir: str, mcp_config_path: Optional[str] = None):
         """
         Initialize tool registry.
         
         Args:
             skills_dir: Path to skills directory
+            mcp_config_path: Path to MCP servers config (optional)
         """
         self.skills_dir = Path(skills_dir)
+        self.mcp_config_path = mcp_config_path
         self.tools: Dict[str, ToolSchema] = {}
+        self.mcp_clients: Dict[str, Any] = {}
         self._discover_tools()
+        
+        # Discover MCP tools if config provided
+        if mcp_config_path and os.path.exists(mcp_config_path):
+            self._discover_mcp_tools()
     
     def _discover_tools(self):
         """Auto-discover tools by finding .tool.json files."""
@@ -198,4 +205,80 @@ class ToolRegistry:
             tools_desc.append(tool.to_ollama_description())
         
         return "\n\n".join(tools_desc)
+    
+    def _discover_mcp_tools(self):
+        """Discover tools from MCP servers."""
+        try:
+            # Import MCP manager
+            import sys
+            from mcp_client import MCPManager
+            
+            # Load MCP servers
+            manager = MCPManager(self.mcp_config_path)
+            
+            # Get all tools from all servers
+            for server_name, client in manager.servers.items():
+                try:
+                    # Check if server is enabled
+                    with open(self.mcp_config_path, 'r') as f:
+                        config = json.load(f)
+                        server_config = config.get("mcpServers", {}).get(server_name, {})
+                        if not server_config.get("enabled", False):
+                            continue
+                    
+                    # Start server and get tools
+                    tools = client.list_tools()
+                    
+                    # Store client for later use
+                    self.mcp_clients[server_name] = client
+                    
+                    # Register each MCP tool
+                    for tool_info in tools:
+                        tool_name = f"mcp.{server_name}.{tool_info['name']}"
+                        
+                        # Convert MCP tool to our ToolSchema format
+                        schema = ToolSchema(
+                            name=tool_name,
+                            description=tool_info.get('description', ''),
+                            parameters=tool_info.get('inputSchema', {}),
+                            script_path=f"__mcp__{server_name}__{tool_info['name']}",  # Special marker
+                            permissions={
+                                "dangerous": False,
+                                "bash": False,
+                                "network": True,  # MCP tools often use network
+                                "filesystem": False,
+                                "auto_approve": True  # Most MCP tools are safe
+                            }
+                        )
+                        
+                        self.tools[tool_name] = schema
+                        
+                        if sys.stdout.isatty():
+                            print(f"✓ Registered MCP tool: {tool_name}")
+                
+                except Exception as e:
+                    if sys.stdout.isatty():
+                        print(f"✗ Failed to load MCP server {server_name}: {e}")
+        
+        except Exception as e:
+            if sys.stdout.isatty():
+                print(f"✗ Failed to discover MCP tools: {e}")
+    
+    def is_mcp_tool(self, tool_name: str) -> bool:
+        """Check if a tool is an MCP tool."""
+        return tool_name.startswith("mcp.")
+    
+    def get_mcp_info(self, tool_name: str) -> tuple:
+        """
+        Extract MCP server and tool name from full tool name.
+        Returns: (server_name, mcp_tool_name)
+        """
+        if not self.is_mcp_tool(tool_name):
+            return None, None
+        
+        # Format: mcp.server_name.tool_name
+        parts = tool_name.split(".", 2)
+        if len(parts) >= 3:
+            return parts[1], parts[2]
+        return None, None
 

@@ -7,10 +7,12 @@ import os
 import sys
 import json
 from typing import Dict, Any
+from datetime import datetime
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
+from memory_db import get_memory_db
 
 from router_v2 import LLMRouter
 from executor import ToolExecutor
@@ -26,6 +28,7 @@ class Orchestrator:
         self.router = LLMRouter(mode)
         self.executor = ToolExecutor(mode)
         self.max_retries = 1  # Maximum retry attempts
+        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # Unique session ID
     
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None) -> Dict[str, Any]:
         """
@@ -73,6 +76,9 @@ class Orchestrator:
                 if sys.stdout.isatty():
                     print(f"✅ Tool succeeded: {speech}")
                 
+                # Auto-log conversation
+                self._log_conversation(transcript, speech, [tool_name], success=True)
+                
                 return {
                     "speech": speech,
                     "ok": True,
@@ -98,8 +104,13 @@ class Orchestrator:
                     return self.process(transcript, retry_count + 1, error_context)
                 
                 # Max retries exceeded
+                final_speech = f"{speech}. Error: {error}. I tried {retry_count + 1} time(s) but couldn't complete the task."
+                
+                # Auto-log failed conversation
+                self._log_conversation(transcript, final_speech, [tool_name], success=False)
+                
                 return {
-                    "speech": f"{speech}. Error: {error}. I tried {retry_count + 1} time(s) but couldn't complete the task.",
+                    "speech": final_speech,
                     "ok": False,
                     "error": error,
                     "tool_used": tool_name,
@@ -111,6 +122,9 @@ class Orchestrator:
             speech = route.get("text_response", "I'm not sure how to respond.")
             if sys.stdout.isatty():
                 print(f"💬 Q&A response: {speech}")
+            
+            # Auto-log Q&A conversation
+            self._log_conversation(transcript, speech, [], success=True)
             
             return {
                 "speech": speech,
@@ -124,11 +138,31 @@ class Orchestrator:
             if sys.stdout.isatty():
                 print(f"❌ Routing error: {error}")
             
+            # Auto-log error
+            self._log_conversation(transcript, speech, [], success=False)
+            
             return {
                 "speech": speech,
                 "ok": False,
                 "error": error
             }
+    
+    def _log_conversation(self, user_query: str, response: str, tools_used: list, success: bool = True):
+        """Auto-log conversation to memory database."""
+        try:
+            db = get_memory_db()
+            db.log_conversation(
+                user_query=user_query,
+                jarvis_response=response,
+                tools_used=tools_used,
+                session_id=self.session_id,
+                success=success
+            )
+            db.close()
+        except Exception as e:
+            # Silently fail - don't break the main flow
+            if sys.stdout.isatty():
+                print(f"⚠️ Failed to log conversation: {e}", file=sys.stderr)
 
 
 def main():

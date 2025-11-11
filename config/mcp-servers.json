@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "duckduckgo": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "host",
+        "mcp/duckduckgo"
+      ],
+      "description": "Web search and content fetching via DuckDuckGo",
+      "enabled": false
+    }
+  }
+}
+

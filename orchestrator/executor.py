@@ -30,7 +30,8 @@ class ToolExecutor:
         # Load tool registry for permission checking
         sys.path.insert(0, str(self.project_root / "lib"))
         from tool_schema import ToolRegistry
-        self.registry = ToolRegistry(str(self.skills_dir))
+        mcp_config = str(self.project_root / "config" / "mcp-servers.json")
+        self.registry = ToolRegistry(str(self.skills_dir), mcp_config)
         
         # Initialize logger
         self.logger = get_logger(mode)
@@ -72,6 +73,10 @@ class ToolExecutor:
             # In future, could add verbal confirmation loop here
             # For now, we announce and proceed with caution
         
+        # Check if this is an MCP tool
+        if self.registry.is_mcp_tool(tool_name):
+            return self._execute_mcp_tool(tool_name, args)
+        
         # Get script path from schema
         tool_script = Path(tool_schema.script_path)
         
@@ -89,15 +94,15 @@ class ToolExecutor:
             
             # Determine command based on file extension
             if tool_script.suffix == '.py':
-                # Run Python scripts with python3
-                cmd = ['python3', str(tool_script)]
+                # Run Python scripts with python3, passing JSON as argument
+                cmd = ['python3', str(tool_script), input_json]
             else:
                 # Run bash scripts or other executables directly
                 cmd = [str(tool_script)]
             
             result = subprocess.run(
                 cmd,
-                input=input_json,
+                input=input_json if tool_script.suffix != '.py' else None,
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -171,6 +176,72 @@ class ToolExecutor:
             output = {
                 "ok": False,
                 "speech": f"Error executing {tool_name}",
+                "error": str(e)
+            }
+            self.logger.log_tool_call(
+                tool_name=tool_name,
+                arguments=args,
+                result=output,
+                duration_ms=duration_ms,
+                mode=self.mode
+            )
+            return output
+    
+    def _execute_mcp_tool(self, tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute an MCP tool.
+        
+        Args:
+            tool_name: Full MCP tool name (e.g., "mcp.duckduckgo.search")
+            args: Tool arguments
+            
+        Returns:
+            Tool result
+        """
+        start_time = time.time()
+        
+        try:
+            # Extract server and tool names
+            server_name, mcp_tool_name = self.registry.get_mcp_info(tool_name)
+            
+            if not server_name or not mcp_tool_name:
+                return {
+                    "ok": False,
+                    "speech": f"Invalid MCP tool name: {tool_name}",
+                    "error": "Invalid tool name format"
+                }
+            
+            # Get MCP client
+            mcp_client = self.registry.mcp_clients.get(server_name)
+            
+            if not mcp_client:
+                return {
+                    "ok": False,
+                    "speech": f"MCP server {server_name} not available",
+                    "error": "MCP server not connected"
+                }
+            
+            # Execute tool via MCP
+            result = mcp_client.call_tool(mcp_tool_name, args)
+            
+            duration_ms = (time.time() - start_time) * 1000
+            
+            # Log execution
+            self.logger.log_tool_call(
+                tool_name=tool_name,
+                arguments=args,
+                result=result,
+                duration_ms=duration_ms,
+                mode=self.mode
+            )
+            
+            return result
+            
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            output = {
+                "ok": False,
+                "speech": f"MCP tool {tool_name} failed",
                 "error": str(e)
             }
             self.logger.log_tool_call(
