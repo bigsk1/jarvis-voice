@@ -25,8 +25,19 @@ class Orchestrator:
         """Initialize orchestrator."""
         self.mode = mode
         load_config(mode)
-        self.router = LLMRouter(mode)
-        self.executor = ToolExecutor(mode)
+        
+        # Create tool registry once (includes MCP discovery)
+        # This prevents duplicate MCP containers
+        from pathlib import Path
+        from tool_schema import ToolRegistry
+        project_root = Path(__file__).parent.parent
+        skills_dir = str(project_root / "skills")
+        mcp_config = str(project_root / "config" / "mcp-servers.json")
+        self.registry = ToolRegistry(skills_dir, mcp_config)
+        
+        # Pass shared registry to router and executor
+        self.router = LLMRouter(mode, registry=self.registry)
+        self.executor = ToolExecutor(mode, registry=self.registry)
         self.max_retries = 1  # Maximum retry attempts
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # Unique session ID
     

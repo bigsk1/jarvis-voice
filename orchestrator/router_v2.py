@@ -18,15 +18,25 @@ from llm_provider import create_provider
 class LLMRouter:
     """Intelligent router using LLM tool calling."""
     
-    def __init__(self, mode='cloud'):
-        """Initialize router with LLM provider."""
+    def __init__(self, mode='cloud', registry=None):
+        """
+        Initialize router with LLM provider.
+        
+        Args:
+            mode: 'cloud' or 'local'
+            registry: Optional shared ToolRegistry (prevents duplicate MCP servers)
+        """
         self.mode = mode
         load_config(mode)
         
-        # Load tool registry
-        project_root = Path(__file__).parent.parent.resolve()
-        mcp_config = str(project_root / "config" / "mcp-servers.json")
-        self.registry = ToolRegistry(str(project_root / "skills"), mcp_config)
+        # Use provided registry or create new one
+        if registry:
+            self.registry = registry
+        else:
+            # Backward compatibility: create own registry
+            project_root = Path(__file__).parent.parent.resolve()
+            mcp_config = str(project_root / "config" / "mcp-servers.json")
+            self.registry = ToolRegistry(str(project_root / "skills"), mcp_config)
         
         # Initialize LLM provider
         self.provider = self._create_provider()

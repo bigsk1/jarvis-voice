@@ -20,18 +20,28 @@ from tool_logger import get_logger
 class ToolExecutor:
     """Executes tools and skills with permission checking."""
     
-    def __init__(self, mode='cloud'):
-        """Initialize executor."""
+    def __init__(self, mode='cloud', registry=None):
+        """
+        Initialize executor.
+        
+        Args:
+            mode: 'cloud' or 'local'
+            registry: Optional shared ToolRegistry (prevents duplicate MCP servers)
+        """
         self.mode = mode
         load_config(mode)
         self.project_root = Path(__file__).parent.parent.resolve()
         self.skills_dir = self.project_root / "skills"
         
-        # Load tool registry for permission checking
-        sys.path.insert(0, str(self.project_root / "lib"))
-        from tool_schema import ToolRegistry
-        mcp_config = str(self.project_root / "config" / "mcp-servers.json")
-        self.registry = ToolRegistry(str(self.skills_dir), mcp_config)
+        # Use provided registry or create new one
+        if registry:
+            self.registry = registry
+        else:
+            # Backward compatibility: create own registry
+            sys.path.insert(0, str(self.project_root / "lib"))
+            from tool_schema import ToolRegistry
+            mcp_config = str(self.project_root / "config" / "mcp-servers.json")
+            self.registry = ToolRegistry(str(self.skills_dir), mcp_config)
         
         # Initialize logger
         self.logger = get_logger(mode)
