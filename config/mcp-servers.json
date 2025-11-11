@@ -11,7 +11,7 @@
         "mcp/duckduckgo"
       ],
       "description": "Web search and content fetching via DuckDuckGo",
-      "enabled": false
+      "enabled": true
     },
     "fetch": {
       "command": "docker",
@@ -24,7 +24,7 @@
         "mcp/fetch"
       ],
       "description": "Fetch and extract content from URLs as markdown",
-      "enabled": false
+      "enabled": true
     }
   }
 }
