@@ -1,0 +1,18 @@
+# Jarvis Voice Assistant - Updated Aliases for Structured Project
+# Add these to your ~/.bashrc (replacing old aliases)
+
+# Cloud mode
+alias jarvis="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/wake_jarvis.py"
+alias say="$HOME/jarvis-voice/bin/say.sh"
+alias question="$HOME/jarvis-voice/bin/question.sh"
+alias question-mic="$HOME/jarvis-voice/bin/question-mic.sh"
+
+# Local mode
+alias jarvis-local="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/wake_jarvis_local.py"
+alias say-local="$HOME/jarvis-voice/bin/say-local.sh"
+alias question-local="$HOME/jarvis-voice/bin/question-local.sh"
+alias question-mic-local="$HOME/jarvis-voice/bin/question-mic-local.sh"
+
+# Quick shortcuts
+alias jarvis-cd="cd $HOME/jarvis-voice"
+alias jarvis-env="source $HOME/jarvis-venv/bin/activate"
