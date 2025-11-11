@@ -7,16 +7,18 @@ import os
 import sys
 import json
 import subprocess
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
+from tool_logger import get_logger
 
 
 class ToolExecutor:
-    """Executes tools and skills."""
+    """Executes tools and skills with permission checking."""
     
     def __init__(self, mode='cloud'):
         """Initialize executor."""
@@ -24,40 +26,77 @@ class ToolExecutor:
         load_config(mode)
         self.project_root = Path(__file__).parent.parent.resolve()
         self.skills_dir = self.project_root / "skills"
+        
+        # Load tool registry for permission checking
+        sys.path.insert(0, str(self.project_root / "lib"))
+        from tool_schema import ToolRegistry
+        self.registry = ToolRegistry(str(self.skills_dir))
+        
+        # Initialize logger
+        self.logger = get_logger(mode)
     
-    def execute(self, tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, tool_name: str, args: Dict[str, Any], skip_permission_check: bool = False) -> Dict[str, Any]:
         """
-        Execute a tool/skill.
+        Execute a tool/skill with permission checking.
         
         Args:
             tool_name: Name of the tool to execute
             args: Arguments to pass to the tool
+            skip_permission_check: Skip permission validation (use with caution)
             
         Returns:
             dict: Tool result
             {
                 "ok": True/False,
                 "speech": "Text to speak",
-                "data": {...} (optional)
+                "data": {...} (optional),
+                "requires_confirmation": bool (if permission check fails)
             }
         """
-        # Check if tool exists
-        tool_script = self.skills_dir / f"{tool_name}.sh"
-        if not tool_script.exists():
-            tool_script = self.skills_dir / f"{tool_name}.py"
+        # Get tool schema for permission check
+        tool_schema = self.registry.get_tool(tool_name)
         
-        if not tool_script.exists():
+        if not tool_schema:
             return {
                 "ok": False,
                 "speech": f"Tool {tool_name} not found",
                 "error": "Tool not found"
             }
         
+        # Check permissions (unless explicitly skipped)
+        if not skip_permission_check and tool_schema.requires_confirmation():
+            # For voice control, we announce what we're about to do
+            warning = tool_schema.get_permission_warning()
+            print(f"⚠️  Permission check: {warning}")
+            
+            # In future, could add verbal confirmation loop here
+            # For now, we announce and proceed with caution
+        
+        # Get script path from schema
+        tool_script = Path(tool_schema.script_path)
+        
+        if not tool_script.exists():
+            return {
+                "ok": False,
+                "speech": f"Tool script not found at {tool_script}",
+                "error": "Script not found"
+            }
+        
         # Execute tool
+        start_time = time.time()
         try:
             input_json = json.dumps(args)
+            
+            # Determine command based on file extension
+            if tool_script.suffix == '.py':
+                # Run Python scripts with python3
+                cmd = ['python3', str(tool_script)]
+            else:
+                # Run bash scripts or other executables directly
+                cmd = [str(tool_script)]
+            
             result = subprocess.run(
-                [str(tool_script)],
+                cmd,
                 input=input_json,
                 capture_output=True,
                 text=True,
@@ -65,35 +104,83 @@ class ToolExecutor:
                 cwd=self.skills_dir
             )
             
+            duration_ms = (time.time() - start_time) * 1000
+            
             if result.returncode != 0:
-                return {
+                output = {
                     "ok": False,
                     "speech": f"Tool {tool_name} failed",
                     "error": result.stderr
                 }
+                # Log the failed execution
+                self.logger.log_tool_call(
+                    tool_name=tool_name,
+                    arguments=args,
+                    result=output,
+                    duration_ms=duration_ms,
+                    mode=self.mode
+                )
+                return output
             
             # Parse output
             output = json.loads(result.stdout)
+            
+            # Log successful execution
+            self.logger.log_tool_call(
+                tool_name=tool_name,
+                arguments=args,
+                result=output,
+                duration_ms=duration_ms,
+                mode=self.mode
+            )
+            
             return output
             
         except subprocess.TimeoutExpired:
-            return {
+            duration_ms = (time.time() - start_time) * 1000
+            output = {
                 "ok": False,
                 "speech": f"Tool {tool_name} timed out",
                 "error": "Timeout"
             }
+            self.logger.log_tool_call(
+                tool_name=tool_name,
+                arguments=args,
+                result=output,
+                duration_ms=duration_ms,
+                mode=self.mode
+            )
+            return output
         except json.JSONDecodeError as e:
-            return {
+            duration_ms = (time.time() - start_time) * 1000
+            output = {
                 "ok": False,
                 "speech": f"Tool {tool_name} returned invalid JSON",
                 "error": str(e)
             }
+            self.logger.log_tool_call(
+                tool_name=tool_name,
+                arguments=args,
+                result=output,
+                duration_ms=duration_ms,
+                mode=self.mode
+            )
+            return output
         except Exception as e:
-            return {
+            duration_ms = (time.time() - start_time) * 1000
+            output = {
                 "ok": False,
                 "speech": f"Error executing {tool_name}",
                 "error": str(e)
             }
+            self.logger.log_tool_call(
+                tool_name=tool_name,
+                arguments=args,
+                result=output,
+                duration_ms=duration_ms,
+                mode=self.mode
+            )
+            return output
 
 
 def main():

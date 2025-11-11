@@ -1,0 +1,31 @@
+{
+  "name": "send_webhook",
+  "description": "Send a POST request webhook to a specified URL with JSON data. Use this when the user wants to trigger an external service, send data to a server, or notify a system.",
+  "script": "send_webhook.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "The webhook URL to send the POST request to"
+      },
+      "data": {
+        "type": "object",
+        "description": "JSON data to send in the webhook body"
+      },
+      "headers": {
+        "type": "object",
+        "description": "Optional HTTP headers to include in the request"
+      }
+    },
+    "required": ["url", "data"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": false
+  }
+}
+

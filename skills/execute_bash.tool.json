@@ -1,0 +1,27 @@
+{
+  "name": "execute_bash",
+  "description": "Execute a bash command on the system. Use this when the user wants to run system commands, check system status, or perform command-line operations. BE CAREFUL with destructive commands.",
+  "script": "execute_bash.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "The bash command to execute"
+      },
+      "working_directory": {
+        "type": "string",
+        "description": "Optional working directory for the command"
+      }
+    },
+    "required": ["command"]
+  },
+  "permissions": {
+    "dangerous": true,
+    "bash": true,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": false
+  }
+}
+

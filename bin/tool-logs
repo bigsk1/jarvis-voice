@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""
+Tool Call Log Viewer
+View and analyze tool execution logs.
+"""
+import sys
+import os
+import json
+from datetime import datetime
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from tool_logger import ToolLogger
+
+
+def print_log_entry(entry, verbose=False):
+    """Pretty print a log entry."""
+    timestamp = datetime.fromisoformat(entry["timestamp"]).strftime("%H:%M:%S")
+    tool = entry["tool"]
+    ok = "✅" if entry["result"]["ok"] else "❌"
+    duration = entry["duration_ms"]
+    
+    print(f"{timestamp} | {ok} | {tool:20s} | {duration:6.0f}ms")
+    
+    if verbose:
+        if entry.get("user_query"):
+            print(f"  Query: {entry['user_query']}")
+        print(f"  Args:  {json.dumps(entry['arguments'])}")
+        print(f"  Result: {entry['result']['speech'][:80]}...")
+        if entry["result"].get("error"):
+            print(f"  Error: {entry['result']['error']}")
+        print()
+
+
+def show_recent(limit=10, verbose=False):
+    """Show recent tool calls."""
+    logger = ToolLogger()
+    logs = logger.get_recent_logs(limit)
+    
+    if not logs:
+        print("No tool calls logged yet.")
+        return
+    
+    print(f"\n📊 Recent Tool Calls (last {limit})")
+    print("=" * 80)
+    print(f"{'Time':8s} | {'Status':3s} | {'Tool':20s} | {'Duration':>8s}")
+    print("-" * 80)
+    
+    for entry in logs:
+        print_log_entry(entry, verbose)
+
+
+def show_by_tool(tool_name, limit=10, verbose=False):
+    """Show calls to specific tool."""
+    logger = ToolLogger()
+    logs = logger.get_logs_by_tool(tool_name, limit)
+    
+    if not logs:
+        print(f"No calls to tool '{tool_name}' found.")
+        return
+    
+    print(f"\n📊 Recent Calls to '{tool_name}' (last {limit})")
+    print("=" * 80)
+    print(f"{'Time':8s} | {'Status':3s} | {'Tool':20s} | {'Duration':>8s}")
+    print("-" * 80)
+    
+    for entry in logs:
+        print_log_entry(entry, verbose)
+
+
+def show_stats():
+    """Show statistics."""
+    logger = ToolLogger()
+    stats = logger.get_stats()
+    
+    if stats["total_calls"] == 0:
+        print("No tool calls logged yet.")
+        return
+    
+    print("\n📊 Tool Usage Statistics")
+    print("=" * 80)
+    print(f"Total Calls:      {stats['total_calls']}")
+    print(f"Successful:       {stats['successful_calls']} ({100*stats['successful_calls']//stats['total_calls']}%)")
+    print(f"Failed:           {stats['failed_calls']} ({100*stats['failed_calls']//stats['total_calls'] if stats['total_calls'] > 0 else 0}%)")
+    print(f"Avg Duration:     {stats['avg_duration_ms']:.0f}ms")
+    print()
+    print("Tool Breakdown:")
+    print("-" * 80)
+    print(f"{'Tool':25s} | {'Total':>8s} | {'Success':>8s} | {'Failed':>8s}")
+    print("-" * 80)
+    
+    for tool_name, tool_stats in sorted(stats["tools"].items(), key=lambda x: x[1]["count"], reverse=True):
+        print(f"{tool_name:25s} | {tool_stats['count']:8d} | {tool_stats['success']:8d} | {tool_stats['failed']:8d}")
+
+
+def main():
+    """CLI interface."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="View tool call logs")
+    parser.add_argument("command", choices=["recent", "tool", "stats"], help="Command to run")
+    parser.add_argument("--tool", "-t", help="Tool name (for 'tool' command)")
+    parser.add_argument("--limit", "-n", type=int, default=10, help="Number of entries to show")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")
+    
+    args = parser.parse_args()
+    
+    if args.command == "recent":
+        show_recent(args.limit, args.verbose)
+    elif args.command == "tool":
+        if not args.tool:
+            print("Error: --tool/-t required for 'tool' command", file=sys.stderr)
+            sys.exit(1)
+        show_by_tool(args.tool, args.limit, args.verbose)
+    elif args.command == "stats":
+        show_stats()
+
+
+if __name__ == "__main__":
+    main()
+

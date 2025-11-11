@@ -1,0 +1,40 @@
+{
+  "name": "api_call",
+  "description": "Make an HTTP API call (GET or POST) to any REST API endpoint. Use this when the user wants to fetch data from an API, check API status, or interact with web services.",
+  "script": "api_call.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "The API endpoint URL"
+      },
+      "method": {
+        "type": "string",
+        "description": "HTTP method (GET, POST, PUT, DELETE)",
+        "enum": ["GET", "POST", "PUT", "DELETE"]
+      },
+      "headers": {
+        "type": "object",
+        "description": "Optional HTTP headers"
+      },
+      "body": {
+        "type": "object",
+        "description": "Optional request body (for POST/PUT)"
+      },
+      "params": {
+        "type": "object",
+        "description": "Optional query parameters"
+      }
+    },
+    "required": ["url", "method"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": false
+  }
+}
+

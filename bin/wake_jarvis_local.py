@@ -41,7 +41,8 @@ WAKE_GREETING = get_config_value("WAKE_GREETING", "Hello")
 # Script paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 SAY = os.path.join(PROJECT_ROOT, "bin", "say-local.sh")
-ASK = os.path.join(PROJECT_ROOT, "bin", "question-mic-local.sh")
+# Use orchestrator for intelligent tool calling
+ASK = os.path.join(PROJECT_ROOT, "bin", "question-orchestrator-local.sh")
 # -----------------
 
 print("🔊 Loading openWakeWord model…")

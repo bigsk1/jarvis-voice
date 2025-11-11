@@ -1,0 +1,26 @@
+{
+  "name": "check_tool_logs",
+  "description": "Check recent tool execution logs to see if there were errors. Use this when a tool fails to understand what went wrong and how to fix it. Returns the last few tool calls with their results and error messages.",
+  "script": "check_tool_logs.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tool_name": {
+        "type": "string",
+        "description": "Optional: specific tool name to check logs for. If not provided, shows all recent calls."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Number of recent log entries to return (default: 3)"
+      }
+    }
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+
