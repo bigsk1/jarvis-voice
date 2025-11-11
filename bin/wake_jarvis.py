@@ -175,7 +175,7 @@ def handle_trigger():
     print("🟡 Re-armed, listening again 🎙️  Say --> Hey Jarvis")
 
 def main():
-    print(f"🎙️  Listening for "{WAKE_MODEL.replace('_',' ')}"… Ctrl+C to quit.")
+    print(f"🎙️  Listening for '{WAKE_MODEL.replace('_',' ')}'... Ctrl+C to quit.")
     start_stream()
     try:
         while True:
