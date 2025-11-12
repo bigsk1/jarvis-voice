@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""
+View full OpenCode session conversation.
+Shows the complete back-and-forth between Jarvis and OpenCode.
+"""
+import sys
+import os
+import json
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from opencode_logger import OpenCodeLogger
+
+
+def show_session_conversation(session_id: str):
+    """Show the complete conversation for a session."""
+    logger = OpenCodeLogger()
+    logs = logger.get_session_logs(session_id)
+    
+    if not logs:
+        print(f"No logs found for session: {session_id}")
+        return
+    
+    print(f"\n{'='*80}")
+    print(f"OpenCode Session: {session_id}")
+    print(f"{'='*80}\n")
+    
+    for entry in logs:
+        event = entry.get("event")
+        timestamp = entry.get("timestamp", "")[:19]
+        
+        if event == "session_start":
+            print(f"🚀 SESSION START - {timestamp}")
+            print(f"   Task: {entry.get('task', '')[:100]}...")
+            print(f"   Model: {entry.get('model', {}).get('modelID', 'unknown')}")
+            print()
+        
+        elif event == "message_sent":
+            msg_type = entry.get("message_type", "unknown")
+            if msg_type == "system":
+                print(f"⚙️  JARVIS → OpenCode (System Prompt) - {timestamp}")
+                print(f"   Length: {entry.get('message_length', 0)} chars")
+                print(f"   (Explaining Jarvis integration)")
+            elif msg_type == "context":
+                print(f"📋 JARVIS → OpenCode (Context) - {timestamp}")
+                print(f"   {entry.get('message_preview', '')}")
+            elif msg_type == "task":
+                print(f"📤 JARVIS → OpenCode (Task) - {timestamp}")
+                print(f"   {entry.get('message_preview', '')[:200]}...")
+            print()
+        
+        elif event == "message_received":
+            duration = entry.get("duration_ms", 0)
+            resp_len = entry.get("response_length", 0)
+            print(f"📥 OpenCode → JARVIS (Response) - {timestamp}")
+            print(f"   Duration: {duration:.0f}ms | Length: {resp_len} chars")
+            print(f"   Model: {entry.get('response_info', {}).get('model_used', 'unknown')}")
+            
+            # Show actual response
+            if entry.get("response_preview"):
+                print(f"\n   --- OpenCode's Response ---")
+                print(f"   {entry['response_preview']}")
+                print(f"   --- End Response ---")
+            print()
+        
+        elif event == "session_complete":
+            success = entry.get("success", False)
+            status = "✅" if success else "❌"
+            print(f"{status} SESSION COMPLETE - {timestamp}")
+            if entry.get("result_summary"):
+                print(f"   {entry['result_summary']}")
+            if entry.get("error"):
+                print(f"   Error: {entry['error']}")
+            print()
+        
+        elif event == "error":
+            print(f"❌ ERROR - {timestamp}")
+            print(f"   {entry.get('error_type', 'Unknown')}: {entry.get('error_message', '')}")
+            print()
+
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="View full OpenCode session conversation")
+    parser.add_argument("session_id", help="OpenCode session ID to view")
+    
+    args = parser.parse_args()
+    
+    show_session_conversation(args.session_id)
+

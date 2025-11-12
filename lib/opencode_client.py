@@ -8,6 +8,7 @@ import json
 import time
 from typing import Dict, Any, Optional, List
 import requests
+from opencode_logger import OpenCodeLogger
 
 
 class OpenCodeClient:
@@ -30,6 +31,7 @@ class OpenCodeClient:
         
         self.base_url = base_url
         self.timeout = 30
+        self.logger = OpenCodeLogger()
         self._verify_connection()
 
     def _verify_connection(self, max_retries: int = 3) -> bool:
@@ -124,6 +126,9 @@ class OpenCodeClient:
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Execute a task via OpenCode."""
+        start_time = time.time()
+        task_type = context.get("task_type", "general") if context else "general"
+        
         try:
             # Create or use existing session
             if session_id is None:
@@ -131,13 +136,112 @@ class OpenCodeClient:
                 session_id = session.get("id")
                 if not session_id:
                     raise Exception("Failed to get session ID")
+            
+            # Log session start
+            self.logger.log_session_start(
+                session_id=session_id,
+                task=task,
+                task_type=task_type,
+                model=model,
+                context=context
+            )
 
-            # Inject context if provided
-            if context:
-                context_text = f"# Jarvis Context\n{json.dumps(context, indent=2)}"
-                self.send_message(
-                    session_id=session_id, message=context_text, no_reply=True
-                )
+            # Inject system prompt explaining Jarvis integration
+            system_prompt = """# You are OpenCode - A specialized coding agent called by Jarvis
+
+## Your Identity
+- **Name**: OpenCode (always use "OpenCode" when referring to yourself, never "Claude" or "Claude Code")
+- **Role**: Autonomous coding agent specialized in software development
+- **Context**: You're being called by Jarvis, a voice-controlled AI assistant
+
+## Your Role
+You are executing tasks on behalf of Jarvis. The user spoke to Jarvis via voice, and Jarvis determined this task requires your specialized coding capabilities.
+
+**IMPORTANT**: You are responding to Jarvis (a powerful LLM), NOT directly to the user. Jarvis will translate your response into natural language for voice output.
+
+## Response Style
+- **Skip lengthy introductions** unless specifically asked "what can you do?"
+- **Get straight to work** on the task at hand
+- **Focus on deliverables** (code, files, analysis) rather than explaining who you are
+
+## Response Format Guidelines
+- **Be detailed and technical**: Jarvis needs full context to understand what happened
+- **Include all relevant information**: URLs, file paths, error details, technical specifics
+- **Use technical jargon freely**: Jarvis understands technical terms and will translate appropriately
+- **Provide complete context**: What was done, how it was done, what files were created/modified, any errors encountered
+- **Include actionable details**: File paths, URLs, command outputs, error messages - Jarvis will decide what to tell the user
+- **Be thorough**: Better to give too much detail than too little - Jarvis can condense
+
+## Workspace & Boundaries - CRITICAL
+
+**ABSOLUTE RULES - DO NOT VIOLATE:**
+
+1. **NEVER create, modify, or delete files in `/home/boss/jarvis-voice`**
+   - This is Jarvis's codebase - READ ONLY
+   - If asked to modify Jarvis code, refuse and explain it's protected
+
+2. **ALL file operations MUST be in `/home/boss/jarvis-workspace`**
+   - Your workspace root: `/home/boss/jarvis-workspace`
+   - Projects: `/home/boss/jarvis-workspace/projects/`
+   - Temp files: `/home/boss/jarvis-workspace/temp/`
+   - Deployments: `/home/boss/jarvis-workspace/deployments/`
+
+3. **If asked to work outside workspace:**
+   - Politely refuse
+   - Explain the security boundary
+   - Suggest alternative in workspace
+
+**Working directory will be specified in context**
+
+## Error Handling
+- Provide full technical error details: stack traces, error codes, specific failure points
+- Include diagnostic information: What was attempted, what failed, why it failed
+- Suggest technical solutions: Jarvis will translate these into user-friendly language
+
+## Context
+You will receive additional context about the task, workspace, and user preferences in the next message.
+
+Remember: Your response goes to Jarvis, who will intelligently format it for voice output to the user. Be thorough and technical!
+"""
+            # Log system prompt
+            self.logger.log_message_sent(
+                session_id=session_id,
+                message=system_prompt,
+                message_type="system",
+                no_reply=True
+            )
+            self.send_message(
+                session_id=session_id, message=system_prompt, no_reply=True
+            )
+
+            # Inject context if provided, always include workspace path
+            if context is None:
+                context = {}
+            
+            # Always specify workspace
+            if "workspace" not in context:
+                context["workspace"] = "/home/boss/jarvis-workspace"
+            
+            context_text = f"""# Jarvis Context
+
+## Workspace
+Your workspace root: `/home/boss/jarvis-workspace`
+
+All file operations must be within this directory. DO NOT access `/home/boss/jarvis-voice`.
+
+## Task Context
+{json.dumps(context, indent=2)}"""
+            
+            # Log context injection
+            self.logger.log_message_sent(
+                session_id=session_id,
+                message=context_text,
+                message_type="context",
+                no_reply=True
+            )
+            self.send_message(
+                session_id=session_id, message=context_text, no_reply=True
+            )
 
             # Default model
             if model is None:
@@ -146,16 +250,53 @@ class OpenCodeClient:
                     "modelID": "claude-sonnet-4-20250514",
                 }
 
+            # Log task message
+            self.logger.log_message_sent(
+                session_id=session_id,
+                message=task,
+                message_type="task",
+                no_reply=False
+            )
+            
             # Execute task
+            msg_start_time = time.time()
             result = self.send_message(
                 session_id=session_id,
                 message=task,
                 provider_id=model["providerID"],
                 model_id=model["modelID"],
             )
+            msg_duration = (time.time() - msg_start_time) * 1000
+            
+            # Log response
+            self.logger.log_message_received(
+                session_id=session_id,
+                response=result,
+                duration_ms=msg_duration
+            )
+            
+            # Log session completion
+            total_duration = (time.time() - start_time) * 1000
+            self.logger.log_session_complete(
+                session_id=session_id,
+                success=True,
+                result_summary=f"Task completed in {total_duration:.0f}ms"
+            )
 
             return {"ok": True, "session_id": session_id, "result": result}
         except Exception as e:
+            # Log error
+            self.logger.log_error(
+                session_id=session_id,
+                error_type=type(e).__name__,
+                error_message=str(e),
+                context={"task": task, "task_type": task_type}
+            )
+            self.logger.log_session_complete(
+                session_id=session_id if session_id else "unknown",
+                success=False,
+                error=str(e)
+            )
             return {"ok": False, "error": str(e)}
 
     def get_providers(self) -> Dict[str, Any]:
