@@ -140,7 +140,7 @@ def get_memory_context(task: str, provider: str) -> dict:
         db = MemoryDB()
         
         # Semantic search for relevant memories (top 5)
-        relevant_memories = db.semantic_search(query=task, provider=provider, limit=5)
+        relevant_memories = db.semantic_search(query=task, limit=5)
         
         # Get user preferences (coding style, frameworks, etc.)
         coding_prefs = db.recall(query="coding") or []

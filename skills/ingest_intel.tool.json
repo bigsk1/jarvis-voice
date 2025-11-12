@@ -1,0 +1,11 @@
+{
+  "name": "ingest_intel",
+  "description": "Ingest knowledge from files in jarvis-intel/ folder into Jarvis's memory. Processes .txt and .md files containing network configs, IPs, project details, and technical information. Automatically deduplicates and won't re-ingest the same files.",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "handler": "skills/ingest_intel.py"
+}
+

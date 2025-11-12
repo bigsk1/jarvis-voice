@@ -1,12 +1,20 @@
 {
   "name": "update_memory",
-  "description": "Update or correct an existing memory. Use this when you realize a stored fact is outdated, incorrect, or needs to be changed. First use 'recall' to find the memory ID, then update it.",
+  "description": "Update or correct an existing memory. Use this when you realize a stored fact is outdated, incorrect, or needs to be changed. Can search for the memory automatically if you provide a search query instead of a memory ID.",
   "parameters": {
     "type": "object",
     "properties": {
       "memory_id": {
         "type": "integer",
-        "description": "The ID of the memory to update (from recall results)"
+        "description": "The ID of the memory to update (optional if search_query is provided)"
+      },
+      "search_query": {
+        "type": "string",
+        "description": "Search for the memory to update by keywords (used if memory_id not provided). Example: 'favorite food' or 'pizza'"
+      },
+      "category": {
+        "type": "string",
+        "description": "Optional category to narrow search (preference, fact, contact, etc.)"
       },
       "new_value": {
         "type": "string",
@@ -19,7 +27,7 @@
         "maximum": 10
       }
     },
-    "required": ["memory_id", "new_value"]
+    "required": ["new_value"]
   },
   "permissions": {
     "filesystem": true,

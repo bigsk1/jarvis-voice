@@ -52,3 +52,10 @@ data/*.db
 # Cursor chat history files
 cursor_*.md
 *.cursor.*
+
+# OpenCode sessions and logs
+logs/opencode/
+.opencode/
+
+# User knowledge base (contains sensitive info: IPs, credentials, network configs)
+jarvis-intel/

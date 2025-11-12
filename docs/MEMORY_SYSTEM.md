@@ -5,8 +5,10 @@ Jarvis has an intelligent memory system that allows it to remember important inf
 ## Database Location
 
 ```
-/home/boss/jarvis-voice/data/jarvis_memory.db
+/home/boss/jarvis-voice/data/memory.db
 ```
+
+**Note:** The database file is `memory.db`, and the table is called `knowledge_base` (not `memories`).
 
 ## Memory Tables
 
@@ -71,10 +73,25 @@ AI-powered search that understands meaning, not just keywords.
 ```
 
 ### `update_memory`
-Modifies existing memories when information changes.
+Modifies existing memories when information changes. **Smart search enabled** - can find memories automatically without needing the ID.
+
+**Parameters:**
+- `search_query` - Find memory by keywords (optional if you have the ID)
+- `memory_id` - Direct memory ID (optional if you provide search_query)
+- `new_value` - The updated information
+- `category` - Optional category filter for search
+- `importance` - Optional updated importance (1-10)
+
 ```bash
 # Say: "Actually, my favorite restaurant is now Sushi House"
-# Jarvis updates the existing memory
+# Jarvis automatically finds the restaurant memory and updates it
+
+# Direct tool usage examples:
+# With search (automatic):
+python3 skills/update_memory.py '{"search_query": "restaurant", "new_value": "Sushi House"}'
+
+# With ID (if known):
+python3 skills/update_memory.py '{"memory_id": 5, "new_value": "Sushi House"}'
 ```
 
 ### `forget`
