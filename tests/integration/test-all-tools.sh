@@ -2,7 +2,8 @@
 # Comprehensive Jarvis Tool Testing Script
 set -euo pipefail
 
-cd "$(dirname "$0")"
+# Change to project root (two levels up from tests/integration/)
+cd "$(dirname "$0")/../.."
 source ~/jarvis-venv/bin/activate
 
 # Colors

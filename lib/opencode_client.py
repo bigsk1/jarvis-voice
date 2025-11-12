@@ -13,8 +13,21 @@ import requests
 class OpenCodeClient:
     """Client for communicating with OpenCode server."""
 
-    def __init__(self, base_url: str = "http://localhost:4096"):
-        """Initialize OpenCode client."""
+    def __init__(self, base_url: Optional[str] = None):
+        """
+        Initialize OpenCode client.
+        
+        Args:
+            base_url: OpenCode server URL (defaults to config or localhost:4096)
+        """
+        if base_url is None:
+            # Try to get from config
+            try:
+                from config_loader import get_config_value
+                base_url = get_config_value("OPENCODE_BASE_URL", "http://localhost:4096")
+            except:
+                base_url = "http://localhost:4096"
+        
         self.base_url = base_url
         self.timeout = 30
         self._verify_connection()
@@ -83,8 +96,8 @@ class OpenCodeClient:
         self,
         session_id: str,
         message: str,
-        provider_id: str = "openai",
-        model_id: str = "gpt-4o-mini",
+        provider_id: str = "anthropic",
+        model_id: str = "claude-sonnet-4-20250514",
         no_reply: bool = False,
     ) -> Dict[str, Any]:
         """Send a message to an OpenCode session."""
@@ -130,7 +143,7 @@ class OpenCodeClient:
             if model is None:
                 model = {
                     "providerID": "anthropic",
-                    "modelID": "claude-3-5-sonnet-20241022",
+                    "modelID": "claude-sonnet-4-20250514",
                 }
 
             # Execute task

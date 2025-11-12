@@ -77,9 +77,9 @@
 **Solution**: Automatic complexity-based routing
 
 **Model Strategy**:
-- **Simple** ("list files", "what is X") → `gpt-4o-mini` (fast/cheap)
-- **Coding** ("build", "fix bug", "deploy") → `claude-sonnet-4-5-20250929` (optimal)
-- **Complex** ("research", "analyze", "design") → `claude-sonnet-4-5` (powerful)
+- **Simple** ("list files", "what is X") → `gpt-4o` (fast/cheap)
+- **Coding** ("build", "fix bug", "deploy") → `claude-3-5-sonnet-20241022` (optimal)
+- **Complex** ("research", "analyze", "design") → `claude-sonnet-4-5-20250929` (powerful)
 
 **User Override**: Can specify model explicitly if needed
 

@@ -11,6 +11,7 @@ import os
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from opencode_client import OpenCodeClient
+from config_loader import get_config_value, load_config
 
 
 def main():
@@ -33,8 +34,15 @@ def main():
         return 1
 
     try:
+        # Detect mode (cloud vs local) from environment
+        mode = os.environ.get("JARVIS_MODE", "cloud")
+        load_config(mode)
+        
+        # Get OpenCode base URL from config
+        opencode_url = get_config_value("OPENCODE_BASE_URL", "http://localhost:4096")
+        
         # Initialize OpenCode client
-        client = OpenCodeClient()
+        client = OpenCodeClient(base_url=opencode_url)
 
         # Check health
         health = client.health_check()
@@ -44,10 +52,27 @@ def main():
             )
             return 1
 
+        # Determine model based on mode if not explicitly provided
+        if model is None:
+            if mode == "local":
+                # Use Ollama for local mode
+                ollama_model = get_config_value("OLLAMA_MODEL", "mistral-nemo")
+                model = {
+                    "providerID": "ollama",
+                    "modelID": ollama_model
+                }
+            else:
+                # Use cloud models (default to Anthropic Claude Sonnet 4 - mid-range)
+                model = {
+                    "providerID": "anthropic",
+                    "modelID": "claude-sonnet-4-20250514"
+                }
+
         # Prepare context
         context = {
             "task_type": task_type,
             "jarvis_session": os.environ.get("JARVIS_SESSION_ID", "unknown"),
+            "jarvis_mode": mode
         }
 
         # Execute task

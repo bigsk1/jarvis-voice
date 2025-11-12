@@ -7,6 +7,26 @@ echo "🏗️  Creating OpenCode workspace structure..."
 
 # Create workspace directories
 WORKSPACE_ROOT="$HOME/jarvis-workspace"
+
+# Clean up any malformed directories from failed brace expansions
+if [ -d "$WORKSPACE_ROOT" ]; then
+    echo "🧹 Cleaning up any malformed directories..."
+    # Use find to safely locate and remove malformed directories
+    # Directories starting with '{' (failed brace expansion)
+    while IFS= read -r -d '' dir; do
+        echo "   Removing malformed directory: $(basename "$dir")"
+        rm -rf "$dir" 2>/dev/null || true
+    done < <(find "$WORKSPACE_ROOT" -maxdepth 1 -type d -name '{*' -print0 2>/dev/null || true)
+    
+    # Directories ending with '}' (failed brace expansion)
+    while IFS= read -r -d '' dir; do
+        echo "   Removing malformed directory: $(basename "$dir")"
+        rm -rf "$dir" 2>/dev/null || true
+    done < <(find "$WORKSPACE_ROOT" -maxdepth 1 -type d -name '*}' -print0 2>/dev/null || true)
+fi
+
+# Create workspace directories (using individual commands, not brace expansion)
+echo "📁 Creating directory structure..."
 mkdir -p "$WORKSPACE_ROOT/projects/websites"
 mkdir -p "$WORKSPACE_ROOT/projects/scripts"
 mkdir -p "$WORKSPACE_ROOT/projects/experiments"

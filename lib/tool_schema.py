@@ -169,11 +169,22 @@ class ToolRegistry:
     def _discover_tools(self):
         """Auto-discover tools by finding .tool.json files."""
         import sys
+        from config_loader import get_config_value
+        
         # Only print registration if stdout is a TTY and not in JSON mode
         verbose = sys.stdout.isatty() and not os.environ.get('JARVIS_JSON_MODE')
         
+        # Check if OpenCode is enabled
+        opencode_enabled = get_config_value('OPENCODE_ENABLED', 'false').lower() == 'true'
+        
         for tool_file in self.skills_dir.glob("*.tool.json"):
             try:
+                # Skip opencode tool if disabled
+                if tool_file.stem == 'opencode' and not opencode_enabled:
+                    if verbose:
+                        print(f"⊝ Skipping opencode tool (disabled in config)")
+                    continue
+                
                 schema = ToolSchema.from_json_file(str(tool_file))
                 self.tools[schema.name] = schema
                 if verbose:
