@@ -30,7 +30,7 @@ class OpenCodeClient:
                 base_url = "http://localhost:4096"
         
         self.base_url = base_url
-        self.timeout = 30
+        self.timeout = 180  # 3 minutes for complex builds/tasks
         self.logger = OpenCodeLogger()
         self._verify_connection()
 
@@ -124,6 +124,7 @@ class OpenCodeClient:
         session_id: Optional[str] = None,
         model: Optional[Dict[str, str]] = None,
         context: Optional[Dict[str, Any]] = None,
+        agent_mode: str = "build"  # "build" or "plan"
     ) -> Dict[str, Any]:
         """Execute a task via OpenCode."""
         start_time = time.time()

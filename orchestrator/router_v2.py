@@ -70,7 +70,15 @@ ACTION TOOLS - When the user asks you to perform an ACTION or get REAL-TIME data
 - Use the appropriate tool based on user request
 - Tools are dynamically loaded including local tools and MCP servers
 - Common actions: send_webhook, api_call, get_time, crypto_price, execute_bash
-- Web access: mcp.duckduckgo.search, mcp.fetch.fetch (if available)
+- Web access: mcp_duckduckgo_search, mcp_fetch_fetch (if available)
+
+OPENCODE - For complex development, coding, or building tasks:
+- **ALWAYS use 'opencode' tool** when user says: "use OpenCode", "build", "create app", "develop", "code", "make website"
+- OpenCode handles: coding, building projects, creating files, deploying, complex multi-step tasks
+- Examples:
+  * "Use OpenCode to build a Flask API" → Use opencode tool
+  * "Create a Python tetris game" → Use opencode tool
+  * "Build me a website" → Use opencode tool
 
 ERROR RECOVERY: If a tool fails, you can:
 1. Use check_tool_logs to see what went wrong
@@ -150,12 +158,18 @@ Be decisive and proactive - remember what's important, use tools when needed."""
             
             # Tool was called
             if tool_call:
-                return {
+                response = {
                     "intent": "tool",
                     "tool_name": tool_call["name"],
                     "arguments": tool_call["arguments"],
                     "confidence": 1.0
                 }
+                
+                # Detect OpenCode agent mode if using opencode tool
+                if response.get("tool_name") == "opencode":
+                    response = self._detect_opencode_mode(transcript, response)
+                
+                return response
             
             # Direct text response (Q&A)
             else:
@@ -173,6 +187,47 @@ Be decisive and proactive - remember what's important, use tools when needed."""
                 "text_response": "Sorry, I had trouble processing your request.",
                 "confidence": 0.0
             }
+    
+    def _detect_opencode_mode(self, query: str, response: Dict) -> Dict:
+        """
+        Detect if OpenCode should use 'plan' or 'build' mode based on query intent.
+        
+        Plan mode: Analysis, suggestions, review (read-only)
+        Build mode: Create, modify, build, deploy (default)
+        """
+        query_lower = query.lower()
+        
+        # Keywords that indicate analysis/planning (plan mode)
+        plan_keywords = [
+            "analyze", "review", "suggest", "recommend", 
+            "what should", "how should", "advice", "best practice",
+            "explain", "show me", "tell me about", "plan for",
+            "describe", "list reasons", "compare", "evaluate"
+        ]
+        
+        # Keywords that indicate building (build mode - default)
+        # Note: "check", "code", "fix" removed - can be analysis or building
+        build_keywords = [
+            "create", "build", "make", "write", "implement",
+            "deploy", "setup", "configure", "generate", "add",
+            "modify", "change", "update", "install"
+        ]
+        
+        # Check if it's clearly a plan/analysis task
+        if any(keyword in query_lower for keyword in plan_keywords):
+            # But only if NOT also asking to build something
+            if not any(keyword in query_lower for keyword in build_keywords):
+                if "arguments" not in response:
+                    response["arguments"] = {}
+                response["arguments"]["agent_mode"] = "plan"
+                return response
+        
+        # Default to build mode (most OpenCode tasks involve creating/modifying)
+        if "arguments" not in response:
+            response["arguments"] = {}
+        response["arguments"]["agent_mode"] = "build"
+        
+        return response
 
 
 def main():

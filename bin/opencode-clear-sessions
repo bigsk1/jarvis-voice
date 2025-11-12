@@ -1,0 +1,39 @@
+#!/bin/bash
+# Clear all OpenCode sessions (remove junk/test sessions)
+
+OPENCODE_URL="${OPENCODE_BASE_URL:-http://localhost:4096}"
+
+echo "🧹 Clearing OpenCode sessions..."
+
+# Get all session IDs
+SESSION_IDS=$(curl -s "$OPENCODE_URL/session" 2>/dev/null | jq -r '.[].id')
+
+if [ -z "$SESSION_IDS" ]; then
+    echo "✅ No sessions to clear"
+    exit 0
+fi
+
+# Count sessions
+SESSION_COUNT=$(echo "$SESSION_IDS" | wc -l)
+echo "Found $SESSION_COUNT sessions"
+
+# Delete each session
+DELETED=0
+FAILED=0
+
+for SESSION_ID in $SESSION_IDS; do
+    if curl -s -X DELETE "$OPENCODE_URL/session/$SESSION_ID" >/dev/null 2>&1; then
+        ((DELETED++))
+        echo "  ✓ Deleted: $SESSION_ID"
+    else
+        ((FAILED++))
+        echo "  ✗ Failed: $SESSION_ID"
+    fi
+done
+
+echo ""
+echo "✅ Cleared $DELETED sessions"
+[ $FAILED -gt 0 ] && echo "⚠️  Failed to delete $FAILED sessions"
+
+exit 0
+

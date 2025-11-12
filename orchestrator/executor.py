@@ -111,7 +111,11 @@ class ToolExecutor:
                 cmd = [str(tool_script)]
             
             # Use longer timeout for local mode (Ollama can be slower)
-            timeout = 30 if self.mode == "local" else 15
+            # OpenCode tasks need much more time (building, coding, etc.)
+            if tool_name == "opencode":
+                timeout = 180  # 3 minutes for OpenCode tasks
+            else:
+                timeout = 30 if self.mode == "local" else 15
             
             result = subprocess.run(
                 cmd,

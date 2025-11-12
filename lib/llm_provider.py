@@ -117,16 +117,27 @@ class AnthropicProvider(LLMProvider):
             )
             
             # Check response type
+            # Anthropic may return BOTH text AND tool_use blocks
+            # Prioritize tool_use if present
+            tool_use_block = None
+            text_block = None
+            
             for block in response.content:
-                # Tool use block
                 if block.type == "tool_use":
-                    return None, {
-                        "name": block.name,
-                        "arguments": block.input
-                    }
-                # Text block
+                    tool_use_block = block
                 elif block.type == "text":
-                    return block.text, None
+                    text_block = block
+            
+            # Return tool use if found (text is just explanatory)
+            if tool_use_block:
+                return None, {
+                    "name": tool_use_block.name,
+                    "arguments": tool_use_block.input
+                }
+            
+            # Otherwise return text response
+            if text_block:
+                return text_block.text, None
             
             return "No response from Claude", None
             
