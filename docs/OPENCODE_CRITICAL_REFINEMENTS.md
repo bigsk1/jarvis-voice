@@ -78,7 +78,7 @@
 
 **Model Strategy**:
 - **Simple** ("list files", "what is X") → `gpt-4o-mini` (fast/cheap)
-- **Coding** ("build", "fix bug", "deploy") → `claude-3-5-sonnet` (optimal)
+- **Coding** ("build", "fix bug", "deploy") → `claude-sonnet-4-5-20250929` (optimal)
 - **Complex** ("research", "analyze", "design") → `claude-sonnet-4-5` (powerful)
 
 **User Override**: Can specify model explicitly if needed
