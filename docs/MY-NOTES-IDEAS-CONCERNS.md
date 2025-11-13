@@ -65,3 +65,143 @@ pkill -f "server.py" && echo "✅ Server stopped" || echo "No server running"
 
 ### Commands for checking if tetris server is running
 lsof -i :5000 | grep LISTEN | awk '{print "✅ Flask server running on port 5000 (PID: " $2 ")"}'
+
+
+### CLI Mode (No Voice/Speaker) - Travel Mode
+
+**🚀 To enable CLI commands in your CURRENT terminal:**
+```bash
+source ~/.bashrc
+```
+
+**Note:** These are bash **functions** (not aliases) that work in any new terminal automatically. If you get "command not found", run the source command above.
+
+**Basic Usage - Clean Output:**
+```bash
+# Cloud mode (OpenAI/Anthropic)
+jarvis-cli "what time is it?"
+jarvis-cli "what's the bitcoin price?"
+jarvis-cli "search my memory for tetris"
+
+# Local mode (Ollama)
+jarvis-local-cli "what time is it?"
+jarvis-local-cli "search my memory for opencode"
+jarvis-local-cli "use send_webhook to post test data to https://n8n-roscossscggc4sogsw4s0gck.bigsk1.com/webhook/webhook-logger"
+```
+
+**JSON Output - For Debugging:**
+```bash
+# See full JSON response with tool metadata
+jarvis-cli-json "what time is it?"
+jarvis-local-cli-json "search my memory for tetris"
+
+# Extract specific fields
+jarvis-cli-json "bitcoin price" | jq '.speech'
+jarvis-cli-json "bitcoin price" | jq '.tools_used'
+jarvis-cli-json "bitcoin price" | jq '.ok, .speech, .tools_used'
+```
+
+**Testing All Memory Tools:**
+```bash
+# Remember something
+jarvis-cli "remember that the n8n webhook url is https://n8n-roscossscggc4sogsw4s0gck.bigsk1.com/webhook/webhook-logger"
+
+# Search memory
+jarvis-cli "search memory for webhook"
+
+# Recall memory by keyword
+jarvis-cli "recall memory about n8n"
+
+# Semantic recall
+jarvis-cli "what webhooks do I have saved?"
+
+# Update memory
+jarvis-cli "update memory about n8n webhook url to https://new-url.com"
+
+# Forget memory
+jarvis-cli "forget memory about old webhook"
+```
+
+**Testing OpenCode:**
+```bash
+# Cloud mode
+jarvis-cli "use opencode to list files in the projects directory"
+jarvis-cli "use opencode to show me what projects exist"
+jarvis-cli "use opencode to read the tetris game readme"
+
+# Local mode
+jarvis-local-cli "use opencode to list workspace files"
+```
+
+**Multi-Turn Tasks:**
+```bash
+# Build and verify
+jarvis-cli "use opencode to build a simple calculator app, then use bash to verify it was created"
+
+# Send webhook and remember
+jarvis-cli "send test webhook to n8n logger and remember the response"
+
+# Complex task
+jarvis-cli "search my memory for tetris, then use bash to check if the server is running on port 5000"
+```
+
+**Testing Different Response Styles:**
+```bash
+# Edit config/cloud.env or config/local.env and change JARVIS_RESPONSE_STYLE
+# Options: casual, detailed, auto
+
+# Casual (10-15 words, concise)
+JARVIS_RESPONSE_STYLE=casual jarvis-cli "what time is it?"
+
+# Detailed (full context, all data)
+JARVIS_RESPONSE_STYLE=detailed jarvis-cli "what time is it?"
+
+# Auto (adapts based on task complexity)
+JARVIS_RESPONSE_STYLE=auto jarvis-cli "what time is it?"
+```
+
+**Quick Iteration Testing:**
+```bash
+# Test same query 3 times
+for i in 1 2 3; do echo "=== Test $i ==="; jarvis-cli "what time is it?"; echo ""; done
+
+# Test different tools
+jarvis-cli "time"; jarvis-cli "bitcoin price"; jarvis-cli "search memory for tetris"
+
+# Compare cloud vs local
+echo "CLOUD:"; jarvis-cli "bitcoin price"
+echo "LOCAL:"; jarvis-local-cli "bitcoin price"
+```
+
+**Troubleshooting:**
+```bash
+# Check for JSON parse errors
+jarvis-cli-json "what time is it?" 2>&1 | grep -i error
+
+# See raw output (no jq)
+cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && python3 orchestrator/orchestrator_v2.py cloud "what time is it?" --json
+
+# Check logs
+tail -f logs/orchestrator/orchestrator-$(date +%Y-%m-%d).log
+tail -f logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl
+```
+
+**Performance Testing:**
+```bash
+# Time execution
+time jarvis-cli "what time is it?"
+
+time jarvis-local-cli "what time is it?"
+
+# Test complex task
+time jarvis-cli "use opencode to list all python files in the projects directory"
+```
+
+**Quick Verification (Test All CLI Commands):**
+```bash
+# Test all 4 functions work
+jarvis-cli "time"
+jarvis-local-cli "time"
+jarvis-cli-json "time" | jq '.ok'
+jarvis-local-cli-json "time" | jq '.speech'
+```
