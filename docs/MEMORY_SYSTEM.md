@@ -279,6 +279,30 @@ sqlite3 data/jarvis_memory.db "VACUUM;"
 - Can be fully cleared anytime
 - No external sync or backup (you own your data)
 
+## Multi-Turn Memory Integration
+
+**NEW:** Jarvis can now chain memory operations with other tools!
+
+Examples:
+```bash
+# Multi-turn: Action + Remember
+"Send webhook to X and save the URL"
+→ Turn 1: send_webhook
+→ Turn 2: remember (saves URL)
+
+# Multi-turn: Search + Update
+"Find my favorite restaurant and change it to Sushi House"
+→ Turn 1: search_memory (finds restaurant)
+→ Turn 2: update_memory (updates value)
+
+# Multi-turn: Recall + Action
+"What's my server IP? Then SSH into it"
+→ Turn 1: recall (gets IP from memory)
+→ Turn 2: execute_bash (SSH command with IP)
+```
+
+See [MULTI_TURN_ORCHESTRATION.md](MULTI_TURN_ORCHESTRATION.md) for details.
+
 ## Future Enhancements
 
 See `FUTURE_ENHANCEMENTS.md` for planned improvements:

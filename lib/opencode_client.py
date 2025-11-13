@@ -30,7 +30,7 @@ class OpenCodeClient:
                 base_url = "http://localhost:4096"
         
         self.base_url = base_url
-        self.timeout = 180  # 3 minutes for complex builds/tasks
+        self.timeout = 360  # 6 minutes for complex builds/tasks (web apps, games, etc.)
         self.logger = OpenCodeLogger()
         self._verify_connection()
 

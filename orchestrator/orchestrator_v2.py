@@ -44,6 +44,7 @@ class Orchestrator:
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None) -> Dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
+        Supports multi-turn tool execution until task is complete.
         
         Args:
             transcript: User's spoken input (from STT)
@@ -59,130 +60,173 @@ class Orchestrator:
                 "error": str (optional)
             }
         """
+        # Multi-turn context tracking
+        max_turns = 10  # Safety limit
+        conversation_context = []
+        tools_used = []
+        accumulated_data = {}
+        
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
             enhanced_transcript = f"{transcript}\n\nPrevious attempt failed with error: {error_context}\nPlease try again with corrected parameters or check logs if needed."
         else:
             enhanced_transcript = transcript
         
-        # Route using LLM
-        route = self.router.route(enhanced_transcript)
-        
-        # Handle tool execution
-        if route["intent"] == "tool":
-            tool_name = route["tool_name"]
-            arguments = route["arguments"]
+        # Multi-turn loop
+        for turn_num in range(max_turns):
+            # Build context for this turn
+            if turn_num == 0:
+                # First turn: use original transcript
+                turn_input = enhanced_transcript
+            else:
+                # Subsequent turns: provide context from previous tools
+                turn_input = self._build_turn_context(enhanced_transcript, conversation_context)
             
-            # Only print if in interactive mode
-            if sys.stdout.isatty():
-                print(f"🔧 Executing tool: {tool_name}")
-                print(f"📝 Arguments: {json.dumps(arguments, indent=2)}")
+            # Route using LLM
+            route = self.router.route(turn_input)
             
-            # Execute the tool
-            result = self.executor.execute(tool_name, arguments)
-            
-            if result["ok"]:
-                # Success - let LLM format natural response based on tool result
-                if sys.stdout.isatty():
-                    print(f"✅ Tool succeeded")
-                    print(f"📊 Tool result: {json.dumps(result.get('data', {}), indent=2)[:200]}...")
+            # Handle tool execution
+            if route["intent"] == "tool":
+                tool_name = route["tool_name"]
+                arguments = route["arguments"]
                 
-                # Get response style from environment (casual, detailed, or auto)
+                # Only print if in interactive mode
+                if sys.stdout.isatty():
+                    turn_marker = f" (turn {turn_num + 1})" if turn_num > 0 else ""
+                    print(f"🔧 Executing tool: {tool_name}{turn_marker}")
+                    print(f"📝 Arguments: {json.dumps(arguments, indent=2)}")
+                
+                # Execute the tool
+                result = self.executor.execute(tool_name, arguments)
+                
+                if result["ok"]:
+                    # Success - add to context and continue
+                    if sys.stdout.isatty():
+                        print(f"✅ Tool succeeded")
+                        print(f"📊 Tool result: {json.dumps(result.get('data', {}), indent=2)[:200]}...")
+                    
+                    # Track tool execution
+                    tools_used.append(tool_name)
+                    accumulated_data[tool_name] = result.get("data", {})
+                    
+                    # Add to conversation context for next turn
+                    conversation_context.append({
+                        "tool": tool_name,
+                        "arguments": arguments,
+                        "result": result.get("data", {}),
+                        "speech": result.get("speech", "")
+                    })
+                    
+                    # Continue to next turn (LLM will decide if more tools needed)
+                    continue
+                    
+                else:
+                    # Failure - check if we should retry
+                    error = result.get("error", "Unknown error")
+                    speech = result.get("speech", f"Failed to execute {tool_name}")
+                    if sys.stdout.isatty():
+                        print(f"❌ Tool failed: {error}")
+                    
+                    # Retry if we haven't exceeded max retries
+                    if retry_count < self.max_retries:
+                        if sys.stdout.isatty():
+                            print(f"🔄 Attempting retry {retry_count + 1}/{self.max_retries}...")
+                        
+                        # Build error context for retry
+                        error_context = f"Tool '{tool_name}' failed with: {error}. Arguments used: {json.dumps(arguments)}"
+                        
+                        # Recursive retry with error context
+                        return self.process(transcript, retry_count + 1, error_context)
+                    
+                    # Max retries exceeded
+                    final_speech = f"{speech}. Error: {error}. I tried {retry_count + 1} time(s) but couldn't complete the task."
+                    
+                    # Auto-log failed conversation
+                    self._log_conversation(transcript, final_speech, tools_used, success=False)
+                    
+                    return {
+                        "speech": final_speech,
+                        "ok": False,
+                        "error": error,
+                        "tools_used": tools_used,
+                        "retries": retry_count
+                    }
+            
+            # Handle Q&A (task complete - LLM decided to respond directly)
+            elif route["intent"] == "qa":
+                raw_speech = route.get("text_response", "I'm not sure how to respond.")
+                
+                # Apply response style formatting (for ALL responses, not just multi-turn)
                 response_style = os.environ.get('JARVIS_RESPONSE_STYLE', 'casual').lower()
                 
-                # Determine if we should format with LLM
-                should_format = False
                 if response_style == 'casual':
-                    # Always format for casual conversational responses
-                    should_format = True
-                elif response_style == 'detailed':
-                    # Use raw tool output for detailed mode
-                    should_format = False
+                    # Format for voice (short & sweet)
+                    if turn_num > 0:
+                        # Multi-turn: summarize all tool results
+                        speech = self._format_multi_turn_summary(transcript, tools_used, accumulated_data, raw_speech)
+                    else:
+                        # Single-turn: condense the LLM's verbose response
+                        speech = self._format_single_turn_casual(transcript, raw_speech)
                 elif response_style == 'auto':
-                    # Smart mode: format for certain tool types
-                    memory_tools = ['remember', 'recall', 'search_memory', 'semantic_recall', 'update_memory', 'forget']
-                    search_tools = [t for t in self.executor.registry.list_tools() if 'search' in t or 'fetch' in t or t.startswith('mcp_')]
-                    should_format = tool_name in memory_tools or tool_name in search_tools
-                
-                if should_format:
-                    speech = self._format_natural_response(transcript, tool_name, result)
+                    # Smart mode: decide based on tool type and complexity
+                    speech = self._format_auto_mode(transcript, tools_used, accumulated_data, raw_speech, turn_num)
                 else:
-                    # Use tool's built-in speech
-                    speech = result.get("speech", f"Completed {tool_name}")
+                    # Detailed mode - use LLM's raw response
+                    speech = raw_speech
                 
                 if sys.stdout.isatty():
-                    print(f"💬 Natural response: {speech}")
+                    turn_marker = f" after {len(tools_used)} tool(s)" if turn_num > 0 else ""
+                    print(f"💬 Task complete{turn_marker}: {speech}")
                 
-                # Auto-log conversation
-                self._log_conversation(transcript, speech, [tool_name], success=True)
+                # Auto-log conversation with all tools used
+                self._log_conversation(transcript, speech, tools_used, success=True)
                 
                 return {
                     "speech": speech,
                     "ok": True,
-                    "data": result.get("data", {}),
-                    "tool_used": tool_name
+                    "tools_used": tools_used,
+                    "data": accumulated_data
                 }
+            
+            # Handle routing errors
             else:
-                # Failure - check if we should retry
-                error = result.get("error", "Unknown error")
-                speech = result.get("speech", f"Failed to execute {tool_name}")
+                error = route.get("error", "Unknown routing error")
+                speech = route.get("text_response", "Sorry, I had trouble understanding that.")
                 if sys.stdout.isatty():
-                    print(f"❌ Tool failed: {error}")
+                    print(f"❌ Routing error: {error}")
                 
-                # Retry if we haven't exceeded max retries
-                if retry_count < self.max_retries:
-                    if sys.stdout.isatty():
-                        print(f"🔄 Attempting retry {retry_count + 1}/{self.max_retries}...")
-                    
-                    # Build error context for retry
-                    error_context = f"Tool '{tool_name}' failed with: {error}. Arguments used: {json.dumps(arguments)}"
-                    
-                    # Recursive retry with error context
-                    return self.process(transcript, retry_count + 1, error_context)
-                
-                # Max retries exceeded
-                final_speech = f"{speech}. Error: {error}. I tried {retry_count + 1} time(s) but couldn't complete the task."
-                
-                # Auto-log failed conversation
-                self._log_conversation(transcript, final_speech, [tool_name], success=False)
+                # Auto-log error
+                self._log_conversation(transcript, speech, tools_used, success=False)
                 
                 return {
-                    "speech": final_speech,
+                    "speech": speech,
                     "ok": False,
-                    "error": error,
-                    "tool_used": tool_name,
-                    "retries": retry_count
+                    "error": error
                 }
         
-        # Handle Q&A (direct response)
-        elif route["intent"] == "qa":
-            speech = route.get("text_response", "I'm not sure how to respond.")
-            if sys.stdout.isatty():
-                print(f"💬 Q&A response: {speech}")
-            
-            # Auto-log Q&A conversation
-            self._log_conversation(transcript, speech, [], success=True)
-            
-            return {
-                "speech": speech,
-                "ok": True
-            }
+        # Safety: Max turns reached (after loop completes)
+        # Generate intelligent summary of what was accomplished
+        response_style = os.environ.get('JARVIS_RESPONSE_STYLE', 'casual').lower()
         
-        # Handle errors
+        if response_style == 'casual' or response_style == 'auto':
+            # Casual and auto both format max turns summary
+            final_speech = self._format_max_turns_summary(transcript, tools_used, accumulated_data, max_turns)
         else:
-            error = route.get("error", "Unknown routing error")
-            speech = route.get("text_response", "Sorry, I had trouble understanding that.")
-            if sys.stdout.isatty():
-                print(f"❌ Routing error: {error}")
-            
-            # Auto-log error
-            self._log_conversation(transcript, speech, [], success=False)
-            
-            return {
-                "speech": speech,
-                "ok": False,
-                "error": error
-            }
+            # Detailed mode: verbose fallback
+            final_speech = f"Reached complexity limit after {len(tools_used)} actions. Tools used: {', '.join(tools_used)}. Please review the results or let me know if you'd like me to continue."
+        
+        if sys.stdout.isatty():
+            print(f"⚠️  Max turns ({max_turns}) reached")
+        
+        self._log_conversation(transcript, final_speech, tools_used, success=True)
+        
+        return {
+            "speech": final_speech,
+            "ok": True,
+            "tools_used": tools_used,
+            "data": accumulated_data,
+            "max_turns_reached": True
+        }
     
     def _format_natural_response(self, user_query: str, tool_name: str, tool_result: Dict[str, Any]) -> str:
         """
@@ -206,21 +250,31 @@ class Orchestrator:
 Tool executed: {tool_name}
 Tool result: {json.dumps(data, indent=2)}
 
-Format this into a natural, conversational response suitable for VOICE OUTPUT (text-to-speech).
+Create a SINGLE SENTENCE response for voice output (spoken through speakers).
 
-Guidelines:
-- Be concise and helpful, like talking to a friend
-- DO NOT speak URLs unless specifically asked
-- For search results: Summarize what you found and ask if they want more details
-- For tasks: Confirm what was done
-- For data lookups: Share the key information naturally
-- Keep it brief - you can always provide more if asked"""
+CRITICAL RULES:
+1. MAX 15 WORDS (20 if complex data like search results)
+2. Answer directly, no greetings or confirmations
+3. No emojis, no markdown, no numbered lists
+4. Don't say URLs unless critical
+
+GOOD EXAMPLES:
+- "Bitcoin is $101,938, down 1% today"
+- "Found 3 webhook memories: URL, logger, and server port"
+- "Time is 11:51 PM Wednesday"
+- "Server started on port 5000"
+
+BAD EXAMPLES:
+- "Great! I've successfully looked up the time for you. It's currently 11:51 PM..."
+- "Perfect! The webhook has been sent and here's what happened..."
+
+Your response:"""
             
             # Get natural response from LLM (without tools)
             text_response, _ = self.router.provider.chat_with_tools(
                 messages=[{"role": "user", "content": context}],
                 tools=[],  # No tools for response formatting
-                system_prompt="You are Jarvis, a conversational AI assistant. Format tool results for voice output - concise, natural, no URLs unless asked."
+                system_prompt="You are a voice assistant. Output ONE sentence, MAX 15 words. No greetings, no explanations."
             )
             
             if text_response:
@@ -233,6 +287,243 @@ Guidelines:
             if sys.stdout.isatty():
                 print(f"⚠️ Failed to format natural response: {e}", file=sys.stderr)
             return tool_result.get("speech", "Completed")
+    
+    def _format_auto_mode(self, user_query: str, tools_used: list, accumulated_data: dict, raw_response: str, turn_num: int) -> str:
+        """
+        Smart auto mode: Adapt response based on tool type and complexity.
+        
+        Rules:
+        - Search tools → Format for voice (remove URLs, summarize)
+        - Simple data tools → Keep concise
+        - Complex/build tools → More detail
+        - Multi-turn → Format summary
+        
+        Args:
+            user_query: Original user request
+            tools_used: List of tool names executed
+            accumulated_data: Results from all tools
+            raw_response: Verbose response from LLM
+            turn_num: Current turn number
+            
+        Returns:
+            Intelligently formatted response
+        """
+        try:
+            # Multi-turn: always format (could be complex)
+            if turn_num > 0:
+                return self._format_multi_turn_summary(user_query, tools_used, accumulated_data, raw_response)
+            
+            # Single-turn: decide based on tool type
+            if not tools_used:
+                # Pure Q&A, no tools - keep short
+                return self._format_single_turn_casual(user_query, raw_response)
+            
+            tool_name = tools_used[0] if tools_used else ""
+            
+            # Define tool categories
+            SEARCH_TOOLS = ['search_memory', 'semantic_recall', 'recall', 'mcp_duckduckgo_search', 'mcp_fetch_fetch']
+            SIMPLE_TOOLS = ['get_time', 'crypto_price', 'get_weather']
+            COMPLEX_TOOLS = ['opencode', 'execute_bash', 'send_webhook', 'api_call']
+            
+            # Search tools: Format for voice (remove URLs, summarize)
+            if any(search in tool_name.lower() for search in SEARCH_TOOLS):
+                # Format search results - remove URLs, keep key info
+                return self._format_single_turn_casual(user_query, raw_response)
+            
+            # Simple data tools: Already concise, keep as-is or condense slightly
+            elif any(simple in tool_name.lower() for simple in SIMPLE_TOOLS):
+                # If already short (<20 words), keep it
+                word_count = len(raw_response.split())
+                if word_count <= 20:
+                    return raw_response
+                # Otherwise condense
+                return self._format_single_turn_casual(user_query, raw_response)
+            
+            # Complex/build tools: Check if response is technical or simple
+            elif any(complex in tool_name.lower() for complex in COMPLEX_TOOLS):
+                # If response is very long (>50 words), it's probably detailed - keep detailed
+                word_count = len(raw_response.split())
+                if word_count > 50:
+                    return raw_response  # Keep detailed for complex operations
+                else:
+                    # Short response for complex tool - condense it
+                    return self._format_single_turn_casual(user_query, raw_response)
+            
+            # Default: condensed formatting for voice
+            else:
+                return self._format_single_turn_casual(user_query, raw_response)
+                
+        except Exception as e:
+            if sys.stdout.isatty():
+                print(f"⚠️ Auto mode formatting failed: {e}", file=sys.stderr)
+            # Fallback to raw response
+            return raw_response
+    
+    def _format_single_turn_casual(self, user_query: str, raw_response: str) -> str:
+        """
+        Condense a verbose Q&A response for voice output (casual mode).
+        
+        Args:
+            user_query: Original user request
+            raw_response: Verbose response from LLM
+            
+        Returns:
+            Concise voice-friendly version
+        """
+        try:
+            # If already short, return as-is
+            word_count = len(raw_response.split())
+            if word_count <= 15:
+                return raw_response
+            
+            # Use LLM to condense verbose response
+            context = f"""User asked: "{user_query}"
+
+Your previous verbose response: {raw_response}
+
+Condense this to ONE SENTENCE (MAX 15 words) for voice output.
+
+CRITICAL RULES:
+1. Keep the core answer/outcome
+2. Keep critical details (numbers, URLs if essential, status)
+3. Remove: greetings, emojis, explanations, numbered lists, markdown
+
+EXAMPLES:
+Verbose: "Great! I've successfully looked up the time. It's currently 11:51 PM on Wednesday, November 12th."
+Concise: "It's 11:51 PM Wednesday, November 12th"
+
+Verbose: "Perfect! The tetris server has been started successfully and is now running on port 5000!"
+Concise: "Tetris server started on port 5000"
+
+Your concise response:"""
+            
+            response = self.router.provider.chat(context, system_prompt="Output ONE sentence, MAX 15 words. No greetings, no emojis.")
+            return response.strip()
+        except Exception as e:
+            # Fallback: use first sentence of raw response
+            if sys.stdout.isatty():
+                print(f"⚠️ Failed to condense response: {e}", file=sys.stderr)
+            first_sentence = raw_response.split('.')[0] + '.'
+            return first_sentence
+    
+    def _format_multi_turn_summary(self, user_query: str, tools_used: list, accumulated_data: dict, llm_response: str) -> str:
+        """
+        Format multi-turn results for voice output (short & sweet).
+        
+        Args:
+            user_query: Original user request
+            tools_used: List of tool names executed
+            accumulated_data: Results from all tools
+            llm_response: Raw response from LLM
+            
+        Returns:
+            Concise voice-friendly summary
+        """
+        try:
+            # Use LLM to create a concise voice summary
+            context = f"""User asked: "{user_query}"
+
+Tools executed: {', '.join(tools_used)}
+
+Results: {json.dumps(accumulated_data, indent=2)[:500]}
+
+Create a SINGLE SENTENCE response for voice output (will be spoken aloud through speakers).
+
+CRITICAL RULES:
+1. MAX 15 WORDS
+2. State outcome + essential detail only
+3. No emojis, no markdown, no bullet points, no explanations of what you did
+
+GOOD EXAMPLES:
+- "Tetris server started on port 5000 at 192.168.70.228"
+- "Webhook sent successfully, URL saved to memory"
+- "Bitcoin price is $101,000, down 2% today"
+- "Email sent to John, confirmation code 12345"
+
+BAD EXAMPLES (TOO LONG):
+- "Perfect! I've successfully started the Tetris game server. Here's what I did: 1. Found the game..."
+- "Great news! The webhook has been sent successfully to httpbin.org and I've saved the URL..."
+
+Your response:"""
+            
+            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Output ONE sentence, MAX 15 words. No explanations.")
+            return response.strip()
+        except Exception as e:
+            # Fallback to LLM's original response
+            if sys.stdout.isatty():
+                print(f"⚠️ Failed to format multi-turn summary: {e}", file=sys.stderr)
+            return llm_response
+    
+    def _format_max_turns_summary(self, user_query: str, tools_used: list, accumulated_data: dict, max_turns: int) -> str:
+        """
+        Create intelligent summary when max turns is reached.
+        
+        Args:
+            user_query: Original user request
+            tools_used: List of tool names executed
+            accumulated_data: Results from all tools
+            max_turns: The limit that was hit
+            
+        Returns:
+            Voice-friendly explanation of progress and next steps
+        """
+        try:
+            # Use LLM to create an intelligent progress summary
+            context = f"""User asked: "{user_query}"
+
+Tools executed ({len(tools_used)} actions): {', '.join(tools_used)}
+
+Results: {json.dumps(accumulated_data, indent=2)[:500]}
+
+The task hit the complexity limit ({max_turns} turns). Create a SINGLE SENTENCE for voice output.
+
+CRITICAL RULES:
+1. MAX 20 WORDS (this is urgent/error case, can be slightly longer)
+2. State what was done + what needs checking
+3. No explanations, no numbered lists
+
+GOOD EXAMPLES:
+- "Completed 8 steps but hit limit. Server started, check logs for any issues."
+- "Made progress on 5 actions, reached complexity limit. Check if everything's working."
+
+BAD EXAMPLES:
+- "I've made significant progress on your request by completing multiple steps. Here's what was accomplished..."
+
+Your response:"""
+            
+            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. ONE sentence, MAX 20 words. This is an error case.")
+            return response.strip()
+        except Exception as e:
+            # Fallback to simple message
+            if sys.stdout.isatty():
+                print(f"⚠️ Failed to format max turns summary: {e}", file=sys.stderr)
+            return f"Completed {len(tools_used)} actions but reached the complexity limit. Tools used: {', '.join(tools_used)}. Please review or let me know if you'd like me to continue."
+    
+    def _build_turn_context(self, original_query: str, conversation_context: list) -> str:
+        """
+        Build context string for subsequent turns in multi-turn conversation.
+        
+        Args:
+            original_query: The user's original request
+            conversation_context: List of previous tool executions and results
+            
+        Returns:
+            Formatted context string for the LLM
+        """
+        context_parts = [f"Original user request: {original_query}\n"]
+        context_parts.append("Tools executed so far:")
+        
+        for i, ctx in enumerate(conversation_context, 1):
+            tool_name = ctx["tool"]
+            result_summary = json.dumps(ctx["result"], indent=2)[:300]  # Limit size
+            context_parts.append(f"\n{i}. {tool_name}")
+            context_parts.append(f"   Result: {result_summary}")
+        
+        context_parts.append("\n\nBased on the above results, determine if you need to:")
+        context_parts.append("1. Call another tool to complete the user's request")
+        context_parts.append("2. Respond directly to the user (task complete)")
+        
+        return "\n".join(context_parts)
     
     def _log_conversation(self, user_query: str, response: str, tools_used: list, success: bool = True):
         """Auto-log conversation to memory database."""

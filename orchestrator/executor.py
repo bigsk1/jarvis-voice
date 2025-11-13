@@ -78,7 +78,9 @@ class ToolExecutor:
         if not skip_permission_check and tool_schema.requires_confirmation():
             # For voice control, we announce what we're about to do
             warning = tool_schema.get_permission_warning()
-            print(f"⚠️  Permission check: {warning}")
+            # Only print if not in JSON mode (for voice scripts)
+            if sys.stdout.isatty() or os.environ.get('JARVIS_JSON_MODE') != '1':
+                print(f"⚠️  Permission check: {warning}", file=sys.stderr)
             
             # In future, could add verbal confirmation loop here
             # For now, we announce and proceed with caution
@@ -113,7 +115,7 @@ class ToolExecutor:
             # Use longer timeout for local mode (Ollama can be slower)
             # OpenCode tasks need much more time (building, coding, etc.)
             if tool_name == "opencode":
-                timeout = 180  # 3 minutes for OpenCode tasks
+                timeout = 360  # 6 minutes for OpenCode tasks (complex builds)
             else:
                 timeout = 30 if self.mode == "local" else 15
             

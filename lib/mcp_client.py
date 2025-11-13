@@ -3,6 +3,7 @@
 MCP (Model Context Protocol) Client
 Communicates with MCP servers via JSON-RPC over stdin/stdout.
 """
+import sys
 import json
 import subprocess
 import time
@@ -200,7 +201,7 @@ class MCPClient:
             self._tools_cache = tools
             return tools
         except Exception as e:
-            print(f"Error listing tools from MCP server {self.name}: {e}")
+            print(f"Error listing tools from MCP server {self.name}: {e}", file=sys.stderr)
             return []
     
     def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -260,7 +261,7 @@ class MCPClient:
         except Exception as e:
             import traceback
             error_detail = traceback.format_exc()
-            print(f"MCP tool error details: {error_detail}")
+            print(f"MCP tool error details: {error_detail}", file=sys.stderr)
             return {
                 "ok": False,
                 "speech": f"MCP tool {tool_name} failed",
