@@ -75,7 +75,7 @@ if ! curl -s "$OLLAMA_URL/api/tags" | jq -r '.models[].name' | grep -q "mistral-
 fi
 
 echo -e "${GREEN}✅ Ollama is running at $OLLAMA_URL${NC}"
-echo -e "${GREEN}✅ mistral-nemo model is available${NC}"
+echo -e "${GREEN}✅ $OLLAMA_MODEL model is available${NC}"
 
 # Warm up MCP servers (they need time to start)
 echo -e "\n${YELLOW}Warming up MCP servers...${NC}"

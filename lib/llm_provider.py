@@ -83,7 +83,8 @@ class OpenAIProvider(LLMProvider):
             return message.content, None
             
         except Exception as e:
-            print(f"OpenAI API error: {e}")
+            import sys
+            print(f"OpenAI API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None
 
 
@@ -142,7 +143,8 @@ class AnthropicProvider(LLMProvider):
             return "No response from Claude", None
             
         except Exception as e:
-            print(f"Anthropic API error: {e}")
+            import sys
+            print(f"Anthropic API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None
 
 
@@ -194,14 +196,27 @@ CRITICAL RULES:
         full_messages.extend(messages)
         
         try:
+            # Build request with extended context for capable models
+            request_data = {
+                "model": self.model,
+                "messages": full_messages,
+                "stream": False
+            }
+            
+            # Extended context for models that support it
+            # qwen3-vl VRAM usage on 16GB RTX 5060 Ti:
+            #   4096 tokens  = 11GB (default, very safe)
+            #   8192 tokens  = 12GB (current, 4GB headroom) ⭐
+            #  16384 tokens  = 14GB (can increase if needed, 2GB headroom)
+            #  32768 tokens  = 15GB (risky, causes timeouts)
+            # To increase: change 8192 to 12288 or 16384 below
+            if any(m in self.model.lower() for m in ['qwen', 'mistral-nemo']):
+                request_data["options"] = {"num_ctx": 8192}  # 8k tokens = 12GB VRAM
+            
             response = requests.post(
                 f"{self.base_url}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": full_messages,
-                    "stream": False
-                },
-                timeout=30
+                json=request_data,
+                timeout=60  # 60s for local models (slower than cloud APIs)
             )
             response.raise_for_status()
             
@@ -232,10 +247,10 @@ CRITICAL RULES:
                     json_str = stripped[start:end]
                     
                     tool_call = json.loads(json_str)
-                    if "tool" in tool_call and "arguments" in tool_call:
+                    if "tool" in tool_call:
                         return None, {
                             "name": tool_call["tool"],
-                            "arguments": tool_call["arguments"]
+                            "arguments": tool_call.get("arguments", {})  # Default to empty dict
                         }
             except (json.JSONDecodeError, ValueError):
                 pass
@@ -244,7 +259,8 @@ CRITICAL RULES:
             return content, None
             
         except Exception as e:
-            print(f"Ollama API error: {e}")
+            import sys
+            print(f"Ollama API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None
     
     def _format_tools_for_prompt(self, tools: List[Dict[str, Any]]) -> str:
