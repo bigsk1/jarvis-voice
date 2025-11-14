@@ -32,6 +32,16 @@ class OpenCodeClient:
         self.base_url = base_url
         self.timeout = 360  # 6 minutes for complex builds/tasks (web apps, games, etc.)
         self.logger = OpenCodeLogger()
+        
+        # Load model config from environment
+        try:
+            from config_loader import get_config_value
+            self.default_model_id = get_config_value("OPENCODE_MODEL", "claude-sonnet-4-20250514")
+            self.default_provider_id = get_config_value("OPENCODE_PROVIDER", "anthropic")
+        except:
+            self.default_model_id = "claude-sonnet-4-20250514"
+            self.default_provider_id = "anthropic"
+        
         self._verify_connection()
 
     def _verify_connection(self, max_retries: int = 3) -> bool:
@@ -98,11 +108,17 @@ class OpenCodeClient:
         self,
         session_id: str,
         message: str,
-        provider_id: str = "anthropic",
-        model_id: str = "claude-sonnet-4-20250514",
+        provider_id: Optional[str] = None,
+        model_id: Optional[str] = None,
         no_reply: bool = False,
     ) -> Dict[str, Any]:
         """Send a message to an OpenCode session."""
+        # Use configured defaults if not specified
+        if provider_id is None:
+            provider_id = self.default_provider_id
+        if model_id is None:
+            model_id = self.default_model_id
+        
         payload: Dict[str, Any] = {"parts": [{"type": "text", "text": message}]}
 
         if no_reply:
@@ -244,11 +260,11 @@ All file operations must be within this directory. DO NOT access `/home/boss/jar
                 session_id=session_id, message=context_text, no_reply=True
             )
 
-            # Default model
+            # Default model from config
             if model is None:
                 model = {
-                    "providerID": "anthropic",
-                    "modelID": "claude-sonnet-4-20250514",
+                    "providerID": self.default_provider_id,
+                    "modelID": self.default_model_id,
                 }
 
             # Log task message

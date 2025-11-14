@@ -1,6 +1,6 @@
 #!/bin/bash
 # Comprehensive Jarvis Tool Testing Script - LOCAL MODE (Ollama)
-# Tests using mistral-nemo model
+# Tests using qwen3-vl model
 set -euo pipefail
 
 # Change to project root (two levels up from tests/integration/)
@@ -51,7 +51,7 @@ test_tool() {
 
 echo "========================================="
 echo "  Jarvis Local Tool Testing (Ollama)"
-echo "  Model: $OLLAMA_MODEL"
+echo "  Model: qwen3-vl"
 echo "========================================="
 
 # Load local config to get OLLAMA_BASE_URL
@@ -67,10 +67,10 @@ if ! curl -s "$OLLAMA_URL/api/tags" &>/dev/null; then
     exit 1
 fi
 
-# Check if mistral-nemo is available on remote
-if ! curl -s "$OLLAMA_URL/api/tags" | jq -r '.models[].name' | grep -q "mistral-nemo"; then
-    echo -e "${RED}❌ mistral-nemo model not found on remote server!${NC}"
-    echo "Pull it on the remote server with: ollama pull mistral-nemo"
+# Check if qwen3-vl is available on remote
+if ! curl -s "$OLLAMA_URL/api/tags" | jq -r '.models[].name' | grep -q "qwen3-vl"; then
+    echo -e "${RED}❌ qwen3-vl model not found on remote server!${NC}"
+    echo "Pull it on the remote server with: ollama pull qwen3-vl"
     exit 1
 fi
 
@@ -160,7 +160,7 @@ echo -e "${RED}Failed: $FAILED${NC}"
 
 if [ $FAILED -eq 0 ]; then
     echo -e "\n${GREEN}🎉 All tests passed!${NC}"
-    echo -e "\n${BLUE}Note: Local mode uses Ollama (mistral-nemo) and is slower than cloud mode.${NC}"
+    echo -e "\n${BLUE}Note: Local mode uses Ollama (qwen3-vl) and is slower than cloud mode.${NC}"
     exit 0
 else
     echo -e "\n${RED}⚠️  Some tests failed. Check output above.${NC}"

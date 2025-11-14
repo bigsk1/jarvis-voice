@@ -41,6 +41,10 @@ class LLMRouter:
         # Initialize LLM provider
         self.provider = self._create_provider()
         
+        # Store provider info for metadata tracking
+        self.provider_type = get_config_value("LLM_PROVIDER", "unknown")
+        self.model_name = self.provider.model if hasattr(self.provider, 'model') else "unknown"
+        
         # System prompt for routing
         self.system_prompt = """You are Jarvis, a voice-controlled AI assistant with access to tools AND persistent memory.
 
@@ -94,30 +98,55 @@ When to use memory tools:
    - Use 'search_memory' for general searches (e.g., "tetris", "webhook", "server")
    - Use 'semantic_recall' when the question uses different words than what might be stored (e.g., "spouse" vs "wife", "born" vs "birthday", "start server" vs "run application")
    - Use 'recall' ONLY for exact keyword matches (e.g., specific memory keys)
-2. **PROACTIVELY use 'remember'** when the user shares important information OR when user EXPLICITLY asks to save/remember something:
-   - Personal information (family, birthdays, relationships)
-   - Preferences (favorite places, settings, habits)
-   - Important contacts (doctor, dentist, etc.)
-   - Locations (home, work, frequent places)
-   - URLs, endpoints, or any data user wants to reference later
+2. **PROACTIVELY use 'remember'** when you encounter VALUABLE, REUSABLE information:
+   
+   A. USER SHARES information (obvious cases):
+      - Personal info (family, birthdays, relationships)
+      - Preferences (favorite places, settings, habits)
+      - Important contacts, locations, credentials
+   
+   B. YOU CREATE/BUILD something (CRITICAL - must save):
+      - Project locations and run commands (e.g., "Built Flask API at ~/path, run with: python app.py")
+      - URLs, endpoints, ports you just deployed
+      - Working solutions (e.g., "Port 8000 was taken, switched to 5000 - now works")
+      - File paths for projects, configs, scripts you created
+   
+   C. YOU DISCOVER important facts the user might reference later:
+      - Significant events (market records, major announcements)
+      - Technical solutions that worked after troubleshooting
+      - System configurations that user might need again
+   
+   D. DO NOT SAVE ephemeral data:
+      - Current time (changes every second)
+      - Current prices unless significant/requested (Bitcoin at $96k is just noise)
+      - Temporary status checks
+   
+   **Golden Rule**: Ask yourself "Will the user benefit from this being saved for future reference?" If YES → call 'remember'
 3. Use 'update_memory' to correct outdated information
 4. Use 'forget' to remove incorrect or obsolete data
 
 CRITICAL EXAMPLES:
+
+**Memory Recall:**
 ❌ BAD: User asks "When is my wife's birthday?" → You respond "I don't know"
 ✅ GOOD: User asks "When is my wife's birthday?" → You call 'recall' with query "wife birthday" → Respond with the stored date
-
-❌ BAD: User says "Send webhook and save URL" → Only send_webhook, promise to save but don't
-✅ GOOD: User says "Send webhook and save URL" → Call send_webhook → Call remember → Respond "Done!"
 
 ❌ BAD: User says "Start the tetris server" → Searches files, tries random commands
 ✅ GOOD: User says "Start the tetris server" → Call 'search_memory' with query "tetris" → Use stored start command
 
-❌ BAD: User says "How do I run X?" → Guesses or searches filesystem  
-✅ GOOD: User says "How do I run X?" → Call 'search_memory' with query "X" → Check stored run instructions
+**Intelligent Auto-Save (Critical for YOU CREATE/BUILD scenarios):**
+❌ BAD: Build project with OpenCode → Build succeeds → Respond "Done" → DON'T save location/run command
+✅ GOOD: Build project with OpenCode → Build succeeds → Call 'remember' with project location, port, run command → Respond "Done"
 
-❌ BAD: User says "Start the webhook server" → Call 'recall' with "webhook server" → Gets no results
-✅ GOOD: User says "Start the webhook server" → Call 'search_memory' with "webhook" → Finds webhook_url, webhook_server_port, etc.
+❌ BAD: "What's Bitcoin price?" → Get $96k → Respond → Save price (NO! ephemeral data)
+✅ GOOD: "What's Bitcoin price?" → Get $96k → Respond → Don't save (correct - this changes constantly)
+
+❌ BAD: User says "Send webhook and save URL" → Only send_webhook → Don't save
+✅ GOOD: User says "Send webhook and save URL" → Call send_webhook → Call remember with URL → Respond "Done!"
+
+✅ EXCELLENT: Deploy API on port 8000 → Port busy → Switch to 8091 → Works → Call 'remember' with "api_name: port 8091, run: cd ~/path && node server.js"
+
+✅ EXCELLENT: Troubleshoot database connection → Find working connection string → Call 'remember' with "db_connection: postgresql://localhost:5432/mydb worked after installing pg module"
 
 SYSTEM ENVIRONMENT:
 - Running on a **headless Ubuntu server** (no GUI/display)
@@ -136,10 +165,13 @@ OPENCODE - For complex development, coding, or building tasks:
 - OpenCode handles: coding, building projects, creating files, deploying, complex multi-step tasks
 - **OpenCode workspace**: ~/jarvis-workspace/projects/ (all builds go here, NOT in ~/jarvis-voice/)
 - **Finding OpenCode projects**: Use bash to list ~/jarvis-workspace/projects/
+- **Port selection**: Use NON-STANDARD ports (8091+) to avoid conflicts. Common ports like 8080, 8000, 5000 are often busy. Start at 8091 and increment if needed.
+- **CRITICAL - Single OpenCode Call**: Call OpenCode ONCE per user request. Don't call it again to verify or add features - that wastes tokens. If you need to verify/test, use execute_bash or api_call AFTER the build, not another OpenCode session.
+- **OpenCode is SLOW (this is normal)**: Building projects takes TIME - simple apps take 30-60s, complex projects can take 2-5+ minutes. This is NOT an error. OpenCode timeout is 6 minutes. Be patient and wait for the tool to complete. Do NOT assume it failed just because it's taking time.
 - Examples:
-  * "Use OpenCode to build a Flask API" → Use opencode tool
-  * "Create a Python tetris game" → Use opencode tool  
-  * "Start the tetris game OpenCode built" → Use execute_bash to find/run it in ~/jarvis-workspace/projects/
+  * "Build a REST API" → Use opencode tool ONCE (wait 30-60s), then use api_call to test
+  * "Create a Tetris game" → Use opencode tool ONCE (wait 1-2 minutes)
+  * "Start the tetris server" → Search memory for run command first, then execute_bash (NO OpenCode needed)
 
 ERROR RECOVERY: If a tool fails, you can:
 1. Use check_tool_logs to see what went wrong
@@ -211,11 +243,15 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         messages = [{"role": "user", "content": transcript}]
         
         try:
-            text_response, tool_call = self.provider.chat_with_tools(
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"DEBUG: Router calling provider.chat_with_tools", file=sys.stderr)
+            text_response, tool_call, usage_info = self.provider.chat_with_tools(
                 messages=messages,
                 tools=tools,
                 system_prompt=self.system_prompt
             )
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"DEBUG: Provider returned: tool_call={tool_call is not None}, usage={usage_info is not None}", file=sys.stderr)
             
             # Tool was called
             if tool_call:
@@ -223,7 +259,8 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
                     "intent": "tool",
                     "tool_name": tool_call["name"],
                     "arguments": tool_call["arguments"],
-                    "confidence": 1.0
+                    "confidence": 1.0,
+                    "usage_info": usage_info  # Include token/cost data
                 }
                 
                 # Detect OpenCode agent mode if using opencode tool
@@ -237,7 +274,8 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
                 return {
                     "intent": "qa",
                     "text_response": text_response or "I'm not sure how to respond to that.",
-                    "confidence": 1.0
+                    "confidence": 1.0,
+                    "usage_info": usage_info  # Include token/cost data
                 }
         
         except Exception as e:

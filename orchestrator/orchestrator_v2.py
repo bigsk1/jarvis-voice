@@ -72,6 +72,9 @@ class Orchestrator:
         else:
             enhanced_transcript = transcript
         
+        # Track usage info across all turns
+        total_usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+        
         # Multi-turn loop
         for turn_num in range(max_turns):
             # Build context for this turn
@@ -83,7 +86,21 @@ class Orchestrator:
                 turn_input = self._build_turn_context(enhanced_transcript, conversation_context)
             
             # Route using LLM
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"DEBUG: About to route turn {turn_num}", file=sys.stderr)
             route = self.router.route(turn_input)
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)
+            
+            # Accumulate usage info if available
+            if route.get("usage_info"):
+                usage = route["usage_info"]
+                if usage.get("input_tokens"):
+                    total_usage["input_tokens"] += usage["input_tokens"]
+                if usage.get("output_tokens"):
+                    total_usage["output_tokens"] += usage["output_tokens"]
+                if usage.get("cost_usd"):
+                    total_usage["cost_usd"] += usage["cost_usd"]
             
             # Handle tool execution
             if route["intent"] == "tool":
@@ -178,15 +195,23 @@ class Orchestrator:
                     turn_marker = f" after {len(tools_used)} tool(s)" if turn_num > 0 else ""
                     print(f"💬 Task complete{turn_marker}: {speech}")
                 
-                # Auto-log conversation with all tools used
-                self._log_conversation(transcript, speech, tools_used, success=True)
+                # Auto-log conversation with all tools used and usage info
+                token_info = total_usage if total_usage["cost_usd"] > 0 else None
+                self._log_conversation(transcript, speech, tools_used, success=True, token_info=token_info)
                 
-                return {
+                # Build response
+                response = {
                     "speech": speech,
                     "ok": True,
                     "tools_used": tools_used,
                     "data": accumulated_data
                 }
+                
+                # Add token info to response if available (cloud only)
+                if token_info:
+                    response["usage"] = token_info
+                
+                return response
             
             # Handle routing errors
             else:
@@ -271,7 +296,7 @@ BAD EXAMPLES:
 Your response:"""
             
             # Get natural response from LLM (without tools)
-            text_response, _ = self.router.provider.chat_with_tools(
+            text_response, _, _ = self.router.provider.chat_with_tools(
                 messages=[{"role": "user", "content": context}],
                 tools=[],  # No tools for response formatting
                 system_prompt="You are a voice assistant. Output ONE sentence, MAX 15 words. No greetings, no explanations."
@@ -525,16 +550,37 @@ Your response:"""
         
         return "\n".join(context_parts)
     
-    def _log_conversation(self, user_query: str, response: str, tools_used: list, success: bool = True):
-        """Auto-log conversation to memory database."""
+    def _log_conversation(self, user_query: str, response: str, tools_used: list, success: bool = True, 
+                          execution_time_ms: float = None, token_info: dict = None):
+        """Auto-log conversation to memory database with metadata."""
         try:
+            # Build metadata
+            metadata = {
+                "mode": self.mode,
+                "provider": getattr(self.router, 'provider_type', 'unknown'),
+                "model": getattr(self.router, 'model_name', 'unknown')
+            }
+            
+            # Add timing if available
+            if execution_time_ms is not None:
+                metadata["execution_time_ms"] = round(execution_time_ms, 2)
+            
+            # Add token/cost info for cloud providers only
+            provider = metadata.get("provider", "")
+            if token_info and provider in ["openai", "anthropic"]:
+                metadata.update(token_info)
+            
+            # Add tool count
+            metadata["tool_count"] = len(tools_used)
+            
             db = get_memory_db()
             db.log_conversation(
                 user_query=user_query,
                 jarvis_response=response,
                 tools_used=tools_used,
                 session_id=self.session_id,
-                success=success
+                success=success,
+                metadata=metadata
             )
             db.close()
         except Exception as e:

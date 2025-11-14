@@ -167,16 +167,27 @@ def main():
                     db.conn.commit()
                     break
             
-            # Save each fact to memory
+            # Save each fact to memory with metadata
+            from datetime import datetime
             for fact in facts:
                 # Include source in the value for context
                 enriched_value = f"{fact['value']} (source: {fact.get('source', 'intel')})"
+                
+                # Build metadata
+                metadata = {
+                    "source_file": filepath.name,
+                    "ingested_at": datetime.now().isoformat(),
+                    "file_hash": file_hash,
+                    "tool": "ingest_intel"
+                }
+                
                 db.remember(
                     category=fact.get("category", "technical"),
                     key=fact["key"],
                     value=enriched_value,
                     importance=8,  # High importance for explicitly provided intel
-                    source=fact.get("source", "intel")  # Track source for future deletions
+                    source=fact.get("source", "intel"),  # Track source for future deletions
+                    metadata=metadata
                 )
                 total_facts += 1
             

@@ -1,18 +1,45 @@
 # Jarvis Voice Assistant
 
-A self-hosted, voice-activated AI assistant with dual-mode operation (cloud and local).
+A self-hosted, intelligent voice assistant with advanced tool calling, memory, and autonomous coding capabilities.
 
 ---
 
-## 🎯 Features
+## 🎯 Current Status (November 2025)
 
-- **Wake Word Detection**: "Hey Jarvis" using OpenWakeWord
-- **Dual Mode Operation**:
-  - **Cloud Mode**: OpenAI (GPT-4o-mini, Whisper, TTS) - More powerful
-  - **Local Mode**: Ollama + faster-whisper + Kokoro TTS - Private and offline
-- **Fine-tuned Audio**: Optimized for noisy environments and far-field microphone
-- **Organized & Extensible**: Clean architecture ready for tools and automations
-- **Version Controlled**: Git-based, local-only repository for safe experimentation
+**Production Ready** ✅
+- Multi-turn tool orchestration with LLM routing
+- 20+ working skills (weather, webhooks, bash execution, OpenCode, etc.)
+- Intelligent memory system with semantic search
+- OpenCode integration for autonomous coding tasks
+- MCP server support for extensibility
+- Cost tracking and metadata logging
+- Dual mode operation (cloud/local)
+
+---
+
+## ✨ Key Features
+
+### Intelligence & Tools
+- **Advanced Tool Calling**: LLM-powered routing with 20+ skills
+- **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
+- **Intelligent Memory**: Semantic search + conversation history with auto-save
+- **OpenCode Integration**: Autonomous coding agent for building projects
+- **MCP Support**: Extensible via Model Context Protocol servers
+
+### Memory System
+- **Knowledge Base**: Facts, preferences, technical info with embeddings
+- **Conversation History**: Full logging with metadata (cost, tokens, model)
+- **Semantic Search**: Find related info conceptually, not just keywords
+- **Auto-Save**: Automatically remembers project locations, commands, solutions
+
+### Dual Mode Operation
+- **Cloud Mode**: Anthropic Claude / OpenAI GPT (more powerful, costs money)
+- **Local Mode**: Ollama (qwen3-vl) + faster-whisper + Kokoro TTS (free, offline)
+
+### Voice & Wake Word
+- **Wake Detection**: "Hey Jarvis" using OpenWakeWord
+- **Fine-tuned Audio**: Optimized for noisy environments + far-field mic
+- **Smart Response Formatting**: Auto-condenses verbose outputs for voice
 
 ---
 
@@ -20,30 +47,53 @@ A self-hosted, voice-activated AI assistant with dual-mode operation (cloud and 
 
 ```
 jarvis-voice/
-├── bin/                      # Executable scripts
+├── bin/                      # Executable scripts & utilities
 │   ├── wake_jarvis.py        # Cloud wake word loop
 │   ├── wake_jarvis_local.py  # Local wake word loop
-│   ├── say.sh                # Cloud TTS
-│   ├── say-local.sh          # Local TTS
-│   ├── question.sh           # Cloud Q&A from text
-│   ├── question-local.sh     # Local Q&A from text
-│   ├── question-mic.sh       # Cloud Q&A from mic
-│   ├── question-mic-local.sh # Local Q&A from mic
-│   └── stt_local.py          # Local speech-to-text
-├── lib/                      # Shared libraries
-│   ├── config_loader.py      # Python config loader
-│   └── config_loader.sh      # Bash config loader
+│   ├── say.sh / say-local.sh # Text-to-speech
+│   ├── question*.sh          # Q&A entry points
+│   └── memory                # Memory CLI tool
+├── lib/                      # Core libraries
+│   ├── config_loader.py      # Configuration management
+│   ├── memory_db.py          # SQLite memory system
+│   ├── llm_provider.py       # LLM provider abstraction
+│   ├── opencode_client.py    # OpenCode API client
+│   ├── cost_estimator.py     # Token cost calculation
+│   └── local_model_corrections.py # Post-processing for local models
+├── orchestrator/             # Tool orchestration system
+│   ├── orchestrator_v2.py    # Main orchestration logic
+│   ├── router_v2.py          # LLM-based routing
+│   ├── executor.py           # Tool execution engine
+│   └── tool_schema.py        # Tool discovery & validation
+├── skills/                   # Tool scripts (20+)
+│   ├── remember.py           # Store facts
+│   ├── recall.py             # Retrieve facts
+│   ├── search_memory.py      # Keyword search
+│   ├── semantic_recall.py    # AI-powered search
+│   ├── get_recent_conversations.py # Conversation history
+│   ├── execute_bash.py       # Shell command execution
+│   ├── opencode.py           # Autonomous coding agent
+│   ├── check_opencode_sessions.py # OpenCode progress monitoring
+│   ├── send_webhook.py       # HTTP requests
+│   ├── api_call.py           # Generic API calls
+│   ├── crypto_price.py       # Crypto prices
+│   ├── ingest_intel.py       # Bulk knowledge import
+│   └── *.tool.json           # Tool definitions
 ├── config/                   # Configuration files
-│   ├── cloud.env             # Cloud/OpenAI settings
-│   ├── local.env             # Local/Offline settings
-│   └── config.env.template   # Template for new configs
-├── skills/                   # Future: tool scripts
-├── orchestrator/             # Future: planning & routing
-├── audio/                    # Audio artifacts
-│   ├── cloud/                # Cloud mode recordings
-│   └── local/                # Local mode recordings
-├── docs/                     # Documentation
-├── setup.sh                  # Setup/migration script
+│   ├── cloud.env             # Cloud mode settings
+│   ├── local.env             # Local mode settings
+│   ├── cloud.env.example     # Template (safe for git)
+│   ├── local.env.example     # Template (safe for git)
+│   └── README.md             # Config documentation
+├── data/                     # Runtime data
+│   └── jarvis_memory.db      # SQLite knowledge base
+├── logs/                     # Execution logs
+│   ├── tools/                # Tool call logs
+│   └── opencode/             # OpenCode session logs
+├── docs/                     # Documentation (see below)
+├── jarvis-intel/             # Private knowledge base (gitignored)
+├── jarvis                    # Launcher (cloud mode)
+├── jarvis-local              # Launcher (local mode)
 └── README.md                 # This file
 ```
 
@@ -51,9 +101,7 @@ jarvis-voice/
 
 ## 🚀 Quick Start
 
-### 1. Setup
-
-Run the setup script:
+### 1. Initial Setup
 
 ```bash
 cd /home/boss/jarvis-voice
@@ -61,303 +109,450 @@ cd /home/boss/jarvis-voice
 ```
 
 This will:
-- Check dependencies (sox, ffmpeg, jq, python packages)
-- Create audio directories
+- Check dependencies
+- Create directories
 - Initialize git repository
 - Create convenience symlinks
 
 ### 2. Configure
 
-Edit configuration files with your settings:
+Copy and edit the example configs:
 
-**For Cloud Mode:**
 ```bash
-nano config/cloud.env
-```
-- Add your `OPENAI_API_KEY`
-- Adjust audio device names if needed
-- Customize personality settings
+# For cloud mode (Anthropic/OpenAI)
+cp config/cloud.env.example config/cloud.env
+nano config/cloud.env  # Add your ANTHROPIC_API_KEY
 
-**For Local Mode:**
+# For local mode (Ollama)
+cp config/local.env.example config/local.env
+nano config/local.env  # Adjust Ollama endpoint
+```
+
+See `config/README.md` for detailed configuration options.
+
+### 3. Install Dependencies
+
 ```bash
-nano config/local.env
+# Python environment
+python3 -m venv ~/jarvis-venv
+source ~/jarvis-venv/bin/activate
+pip install -r requirements.txt
+
+# System packages (Ubuntu/Debian)
+sudo apt install sox ffmpeg jq sqlite3
+
+# Ollama (for local mode)
+curl https://ollama.ai/install.sh | sh
+ollama pull qwen3-vl
+ollama pull nomic-embed-text
+
+# OpenCode (optional, for coding tasks)
+# See docs/OPENCODE.md for installation
 ```
-- Set your Ollama endpoint (default: `http://192.168.70.226:11434`)
-- Set your Kokoro TTS endpoint (default: `http://192.168.70.226:8880`)
-- Adjust model names if needed
 
-### 3. Run
+### 4. Run Jarvis
 
-Activate your Python environment:
 ```bash
 source ~/jarvis-venv/bin/activate
-```
 
-Run Jarvis:
-```bash
-# Cloud mode (more powerful)
+# Cloud mode (Anthropic Claude)
 ./jarvis
 
-# Local mode (private, offline)
+# Local mode (Ollama)
 ./jarvis-local
+
+# CLI mode (no voice)
+./orchestrator/orchestrator_v2.py cloud "What time is it?"
+./orchestrator/orchestrator_v2.py local "What time is it?"
 ```
 
-Say "**Hey Jarvis**" to wake it up!
+Say **"Hey Jarvis"** to wake it up!
 
 ---
 
-## 🎙️ Audio Configuration
+## 🛠️ Tool System
 
-### Hardware
-- **Microphone**: TONOR G11 USB (configured as `plughw:CARD=microphone,DEV=0`)
-- **Speaker**: ALC269VC analog (configured as `plughw:CARD=Generic_1,DEV=0`)
+### Available Skills (20+)
 
-### Fine-tuned Settings
+**Memory Management:**
+- `remember` - Store facts, preferences, technical info
+- `recall` - Retrieve specific memories by category/key
+- `search_memory` - Keyword search across knowledge base
+- `semantic_recall` - AI-powered conceptual search
+- `update_memory` - Modify existing memories
+- `forget` - Delete memories
+- `get_recent_conversations` - Access conversation history
+- `search_conversations` - Search past interactions
 
-These values have been carefully tuned for a noisy office environment with far-field microphone. **Don't change them unless testing in a new environment!**
+**Action Tools:**
+- `execute_bash` - Run shell commands
+- `send_webhook` - HTTP POST requests
+- `api_call` - Generic HTTP API calls
+- `crypto_price` - Get cryptocurrency prices
+- `get_time` - Current time
 
-**Wake Word Detection:**
-- `TRIGGER_THRESHOLD=0.2` (0.2-0.5 range; lower = more sensitive)
-- `HIT_FRAMES_REQUIRED=4` (consecutive frames to trigger)
-- `MIN_RMS=2e-4` (noise gate threshold)
-- `VAD_THRESHOLD=0.40` (voice activity detection)
-- `ARM_GRACE_SEC=1.0-1.2` (cooldown after re-arming)
-- `COOLDOWN_AFTER_QA=2.8` (wait before listening again)
+**Development:**
+- `opencode` - Autonomous coding agent (builds apps, games, APIs)
+- `check_opencode_sessions` - Monitor OpenCode progress
+- `ingest_intel` - Bulk import knowledge from markdown files
+- `check_tool_logs` - View tool execution history
 
-**Recording (SoX):**
-- `THRESH=3%` (silence detection threshold)
-- `PRE_SIL=0.1` (initial silence before speech)
-- `POST_SIL=1.5` (trailing silence to stop)
-- `highpass 300` (filter out low-frequency noise)
+**System:**
+- MCP servers (DuckDuckGo search, web fetch, etc.)
+
+### How Tool Calling Works
+
+```
+User: "Build a Flask API and test it"
+  ↓
+LLM Router: Analyzes request
+  ↓
+Turn 1: Call 'opencode' → Build Flask API
+  ↓
+Turn 2: Call 'api_call' → Test endpoint
+  ↓
+Turn 3: Q&A response → "Flask API running on port 8091"
+```
+
+**Features:**
+- Multi-turn orchestration (chains tools automatically)
+- Error recovery with retries
+- Timeout handling
+- Cost tracking (cloud mode)
+- Metadata logging
+- Permission system
 
 ---
 
-## 🔧 Development Workflow
+## 🧠 Memory System
 
-### Creating a Feature Branch
+### Knowledge Base
+
+Stores facts, preferences, and technical information with semantic search:
 
 ```bash
-cd /home/boss/jarvis-voice
+# Store a fact
+"Remember my WireGuard VPN is 192.168.70.0/24"
 
-# Create a new branch for your feature
-git checkout -b feature/home-automation
+# Retrieve later
+"What's my VPN network?"  # Finds it via semantic search
 
-# Make your changes...
-# Edit skills/, orchestrator/, or other files
+# View all memories
+./bin/memory list
+```
 
-# Test thoroughly
-./jarvis  # or ./jarvis-local
+### Auto-Save Intelligence
 
-# Commit your changes
-git add .
-git commit -m "Add home automation skill"
+Jarvis automatically remembers:
+- ✅ Project locations and run commands (after OpenCode builds)
+- ✅ Working solutions (port conflicts, config changes)
+- ✅ URLs and endpoints you create/use
+- ✅ Technical facts from intel files
+- ❌ Ephemeral data (current time, transient prices)
 
-# Switch back to main
+### Conversation History
+
+Full conversation logging with metadata:
+- User queries and responses
+- Tools used per session
+- Model, tokens, and cost tracking
+- Session IDs for grouping
+
+---
+
+## 🤖 OpenCode Integration
+
+OpenCode is an autonomous coding agent that can build entire projects.
+
+### Usage
+
+```bash
+# Via voice
+"Use OpenCode to create a Flask API on port 8091"
+
+# Via CLI
+./orchestrator/orchestrator_v2.py cloud "Build a Tetris game"
+```
+
+### What OpenCode Can Do
+
+- Build web apps (Flask, Express, React)
+- Create games (Tetris, Snake, etc.)
+- Write scripts and tools
+- Install dependencies
+- Test and verify builds
+
+### Configuration
+
+```bash
+# In cloud.env or local.env
+OPENCODE_MODEL="claude-sonnet-4-20250514"  # Or qwen2.5-coder:32b
+OPENCODE_PROVIDER="anthropic"              # Or ollama
+OPENCODE_BASE_URL="http://localhost:4096"
+```
+
+**Workspace:** All OpenCode projects go to `~/jarvis-workspace/projects/`
+
+See `docs/OPENCODE.md` for details.
+
+---
+
+## 💾 Database & Costs
+
+### Memory Database
+
+SQLite at `data/jarvis_memory.db`:
+- `knowledge_base` - Facts, preferences, embeddings
+- `conversations` - Full conversation history with metadata
+
+### Cost Tracking (Cloud Mode)
+
+Every conversation logs:
+- Model used
+- Input/output tokens
+- Cost in USD
+- Tool count
+- Execution time
+
+View costs:
+```bash
+sqlite3 data/jarvis_memory.db "
+SELECT 
+  date(timestamp) as date,
+  SUM(json_extract(metadata, '$.cost_usd')) as total_cost,
+  COUNT(*) as conversations
+FROM conversations
+GROUP BY date(timestamp)
+ORDER BY date DESC
+LIMIT 7;"
+```
+
+---
+
+## 📚 Documentation
+
+### Key Documents
+
+**Getting Started:**
+- `config/README.md` - Configuration guide
+- `docs/QUICKSTART.md` - Quick setup guide
+- `docs/TOOL_CALLING_SYSTEM.md` - How tools work
+
+**Features:**
+- `docs/OPENCODE.md` - OpenCode integration
+- `docs/MEMORY_SYSTEM.md` - Memory & knowledge base
+- `docs/MULTI_TURN_ORCHESTRATION.md` - How tool chaining works
+- `docs/METADATA_SYSTEM.md` - Cost tracking & metadata
+
+**Advanced:**
+- `docs/OPENCODE_API_REFERENCE.md` - Full OpenCode API
+- `docs/MCP_QUICKSTART.md` - MCP server integration
+- `docs/ERROR_RECOVERY.md` - Error handling
+
+**Recent Changes (Nov 2025):**
+- `docs/INTELLIGENCE_IMPROVEMENTS_2025-11-14.md` - Smart auto-save
+- `docs/FIXES_SUMMARY_2025-11-14.md` - Bug fixes & optimizations
+
+### Historical/Reference Docs
+
+The following docs are kept for historical context but describe features that have been deprecated or improved:
+- `CHANGELOG_2025-11-14.md` - Detailed change log
+- `DATABASE_DEEP_DIVE.md` - Database evolution (mentions removed tables)
+- `FIXES_2025-11-14.md` - Bug fix details
+- `METADATA_POPULATION_STATUS.md` - Metadata implementation tracking
+
+---
+
+## 🔧 Development
+
+### Adding a New Tool
+
+1. **Create the tool script:**
+   ```bash
+   nano skills/my_tool.py
+   ```
+
+2. **Follow the standard interface:**
+   ```python
+   #!/usr/bin/env python3
+   import sys
+   import json
+   
+   def main():
+       args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
+       
+       # Your logic here
+       result = do_something(args)
+       
+       # Return JSON
+       print(json.dumps({
+           "ok": True,
+           "speech": "Task completed",
+           "data": result
+       }))
+   
+   if __name__ == "__main__":
+       main()
+   ```
+
+3. **Create tool definition:**
+   ```bash
+   nano skills/my_tool.tool.json
+   ```
+   ```json
+   {
+     "name": "my_tool",
+     "description": "What the tool does",
+     "input_schema": {
+       "type": "object",
+       "properties": {
+         "param": {"type": "string", "description": "Parameter description"}
+       },
+       "required": ["param"]
+     }
+   }
+   ```
+
+4. **Make it executable:**
+   ```bash
+   chmod +x skills/my_tool.py
+   ```
+
+5. **Test it:**
+   ```bash
+   ./orchestrator/orchestrator_v2.py cloud "use my_tool with X"
+   ```
+
+The tool will be auto-discovered!
+
+### Testing
+
+```bash
+# Test all tools (cloud)
+./tests/integration/test-all-tools.sh
+
+# Test all tools (local)
+./tests/integration/test-all-tools-local.sh
+
+# Test specific tool
+./orchestrator/orchestrator_v2.py cloud "remember test fact"
+```
+
+### Git Workflow
+
+```bash
+# Create feature branch
+git checkout -b feature/new-tool
+
+# Make changes and test
+./jarvis  # Test thoroughly
+
+# Commit
+git add skills/new_tool.py skills/new_tool.tool.json
+git commit -m "Add new_tool for X"
+
+# Merge to main
 git checkout master
+git merge feature/new-tool
 
-# Merge if everything works
-git merge feature/home-automation
-```
-
-### Rollback if Something Breaks
-
-```bash
-# See what changed
-git log --oneline
-
-# Revert to a previous commit
-git reset --hard <commit-hash>
-
-# Or just check out a specific file
-git checkout <commit-hash> -- config/cloud.env
-```
-
----
-
-## 🛠️ Extending Jarvis
-
-### Adding a New Tool/Skill
-
-1. **Create the tool script** in `skills/`:
-   ```bash
-   nano skills/weather.sh
-   ```
-
-2. **Define the interface**:
-   - Input: JSON via stdin
-   - Output: JSON to stdout
-   - Exit code: 0 for success
-
-3. **Example tool**:
-   ```bash
-   #!/bin/bash
-   # skills/weather.sh
-   INPUT=$(cat)
-   LOCATION=$(echo "$INPUT" | jq -r '.location')
-   
-   # Get weather somehow...
-   TEMP="72°F"
-   
-   # Return JSON
-   jq -n --arg speech "It's $TEMP in $LOCATION" '{ok:true, speech:$speech}'
-   ```
-
-4. **Integrate** via orchestrator (see next section)
-
-### Orchestrator Pattern
-
-The orchestrator will:
-1. Receive transcribed text
-2. Determine intent (using LLM router)
-3. Call appropriate tool/skill
-4. Return speech text for TTS
-
-```
-Transcription → Orchestrator → Tool Selection → Execution → TTS
-```
-
----
-
-## 📝 Usage Examples
-
-### Cloud Mode
-
-```bash
-# Run the wake loop
-./jarvis
-
-# Say: "Hey Jarvis"
-# Jarvis: "Heh heh heh... I am the ghost pokemon..."
-# You: "What's the weather like?"
-# Jarvis: [Responds]
-```
-
-### Local Mode
-
-```bash
-# Run the wake loop
-./jarvis-local
-
-# Say: "Hey Jarvis"
-# Jarvis: "What is it this time?"
-# You: "Tell me a joke"
-# Jarvis: [Responds using Ollama]
-```
-
-### Manual Q&A (No Wake Word)
-
-```bash
-# Cloud
-./bin/question.sh "What is 2+2?"
-
-# Local
-./bin/question-local.sh "What is 2+2?"
-```
-
-### Just TTS (Text to Speech)
-
-```bash
-# Cloud
-./bin/say.sh "Hello world"
-
-# Local
-./bin/say-local.sh "Hello world"
+# Rollback if needed
+git reset --hard HEAD~1
 ```
 
 ---
 
 ## 🐛 Troubleshooting
 
-### "No input device found"
+### Common Issues
 
-Check your microphone:
+**"OpenCode server not reachable"**
 ```bash
-arecord -l
+systemctl --user start opencode
+# or
+cd ~/opencode && npm start
 ```
-Update `IN_DEV` in `config/*.env` if the device changed.
 
-### "aplay failed"
-
-Check your speaker:
+**"Ollama connection failed"**
 ```bash
-aplay -l
+curl http://192.168.70.226:11434
+ollama serve
 ```
-Update `OUT_DEV` in `config/*.env`.
 
-### "Transcription failed"
+**"Model not found"**
+```bash
+ollama pull qwen3-vl
+ollama pull nomic-embed-text
+```
 
-- Check your `OPENAI_API_KEY` (cloud mode)
-- Verify Ollama is running (local mode): `curl http://192.168.70.226:11434/api/tags`
+**"Permission denied on skills/tool.py"**
+```bash
+chmod +x skills/*.py
+```
 
-### Wake word not detecting
+**Database issues**
+```bash
+# Check database
+sqlite3 data/jarvis_memory.db ".tables"
 
-- Try speaking louder/closer
-- Lower `TRIGGER_THRESHOLD` in config (e.g., from 0.2 to 0.15)
-- Check `MIN_RMS` threshold (raise if too sensitive to noise)
+# Backup before experiments
+cp data/jarvis_memory.db data/jarvis_memory.db.backup
+```
 
-### Too many false triggers
+### Logs
 
-- Raise `TRIGGER_THRESHOLD` (e.g., from 0.2 to 0.3)
-- Increase `HIT_FRAMES_REQUIRED` (e.g., from 4 to 6)
-- Raise `MIN_RMS` to filter out background noise
+Check logs for debugging:
+```bash
+# Tool execution logs
+cat logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl
 
----
+# OpenCode logs
+cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
-## 🔒 Security Notes
-
-- `config/*.env` files contain secrets (API keys)
-- `.gitignore` prevents committing secrets
-- Files are `chmod 600` by default
-- This repo is **local only** - never push to public GitHub!
-
----
-
-## 📚 Documentation
-
-See `jarvis-docs/jarvis-voice-architecture.md` for detailed technical documentation on:
-- Audio pipeline architecture
-- End-to-end flow diagrams
-- Extension patterns
-- MCP integration (future)
+# View recent tool calls
+./orchestrator/orchestrator_v2.py cloud "show recent tool logs"
+```
 
 ---
 
-## 🎭 Personality Customization
+## 🎯 Roadmap
 
-Edit `SYSTEM_PROMPT`, `TTS_INSTRUCTIONS`, and `WAKE_GREETING` in your config files to change Jarvis's personality.
+**Completed:**
+- ✅ Multi-turn tool orchestration
+- ✅ Intelligent memory system
+- ✅ OpenCode integration
+- ✅ Cost tracking
+- ✅ MCP server support
+- ✅ Auto-save intelligence
+- ✅ Conversation history
 
-**Current default (cloud)**: Ghost Pokemon personality (eerie, playful, haunting)
+**In Progress:**
+- Voice mode improvements
+- Additional MCP servers
+- Web UI for memory management
 
----
-
-## 🤝 Contributing
-
-This is a local project, but you can:
-1. Create feature branches
-2. Test thoroughly
-3. Merge to master when stable
-4. Keep detailed commit messages
-5. Tag major versions: `git tag v1.0`
-
----
-
-## 📜 License
-
-Personal project - use however you want!
-
----
-
-## 🙏 Credits
-
-- **OpenWakeWord**: Wake word detection
-- **OpenAI**: GPT-4, Whisper, TTS
-- **Ollama**: Local LLM
-- **faster-whisper**: Local STT
-- **Kokoro TTS**: Local text-to-speech
-- **SoX**: Audio recording/processing
-- **ALSA/PipeWire**: Linux audio stack
+**Planned:**
+- Scheduled tasks / cron integration
+- Home automation tools
+- Multi-user support
+- Voice command customization
 
 ---
 
-**Built with ❤️ and a lot of fine-tuning!**
+## 📝 License
 
+Private project - Not licensed for public use.
+
+---
+
+## 🙏 Acknowledgments
+
+- **OpenAI** - GPT, Whisper, TTS
+- **Anthropic** - Claude (primary LLM)
+- **Ollama** - Local LLM inference
+- **OpenWakeWord** - Wake word detection
+- **OpenCode** - Autonomous coding agent
+
+---
+
+**Current Version:** v2.0 (November 2025)  
+**Status:** Production Ready ✅

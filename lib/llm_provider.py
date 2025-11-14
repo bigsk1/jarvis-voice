@@ -18,7 +18,7 @@ class LLMProvider(ABC):
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
         system_prompt: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """
         Send chat request with tool calling capability.
         
@@ -28,9 +28,10 @@ class LLMProvider(ABC):
             system_prompt: System prompt for the conversation
             
         Returns:
-            Tuple of (text_response, tool_call)
+            Tuple of (text_response, tool_call, usage_info)
             - text_response: Direct text response from LLM (if not calling tool)
             - tool_call: {"name": "tool_name", "arguments": {...}} if tool called
+            - usage_info: Token counts and cost estimates (None for local models)
         """
         pass
     
@@ -85,8 +86,14 @@ class OpenAIProvider(LLMProvider):
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
         system_prompt: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-        """Send chat with OpenAI function calling."""
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """
+        Send chat with OpenAI function calling.
+        
+        Returns:
+            Tuple of (text_response, tool_call, usage_info)
+            - usage_info contains token counts and cost estimates
+        """
         # Add system message if provided
         full_messages = []
         if system_prompt:
@@ -103,21 +110,32 @@ class OpenAIProvider(LLMProvider):
             
             message = response.choices[0].message
             
+            # Extract usage info
+            usage_info = None
+            if hasattr(response, 'usage') and response.usage:
+                from cost_estimator import estimate_cost
+                usage_info = estimate_cost(
+                    provider="openai",
+                    model=self.model,
+                    input_tokens=response.usage.prompt_tokens,
+                    output_tokens=response.usage.completion_tokens
+                )
+            
             # Check if tool was called
             if message.tool_calls:
                 tool_call = message.tool_calls[0]
                 return None, {
                     "name": tool_call.function.name,
                     "arguments": json.loads(tool_call.function.arguments)
-                }
+                }, usage_info
             
             # Otherwise return text response
-            return message.content, None
+            return message.content, None, usage_info
             
         except Exception as e:
             import sys
             print(f"OpenAI API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None
+            return f"Error: {str(e)}", None, None
 
 
 class AnthropicProvider(LLMProvider):
@@ -159,8 +177,14 @@ class AnthropicProvider(LLMProvider):
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
         system_prompt: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-        """Send chat with Anthropic tool calling."""
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """
+        Send chat with Anthropic tool calling.
+        
+        Returns:
+            Tuple of (text_response, tool_call, usage_info)
+            - usage_info contains token counts and cost estimates
+        """
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -169,6 +193,17 @@ class AnthropicProvider(LLMProvider):
                 messages=messages,
                 tools=tools
             )
+            
+            # Extract usage info
+            usage_info = None
+            if hasattr(response, 'usage') and response.usage:
+                from cost_estimator import estimate_cost
+                usage_info = estimate_cost(
+                    provider="anthropic",
+                    model=self.model,
+                    input_tokens=response.usage.input_tokens,
+                    output_tokens=response.usage.output_tokens
+                )
             
             # Check response type
             # Anthropic may return BOTH text AND tool_use blocks
@@ -187,18 +222,18 @@ class AnthropicProvider(LLMProvider):
                 return None, {
                     "name": tool_use_block.name,
                     "arguments": tool_use_block.input
-                }
+                }, usage_info
             
             # Otherwise return text response
             if text_block:
-                return text_block.text, None
+                return text_block.text, None, usage_info
             
-            return "No response from Claude", None
+            return "No response from Claude", None, usage_info
             
         except Exception as e:
             import sys
             print(f"Anthropic API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None
+            return f"Error: {str(e)}", None, None
 
 
 class OllamaProvider(LLMProvider):
@@ -248,10 +283,14 @@ class OllamaProvider(LLMProvider):
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
         system_prompt: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """
-        Send chat with Ollama using structured prompting.
+        Send chat with Ollama using structured prompting with smart corrections.
         Since Ollama doesn't have native tool calling, we use a structured prompt.
+        
+        Returns:
+            Tuple of (text_response, tool_call, usage_info)
+            - usage_info is None for Ollama (no cost tracking for local models)
         """
         import requests
         
@@ -335,20 +374,26 @@ CRITICAL RULES:
                     
                     tool_call = json.loads(json_str)
                     if "tool" in tool_call:
-                        return None, {
+                        raw_call = {
                             "name": tool_call["tool"],
-                            "arguments": tool_call.get("arguments", {})  # Default to empty dict
+                            "arguments": tool_call.get("arguments", {})
                         }
+                        
+                        # Apply smart corrections for local models
+                        from local_model_corrections import correct_tool_call
+                        corrected_call = correct_tool_call(raw_call)
+                        
+                        return None, corrected_call, None  # No usage info for Ollama
             except (json.JSONDecodeError, ValueError):
                 pass
             
             # Otherwise return as text
-            return content, None
+            return content, None, None
             
         except Exception as e:
             import sys
             print(f"Ollama API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None
+            return f"Error: {str(e)}", None, None
     
     def _format_tools_for_prompt(self, tools: List[Dict[str, Any]]) -> str:
         """Format tools as text for Ollama prompt."""

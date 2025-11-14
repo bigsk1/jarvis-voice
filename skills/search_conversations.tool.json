@@ -1,0 +1,20 @@
+{
+  "name": "search_conversations",
+  "description": "Search previous conversation history to see what questions were asked, what tools were used, and what tasks were completed in past sessions. Useful for recalling what you've done before or tracking tool usage patterns.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "What to search for in previous conversations (searches both user queries and responses)"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of conversations to return (default: 10)",
+        "default": 10
+      }
+    },
+    "required": ["query"]
+  }
+}
+

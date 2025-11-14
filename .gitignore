@@ -4,6 +4,7 @@
 config/*.env
 *.env
 !config/*.env.template
+!config/*.env.example
 *.key
 *.pem
 
@@ -49,6 +50,14 @@ tmp/
 Thumbs.db
 
 data/*.db
+data/*.db.*
+data/*.db-*
+*.db.backup
+*.db.backup-*
+*.sqlite
+*.sqlite.*
+*.sqlite-*
+
 # Cursor chat history files
 cursor_*.md
 *.cursor.*

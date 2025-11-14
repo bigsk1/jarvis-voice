@@ -31,14 +31,24 @@ def main():
             print(json.dumps(result))
             return result
         
-        # Store in memory
+        # Store in memory with metadata
+        from datetime import datetime
         db = get_memory_db()
+        
+        # Build metadata
+        metadata = {
+            "created_by": "user_conversation",
+            "timestamp": datetime.now().isoformat(),
+            "tool": "remember"
+        }
+        
         memory_id = db.remember(
             category=category,
             key=key,
             value=value,
             importance=importance,
-            source="user_conversation"
+            source="user_conversation",
+            metadata=metadata
         )
         db.close()
         

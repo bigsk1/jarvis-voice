@@ -71,43 +71,22 @@ class MemoryDB:
             )
         """)
         
-        # Learned patterns - what tools work for what queries
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tool_patterns (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                query_pattern TEXT NOT NULL,
-                tool_name TEXT NOT NULL,
-                args_template TEXT,
-                success_count INTEGER DEFAULT 0,
-                failure_count INTEGER DEFAULT 0,
-                avg_duration_ms REAL,
-                last_used TIMESTAMP,
-                confidence REAL DEFAULT 0.5
-            )
-        """)
-        
-        # User preferences
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS preferences (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        # Note: tool_patterns and preferences tables removed (not used)
+        # Memory now uses metadata field in knowledge_base for flexible data
         
         # Create indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge_base(category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_key ON knowledge_base(key)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_patterns_query ON tool_patterns(query_pattern)")
         
         self.conn.commit()
     
     # ========== Knowledge Base Operations ==========
     
-    def remember(self, category: str, key: str, value: str, importance: int = 5, source: str = None, generate_embedding: bool = True) -> int:
+    def remember(self, category: str, key: str, value: str, importance: int = 5, source: str = None, 
+                 generate_embedding: bool = True, metadata: dict = None) -> int:
         """
-        Store a fact in memory with optional semantic embedding.
+        Store a fact in memory with optional semantic embedding and metadata.
         
         Args:
             category: Type of information (contact, fact, preference, etc.)
@@ -116,6 +95,7 @@ class MemoryDB:
             importance: 1-10 scale (higher = more important)
             source: Where this came from
             generate_embedding: Whether to generate vector embedding for semantic search
+            metadata: Optional dict with tags, expiration, related info
             
         Returns:
             ID of the stored memory
@@ -136,6 +116,9 @@ class MemoryDB:
                 # Silently fail - memory still gets stored without embedding
                 pass
         
+        # Serialize metadata to JSON string
+        metadata_json = json.dumps(metadata) if metadata else None
+        
         # Check if similar memory exists
         existing = cursor.execute(
             "SELECT id FROM knowledge_base WHERE category = ? AND key = ?",
@@ -146,17 +129,17 @@ class MemoryDB:
             # Update existing memory
             cursor.execute("""
                 UPDATE knowledge_base 
-                SET value = ?, importance = ?, updated_at = CURRENT_TIMESTAMP, source = ?, embedding = ?
+                SET value = ?, importance = ?, updated_at = CURRENT_TIMESTAMP, source = ?, embedding = ?, metadata = ?
                 WHERE id = ?
-            """, (value, importance, source, embedding_blob, existing['id']))
+            """, (value, importance, source, embedding_blob, metadata_json, existing['id']))
             self.conn.commit()
             return existing['id']
         else:
             # Insert new memory
             cursor.execute("""
-                INSERT INTO knowledge_base (category, key, value, importance, source, embedding)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (category, key, value, importance, source, embedding_blob))
+                INSERT INTO knowledge_base (category, key, value, importance, source, embedding, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (category, key, value, importance, source, embedding_blob, metadata_json))
             self.conn.commit()
             return cursor.lastrowid
     
@@ -310,16 +293,30 @@ class MemoryDB:
     
     def log_conversation(self, user_query: str, jarvis_response: str, 
                         tools_used: List[str] = None, session_id: str = None,
-                        success: bool = True) -> int:
-        """Log a conversation exchange."""
+                        success: bool = True, metadata: dict = None) -> int:
+        """
+        Log a conversation exchange with optional metadata.
+        
+        Args:
+            user_query: What the user asked
+            jarvis_response: How Jarvis responded
+            tools_used: List of tools executed
+            session_id: Session identifier
+            success: Whether the task succeeded
+            metadata: Optional dict with model, timing, cost, etc.
+        
+        Returns:
+            Conversation ID
+        """
         cursor = self.conn.cursor()
         
         tools_json = json.dumps(tools_used) if tools_used else None
+        metadata_json = json.dumps(metadata) if metadata else None
         
         cursor.execute("""
-            INSERT INTO conversations (user_query, jarvis_response, tools_used, session_id, success)
-            VALUES (?, ?, ?, ?, ?)
-        """, (user_query, jarvis_response, tools_json, session_id, success))
+            INSERT INTO conversations (user_query, jarvis_response, tools_used, session_id, success, metadata)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_query, jarvis_response, tools_json, session_id, success, metadata_json))
         
         self.conn.commit()
         return cursor.lastrowid
