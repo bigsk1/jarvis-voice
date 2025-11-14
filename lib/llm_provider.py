@@ -33,6 +33,20 @@ class LLMProvider(ABC):
             - tool_call: {"name": "tool_name", "arguments": {...}} if tool called
         """
         pass
+    
+    @abstractmethod
+    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+        """
+        Simple chat without tool calling.
+        
+        Args:
+            message: User message
+            system_prompt: Optional system prompt
+            
+        Returns:
+            Text response from LLM
+        """
+        pass
 
 
 class OpenAIProvider(LLMProvider):
@@ -47,6 +61,24 @@ class OpenAIProvider(LLMProvider):
         
         self.client = OpenAI(api_key=api_key)
         self.model = model
+    
+    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+        """Simple chat without tools."""
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            import sys
+            print(f"OpenAI API error: {e}", file=sys.stderr)
+            return f"Error: {str(e)}"
     
     def chat_with_tools(
         self,
@@ -100,6 +132,27 @@ class AnthropicProvider(LLMProvider):
         
         self.client = Anthropic(api_key=api_key)
         self.model = model
+    
+    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+        """Simple chat without tools."""
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                system=system_prompt or "You are a helpful AI assistant.",
+                messages=[{"role": "user", "content": message}]
+            )
+            
+            # Extract text from response
+            for block in response.content:
+                if block.type == "text":
+                    return block.text
+            
+            return "No response from Claude"
+        except Exception as e:
+            import sys
+            print(f"Anthropic API error: {e}", file=sys.stderr)
+            return f"Error: {str(e)}"
     
     def chat_with_tools(
         self,
@@ -155,6 +208,40 @@ class OllamaProvider(LLMProvider):
         """Initialize Ollama provider."""
         self.base_url = base_url.rstrip('/')
         self.model = model
+    
+    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+        """Simple chat without tools."""
+        import requests
+        
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+        
+        try:
+            request_data = {
+                "model": self.model,
+                "messages": messages,
+                "stream": False
+            }
+            
+            # Extended context for capable models
+            if any(m in self.model.lower() for m in ['qwen', 'mistral-nemo']):
+                request_data["options"] = {"num_ctx": 8192}
+            
+            response = requests.post(
+                f"{self.base_url}/api/chat",
+                json=request_data,
+                timeout=90
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            return result["message"]["content"]
+        except Exception as e:
+            import sys
+            print(f"Ollama API error: {e}", file=sys.stderr)
+            return f"Error: {str(e)}"
     
     def chat_with_tools(
         self,
@@ -216,7 +303,7 @@ CRITICAL RULES:
             response = requests.post(
                 f"{self.base_url}/api/chat",
                 json=request_data,
-                timeout=60  # 60s for local models (slower than cloud APIs)
+                timeout=90  # 60s for local models (slower than cloud APIs) bumped to 90 as was getting timeouts still-in progress testing..
             )
             response.raise_for_status()
             

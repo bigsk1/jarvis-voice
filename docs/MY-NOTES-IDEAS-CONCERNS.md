@@ -37,10 +37,10 @@ test orchestrator local for time tool
 cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./orchestrator/orchestrator_v2.py local "What time is it?"
 
 test orchestrator cloud using a specific tool send_webhook
-cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./orchestrator/orchestrator_v2.py cloud "use send_webhook to send a test webhook to https://n8n-roscossscggc4sogsw4s0gck.bigsk1.com/webhook/webhook-logger and short summary of the response"
+cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./orchestrator/orchestrator_v2.py cloud "use send_webhook to send a test webhook to https://n8n-roscossscggc4sogsw4s0gck.bigsk1.com/webhook/webhook-logger and short summary of the response and save the webhook url to memory"
 
 test orchestrator local using a specific tool send_webhook
-cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./orchestrator/orchestrator_v2.py local "use send_webhook to send a test webhook to https://n8n-roscossscggc4sogsw4s0gck.bigsk1.com/webhook/webhook-logger and short summary of the response"
+cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./orchestrator/orchestrator_v2.py local "use send_webhook to send a test webhook to https://n8n-roscossscggc4sogsw4s0gck.bigsk1.com/webhook/webhook-logger and short summary of the response and save the webhook url to memory"
 
 test orchestrator cloud using tool search_memory
 cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./orchestrator/orchestrator_v2.py cloud "search memory for the last webhook sent and it's url"

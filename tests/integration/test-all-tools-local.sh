@@ -51,7 +51,7 @@ test_tool() {
 
 echo "========================================="
 echo "  Jarvis Local Tool Testing (Ollama)"
-echo "  Model: mistral-nemo"
+echo "  Model: $OLLAMA_MODEL"
 echo "========================================="
 
 # Load local config to get OLLAMA_BASE_URL
