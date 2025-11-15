@@ -235,9 +235,13 @@ class AnthropicProvider(LLMProvider):
                     tools_with_cache.append(tool)
             
             # Add thinking parameter if enabled and supported
+            # Note: max_tokens must be > thinking.budget_tokens (Anthropic requirement)
+            # Base: 1024 for normal responses, 8192 for thinking mode (generous for complex tasks)
+            base_max_tokens = 1024
+            
             api_params = {
                 "model": self.model,
-                "max_tokens": 1024,
+                "max_tokens": base_max_tokens,
                 "system": system_blocks,
                 "messages": messages,
                 "tools": tools_with_cache
@@ -250,14 +254,36 @@ class AnthropicProvider(LLMProvider):
                     thinking_config = get_thinking_config("anthropic", self.model)
                     if thinking_config:
                         api_params["thinking"] = thinking_config
+                        # Increase max_tokens to accommodate thinking budget + comprehensive response
+                        # max_tokens must be > budget_tokens (Anthropic API requirement)
+                        # Formula: thinking_budget + generous_response_space
+                        thinking_budget = thinking_config.get("budget_tokens", 2000)
+                        api_params["max_tokens"] = thinking_budget + 6000  # 2000 thinking + 6000 response
+                        
+                        if os.environ.get('JARVIS_DEBUG'):
+                            import sys
+                            print(f"DEBUG: Thinking enabled! Config: {thinking_config}", file=sys.stderr)
+                            print(f"DEBUG: max_tokens set to: {api_params['max_tokens']}", file=sys.stderr)
             
             response = self.client.messages.create(**api_params)
+            
+            # Debug: Show what we got back
+            if os.environ.get('JARVIS_DEBUG'):
+                import sys
+                print(f"DEBUG: Response has thinking attr: {hasattr(response, 'thinking')}", file=sys.stderr)
+                if hasattr(response, 'thinking'):
+                    print(f"DEBUG: Thinking content: {response.thinking}", file=sys.stderr)
+                print(f"DEBUG: Response type: {type(response)}", file=sys.stderr)
+                print(f"DEBUG: Response dir: {[x for x in dir(response) if not x.startswith('_')]}", file=sys.stderr)
             
             # Extract thinking if present
             thinking_text = None
             if enable_thinking:
                 from thinking import extract_thinking
                 thinking_text = extract_thinking(response, "anthropic")
+                if os.environ.get('JARVIS_DEBUG'):
+                    import sys
+                    print(f"DEBUG: Extracted thinking text: {thinking_text[:100] if thinking_text else 'None'}", file=sys.stderr)
             
             # Extract usage info with cache metrics
             usage_info = None

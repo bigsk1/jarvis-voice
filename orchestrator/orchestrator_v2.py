@@ -661,7 +661,6 @@ def main():
         
         # Display thinking if present and not in JSON mode
         if result.get("thinking") and debug_thinking:
-            import sys
             sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
             from thinking import format_thinking_display
             print(format_thinking_display(result["thinking"]))

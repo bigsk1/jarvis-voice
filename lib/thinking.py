@@ -121,7 +121,16 @@ def extract_thinking(response: Any, provider: str) -> Optional[str]:
     """
     try:
         if provider == "anthropic":
-            # Anthropic returns thinking in response.thinking
+            # Anthropic returns thinking as a content block with type="thinking"
+            if hasattr(response, 'content'):
+                for block in response.content:
+                    if hasattr(block, 'type') and block.type == 'thinking':
+                        # Extract text from thinking block
+                        if hasattr(block, 'thinking'):
+                            return block.thinking
+                        elif hasattr(block, 'text'):
+                            return block.text
+            # Fallback: Check if thinking is a direct attribute (older API format)
             if hasattr(response, 'thinking') and response.thinking:
                 return response.thinking[0].text
         
