@@ -9,7 +9,7 @@
 
 ### Run Comprehensive Test Suite
 ```bash
-./test-thinking-mode.sh
+./tests/integration/test-thinking-mode.sh
 ```
 
 This tests:
@@ -324,5 +324,5 @@ python3 -c "from thinking import THINKING_MODELS; import json; print(json.dumps(
 
 ---
 
-**Ready to test? Run `./test-thinking-mode.sh`** 🎯
+**Ready to test? Run `./tests/integration/test-thinking-mode.sh`** 🎯
 

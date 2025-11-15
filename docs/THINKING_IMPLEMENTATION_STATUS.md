@@ -52,8 +52,8 @@
 - ✅ Graceful fallback for other models
 
 ### 4. Testing Ready ✅
-- ✅ Comprehensive test suite: `./test-thinking-mode.sh`
-- ✅ Manual testing guide: `THINKING_MODE_TESTING.md`
+- ✅ Comprehensive test suite: `tests/integration/test-thinking-mode.sh`
+- ✅ Manual testing guide: `docs/THINKING_MODE_TESTING.md`
 - ✅ All scenarios covered: cloud/local, with/without thinking
 - ✅ Logs directory created: `logs/thinking/`
 
@@ -61,11 +61,11 @@
 
 ### Quick Test (Automated)
 ```bash
-./test-thinking-mode.sh
+./tests/integration/test-thinking-mode.sh
 ```
 
 ### Manual Testing
-See `THINKING_MODE_TESTING.md` for comprehensive manual test scenarios.
+See `docs/THINKING_MODE_TESTING.md` for comprehensive manual test scenarios.
 
 ### Quick Smoke Tests
 ```bash
@@ -127,13 +127,16 @@ export JARVIS_DEBUG_THINKING=true
 ## 📁 Files Changed
 
 ```
-lib/thinking.py                           NEW (379 lines)
+lib/thinking.py                           NEW (315 lines)
 lib/llm_provider.py                       MODIFIED (signature changes)
-orchestrator/orchestrator_v2.py           MODIFIED (flag parsing)
-orchestrator/router_v2.py                 NEEDS UPDATE
+orchestrator/orchestrator_v2.py           MODIFIED (flag + display)
+orchestrator/router_v2.py                 MODIFIED (thinking integration)
+tests/integration/test-thinking-mode.sh   NEW (test suite)
 docs/EXTENDED_THINKING.md                 NEW
 docs/MEMORY_SYSTEM_TUNING.md              UPDATED
-THINKING_IMPLEMENTATION_STATUS.md         NEW (this file)
+docs/THINKING_IMPLEMENTATION_STATUS.md    NEW (this file)
+docs/THINKING_MODE_TESTING.md             NEW
+docs/THINKING_MODE_COMPLETE.md            NEW
 ```
 
 ## 🧪 Test Checklist

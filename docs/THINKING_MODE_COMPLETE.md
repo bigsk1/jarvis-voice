@@ -97,7 +97,7 @@ JARVIS_DEBUG_THINKING=true
 
 ### Automated Comprehensive Test
 ```bash
-./test-thinking-mode.sh
+./tests/integration/test-thinking-mode.sh
 ```
 
 **Tests**:
@@ -240,16 +240,17 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq 'select(.decision.tool 
 ## 📁 Files Changed (Summary)
 
 ```
-lib/thinking.py                    NEW (308 lines)
-lib/llm_provider.py                UPDATED (signature changes)
-orchestrator/router_v2.py          UPDATED (thinking integration)
-orchestrator/orchestrator_v2.py    UPDATED (flag + display)
-test-thinking-mode.sh              NEW (comprehensive tests)
-logs/thinking/                     NEW (log directory)
-THINKING_MODE_TESTING.md           NEW (testing guide)
-THINKING_IMPLEMENTATION_STATUS.md  UPDATED (100% complete)
-docs/EXTENDED_THINKING.md          NEW (analysis)
-docs/MEMORY_SYSTEM_TUNING.md       UPDATED (real-world results)
+lib/thinking.py                              NEW (315 lines)
+lib/llm_provider.py                          UPDATED (signature changes)
+orchestrator/router_v2.py                    UPDATED (thinking integration)
+orchestrator/orchestrator_v2.py              UPDATED (flag + display)
+tests/integration/test-thinking-mode.sh      NEW (comprehensive tests)
+logs/thinking/                               NEW (log directory)
+docs/THINKING_MODE_TESTING.md                NEW (testing guide)
+docs/THINKING_IMPLEMENTATION_STATUS.md       UPDATED (100% complete)
+docs/THINKING_MODE_COMPLETE.md               NEW (this file)
+docs/EXTENDED_THINKING.md                    NEW (analysis)
+docs/MEMORY_SYSTEM_TUNING.md                 UPDATED (real-world results)
 ```
 
 ---
@@ -272,7 +273,7 @@ docs/MEMORY_SYSTEM_TUNING.md       UPDATED (real-world results)
 
 ### 1. Run Comprehensive Test
 ```bash
-./test-thinking-mode.sh
+./tests/integration/test-thinking-mode.sh
 ```
 
 ### 2. Test Your Grey Area Scenario
@@ -328,8 +329,9 @@ chmod 755 logs/thinking/
 
 ## 📚 Documentation
 
-- **`THINKING_MODE_TESTING.md`** - Comprehensive testing guide
-- **`THINKING_IMPLEMENTATION_STATUS.md`** - Implementation details
+- **`docs/THINKING_MODE_TESTING.md`** - Comprehensive testing guide
+- **`docs/THINKING_IMPLEMENTATION_STATUS.md`** - Implementation details
+- **`docs/THINKING_MODE_COMPLETE.md`** - This file (summary)
 - **`docs/EXTENDED_THINKING.md`** - Thinking mode analysis
 - **`docs/MEMORY_SYSTEM_TUNING.md`** - Real-world test results
 
@@ -359,7 +361,7 @@ chmod 755 logs/thinking/
 
 Start with:
 ```bash
-./test-thinking-mode.sh
+./tests/integration/test-thinking-mode.sh
 ```
 
 Then test your grey area scenario:
@@ -371,7 +373,7 @@ Then test your grey area scenario:
 
 ---
 
-**Questions?** Check `THINKING_MODE_TESTING.md` for detailed scenarios.
+**Questions?** Check `docs/THINKING_MODE_TESTING.md` for detailed scenarios.
 
 **Ready to merge?** All tests passing? Merge to main!
 
