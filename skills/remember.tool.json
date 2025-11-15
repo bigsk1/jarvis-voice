@@ -6,8 +6,8 @@
     "properties": {
       "category": {
         "type": "string",
-        "enum": ["contact", "personal", "preference", "location", "fact", "other"],
-        "description": "Type of information being stored"
+        "enum": ["contact", "personal", "preference", "location", "technical", "network", "credentials", "project", "system", "fact"],
+        "description": "Type of information: 'contact'=people (doctor, dentist), 'personal'=birthday/family, 'preference'=favorites/settings, 'location'=URLs/endpoints/addresses, 'technical'=commands/configs/solutions, 'network'=IPs/hosts, 'credentials'=keys/passwords, 'project'=repos/paths/build commands, 'system'=internal tracking, 'fact'=general info"
       },
       "key": {
         "type": "string",
@@ -19,7 +19,7 @@
       },
       "importance": {
         "type": "integer",
-        "description": "How important this is (1-10, where 10 is critical)",
+        "description": "How important this is (1-10): Critical personal data (birthday, family, health) = 9-10, Important preferences/projects = 7-8, Useful technical knowledge = 5-6, Temporary/test data = 3-4, Ephemeral data = 1-2. Default to 7 if unsure.",
         "minimum": 1,
         "maximum": 10
       }
