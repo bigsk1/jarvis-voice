@@ -137,7 +137,14 @@ def extract_thinking(response: Any, provider: str) -> Optional[str]:
             # Look for thinking tags or patterns
             if hasattr(response, 'message') and hasattr(response.message, 'content'):
                 content = response.message.content
-                # Check for <thinking> tags
+                
+                # DeepSeek R1 uses <think> tags
+                if '<think>' in content and '</think>' in content:
+                    start = content.find('<think>') + len('<think>')
+                    end = content.find('</think>')
+                    return content[start:end].strip()
+                
+                # Generic <thinking> tags (other models)
                 if '<thinking>' in content and '</thinking>' in content:
                     start = content.find('<thinking>') + len('<thinking>')
                     end = content.find('</thinking>')

@@ -262,15 +262,23 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         messages = [{"role": "user", "content": transcript}]
         
         try:
+            # Check if thinking mode is enabled
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+            from thinking import should_enable_thinking
+            enable_thinking = should_enable_thinking()
+            
             if os.environ.get('JARVIS_DEBUG'):
-                print(f"DEBUG: Router calling provider.chat_with_tools", file=sys.stderr)
-            text_response, tool_call, usage_info = self.provider.chat_with_tools(
+                print(f"DEBUG: Router calling provider.chat_with_tools (thinking={enable_thinking})", file=sys.stderr)
+            
+            text_response, tool_call, usage_info, thinking = self.provider.chat_with_tools(
                 messages=messages,
                 tools=tools,
-                system_prompt=self.system_prompt
+                system_prompt=self.system_prompt,
+                enable_thinking=enable_thinking
             )
+            
             if os.environ.get('JARVIS_DEBUG'):
-                print(f"DEBUG: Provider returned: tool_call={tool_call is not None}, usage={usage_info is not None}", file=sys.stderr)
+                print(f"DEBUG: Provider returned: tool_call={tool_call is not None}, usage={usage_info is not None}, thinking={thinking is not None}", file=sys.stderr)
             
             # Tool was called
             if tool_call:
@@ -282,6 +290,28 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
                     "usage_info": usage_info  # Include token/cost data
                 }
                 
+                # Add thinking if present
+                if thinking:
+                    response["thinking"] = thinking
+                    
+                    # Log thinking for analysis
+                    try:
+                        from thinking import log_thinking
+                        log_thinking(
+                            query=transcript,
+                            thinking=thinking,
+                            decision={
+                                "tool": tool_call["name"],
+                                "arguments": tool_call["arguments"],
+                                "saved": tool_call["name"] == "remember"
+                            },
+                            provider=getattr(self, 'provider_type', 'unknown'),
+                            model=getattr(self, 'model_name', 'unknown')
+                        )
+                    except Exception as e:
+                        if os.environ.get('JARVIS_DEBUG'):
+                            print(f"DEBUG: Failed to log thinking: {e}", file=sys.stderr)
+                
                 # Detect OpenCode agent mode if using opencode tool
                 if response.get("tool_name") == "opencode":
                     response = self._detect_opencode_mode(transcript, response)
@@ -290,12 +320,36 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
             
             # Direct text response (Q&A)
             else:
-                return {
+                response = {
                     "intent": "qa",
                     "text_response": text_response or "I'm not sure how to respond to that.",
                     "confidence": 1.0,
                     "usage_info": usage_info  # Include token/cost data
                 }
+                
+                # Add thinking if present
+                if thinking:
+                    response["thinking"] = thinking
+                    
+                    # Log thinking for analysis
+                    try:
+                        from thinking import log_thinking
+                        log_thinking(
+                            query=transcript,
+                            thinking=thinking,
+                            decision={
+                                "tool": "none",
+                                "response_type": "qa",
+                                "saved": False
+                            },
+                            provider=getattr(self, 'provider_type', 'unknown'),
+                            model=getattr(self, 'model_name', 'unknown')
+                        )
+                    except Exception as e:
+                        if os.environ.get('JARVIS_DEBUG'):
+                            print(f"DEBUG: Failed to log thinking: {e}", file=sys.stderr)
+                
+                return response
         
         except Exception as e:
             print(f"❌ Router error: {e}")

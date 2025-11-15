@@ -82,6 +82,9 @@ class Orchestrator:
             "cache_savings_usd": 0.0
         }
         
+        # Track thinking from first turn (for display)
+        first_thinking = None
+        
         # Multi-turn loop
         for turn_num in range(max_turns):
             # Build context for this turn
@@ -115,6 +118,10 @@ class Orchestrator:
                     total_usage["cache_read_tokens"] += usage["cache_read_tokens"]
                 if usage.get("cache_savings_usd"):
                     total_usage["cache_savings_usd"] += usage["cache_savings_usd"]
+            
+            # Capture thinking from first turn (for display)
+            if turn_num == 0 and route.get("thinking") and not first_thinking:
+                first_thinking = route["thinking"]
             
             # Handle tool execution
             if route["intent"] == "tool":
@@ -224,6 +231,10 @@ class Orchestrator:
                 # Add token info to response if available (cloud only)
                 if token_info:
                     response["usage"] = token_info
+                
+                # Add thinking to response if available
+                if first_thinking:
+                    response["thinking"] = first_thinking
                 
                 return response
             
@@ -647,6 +658,14 @@ def main():
     else:
         # Pretty output for human viewing
         print("=" * 60)
+        
+        # Display thinking if present and not in JSON mode
+        if result.get("thinking") and debug_thinking:
+            import sys
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+            from thinking import format_thinking_display
+            print(format_thinking_display(result["thinking"]))
+        
         print(f"🗣️  Speech Output: {result['speech']}")
         print(f"✓  Status: {'✅ OK' if result['ok'] else '❌ Failed'}")
         
