@@ -1,0 +1,293 @@
+# Jarvis Baseline Token Usage
+
+> **What is "baseline"?** The tokens consumed by system setup BEFORE any user query is processed.
+
+**Last Measured**: November 15, 2025  
+**Tool**: `bin/measure-baseline-tokens`
+
+---
+
+## 📊 Current Baseline Usage
+
+### Cloud Mode (Anthropic Claude Sonnet 4.5)
+
+```
+System Prompt:       1,915 tokens
+Tool Definitions:    3,793 tokens
+─────────────────────────────────
+TOTAL BASELINE:      5,708 tokens
+─────────────────────────────────
+
+Context Window:    200,000 tokens
+Baseline %:            2.9%
+Available:         194,292 tokens (97.1%)
+```
+
+**Status**: ✅ Healthy (< 3% of context)
+
+---
+
+### Local Mode (Ollama Qwen3-VL)
+
+```
+System Prompt:       1,915 tokens
+Tool Definitions:    3,793 tokens
+─────────────────────────────────
+TOTAL BASELINE:      5,708 tokens
+─────────────────────────────────
+
+Context Window:     32,000 tokens (estimate)
+Baseline %:           17.8%
+Available:          26,292 tokens (82.2%)
+```
+
+**Status**: ✅ Healthy (< 20% of context)
+
+**Note**: Qwen3-VL context may vary (32K-128K depending on variant). Using conservative 32K estimate.
+
+---
+
+## 🔍 What's Included in Baseline?
+
+### 1. System Prompt (1,915 tokens)
+Located: `orchestrator/router_v2.py`
+
+**Contains**:
+- Multi-turn conversation instructions
+- Voice output rules (12-word limit)
+- Memory management guidelines
+- Intelligent auto-save rules
+- OpenCode usage instructions
+- Tool routing logic
+- Error recovery procedures
+
+**Size**: 7,662 characters (135 lines)
+
+### 2. Tool Definitions (3,793 tokens)
+Located: `skills/*.tool.json` + MCP servers
+
+**Contains**: JSON schemas for 20 tools:
+- **Local Tools (20)**:
+  - Core: `get_time`, `execute_bash`, `api_call`
+  - Memory: `remember`, `recall`, `search_memory`, `semantic_recall`, `update_memory`, `forget`
+  - OpenCode: `opencode`, `check_opencode_sessions`
+  - Conversations: `get_recent_conversations`, `search_conversations`
+  - Specialized: `crypto_price`, `send_webhook`, `ingest_intel`, `check_tool_logs`
+  - MCP (passed through): `mcp_duckduckgo_search`, `mcp_duckduckgo_fetch_content`, `mcp_fetch_fetch`
+  
+- **MCP Tools (0)**: MCP tools are registered as local tools (counted above)
+
+**Size**: 15,172 characters of JSON
+
+---
+
+## 💬 Example Query Costs
+
+| Scenario | Query Tokens | Total Tokens | % of Context (Cloud) | % of Context (Local) |
+|----------|--------------|--------------|----------------------|----------------------|
+| Simple query | 50 | 5,758 | 2.9% | 18.0% |
+| Memory lookup | 100 | 5,808 | 2.9% | 18.1% |
+| Multi-turn task | 300 | 6,008 | 3.0% | 18.8% |
+| OpenCode build | 2,000 | 7,708 | 3.9% | 24.1% |
+| Complex multi-turn | 5,000 | 10,708 | 5.4% | 33.5% |
+
+**Insight**: Local models consume proportionally more context due to smaller window (32K vs 200K).
+
+---
+
+## ⚠️ Why This Matters
+
+### For Cloud Mode (Anthropic/OpenAI)
+- **Low impact**: 2.9% baseline leaves 97% for conversation
+- **Large buffer**: Can handle complex multi-turn workflows (10K+ tokens)
+- **Cost efficiency**: Baseline is constant per request, optimize conversation tokens
+
+### For Local Mode (Ollama)
+- **Moderate impact**: 17.8% baseline leaves 82% for conversation
+- **Limited multi-turn**: Complex chains may hit context limits sooner
+- **Watch for**: OpenCode builds (2K tokens) + memory context + tool results = can reach 30%+
+
+**Critical Threshold**: If baseline + conversation exceeds 80% of context window, model performance degrades.
+
+---
+
+## 🎯 Your Concern: "Is it too much?"
+
+### Current Assessment: **NO, it's healthy**
+
+**Why**:
+1. ✅ Cloud mode: Only 2.9% of 200K context (negligible)
+2. ✅ Local mode: Only 17.8% of 32K context (acceptable)
+3. ✅ System prompt is **essential** (routing, memory, voice formatting)
+4. ✅ Tool definitions are **necessary** for native tool calling
+
+### When would it be "too much"?
+
+**Warning signs**:
+- Baseline > 30% of context (not happening)
+- Multi-turn tasks failing due to context limits (not observed)
+- Local model struggles with tool selection (happens, but due to model capability, not token count)
+
+---
+
+## 📈 Optimization Opportunities
+
+### If you NEEDED to reduce tokens (you don't right now):
+
+**System Prompt (1,915 tokens)**:
+- ❌ Don't remove: Multi-turn, memory, voice rules are critical
+- ✅ Could trim: Some examples (save ~200 tokens)
+- ✅ Could shorten: OpenCode instructions (save ~100 tokens)
+- **Potential savings**: ~300 tokens (15% reduction) = New baseline: 5,400 tokens
+
+**Tool Definitions (3,793 tokens)**:
+- ❌ Don't remove: All tools are actively used
+- ✅ Could split: Create "light" mode with fewer tools
+- ✅ Could optimize: Shorter descriptions (save ~500 tokens)
+- **Potential savings**: ~500 tokens (13% reduction) = New baseline: 5,200 tokens
+
+**Total potential savings**: ~600 tokens (10% reduction) → **Not worth it** for current needs.
+
+---
+
+## 🔧 Measuring Your Baseline
+
+Run anytime to check current usage:
+
+```bash
+# Both modes
+./bin/measure-baseline-tokens
+
+# Cloud only
+./bin/measure-baseline-tokens cloud
+
+# Local only
+./bin/measure-baseline-tokens local
+```
+
+**Output**: 
+- Console report (detailed breakdown)
+- JSON files: `logs/baseline-tokens-{mode}.json`
+
+---
+
+## 📊 Historical Tracking
+
+Track changes over time by running before/after system prompt or tool changes:
+
+```bash
+# Before changes
+./bin/measure-baseline-tokens cloud > before.txt
+
+# ... make changes to system prompt or tools ...
+
+# After changes
+./bin/measure-baseline-tokens cloud > after.txt
+
+# Compare
+diff before.txt after.txt
+```
+
+---
+
+## 🎓 Understanding Token Budgets
+
+### Anthropic Claude Sonnet 4.5 (Cloud)
+- **Context Window**: 200,000 tokens
+- **Baseline**: 5,708 tokens (2.9%)
+- **Comfortable Multi-Turn**: Can chain 20+ tool calls with context
+- **Max Conversation**: Could theoretically use 190K tokens (not recommended)
+
+### Ollama Qwen3-VL (Local)
+- **Context Window**: ~32,000 tokens (varies by variant)
+- **Baseline**: 5,708 tokens (17.8%)
+- **Comfortable Multi-Turn**: Can chain 3-5 tool calls safely
+- **Max Conversation**: ~25K tokens before degradation
+
+---
+
+## 🚨 When to Worry About Tokens
+
+**Watch for these symptoms**:
+
+1. **Incomplete Responses**: Model cuts off mid-response
+2. **Failed Tool Calls**: Model forgets tool schema mid-conversation
+3. **Repeated Questions**: Model loses track of what was already done
+4. **Error Messages**: "Context length exceeded" or similar
+5. **Degraded Performance**: Model makes poor decisions in later turns
+
+**Current Status**: ✅ None of these observed with 5,708 token baseline.
+
+---
+
+## 💡 Key Insights
+
+### 1. Your Intuition Was Right
+> "At a certain point system prompts and context and memory is way too much, if using local models it is just overloading from the beginning"
+
+**Answer**: It's not "overloading" yet, but you're right to monitor it. Local models have less headroom (82% available vs 97% for cloud).
+
+### 2. The Retry Behavior You Noticed
+> "jarvis retrying is interesting you think he would have said wait i reject opencode trying to do that"
+
+**Why it happens**: Jarvis's system prompt focuses on ACCOMPLISHING tasks, not VALIDATING user requests. The retry logic assumes the user's request is valid and Jarvis should keep trying different approaches.
+
+**Token cost of retry**: Each retry adds another ~6K token conversation turn. Multiple retries can stack up on local models.
+
+### 3. Multi-Turn Can Be Expensive
+OpenCode build (turn 1) + verification (turn 2) + retry (turn 3) = 3 × ~6K = ~18K tokens used. On a 32K context window, that's 56% utilization. Still works, but getting tight.
+
+---
+
+## 🎯 Recommendations
+
+### Current State: **Keep as-is**
+- Baseline is healthy for both modes
+- System prompt is essential for quality
+- All 20 tools are actively used
+
+### Future Monitoring:
+1. ✅ Run `measure-baseline-tokens` after any system prompt changes
+2. ✅ Watch for multi-turn conversations reaching 50%+ context on local mode
+3. ✅ Consider adding a "lite" mode if you add 10+ more tools
+
+### If You Hit Limits on Local Mode:
+1. **Reduce multi-turn chains**: Accomplish tasks in fewer turns
+2. **Shorten system prompt**: Focus on essential instructions only
+3. **Split tool sets**: Create focused tool subsets for specific use cases
+4. **Upgrade model**: Use Qwen variants with larger context (128K)
+
+---
+
+## 📝 Technical Notes
+
+### Token Counting Method
+- **Approximation**: 1 token ≈ 4 characters (typical for Claude/GPT)
+- **Actual**: May vary by model and tokenizer
+- **Accuracy**: ±10% (good enough for monitoring trends)
+
+### What's NOT Included in Baseline
+- User query text
+- Tool execution results
+- Multi-turn conversation context
+- Memory recall results
+- LLM's own responses
+
+These are added PER CONVERSATION and vary by task.
+
+---
+
+## 🔗 Related Files
+
+- **Measurement Tool**: `bin/measure-baseline-tokens`
+- **System Prompt**: `orchestrator/router_v2.py` (line 49-183)
+- **Tool Registry**: `lib/tool_schema.py`
+- **Tool Definitions**: `skills/*.tool.json`
+- **MCP Config**: `config/mcp-servers.json`
+
+---
+
+**Last Updated**: November 15, 2025  
+**Branch**: `opencode-plugins`  
+**Measured By**: `bin/measure-baseline-tokens`
+

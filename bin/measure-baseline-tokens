@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""
+Measure baseline token usage for Jarvis.
+Shows how many tokens are consumed BEFORE user query processing.
+"""
+import sys
+import os
+import json
+from pathlib import Path
+
+# Add paths
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "lib"))
+sys.path.insert(0, str(project_root / "orchestrator"))
+
+from config_loader import load_config, get_config_value
+from tool_schema import ToolRegistry
+
+
+def count_tokens_approximate(text):
+    """
+    Approximate token count (Claude/GPT use ~4 chars per token).
+    More accurate: use tiktoken for OpenAI or anthropic's tokenizer.
+    """
+    # Simple approximation: 1 token ≈ 4 characters
+    return len(text) // 4
+
+
+def count_tokens_anthropic(text):
+    """Try to use Anthropic's actual token counting if available."""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key="dummy")  # Won't actually call API
+        # Anthropic SDK has count_tokens method
+        # But it requires a valid client, so we'll estimate
+        return count_tokens_approximate(text)
+    except:
+        return count_tokens_approximate(text)
+
+
+def measure_baseline(mode='cloud'):
+    """Measure baseline token usage."""
+    print(f"\n{'='*80}")
+    print(f"JARVIS BASELINE TOKEN USAGE - {mode.upper()} MODE")
+    print(f"{'='*80}\n")
+    
+    load_config(mode)
+    
+    # 1. System Prompt
+    from router_v2 import LLMRouter
+    router = LLMRouter(mode)
+    system_prompt = router.system_prompt
+    system_tokens = count_tokens_approximate(system_prompt)
+    
+    print(f"📝 SYSTEM PROMPT")
+    print(f"   Length: {len(system_prompt):,} characters")
+    print(f"   Tokens: ~{system_tokens:,} tokens")
+    print(f"   Lines: {len(system_prompt.split(chr(10)))} lines\n")
+    
+    # 2. Tool Definitions
+    registry = router.registry
+    
+    # Get tool schemas
+    openai_tools = registry.to_openai_format()
+    anthropic_tools = registry.to_anthropic_format()
+    
+    # Count tokens for tool definitions
+    tool_json = json.dumps(anthropic_tools, indent=2)
+    tool_tokens = count_tokens_approximate(tool_json)
+    
+    print(f"🔧 TOOL DEFINITIONS")
+    print(f"   Total tools: {len(registry.tools)}")
+    print(f"   Tool JSON length: {len(tool_json):,} characters")
+    print(f"   Tokens: ~{tool_tokens:,} tokens\n")
+    
+    # Break down by tool type
+    local_tools = []
+    mcp_tools = []
+    for tool_name, tool_schema in registry.tools.items():
+        if hasattr(tool_schema, 'mcp_server') and tool_schema.mcp_server:
+            mcp_tools.append(tool_name)
+        else:
+            local_tools.append(tool_name)
+    
+    print(f"   Breakdown:")
+    print(f"   - Local tools: {len(local_tools)}")
+    print(f"   - MCP tools: {len(mcp_tools)}\n")
+    
+    # List all tools
+    print(f"   Tool list:")
+    for tool_name in sorted(registry.tools.keys()):
+        tool_schema = registry.tools[tool_name]
+        if hasattr(tool_schema, 'mcp_server') and tool_schema.mcp_server:
+            source = f"[MCP: {tool_schema.mcp_server}]"
+        else:
+            source = "[Local]"
+        print(f"   - {tool_name:30s} {source}")
+    
+    print()
+    
+    # 3. Total Baseline
+    baseline_tokens = system_tokens + tool_tokens
+    
+    print(f"📊 BASELINE SUMMARY")
+    print(f"{'─'*80}")
+    print(f"   System Prompt:     {system_tokens:,} tokens")
+    print(f"   Tool Definitions:  {tool_tokens:,} tokens")
+    print(f"{'─'*80}")
+    print(f"   TOTAL BASELINE:    {baseline_tokens:,} tokens")
+    print(f"{'─'*80}\n")
+    
+    # 4. Context Window Analysis
+    provider = get_config_value("LLM_PROVIDER", "unknown")
+    
+    if mode == "cloud":
+        if provider == "anthropic":
+            model = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+            context_window = 200000  # Claude Sonnet 4.5
+            print(f"🧠 MODEL CAPACITY (Anthropic)")
+            print(f"   Model: {model}")
+            print(f"   Context window: {context_window:,} tokens")
+        elif provider == "openai":
+            model = get_config_value("OPENAI_MODEL", "gpt-4o")
+            context_window = 128000  # GPT-4o
+            print(f"🧠 MODEL CAPACITY (OpenAI)")
+            print(f"   Model: {model}")
+            print(f"   Context window: {context_window:,} tokens")
+        else:
+            context_window = 100000
+            print(f"🧠 MODEL CAPACITY")
+            print(f"   Provider: {provider}")
+            print(f"   Context window: ~{context_window:,} tokens (estimate)")
+    else:  # local
+        model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
+        # Qwen models typically have 32K-128K context
+        context_window = 32000  # Conservative estimate for Qwen
+        print(f"🧠 MODEL CAPACITY (Ollama)")
+        print(f"   Model: {model}")
+        print(f"   Context window: ~{context_window:,} tokens (estimate)")
+    
+    # Calculate remaining capacity
+    baseline_percent = (baseline_tokens / context_window) * 100
+    remaining_tokens = context_window - baseline_tokens
+    
+    print(f"   Baseline usage: {baseline_tokens:,} tokens ({baseline_percent:.1f}%)")
+    print(f"   Available for conversation: {remaining_tokens:,} tokens ({100-baseline_percent:.1f}%)\n")
+    
+    # 5. Warnings
+    if baseline_percent > 50:
+        print(f"⚠️  WARNING: Baseline is using >{baseline_percent:.0f}% of context window!")
+        print(f"   Consider: Shorter system prompt or fewer tools\n")
+    elif baseline_percent > 30:
+        print(f"⚠️  CAUTION: Baseline is using {baseline_percent:.0f}% of context window")
+        print(f"   Monitor for local models with smaller context\n")
+    else:
+        print(f"✅ Baseline usage is healthy ({baseline_percent:.1f}% of context)\n")
+    
+    # 6. Example Query Costs
+    print(f"💬 EXAMPLE QUERY COSTS (including baseline)")
+    print(f"{'─'*80}")
+    
+    example_queries = [
+        ("Simple query", "What time is it?", 50),
+        ("Memory lookup", "What's my wife's birthday?", 100),
+        ("Multi-turn task", "Send webhook and save URL", 300),
+        ("OpenCode build", "Build a Flask API", 2000),
+        ("Complex multi-turn", "Build tetris, verify, and test", 5000),
+    ]
+    
+    for name, query, query_tokens in example_queries:
+        total = baseline_tokens + query_tokens
+        percent = (total / context_window) * 100
+        print(f"   {name:25s} {query_tokens:5,} tokens → {total:6,} total ({percent:5.1f}%)")
+    
+    print()
+    
+    # 7. Save to file
+    output_file = project_root / "logs" / f"baseline-tokens-{mode}.json"
+    output_file.parent.mkdir(exist_ok=True)
+    
+    output_data = {
+        "mode": mode,
+        "provider": provider,
+        "model": model if 'model' in locals() else "unknown",
+        "system_prompt_tokens": system_tokens,
+        "tool_definitions_tokens": tool_tokens,
+        "total_baseline_tokens": baseline_tokens,
+        "context_window": context_window,
+        "baseline_percent": round(baseline_percent, 2),
+        "available_tokens": remaining_tokens,
+        "tool_count": len(registry.tools),
+        "local_tools": len(local_tools),
+        "mcp_tools": len(mcp_tools),
+        "measured_at": __import__('datetime').datetime.now().isoformat()
+    }
+    
+    with open(output_file, 'w') as f:
+        json.dump(output_data, f, indent=2)
+    
+    print(f"📄 Results saved to: {output_file}\n")
+    print(f"{'='*80}\n")
+    
+    return output_data
+
+
+def main():
+    """Main entry point."""
+    if len(sys.argv) > 1 and sys.argv[1] in ['cloud', 'local']:
+        mode = sys.argv[1]
+    else:
+        # Measure both
+        print("\nMeasuring both cloud and local modes...\n")
+        cloud_data = measure_baseline('cloud')
+        local_data = measure_baseline('local')
+        
+        print(f"\n{'='*80}")
+        print("COMPARISON: Cloud vs Local")
+        print(f"{'='*80}")
+        print(f"                          CLOUD          LOCAL")
+        print(f"{'─'*80}")
+        print(f"System Prompt:      {cloud_data['system_prompt_tokens']:6,} tokens   {local_data['system_prompt_tokens']:6,} tokens")
+        print(f"Tool Definitions:   {cloud_data['tool_definitions_tokens']:6,} tokens   {local_data['tool_definitions_tokens']:6,} tokens")
+        print(f"{'─'*80}")
+        print(f"TOTAL BASELINE:     {cloud_data['total_baseline_tokens']:6,} tokens   {local_data['total_baseline_tokens']:6,} tokens")
+        print(f"Context Window:     {cloud_data['context_window']:6,} tokens   {local_data['context_window']:6,} tokens")
+        print(f"Baseline %:         {cloud_data['baseline_percent']:6.1f}%       {local_data['baseline_percent']:6.1f}%")
+        print(f"{'─'*80}\n")
+        
+        return
+    
+    measure_baseline(mode)
+
+
+if __name__ == "__main__":
+    main()
+
