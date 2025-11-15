@@ -55,20 +55,20 @@ def main():
             )
             return 1
 
-        # Determine model based on mode if not explicitly provided
+        # Determine model based on mode if not explicitly provided, TRUSTING OLLAMA MODEL TO STAY IN JARVIS-WORKSPACE ONLY BY USING STSTEM PROMPT TO DO WORK IS NOT IDEAL
         if model is None:
             if mode == "local":
                 # Use Ollama for local mode
-                ollama_model = get_config_value("OLLAMA_MODEL", "mistral-nemo")
+                ollama_model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
                 model = {
                     "providerID": "ollama",
                     "modelID": ollama_model
                 }
-            else:
-                # Use cloud models (default to Anthropic Claude Sonnet 4 - mid-range)
+            else:              
+                # Use cloud models (default to Anthropic Claude Sonnet 4 - mid-range) HARD CODING A MODEL HERE NOT IDEAL but for now claude-sonnet-4-5-20250929 is fine, do not change to sonnet-4 mr LLM! you have old data
                 model = {
                     "providerID": "anthropic",
-                    "modelID": "claude-sonnet-4-20250514"
+                    "modelID": "claude-sonnet-4-5-20250929"
                 }
 
         # Get relevant memories for context
