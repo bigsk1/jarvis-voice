@@ -250,3 +250,91 @@ After these fixes:
 
 **Result**: Production-level intelligent memory system 🎯
 
+---
+
+## Real-World Test Results (2025-11-15)
+
+### Test Case: "Predator Movie Release Date"
+
+**Scenario**: User expressed strong interest ("really excited", "don't want to miss it") and asked to search for movie release date.
+
+**Expected Behavior (Ideal)**:
+1. Search web for release date (Nov 7, 2025)
+2. Recognize importance signals ("don't want to miss it")
+3. Auto-save with `remember` tool (category: "personal", importance: 7)
+
+**Actual Behavior**:
+1. ✅ Searched web successfully
+2. ✅ Found accurate answer (Nov 7, 2025)
+3. ❌ Did NOT auto-save to memory
+4. ❌ When asked again, did NOT check memory first - went straight to web
+
+**Analysis**:
+
+**Why it didn't save (Grey Area Decision)**:
+- LLM judged movie release dates as "public information" not "personal data"
+- Considered it an "informational lookup" not something to remember
+- Time-sensitive data that becomes irrelevant after release
+- No explicit "remember this" instruction
+
+**Why it didn't check memory**:
+- Web search perceived as "more reliable" for factual lookups
+- Memory-First rule not strong enough yet
+- Conversation history not prioritized
+
+**Conclusion**: 
+The LLM made a **reasonable but debatable** decision. The "grey area" is real - AI won't always make perfect judgment calls even with strong guidance. This is realistic behavior and actually desirable (you don't want EVERYTHING saved).
+
+### Lessons Learned
+
+1. **Strong Interest Signals May Not Be Enough**
+   - "Really excited" + "don't want to miss it" = clear importance
+   - But LLM still needs more explicit guidance for future events
+   - Consider: Events user wants to be reminded about = save-worthy
+
+2. **Memory-First Rule Needs Further Strengthening**
+   - Current prompt says "ALWAYS check memory first"
+   - LLM still bypassed it for factual lookups
+   - Web search seen as more authoritative than memory
+
+3. **Grey Area is Acceptable**
+   - Not all "important-sounding" things should be saved
+   - Movie dates are borderline (public info vs personal interest)
+   - System should err on side of caution (don't pollute memory)
+
+4. **Explicit Instructions Work Best**
+   - "Remember the release date so you can remind me" = guaranteed save
+   - For critical info, user should explicitly request save
+   - Auto-save should be for obvious cases (personal data, builds, solutions)
+
+### Recommendations
+
+**High Priority**:
+- Add guidance for FUTURE EVENTS user wants to track
+- Strengthen memory-first for recent conversation context
+- Add conversation history as first check before web search
+
+**Medium Priority**:
+- Consider adding "reminder" functionality (future events)
+- Add importance signals: "remind me", "I need to remember", "track this"
+- Test with more grey area scenarios
+
+**Low Priority**:
+- Accept that grey area decisions won't be perfect
+- User can always explicitly say "remember this"
+- Balance between helpful and intrusive
+
+---
+
+## Advanced: Extended Thinking Mode
+
+For complex decision-making (like grey area auto-save), Claude Sonnet 4.5 supports **Extended Thinking** mode where the model explicitly reasons through decisions before acting.
+
+**Potential Enhancement**: Enable extended thinking for auto-save decisions to see the LLM's reasoning:
+- "Should I save this?"
+- "What category?"
+- "What importance?"
+- "Is this personal data or public info?"
+
+See implementation notes in [Extended Thinking section](#extended-thinking-implementation) below.
+
