@@ -32,7 +32,11 @@ jarvis-venv/
 
 # ===== Logs & Runtime =====
 *.log
-logs/
+logs/*
+!logs/test/
+logs/test/*.log
+logs/test/*.json
+!logs/test/README.md
 *.tmp
 .cache/
 tmp/

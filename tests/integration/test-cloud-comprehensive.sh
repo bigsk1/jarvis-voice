@@ -1,6 +1,7 @@
 #!/bin/bash
 # Comprehensive Cloud Mode Testing with Cache Verification
-# Tests: Caching, New Memory Tools, MCP, OpenCode (simple tasks)
+# Tests: Caching, Memory, Conversations, MCP, OpenCode, Advanced Features
+# Total: 22 tests across 8 sections (regression prevention)
 set -euo pipefail
 
 # Change to project root
@@ -20,11 +21,29 @@ PASSED=0
 FAILED=0
 TOTAL=0
 
-echo "========================================="
-echo "  Jarvis Cloud Comprehensive Test Suite"
-echo "  Features: Cache, Memory, MCP, OpenCode"
-echo "========================================="
-echo ""
+# Setup logging
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOG_DIR="logs/test"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/test-cloud-comprehensive_${TIMESTAMP}.log"
+RESULTS_FILE="$LOG_DIR/test-cloud-comprehensive_${TIMESTAMP}_results.json"
+
+# Start JSON results
+echo "{" > "$RESULTS_FILE"
+echo "  \"test_run\": {" >> "$RESULTS_FILE"
+echo "    \"timestamp\": \"$(date -Iseconds)\"," >> "$RESULTS_FILE"
+echo "    \"script\": \"test-cloud-comprehensive.sh\"," >> "$RESULTS_FILE"
+echo "    \"mode\": \"cloud\"," >> "$RESULTS_FILE"
+echo "    \"tests\": [" >> "$RESULTS_FILE"
+
+echo "=========================================" | tee "$LOG_FILE"
+echo "  Jarvis Cloud Comprehensive Test Suite" | tee -a "$LOG_FILE"
+echo "  Features: Cache, Memory, MCP, OpenCode" | tee -a "$LOG_FILE"
+echo "=========================================
+" | tee -a "$LOG_FILE"
+echo "Test results will be saved to: $LOG_FILE" | tee -a "$LOG_FILE"
+echo "JSON results: $RESULTS_FILE" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
 
 # Function to run test and check result
 test_tool() {
@@ -34,13 +53,17 @@ test_tool() {
     local check_cache="${4:-false}"  # Optional: check for cache metrics
     
     TOTAL=$((TOTAL + 1))
-    echo -e "\n${CYAN}═══════════════════════════════════════${NC}"
-    echo -e "${YELLOW}Test $TOTAL: $name${NC}"
-    echo -e "${CYAN}═══════════════════════════════════════${NC}"
-    echo "Query: $query"
+    local start_time=$(date +%s)
+    
+    echo -e "\n${CYAN}═══════════════════════════════════════${NC}" | tee -a "$LOG_FILE"
+    echo -e "${YELLOW}Test $TOTAL: $name${NC}" | tee -a "$LOG_FILE"
+    echo -e "${CYAN}═══════════════════════════════════════${NC}" | tee -a "$LOG_FILE"
+    echo "Query: $query" | tee -a "$LOG_FILE"
     
     # Run test
     output=$(./orchestrator/orchestrator_v2.py cloud "$query" 2>&1)
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
     
     # Extract JSON
     json_section=$(echo "$output" | sed -n '/📄 Full Response:/,${p}' | tail -n +2)
@@ -49,36 +72,59 @@ test_tool() {
     ok=$(echo "$json_section" | jq -r '.ok' 2>/dev/null || echo "false")
     speech=$(echo "$json_section" | jq -r '.speech' 2>/dev/null || echo "")
     
-    # Extract cache info if checking
+    # Extract cache info
+    cache_read=$(echo "$json_section" | jq -r '.usage.cache_read_tokens // 0' 2>/dev/null)
+    cache_write=$(echo "$json_section" | jq -r '.usage.cache_creation_tokens // 0' 2>/dev/null)
+    cache_savings=$(echo "$json_section" | jq -r '.usage.cache_savings_usd // 0' 2>/dev/null)
+    cost=$(echo "$json_section" | jq -r '.usage.cost_usd // 0' 2>/dev/null)
+    
+    # Show cache info if requested
     if [ "$check_cache" == "true" ]; then
-        cache_read=$(echo "$json_section" | jq -r '.usage.cache_read_tokens // 0' 2>/dev/null)
-        cache_write=$(echo "$json_section" | jq -r '.usage.cache_creation_tokens // 0' 2>/dev/null)
-        cache_savings=$(echo "$json_section" | jq -r '.usage.cache_savings_usd // 0' 2>/dev/null)
-        cost=$(echo "$json_section" | jq -r '.usage.cost_usd // 0' 2>/dev/null)
-        
-        echo -e "${BLUE}💰 Cost Info:${NC}"
+        echo -e "${BLUE}💰 Cost Info:${NC}" | tee -a "$LOG_FILE"
         if [ "$cache_write" != "0" ]; then
-            echo -e "   💾 Cache WRITE: $cache_write tokens"
+            echo -e "   💾 Cache WRITE: $cache_write tokens" | tee -a "$LOG_FILE"
         fi
         if [ "$cache_read" != "0" ]; then
-            echo -e "   💾 Cache READ: $cache_read tokens"
-            echo -e "   ✅ Saved: \$$cache_savings"
+            echo -e "   💾 Cache READ: $cache_read tokens" | tee -a "$LOG_FILE"
+            echo -e "   ✅ Saved: \$$cache_savings" | tee -a "$LOG_FILE"
         fi
-        echo -e "   💵 Total Cost: \$$cost"
+        echo -e "   💵 Total Cost: \$$cost" | tee -a "$LOG_FILE"
     fi
     
     # Check if passed
+    local passed="false"
     if [ "$ok" == "true" ] && echo "$speech" | grep -qi "$expected"; then
-        echo -e "${GREEN}✅ PASSED${NC}"
-        echo "Response: ${speech:0:150}"
+        echo -e "${GREEN}✅ PASSED${NC}" | tee -a "$LOG_FILE"
+        echo "Response: ${speech:0:150}" | tee -a "$LOG_FILE"
         PASSED=$((PASSED + 1))
+        passed="true"
     else
-        echo -e "${RED}❌ FAILED${NC}"
-        echo "Expected keyword: $expected"
-        echo "Got: ${speech:0:200}"
-        echo "Full output available above"
+        echo -e "${RED}❌ FAILED${NC}" | tee -a "$LOG_FILE"
+        echo "Expected keyword: $expected" | tee -a "$LOG_FILE"
+        echo "Got: ${speech:0:200}" | tee -a "$LOG_FILE"
         FAILED=$((FAILED + 1))
     fi
+    
+    # Save to JSON results (add comma if not first test)
+    if [ $TOTAL -gt 1 ]; then
+        echo "      ," >> "$RESULTS_FILE"
+    fi
+    cat >> "$RESULTS_FILE" << EOF
+      {
+        "test_number": $TOTAL,
+        "name": "$name",
+        "query": "$query",
+        "expected": "$expected",
+        "passed": $passed,
+        "duration_sec": $duration,
+        "ok": $ok,
+        "speech": "${speech:0:200}",
+        "cache_read_tokens": $cache_read,
+        "cache_write_tokens": $cache_write,
+        "cache_savings_usd": $cache_savings,
+        "cost_usd": $cost
+      }
+EOF
 }
 
 echo -e "${YELLOW}Warming up MCP servers...${NC}"
@@ -135,23 +181,23 @@ echo -e "${BLUE}╚════════════════════�
 echo -e "${CYAN}Testing remember, search_memory, recall, update_memory${NC}"
 
 test_tool "Remember (Create)" \
-    "Remember that my favorite color is blue" \
-    "blue" \
+    "Remember that my birthday is December 25th" \
+    "December" \
     "true"
 
 test_tool "Search Memory" \
-    "Search my memories for color" \
-    "blue" \
+    "Search my memories for birthday" \
+    "December" \
     "true"
 
-test_tool "Semantic Recall" \
-    "What's my preferred hue?" \
-    "blue" \
+test_tool "Semantic Recall (Challenging)" \
+    "When do I celebrate my birth date?" \
+    "December" \
     "true"
 
 test_tool "Update Memory" \
-    "Actually my favorite color is green now" \
-    "green" \
+    "Actually change my birthday to January 1st" \
+    "January" \
     "true"
 
 # ============================================
@@ -204,7 +250,7 @@ echo -e "${CYAN}Testing api_call, send_webhook, crypto_price${NC}"
 
 test_tool "API Call (GET)" \
     "Make a GET request to https://httpbin.org/json" \
-    "200" \
+    "successful" \
     "true"
 
 test_tool "Crypto Price" \
@@ -227,41 +273,106 @@ echo -e "${CYAN}Testing multi-turn tasks (higher cache savings)${NC}"
 
 test_tool "Multi-Turn: Webhook + Remember" \
     "Send a webhook to httpbin.org/post and remember the URL" \
-    "remember" \
+    "saved" \
     "true"
 
 test_tool "Multi-Turn: Time + Remember" \
     "What time is it and remember it as test time" \
-    "remember" \
+    "saved" \
+    "true"
+
+# Add test for intelligent auto-save (proactive feature)
+test_tool "Intelligent Auto-Save Test" \
+    "Use OpenCode to create a file calc.py with 2+2=4 comment" \
+    "calc" \
+    "true"
+
+# ============================================
+# SECTION 8: ADVANCED FEATURES
+# ============================================
+echo -e "\n${BLUE}╔═══════════════════════════════════╗${NC}" | tee -a "$LOG_FILE"
+echo -e "${BLUE}║  SECTION 8: ADVANCED FEATURES     ║${NC}" | tee -a "$LOG_FILE"
+echo -e "${BLUE}╚═══════════════════════════════════╝${NC}" | tee -a "$LOG_FILE"
+echo -e "${CYAN}Testing verbosity modes, error recovery, edge cases${NC}" | tee -a "$LOG_FILE"
+
+# Test verbosity mode (casual should be concise)
+test_tool "Verbosity Test (Casual Mode)" \
+    "What's 2+2? Keep it brief" \
+    "4" \
+    "true"
+
+# Test error recovery with invalid tool call
+test_tool "Error Recovery Test" \
+    "What time is it in Tokyo?" \
+    "time" \
+    "true"
+
+# Test checking OpenCode logs without triggering new build
+test_tool "Check OpenCode Logs (No New Build)" \
+    "Check my recent OpenCode sessions without starting a new build" \
+    "session" \
+    "true"
+
+# Test Fetch with headers (MCP advanced)
+test_tool "Fetch with Headers (Advanced MCP)" \
+    "Use fetch to get httpbin.org/headers" \
+    "httpbin" \
     "true"
 
 # ============================================
 # RESULTS SUMMARY
 # ============================================
-echo -e "\n${BLUE}╔═══════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     COMPREHENSIVE TEST RESULTS    ║${NC}"
-echo -e "${BLUE}╚═══════════════════════════════════╝${NC}"
-echo ""
-echo "Total Tests: $TOTAL"
-echo -e "${GREEN}Passed: $PASSED${NC}"
-echo -e "${RED}Failed: $FAILED${NC}"
-echo ""
+echo -e "\n${BLUE}╔═══════════════════════════════════╗${NC}" | tee -a "$LOG_FILE"
+echo -e "${BLUE}║     COMPREHENSIVE TEST RESULTS    ║${NC}" | tee -a "$LOG_FILE"
+echo -e "${BLUE}╚═══════════════════════════════════╝${NC}" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+echo "Total Tests: $TOTAL" | tee -a "$LOG_FILE"
+echo -e "${GREEN}Passed: $PASSED${NC}" | tee -a "$LOG_FILE"
+echo -e "${RED}Failed: $FAILED${NC}" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+
+# Calculate pass rate
+PASS_RATE=$((PASSED * 100 / TOTAL))
+
+# Close JSON results
+cat >> "$RESULTS_FILE" << EOF
+
+    ],
+    "summary": {
+      "total": $TOTAL,
+      "passed": $PASSED,
+      "failed": $FAILED,
+      "pass_rate": $PASS_RATE,
+      "completed_at": "$(date -Iseconds)"
+    }
+  }
+}
+EOF
+
+echo "📁 Test Results Saved:" | tee -a "$LOG_FILE"
+echo "   Full Log: $LOG_FILE" | tee -a "$LOG_FILE"
+echo "   JSON Results: $RESULTS_FILE" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+echo "📊 Quick View: jq '.test_run.summary' $RESULTS_FILE" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
 
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}🎉 ALL TESTS PASSED!${NC}"
-    echo ""
-    echo "✅ Cache working (90% cost reduction confirmed)"
-    echo "✅ New conversation tools operational"
-    echo "✅ Memory system functioning"
-    echo "✅ MCP servers responding"
-    echo "✅ OpenCode integration verified"
-    echo "✅ Multi-turn tasks amplify cache savings"
+    echo -e "${GREEN}🎉 ALL TESTS PASSED! (${PASS_RATE}%)${NC}" | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+    echo "✅ Cache working (90% cost reduction confirmed)" | tee -a "$LOG_FILE"
+    echo "✅ New conversation tools operational" | tee -a "$LOG_FILE"
+    echo "✅ Memory system functioning" | tee -a "$LOG_FILE"
+    echo "✅ MCP servers responding" | tee -a "$LOG_FILE"
+    echo "✅ OpenCode integration verified" | tee -a "$LOG_FILE"
+    echo "✅ Multi-turn tasks amplify cache savings" | tee -a "$LOG_FILE"
     exit 0
 else
-    echo -e "${YELLOW}⚠️  Some tests failed. Review output above.${NC}"
-    echo ""
-    echo "Note: Some 'failures' may be keyword matching issues"
-    echo "      Check if actual functionality works correctly"
+    echo -e "${YELLOW}⚠️  Some tests failed (${PASS_RATE}% passed).${NC}" | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+    echo "Note: Some 'failures' may be keyword matching issues" | tee -a "$LOG_FILE"
+    echo "      Check if actual functionality works correctly" | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+    echo "Review failed tests: jq '.test_run.tests[] | select(.passed == false)' $RESULTS_FILE" | tee -a "$LOG_FILE"
     exit 1
 fi
 

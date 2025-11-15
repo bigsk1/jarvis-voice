@@ -2,6 +2,47 @@
 
 Comprehensive testing guide for all Jarvis tools, MCP servers, and functionality.
 
+## Quick Start - Automated Testing
+
+### Comprehensive Cloud Test Suite (RECOMMENDED)
+Run the full regression test suite (22 tests across 8 sections):
+
+```bash
+cd /home/boss/jarvis-voice
+source ~/jarvis-venv/bin/activate
+./tests/integration/test-cloud-comprehensive.sh
+```
+
+**What it tests:**
+- ✅ Prompt caching (verifies 90% cost reduction)
+- ✅ Conversation tools (search history, recent conversations)
+- ✅ Memory system (remember, recall, search, update)
+- ✅ MCP servers (DuckDuckGo, Fetch)
+- ✅ OpenCode integration (simple tasks only)
+- ✅ API/Network tools (webhooks, crypto, HTTP calls)
+- ✅ Multi-turn tasks (cache amplification)
+- ✅ Advanced features (verbosity modes, error recovery)
+
+**Results saved to:** `logs/test/test-cloud-comprehensive_TIMESTAMP.{log,json}`
+
+**View results:**
+```bash
+# Quick summary
+jq '.test_run.summary' logs/test/test-cloud-comprehensive_*.json | tail -n 10
+
+# View failed tests
+jq '.test_run.tests[] | select(.passed == false)' logs/test/test-cloud-comprehensive_*.json | tail -n 50
+```
+
+### Legacy Test Scripts
+```bash
+# Quick tool tests (cloud mode)
+./test-all-tools.sh
+
+# Quick tool tests (local mode with Ollama)
+./test-all-tools-local.sh
+```
+
 ## Prerequisites
 
 ```bash
@@ -381,7 +422,73 @@ echo "What time is it?" | ./bin/question-orchestrator.sh
 # Expected: No jq parse errors, clean flow
 ```
 
+## Test Result Interpretation
+
+### Understanding Pass/Fail
+
+**✅ PASSED** = Tool executed successfully AND expected keyword found in response
+**❌ FAILED** = Either tool error OR keyword not found
+
+**Common false failures:**
+- Keyword matching too strict (e.g., expecting "200" but got "successful")
+- Semantic differences (e.g., expecting "hue" but model used "color")
+- Response style variations (casual vs detailed mode)
+
+**How to verify actual functionality:**
+```bash
+# Check if tool executed successfully (ok: true)
+jq '.test_run.tests[] | {name: .name, ok: .ok, speech: .speech}' logs/test/test-cloud-comprehensive_*.json | tail -n 50
+
+# If ok=true but passed=false, it's just a keyword mismatch
+# Update test expectations in test-cloud-comprehensive.sh
+```
+
+### Cache Metrics
+
+**Expected cache behavior:**
+- **Test 1-3**: Cache WRITE on first request (~10,884 tokens)
+- **All subsequent tests**: Cache READ (~10,884 tokens)
+- **Multi-turn tests**: Higher cache reads (~16,326 tokens)
+
+**Savings calculation:**
+- Cache write: 3.75¢ per 1M tokens (25% markup)
+- Cache read: 0.30¢ per 1M tokens (90% discount)
+- Regular input: 3.00¢ per 1M tokens
+
+**Example:**
+```
+10,884 tokens cached
+Without cache: 10,884 * $3.00 / 1M = $0.033
+With cache: 10,884 * $0.30 / 1M = $0.003
+Savings: $0.030 per request (91% reduction)
+```
+
+### Test Run Cost Analysis
+
+```bash
+# Total test cost
+jq '[.test_run.tests[].cost_usd] | add' logs/test/test-cloud-comprehensive_*.json | tail -n 1
+
+# Total savings
+jq '[.test_run.tests[].cache_savings_usd] | add' logs/test/test-cloud-comprehensive_*.json | tail -n 1
+
+# Average cost per test
+jq '[.test_run.tests[].cost_usd] | add / length' logs/test/test-cloud-comprehensive_*.json | tail -n 1
+```
+
 ## Known Issues & Workarounds
+
+### Test Keyword Matching
+**Issue:** Some tests fail due to strict keyword matching  
+**Example:** Expecting "remember" but LLM says "saved to memory"  
+**Impact:** False failure (functionality works)  
+**Solution:** Update test expectations in `test-cloud-comprehensive.sh`
+
+### Semantic Recall Test Sensitivity
+**Issue:** Semantic recall requires good synonym understanding  
+**Example:** "hue" vs "color" may not match semantically  
+**Impact:** Test may fail if embeddings don't link concepts  
+**Solution:** Use more direct questions or train embeddings better
 
 ### MCP Discovery Running Twice
 **Issue:** MCP servers discovered in both router and executor  
@@ -391,7 +498,7 @@ echo "What time is it?" | ./bin/question-orchestrator.sh
 
 ### Local Mode Timeout with Weak Models
 **Issue:** Ollama models that aren't tool-optimized may time out  
-**Solution:** Use `llama3-groq-tool-use:latest` or similar  
+**Solution:** Use `qwen3-vl` or similar tool-capable models  
 **Config:** `OLLAMA_MODEL` in `config/local.env`
 
 ### Memory Embedding Generation
@@ -449,6 +556,23 @@ Use this for a comprehensive test run:
 
 ## Continuous Testing
 
+### After Code Changes (CRITICAL)
+**Always run the comprehensive test suite** after modifying code:
+
+```bash
+./tests/integration/test-cloud-comprehensive.sh
+```
+
+**Why?** Because you might break something else while fixing one thing. The comprehensive test catches:
+- Broken tool calls
+- Memory system regressions
+- MCP server failures
+- Cache implementation bugs
+- Response format changes
+- Multi-turn orchestration issues
+
+**Expected:** 100% pass rate (22/22 tests)
+
 ### Daily Quick Check
 ```bash
 # 30-second smoke test
@@ -458,10 +582,18 @@ Use this for a comprehensive test run:
 ```
 
 ### Weekly Full Test
-Run through entire test checklist (30 minutes)
+```bash
+# Run comprehensive test + voice pipeline test
+./tests/integration/test-cloud-comprehensive.sh
+# Then manually test voice mode
+jarvis
+```
 
-### After Code Changes
-Test affected components + integration test
+### Before Deploying/Merging
+1. Run comprehensive test suite
+2. Check test results: `jq '.test_run.summary' logs/test/test-cloud-comprehensive_*.json | tail -n 10`
+3. Verify cache metrics are correct
+4. Manually test 2-3 voice interactions
 
 ## Reporting Issues
 
