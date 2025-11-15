@@ -606,11 +606,13 @@ Your response:"""
 def main():
     """CLI interface."""
     if len(sys.argv) < 2:
-        print("Usage: orchestrator_v2.py <mode> <transcript> [--json]", file=sys.stderr)
+        print("Usage: orchestrator_v2.py <mode> <transcript> [--json] [--debug-thinking]", file=sys.stderr)
         print("  mode: 'cloud' or 'local'", file=sys.stderr)
         print("  --json: Output only JSON (for scripting)", file=sys.stderr)
+        print("  --debug-thinking: Show LLM reasoning (for debugging)", file=sys.stderr)
         print("\nExample:")
         print("  ./orchestrator_v2.py cloud 'Send a webhook to my server'")
+        print("  ./orchestrator_v2.py cloud 'Should I save this?' --debug-thinking")
         sys.exit(1)
     
     mode = sys.argv[1]
@@ -621,6 +623,13 @@ def main():
         sys.argv.remove("--json")
         # Set env var to suppress verbose MCP output
         os.environ['JARVIS_JSON_MODE'] = '1'
+    
+    # Check for --debug-thinking flag
+    debug_thinking = "--debug-thinking" in sys.argv
+    if debug_thinking:
+        sys.argv.remove("--debug-thinking")
+        # Set env var for thinking module
+        os.environ['JARVIS_DEBUG_THINKING'] = '1'
     
     transcript = " ".join(sys.argv[2:])
     
