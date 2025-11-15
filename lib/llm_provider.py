@@ -152,12 +152,25 @@ class AnthropicProvider(LLMProvider):
         self.model = model
     
     def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
-        """Simple chat without tools."""
+        """
+        Simple chat without tools.
+        
+        Uses prompt caching for system prompt (90% cost reduction on cache hits).
+        """
         try:
+            # Enable prompt caching for system prompt
+            system_blocks = [
+                {
+                    "type": "text",
+                    "text": system_prompt or "You are a helpful AI assistant.",
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]
+            
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=1024,
-                system=system_prompt or "You are a helpful AI assistant.",
+                system=system_blocks,
                 messages=[{"role": "user", "content": message}]
             )
             
@@ -181,29 +194,84 @@ class AnthropicProvider(LLMProvider):
         """
         Send chat with Anthropic tool calling.
         
+        Uses prompt caching to reduce costs by 90% on repeated system prompts/tools.
+        Cache is valid for 5 minutes of inactivity.
+        
         Returns:
             Tuple of (text_response, tool_call, usage_info)
-            - usage_info contains token counts and cost estimates
+            - usage_info contains token counts, cost estimates, and cache metrics
         """
         try:
+            # Enable prompt caching for system prompt
+            # Cache everything in the system prompt (saves 90% on cache hits)
+            system_blocks = [
+                {
+                    "type": "text",
+                    "text": system_prompt or "You are a helpful AI assistant.",
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]
+            
+            # Enable prompt caching for tools
+            # Mark the LAST tool for caching (Anthropic caches up to that point)
+            tools_with_cache = []
+            for i, tool in enumerate(tools):
+                if i == len(tools) - 1:
+                    # Last tool: add cache control
+                    tools_with_cache.append({
+                        **tool,
+                        "cache_control": {"type": "ephemeral"}
+                    })
+                else:
+                    tools_with_cache.append(tool)
+            
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=1024,
-                system=system_prompt or "You are a helpful AI assistant.",
+                system=system_blocks,
                 messages=messages,
-                tools=tools
+                tools=tools_with_cache
             )
             
-            # Extract usage info
+            # Extract usage info with cache metrics
             usage_info = None
             if hasattr(response, 'usage') and response.usage:
                 from cost_estimator import estimate_cost
+                
+                # Get token counts
+                input_tokens = response.usage.input_tokens
+                output_tokens = response.usage.output_tokens
+                
+                # Get cache metrics (if available)
+                cache_creation_tokens = getattr(response.usage, 'cache_creation_input_tokens', 0)
+                cache_read_tokens = getattr(response.usage, 'cache_read_input_tokens', 0)
+                
+                # Calculate cost
                 usage_info = estimate_cost(
                     provider="anthropic",
                     model=self.model,
-                    input_tokens=response.usage.input_tokens,
-                    output_tokens=response.usage.output_tokens
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens
                 )
+                
+                # Add cache metrics to usage_info
+                usage_info['cache_creation_tokens'] = cache_creation_tokens
+                usage_info['cache_read_tokens'] = cache_read_tokens
+                
+                # Calculate cache savings if cache was used
+                if cache_read_tokens > 0:
+                    # Cache read cost: $0.30/1M tokens (vs $3.00/1M for regular input)
+                    cache_read_cost = (cache_read_tokens / 1_000_000) * 0.30
+                    regular_cost_avoided = (cache_read_tokens / 1_000_000) * 3.00
+                    usage_info['cache_savings_usd'] = regular_cost_avoided - cache_read_cost
+                    usage_info['cache_hit'] = True
+                elif cache_creation_tokens > 0:
+                    # First request: cache write cost is $3.75/1M tokens (vs $3.00/1M)
+                    cache_write_cost = (cache_creation_tokens / 1_000_000) * 0.75  # Additional cost
+                    usage_info['cache_write_cost_usd'] = cache_write_cost
+                    usage_info['cache_hit'] = False
+                else:
+                    usage_info['cache_hit'] = False
             
             # Check response type
             # Anthropic may return BOTH text AND tool_use blocks

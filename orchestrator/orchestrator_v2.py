@@ -73,7 +73,14 @@ class Orchestrator:
             enhanced_transcript = transcript
         
         # Track usage info across all turns
-        total_usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+        total_usage = {
+            "input_tokens": 0, 
+            "output_tokens": 0, 
+            "cost_usd": 0.0,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_savings_usd": 0.0
+        }
         
         # Multi-turn loop
         for turn_num in range(max_turns):
@@ -101,6 +108,13 @@ class Orchestrator:
                     total_usage["output_tokens"] += usage["output_tokens"]
                 if usage.get("cost_usd"):
                     total_usage["cost_usd"] += usage["cost_usd"]
+                # Accumulate cache metrics
+                if usage.get("cache_creation_tokens"):
+                    total_usage["cache_creation_tokens"] += usage["cache_creation_tokens"]
+                if usage.get("cache_read_tokens"):
+                    total_usage["cache_read_tokens"] += usage["cache_read_tokens"]
+                if usage.get("cache_savings_usd"):
+                    total_usage["cache_savings_usd"] += usage["cache_savings_usd"]
             
             # Handle tool execution
             if route["intent"] == "tool":
@@ -627,8 +641,29 @@ def main():
         print(f"🗣️  Speech Output: {result['speech']}")
         print(f"✓  Status: {'✅ OK' if result['ok'] else '❌ Failed'}")
         
+        # Show usage info with cache metrics (cloud mode only)
+        if result.get("usage") and mode == "cloud":
+            usage = result["usage"]
+            print(f"\n💰 Token Usage:")
+            print(f"   Input: {usage.get('input_tokens', 0):,} tokens")
+            print(f"   Output: {usage.get('output_tokens', 0):,} tokens")
+            
+            # Show cache metrics if available
+            cache_read = usage.get('cache_read_tokens', 0)
+            cache_write = usage.get('cache_creation_tokens', 0)
+            
+            if cache_read > 0:
+                print(f"   💾 Cache READ: {cache_read:,} tokens (90% cheaper!)")
+                savings = usage.get('cache_savings_usd', 0)
+                if savings > 0:
+                    print(f"   ✅ Saved: ${savings:.4f}")
+            elif cache_write > 0:
+                print(f"   💾 Cache WRITE: {cache_write:,} tokens (first request)")
+            
+            print(f"   💵 Total Cost: ${usage.get('cost_usd', 0):.4f}")
+        
         if result.get("data"):
-            print(f"📊 Data: {json.dumps(result['data'], indent=2)}")
+            print(f"\n📊 Data: {json.dumps(result['data'], indent=2)}")
         
         print("\n📄 Full Response:")
         print(json.dumps(result, indent=2))
