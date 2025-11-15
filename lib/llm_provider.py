@@ -17,8 +17,9 @@ class LLMProvider(ABC):
         self,
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        system_prompt: Optional[str] = None,
+        enable_thinking: bool = False
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
         """
         Send chat request with tool calling capability.
         
@@ -26,12 +27,14 @@ class LLMProvider(ABC):
             messages: Conversation history [{"role": "user", "content": "..."}]
             tools: List of tool definitions (format depends on provider)
             system_prompt: System prompt for the conversation
+            enable_thinking: Enable extended thinking mode (if supported by model)
             
         Returns:
-            Tuple of (text_response, tool_call, usage_info)
+            Tuple of (text_response, tool_call, usage_info, thinking)
             - text_response: Direct text response from LLM (if not calling tool)
             - tool_call: {"name": "tool_name", "arguments": {...}} if tool called
             - usage_info: Token counts and cost estimates (None for local models)
+            - thinking: LLM reasoning/thinking text (None if not available)
         """
         pass
     
@@ -85,14 +88,16 @@ class OpenAIProvider(LLMProvider):
         self,
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        system_prompt: Optional[str] = None,
+        enable_thinking: bool = False
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
         """
         Send chat with OpenAI function calling.
         
         Returns:
-            Tuple of (text_response, tool_call, usage_info)
+            Tuple of (text_response, tool_call, usage_info, thinking)
             - usage_info contains token counts and cost estimates
+            - thinking is None for non-reasoning OpenAI models
         """
         # Add system message if provided
         full_messages = []
@@ -127,15 +132,15 @@ class OpenAIProvider(LLMProvider):
                 return None, {
                     "name": tool_call.function.name,
                     "arguments": json.loads(tool_call.function.arguments)
-                }, usage_info
+                }, usage_info, None  # No thinking for standard models
             
             # Otherwise return text response
-            return message.content, None, usage_info
+            return message.content, None, usage_info, None  # No thinking for standard models
             
         except Exception as e:
             import sys
             print(f"OpenAI API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None, None
+            return f"Error: {str(e)}", None, None, None
 
 
 class AnthropicProvider(LLMProvider):
@@ -189,17 +194,21 @@ class AnthropicProvider(LLMProvider):
         self,
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        system_prompt: Optional[str] = None,
+        enable_thinking: bool = False
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
         """
         Send chat with Anthropic tool calling.
         
         Uses prompt caching to reduce costs by 90% on repeated system prompts/tools.
         Cache is valid for 5 minutes of inactivity.
         
+        Supports extended thinking mode (Claude Sonnet 4+) for complex decisions.
+        
         Returns:
-            Tuple of (text_response, tool_call, usage_info)
+            Tuple of (text_response, tool_call, usage_info, thinking)
             - usage_info contains token counts, cost estimates, and cache metrics
+            - thinking contains LLM reasoning (if enable_thinking=True and supported)
         """
         try:
             # Enable prompt caching for system prompt
@@ -225,13 +234,30 @@ class AnthropicProvider(LLMProvider):
                 else:
                     tools_with_cache.append(tool)
             
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                system=system_blocks,
-                messages=messages,
-                tools=tools_with_cache
-            )
+            # Add thinking parameter if enabled and supported
+            api_params = {
+                "model": self.model,
+                "max_tokens": 1024,
+                "system": system_blocks,
+                "messages": messages,
+                "tools": tools_with_cache
+            }
+            
+            # Enable extended thinking for supported models
+            if enable_thinking:
+                from thinking import is_thinking_supported, get_thinking_config
+                if is_thinking_supported("anthropic", self.model):
+                    thinking_config = get_thinking_config("anthropic", self.model)
+                    if thinking_config:
+                        api_params["thinking"] = thinking_config
+            
+            response = self.client.messages.create(**api_params)
+            
+            # Extract thinking if present
+            thinking_text = None
+            if enable_thinking:
+                from thinking import extract_thinking
+                thinking_text = extract_thinking(response, "anthropic")
             
             # Extract usage info with cache metrics
             usage_info = None
@@ -282,18 +308,18 @@ class AnthropicProvider(LLMProvider):
                 return None, {
                     "name": tool_use_block.name,
                     "arguments": tool_use_block.input
-                }, usage_info
+                }, usage_info, thinking_text
             
             # Otherwise return text response
             if text_block:
-                return text_block.text, None, usage_info
+                return text_block.text, None, usage_info, thinking_text
             
-            return "No response from Claude", None, usage_info
+            return "No response from Claude", None, usage_info, thinking_text
             
         except Exception as e:
             import sys
             print(f"Anthropic API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None, None
+            return f"Error: {str(e)}", None, None, None
 
 
 class OllamaProvider(LLMProvider):
@@ -342,15 +368,17 @@ class OllamaProvider(LLMProvider):
         self,
         messages: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        system_prompt: Optional[str] = None,
+        enable_thinking: bool = False
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
         """
         Send chat with Ollama using structured prompting with smart corrections.
         Since Ollama doesn't have native tool calling, we use a structured prompt.
         
         Returns:
-            Tuple of (text_response, tool_call, usage_info)
+            Tuple of (text_response, tool_call, usage_info, thinking)
             - usage_info is None for Ollama (no cost tracking for local models)
+            - thinking is None for most Ollama models (only certain models support it)
         """
         import requests
         
@@ -443,17 +471,17 @@ CRITICAL RULES:
                         from local_model_corrections import correct_tool_call
                         corrected_call = correct_tool_call(raw_call)
                         
-                        return None, corrected_call, None  # No usage info for Ollama
+                        return None, corrected_call, None, None  # No usage info or thinking for Ollama
             except (json.JSONDecodeError, ValueError):
                 pass
             
             # Otherwise return as text
-            return content, None, None
+            return content, None, None, None  # No tool call, usage, or thinking
             
         except Exception as e:
             import sys
             print(f"Ollama API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None, None
+            return f"Error: {str(e)}", None, None, None
     
     def _format_tools_for_prompt(self, tools: List[Dict[str, Any]]) -> str:
         """Format tools as text for Ollama prompt."""

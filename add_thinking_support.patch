@@ -1,0 +1,15 @@
+# This file documents the changes needed for thinking support
+# Apply these changes to lib/llm_provider.py
+
+## Changes Summary:
+1. Update all chat_with_tools signatures to accept enable_thinking parameter
+2. Update all returns to include thinking as 4th element in tuple
+3. Add thinking extraction logic for Anthropic
+4. Add graceful fallback for providers that don't support thinking
+
+## Implementation notes in lib/thinking.py:
+- Created centralized thinking module
+- Supports Anthropic, OpenAI (o1), Ollama (select models)
+- Graceful fallback if model doesn't support thinking
+- Thinking logging to logs/thinking/
+
