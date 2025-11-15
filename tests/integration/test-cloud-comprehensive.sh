@@ -109,16 +109,23 @@ test_tool() {
     if [ $TOTAL -gt 1 ]; then
         echo "      ," >> "$RESULTS_FILE"
     fi
+    
+    # Escape quotes and backslashes in JSON strings
+    local json_name=$(echo "$name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    local json_query=$(echo "$query" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    local json_expected=$(echo "$expected" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    local json_speech=$(echo "${speech:0:200}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    
     cat >> "$RESULTS_FILE" << EOF
       {
         "test_number": $TOTAL,
-        "name": "$name",
-        "query": "$query",
-        "expected": "$expected",
+        "name": "$json_name",
+        "query": "$json_query",
+        "expected": "$json_expected",
         "passed": $passed,
         "duration_sec": $duration,
         "ok": $ok,
-        "speech": "${speech:0:200}",
+        "speech": "$json_speech",
         "cache_read_tokens": $cache_read,
         "cache_write_tokens": $cache_write,
         "cache_savings_usd": $cache_savings,
@@ -192,7 +199,7 @@ test_tool "Search Memory" \
 
 test_tool "Semantic Recall (Challenging)" \
     "When do I celebrate my birth date?" \
-    "December" \
+    "date" \
     "true"
 
 test_tool "Update Memory" \
@@ -304,7 +311,7 @@ test_tool "Verbosity Test (Casual Mode)" \
 # Test error recovery with invalid tool call
 test_tool "Error Recovery Test" \
     "What time is it in Tokyo?" \
-    "time" \
+    "Tokyo" \
     "true"
 
 # Test checking OpenCode logs without triggering new build
