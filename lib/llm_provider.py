@@ -379,7 +379,7 @@ class OllamaProvider(LLMProvider):
             response = requests.post(
                 f"{self.base_url}/api/chat",
                 json=request_data,
-                timeout=90
+                timeout=180  # 3 minutes for local models (qwen3-vl is heavy)
             )
             response.raise_for_status()
             
@@ -456,7 +456,7 @@ CRITICAL RULES:
             response = requests.post(
                 f"{self.base_url}/api/chat",
                 json=request_data,
-                timeout=90  # 60s for local models (slower than cloud APIs) bumped to 90 as was getting timeouts still-in progress testing..
+                timeout=180  # 3 minutes for local models (qwen3-vl vision model is heavy with full tool context)
             )
             response.raise_for_status()
             
