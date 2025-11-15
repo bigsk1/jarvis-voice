@@ -236,7 +236,7 @@ class AnthropicProvider(LLMProvider):
             # Extract usage info with cache metrics
             usage_info = None
             if hasattr(response, 'usage') and response.usage:
-                from cost_estimator import estimate_cost
+                from cost_estimator import estimate_cost, estimate_cache_cost
                 
                 # Get token counts
                 input_tokens = response.usage.input_tokens
@@ -246,7 +246,7 @@ class AnthropicProvider(LLMProvider):
                 cache_creation_tokens = getattr(response.usage, 'cache_creation_input_tokens', 0)
                 cache_read_tokens = getattr(response.usage, 'cache_read_input_tokens', 0)
                 
-                # Calculate cost
+                # Calculate regular cost (input + output tokens)
                 usage_info = estimate_cost(
                     provider="anthropic",
                     model=self.model,
@@ -254,24 +254,16 @@ class AnthropicProvider(LLMProvider):
                     output_tokens=output_tokens
                 )
                 
-                # Add cache metrics to usage_info
-                usage_info['cache_creation_tokens'] = cache_creation_tokens
-                usage_info['cache_read_tokens'] = cache_read_tokens
+                # Calculate cache cost and savings using centralized pricing
+                cache_info = estimate_cache_cost(
+                    provider="anthropic",
+                    model=self.model,
+                    cache_creation_tokens=cache_creation_tokens,
+                    cache_read_tokens=cache_read_tokens
+                )
                 
-                # Calculate cache savings if cache was used
-                if cache_read_tokens > 0:
-                    # Cache read cost: $0.30/1M tokens (vs $3.00/1M for regular input)
-                    cache_read_cost = (cache_read_tokens / 1_000_000) * 0.30
-                    regular_cost_avoided = (cache_read_tokens / 1_000_000) * 3.00
-                    usage_info['cache_savings_usd'] = regular_cost_avoided - cache_read_cost
-                    usage_info['cache_hit'] = True
-                elif cache_creation_tokens > 0:
-                    # First request: cache write cost is $3.75/1M tokens (vs $3.00/1M)
-                    cache_write_cost = (cache_creation_tokens / 1_000_000) * 0.75  # Additional cost
-                    usage_info['cache_write_cost_usd'] = cache_write_cost
-                    usage_info['cache_hit'] = False
-                else:
-                    usage_info['cache_hit'] = False
+                # Merge cache info into usage_info
+                usage_info.update(cache_info)
             
             # Check response type
             # Anthropic may return BOTH text AND tool_use blocks
