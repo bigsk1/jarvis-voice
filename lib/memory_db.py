@@ -237,7 +237,7 @@ class MemoryDB:
         
         return [dict(row) for row in results]
     
-    def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = 0.45) -> List[Dict]:
+    def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = 0.40) -> List[Dict]:
         """
         Semantic search using vector embeddings.
         Finds memories similar in meaning, not just keywords.
@@ -245,7 +245,9 @@ class MemoryDB:
         Args:
             query: Search query (can be natural language)
             limit: Maximum number of results
-            similarity_threshold: Minimum similarity score (0-1)
+            similarity_threshold: Minimum similarity score (0-1, default 0.40)
+                Lower = more results (may include loosely related)
+                Higher = fewer results (only close matches)
             
         Returns:
             List of memories with similarity scores, sorted by relevance
