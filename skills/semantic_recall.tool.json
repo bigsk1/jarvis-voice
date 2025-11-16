@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "semantic_recall",
-  "description": "Semantic search using AI embeddings - finds memories by MEANING, not just keywords. ALWAYS use this for natural language questions like 'What food do I love?', 'When do I celebrate?', 'What's my favorite color?'. This understands concepts: 'spouse born' finds 'wife_birthday', 'what food' finds 'favorite_food'. More powerful but slower than keyword search.",
+  "description": "Semantic search using AI embeddings - finds memories by MEANING, not just keywords. Use this for NATURAL LANGUAGE QUESTIONS (multiple words, sentence structure). Examples: understands 'spouse' = 'wife', 'born' = 'birthday', 'celebrate' = 'birthday'. If query is a simple keyword (1-2 words), use search_memory instead. More powerful but slower than keyword search.",
   "parameters": {
     "type": "object",
     "properties": {
