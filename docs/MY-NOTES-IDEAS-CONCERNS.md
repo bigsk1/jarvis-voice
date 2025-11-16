@@ -16,7 +16,7 @@
 
 - not all jarvis-local features and tools/mcp work because a few reasons cloud uses better models and when designing and adding code / testing we focus on cloud version mostly. 
 
-- can get costly using cloud , latest anthropic model when coding and testing, running tests over and over to troubleshoot. 
+- can get costly using cloud , latest anthropic model when coding and testing, running tests over and over to troubleshoot. ( Added prompt caching for anthropic 11-15-25)
 
 
 ### Commands for testing
@@ -205,3 +205,21 @@ jarvis-local-cli "time"
 jarvis-cli-json "time" | jq '.ok'
 jarvis-local-cli-json "time" | jq '.speech'
 ```
+
+**Thinking cmands**
+## test thinking models with --debug-thinking
+
+```bash
+# Test 1: Cloud with thinking
+./orchestrator/orchestrator_v2.py cloud "What time is it?" --debug-thinking
+
+# Test 2: Local with thinking (deepseek-r1)
+./orchestrator/orchestrator_v2.py local "What is 2+2?" --debug-thinking
+
+# Test 3: Grey area scenario
+./orchestrator/orchestrator_v2.py cloud "I'm excited about the new Predator movie" --debug-thinking
+
+# Test 4: View logs
+cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
+```
+

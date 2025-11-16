@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "check_opencode_sessions",
   "description": "Check OpenCode build sessions and progress via API. Lists recent OpenCode projects, shows session details, token usage, and build history. READ-ONLY - does not trigger new builds. Use this to see what OpenCode has built recently or check on build progress.",
   "input_schema": {
@@ -21,4 +22,3 @@
     "auto_approve": true
   }
 }
-

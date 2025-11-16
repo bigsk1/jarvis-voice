@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "search_memory",
   "description": "Search all stored memories by keyword. Use this to see what you know about a topic, find related memories, or check if you've already stored similar information before storing new data.",
   "parameters": {
@@ -14,11 +15,12 @@
         "default": 10
       }
     },
-    "required": ["query"]
+    "required": [
+      "query"
+    ]
   },
   "permissions": {
     "filesystem": true,
     "auto_approve": true
   }
 }
-

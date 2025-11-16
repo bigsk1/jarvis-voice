@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "forget",
   "description": "Delete a memory that is no longer needed, incorrect, or outdated. Use this to keep the knowledge base clean and current. First use 'recall' to find the memory ID, then forget it.",
   "parameters": {
@@ -9,11 +10,12 @@
         "description": "The ID of the memory to delete (from recall results)"
       }
     },
-    "required": ["memory_id"]
+    "required": [
+      "memory_id"
+    ]
   },
   "permissions": {
     "filesystem": true,
     "auto_approve": true
   }
 }
-

@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "get_recent_conversations",
   "description": "Get recent conversation history ordered by time. Use this to see what happened in recent or current session, what tools were used, and track conversation flow. Can filter by session_id to see only current session or get all recent conversations.",
   "input_schema": {
@@ -17,4 +18,3 @@
     "required": []
   }
 }
-

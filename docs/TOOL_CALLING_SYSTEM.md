@@ -138,6 +138,7 @@ print(json.dumps({
 `skills/my_automation.tool.json`:
 ```json
 {
+  "enabled": true,
   "name": "my_automation",
   "description": "Trigger home automation actions",
   "script": "my_automation.py",
@@ -171,6 +172,41 @@ jarvis
 > "Hey Jarvis"
 > "Turn on the lights"  ← LLM automatically calls my_automation tool
 ```
+
+## Managing Tools (Enable/Disable)
+
+Control which tools are loaded to reduce token count and improve performance:
+
+```bash
+# List all tools and their status
+./bin/manage-tools.py list
+
+# List with descriptions
+./bin/manage-tools.py list -v
+
+# Disable a tool (reduces token count)
+./bin/manage-tools.py disable execute_bash
+
+# Enable a tool
+./bin/manage-tools.py enable execute_bash
+
+# Enable all tools
+./bin/manage-tools.py enable-all
+```
+
+**Why disable tools?**
+- Reduce baseline token count (important for local models)
+- Faster responses (less context for LLM to process)
+- Create focused "profiles" (e.g., coding tools only, home automation only)
+- Easier testing and debugging
+
+**Example: Disable test/sample tools:**
+```bash
+./bin/manage-tools.py disable send_webhook
+./bin/manage-tools.py disable api_call
+```
+
+**Note:** Disabled tools are skipped at startup - no performance impact!
 
 ## Permission System
 

@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "semantic_recall",
   "description": "Semantic search across stored memories using AI embeddings. This finds memories by MEANING, not just exact keywords. Use this when the user asks about topics using different words than what was stored. For example, if stored 'wife_birthday' but user asks 'when is my spouse born', this will find it.",
   "parameters": {
@@ -14,7 +15,9 @@
         "default": 5
       }
     },
-    "required": ["query"]
+    "required": [
+      "query"
+    ]
   },
   "permissions": {
     "filesystem": true,
@@ -22,4 +25,3 @@
     "auto_approve": true
   }
 }
-

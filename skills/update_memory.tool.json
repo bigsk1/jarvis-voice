@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "update_memory",
   "description": "Update or correct an existing memory. Use this when you realize a stored fact is outdated, incorrect, or needs to be changed. Can search for the memory automatically if you provide a search query instead of a memory ID.",
   "parameters": {
@@ -27,11 +28,12 @@
         "maximum": 10
       }
     },
-    "required": ["new_value"]
+    "required": [
+      "new_value"
+    ]
   },
   "permissions": {
     "filesystem": true,
     "auto_approve": true
   }
 }
-

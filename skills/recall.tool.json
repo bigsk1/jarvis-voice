@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "recall",
   "description": "Search and retrieve stored memories. Use this when you need to remember something from a previous conversation, or when the user asks 'what did I tell you about X' or 'what do you know about Y'. This searches across all stored knowledge.",
   "parameters": {
@@ -10,7 +11,14 @@
       },
       "category": {
         "type": "string",
-        "enum": ["contact", "personal", "preference", "location", "fact", "other"],
+        "enum": [
+          "contact",
+          "personal",
+          "preference",
+          "location",
+          "fact",
+          "other"
+        ],
         "description": "Optional: filter by category"
       },
       "limit": {
@@ -19,11 +27,12 @@
         "default": 5
       }
     },
-    "required": ["query"]
+    "required": [
+      "query"
+    ]
   },
   "permissions": {
     "filesystem": true,
     "auto_approve": true
   }
 }
-

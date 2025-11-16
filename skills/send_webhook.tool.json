@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "send_webhook",
   "description": "Send a POST request webhook to a specified URL with JSON data. Use this when the user wants to trigger an external service, send data to a server, or notify a system.",
   "script": "send_webhook.py",
@@ -18,7 +19,10 @@
         "description": "Optional HTTP headers to include in the request"
       }
     },
-    "required": ["url", "data"]
+    "required": [
+      "url",
+      "data"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -28,4 +32,3 @@
     "auto_approve": false
   }
 }
-

@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "api_call",
   "description": "Make an HTTP API call (GET or POST) to any REST API endpoint. Use this when the user wants to fetch data from an API, check API status, or interact with web services.",
   "script": "api_call.py",
@@ -12,7 +13,12 @@
       "method": {
         "type": "string",
         "description": "HTTP method (GET, POST, PUT, DELETE)",
-        "enum": ["GET", "POST", "PUT", "DELETE"]
+        "enum": [
+          "GET",
+          "POST",
+          "PUT",
+          "DELETE"
+        ]
       },
       "headers": {
         "type": "object",
@@ -27,7 +33,10 @@
         "description": "Optional query parameters"
       }
     },
-    "required": ["url", "method"]
+    "required": [
+      "url",
+      "method"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -37,4 +46,3 @@
     "auto_approve": false
   }
 }
-

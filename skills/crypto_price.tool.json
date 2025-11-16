@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "crypto_price",
   "description": "Get current cryptocurrency price in USD from CoinGecko API. Supports bitcoin, ethereum, cardano, solana, and many others. Use this when the user asks about crypto prices.",
   "script": "crypto_price.py",
@@ -10,7 +11,9 @@
         "description": "Cryptocurrency name or ID (bitcoin, ethereum, cardano, solana, dogecoin, etc.)"
       }
     },
-    "required": ["coin"]
+    "required": [
+      "coin"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -20,4 +23,3 @@
     "auto_approve": true
   }
 }
-

@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "opencode",
   "description": "Execute complex autonomous tasks using OpenCode: coding, building projects, deploying, file operations, git operations, analysis, and multi-step workflows",
   "parameters": {
@@ -10,7 +11,14 @@
       },
       "task_type": {
         "type": "string",
-        "enum": ["coding", "build_website", "fix_bug", "analysis", "deploy", "general"],
+        "enum": [
+          "coding",
+          "build_website",
+          "fix_bug",
+          "analysis",
+          "deploy",
+          "general"
+        ],
         "description": "Type of task - determines workspace and permissions (optional, defaults to 'general')"
       },
       "session_id": {
@@ -32,7 +40,9 @@
         }
       }
     },
-    "required": ["task"]
+    "required": [
+      "task"
+    ]
   },
   "permissions": {
     "dangerous": true,

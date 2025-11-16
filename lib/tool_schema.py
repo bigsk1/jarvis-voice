@@ -174,12 +174,22 @@ class ToolRegistry:
         # Only print registration if stdout is a TTY and not in JSON mode
         verbose = sys.stdout.isatty() and not os.environ.get('JARVIS_JSON_MODE')
         
-        # Check if OpenCode is enabled
+        # Check if OpenCode is enabled (legacy config support)
         opencode_enabled = get_config_value('OPENCODE_ENABLED', 'false').lower() == 'true'
         
         for tool_file in self.skills_dir.glob("*.tool.json"):
             try:
-                # Skip opencode tool if disabled
+                # Read tool config to check if enabled
+                with open(tool_file, 'r') as f:
+                    tool_config = json.load(f)
+                
+                # Check if tool is enabled (defaults to True for backward compatibility)
+                if not tool_config.get('enabled', True):
+                    if verbose:
+                        print(f"⊝ Skipping {tool_config.get('name', tool_file.stem)} (disabled)")
+                    continue
+                
+                # Legacy: Skip opencode tool if disabled in config
                 if tool_file.stem == 'opencode' and not opencode_enabled:
                     if verbose:
                         print(f"⊝ Skipping opencode tool (disabled in config)")
