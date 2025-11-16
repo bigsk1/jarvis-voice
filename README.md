@@ -8,9 +8,12 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 **Production Ready** ✅
 - Multi-turn tool orchestration with LLM routing
-- 20+ working skills (weather, webhooks, bash execution, OpenCode, etc.)
-- Intelligent memory system with semantic search
+- 17+ working skills (memory, bash, OpenCode, API calls, etc.)
+- **Dual database system** with auto-sync (cloud ↔ local)
+- **Intelligent memory** with semantic search + configurable thresholds
 - OpenCode integration for autonomous coding tasks
+- **Tool management** system (enable/disable per mode)
+- **Model comparison framework** for testing different LLMs
 - MCP server support for extensibility
 - Cost tracking and metadata logging
 - Dual mode operation (cloud/local)
@@ -27,10 +30,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **MCP Support**: Extensible via Model Context Protocol servers
 
 ### Memory System
+- **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)
+- **Auto-Sync**: Bidirectional sync between modes on startup
 - **Knowledge Base**: Facts, preferences, technical info with embeddings
 - **Conversation History**: Full logging with metadata (cost, tokens, model)
-- **Semantic Search**: Find related info conceptually, not just keywords
+- **Semantic Search**: AI embeddings with configurable similarity threshold (tune via .env)
 - **Auto-Save**: Automatically remembers project locations, commands, solutions
+- **Tool Management**: Enable/disable tools per mode to optimize context window
 
 ### Dual Mode Operation
 - **Cloud Mode**: Anthropic Claude / OpenAI GPT (more powerful, costs money)
@@ -52,7 +58,10 @@ jarvis-voice/
 │   ├── wake_jarvis_local.py  # Local wake word loop
 │   ├── say.sh / say-local.sh # Text-to-speech
 │   ├── question*.sh          # Q&A entry points
-│   └── memory                # Memory CLI tool
+│   ├── memory                # Memory CLI tool
+│   ├── manage-tools.py       # Enable/disable tools
+│   ├── sync-memory-db.py     # Manual database sync
+│   └── setup-memory-db.sh    # Initialize databases
 ├── lib/                      # Core libraries
 │   ├── config_loader.py      # Configuration management
 │   ├── memory_db.py          # SQLite memory system
@@ -86,14 +95,24 @@ jarvis-voice/
 │   ├── local.env.example     # Template (safe for git)
 │   └── README.md             # Config documentation
 ├── data/                     # Runtime data
-│   └── jarvis_memory.db      # SQLite knowledge base
+│   ├── jarvis_memory.db      # Cloud mode database (OpenAI embeddings)
+│   └── jarvis_memory_local.db # Local mode database (nomic embeddings)
 ├── logs/                     # Execution logs
 │   ├── tools/                # Tool call logs
 │   └── opencode/             # OpenCode session logs
+├── tests/                    # Test suites
+│   ├── integration/          # Integration tests
+│   │   ├── compare-models.sh # Model comparison framework
+│   │   ├── test-memory-*.sh  # Memory system tests
+│   │   └── logs/             # Test results and analysis
+│   ├── e2e/                  # End-to-end tests (future)
+│   └── unit/                 # Unit tests (future)
 ├── docs/                     # Documentation (see below)
 ├── jarvis-intel/             # Private knowledge base (gitignored)
 ├── jarvis                    # Launcher (cloud mode)
 ├── jarvis-local              # Launcher (local mode)
+├── test-all-tools.sh         # Run all tool tests (cloud)
+├── test-all-tools-local.sh   # Run all tool tests (local)
 └── README.md                 # This file
 ```
 
@@ -222,6 +241,35 @@ Turn 3: Q&A response → "Flask API running on port 8091"
 - Metadata logging
 - Permission system
 
+### Managing Tools (Enable/Disable)
+
+Control which tools are loaded to optimize context window and performance:
+
+```bash
+# List all tools and their status
+./bin/manage-tools.py list
+
+# Disable a tool
+./bin/manage-tools.py disable crypto_price
+
+# Enable a tool
+./bin/manage-tools.py enable crypto_price
+
+# Enable all tools
+./bin/manage-tools.py enable-all
+
+# Disable multiple tools for local mode (reduce context)
+./bin/manage-tools.py disable opencode check_opencode_sessions ingest_intel
+```
+
+**Benefits:**
+- Reduce token count for local models (Ollama has smaller context windows)
+- Create tool profiles (development vs. production)
+- Disable experimental/buggy tools without deleting code
+- All tools auto-discovered on startup (only enabled ones load)
+
+See `docs/TOOL_MANAGEMENT.md` for details.
+
 ---
 
 ## 🧠 Memory System
@@ -234,12 +282,19 @@ Stores facts, preferences, and technical information with semantic search:
 # Store a fact
 "Remember my WireGuard VPN is 192.168.70.0/24"
 
-# Retrieve later
-"What's my VPN network?"  # Finds it via semantic search
+# Retrieve later (uses semantic search automatically)
+"What's my VPN network?"  # Finds it via AI embeddings
 
 # View all memories
 ./bin/memory list
+
+# Tune semantic search sensitivity (in config/cloud.env or local.env)
+SEMANTIC_SIMILARITY_THRESHOLD=0.40  # Default: 0.40 (balanced)
+# Lower (0.30-0.35) = more results, may include loosely related
+# Higher (0.45-0.50) = fewer results, only close matches
 ```
+
+See `docs/SEMANTIC_THRESHOLD_TUNING.md` for optimization guide.
 
 ### Auto-Save Intelligence
 
@@ -299,9 +354,21 @@ See `docs/OPENCODE.md` for details.
 
 ## 💾 Database & Costs
 
-### Memory Database
+### Memory Database (Dual System)
 
-SQLite at `data/jarvis_memory.db`:
+Jarvis uses separate databases for cloud and local modes:
+
+**Cloud Mode** - `data/jarvis_memory.db`:
+- Uses OpenAI embeddings (1536 dimensions)
+- Optimized for Claude/GPT
+
+**Local Mode** - `data/jarvis_memory_local.db`:
+- Uses nomic-embed-text (768 dimensions)
+- Optimized for Ollama models
+
+**Auto-Sync**: On startup, newer memories are synced between databases with re-embedded vectors for the target mode's model. See `docs/DUAL_DATABASE_SYSTEM.md`.
+
+**Tables**:
 - `knowledge_base` - Facts, preferences, embeddings
 - `conversations` - Full conversation history with metadata
 
@@ -338,9 +405,19 @@ LIMIT 7;"
 - `docs/QUICKSTART.md` - Quick setup guide
 - `docs/TOOL_CALLING_SYSTEM.md` - How tools work
 
+**Memory System (Updated Nov 2025):**
+- `docs/DUAL_DATABASE_SYSTEM.md` - **NEW**: Cloud/local DB architecture with auto-sync
+- `docs/SEMANTIC_THRESHOLD_TUNING.md` - **NEW**: How to tune similarity threshold
+- `docs/MEMORY_SYSTEM.md` - Memory & knowledge base overview
+- `docs/MEMORY_SYSTEM_TUNING.md` - Memory system optimization
+- `docs/MEMORY_INTELLIGENCE_FIXES.md` - Auto-save improvements
+
+**Tool Management:**
+- `docs/TOOL_MANAGEMENT.md` - Enable/disable tools, create profiles
+- `docs/TOOL_CALLING_SYSTEM.md` - How tool system works
+
 **Features:**
 - `docs/OPENCODE.md` - OpenCode integration
-- `docs/MEMORY_SYSTEM.md` - Memory & knowledge base
 - `docs/MULTI_TURN_ORCHESTRATION.md` - How tool chaining works
 - `docs/METADATA_SYSTEM.md` - Cost tracking & metadata
 
@@ -349,9 +426,10 @@ LIMIT 7;"
 - `docs/MCP_QUICKSTART.md` - MCP server integration
 - `docs/ERROR_RECOVERY.md` - Error handling
 
-**Recent Changes (Nov 2025):**
-- `docs/INTELLIGENCE_IMPROVEMENTS_2025-11-14.md` - Smart auto-save
-- `docs/FIXES_SUMMARY_2025-11-14.md` - Bug fixes & optimizations
+**Testing:**
+- `tests/integration/compare-models.sh` - Model comparison framework
+- `tests/integration/test-memory-tools.sh` - Memory tool selection tests
+- `tests/integration/test-memory-real-world.sh` - Complex scenario tests
 
 ### Historical/Reference Docs
 
@@ -429,14 +507,26 @@ The tool will be auto-discovered!
 
 ```bash
 # Test all tools (cloud)
-./tests/integration/test-all-tools.sh
+./test-all-tools.sh
 
 # Test all tools (local)
-./tests/integration/test-all-tools-local.sh
+./test-all-tools-local.sh
+
+# Test memory system (principle-based)
+./tests/integration/test-memory-tools.sh
+
+# Test real-world complex scenarios
+./tests/integration/test-memory-real-world.sh
+
+# Compare two models side-by-side (creates backups!)
+./tests/integration/compare-models.sh local qwen3-vl qwen2.5:7b
+./tests/integration/compare-models.sh cloud claude-sonnet-4-5 gpt-4o
 
 # Test specific tool
 ./orchestrator/orchestrator_v2.py cloud "remember test fact"
 ```
+
+**Note**: The model comparison script backs up your database before testing. Results are saved to `tests/integration/logs/` with AI-generated analysis.
 
 ### Git Workflow
 
@@ -496,6 +586,14 @@ sqlite3 data/jarvis_memory.db ".tables"
 
 # Backup before experiments
 cp data/jarvis_memory.db data/jarvis_memory.db.backup
+cp data/jarvis_memory_local.db data/jarvis_memory_local.db.backup
+
+# Manual sync between cloud and local databases
+./bin/sync-memory-db.py cloud  # Sync from local → cloud
+./bin/sync-memory-db.py local  # Sync from cloud → local
+
+# Restore from backup (after compare-models.sh tests)
+mv data/jarvis_memory_local.db.backup-compare-models data/jarvis_memory_local.db
 ```
 
 ### Logs
@@ -516,11 +614,15 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
-**Completed:**
+**Completed (November 2025):**
 - ✅ Multi-turn tool orchestration
-- ✅ Intelligent memory system
+- ✅ Intelligent memory system with semantic search
+- ✅ **Dual database system** (cloud/local with auto-sync)
+- ✅ **Tool management** (enable/disable per mode)
+- ✅ **Model comparison framework** with AI analysis
+- ✅ **Configurable semantic threshold** tuning
 - ✅ OpenCode integration
-- ✅ Cost tracking
+- ✅ Cost tracking and metadata logging
 - ✅ MCP server support
 - ✅ Auto-save intelligence
 - ✅ Conversation history
@@ -528,9 +630,10 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 **In Progress:**
 - Voice mode improvements
 - Additional MCP servers
-- Web UI for memory management
+- Performance optimization for local models
 
 **Planned:**
+- Web UI for memory management
 - Scheduled tasks / cron integration
 - Home automation tools
 - Multi-user support
@@ -554,5 +657,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.0 (November 2025)  
-**Status:** Production Ready ✅
+**Current Version:** v2.1 (November 2025)  
+**Status:** Production Ready ✅  
+**Latest Features:** Dual database system, tool management, model comparison framework
