@@ -447,11 +447,13 @@ CRITICAL RULES:
             # qwen3-vl VRAM usage on 16GB RTX 5060 Ti:
             #   4096 tokens  = 11GB (default, very safe)
             #   8192 tokens  = 12GB (current, 4GB headroom) ⭐
+            #  12288 tokens = ~13GB (middle ground, safe for most 16GB cards)
             #  16384 tokens  = 14GB (can increase if needed, 2GB headroom)
             #  32768 tokens  = 15GB (risky, causes timeouts)
             # To increase: change 8192 to 12288 or 16384 below
             if any(m in self.model.lower() for m in ['qwen', 'mistral-nemo']):
-                request_data["options"] = {"num_ctx": 8192}  # 8k tokens = 12GB VRAM
+                request_data["options"] = {"num_ctx": 12288}  # 8k tokens = 12GB VRAM ( 8192 is to small 6000 just for all tools and mcp)
+                # see bin/measure-baseline-tokens for more details
             
             response = requests.post(
                 f"{self.base_url}/api/chat",

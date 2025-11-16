@@ -134,7 +134,7 @@ def measure_baseline(mode='cloud'):
     else:  # local
         model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
         # Qwen models typically have 32K-128K context
-        context_window = 32000  # Conservative estimate for Qwen
+        context_window = 12288  # Conservative estimate for Qwen - see lib/llm_provider.py for more details
         print(f"🧠 MODEL CAPACITY (Ollama)")
         print(f"   Model: {model}")
         print(f"   Context window: ~{context_window:,} tokens (estimate)")

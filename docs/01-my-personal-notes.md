@@ -20,7 +20,16 @@ jarvis-cli-json local "what is your system prompt?"
   }
 }
 ------------
+none type error using qwen2.5
 
+(jarvis-venv) boss@fred:~/jarvis-voice$ cd /home/boss/jarvis-voice && ./orchestrator/orchestrator_v2.py local "What time i
+s it?" 2>&1 | head -20
+Ollama API error: 'NoneType' object has no attribute 'replace'
+🎯 Processing: 'What time is it?'
+📡 Mode: local
+🤖 Model: qwen2.5:7b
+
+----
 
 
 ### Ideas

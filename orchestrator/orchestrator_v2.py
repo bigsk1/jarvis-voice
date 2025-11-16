@@ -652,9 +652,26 @@ def main():
     
     transcript = " ".join(sys.argv[2:])
     
+    # Load config once for displaying model and creating orchestrator
+    load_config(mode)
+    
     if not json_only:
+        from config_loader import get_config_value
+        
         print(f"🎯 Processing: '{transcript}'")
         print(f"📡 Mode: {mode}")
+        
+        # Show model being used
+        if mode == "cloud":
+            provider = get_config_value("LLM_PROVIDER", "anthropic")
+            if provider == "openai":
+                model = get_config_value("CHAT_MODEL", "gpt-4o")
+            else:
+                model = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+        else:
+            model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
+        print(f"🤖 Model: {model}")
+        
         print("=" * 60)
     
     orch = Orchestrator(mode)

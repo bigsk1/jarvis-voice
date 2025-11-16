@@ -8,23 +8,61 @@ Provides token usage tracking and cost estimates for cloud providers.
 # Note: User is Tier 2 with Anthropic
 PRICING = {
     "openai": {
-        # GPT-5 series
-        "gpt-5.1": {"input": 1.25, "output": 10.00},
-        "gpt-5-mini": {"input": 0.25, "output": 2.00},
-        "gpt-5-nano": {"input": 0.05, "output": 0.40},
+        # GPT-5.1 series (Nov 2025) - Official pricing from openai.com/api/pricing
+        "gpt-5.1": {"input": 1.25, "output": 10.00, "cached": 0.125},
+        "gpt-5.1-2025-11-13": {"input": 1.25, "output": 10.00, "cached": 0.125},
+        "gpt-5.1-chat-latest": {"input": 1.25, "output": 10.00, "cached": 0.125},
+        "gpt-5.1-codex": {"input": 1.25, "output": 10.00, "cached": 0.125},
+        "gpt-5.1-codex-mini": {"input": 0.25, "output": 2.00, "cached": 0.025},
+        
+        # GPT-5 series (Aug 2025) - Official pricing from openai.com/api/pricing
+        "gpt-5": {"input": 1.25, "output": 10.00, "cached": 0.125},
+        "gpt-5-2025-08-07": {"input": 1.25, "output": 10.00, "cached": 0.125},
+        "gpt-5-chat-latest": {"input": 1.25, "output": 10.00, "cached": 0.125},
+        "gpt-5-codex": {"input": 1.25, "output": 10.00, "cached": 0.125},
+        "gpt-5-mini": {"input": 0.25, "output": 2.00, "cached": 0.025},
+        "gpt-5-mini-2025-08-07": {"input": 0.25, "output": 2.00, "cached": 0.025},
+        "gpt-5-nano": {"input": 0.05, "output": 0.40, "cached": 0.005},
+        "gpt-5-nano-2025-08-07": {"input": 0.05, "output": 0.40, "cached": 0.005},
         "gpt-5-pro": {"input": 15.00, "output": 120.00},
-        # GPT-4.1 series
-        "gpt-4.1": {"input": 3.00, "output": 12.00},
-        "gpt-4.1-mini": {"input": 0.80, "output": 3.20},
-        "gpt-4.1-nano": {"input": 0.20, "output": 0.80},
-        # Reasoning models
-        "o4-mini": {"input": 4.00, "output": 16.00},
-        # Realtime models
-        "gpt-realtime": {"input": 4.00, "output": 16.00},
-        "gpt-realtime-mini": {"input": 0.60, "output": 2.40},
-        # Legacy (backward compatibility)
-        "gpt-4o": {"input": 3.00, "output": 12.00},  # Maps to GPT-4.1
-        "gpt-4o-mini": {"input": 0.80, "output": 3.20},  # Maps to GPT-4.1 mini
+        "gpt-5-pro-2025-10-06": {"input": 15.00, "output": 120.00},
+        
+        # GPT-4.1 series (Apr 2025) - Based on fine-tuning pricing
+        "gpt-4.1": {"input": 3.00, "output": 12.00, "cached": 0.75},
+        "gpt-4.1-2025-04-14": {"input": 3.00, "output": 12.00, "cached": 0.75},
+        "gpt-4.1-mini": {"input": 0.25, "output": 2.00, "cached": 0.025},
+        "gpt-4.1-mini-2025-04-14": {"input": 0.25, "output": 2.00, "cached": 0.025},
+        "gpt-4.1-nano": {"input": 0.05, "output": 0.40, "cached": 0.005},
+        "gpt-4.1-nano-2025-04-14": {"input": 0.05, "output": 0.40, "cached": 0.005},
+        
+        # GPT-4o series (Legacy compatibility - maps to GPT-4.1 pricing)
+        "gpt-4o": {"input": 3.00, "output": 12.00, "cached": 0.75},
+        "gpt-4o-mini": {"input": 0.25, "output": 2.00, "cached": 0.025},
+        "gpt-4o-2024-11-20": {"input": 3.00, "output": 12.00, "cached": 0.75},
+        "gpt-4o-2024-08-06": {"input": 3.00, "output": 12.00, "cached": 0.75},
+        "gpt-4o-2024-05-13": {"input": 3.00, "output": 12.00, "cached": 0.75},
+        "chatgpt-4o-latest": {"input": 3.00, "output": 12.00, "cached": 0.75},
+        
+        # Specialized models (estimated pricing based on model tier)
+        "gpt-4o-audio-preview": {"input": 3.00, "output": 12.00},
+        "gpt-4o-mini-audio-preview": {"input": 0.25, "output": 2.00},
+        "gpt-audio": {"input": 3.00, "output": 12.00},
+        "gpt-audio-mini": {"input": 0.25, "output": 2.00},
+        "gpt-4o-realtime-preview": {"input": 3.00, "output": 12.00},
+        "gpt-4o-mini-realtime-preview": {"input": 0.25, "output": 2.00},
+        "gpt-realtime": {"input": 3.00, "output": 12.00},
+        "gpt-realtime-mini": {"input": 0.25, "output": 2.00},
+        "gpt-4o-transcribe": {"input": 0.25, "output": 2.00},
+        "gpt-4o-mini-transcribe": {"input": 0.05, "output": 0.40},
+        "gpt-4o-mini-tts": {"input": 0.05, "output": 0.40},
+        
+        # Reasoning models (estimated)
+        "o4-mini": {"input": 3.00, "output": 12.00},
+        
+        # GPT-4 Turbo (still available, estimated pricing)
+        "gpt-4": {"input": 30.00, "output": 60.00},
+        "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+        "gpt-4-turbo-2024-04-09": {"input": 10.00, "output": 30.00},
     },
     "anthropic": {
         # Claude 4 series (most recent)
