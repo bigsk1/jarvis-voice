@@ -28,6 +28,7 @@ fi
 echo "✅ All system dependencies found"
 
 # Check Python packages
+# Currently jarvis-venv is one level up from project root and been using for this project, if starting new need to adjust alaises and apths to use a new venv in this project.
 echo ""
 echo "🐍 Checking Python packages..."
 if ! python3 -c "import openwakeword" 2>/dev/null; then
@@ -111,7 +112,7 @@ echo ""
 echo "Next steps:"
 echo ""
 echo "1. Edit config files:"
-echo "   • config/cloud.env (OpenAI API key)"
+echo "   • config/cloud.env (Anthropic API key)"
 echo "   • config/local.env (Ollama/Kokoro endpoints)"
 echo ""
 echo "2. Activate your Python virtual environment:"
@@ -124,7 +125,7 @@ echo ""
 echo "4. Create feature branches for experiments:"
 echo "   git checkout -b feature/my-new-capability"
 echo ""
-echo "5. Your old scripts are still in /home/boss/"
-echo "   Keep them as backup until you verify the new setup works!"
+echo "5. Your will need to set your own speaker and mic names in the config files and requirements.txt has full packages needed using uv to install everything is prefered"
+echo "   This setup was never designed to be reproducible or used by others so you will need to set your own values and install the packages yourself."
 echo ""
 
