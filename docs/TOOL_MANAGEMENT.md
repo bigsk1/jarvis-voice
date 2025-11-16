@@ -196,7 +196,7 @@ Always keep these enabled for basic functionality:
 
 ```bash
 # Save your enabled tools
-./bin/manage-tools.py list > ~/my-jarvis-profile.txt
+./bin/manage-tools.py list > ~/jarvis-voice/skills/profiles/jarvis-tools-profile.txt
 ```
 
 ## Migration (Already Done)

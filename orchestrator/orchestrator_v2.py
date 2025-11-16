@@ -26,6 +26,14 @@ class Orchestrator:
         self.mode = mode
         load_config(mode)
         
+        # Auto-sync memory database from other mode if needed
+        try:
+            from auto_sync_memory import auto_sync_on_startup
+            auto_sync_on_startup(mode, verbose=False)
+        except Exception as e:
+            # Non-critical - continue if sync fails
+            pass
+        
         # Create tool registry once (includes MCP discovery)
         # This prevents duplicate MCP containers
         from pathlib import Path

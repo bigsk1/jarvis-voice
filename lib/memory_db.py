@@ -21,14 +21,23 @@ class MemoryDB:
         Initialize memory database.
         
         Args:
-            db_path: Path to SQLite database file
+            db_path: Path to SQLite database file (auto-detects cloud vs local mode)
         """
         if db_path is None:
-            # Default to project data directory
+            # Auto-detect mode and use appropriate database
             project_root = Path(__file__).parent.parent.resolve()
             data_dir = project_root / "data"
             data_dir.mkdir(exist_ok=True)
-            db_path = str(data_dir / "jarvis_memory.db")
+            
+            # Check if we're in local mode (ollama provider)
+            llm_provider = os.environ.get('LLM_PROVIDER', 'anthropic').lower()
+            
+            if llm_provider == 'ollama':
+                # Local mode - use separate database with nomic embeddings
+                db_path = str(data_dir / "jarvis_memory_local.db")
+            else:
+                # Cloud mode - use main database with OpenAI embeddings
+                db_path = str(data_dir / "jarvis_memory.db")
         
         self.db_path = db_path
         self.conn = None
@@ -275,8 +284,13 @@ class MemoryDB:
             for row in results:
                 memory = dict(row)
                 
-                # Deserialize embedding
-                stored_embedding = pickle.loads(memory['embedding'])
+                # Deserialize embedding (handle both pickle and JSON formats)
+                try:
+                    # Try JSON first (newer format)
+                    stored_embedding = json.loads(memory['embedding'].decode('utf-8'))
+                except (json.JSONDecodeError, AttributeError):
+                    # Fall back to pickle (older format)
+                    stored_embedding = pickle.loads(memory['embedding'])
                 
                 # Calculate similarity
                 similarity = cosine_similarity(query_embedding, stored_embedding)
