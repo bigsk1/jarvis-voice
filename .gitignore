@@ -40,6 +40,8 @@ logs/test/*.json
 *.tmp
 .cache/
 tmp/
+tests/integration/logs
+tests/integration/logs/*
 
 # ===== IDE & Editors =====
 .vscode/
