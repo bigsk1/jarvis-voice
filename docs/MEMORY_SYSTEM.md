@@ -52,25 +52,38 @@ Stores important information proactively.
 ```
 
 ### `recall`
-Searches for specific memories by category and key.
+Fuzzy keyword search (SQL LIKE substring matching).
 ```bash
+# Implementation: WHERE key LIKE '%query%' OR value LIKE '%query%'
+# Use case: Simple keyword lookups
 # Ask: "What's my favorite restaurant?"
-# Jarvis uses recall tool to find the answer
+# Finds: "favorite_restaurant", "restaurant_preference", etc.
 ```
 
+**Note**: `recall` and `search_memory` are functionally identical. Both do fuzzy substring matching. The LLM is guided to prefer `search_memory` for general searches.
+
 ### `search_memory`
-Keyword search across all memories.
+Fuzzy keyword search across all memories (identical to `recall`).
 ```bash
+# Same implementation as recall - calls the same function
 # Ask: "What do you know about restaurants?"
-# Jarvis finds all restaurant-related memories
+# Finds all memories with "restaurant" in key or value
 ```
 
 ### `semantic_recall`
-AI-powered search that understands meaning, not just keywords.
+AI-powered search using vector embeddings - understands meaning, not just keywords.
 ```bash
+# Implementation: OpenAI embeddings + cosine similarity
+# Threshold: Configurable via SEMANTIC_SIMILARITY_THRESHOLD (default 0.40)
 # Ask: "Where do I like to eat?"
-# Finds memories about restaurants even without exact words
+# Finds memories about "favorite_restaurant" by understanding concepts
+# Works even if query uses different words than stored memory
 ```
+
+**When to use which**:
+- **Natural language questions** (4+ words) → `semantic_recall`
+- **Simple keyword searches** (1-3 words) → `search_memory`
+- **Conversation history** → `search_conversations` (different table)
 
 ### `update_memory`
 Modifies existing memories when information changes. **Smart search enabled** - can find memories automatically without needing the ID.

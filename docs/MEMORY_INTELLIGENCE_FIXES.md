@@ -41,9 +41,11 @@ CRITICAL EXAMPLES:
 ```
 
 **Why This Matters**: 
-- `recall` does EXACT text matching (query must match memory key/value exactly)
-- `search_memory` does FUZZY matching (finds "tetris_game_location" when searching "tetris")
-- `semantic_recall` uses embeddings (understands "start server" = "run application")
+- `recall` does FUZZY SQL LIKE matching (`WHERE key LIKE '%query%'`)
+- `search_memory` does FUZZY SQL LIKE matching (identical to recall - calls same function)
+- `semantic_recall` uses AI embeddings (understands "start server" = "run application")
+
+**Note**: `recall` and `search_memory` are functionally identical. Both do substring/fuzzy matching, not exact matching. The LLM is guided to use them in different contexts, but the underlying search is the same.
 
 ---
 

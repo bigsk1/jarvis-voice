@@ -59,22 +59,23 @@
 
 **Fix**: Add guidance to tool description about importance scoring
 
-### 4. **Search Strategy Unclear** (Priority: Medium)
+### 4. **Search Strategy - UPDATED (2025-11-16)** ✅
 
-**Current State**:
-- `search_memory`: Text search in knowledge_base (keyword matching)
-- `semantic_recall`: Vector search in knowledge_base (conceptual matching)
-- `search_conversations`: Text search in conversations table
-- `recall`: Exact key lookup (deprecated?)
+**Current State (ACTUAL CODE BEHAVIOR)**:
+- `recall`: SQL LIKE fuzzy search in knowledge_base (`WHERE key LIKE '%query%'`)
+- `search_memory`: SQL LIKE fuzzy search in knowledge_base (IDENTICAL to recall - calls same function)
+- `semantic_recall`: AI embedding vector search in knowledge_base (cosine similarity)
+- `search_conversations`: SQL LIKE text search in conversations table
 
-**Problem**: LLM doesn't know which tool to use when
+**Key Finding**: `recall` and `search_memory` are DUPLICATES - both do fuzzy substring matching, NOT exact matching.
 
-**Example Confusion**:
-- "When do I celebrate my birth date?" → Should use `semantic_recall` (conceptual: "celebrate" ≈ "birthday")
-- "What's my birthday?" → Could use `search_memory` (keyword: "birthday")
-- "Tell me about that webhook I sent" → Should use `search_conversations` (action history, not stored fact)
+**Tool Selection Guidance (router_v2.py - UPDATED)**:
+- Natural language questions (4+ words) → `semantic_recall` ("What food do I love?")
+- Simple keyword searches (1-3 words) → `search_memory` ("tetris", "webhook")
+- Conversation history → `search_conversations` ("What did I just test?")
+- Note: `recall` is redundant but kept for backward compatibility
 
-**Fix**: Add clearer guidance in system prompt about tool selection
+**Status**: ✅ FIXED in commit 5b85ebd (tool descriptions updated), ee82368 (generic guidance), fc5576e (threshold configurable)
 
 ## Proposed Fixes
 
