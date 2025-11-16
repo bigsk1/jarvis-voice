@@ -83,27 +83,6 @@ These docs contain outdated info but are kept for historical context:
 
 ## 📋 Recommended Actions
 
-### Consolidation Candidates
-
-**Option 1: Archive Historical Docs**
-Move to `docs/archive/` directory:
-- `CHANGELOG_2025-11-14.md`
-- `FIXES_2025-11-14.md`
-- `TESTING_RESULTS_2025-11-14.md`
-- `METADATA_POPULATION_STATUS.md`
-- `MEMORY_INTELLIGENCE_FIXES.md`
-- `PHASE1_COMPLETE.md`
-- `cursor_moved_file_to_jarvis_oice_folder.md`
-
-**Option 2: Delete Redundant Docs**
-If you don't need historical context:
-- `CHANGELOG_2025-11-14.md` (extremely detailed, 400+ lines)
-- `FIXES_2025-11-14.md` (superseded by FIXES_SUMMARY)
-- `TESTING_RESULTS_2025-11-14.md` (one-time test results)
-- `METADATA_POPULATION_STATUS.md` (tracking doc, now done)
-
-**Option 3: Keep Everything**
-If disk space isn't a concern, keep all docs as-is.
 
 ### Update DATABASE_DEEP_DIVE.md
 

@@ -166,7 +166,7 @@ ollama pull qwen3-vl
 ollama pull nomic-embed-text
 
 # OpenCode (optional, for coding tasks)
-# See docs/OPENCODE.md for installation
+# See docs/opencode/OPENCODE.md for installation
 ```
 
 ### 4. Run Jarvis
@@ -348,7 +348,7 @@ OPENCODE_BASE_URL="http://localhost:4096"
 
 **Workspace:** All OpenCode projects go to `~/jarvis-workspace/projects/`
 
-See `docs/OPENCODE.md` for details.
+See `docs/opencode/OPENCODE.md` for details.
 
 ---
 
@@ -417,12 +417,13 @@ LIMIT 7;"
 - `docs/TOOL_CALLING_SYSTEM.md` - How tool system works
 
 **Features:**
-- `docs/OPENCODE.md` - OpenCode integration
+- `docs/opencode/OPENCODE.md` - OpenCode integration
 - `docs/MULTI_TURN_ORCHESTRATION.md` - How tool chaining works
 - `docs/METADATA_SYSTEM.md` - Cost tracking & metadata
 
 **Advanced:**
-- `docs/OPENCODE_API_REFERENCE.md` - Full OpenCode API
+- `docs/opencode/OPENCODE_API_REFERENCE.md` - Full OpenCode API
+- `docs/opencode/OPENCODE_AGENTS.md` - Agent system architecture
 - `docs/MCP_QUICKSTART.md` - MCP server integration
 - `docs/ERROR_RECOVERY.md` - Error handling
 

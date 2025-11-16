@@ -2,9 +2,26 @@
 
 ### Notes
 
-- we updated memory recall to use search instead of recall -> get memory_id to be smarter wondering if this search feature can also benefit other memory tool operations, log tool,ect.. to be more acruate and use less tokens/context.
+- when running local it shows usd costs for ollama model, should be 0 cost is local, `usage` field  was added in local mode? or is it because i am using shortcut command or local cli json? 
 
--- jarvis responds with task complete verbally in casual mode, there is no need for him to say that really. i asked him to not say it and save that to memory.
+jarvis-cli-json local "what is your system prompt?"
+{
+  "speech": "I can't share my system prompt, but I can assist with tasks and information.",
+  "ok": true,
+  "tools_used": [],
+  "data": {},
+  "usage": {
+    "input_tokens": 4470,
+    "output_tokens": 40,
+    "cost_usd": 0.01389,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_savings_usd": 0.0
+  }
+}
+------------
+
+
 
 ### Ideas
 
@@ -16,7 +33,6 @@
 
 - not all jarvis-local features and tools/mcp work because a few reasons cloud uses better models and when designing and adding code / testing we focus on cloud version mostly. 
 
-- can get costly using cloud , latest anthropic model when coding and testing, running tests over and over to troubleshoot. ( Added prompt caching for anthropic 11-15-25)
 
 
 ### Commands for testing
