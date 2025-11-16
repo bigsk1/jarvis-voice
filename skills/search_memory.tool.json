@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "search_memory",
-  "description": "Search all stored memories by keyword. Use this to see what you know about a topic, find related memories, or check if you've already stored similar information before storing new data.",
+  "description": "Search all stored memories by keyword (fuzzy text matching). Same as recall but with higher default limit. Use this to see what you know about a topic or find related memories. For natural language questions like 'What food do I love?', use semantic_recall instead.",
   "parameters": {
     "type": "object",
     "properties": {

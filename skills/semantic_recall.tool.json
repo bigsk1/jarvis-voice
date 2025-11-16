@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "semantic_recall",
-  "description": "Semantic search across stored memories using AI embeddings. This finds memories by MEANING, not just exact keywords. Use this when the user asks about topics using different words than what was stored. For example, if stored 'wife_birthday' but user asks 'when is my spouse born', this will find it.",
+  "description": "Semantic search using AI embeddings - finds memories by MEANING, not just keywords. ALWAYS use this for natural language questions like 'What food do I love?', 'When do I celebrate?', 'What's my favorite color?'. This understands concepts: 'spouse born' finds 'wife_birthday', 'what food' finds 'favorite_food'. More powerful but slower than keyword search.",
   "parameters": {
     "type": "object",
     "properties": {
