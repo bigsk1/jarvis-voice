@@ -29,6 +29,7 @@ THINKING_MODELS = {
     ],
     "ollama": [
         "qwen2.5-coder:32b-instruct-q4_K_M",  # Some Qwen models support thinking
+        "qwen3:14b",  # Qwen3 14B reasoning model
         "deepseek-r1",  # DeepSeek reasoning model
         "qwq"  # QwQ thinking model
     ]
@@ -142,8 +143,21 @@ def extract_thinking(response: Any, provider: str) -> Optional[str]:
                     return choice.reasoning_content
         
         elif provider == "ollama":
-            # Ollama may include thinking in message content
-            # Look for thinking tags or patterns
+            # Ollama has TWO formats for thinking:
+            # 1. Structured field (qwen3:14b, modern models) - preferred
+            # 2. Tags in content (deepseek-r1, raw output) - fallback
+            
+            # Method 1: Check for structured thinking field (Ollama API format)
+            if isinstance(response, dict):
+                # Response is a dict (from JSON)
+                if 'thinking' in response and response['thinking']:
+                    return response['thinking']
+                # Sometimes thinking is nested in message
+                if 'message' in response and isinstance(response['message'], dict):
+                    if 'thinking' in response['message']:
+                        return response['message']['thinking']
+            
+            # Method 2: Check for thinking in message content (tags)
             if hasattr(response, 'message') and hasattr(response.message, 'content'):
                 content = response.message.content
                 

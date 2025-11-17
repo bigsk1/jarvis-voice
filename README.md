@@ -49,6 +49,29 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ---
 
+## 🔍 How It Works
+
+**New to Jarvis?** See the **[Complete Workflow Guide](docs/JARVIS_WORKFLOW.md)** for:
+- 📊 Visual flowcharts showing how queries are processed
+- 🧠 Memory-first strategy and tool selection logic
+- 🔧 Multi-turn orchestration examples
+- ⚙️ Configuration impact on behavior
+- 📝 Real-world examples with thinking mode enabled
+
+**Quick Overview:**
+```
+User Query → Router (LLM analyzes) → Memory Check → Tool Selection → 
+Execute Tool(s) → Multi-Turn if Needed → Format Response → User
+```
+
+Key decision points:
+- **Memory First**: Always checks stored info before external calls
+- **Thinking Mode**: See LLM's reasoning process (toggle via `--debug-thinking`)
+- **Smart Tool Selection**: Keyword search vs semantic search vs direct tool call
+- **Multi-Turn**: Chains tools automatically for complex tasks
+
+---
+
 ## 📁 Project Structure
 
 ```

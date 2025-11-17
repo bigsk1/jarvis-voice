@@ -3,6 +3,7 @@
 ## 📚 Core Documentation
 
 ### Getting Started
+- **[JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md)** - 🆕 **Complete workflow guide with visual flowcharts** (START HERE!)
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
 - **[../config/README.md](../config/README.md)** - Configuration guide
 
@@ -88,6 +89,12 @@
 | **BASELINE_TOKEN_USAGE.md** | Token usage tracking |
 | **../tests/README.md** | Test suite overview |
 
+### System Understanding
+| Document | Purpose |
+|----------|---------|
+| **JARVIS_WORKFLOW.md** | 🆕 **Complete workflow with visual flowcharts** |
+| **COMPLETE_SYSTEM_SUMMARY.md** | System overview |
+
 ### Configuration & Setup
 | Document | Purpose |
 |----------|---------|
@@ -108,7 +115,6 @@
 ### Reference & Archives
 | Document | Purpose |
 |----------|---------|
-| **COMPLETE_SYSTEM_SUMMARY.md** | System overview |
 | **DATABASE_DEEP_DIVE.md** | Database evolution |
 | **JARVIS_INTEL_SYSTEM.md** | Intel file ingestion |
 | **FUTURE_ENHANCEMENTS.md** | Planned features |

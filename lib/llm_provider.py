@@ -465,6 +465,13 @@ CRITICAL RULES:
             result = response.json()
             content = result["message"]["content"]
             
+            # Extract thinking if present (qwen3:14b and other reasoning models)
+            thinking = None
+            if "thinking" in result.get("message", {}):
+                thinking = result["message"]["thinking"]
+            elif "thinking" in result:
+                thinking = result["thinking"]
+            
             # Try to parse as tool call
             # Handle both pure JSON and markdown-wrapped JSON
             try:
@@ -499,12 +506,12 @@ CRITICAL RULES:
                         from local_model_corrections import correct_tool_call
                         corrected_call = correct_tool_call(raw_call)
                         
-                        return None, corrected_call, None, None  # No usage info or thinking for Ollama
+                        return None, corrected_call, None, thinking  # Return thinking if available
             except (json.JSONDecodeError, ValueError):
                 pass
             
             # Otherwise return as text
-            return content, None, None, None  # No tool call, usage, or thinking
+            return content, None, None, thinking  # Return thinking if available
             
         except Exception as e:
             import sys
