@@ -2,7 +2,7 @@
 
 ### Notes
 
-- when running local it shows usd costs for ollama model, should be 0 cost is local, `usage` field  was added in local mode? or is it because i am using shortcut command or local cli json? 
+- when running local it shows usd costs for ollama model, should be 0 cost is local, `usage` field  was added in local mode? or is it because i am using shortcut command or local cli json? , is because in json mode is why, solution dont worry about it normal non jason mode doesnt show it. 
 
 jarvis-cli-json local "what is your system prompt?"
 {
@@ -20,7 +20,7 @@ jarvis-cli-json local "what is your system prompt?"
   }
 }
 ------------
-none type error using qwen2.5
+none type error using qwen2.5 - solution dont use qwen2.5 is weak. 
 
 (jarvis-venv) boss@fred:~/jarvis-voice$ cd /home/boss/jarvis-voice && ./orchestrator/orchestrator_v2.py local "What time i
 s it?" 2>&1 | head -20
