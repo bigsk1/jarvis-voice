@@ -27,13 +27,13 @@ graph TB
     
     Orchestrator --> Config[⚙️ Load Config]
     Config --> Cloud{Mode?}
-    Cloud -->|cloud| CloudDB[(jarvis_memory.db<br/>OpenAI embeddings)]
-    Cloud -->|local| LocalDB[(jarvis_memory_local.db<br/>Nomic embeddings)]
+    Cloud -->|cloud| CloudDB[(jarvis_memory.db)]
+    Cloud -->|local| LocalDB[(jarvis_memory_local.db)]
     
     Orchestrator --> AutoSync[🔄 Auto-Sync Memory]
-    AutoSync --> Router[🧭 Router v2<br/>LLM-based intent analysis]
+    AutoSync --> Router[🧭 Router v2]
     
-    Router --> Thinking{Thinking<br/>Enabled?}
+    Router --> Thinking{Thinking Enabled?}
     Thinking -->|Yes| ShowThinking[🧠 Display Reasoning]
     Thinking -->|No| SkipThinking[⏩ Skip Display]
     ShowThinking --> Intent
@@ -48,7 +48,7 @@ graph TB
     Tools --> LocalTools[📦 Local Skills]
     
     Executor --> Result[✅ Tool Result]
-    Result --> MultiTurn{More<br/>Tools?}
+    Result --> MultiTurn{More Tools?}
     MultiTurn -->|Yes| Router
     MultiTurn -->|No| Final[📊 Final Response]
     
@@ -123,25 +123,25 @@ Jarvis follows a **MEMORY-FIRST RULE**: Always check memory before making assump
 ```mermaid
 graph TB
     Query[User Query] --> Analyze[Analyze Query]
-    Analyze --> NeedInfo{Need stored<br/>information?}
+    Analyze --> NeedInfo{Need stored information?}
     
     NeedInfo -->|No| DirectTool[Execute Tool Directly]
     NeedInfo -->|Yes| SearchType{Query Type?}
     
-    SearchType -->|"1-3 keywords"| KeywordSearch[🔍 search_memory<br/>SQL LIKE fuzzy matching]
-    SearchType -->|"Natural language<br/>4+ words, sentence"| SemanticSearch[🤖 semantic_recall<br/>AI embedding search]
-    SearchType -->|"Past conversations"| ConversationSearch[💬 search_conversations<br/>Historical context]
+    SearchType -->|"1-3 keywords"| KeywordSearch[🔍 search_memory]
+    SearchType -->|"Natural language"| SemanticSearch[🤖 semantic_recall]
+    SearchType -->|"Past conversations"| ConversationSearch[💬 search_conversations]
     
     KeywordSearch --> MemDB[(Memory Database)]
     SemanticSearch --> EmbedModel[Embedding Model]
     ConversationSearch --> MemDB
     
-    EmbedModel --> VectorSearch[Vector Similarity Search<br/>Threshold: 0.40]
+    EmbedModel --> VectorSearch[Vector Similarity Search]
     VectorSearch --> MemDB
     
     MemDB --> Found{Found?}
     Found -->|Yes| UseMemory[Use Stored Data]
-    Found -->|No| UseOtherTool[Call Other Tools<br/>or Inform User]
+    Found -->|No| UseOtherTool[Call Other Tools]
     
     UseMemory --> Response[Build Response]
     UseOtherTool --> Response
@@ -151,6 +151,12 @@ graph TB
     style SemanticSearch fill:#9b59b6
     style ConversationSearch fill:#e74c3c
 ```
+
+**Tool Details:**
+- **search_memory**: SQL LIKE fuzzy matching for 1-3 keywords
+- **semantic_recall**: AI embedding search for natural language (4+ words, sentence structure)
+- **search_conversations**: Historical context from past interactions
+- **Similarity Threshold**: Default 0.40 (configurable in `.env`)
 
 ### Memory Tool Selection Examples
 
@@ -185,7 +191,7 @@ graph TB
     ToolReg --> FilterTools{Filter Tools}
     
     FilterTools --> Enabled[✅ Only Load Enabled Tools]
-    Enabled --> ToolList[Available Tools List:<br/>- Local skills/*.py<br/>- MCP server tools]
+    Enabled --> ToolList[Available Tools List]
     
     ToolList --> Decision{Decision Type}
     
@@ -201,8 +207,8 @@ graph TB
     Execute --> Validate[Validate Result]
     Validate --> Success{Success?}
     
-    Success -->|Yes| CheckNext{More tools<br/>needed?}
-    Success -->|No| Retry{Retry<br/>count < 3?}
+    Success -->|Yes| CheckNext{More tools needed?}
+    Success -->|No| Retry{Retry count < 3?}
     
     Retry -->|Yes| Execute
     Retry -->|No| Error[❌ Return Error]
@@ -219,6 +225,12 @@ graph TB
     style Execute fill:#27ae60
     style Error fill:#e74c3c
 ```
+
+**Decision Types:**
+- **Single Tool**: Simple tasks (e.g., "What time is it?")
+- **Multi-Tool Chain**: Complex tasks requiring multiple steps
+- **Q&A Response**: Information requests that don't need tools
+- **Auto-Save**: Automatically saves important info to memory
 
 ### Tool Registry & Enable/Disable
 
@@ -300,14 +312,14 @@ graph LR
     Mode -->|cloud| CloudConfig[Load config/cloud.env]
     Mode -->|local| LocalConfig[Load config/local.env]
     
-    CloudConfig --> CloudLLM[LLM: Anthropic/OpenAI<br/>Models: Claude Sonnet 4.5, GPT-4o]
-    LocalConfig --> LocalLLM[LLM: Ollama<br/>Models: qwen3:14b, qwen3-vl]
+    CloudConfig --> CloudLLM[LLM: Anthropic/OpenAI]
+    LocalConfig --> LocalLLM[LLM: Ollama]
     
-    CloudLLM --> CloudDB[(jarvis_memory.db<br/>OpenAI text-embedding-3-small<br/>1536 dimensions)]
-    LocalLLM --> LocalDB[(jarvis_memory_local.db<br/>nomic-embed-text<br/>768 dimensions)]
+    CloudLLM --> CloudDB[(jarvis_memory.db)]
+    LocalLLM --> LocalDB[(jarvis_memory_local.db)]
     
-    CloudDB --> CloudTools[Cloud Tools:<br/>+ Native tool calling<br/>+ Prompt caching<br/>+ Extended thinking]
-    LocalDB --> LocalTools[Local Tools:<br/>+ Structured prompting<br/>+ Offline operation<br/>+ No API costs]
+    CloudDB --> CloudTools[Cloud Tools]
+    LocalDB --> LocalTools[Local Tools]
     
     CloudTools --> Execute[Execute Tasks]
     LocalTools --> Execute
@@ -317,6 +329,11 @@ graph LR
     style CloudDB fill:#5dade2
     style LocalDB fill:#48c9b0
 ```
+
+**Database Details:**
+- **Cloud**: OpenAI text-embedding-3-small (1536 dimensions) 
+- **Local**: nomic-embed-text (768 dimensions)
+- **Models**: Claude Sonnet 4.5, GPT-4o (cloud) | qwen3:14b, qwen3-vl (local)
 
 ### Key Configuration Variables
 
@@ -336,19 +353,27 @@ graph LR
 graph TB
     ToolResult[Tool Returns Data] --> Style{JARVIS_RESPONSE_STYLE}
     
-    Style -->|casual| LLM[Format with LLM<br/>Natural conversation]
-    Style -->|detailed| Raw[Use raw output<br/>Technical details]
+    Style -->|casual| LLM[Format with LLM]
+    Style -->|detailed| Raw[Use raw output]
     Style -->|auto| Smart{Smart Decision}
     
     Smart -->|Search results| LLM
     Smart -->|Other tools| Raw
     
-    LLM --> Voice[Voice-friendly output:<br/>"It's 2:30 PM on November 16th"]
-    Raw --> Data[Raw data output:<br/>{"time": "14:30", "date": "2025-11-16"}]
+    LLM --> Voice[Voice-friendly output]
+    Raw --> Data[Raw data output]
     
     Voice --> User[👤 User]
     Data --> User
+    
+    style LLM fill:#9b59b6
+    style Raw fill:#e74c3c
 ```
+
+**Examples:**
+- **casual**: "It's 2:30 PM on November 16th"
+- **detailed**: `{"time": "14:30", "date": "2025-11-16"}`
+- **auto**: Smart decision (LLM format for search, raw for others)
 
 ---
 
@@ -362,13 +387,26 @@ graph TB
 graph LR
     Q["What time is it?"] --> R[Router]
     R --> T{Thinking?}
-    T -->|Yes| Think["🧠 Reasoning:<br/>Need current time<br/>→ Use get_time tool<br/>→ No parameters needed"]
+    T -->|Yes| Think[🧠 Reasoning]
     T -->|No| Skip[Skip display]
     Think --> E[Execute get_time]
     Skip --> E
-    E --> Result["✅ 14:30, 2025-11-16"]
-    Result --> Format["It's 2:30 PM on November 16th"]
+    E --> Result[Tool Result]
+    Result --> Format[Format Response]
     Format --> User[👤 User]
+    
+    style Think fill:#9b59b6
+    style Result fill:#27ae60
+```
+
+**Thinking Output** (if enabled):
+```
+🧠 Reasoning: Need current time → Use get_time tool → No parameters needed
+```
+
+**Final Output:**
+```
+✅ It's 2:30 PM on November 16th, 2025.
 ```
 
 **With Thinking Enabled:**
@@ -402,7 +440,7 @@ sequenceDiagram
     M-->>R: Found: "favorite_food: sushi" (similarity: 0.87)
     R-->>U: "You love sushi!"
     
-    Note over R: No tool calls needed<br/>Memory answered directly
+    Note over R: No tool calls needed - Memory answered directly
 ```
 
 **Flow:**
@@ -443,7 +481,7 @@ sequenceDiagram
     Note over O: Turn 3: Respond
     O->>R: Finalize response
     R-->>O: Intent: qa
-    O-->>U: "Found Python tutorials at python.org, w3schools.com.<br/>I've remembered you're learning Python!"
+    O-->>U: Response with search results + saved memory
 ```
 
 **Tools Used:**
@@ -465,17 +503,17 @@ sequenceDiagram
 ```mermaid
 graph TB
     Query["Fetch content from example.com"] --> Router[Router]
-    Router --> MCPCheck{MCP Tools<br/>Available?}
+    Router --> MCPCheck{MCP Tools Available?}
     
     MCPCheck -->|Yes| MCPRegistry[Load mcp_fetch_fetch]
     MCPCheck -->|No| Error[❌ Tool not available]
     
-    MCPRegistry --> Execute[Execute mcp_fetch_fetch]
+    MCPRegistry --> Execute[Execute Tool]
     Execute --> MCPServer[🔌 MCP Fetch Server]
-    MCPServer --> HTTP[HTTP Request to example.com]
+    MCPServer --> HTTP[HTTP Request]
     HTTP --> Content[Page Content]
-    Content --> Parse[Parse HTML/Text]
-    Parse --> Format[Format Response]
+    Content --> Parse[Parse Response]
+    Parse --> Format[Format Output]
     Format --> User[👤 User]
     
     style MCPServer fill:#f39c12
@@ -516,7 +554,13 @@ sequenceDiagram
     OC-->>J: Task complete (port 8091)
     J->>Mem: Auto-save project location
     Mem-->>J: Saved
-    J-->>U: "Flask API built at ~/jarvis-workspace/projects/flask-todo-api<br/>Running on http://localhost:8091"
+    J-->>U: Flask API built successfully
+```
+
+**Response:**
+```
+Flask API built at ~/jarvis-workspace/projects/flask-todo-api
+Running on http://localhost:8091
 ```
 
 **OpenCode Features:**
