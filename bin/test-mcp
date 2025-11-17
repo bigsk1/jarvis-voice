@@ -2,114 +2,322 @@
 """
 Test MCP Server Connection
 Quick script to test MCP server connectivity and tool discovery.
+Loads config from mcp-servers.json and respects enabled/disabled status.
 """
 import sys
 import os
 import json
+from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from mcp_client import MCPClient, MCPManager
+from config_loader import load_config
 
 
-def test_single_server():
-    """Test a single MCP server (DuckDuckGo)."""
-    print("🧪 Testing DuckDuckGo MCP Server")
-    print("=" * 60)
+def list_all_enabled_servers():
+    """List all enabled MCP servers and their tools."""
+    print("\n🔍 Discovering MCP Servers and Tools")
+    print("=" * 70)
     
-    # Create client
-    client = MCPClient(
-        name="duckduckgo",
-        command="docker",
-        args=["run", "-i", "--rm", "mcp/duckduckgo"]
-    )
+    config_path = Path(__file__).parent.parent / "config" / "mcp-servers.json"
     
-    try:
-        # Start server
-        print("🚀 Starting MCP server...")
-        client.start()
-        print("✅ Server started")
+    if not config_path.exists():
+        print(f"❌ Config file not found: {config_path}")
+        return
+    
+    # Load config
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    servers = config.get("mcpServers", {})
+    
+    if not servers:
+        print("❌ No MCP servers configured")
+        return
+    
+    print(f"\n📦 Found {len(servers)} configured server(s):\n")
+    
+    enabled_count = 0
+    disabled_count = 0
+    
+    for server_name, server_config in servers.items():
+        enabled = server_config.get("enabled", False)
+        description = server_config.get("description", "No description")
         
-        # List tools
-        print("\n📋 Listing available tools...")
-        tools = client.list_tools()
-        print(f"✅ Found {len(tools)} tools:")
+        status_icon = "✅" if enabled else "⊝"
+        status_text = "ENABLED" if enabled else "DISABLED"
+        
+        print(f"{status_icon} {server_name} ({status_text})")
+        print(f"   Description: {description}")
+        
+        # Show environment variables (if any)
+        env_vars = server_config.get("env", {})
+        if env_vars:
+            print(f"   Environment: {len(env_vars)} variable(s)")
+            for key, value in env_vars.items():
+                # Show if it's a substitution
+                if "${" in str(value):
+                    print(f"      • {key} = {value}")
+                else:
+                    print(f"      • {key} = (static value)")
+        else:
+            print(f"   Environment: None (secure by default)")
+        
+        print()
+        
+        if enabled:
+            enabled_count += 1
+        else:
+            disabled_count += 1
+    
+    print(f"Summary: {enabled_count} enabled, {disabled_count} disabled")
+    
+    if enabled_count == 0:
+        print("\n⚠️  No enabled servers. Enable at least one in config/mcp-servers.json")
+        return
+    
+    return config_path, servers
+
+
+def discover_tools_from_enabled(mode='cloud'):
+    """Discover and list all tools from enabled MCP servers."""
+    print("\n🛠️  Discovering Tools from Enabled Servers")
+    print("=" * 70)
+    
+    # Load config to populate environment variables
+    print(f"📡 Loading {mode} mode config...")
+    load_config(mode)
+    
+    config_path = Path(__file__).parent.parent / "config" / "mcp-servers.json"
+    
+    if not config_path.exists():
+        print(f"❌ Config file not found: {config_path}")
+        return
+    
+    # Load config
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    servers = config.get("mcpServers", {})
+    enabled_servers = {name: cfg for name, cfg in servers.items() if cfg.get("enabled", False)}
+    
+    if not enabled_servers:
+        print("❌ No enabled servers")
+        return
+    
+    print(f"🔌 Starting {len(enabled_servers)} enabled server(s)...\n")
+    
+    all_tools = {}
+    
+    for server_name, server_config in enabled_servers.items():
+        try:
+            print(f"⏳ Starting {server_name}...")
+            
+            # Create client
+            client = MCPClient(
+                name=server_name,
+                command=server_config.get("command"),
+                args=server_config.get("args", []),
+                env=server_config.get("env", {})
+            )
+            
+            # Start server
+            client.start()
+            print(f"✅ {server_name} started")
+            
+            # List tools
+            tools = client.list_tools()
+            
+            if tools:
+                all_tools[server_name] = {
+                    "client": client,
+                    "tools": tools
+                }
+                print(f"   📋 Found {len(tools)} tool(s)")
+            else:
+                print(f"   ⚠️  No tools found")
+                client.stop()
+            
+        except Exception as e:
+            print(f"❌ {server_name} failed: {str(e)[:100]}")
+    
+    if not all_tools:
+        print("\n❌ No tools discovered from any server")
+        return
+    
+    # Display all tools
+    print(f"\n📚 Tool Catalog ({sum(len(info['tools']) for info in all_tools.values())} total tools)")
+    print("=" * 70)
+    
+    for server_name, info in all_tools.items():
+        tools = info['tools']
+        print(f"\n🔧 {server_name} ({len(tools)} tools)")
+        print("-" * 70)
         
         for tool in tools:
-            print(f"\n  Tool: {tool['name']}")
-            print(f"  Description: {tool['description']}")
-            print(f"  Parameters: {json.dumps(tool.get('inputSchema', {}), indent=4)}")
-        
-        # Test search
-        if tools:
-            print(f"\n🔍 Testing search tool...")
-            result = client.call_tool("search", {"query": "bitcoin price"})
-            print(f"Result OK: {result.get('ok')}")
-            print(f"Result Speech: {result.get('speech', 'N/A')[:200]}")
-            if result.get('error'):
-                print(f"Error: {result['error']}")
-            if result.get('data'):
-                print(f"Data keys: {list(result['data'].keys())}")
-        
-        print("\n✅ MCP server test successful!")
-        
-    except Exception as e:
-        print(f"\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+            # This is how Jarvis will see it
+            jarvis_name = f"mcp_{server_name}_{tool['name']}"
+            print(f"\n  Tool Name (Jarvis): {jarvis_name}")
+            print(f"  Tool Name (MCP):    {tool['name']}")
+            print(f"  Description:        {tool.get('description', 'No description')}")
+            
+            # Show parameters
+            input_schema = tool.get('inputSchema', {})
+            properties = input_schema.get('properties', {})
+            required = input_schema.get('required', [])
+            
+            if properties:
+                print(f"  Parameters:")
+                for param_name, param_info in properties.items():
+                    param_type = param_info.get('type', 'unknown')
+                    param_desc = param_info.get('description', 'No description')
+                    is_required = param_name in required
+                    req_str = "(required)" if is_required else "(optional)"
+                    print(f"    • {param_name} ({param_type}) {req_str}: {param_desc}")
+            else:
+                print(f"  Parameters:         None")
     
-    finally:
-        client.stop()
-        print("\n🛑 Server stopped")
+    # Cleanup
+    print("\n🧹 Stopping all servers...")
+    for info in all_tools.values():
+        try:
+            info['client'].stop()
+        except:
+            pass
+    
+    print("✅ All servers stopped")
 
 
-def test_manager():
-    """Test MCP manager with config file."""
-    print("\n🧪 Testing MCP Manager")
-    print("=" * 60)
+def test_specific_tool(server_name: str, tool_name: str, args: dict, mode='cloud'):
+    """Test a specific tool from a specific server."""
+    print(f"\n🧪 Testing Tool: {server_name}.{tool_name}")
+    print("=" * 70)
     
-    config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'mcp-servers.json')
+    # Load config
+    load_config(mode)
+    
+    config_path = Path(__file__).parent.parent / "config" / "mcp-servers.json"
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    server_config = config.get("mcpServers", {}).get(server_name)
+    
+    if not server_config:
+        print(f"❌ Server '{server_name}' not found in config")
+        return
+    
+    if not server_config.get("enabled", False):
+        print(f"⚠️  Server '{server_name}' is disabled")
+        return
     
     try:
-        manager = MCPManager(config_path)
-        print(f"✅ Loaded {len(manager.servers)} MCP servers from config")
+        # Create and start client
+        print(f"🚀 Starting {server_name}...")
+        client = MCPClient(
+            name=server_name,
+            command=server_config.get("command"),
+            args=server_config.get("args", []),
+            env=server_config.get("env", {})
+        )
         
-        all_tools = manager.list_all_tools()
-        for server_name, tools in all_tools.items():
-            print(f"\n📦 {server_name}: {len(tools)} tools")
-            for tool in tools:
-                print(f"  - {tool['name']}: {tool['description']}")
+        client.start()
+        print(f"✅ Server started")
         
-        print("\n✅ MCP manager test successful!")
+        # Call tool
+        print(f"\n🔍 Calling tool '{tool_name}' with args:")
+        print(f"   {json.dumps(args, indent=2)}")
+        
+        result = client.call_tool(tool_name, args)
+        
+        print(f"\n📊 Result:")
+        print(f"   OK:     {result.get('ok', False)}")
+        print(f"   Speech: {result.get('speech', 'N/A')[:200]}")
+        
+        if result.get('error'):
+            print(f"   Error:  {result['error']}")
+        
+        if result.get('data'):
+            print(f"   Data keys: {list(result['data'].keys())}")
+            # Show first 500 chars of data
+            data_str = json.dumps(result['data'], indent=2)
+            if len(data_str) > 500:
+                print(f"   Data preview:\n{data_str[:500]}...")
+            else:
+                print(f"   Data:\n{data_str}")
+        
+        print("\n✅ Test complete")
+        
+        # Cleanup
+        client.stop()
         
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
         traceback.print_exc()
-    
-    finally:
-        if 'manager' in locals():
-            manager.stop_all()
 
 
 def main():
     """Main test runner."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Test MCP server connectivity")
-    parser.add_argument("--server", action="store_true", help="Test single server")
-    parser.add_argument("--manager", action="store_true", help="Test MCP manager")
-    parser.add_argument("--all", action="store_true", help="Run all tests")
+    parser = argparse.ArgumentParser(
+        description="Test MCP server connectivity and discover tools",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # List all configured servers
+  ./bin/test-mcp --list
+  
+  # Discover tools from all enabled servers
+  ./bin/test-mcp --discover
+  
+  # Discover tools in local mode
+  ./bin/test-mcp --discover --mode local
+  
+  # Test a specific tool
+  ./bin/test-mcp --test brave-search search '{"query": "bitcoin price"}'
+  
+  # Full test (list + discover)
+  ./bin/test-mcp --all
+        """
+    )
+    
+    parser.add_argument("--list", action="store_true", help="List all configured servers")
+    parser.add_argument("--discover", action="store_true", help="Discover tools from enabled servers")
+    parser.add_argument("--test", nargs=3, metavar=("SERVER", "TOOL", "ARGS"), 
+                       help="Test specific tool (args as JSON)")
+    parser.add_argument("--mode", choices=["cloud", "local"], default="cloud",
+                       help="Config mode (cloud or local)")
+    parser.add_argument("--all", action="store_true", help="Run list + discover")
     
     args = parser.parse_args()
     
-    if args.all or args.server or (not args.server and not args.manager):
-        test_single_server()
+    # Default: list servers
+    if not any([args.list, args.discover, args.test, args.all]):
+        args.list = True
     
-    if args.all or args.manager:
-        test_manager()
+    if args.all:
+        list_all_enabled_servers()
+        discover_tools_from_enabled(args.mode)
+    
+    elif args.list:
+        list_all_enabled_servers()
+    
+    elif args.discover:
+        discover_tools_from_enabled(args.mode)
+    
+    elif args.test:
+        server_name, tool_name, args_json = args.test
+        try:
+            tool_args = json.loads(args_json)
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid JSON args: {e}")
+            sys.exit(1)
+        
+        test_specific_tool(server_name, tool_name, tool_args, args.mode)
 
 
 if __name__ == "__main__":
     main()
-

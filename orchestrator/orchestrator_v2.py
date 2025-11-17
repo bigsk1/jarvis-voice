@@ -379,7 +379,7 @@ Your response:"""
             tool_name = tools_used[0] if tools_used else ""
             
             # Define tool categories
-            SEARCH_TOOLS = ['search_memory', 'semantic_recall', 'recall', 'mcp_duckduckgo_search', 'mcp_fetch_fetch']
+            SEARCH_TOOLS = ['search_memory', 'semantic_recall', 'recall', 'mcp_brave_search', 'mcp_fetch_fetch']
             SIMPLE_TOOLS = ['get_time', 'crypto_price', 'get_weather']
             COMPLEX_TOOLS = ['opencode', 'execute_bash', 'send_webhook', 'api_call']
             

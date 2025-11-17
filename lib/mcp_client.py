@@ -4,9 +4,11 @@ MCP (Model Context Protocol) Client
 Communicates with MCP servers via JSON-RPC over stdin/stdout.
 """
 import sys
+import os
 import json
 import subprocess
 import time
+import re
 from typing import Dict, Any, List, Optional
 from threading import Lock
 
@@ -38,8 +40,9 @@ class MCPClient:
         if self.process:
             return  # Already running
         
-        # Merge environment variables
-        full_env = {**os.environ, **self.env}
+        # Build environment with substitution
+        # SECURITY: Only pass explicitly listed env vars, not the entire os.environ
+        mcp_env = self._build_env_with_substitution()
         
         # Start process
         self.process = subprocess.Popen(
@@ -49,7 +52,7 @@ class MCPClient:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            env=full_env
+            env=mcp_env
         )
         
         # Give it a moment to start
@@ -62,6 +65,39 @@ class MCPClient:
         
         # Initialize the MCP connection
         self._initialize()
+    
+    def _build_env_with_substitution(self) -> Dict[str, str]:
+        """
+        Build environment dict with variable substitution.
+        
+        Supports ${VAR_NAME} syntax to reference variables from:
+        1. Parent environment (os.environ)
+        2. Cloud/local .env files (already loaded into os.environ)
+        
+        SECURITY: Only passes explicitly listed variables, not entire os.environ.
+        
+        Example:
+            "env": {"API_KEY": "${WEATHER_API_KEY}"}
+            → API_KEY will be set to the value of WEATHER_API_KEY from .env
+        
+        Returns:
+            Dict with substituted values
+        """
+        result = {}
+        
+        for key, value in self.env.items():
+            if isinstance(value, str):
+                # Substitute ${VAR_NAME} with actual value from environment
+                def replace_var(match):
+                    var_name = match.group(1)
+                    return os.environ.get(var_name, f"${{{var_name}}}")  # Keep ${} if not found
+                
+                substituted_value = re.sub(r'\$\{([^}]+)\}', replace_var, value)
+                result[key] = substituted_value
+            else:
+                result[key] = str(value)
+        
+        return result
     
     def stop(self):
         """Stop the MCP server process."""

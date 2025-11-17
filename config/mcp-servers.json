@@ -11,7 +11,7 @@
         "mcp/duckduckgo"
       ],
       "description": "Web search and content fetching via DuckDuckGo",
-      "enabled": true
+      "enabled": false
     },
     "fetch": {
       "command": "docker",
@@ -24,6 +24,24 @@
         "mcp/fetch"
       ],
       "description": "Fetch and extract content from URLs as markdown",
+      "enabled": true
+    },
+    "brave_search": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-e",
+        "BRAVE_API_KEY",
+        "-i",
+        "--rm",
+        "--network",
+        "host",
+        "mcp/brave-search"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      },
+      "description": "Search the web for news, images and videos using Brave Search",
       "enabled": true
     }
   }
