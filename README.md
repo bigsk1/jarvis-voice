@@ -51,12 +51,20 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ## 🔍 How It Works
 
-**New to Jarvis?** See the **[Complete Workflow Guide](docs/JARVIS_WORKFLOW.md)** for:
-- 📊 Visual flowcharts showing how queries are processed
-- 🧠 Memory-first strategy and tool selection logic
-- 🔧 Multi-turn orchestration examples
-- ⚙️ Configuration impact on behavior
-- 📝 Real-world examples with thinking mode enabled
+**New to Jarvis?** See these comprehensive guides:
+
+**Reactive Mode** (Current):
+- 📊 **[Complete Workflow Guide](docs/JARVIS_WORKFLOW.md)** - How Jarvis processes your requests
+  - Visual flowcharts, memory strategy, tool selection
+  - Multi-turn orchestration, configuration impact
+  - Real-world examples with thinking mode enabled
+
+**Proactive Mode** (Current - Phase 1):
+- 🔮 **[Proactive Assistant API](docs/api/READY_TO_USE.md)** - Event-driven webhook system
+  - Alerts from external systems (Uptime Kuma, Coolify, cron, etc.)
+  - Proactive TTS notifications
+  - Cloud and local mode support
+  - See also: [API Quick Start](docs/api/API_QUICK_START.md), [Phase 1 Complete](docs/api/PHASE_1_COMPLETE.md)
 
 **Quick Overview:**
 ```

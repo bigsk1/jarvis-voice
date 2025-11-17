@@ -93,6 +93,8 @@
 | Document | Purpose |
 |----------|---------|
 | **JARVIS_WORKFLOW.md** | 🆕 **Complete workflow with visual flowcharts** |
+| **api/READY_TO_USE.md** | 🔮 **Proactive API (Phase 1 COMPLETE)** - Webhook system for alerts |
+| **api/PROACTIVE_ASSISTANT_SYSTEM.md** | Full architecture (5 phases, Phase 1 done) |
 | **COMPLETE_SYSTEM_SUMMARY.md** | System overview |
 
 ### Configuration & Setup

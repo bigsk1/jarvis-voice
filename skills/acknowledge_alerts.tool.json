@@ -1,0 +1,28 @@
+{
+  "enabled": true,
+  "name": "acknowledge_alerts",
+  "description": "Acknowledge or clear alerts from the proactive API system. Use when user wants to mark alerts as handled, clear notifications, or dismiss pending alerts. Can acknowledge a specific alert by ID or clear all pending alerts at once.",
+  "script": "acknowledge_alerts.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "alert_id": {
+        "type": "integer",
+        "description": "ID of specific alert to acknowledge"
+      },
+      "clear_all": {
+        "type": "boolean",
+        "description": "If true, acknowledges all pending alerts (default: false)"
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+

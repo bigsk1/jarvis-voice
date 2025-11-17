@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "name": "list_alerts",
+  "description": "List alerts from the proactive API system. Shows alerts that have been received via webhooks (Uptime Kuma, Coolify, cron jobs, etc.). Use this when user asks about alerts, notifications, or pending tasks from external systems. For memory/knowledge base queries, use search_memory or semantic_recall instead.",
+  "script": "list_alerts.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": ["pending", "acknowledged", "all"],
+        "description": "Filter by status (default: pending)"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of alerts to return (default: 10)"
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+

@@ -9,6 +9,7 @@ import os
 import sqlite3
 import json
 from pathlib import Path
+from datetime import datetime
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
@@ -18,8 +19,11 @@ from embeddings import get_embedding
 
 def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
     """
-    Sync knowledge_base from source DB to target DB.
+    Sync knowledge_base and conversations from source DB to target DB.
     Regenerates embeddings for target mode's embedding model.
+    
+    Future: Will also sync alerts, reminders, and tasks tables
+    (see docs/PROACTIVE_ASSISTANT_SYSTEM.md)
     """
     
     project_root = Path(__file__).parent.parent
@@ -206,6 +210,78 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
         except Exception as e:
             if verbose:
                 print(f"⚠️  Skipping conversation: {e}")
+    
+    # Sync alerts (if table exists)
+    try:
+        alerts = source_cursor.execute("SELECT * FROM alerts ORDER BY created_at DESC LIMIT 100").fetchall()
+        if verbose and len(alerts) > 0:
+            print()
+            print(f"Syncing {len(alerts)} alerts...")
+        
+        for alert in alerts:
+            try:
+                existing = target_cursor.execute(
+                    "SELECT id FROM alerts WHERE id = ?", (alert['id'],)
+                ).fetchone()
+                
+                if not existing:
+                    target_cursor.execute("""
+                        INSERT INTO alerts 
+                        (id, title, description, severity, source, status, created_at, updated_at,
+                         acknowledged_at, resolved_at, spoken, spoken_at, follow_up_count, last_follow_up,
+                         auto_resolve_url, auto_resolve_check_interval, last_check_at,
+                         metadata, related_intel_file, synced_to_other_db, sync_timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    """, (
+                        alert['id'], alert['title'], alert['description'], alert['severity'],
+                        alert['source'], alert['status'], alert['created_at'], alert['updated_at'],
+                        alert['acknowledged_at'], alert['resolved_at'], alert['spoken'], alert['spoken_at'],
+                        alert['follow_up_count'], alert['last_follow_up'], alert['auto_resolve_url'],
+                        alert['auto_resolve_check_interval'], alert['last_check_at'],
+                        alert['metadata'], alert['related_intel_file'],
+                        datetime.now().isoformat()
+                    ))
+            except Exception as e:
+                if verbose:
+                    print(f"⚠️  Skipping alert: {e}")
+    except Exception:
+        # alerts table doesn't exist yet
+        pass
+    
+    # Sync reminders (if table exists)
+    try:
+        reminders = source_cursor.execute("SELECT * FROM reminders ORDER BY trigger_time ASC LIMIT 100").fetchall()
+        if verbose and len(reminders) > 0:
+            print()
+            print(f"Syncing {len(reminders)} reminders...")
+        
+        for reminder in reminders:
+            try:
+                existing = target_cursor.execute(
+                    "SELECT id FROM reminders WHERE id = ?", (reminder['id'],)
+                ).fetchone()
+                
+                if not existing:
+                    target_cursor.execute("""
+                        INSERT INTO reminders
+                        (id, title, description, trigger_time, status, created_at, triggered_at,
+                         acknowledged_at, spoken, spoken_at, related_intel_file, callback_url,
+                         recurrence_rule, metadata, synced_to_other_db, sync_timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    """, (
+                        reminder['id'], reminder['title'], reminder['description'],
+                        reminder['trigger_time'], reminder['status'], reminder['created_at'],
+                        reminder['triggered_at'], reminder['acknowledged_at'], reminder['spoken'],
+                        reminder['spoken_at'], reminder['related_intel_file'], reminder['callback_url'],
+                        reminder['recurrence_rule'], reminder['metadata'],
+                        datetime.now().isoformat()
+                    ))
+            except Exception as e:
+                if verbose:
+                    print(f"⚠️  Skipping reminder: {e}")
+    except Exception:
+        # reminders table doesn't exist yet
+        pass
     
     target_conn.commit()
     
