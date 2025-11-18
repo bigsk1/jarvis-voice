@@ -1,5 +1,34 @@
 # Fixes Applied
 
+## ✅ long_form Column Schema Fix (Latest)
+
+**Issue**: The `long_form` column in `knowledge_base` table was not being created consistently:
+- If API started before Jarvis → no `long_form` column
+- If Jarvis started before API → no `long_form` column
+- Only created if you ran `bin/migrate-proactive-db.py` migration script
+
+**Also**: The sync script wasn't syncing the `long_form` column between databases.
+
+**Fix**: 
+1. Added `long_form TEXT` column to `lib/memory_db.py` schema definition
+2. Updated `bin/sync-memory-db.py` to include `long_form` in sync operations
+
+**Verification**:
+```bash
+# Run comprehensive test
+python3 tests/test-db-schema-simple.py
+
+# Or manually check
+sqlite3 data/jarvis_memory.db "PRAGMA table_info(knowledge_base);" | grep long_form
+sqlite3 data/jarvis_memory_local.db "PRAGMA table_info(knowledge_base);" | grep long_form
+```
+
+**Impact**: Now the `long_form` column is ALWAYS created during database initialization, regardless of initialization order.
+
+**See**: `docs/api/LONG_FORM_COLUMN_FIX.md` for full details.
+
+---
+
 ## ✅ Mode Detection Fixed
 
 **Issue**: `--local` flag wasn't being respected, both modes used cloud database.

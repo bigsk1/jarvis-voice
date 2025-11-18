@@ -71,7 +71,7 @@ if [ "$MODE" == "local" ]; then
 else
     if [ -f "$PROJECT_ROOT/config/cloud.env" ]; then
         source "$PROJECT_ROOT/config/cloud.env"
-        export LLM_PROVIDER="anthropic"
+        export LLM_PROVIDER={$LLM_PROVIDER}
     else
         echo -e "${RED}❌ config/cloud.env not found${NC}"
         exit 1

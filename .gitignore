@@ -63,6 +63,7 @@ data/*.db-*
 *.sqlite
 *.sqlite.*
 *.sqlite-*
+data/backups
 
 # Cursor chat history files
 cursor_*.md

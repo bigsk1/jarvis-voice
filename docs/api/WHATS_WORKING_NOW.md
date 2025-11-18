@@ -126,7 +126,7 @@ fi
 | **Auto-Reminder Trigger** | Not built | Reminders stored, need background daemon |
 | **Follow-Up System** | Not built | Re-alert if not acknowledged |
 | **Intel Management Tool** | Not built | Jarvis create/edit intel files |
-| **Voice Control** | Not built | "Hey Jarvis, list alerts" |
+| **Voice Control** | Not built | "Hey Jarvis, list alerts" ( I can ask about alerts now and get back info but maybe this is to be expanded?)|
 | **Auto-Sync on API Start** | Not built | Manual sync works fine |
 
 **These are optional enhancements. Phase 1 is fully functional!**

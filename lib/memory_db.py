@@ -62,7 +62,8 @@ class MemoryDB:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 source TEXT,
                 metadata TEXT,
-                embedding BLOB
+                embedding BLOB,
+                long_form TEXT
             )
         """)
         

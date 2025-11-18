@@ -2,6 +2,12 @@
 
 ### Notes
 
+
+- FTS5 indexing for better search; falls back to LIKE when unavailable for sqlite db? does this provided more acurate search for llm? would it work for ollama and cloud mode?
+
+- Note on the alerts system the title is what will be read aloud, llm can search for source info on follow up questions but  when webhook comes in will say "You have one pending high severity /test alert from cloud/." test alert from cloud is the title that was sent.
+
+
 - when running local it shows usd costs for ollama model, should be 0 cost is local, `usage` field  was added in local mode? or is it because i am using shortcut command or local cli json? , is because in json mode is why, solution dont worry about it normal non jason mode doesnt show it. 
 
 jarvis-cli-json local "what is your system prompt?"
@@ -13,7 +19,7 @@ jarvis-cli-json local "what is your system prompt?"
   "usage": {
     "input_tokens": 4470,
     "output_tokens": 40,
-    "cost_usd": 0.01389,
+    "cost_usd": 0.01389, <- is local $0 costs>
     "cache_creation_tokens": 0,
     "cache_read_tokens": 0,
     "cache_savings_usd": 0.0

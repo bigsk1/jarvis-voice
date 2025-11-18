@@ -82,7 +82,8 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             source TEXT,
             metadata TEXT,
-            embedding BLOB
+            embedding BLOB,
+            long_form TEXT
         )
     """)
     
@@ -101,7 +102,7 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
     # Get all memories from source
     memories = source_cursor.execute("""
         SELECT id, category, key, value, importance, 
-               created_at, updated_at, source, metadata
+               created_at, updated_at, source, metadata, long_form
         FROM knowledge_base
     """).fetchall()
     
@@ -123,6 +124,7 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
         updated_at = memory['updated_at']
         source = memory['source']
         metadata = memory['metadata']
+        long_form = memory['long_form']
         
         try:
             # Check if already exists in target
@@ -145,10 +147,10 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
                     target_cursor.execute("""
                         UPDATE knowledge_base 
                         SET value = ?, importance = ?, updated_at = ?,
-                            source = ?, metadata = ?, embedding = ?
+                            source = ?, metadata = ?, embedding = ?, long_form = ?
                         WHERE id = ?
                     """, (value, importance, updated_at, source, metadata, 
-                          embedding_blob, existing[0]))
+                          embedding_blob, long_form, existing[0]))
                     
                     synced += 1
                 else:
@@ -168,10 +170,10 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
                 target_cursor.execute("""
                     INSERT INTO knowledge_base 
                     (category, key, value, importance, created_at, updated_at,
-                     source, metadata, embedding)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source, metadata, embedding, long_form)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (category, key, value, importance, created_at, updated_at,
-                      source, metadata, embedding_blob))
+                      source, metadata, embedding_blob, long_form))
                 
                 synced += 1
         
