@@ -151,6 +151,30 @@ if [ -z "$VIRTUAL_ENV" ]; then
     fi
 fi
 
+# Check if database is migrated
+if ! sqlite3 "$PROJECT_ROOT/data/jarvis_memory.db" "SELECT name FROM sqlite_master WHERE type='table' AND name='alerts'" 2>/dev/null | grep -q alerts; then
+    echo -e "${YELLOW}⚠️  Database not migrated. Running migration...${NC}"
+    "$PROJECT_ROOT/bin/migrate-proactive-db.py"
+    echo ""
+fi
+
+# Sync databases between cloud and local modes
+if [ "$MODE" == "local" ]; then
+    # Running in local mode - sync from cloud to local if cloud DB exists
+    if [ -f "$PROJECT_ROOT/data/jarvis_memory.db" ]; then
+        echo -e "${BLUE}🔄 Syncing data: cloud → local...${NC}"
+        "$PROJECT_ROOT/bin/sync-memory-db.py" --from cloud --to local
+        echo ""
+    fi
+else
+    # Running in cloud mode - sync from local to cloud if local DB exists
+    if [ -f "$PROJECT_ROOT/data/jarvis_memory_local.db" ]; then
+        echo -e "${BLUE}🔄 Syncing data: local → cloud...${NC}"
+        "$PROJECT_ROOT/bin/sync-memory-db.py" --from local --to cloud
+        echo ""
+    fi
+fi
+
 # Load appropriate config
 if [ "$MODE" == "local" ]; then
     if [ -f "$PROJECT_ROOT/config/local.env" ]; then

@@ -1,6 +1,60 @@
 # Fixes Log - Jarvis Proactive Assistant
 
-## ✅ Container Auto-Resolve Fix (Latest - Nov 18, 2025)
+## ✅ Database Sync Not Running on Startup (Latest - Nov 18, 2025)
+
+**Issue**: When running `./bin/jarvis-api --local` or `./bin/jarvis-services --local`, the database sync script was not being executed, causing reminders and alerts to not be synced between cloud and local databases.
+
+**Root Cause**: 
+- `jarvis-api` and `jarvis-services` scripts only ran migration (`migrate-proactive-db.py`) to create tables
+- They never called `sync-memory-db.py` to actually sync data between cloud and local databases
+- This meant reminders/alerts created in cloud mode wouldn't appear in local mode, and vice versa
+
+**Fix**: 
+Added database sync logic to both startup scripts:
+
+```bash
+# Sync databases between cloud and local modes
+if [ "$MODE" == "local" ]; then
+    # Running in local mode - sync from cloud to local if cloud DB exists
+    if [ -f "$PROJECT_ROOT/data/jarvis_memory.db" ]; then
+        echo -e "${BLUE}🔄 Syncing data: cloud → local...${NC}"
+        "$PROJECT_ROOT/bin/sync-memory-db.py" --from cloud --to local
+        echo ""
+    fi
+else
+    # Running in cloud mode - sync from local to cloud if local DB exists
+    if [ -f "$PROJECT_ROOT/data/jarvis_memory_local.db" ]; then
+        echo -e "${BLUE}🔄 Syncing data: local → cloud...${NC}"
+        "$PROJECT_ROOT/bin/sync-memory-db.py" --from local --to cloud
+        echo ""
+    fi
+fi
+```
+
+**Files Changed**:
+- `/home/boss/jarvis-voice/bin/jarvis-api` (added lines 62-77)
+- `/home/boss/jarvis-voice/bin/jarvis-services` (added lines 161-176)
+
+**Result**: 
+- ✅ Running `./bin/jarvis-api --local` now syncs cloud → local automatically
+- ✅ Running `./bin/jarvis-api` (cloud mode) syncs local → cloud if local DB exists
+- ✅ Same behavior for `./bin/jarvis-services`
+- ✅ Reminders, alerts, and knowledge_base entries are now kept in sync across modes
+- ✅ Zero manual intervention required
+
+**Testing**:
+```bash
+# Test sync manually
+./bin/sync-memory-db.py --from cloud --to local
+
+# Or start API/services and sync happens automatically
+./bin/jarvis-api --local
+./bin/jarvis-services --local
+```
+
+---
+
+## ✅ Container Auto-Resolve Fix (Nov 18, 2025)
 
 **Issue**: Docker container alerts couldn't auto-resolve
 - Container stopped → Alert sent ✓
