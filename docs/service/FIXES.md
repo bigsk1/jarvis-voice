@@ -1,6 +1,46 @@
 # Fixes Applied
 
-## ✅ long_form Column Schema Fix (Latest)
+## ✅ Monitoring Agent Fixes (Latest - Nov 18, 2025)
+
+**Issues**:
+1. Docker health check failed (tried to reach Jarvis API from remote)
+2. Unwanted "Monitoring Agent Started" alerts with follow-ups
+3. Slow auto-resolve (5 minutes)
+4. Generic auto-resolve TTS messages
+
+**Fixes**:
+1. **Health check**: Changed to use local file (`/tmp/monitor_healthy`)
+2. **Startup alerts**: Removed `ALERT_ON_START` feature entirely
+3. **Auto-resolve**: Reduced from 300s to 60s (configurable via `AUTO_RESOLVE_INTERVAL`)
+4. **TTS message**: Changed from "Alert resolved: {title}" to "Boss, good news! {source} is back up and running. Alert resolved."
+
+**Files modified**:
+- `docs/api/code-examples/docker/Dockerfile`
+- `docs/api/code-examples/docker/monitor.py`
+- `docs/api/code-examples/docker/docker-compose.yml`
+- `services/self_healing_daemon.py`
+
+**Update instructions**:
+```bash
+# Restart services (applies TTS fix immediately)
+./bin/restart-services
+
+# Or manually:
+pkill -f "self_healing_daemon"
+./bin/jarvis-services
+
+# Update Docker agent (on remote server):
+cd ~/jarvis-monitor
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+**See**: `docs/api/MONITORING_AGENT_FIXES.md` for full details.
+
+---
+
+## ✅ long_form Column Schema Fix
 
 **Issue**: The `long_form` column in `knowledge_base` table was not being created consistently:
 - If API started before Jarvis → no `long_form` column

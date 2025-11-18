@@ -217,7 +217,7 @@ Let me know when ready - Phase 1 works great on its own! 🚀
 
 **Questions?**
 - **Testing**: `./tests/test-api-endpoints.sh`
-- **Examples**: `docs/API_QUICK_START.md`
-- **Architecture**: `docs/PROACTIVE_ASSISTANT_SYSTEM.md`
-- **Modes**: `docs/API_MODE_SELECTION.md`
+- **Examples**: `docs/api/API_QUICK_START.md`
+- **Architecture**: `docs/api/PROACTIVE_ASSISTANT_SYSTEM.md`
+- **Modes**: `docs/api/API_MODE_SELECTION.md`
 

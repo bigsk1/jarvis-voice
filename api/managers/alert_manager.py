@@ -239,7 +239,17 @@ class AlertManager:
         if success:
             alert = self.get_alert(alert_id)
             if alert:
-                self._speak(f"Alert resolved: {alert['title']}", priority="low")
+                title = alert.get('title', '')
+                source = alert.get('source', 'Unknown source')
+                
+                # Extract specific item from title (e.g., "Container Stopped: kokoro-cpu" -> "kokoro-cpu")
+                if ':' in title and ('Stopped' in title or 'Down' in title):
+                    # Extract the specific thing that was down
+                    item = title.split(':')[-1].strip()
+                    self._speak(f"Boss, good news! {item} is back up and running.", priority="low")
+                else:
+                    # Generic message with source
+                    self._speak(f"Boss, good news! {source} is back up and running. Alert resolved.", priority="low")
         
         return success
     

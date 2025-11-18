@@ -151,6 +151,22 @@ async def acknowledge_alert(alert_id: int):
         message=f"Alert {alert_id} acknowledged"
     )
 
+@router.post("/{alert_id}/resolve", response_model=AlertResponse)
+async def resolve_alert(alert_id: int):
+    """Resolve an alert (mark as auto-resolved by external system)
+    
+    Used by monitoring agents when service comes back up
+    """
+    success = alert_manager.auto_resolve_alert(alert_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
+    
+    return AlertResponse(
+        ok=True,
+        message=f"Alert {alert_id} resolved"
+    )
+
 @router.post("/acknowledge-all", response_model=AlertResponse)
 async def acknowledge_all_alerts(
     status: Optional[AlertStatus] = Query(None, description="Filter by status (default: pending)"),

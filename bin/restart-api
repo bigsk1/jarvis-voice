@@ -1,0 +1,41 @@
+#!/bin/bash
+# Restart Jarvis API
+# Use this to apply updates to API without stopping services
+
+echo "🔄 Restarting Jarvis API..."
+echo
+
+# Stop existing API (kill both jarvis-api and uvicorn/server.py)
+echo "Stopping API..."
+pkill -f "server.py" && echo "  ✓ Stopped server.py"
+pkill -f "uvicorn" && echo "  ✓ Stopped uvicorn"
+pkill -f "jarvis-api" && echo "  ✓ Stopped jarvis-api"
+
+sleep 3
+
+# Create logs directory if needed
+mkdir -p logs/api
+
+# Restart API in background
+echo
+echo "Starting API..."
+nohup ./bin/jarvis-api > logs/api/api-$(date +%Y-%m-%d).log 2>&1 &
+
+sleep 3
+
+# Check if running
+if curl -s http://localhost:8880/api/health > /dev/null 2>&1; then
+    echo
+    echo "✅ API restarted successfully!"
+    echo
+    echo "Check health:"
+    echo "  curl http://localhost:8880/api/health"
+    echo
+    echo "View docs:"
+    echo "  http://localhost:8880/docs"
+else
+    echo
+    echo "⚠️  API may not be running. Check logs:"
+    echo "  tail -f logs/api/api-\$(date +%Y-%m-%d).log"
+fi
+

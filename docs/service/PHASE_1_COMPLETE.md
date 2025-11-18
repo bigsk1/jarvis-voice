@@ -193,7 +193,7 @@ Proactive (Webhooks):
 
 ---
 
-## What's NOT Done Yet (Phase 2)
+## What's NOT Done Yet (Phase 2) ( so i assume this is all run behind the scenes and my terminal will still been running listening for wake word to start jarvis and this is done via jarvis-services or api mode? )
 
 These are **optional enhancements** for the future:
 
@@ -215,7 +215,7 @@ These are **optional enhancements** for the future:
 }
 ```
 
-**Status**: Not critical - you can manually create intel files for now
+**Status**: Not critical - you can manually create intel files for now ( which i currently do to proide jarvis with info i want him to know about see existing docs in jarvis-intel folder, i add docs and manually run ingest_intel.py to add to db or just ask jarvis to ingest intel files and he runs the ingest_intel.py tool)
 
 ### 2. Follow-Up System
 **What**: Background daemon that re-alerts if not acknowledged
@@ -228,7 +228,7 @@ Alert → Speak → 15 min later → Still pending? → Speak again
 **Status**: Not critical - alerts stay in DB, you can check manually
 
 ### 3. Self-Healing Daemon
-**What**: Background service that checks `auto_resolve_url`
+**What**: Background service that checks `auto_resolve_url` ( need to limit tools calls here max is 10 by default but for this action a lower number might be best)
 
 **Why**: Auto-cancel alerts when issues resolve
 ```

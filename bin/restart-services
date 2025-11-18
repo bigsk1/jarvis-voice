@@ -1,0 +1,28 @@
+#!/bin/bash
+# Restart Jarvis Background Services
+# Use this to apply updates to services without stopping API
+
+echo "🔄 Restarting Jarvis Background Services..."
+echo
+
+# Stop existing services
+echo "Stopping services..."
+pkill -f "self_healing_daemon" && echo "  ✓ Stopped self_healing_daemon"
+pkill -f "follow_up_daemon" && echo "  ✓ Stopped follow_up_daemon"
+pkill -f "reminder_scheduler" && echo "  ✓ Stopped reminder_scheduler"
+
+sleep 10
+
+# Restart all services
+echo
+echo "Starting services..."
+./bin/jarvis-services
+
+echo
+echo "✅ Services restarted!"
+echo
+echo "Check logs:"
+echo "  tail -f logs/services/self_healing_daemon-\$(date +%Y-%m-%d).log"
+echo "  tail -f logs/services/follow_up_daemon-\$(date +%Y-%m-%d).log"
+echo "  tail -f logs/services/reminder_scheduler-\$(date +%Y-%m-%d).log"
+

@@ -177,7 +177,10 @@ class ToolRegistry:
         # Check if OpenCode is enabled (legacy config support)
         opencode_enabled = get_config_value('OPENCODE_ENABLED', 'false').lower() == 'true'
         
-        for tool_file in self.skills_dir.glob("*.tool.json"):
+        # Sort tool files alphabetically by name for consistent ordering
+        tool_files = sorted(self.skills_dir.glob("*.tool.json"))
+        
+        for tool_file in tool_files:
             try:
                 # Read tool config to check if enabled
                 with open(tool_file, 'r') as f:
@@ -285,7 +288,10 @@ class ToolRegistry:
             if verbose:
                 print("🔍 Discovering tools...")
             
-            for server_name, client in enabled_servers:
+            # Sort servers alphabetically for consistent ordering
+            enabled_servers_sorted = sorted(enabled_servers, key=lambda x: x[0])
+            
+            for server_name, client in enabled_servers_sorted:
                 try:
                     # Get tools from started server
                     tools = client.list_tools()

@@ -48,6 +48,29 @@ Ollama API error: 'NoneType' object has no attribute 'replace'
 
 - not all jarvis-local features and tools/mcp work because a few reasons cloud uses better models and when designing and adding code / testing we focus on cloud version mostly. 
 
+### Commands for running 
+
+# Terminal 1: Reactive Voice Mode (already running)
+./jarvis                  # Listens for "Hey Jarvis" wake word
+                          # Processes voice queries
+                          # Can now also query alerts via voice!
+
+# Terminal 2: Proactive API Server (runs separately)
+./bin/jarvis-api          # Receives webhooks from external systems
+                          # Stores alerts/reminders in database
+                          # Speaks urgent alerts via TTS
+                          # Provides REST API endpoints
+
+# Terminal 3: Background Services (NEW - what we'll build)
+./bin/jarvis-services     # Follow-up daemon (re-alerts if not acknowledged)
+                          # Self-healing daemon (checks auto_resolve_url)
+                          # Reminder scheduler (triggers time-based reminders)
+                          
+- Originally was going to have intel api route and there is all ready intel related  columns in db, under reminders, some idea to be able to update modify or add , delete intel files in which jarvis has tools to injest into db for direct access. 
+
+- need to test with alert system with real url and check db to see if columns are correct and alerts work as intended.
+
+- 
 
 
 ### Commands for testing

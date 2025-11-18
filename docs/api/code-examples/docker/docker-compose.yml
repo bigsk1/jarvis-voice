@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  jarvis-monitor:
+    build: .
+    container_name: jarvis-monitor
+    restart: unless-stopped
+    
+    environment:
+      # ============================================
+      # REQUIRED: Jarvis API Endpoint
+      # ============================================
+      # Use Tailscale IP for secure remote access
+      # Example: http://100.101.102.103:8880/api/alerts
+      JARVIS_API: "http://localhost:8880/api/alerts"
+      
+      # ============================================
+      # CHECK INTERVAL
+      # ============================================
+      # How often to check services (seconds)
+      CHECK_INTERVAL: "60"
+      
+      # ============================================
+      # AUTO-RESOLVE INTERVAL
+      # ============================================
+      # How often Jarvis checks if issue is resolved (seconds)
+      # 60 = checks every minute for faster recovery notification
+      AUTO_RESOLVE_INTERVAL: "60"
+      
+      # ============================================
+      # DOCKER CONTAINERS TO MONITOR
+      # ============================================
+      # Comma-separated list of container names
+      # Leave empty to disable container monitoring
+      MONITOR_CONTAINERS: "kokoro-tts,comfyui,ollama"
+      
+      # ============================================
+      # URLs TO MONITOR
+      # ============================================
+      # Comma-separated list of URLs (with health endpoints)
+      # Leave empty to disable URL monitoring
+      MONITOR_URLS: "http://localhost:8188/health,http://localhost:11434/health"
+      
+      # ============================================
+      # SOURCE NAME
+      # ============================================
+      # Identifier for alerts (appears as "source" in Jarvis)
+      SOURCE_NAME: "proxmox-gpu-vm"
+    
+    volumes:
+      # Mount Docker socket to monitor containers
+      # READ-ONLY for security
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    networks:
+      - monitoring
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  monitoring:
+    driver: bridge
+

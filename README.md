@@ -9,6 +9,8 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 **Production Ready** ✅
 - Multi-turn tool orchestration with LLM routing
 - 17+ working skills (memory, bash, OpenCode, API calls, etc.)
+- **Proactive API** for event-driven alerts and notifications ⭐ NEW
+- **Background services** for auto-resolve and follow-ups ⭐ NEW
 - **Dual database system** with auto-sync (cloud ↔ local)
 - **Intelligent memory** with semantic search + configurable thresholds
 - OpenCode integration for autonomous coding tasks
@@ -28,6 +30,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Intelligent Memory**: Semantic search + conversation history with auto-save
 - **OpenCode Integration**: Autonomous coding agent for building projects
 - **MCP Support**: Extensible via Model Context Protocol servers
+
+### Proactive System
+- **Event-Driven API**: Receive webhooks from external systems (port 8880)
+- **Auto-Resolve**: URL-based and agent-based automatic issue resolution
+- **Background Services**: 24/7 daemons for follow-ups, healing, and reminders
+- **Remote Monitoring**: Deploy agents anywhere to send alerts
+- **Voice Notifications**: Jarvis speaks alerts via TTS
 
 ### Memory System
 - **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)
@@ -59,12 +68,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Multi-turn orchestration, configuration impact
   - Real-world examples with thinking mode enabled
 
-**Proactive Mode** (Current - Phase 1):
-- 🔮 **[Proactive Assistant API](docs/api/READY_TO_USE.md)** - Event-driven webhook system
-  - Alerts from external systems (Uptime Kuma, Coolify, cron, etc.)
-  - Proactive TTS notifications
-  - Cloud and local mode support
-  - See also: [API Quick Start](docs/api/API_QUICK_START.md), [Phase 1 Complete](docs/api/PHASE_1_COMPLETE.md)
+**Proactive Mode** (Current):
+- 🔮 **[Proactive Assistant API](docs/api/API_OVERVIEW.md)** - Event-driven webhook system
+  - Receives webhooks from any external system
+  - Auto-resolves issues when services recover
+  - Background services for follow-ups and reminders
+  - Remote monitoring with agent templates
+  - See also: [API Docs](docs/api/), [Service Docs](docs/service/)
 
 **Quick Overview:**
 ```
@@ -88,6 +98,10 @@ jarvis-voice/
 │   ├── wake_jarvis.py        # Cloud wake word loop
 │   ├── wake_jarvis_local.py  # Local wake word loop
 │   ├── say.sh / say-local.sh # Text-to-speech
+│   ├── jarvis-api            # Proactive API server
+│   ├── jarvis-services       # Background services daemon
+│   ├── restart-api           # Restart API server
+│   ├── restart-services      # Restart background services
 │   ├── question*.sh          # Q&A entry points
 │   ├── memory                # Memory CLI tool
 │   ├── manage-tools.py       # Enable/disable tools
@@ -130,7 +144,9 @@ jarvis-voice/
 │   └── jarvis_memory_local.db # Local mode database (nomic embeddings)
 ├── logs/                     # Execution logs
 │   ├── tools/                # Tool call logs
-│   └── opencode/             # OpenCode session logs
+│   ├── opencode/             # OpenCode session logs
+│   ├── api/                  # API server logs
+│   └── services/             # Background services logs
 ├── tests/                    # Test suites
 │   ├── integration/          # Integration tests
 │   │   ├── compare-models.sh # Model comparison framework
@@ -138,7 +154,10 @@ jarvis-voice/
 │   │   └── logs/             # Test results and analysis
 │   ├── e2e/                  # End-to-end tests (future)
 │   └── unit/                 # Unit tests (future)
-├── docs/                     # Documentation (see below)
+├── docs/                     # Documentation
+│   ├── api/                  # Proactive API documentation
+│   ├── service/              # Background services documentation
+│   └── *.md                  # Core system documentation
 ├── jarvis-intel/             # Private knowledge base (gitignored)
 ├── jarvis                    # Launcher (cloud mode)
 ├── jarvis-local              # Launcher (local mode)
@@ -218,6 +237,20 @@ source ~/jarvis-venv/bin/activate
 
 Say **"Hey Jarvis"** to wake it up!
 
+### 5. Proactive API (Optional)
+
+Enable event-driven alerts and notifications:
+
+```bash
+# Start API server (receives webhooks)
+./bin/jarvis-api
+
+# Start background services (auto-resolve, follow-ups)
+./bin/jarvis-services
+```
+
+See [Proactive API docs](docs/api/) for integration examples.
+
 ---
 
 ## 🛠️ Tool System
@@ -246,6 +279,12 @@ Say **"Hey Jarvis"** to wake it up!
 - `check_opencode_sessions` - Monitor OpenCode progress
 - `ingest_intel` - Bulk import knowledge from markdown files
 - `check_tool_logs` - View tool execution history
+
+**Proactive System:**
+- `list_alerts` - View active alerts
+- `acknowledge_alerts` - Clear alerts
+- `query_service_logs` - Check background service status
+- `manage_intel` - Create/manage intel files
 
 **System:**
 - MCP servers (DuckDuckGo search, web fetch, etc.)
@@ -435,6 +474,10 @@ LIMIT 7;"
 - `config/README.md` - Configuration guide
 - `docs/QUICKSTART.md` - Quick setup guide
 - `docs/TOOL_CALLING_SYSTEM.md` - How tools work
+
+**Proactive System (NEW Nov 2025):**
+- `docs/api/` - **Proactive API** documentation (webhooks, alerts, monitoring)
+- `docs/service/` - **Background Services** documentation (daemons, auto-resolve)
 
 **Memory System (Updated Nov 2025):**
 - `docs/DUAL_DATABASE_SYSTEM.md` - **NEW**: Cloud/local DB architecture with auto-sync
@@ -649,6 +692,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 **Completed (November 2025):**
 - ✅ Multi-turn tool orchestration
 - ✅ Intelligent memory system with semantic search
+- ✅ **Proactive API & Background Services** (webhooks, auto-resolve, monitoring)
 - ✅ **Dual database system** (cloud/local with auto-sync)
 - ✅ **Tool management** (enable/disable per mode)
 - ✅ **Model comparison framework** with AI analysis
@@ -661,13 +705,12 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 **In Progress:**
 - Voice mode improvements
-- Additional MCP servers
+- Additional integrations and monitoring templates
 - Performance optimization for local models
 
 **Planned:**
-- Web UI for memory management
-- Scheduled tasks / cron integration
-- Home automation tools
+- Web UI for alerts and memory management
+- Additional automation tools
 - Multi-user support
 - Voice command customization
 
@@ -689,6 +732,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.1 (November 2025)  
+**Current Version:** v2.2 (November 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Dual database system, tool management, model comparison framework
+**Latest Features:** Proactive API, background services, auto-resolve, remote monitoring

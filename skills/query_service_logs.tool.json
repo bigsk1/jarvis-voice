@@ -1,0 +1,38 @@
+{
+  "enabled": true,
+  "name": "query_service_logs",
+  "description": "Query background service logs (follow-up daemon, self-healing daemon, reminder scheduler). Use this to check what the services are doing, find errors, or get statistics. Examples: 'Show me service errors', 'What has the self-healing daemon done?', 'Are the services running okay?'",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "service": {
+        "type": "string",
+        "enum": ["all", "follow_up", "self_healing", "reminder"],
+        "description": "Which service to query: 'follow_up' (re-alert daemon), 'self_healing' (auto-resolve daemon), 'reminder' (reminder scheduler), or 'all' (all services)"
+      },
+      "event_type": {
+        "type": "string",
+        "enum": ["action", "error", "check", "startup", "shutdown"],
+        "description": "Filter by event type: 'action' (service actions), 'error' (errors only), 'check' (periodic checks), 'startup', 'shutdown'. Omit for all events."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of log entries to return (default: 20)"
+      },
+      "show_stats": {
+        "type": "boolean",
+        "description": "If true, show statistics instead of detailed logs (default: false)"
+      }
+    },
+    "required": []
+  },
+  "handler": "skills/query_service_logs.py",
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+
