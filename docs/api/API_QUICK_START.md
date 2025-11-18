@@ -191,9 +191,12 @@ POST /api/alerts/{id}/check
 # Create reminder
 POST /api/reminders
 Body: {
-  "title": "Check Docker version",
-  "description": "Unpin if Traefik supports it",
-  "trigger_time": "2025-11-24T10:00:00"
+  "title": "Check Docker version",          # Required
+  "description": "Unpin if Traefik supports it",  # Optional
+  "trigger_time": "2025-11-24T10:00:00",    # Required (ISO 8601 UTC)
+  "related_intel_file": "docker-notes.md",  # Optional - link to intel
+  "callback_url": "https://...",            # Optional - webhook on trigger
+  "metadata": {"app": "traefik"}            # Optional - any JSON data
 }
 
 # List reminders
@@ -202,12 +205,33 @@ GET /api/reminders
 # List scheduled reminders only
 GET /api/reminders?status=scheduled
 
+# List by status: scheduled, triggered, acknowledged
+GET /api/reminders?status=triggered
+
 # Get specific reminder
 GET /api/reminders/{id}
+
+# Acknowledge reminder
+POST /api/reminders/{id}/acknowledge
 
 # Cancel reminder
 DELETE /api/reminders/{id}
 ```
+
+**Required Fields:**
+- `title` - Reminder title (string)
+- `trigger_time` - When to trigger, ISO 8601 format in UTC (string)
+
+**Optional Fields:**
+- `description` - Additional details (string)
+- `related_intel_file` - Path to intel file in `jarvis-intel/` (string)
+- `callback_url` - Webhook to call when reminder triggers (string)
+- `metadata` - Any additional JSON data (object)
+
+**Time Format:**
+- Must be UTC in ISO 8601: `"2025-11-24T10:00:00"`
+- Convert local time to UTC before sending
+- Example: 10am EST → 3pm UTC → `"2025-11-24T15:00:00"`
 
 ### Voice/TTS
 
@@ -280,25 +304,81 @@ curl -X PUT http://localhost:8880/api/alerts/1/acknowledge
 
 ## Integration with Jarvis Voice Mode
 
-You can **also control alerts via voice**:
+You can **also control alerts and reminders via voice**:
 
 ```
 User: "Hey Jarvis, list pending alerts"
 User: "Hey Jarvis, clear all alerts"
-User: "Hey Jarvis, what's my system status?"
+User: "Hey Jarvis, remind me in 4 hours about dinner"
+User: "Hey Jarvis, remind me every Wednesday to take out trash"
+User: "Hey Jarvis, what reminders do I have?"
+User: "Hey Jarvis, clear all my reminders"
 ```
 
-*(Requires creating Jarvis tools in Phase 2)*
+**Voice Tools Available:**
+- `create_reminder` - Natural language time parsing
+- `list_reminders` - Query reminders by status
+- `acknowledge_reminders` - Mark reminders as done
+- `list_alerts` - Show pending/acknowledged alerts
+- `acknowledge_alerts` - Clear alerts
+
+**Supported Time Expressions:**
+- "in 30 minutes", "in 4 hours", "in 2 days"
+- "tomorrow at 3pm"
+- "at 5pm" (today or tomorrow if passed)
+- "on the 15th" (defaults to 10am)
+- "every Wednesday" (weekly, 10am default)
+- "every Friday at 5pm" (weekly with time)
+- "every month on the 10th" (monthly, 10am default)
+- "every month on the 15th at 9am" (monthly with time)
 
 ---
 
-## What's Next (Phase 2)
+## External Calendar Integration
 
-- `manage_intel.py` tool - Sandboxed CRUD for intel files
-- Auto-ingestion after intel file changes
-- Follow-up system (background daemon)
-- Self-healing checks (background daemon)
-- Jarvis tools for voice control (`list_alerts`, `acknowledge_alerts`)
+You can integrate external calendar apps to create reminders in Jarvis:
+
+```python
+# Python example - sync calendar events to Jarvis
+import requests
+from datetime import datetime, timezone
+
+def sync_event_to_jarvis(event):
+    # Convert event time to UTC
+    trigger_time = event['start_time'].astimezone(timezone.utc)
+    
+    # Create reminder in Jarvis
+    response = requests.post(
+        'http://localhost:8880/api/reminders',
+        json={
+            'title': event['title'],
+            'description': event['description'],
+            'trigger_time': trigger_time.isoformat(),
+            'metadata': {
+                'calendar_id': event['id'],
+                'source': 'google_calendar'
+            }
+        }
+    )
+    return response.json()
+
+# Example usage
+event = {
+    'id': 'evt_123',
+    'title': 'Team Meeting',
+    'description': 'Weekly standup',
+    'start_time': datetime(2025, 11, 20, 10, 0)  # Local time
+}
+
+result = sync_event_to_jarvis(event)
+print(f"Reminder created: {result['reminder_id']}")
+```
+
+**Use Cases:**
+- Sync Google Calendar → Jarvis reminders
+- Sync Outlook → Jarvis reminders
+- Import iCal files
+- Two-way sync with `callback_url`
 
 ---
 

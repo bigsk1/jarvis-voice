@@ -1,0 +1,32 @@
+{
+  "enabled": true,
+  "name": "create_reminder",
+  "description": "Create a time-based reminder that will trigger TTS notification. Use this when user asks to be reminded about something at a specific time or after a duration. Supports natural time expressions like 'in 30 minutes', 'in 4 hours', 'tomorrow at 3pm', etc. The reminder will speak via TTS when the time comes.",
+  "script": "create_reminder.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Reminder title (what to remind about)"
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional additional details about the reminder"
+      },
+      "when": {
+        "type": "string",
+        "description": "Natural time expression: 'in 30 minutes', 'in 4 hours', 'in 2 days', 'tomorrow at 3pm', 'at 5pm', etc. Use the user's expressed time directly."
+      }
+    },
+    "required": ["title", "when"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+

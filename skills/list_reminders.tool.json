@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "name": "list_reminders",
+  "description": "List reminders by status. Use when user asks 'what reminders do I have?', 'did I miss any reminders?', 'any pending reminders?', 'when is my next reminder?', etc. Highlights 'triggered' reminders as 'missed' (already fired but not acknowledged). Returns reminders with relative time (e.g., 'in 2 hours', '30 minutes ago'). Status options: 'scheduled' (upcoming), 'triggered' (missed/unacknowledged), 'acknowledged' (completed), or 'all' (default shows all with emphasis on missed).",
+  "script": "list_reminders.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string",
+        "description": "Filter by status: 'scheduled', 'triggered', 'acknowledged', or 'all' (default)",
+        "enum": ["scheduled", "triggered", "acknowledged", "all"]
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of reminders to return (default 10)"
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+

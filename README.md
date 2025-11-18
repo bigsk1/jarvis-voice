@@ -35,8 +35,9 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Event-Driven API**: Receive webhooks from external systems (port 8880)
 - **Auto-Resolve**: URL-based and agent-based automatic issue resolution
 - **Background Services**: 24/7 daemons for follow-ups, healing, and reminders
+- **Smart Reminders**: Time-based reminders with natural language parsing and recurring support
 - **Remote Monitoring**: Deploy agents anywhere to send alerts
-- **Voice Notifications**: Jarvis speaks alerts via TTS
+- **Voice Notifications**: Jarvis speaks alerts and reminders via TTS
 
 ### Memory System
 - **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)
@@ -237,19 +238,34 @@ source ~/jarvis-venv/bin/activate
 
 Say **"Hey Jarvis"** to wake it up!
 
-### 5. Proactive API (Optional)
+### 5. Proactive API & Reminders (Optional)
 
-Enable event-driven alerts and notifications:
+Enable event-driven alerts, notifications, and smart reminders:
 
 ```bash
-# Start API server (receives webhooks)
+# Start API server (receives webhooks, processes reminders)
 ./bin/jarvis-api
 
-# Start background services (auto-resolve, follow-ups)
+# Start background services (auto-resolve, follow-ups, reminder scheduler)
 ./bin/jarvis-services
 ```
 
-See [Proactive API docs](docs/api/) for integration examples.
+**Create reminders via voice:**
+```bash
+./jarvis
+# Say: "Hey Jarvis, remind me in 4 hours to check dinner"
+# Say: "Hey Jarvis, remind me every Friday at 5pm to submit timesheets"
+# Say: "Hey Jarvis, what reminders do I have?"
+```
+
+**Supported time expressions:**
+- "in 30 minutes", "in 4 hours", "in 2 days"
+- "tomorrow at 3pm", "at 5pm", "on the 15th"
+- "every Wednesday" (weekly, 10am default)
+- "every Friday at 5pm" (weekly with time)
+- "every month on the 10th" (monthly, 10am default)
+
+See [Proactive API docs](docs/api/) and [Reminder System](docs/api/REMINDER_SYSTEM.md) for details.
 
 ---
 
@@ -283,6 +299,9 @@ See [Proactive API docs](docs/api/) for integration examples.
 **Proactive System:**
 - `list_alerts` - View active alerts
 - `acknowledge_alerts` - Clear alerts
+- `create_reminder` - Create time-based reminders (one-time or recurring)
+- `list_reminders` - View scheduled/triggered reminders
+- `acknowledge_reminders` - Clear/acknowledge reminders
 - `query_service_logs` - Check background service status
 - `manage_intel` - Create/manage intel files
 

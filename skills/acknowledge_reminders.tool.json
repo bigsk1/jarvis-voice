@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "name": "acknowledge_reminders",
+  "description": "Mark reminders as acknowledged/completed. Use when user says 'clear my reminders', 'clear all reminders', 'mark reminder done', 'acknowledge reminder', 'cancel my reminders', etc. Can acknowledge specific reminders by ID or all pending reminders (scheduled or triggered) at once.",
+  "script": "acknowledge_reminders.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "reminder_ids": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "description": "List of specific reminder IDs to acknowledge"
+      },
+      "all_triggered": {
+        "type": "boolean",
+        "description": "If true, acknowledge ALL pending reminders (both scheduled and triggered) at once (default: false)"
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+
