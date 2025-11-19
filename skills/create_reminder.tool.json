@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "create_reminder",
-  "description": "Create a time-based reminder that will trigger TTS notification. Use this when user asks to be reminded about something at a specific time or after a duration. Supports natural time expressions like 'in 30 minutes', 'in 4 hours', 'tomorrow at 3pm', etc. The reminder will speak via TTS when the time comes.",
+  "description": "Create a time-based reminder that will trigger TTS notification. Use this when user asks to be reminded about something at a specific time or after a duration. Supports natural time expressions like 'in 30 minutes', 'in 4 hours', 'tomorrow at 3pm', 'every Wednesday at 2pm', 'every month on the 10th'. Recurring reminders (every week/month) will auto-reschedule after triggering. The reminder will speak via TTS when the time comes.",
   "script": "create_reminder.py",
   "parameters": {
     "type": "object",
@@ -16,7 +16,7 @@
       },
       "when": {
         "type": "string",
-        "description": "Natural time expression: 'in 30 minutes', 'in 4 hours', 'in 2 days', 'tomorrow at 3pm', 'at 5pm', etc. Use the user's expressed time directly."
+        "description": "Natural time expression: 'in 30 minutes', 'in 4 hours', 'in 2 days', 'tomorrow at 3pm', 'at 5pm', 'every Wednesday', 'every month on the 10th', 'every Friday at 2pm', etc. Use the user's expressed time directly. Supports one-time and recurring reminders."
       }
     },
     "required": ["title", "when"]
