@@ -119,6 +119,8 @@ class ToolExecutor:
                 timeout = 360  # 6 minutes for OpenCode tasks (complex builds)
             elif tool_name == "ingest_intel":
                 timeout = 60  # 1 minute for ingesting files with embeddings
+            elif tool_name == "manage_intel":
+                timeout = 60  # 1 minute (can auto-ingest, which needs time for embeddings)
             else:
                 timeout = 30 if self.mode == "local" else 15
             

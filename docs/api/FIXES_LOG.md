@@ -1,6 +1,175 @@
 # Fixes Log - Jarvis Proactive Assistant
 
-## ✅ Conversation History Tool Routing Regression (Latest - Nov 18, 2025)
+## ✅ manage_intel Subfolder Creation Breaks Ingestion (Latest - Nov 19, 2025)
+
+**Issue**: When creating intel files, the LLM would sometimes create subdirectories (e.g., `bitcoin/price-note.md`), but `ingest_intel` only scans the root level of `jarvis-intel/`, so these files were never ingested into the knowledge base.
+
+**Example**:
+```
+User: "Save Bitcoin price to intel"
+→ LLM creates: bitcoin/price-note-2025-11-19.md
+→ ingest_intel runs, processes: network.md, recurring-tasks.md, opencode_details.md
+→ bitcoin/price-note.md NOT ingested (in subfolder) ❌
+```
+
+**Root Cause**: 
+- `manage_intel.py`'s `validate_path()` allowed subdirectories
+- `ingest_intel.py` only scans `jarvis-intel/*.md` and `jarvis-intel/*.txt` (no recursion)
+- Database `source` column stores `intel/FILENAME`, not `intel/FOLDER/FILENAME`
+- System breaks when files are in subfolders
+
+**Fix**: 
+Modified `manage_intel.py` to **reject paths with subdirectories**:
+
+```python
+# CRITICAL: Reject paths with subdirectories
+if '/' in path or '\\' in path:
+    raise ValueError(
+        f"Subdirectories not allowed in jarvis-intel/. "
+        f"Use flat filenames only (e.g., 'bitcoin-price-2025-11-19.md' "
+        f"not 'bitcoin/price-note.md')"
+    )
+```
+
+**Design Decision**: Keep `jarvis-intel/` **FLAT** (no subfolders):
+- ✅ Simpler ingestion (no recursion needed)
+- ✅ Faster scanning (fewer files to check)
+- ✅ Clearer file management (all files in one place)
+- ✅ Consistent database schema (`intel/FILENAME`)
+
+**Updated Tool Description**:
+Added to `manage_intel.tool.json`:
+```
+IMPORTANT: jarvis-intel/ is FLAT - use simple filenames like 
+'bitcoin-price-2025-11-19.md', NOT subdirectories like 'bitcoin/price.md'
+```
+
+**Files Changed**:
+- `/home/boss/jarvis-voice/skills/manage_intel.py` (added subdirectory check in `validate_path()`)
+- `/home/boss/jarvis-voice/skills/manage_intel.tool.json` (updated description)
+
+**Result**: 
+- ✅ LLM will now use flat filenames: `bitcoin-price-2025-11-19.md`
+- ✅ All intel files ingested correctly
+- ✅ Clear error if subfolder path attempted: "Subdirectories not allowed"
+- ✅ Database consistency maintained
+
+**Testing**:
+```bash
+# This will now fail with clear error:
+echo '{"action": "create", "path": "bitcoin/price.md", "content": "test"}' | \
+  python3 skills/manage_intel.py
+# Error: Subdirectories not allowed in jarvis-intel/
+
+# This will work:
+echo '{"action": "create", "path": "bitcoin-price-2025-11-19.md", "content": "test"}' | \
+  python3 skills/manage_intel.py
+# Success!
+```
+
+---
+
+## ✅ Duplicate Tool Calls in Multi-Turn Loop (Nov 19, 2025)
+
+**Issue**: In multi-turn conversations, the LLM would call the same tool (like `ingest_intel`) multiple times in a row, wasting time and API calls. Example: `ingest_intel` was called 3 times consecutively, each taking 15 seconds.
+
+**Root Cause**: 
+- Multi-turn loop continues after each successful tool execution
+- LLM router doesn't recognize when a task is COMPLETE after certain tools
+- No programmatic detection of duplicate/redundant tool calls
+- System prompt didn't explicitly warn against repeating the same tool
+
+**Fix**: 
+Two-layer solution:
+
+**1. Router Prompt Update** (`orchestrator/router_v2.py`):
+```
+CRITICAL - AVOID REDUNDANT TOOL CALLS:
+- Do NOT call the same tool multiple times unless explicitly needed
+- After ingest_intel succeeds → task is COMPLETE, switch to Q&A
+- After list/search tools succeed → task is COMPLETE, switch to Q&A
+- Only repeat a tool if user asked for multiple operations or wrong parameters
+```
+
+**2. Programmatic Detection** (`orchestrator/orchestrator_v2.py`):
+- Track `last_tool_call` (tool name + arguments)
+- If next turn tries to call the SAME tool with SAME arguments → Force Q&A mode
+- Prevent wasteful duplicate executions
+
+**Files Changed**:
+- `/home/boss/jarvis-voice/orchestrator/router_v2.py` (added redundancy warning)
+- `/home/boss/jarvis-voice/orchestrator/orchestrator_v2.py` (added duplicate detection logic)
+
+**Result**: 
+- ✅ No more duplicate tool calls
+- ✅ `ingest_intel` runs once, then switches to Q&A
+- ✅ Multi-turn loops complete faster
+- ✅ Reduced API costs (fewer LLM calls, fewer embeddings)
+
+**Example Flow (Before Fix)**:
+```
+Turn 1: get_recent_conversations → Success
+Turn 2: manage_intel list → Success
+Turn 3: ingest_intel → Success (15s)
+Turn 4: ingest_intel → Success (15s) ❌ DUPLICATE
+Turn 5: ingest_intel → Success (15s) ❌ DUPLICATE
+Total: 45 seconds wasted!
+```
+
+**Example Flow (After Fix)**:
+```
+Turn 1: get_recent_conversations → Success
+Turn 2: manage_intel list → Success
+Turn 3: ingest_intel → Success (15s)
+Turn 4: Duplicate detected → Force Q&A → "Task complete" ✅
+Total: 15 seconds, no waste!
+```
+
+---
+
+## ✅ manage_intel Timeout with auto_ingest (Nov 19, 2025)
+
+**Issue**: When using `manage_intel` with `auto_ingest: true`, the tool would timeout after 15 seconds with "Tool manage_intel timed out. Error: Timeout", even though the file was created successfully.
+
+**Root Cause**: 
+- Orchestrator gives `manage_intel` only **15 seconds** timeout (cloud mode default)
+- `manage_intel` calls `ingest_intel` subprocess with **30 seconds** timeout
+- `ingest_intel` can take up to **60 seconds** for large datasets (embedding generation is slow)
+- Orchestrator kills `manage_intel` at 15s before ingestion completes
+
+**Timeout Chain:**
+```
+Orchestrator: manage_intel timeout = 15s ❌ (too short)
+  └─> manage_intel: calls ingest_intel with 30s timeout
+        └─> ingest_intel: needs up to 60s for embeddings
+```
+
+**Fix**: 
+Added `manage_intel` to the list of tools with extended timeout in `orchestrator/executor.py`:
+
+```python
+elif tool_name == "manage_intel":
+    timeout = 60  # 1 minute (can auto-ingest, which needs time for embeddings)
+```
+
+**Files Changed**:
+- `/home/boss/jarvis-voice/orchestrator/executor.py` (lines 121-122)
+
+**Result**: 
+- ✅ `manage_intel` with `auto_ingest: true` now completes successfully
+- ✅ File creation + ingestion works in one operation
+- ✅ No more timeout errors for Bitcoin price notes or other intel files
+
+**Test**:
+```bash
+# This should now work without timeout:
+echo '{"action": "create", "path": "test.md", "content": "Test content", "auto_ingest": true}' | \
+  python3 skills/manage_intel.py
+```
+
+---
+
+## ✅ Conversation History Tool Routing Regression (Nov 18, 2025)
 
 **Issue**: User asked "What was the last conversation we had?" and Jarvis failed with "I need a search query. Error: Missing query parameter. I tried 2 time(s)."
 

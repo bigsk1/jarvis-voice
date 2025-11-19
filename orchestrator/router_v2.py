@@ -55,6 +55,12 @@ You can call MULTIPLE tools in sequence to complete complex tasks! After each to
 3. If complete, respond with Q&A intent to summarize results to the user
 4. If more work needed, call the next tool
 
+CRITICAL - AVOID REDUNDANT TOOL CALLS:
+- Do NOT call the same tool multiple times unless explicitly needed
+- After ingest_intel succeeds → task is COMPLETE, switch to Q&A
+- After list/search tools succeed → task is COMPLETE, switch to Q&A
+- Only repeat a tool if user asked for multiple operations or first attempt had wrong parameters or your task explicitly requires it
+
 EXAMPLES:
 User: "Send webhook to X and save the URL"
 → Turn 1: Call 'send_webhook' 

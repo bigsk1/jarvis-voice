@@ -73,6 +73,7 @@ class Orchestrator:
         conversation_context = []
         tools_used = []
         accumulated_data = {}
+        last_tool_call = None  # Track last tool to detect duplicates
         
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
@@ -135,6 +136,29 @@ class Orchestrator:
             if route["intent"] == "tool":
                 tool_name = route["tool_name"]
                 arguments = route["arguments"]
+                
+                # Detect duplicate tool calls (same tool, similar/empty args)
+                current_call = (tool_name, json.dumps(arguments, sort_keys=True))
+                if last_tool_call and last_tool_call == current_call:
+                    if sys.stdout.isatty():
+                        print(f"⚠️  Duplicate tool call detected: {tool_name}")
+                        print(f"   Forcing Q&A mode to prevent redundant execution")
+                    
+                    # Force Q&A mode with summary of what was done
+                    tools_summary = ', '.join(set(tools_used))
+                    final_speech = f"I've completed the task using {len(set(tools_used))} tool(s): {tools_summary}."
+                    
+                    self._log_conversation(transcript, final_speech, tools_used, success=True)
+                    
+                    return {
+                        "speech": final_speech,
+                        "ok": True,
+                        "tools_used": tools_used,
+                        "data": accumulated_data,
+                        "duplicate_prevented": True
+                    }
+                
+                last_tool_call = current_call
                 
                 # Only print if in interactive mode
                 if sys.stdout.isatty():

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "manage_intel",
-  "description": "Create, read, update, delete, or list intel files in jarvis-intel/ directory. Use this to programmatically manage your knowledge base files. Sandboxed to jarvis-intel/ only. After creating/updating intel files, set auto_ingest=true to automatically add facts to memory. Actions: 'create', 'read', 'update', 'delete', 'list'. Examples: Create a new note about a server, update existing documentation, delete outdated intel.",
+  "description": "Create, read, update, delete, or list intel files in jarvis-intel/ directory. Use this to programmatically manage your knowledge base files. Sandboxed to jarvis-intel/ only. IMPORTANT: jarvis-intel/ is FLAT - use simple filenames like 'bitcoin-price-2025-11-19.md', NOT subdirectories like 'bitcoin/price.md'. After creating/updating intel files, set auto_ingest=true to automatically add facts to memory. Actions: 'create', 'read', 'update', 'delete', 'list'. Examples: Create a new note about a server, update existing documentation, delete outdated intel.",
   "parameters": {
     "type": "object",
     "properties": {

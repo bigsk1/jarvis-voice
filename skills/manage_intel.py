@@ -28,10 +28,18 @@ from memory_db import MemoryDB
 def validate_path(path: str, intel_dir: Path) -> Path:
     """
     Validate and sanitize file path to ensure it's within jarvis-intel/.
-    Prevents path traversal attacks.
+    Prevents path traversal attacks and subdirectories.
     """
     # Normalize path
     path = path.strip().lstrip('/')
+    
+    # CRITICAL: Reject paths with subdirectories
+    # jarvis-intel/ should be FLAT for simple ingestion
+    if '/' in path or '\\' in path:
+        raise ValueError(
+            f"Subdirectories not allowed in jarvis-intel/. "
+            f"Use flat filenames only (e.g., 'bitcoin-price-2025-11-19.md' not 'bitcoin/price-note.md')"
+        )
     
     # Resolve full path
     full_path = (intel_dir / path).resolve()
