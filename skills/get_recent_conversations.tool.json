@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "get_recent_conversations",
-  "description": "Get recent conversation history ordered by time. Use this to see what happened in recent or current session, what tools were used, and track conversation flow. Can filter by session_id to see only current session or get all recent conversations.",
+  "description": "Get recent conversation history in chronological order. ALWAYS use this tool for temporal queries like: 'what was the last conversation?', 'what did I just ask?', 'what was my last question?', 'show recent history', 'what did we just talk about?', 'what was my previous request?'. This tool does NOT require a query parameter - it returns conversations by TIME. Use 'search_conversations' only if user asks to SEARCH for a specific TOPIC from past conversations.",
   "input_schema": {
     "type": "object",
     "properties": {

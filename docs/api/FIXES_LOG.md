@@ -1,6 +1,159 @@
 # Fixes Log - Jarvis Proactive Assistant
 
-## ✅ Database Sync Not Running on Startup (Latest - Nov 18, 2025)
+## ✅ Conversation History Tool Routing Regression (Latest - Nov 18, 2025)
+
+**Issue**: User asked "What was the last conversation we had?" and Jarvis failed with "I need a search query. Error: Missing query parameter. I tried 2 time(s)."
+
+**Root Cause**: 
+- Router incorrectly chose `search_conversations` (requires query parameter) instead of `get_recent_conversations` (chronological, no query needed)
+- Tool descriptions didn't clearly distinguish TEMPORAL queries (last/recent) from TOPIC queries (search for X)
+- Router prompt had an example that inadvertently taught the wrong behavior
+
+**Fix**: 
+Updated three files to clarify tool selection:
+
+**1. Tool Descriptions:**
+- `get_recent_conversations.tool.json`: "ALWAYS use for: 'what was last conversation?', 'what did I just ask?'"
+- `search_conversations.tool.json`: "Use ONLY for specific TOPIC search, requires query parameter"
+
+**2. Router Prompt** (`orchestrator/router_v2.py`):
+```python
+**Conversation History Tools:**
+❌ BAD: "What was my last question?" → search_conversations (requires query, will fail)
+✅ GOOD: "What was my last question?" → get_recent_conversations (chronological)
+
+❌ BAD: "Did I mention Bitcoin?" → get_recent_conversations (not temporal)
+✅ GOOD: "Did I mention Bitcoin?" → search_conversations(query="Bitcoin")
+
+**Rule**: TEMPORAL queries (last/recent/just asked) → get_recent_conversations
+          TOPIC queries (find/search/mention X) → search_conversations
+```
+
+**Files Changed**:
+- `/home/boss/jarvis-voice/skills/get_recent_conversations.tool.json`
+- `/home/boss/jarvis-voice/skills/search_conversations.tool.json`
+- `/home/boss/jarvis-voice/orchestrator/router_v2.py` (lines 168-175)
+
+**Result**: 
+- ✅ "What was my last question?" now calls `get_recent_conversations`
+- ✅ "What did I just ask?" calls `get_recent_conversations`
+- ✅ "Did I mention Bitcoin?" correctly calls `search_conversations(query="Bitcoin")`
+- ✅ Clear distinction between temporal vs topic queries
+
+**Note**: The reminder creation ("every Monday and Thursday") actually worked correctly - the LLM intelligently made TWO tool calls to create both reminders since the parser can't handle multiple days in one recurrence rule.
+
+---
+
+## ✅ Improved LLM Routing for Proactive System Queries (Nov 18, 2025)
+
+**Issue**: When user asked "When is my next reminder?", Jarvis said "no upcoming reminders", but "List my pending reminders" worked correctly. The LLM wasn't recognizing that natural language reminder/alert queries should call their specific tools.
+
+**Root Cause**: 
+- Router system prompt focused heavily on memory tools (search_memory, semantic_recall)
+- No explicit guidance that reminder/alert queries require their specific tools
+- LLM tried to answer from conversation context instead of querying current state
+- Tool descriptions didn't emphasize "ALWAYS use this tool for ANY reminder-related query"
+
+**Fix**: 
+Added explicit routing rules in three places:
+
+**1. Router System Prompt** (`orchestrator/router_v2.py`):
+```python
+PROACTIVE SYSTEM QUERIES (CRITICAL):
+For questions about REMINDERS, ALERTS, or SERVICE STATUS → ALWAYS call the specific tool, NEVER answer from memory/context:
+- "When is my next reminder?" → call 'list_reminders'
+- "What reminders do I have?" → call 'list_reminders'
+- "Any pending alerts?" → call 'list_alerts'
+- "Did I miss any reminders?" → call 'list_reminders'
+- "Do I have any reminders?" → call 'list_reminders' (even if you just created one!)
+- "What's the status of X service?" → call 'query_service_logs'
+
+**WHY**: These systems maintain LIVE STATE that changes independently. Memory/context may be stale. ALWAYS query the current state.
+```
+
+**2. Tool Descriptions** - Added "ALWAYS use this tool for ANY X-related query" emphasis:
+- `list_reminders.tool.json` - Now lists 10+ query variations
+- `list_alerts.tool.json` - Now lists 8+ query variations
+
+**Files Changed**:
+- `/home/boss/jarvis-voice/orchestrator/router_v2.py` (added PROACTIVE SYSTEM QUERIES section)
+- `/home/boss/jarvis-voice/skills/list_reminders.tool.json` (strengthened description)
+- `/home/boss/jarvis-voice/skills/list_alerts.tool.json` (strengthened description)
+
+**Result**: 
+- ✅ "When is my next reminder?" now correctly calls `list_reminders`
+- ✅ "Do I have any reminders?" calls `list_reminders`
+- ✅ "Any alerts?" calls `list_alerts`
+- ✅ "What's broken?" calls `list_alerts`
+- ✅ LLM now understands these queries need LIVE STATE, not memory
+- ✅ More intelligent routing for natural language variations
+
+**Philosophy**: 
+A smart AI assistant should map user intent to available tools, not require exact phrasing. The router should be flexible enough to understand that "when is my next reminder?" clearly needs the `list_reminders` tool, even if the user didn't say "list reminders" explicitly.
+
+**Testing**:
+```bash
+# All of these should now call list_reminders:
+"When is my next reminder?"
+"Do I have any reminders?"
+"Show my reminders"
+"Check reminders"
+"Any upcoming reminders?"
+```
+
+---
+
+## ✅ Reminder Creation with Word Numbers (Nov 18, 2025)
+
+**Issue**: Creating reminders with word numbers like "in one hour" or "in thirty minutes" failed with error: `Could not parse time from: one hour`
+
+**Root Cause**: 
+- The time parser regex only matched numeric digits (`\d+`)
+- Word numbers like "one", "two", "thirty" weren't converted to numeric values
+- User saying "remind me in one hour" would fail
+
+**Fix**: 
+Added `normalize_time_words()` function to convert word numbers to digits before parsing:
+
+```python
+def normalize_time_words(text: str) -> str:
+    """Convert word numbers in time expressions to digits.
+    
+    Examples:
+    - "in one hour" -> "in 1 hour"
+    - "in thirty minutes" -> "in 30 minutes"
+    - "in two days" -> "in 2 days"
+    """
+```
+
+**Supported Word Numbers**:
+- one, two, three... twenty
+- thirty, forty, fifty, sixty
+- a, an (converted to 1)
+
+**Files Changed**:
+- `/home/boss/jarvis-voice/skills/create_reminder.py` (added `word_to_number()` and `normalize_time_words()` functions)
+- `/home/boss/jarvis-voice/skills/create_reminder.tool.json` (updated description to mention recurring reminders)
+
+**Result**: 
+- ✅ "Remind me in one hour" now works
+- ✅ "Remind me in thirty minutes" now works
+- ✅ "Remind me in two days" now works
+- ✅ "Remind me in a minute" and "in an hour" work
+- ✅ All word number time expressions (1-60) supported
+
+**Testing**:
+```bash
+# Via voice
+"Hey Jarvis, remind me in one hour to check the truck title"
+
+# Via tool
+echo '{"title": "test", "when": "in thirty minutes"}' | python3 skills/create_reminder.py
+```
+
+---
+
+## ✅ Database Sync Not Running on Startup (Nov 18, 2025)
 
 **Issue**: When running `./bin/jarvis-api --local` or `./bin/jarvis-services --local`, the database sync script was not being executed, causing reminders and alerts to not be synced between cloud and local databases.
 

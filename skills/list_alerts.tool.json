@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "list_alerts",
-  "description": "List alerts from the proactive API system. Shows alerts that have been received via webhooks (Uptime Kuma, Coolify, cron jobs, etc.). Use this when user asks about alerts, notifications, or pending tasks from external systems. For memory/knowledge base queries, use search_memory or semantic_recall instead.",
+  "description": "List alerts from the proactive API system. ALWAYS use this tool for ANY alert-related query, including: 'any alerts?', 'what alerts do I have?', 'show alerts', 'check alerts', 'pending alerts?', 'any notifications?', 'what's broken?', etc. NEVER answer alert questions from memory or context - always call this tool to get current state. Shows alerts received via webhooks (Uptime Kuma, Coolify, Docker monitoring, cron jobs, etc.). For memory/knowledge base queries (past info), use search_memory or semantic_recall instead.",
   "script": "list_alerts.py",
   "parameters": {
     "type": "object",

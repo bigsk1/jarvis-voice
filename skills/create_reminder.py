@@ -31,6 +31,41 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
 
+def word_to_number(word: str) -> int:
+    """Convert word numbers to integers."""
+    word_map = {
+        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+        'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+        'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+        'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60,
+        'a': 1, 'an': 1
+    }
+    return word_map.get(word.lower(), None)
+
+def normalize_time_words(text: str) -> str:
+    """Convert word numbers in time expressions to digits.
+    
+    Examples:
+    - "in one hour" -> "in 1 hour"
+    - "in thirty minutes" -> "in 30 minutes"
+    - "in two days" -> "in 2 days"
+    """
+    # Pattern: word + time unit
+    pattern = r'\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|' \
+              r'thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|' \
+              r'thirty|forty|fifty|sixty|a|an)\s+(minute|min|hour|hr|day|week)s?\b'
+    
+    def replace_word(match):
+        word = match.group(1)
+        unit = match.group(2)
+        number = word_to_number(word)
+        if number:
+            return f"{number} {unit}"
+        return match.group(0)
+    
+    return re.sub(pattern, replace_word, text, flags=re.IGNORECASE)
+
 def parse_recurrence(when: str):
     """Parse recurring patterns from time expression.
     
@@ -87,6 +122,9 @@ def parse_time_expression(when: str, default_hour: int = 10):
     - "tomorrow at 3pm" -> (datetime, None)
     """
     when = when.lower().strip()
+    
+    # Normalize word numbers to digits (e.g., "one hour" -> "1 hour")
+    when = normalize_time_words(when)
     now = datetime.now()
     
     # Check for recurring patterns first
