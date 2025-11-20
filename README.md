@@ -25,8 +25,12 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## ✨ Key Features
 
 ### Intelligence & Tools
-- **Advanced Tool Calling**: LLM-powered routing with 20+ skills
+- **Advanced Tool Calling**: LLM-powered routing with 24+ skills
 - **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
+- **Auto-Context System**: Automatic short-term memory of recent conversations ⭐ NEW
+  - Remembers what you just discussed without needing explicit "remember" commands
+  - Catches contradictions, continues workflows seamlessly, learns from failures
+  - See [`docs/AUTO_CONTEXT_SYSTEM.md`](docs/AUTO_CONTEXT_SYSTEM.md)
 - **Intelligent Memory**: Semantic search + conversation history with auto-save
 - **OpenCode Integration**: Autonomous coding agent for building projects
 - **MCP Support**: Extensible via Model Context Protocol servers
@@ -36,7 +40,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Auto-Resolve**: URL-based and agent-based automatic issue resolution
 - **Background Services**: 24/7 daemons for follow-ups, healing, and reminders
 - **Smart Reminders**: Time-based reminders with natural language parsing and recurring support
-- **Remote Monitoring**: Deploy agents anywhere to send alerts
+- **Remote Monitoring**: Deploy [Jarvis Agent](https://github.com/bigsk1/jarvis-voice) (Docker) anywhere to send health checks and alerts
 - **Voice Notifications**: Jarvis speaks alerts and reminders via TTS
 
 ### Memory System
@@ -120,20 +124,32 @@ jarvis-voice/
 │   ├── router_v2.py          # LLM-based routing
 │   ├── executor.py           # Tool execution engine
 │   └── tool_schema.py        # Tool discovery & validation
-├── skills/                   # Tool scripts (20+)
+├── skills/                   # Tool scripts (24+)
 │   ├── remember.py           # Store facts
 │   ├── recall.py             # Retrieve facts
+│   ├── forget.py             # Delete memories
+│   ├── update_memory.py      # Modify existing memories
 │   ├── search_memory.py      # Keyword search
-│   ├── semantic_recall.py    # AI-powered search
+│   ├── semantic_recall.py    # AI-powered semantic search
 │   ├── get_recent_conversations.py # Conversation history
+│   ├── search_conversations.py # Search past conversations
 │   ├── execute_bash.py       # Shell command execution
 │   ├── opencode.py           # Autonomous coding agent
 │   ├── check_opencode_sessions.py # OpenCode progress monitoring
-│   ├── send_webhook.py       # HTTP requests
+│   ├── send_webhook.py       # HTTP POST/GET requests
 │   ├── api_call.py           # Generic API calls
 │   ├── crypto_price.py       # Crypto prices
+│   ├── get_time.py           # Current time/date
+│   ├── create_reminder.py    # Time-based reminders
+│   ├── list_reminders.py     # Show reminders
+│   ├── acknowledge_reminders.py # Cancel/complete reminders
+│   ├── list_alerts.py        # Show alerts (from API)
+│   ├── acknowledge_alerts.py # Acknowledge alerts
+│   ├── query_service_logs.py # Service status checks
 │   ├── ingest_intel.py       # Bulk knowledge import
-│   └── *.tool.json           # Tool definitions
+│   ├── manage_intel.py       # Manage intel files
+│   ├── check_tool_logs.py    # Debug tool failures
+│   └── *.tool.json           # Tool definitions (JSON schema)
 ├── config/                   # Configuration files
 │   ├── cloud.env             # Cloud mode settings
 │   ├── local.env             # Local mode settings
@@ -158,6 +174,10 @@ jarvis-voice/
 ├── docs/                     # Documentation
 │   ├── api/                  # Proactive API documentation
 │   ├── service/              # Background services documentation
+│   ├── AUTO_CONTEXT_SYSTEM.md # Short-term conversation memory
+│   ├── MEMORY_SYSTEM.md      # Long-term memory architecture
+│   ├── DUAL_DATABASE_SYSTEM.md # Cloud/local DB system
+│   ├── JARVIS_WORKFLOW.md    # Complete request workflow
 │   └── *.md                  # Core system documentation
 ├── jarvis-intel/             # Private knowledge base (gitignored)
 ├── jarvis                    # Launcher (cloud mode)
@@ -267,11 +287,32 @@ Enable event-driven alerts, notifications, and smart reminders:
 
 See [Proactive API docs](docs/api/) and [Reminder System](docs/api/REMINDER_SYSTEM.md) for details.
 
+### 6. Remote Monitoring Agent (Optional)
+
+Deploy the **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** (Docker) on remote servers for health checks and alerts:
+
+```bash
+# On remote server (Docker required)
+docker run -d \
+  --name jarvis-agent \
+  --restart unless-stopped \
+  -e JARVIS_API_URL="http://your-jarvis-server:8880" \
+  -e SERVICE_NAME="my-app" \
+  -e CHECK_INTERVAL=300 \
+  bigsk1/jarvis-agent:latest
+
+# Agent sends webhooks to Jarvis when issues detected
+# Jarvis speaks alerts via voice TTS
+# Auto-resolve when service recovers
+```
+
+See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for templates and configuration options.
+
 ---
 
 ## 🛠️ Tool System
 
-### Available Skills (20+)
+### Available Skills (24+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -497,6 +538,12 @@ LIMIT 7;"
 **Proactive System (NEW Nov 2025):**
 - `docs/api/` - **Proactive API** documentation (webhooks, alerts, monitoring)
 - `docs/service/` - **Background Services** documentation (daemons, auto-resolve)
+- **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** - Docker agent for remote health checks
+
+**Core System:**
+- `docs/AUTO_CONTEXT_SYSTEM.md` - **Short-term conversation memory** ⭐ NEW
+- `docs/JARVIS_WORKFLOW.md` - Complete request flow with examples
+- `docs/TOOL_CALLING_SYSTEM.md` - How tool routing works
 
 **Memory System (Updated Nov 2025):**
 - `docs/DUAL_DATABASE_SYSTEM.md` - **NEW**: Cloud/local DB architecture with auto-sync
