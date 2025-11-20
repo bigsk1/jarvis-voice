@@ -43,6 +43,17 @@
       },
       "description": "Search the web for news, images and videos using Brave Search",
       "enabled": true
+    },
+    "sequentialthinking": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "mcp/sequentialthinking"
+      ],
+      "description": "Sequential thinking for complex tasks",
+      "enabled": true
     }
   }
 }

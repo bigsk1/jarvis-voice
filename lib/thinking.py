@@ -136,7 +136,7 @@ def extract_thinking(response: Any, provider: str) -> Optional[str]:
                 return response.thinking[0].text
         
         elif provider == "openai":
-            # OpenAI o1 models include thinking in response
+            # OpenAI o1 models include thinking in response ( o1 is very old now and not going to use, gpt-5 and gpt-5.1 are latest and support reasoning)
             if hasattr(response, 'choices') and len(response.choices) > 0:
                 choice = response.choices[0]
                 if hasattr(choice, 'reasoning_content'):

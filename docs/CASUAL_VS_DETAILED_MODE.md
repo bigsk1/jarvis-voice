@@ -120,7 +120,6 @@ When you respond with Q&A intent, your response will be SPOKEN ALOUD.
 
 MANDATORY FORMAT:
 - MAXIMUM 12 WORDS (hard limit)
-- NO greetings ("Great!", "Perfect!")
 - NO emojis, NO markdown
 - NO explanations of process
 - STATE ONLY: outcome + essential detail
@@ -219,7 +218,7 @@ JARVIS_RESPONSE_STYLE=detailed python3 orchestrator/orchestrator_v2.py cloud "qu
 4. **Bad examples**: System prompt lacked concrete good/bad examples
 
 **The fix**: MUCH more specific prompts with:
-- ✅ Hard word limits (12 words max)
+- ✅ Hard word limits (15 words max)
 - ✅ Explicit context ("will be SPOKEN ALOUD through speakers")
 - ✅ Multiple good/bad examples
 - ✅ Forbidden patterns ("NO greetings", "NO emojis")

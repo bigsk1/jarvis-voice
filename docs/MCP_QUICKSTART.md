@@ -207,18 +207,6 @@ Jarvis: [Uses mcp.duckduckgo.fetch_content]
 - [x] Test script for validation
 - [x] Documentation
 
-### 🚧 Next Steps (Phase 2)
-- [ ] Integrate MCP tools into ToolRegistry
-- [ ] Make MCP tools available to Claude
-- [ ] Voice commands trigger MCP tools
-- [ ] Log MCP tool executions
-- [ ] Handle MCP tool failures/retries
-
-### 🔮 Future (Phase 3)
-- [ ] CLI command: `jarvis add-mcp duckduckgo`
-- [ ] Auto-pull Docker images
-- [ ] MCP tool marketplace
-- [ ] Performance optimization (connection pooling)
 
 ## 8. Architecture
 
@@ -320,7 +308,7 @@ docker pull mcp/duckduckgo
 
 **Step 3:** Test
 ```bash
-./bin/test-mcp --server
+./bin/test-mcp --list --mode cloud --all
 ```
 
 **Step 4:** Use with voice (Phase 2)
