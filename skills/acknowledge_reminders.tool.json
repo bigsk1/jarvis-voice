@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "acknowledge_reminders",
-  "description": "Mark reminders as acknowledged/completed. Use when user says 'clear my reminders', 'clear all reminders', 'mark reminder done', 'acknowledge reminder', 'cancel my reminders', etc. Can acknowledge specific reminders by ID or all pending reminders (scheduled or triggered) at once.",
+  "description": "Mark reminders as acknowledged/completed/cancelled. Use when user says 'cancel reminder', 'delete reminder', 'clear reminder', 'remove reminder', 'mark reminder done', 'acknowledge reminder', etc. **DIRECT CANCELLATION**: If user says 'cancel my X reminder', use 'title_search' parameter with the keyword (e.g., 'checkbook'). The tool will find matching reminders. **SAFETY**: If multiple reminders match, the tool returns an error asking user to be more specific (prevents accidental deletion of wrong reminder). Only cancels if EXACTLY ONE match found. For 'cancel all reminders', use all_triggered=true.",
   "script": "acknowledge_reminders.py",
   "parameters": {
     "type": "object",
@@ -11,7 +11,11 @@
         "items": {
           "type": "integer"
         },
-        "description": "List of specific reminder IDs to acknowledge"
+        "description": "List of specific reminder IDs to acknowledge (if you already know the IDs)"
+      },
+      "title_search": {
+        "type": "string",
+        "description": "Search for reminders by title/description and acknowledge them (fuzzy match). Example: 'checkbook' will match 'check for checkbook'. Use this when user wants to cancel a specific reminder by name."
       },
       "all_triggered": {
         "type": "boolean",

@@ -42,10 +42,11 @@ def main():
         
         # Extract parameters
         reminder_ids = args.get('reminder_ids', [])
+        title_search = args.get('title_search')
         all_triggered = args.get('all_triggered', False)
         
-        if not reminder_ids and not all_triggered:
-            raise ValueError("Either 'reminder_ids' or 'all_triggered' must be specified")
+        if not reminder_ids and not all_triggered and not title_search:
+            raise ValueError("Either 'reminder_ids', 'title_search', or 'all_triggered' must be specified")
         
         # Connect to database
         db = MemoryDB()
@@ -55,6 +56,45 @@ def main():
         now = datetime.now(timezone.utc).isoformat()
         acknowledged_ids = []
         
+        if title_search:
+            # Search for reminders by title/description (fuzzy match)
+            cursor.execute("""
+                SELECT id, title, description FROM reminders
+                WHERE status IN ('triggered', 'scheduled')
+                AND (title LIKE ? OR description LIKE ?)
+            """, (f'%{title_search}%', f'%{title_search}%'))
+            
+            matching_reminders = cursor.fetchall()
+            
+            if not matching_reminders:
+                conn.close()
+                print(json.dumps({
+                    "ok": False,
+                    "error": f"No reminders found matching '{title_search}'",
+                    "speech": f"I couldn't find any reminder matching '{title_search}'"
+                }))
+                return 1
+            
+            # SAFETY: If multiple matches, require user to be more specific
+            if len(matching_reminders) > 1:
+                conn.close()
+                matched_titles = [f"'{row[1]}' (ID {row[0]})" for row in matching_reminders]
+                titles_list = ", ".join(matched_titles)
+                print(json.dumps({
+                    "ok": False,
+                    "error": f"Multiple reminders match '{title_search}': {titles_list}",
+                    "speech": f"I found {len(matching_reminders)} reminders matching '{title_search}': {titles_list}. Which one do you want to cancel? Please be more specific or say the full name.",
+                    "data": {
+                        "matches": [{"id": row[0], "title": row[1], "description": row[2]} for row in matching_reminders],
+                        "count": len(matching_reminders)
+                    }
+                }))
+                return 1
+            
+            # Acknowledge the single matching reminder
+            reminder_ids = [matching_reminders[0][0]]
+            matched_titles = [matching_reminders[0][1]]
+            
         if all_triggered:
             # Acknowledge all pending reminders (triggered or scheduled)
             cursor.execute("""

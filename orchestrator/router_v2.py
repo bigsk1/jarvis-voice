@@ -88,8 +88,15 @@ You can call MULTIPLE tools in sequence to complete complex tasks! After each to
 CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - Do NOT call the same tool multiple times unless explicitly needed
 - After ingest_intel succeeds → task is COMPLETE, switch to Q&A
-- After list/search tools succeed → task is COMPLETE, switch to Q&A
+- After list/search tools succeed → task is COMPLETE **UNLESS** user's intent requires action (e.g., "cancel my reminder" = list first, then acknowledge)
 - Only repeat a tool if user asked for multiple operations or first attempt had wrong parameters or your task explicitly requires it
+
+**MULTI-STEP REMINDER WORKFLOWS:**
+- "Cancel my X reminder" → (1) list_reminders to find ID, (2) acknowledge_reminders with that ID
+- "Delete my reminder about Y" → (1) list_reminders to find ID, (2) acknowledge_reminders with that ID
+- "What reminders do I have?" → (1) list_reminders only, then Q&A response
+- **FUZZY MATCHING**: User says "cancel checkbook reminder" and you see "check for checkbook" in results? THAT'S A MATCH! Look for partial matches in title/description.
+- **Always continue to step 2**: After list_reminders returns results with a matching reminder, IMMEDIATELY call acknowledge_reminders with that ID. Don't stop and ask - just do it!
 
 EXAMPLES:
 User: "Send webhook to X and save the URL"

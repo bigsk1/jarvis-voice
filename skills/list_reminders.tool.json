@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "list_reminders",
-  "description": "List reminders by status. ALWAYS use this tool for ANY reminder-related query, including: 'when is my next reminder?', 'what reminders do I have?', 'do I have any reminders?', 'show my reminders', 'check reminders', 'any upcoming reminders?', 'did I miss any reminders?', 'any pending reminders?', 'list reminders', etc. NEVER answer reminder questions from memory or context - always call this tool to get current state. Highlights 'triggered' reminders as 'missed' (already fired but not acknowledged). Returns reminders with relative time (e.g., 'in 2 hours', '30 minutes ago'). Status options: 'scheduled' (upcoming), 'triggered' (missed/unacknowledged), 'acknowledged' (completed), or 'all' (default shows all with emphasis on missed).",
+  "description": "List reminders by status. ALWAYS use this tool for ANY reminder-related query, including: 'when is my next reminder?', 'what reminders do I have?', 'cancel my X reminder' (need ID first!), 'delete reminder', 'show my reminders', 'check reminders', 'any upcoming reminders?', 'did I miss any reminders?', etc. NEVER answer reminder questions from memory or context - always call this tool to get current state. **CRITICAL**: If user wants to cancel/delete a specific reminder by title, you MUST call this first to get the reminder ID, then call 'acknowledge_reminders' with that ID. Returns reminders with IDs, relative time, and status.",
   "script": "list_reminders.py",
   "parameters": {
     "type": "object",
