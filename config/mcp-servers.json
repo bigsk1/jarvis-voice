@@ -53,7 +53,7 @@
         "mcp/sequentialthinking"
       ],
       "description": "Sequential thinking for complex tasks",
-      "enabled": true
+      "enabled": false
     }
   }
 }

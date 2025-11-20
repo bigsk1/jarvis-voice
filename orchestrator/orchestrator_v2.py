@@ -48,6 +48,12 @@ class Orchestrator:
         self.executor = ToolExecutor(mode, registry=self.registry)
         self.max_retries = 1  # Maximum retry attempts
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # Unique session ID
+        
+        # Auto-context configuration
+        from config_loader import get_config_value, get_int
+        self.auto_context_enabled = get_config_value('AUTO_CONTEXT_ENABLED', 'true').lower() == 'true'
+        self.auto_context_window = get_int('AUTO_CONTEXT_WINDOW', 3)
+        self.auto_context_minutes = get_int('AUTO_CONTEXT_MINUTES', 10)
     
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None) -> Dict[str, Any]:
         """
@@ -68,6 +74,20 @@ class Orchestrator:
                 "error": str (optional)
             }
         """
+        # Auto-inject recent conversation context (if enabled)
+        if self.auto_context_enabled:
+            enhanced_transcript = self._build_conversation_context(transcript)
+            
+            # Debug: Show what's being sent to LLM
+            if os.environ.get('JARVIS_DEBUG'):
+                print("\n" + "="*80, file=sys.stderr)
+                print("DEBUG: Enhanced Transcript Being Sent to LLM:", file=sys.stderr)
+                print("="*80, file=sys.stderr)
+                print(enhanced_transcript, file=sys.stderr)
+                print("="*80 + "\n", file=sys.stderr)
+        else:
+            enhanced_transcript = transcript
+        
         # Multi-turn context tracking
         max_turns = 10  # Safety limit
         conversation_context = []
@@ -77,9 +97,7 @@ class Orchestrator:
         
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
-            enhanced_transcript = f"{transcript}\n\nPrevious attempt failed with error: {error_context}\nPlease try again with corrected parameters or check logs if needed."
-        else:
-            enhanced_transcript = transcript
+            enhanced_transcript = f"{enhanced_transcript}\n\nPrevious attempt failed with error: {error_context}\nPlease try again with corrected parameters or check logs if needed."
         
         # Track usage info across all turns
         total_usage = {
@@ -580,6 +598,124 @@ Your response:"""
             if sys.stdout.isatty():
                 print(f"⚠️ Failed to format max turns summary: {e}", file=sys.stderr)
             return f"Completed {len(tools_used)} actions but reached the complexity limit. Tools used: {', '.join(tools_used)}. Please review or let me know if you'd like me to continue."
+    
+    def _build_conversation_context(self, current_query: str) -> str:
+        """
+        Auto-inject recent conversation history for context awareness.
+        
+        This gives Jarvis "short-term memory" of recent interactions, enabling:
+        - Natural follow-up responses ("you just said it was hot!")
+        - Awareness of recently used tools
+        - Learning from recent failures
+        - Continued multi-step workflows
+        
+        Args:
+            current_query: User's current question/request
+            
+        Returns:
+            Enhanced query with recent conversation context (if any relevant)
+        """
+        from datetime import timedelta
+        
+        try:
+            db = get_memory_db()
+            
+            # Get recent conversations
+            recent = db.get_recent_conversations(limit=self.auto_context_window)
+            
+            if not recent:
+                return current_query
+            
+            # Filter by time window (only include recent conversations)
+            cutoff = datetime.now() - timedelta(minutes=self.auto_context_minutes)
+            
+            relevant = []
+            for conv in recent:
+                # Parse timestamp (handle both string and datetime)
+                ts_str = conv.get('timestamp', '')
+                if isinstance(ts_str, str):
+                    # Try parsing ISO format
+                    try:
+                        ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                    except:
+                        # Skip if can't parse
+                        continue
+                elif hasattr(ts_str, 'timestamp'):
+                    ts = ts_str
+                else:
+                    continue
+                
+                # Only include if within time window
+                if ts > cutoff:
+                    relevant.append(conv)
+            
+            # If no recent context within time window, just return current query
+            if not relevant:
+                return current_query
+            
+            # Build context block (oldest first for chronological order)
+            context_parts = ["╔══════════════════════════════════════════════════════════╗"]
+            context_parts.append("║ RECENT CONVERSATION HISTORY (for context awareness)     ║")
+            context_parts.append(f"║ Last {len(relevant)} conversation(s) in past {self.auto_context_minutes} minutes             ║")
+            context_parts.append("╚══════════════════════════════════════════════════════════╝\n")
+            
+            for i, conv in enumerate(reversed(relevant), 1):  # Oldest first
+                context_parts.append(f"─── Conversation #{i} ───")
+                context_parts.append(f"User asked: {conv['user_query']}")
+                context_parts.append(f"Jarvis replied: {conv['jarvis_response']}")
+                
+                # Include tools used (critical for self-learning)
+                tools_json = conv.get('tools_used')
+                if tools_json:
+                    try:
+                        tools_list = json.loads(tools_json) if isinstance(tools_json, str) else tools_json
+                        if tools_list:
+                            context_parts.append(f"Tools used: {', '.join(tools_list)}")
+                    except:
+                        pass
+                
+                # Flag failures (critical for learning from mistakes!)
+                success = conv.get('success', True)
+                if not success:
+                    context_parts.append("⚠️  STATUS: FAILED - Task did not complete successfully")
+                    context_parts.append("   Consider: Using check_tool_logs to understand why")
+                else:
+                    context_parts.append("✅ STATUS: Success")
+                
+                # Include model/cost metadata if available (helps understand complexity)
+                metadata_json = conv.get('metadata')
+                if metadata_json:
+                    try:
+                        metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+                        if metadata:
+                            model = metadata.get('model', 'unknown')
+                            tool_count = metadata.get('tool_count', 0)
+                            context_parts.append(f"Model: {model}, Tools called: {tool_count}")
+                    except:
+                        pass
+                
+                context_parts.append("")  # Blank line between conversations
+            
+            context_parts.append("╔══════════════════════════════════════════════════════════╗")
+            context_parts.append("║ CURRENT USER QUERY (what they just asked)               ║")
+            context_parts.append("╚══════════════════════════════════════════════════════════╝")
+            context_parts.append(current_query)
+            context_parts.append("")
+            context_parts.append("INSTRUCTIONS:")
+            context_parts.append("- Use the above context to provide intelligent, context-aware responses")
+            context_parts.append("- Reference previous topics naturally when relevant")
+            context_parts.append("- Learn from failed attempts (check_tool_logs if needed)")
+            context_parts.append("- Catch contradictions (\"You just said X, now saying Y?\")")
+            context_parts.append("- Continue multi-step workflows seamlessly")
+            context_parts.append("- If context window is too short, you can call get_recent_conversations tool for more history")
+            
+            return "\n".join(context_parts)
+            
+        except Exception as e:
+            # If context loading fails, gracefully degrade to just current query
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"DEBUG: Context loading failed: {e}", file=sys.stderr)
+            return current_query
     
     def _build_turn_context(self, original_query: str, conversation_context: list) -> str:
         """

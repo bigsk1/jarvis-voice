@@ -178,7 +178,7 @@ class MCPClient:
             
             # Read response (may need to skip notifications)
             max_attempts = 10  # Avoid infinite loop
-            timeout_seconds = 5  # Timeout per read attempt
+            timeout_seconds = 8  # Timeout per read attempt - was 5 increased to 8 for more time allowed for MCP servers to respond
             
             for attempt in range(max_attempts):
                 # Use select to timeout on readline
