@@ -153,7 +153,7 @@ graph TB
 ```
 
 **Tool Details:**
-- **search_memory**: SQL LIKE fuzzy matching for 1-3 keywords
+- **search_memory**: FTS5 full-text search with BM25 ranking for 1-3 keywords (fast, accurate, relevance-scored)
 - **semantic_recall**: AI embedding search for natural language (4+ words, sentence structure)
 - **search_conversations**: Historical context from past interactions
 - **Similarity Threshold**: Default 0.40 (configurable in `.env`)
@@ -162,8 +162,9 @@ graph TB
 
 | Query | Tool Used | Why |
 |-------|-----------|-----|
-| "pizza" | `search_memory` | Single keyword → SQL LIKE |
-| "webhook url" | `search_memory` | 2 keywords → SQL LIKE |
+| "pizza" | `search_memory` | Single keyword → FTS5 with BM25 ranking |
+| "webhook url" | `search_memory` | 2 keywords → FTS5 full-text search |
+| "server IP" | `search_memory` | Technical entity → FTS5 keyword search |
 | "Where is my Flask app?" | `semantic_recall` | Natural language question → AI embeddings |
 | "What did I say about John?" | `semantic_recall` | Contextual question → AI understanding |
 | "What did I ask yesterday?" | `search_conversations` | Historical lookup → conversation log |
@@ -331,9 +332,10 @@ graph LR
 ```
 
 **Database Details:**
-- **Cloud**: OpenAI text-embedding-3-small (1536 dimensions) 
-- **Local**: nomic-embed-text (768 dimensions)
-- **Models**: Claude Sonnet 4.5, GPT-4o (cloud) | qwen3:14b, qwen3-vl (local)
+- **Cloud**: OpenAI text-embedding-3-small (1536 dimensions) + FTS5 full-text search
+- **Local**: nomic-embed-text (768 dimensions) + FTS5 full-text search
+- **Search**: Hybrid (FTS5 for keywords, embeddings for concepts)
+- **Models**: Claude Sonnet 4.5, GPT-4o (cloud) | qwen3:14b, qwen3-coder (local)
 
 ### Key Configuration Variables
 
@@ -693,10 +695,12 @@ a financial advisor for personalized guidance.
 Jarvis is a **multi-modal, memory-aware, tool-orchestrating voice assistant** with the following key capabilities:
 
 ✅ **Memory-First Strategy** - Always checks stored info before asking  
-✅ **Intelligent Tool Selection** - LLM-based routing with 50+ tools  
+✅ **Hybrid Search System** - FTS5 full-text search + AI embeddings for comprehensive results  
+✅ **Intelligent Tool Selection** - LLM-based routing with 24+ tools  
 ✅ **Multi-Turn Orchestration** - Chains tools to complete complex tasks  
 ✅ **MCP Server Integration** - Extensible via Model Context Protocol  
 ✅ **Dual-Database System** - Cloud/local modes with auto-sync  
+✅ **Auto-Context System** - Short-term conversation memory across wake word cycles  
 ✅ **Thinking Mode** - Transparent LLM reasoning for debugging  
 ✅ **OpenCode Integration** - Autonomous coding for complex tasks  
 ✅ **Configurable Behavior** - Fine-tune via `.env` and CLI flags  
@@ -707,12 +711,14 @@ Jarvis is a **multi-modal, memory-aware, tool-orchestrating voice assistant** wi
 
 - **For Users**: See [QUICKSTART.md](QUICKSTART.md) to get started
 - **For Developers**: See [AGENTS.md](../AGENTS.md) for coding guidelines
+- **For Search System**: See [FTS5_SEARCH_SYSTEM.md](FTS5_SEARCH_SYSTEM.md) for FTS5 details
 - **For Memory Tuning**: See [SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)
+- **For Auto-Context**: See [AUTO_CONTEXT_SYSTEM.md](AUTO_CONTEXT_SYSTEM.md)
 - **For Tool Development**: See [TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)
 - **For OpenCode**: See [opencode/OPENCODE.md](opencode/OPENCODE.md)
 
 ---
 
-**Last Updated**: 2025-11-16  
-**Version**: 2.0 (Multi-turn orchestration with thinking mode)
+**Last Updated**: 2025-11-21  
+**Version**: 2.1 (Multi-turn orchestration with FTS5 search and auto-context)
 
