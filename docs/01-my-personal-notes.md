@@ -3,8 +3,6 @@
 ### Notes
 
 
-- FTS5 indexing for better search; falls back to LIKE when unavailable for sqlite db? does this provided more acurate search for llm? would it work for ollama and cloud mode?
-
 - Note on the alerts system the title is what will be read aloud, llm can search for source info on follow up questions but  when webhook comes in will say "You have one pending high severity /test alert from cloud/." test alert from cloud is the title that was sent.
 
 
@@ -34,6 +32,17 @@ Ollama API error: 'NoneType' object has no attribute 'replace'
 🎯 Processing: 'What time is it?'
 📡 Mode: local
 🤖 Model: qwen2.5:7b
+
+
+
+check opencode session is used after i asked jarvis to use opencode to make something looking at tool logs
+ "Found 5 recent OpenCode session(s): Jarvis: Create a simple Python script named hello_world.py (unknown mode), Jarvis: fix cross-origin errors (unknown mode),
+ we need to make sure jarvis can get current session id or know what part of the build process opencode is in to know when task is complete and respond back with details ect. if 
+ jarvis only checks opencode logs and see it is building X but doesnt mean it is complete and opencode could be still building and jarvis replaces all done, but is it? and working? issues? revisions opencode still doing stuff? or is everything in order? in opencode logs i see sessions id for opencode
+ {"timestamp": "2025-11-21T04:07:08.869665", "event": "session_complete", "session_id": "ses_559b08a49ffeA6lkBAAz4fY28v", "success": true, "result_summary": "Task completed in 12210ms",}
+
+
+
 
 ----
 
@@ -67,8 +76,6 @@ Ollama API error: 'NoneType' object has no attribute 'replace'
                           # Reminder scheduler (triggers time-based reminders)
                           
 - Originally was going to have intel api route and there is all ready intel related  columns in db, under reminders, some idea to be able to update modify or add , delete intel files in which jarvis has tools to injest into db for direct access. 
-
-- need to test with alert system with real url and check db to see if columns are correct and alerts work as intended.
 
 - 
 
