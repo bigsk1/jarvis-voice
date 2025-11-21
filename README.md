@@ -46,9 +46,11 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ### Memory System
 - **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)
 - **Auto-Sync**: Bidirectional sync between modes on startup
+- **FTS5 Full-Text Search**: SQLite FTS5 with BM25 ranking for fast, accurate keyword searches ⭐ NEW
 - **Knowledge Base**: Facts, preferences, technical info with embeddings
 - **Conversation History**: Full logging with metadata (cost, tokens, model)
 - **Semantic Search**: AI embeddings with configurable similarity threshold (tune via .env)
+- **Hybrid Search**: Combines keyword (FTS5) and semantic (embeddings) for comprehensive results
 - **Auto-Save**: Automatically remembers project locations, commands, solutions
 - **Tool Management**: Enable/disable tools per mode to optimize context window
 
@@ -317,8 +319,8 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
 - `recall` - Retrieve specific memories by category/key
-- `search_memory` - Keyword search across knowledge base
-- `semantic_recall` - AI-powered conceptual search
+- `search_memory` - **FTS5 full-text search** with BM25 ranking (keyword/entity searches) ⭐ NEW
+- `semantic_recall` - AI-powered conceptual search (natural language questions)
 - `update_memory` - Modify existing memories
 - `forget` - Delete memories
 - `get_recent_conversations` - Access conversation history
@@ -406,14 +408,17 @@ See `docs/TOOL_MANAGEMENT.md` for details.
 
 ### Knowledge Base
 
-Stores facts, preferences, and technical information with semantic search:
+Stores facts, preferences, and technical information with **hybrid search** (FTS5 + semantic):
 
 ```bash
 # Store a fact
 "Remember my WireGuard VPN is 192.168.70.0/24"
 
-# Retrieve later (uses semantic search automatically)
-"What's my VPN network?"  # Finds it via AI embeddings
+# Retrieve via keyword search (FTS5 with BM25 ranking)
+"Search for VPN network"  # Uses FTS5 for fast, accurate results
+
+# Retrieve via semantic search (AI embeddings)
+"What's my VPN network?"  # Uses embeddings for conceptual matching
 
 # View all memories
 ./bin/memory list
@@ -424,7 +429,11 @@ SEMANTIC_SIMILARITY_THRESHOLD=0.40  # Default: 0.40 (balanced)
 # Higher (0.45-0.50) = fewer results, only close matches
 ```
 
-See `docs/SEMANTIC_THRESHOLD_TUNING.md` for optimization guide.
+**Search Strategy:**
+- **Keyword/Entity searches** (1-3 words, technical terms): Use `search_memory` → FTS5
+- **Natural language questions** (4+ words, conceptual): Use `semantic_recall` → Embeddings
+
+See `docs/FTS5_SEARCH_SYSTEM.md` and `docs/SEMANTIC_THRESHOLD_TUNING.md` for details.
 
 ### Auto-Save Intelligence
 
@@ -546,8 +555,9 @@ LIMIT 7;"
 - `docs/TOOL_CALLING_SYSTEM.md` - How tool routing works
 
 **Memory System (Updated Nov 2025):**
-- `docs/DUAL_DATABASE_SYSTEM.md` - **NEW**: Cloud/local DB architecture with auto-sync
-- `docs/SEMANTIC_THRESHOLD_TUNING.md` - **NEW**: How to tune similarity threshold
+- `docs/FTS5_SEARCH_SYSTEM.md` - **NEW**: FTS5 full-text search with BM25 ranking
+- `docs/DUAL_DATABASE_SYSTEM.md` - Cloud/local DB architecture with auto-sync
+- `docs/SEMANTIC_THRESHOLD_TUNING.md` - How to tune similarity threshold
 - `docs/MEMORY_SYSTEM.md` - Memory & knowledge base overview
 - `docs/MEMORY_SYSTEM_TUNING.md` - Memory system optimization
 - `docs/MEMORY_INTELLIGENCE_FIXES.md` - Auto-save improvements
@@ -757,15 +767,20 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 **Completed (November 2025):**
 - ✅ Multi-turn tool orchestration
-- ✅ Intelligent memory system with semantic search
+- ✅ **FTS5 full-text search** with BM25 ranking (faster, more accurate keyword searches)
+- ✅ **Auto-context system** (short-term conversation memory across wake word cycles)
+- ✅ **Comprehensive burn test** (modular test suite for all features)
+- ✅ Intelligent memory system with **hybrid search** (FTS5 + semantic embeddings)
 - ✅ **Proactive API & Background Services** (webhooks, auto-resolve, monitoring)
 - ✅ **Dual database system** (cloud/local with auto-sync)
 - ✅ **Tool management** (enable/disable per mode)
 - ✅ **Model comparison framework** with AI analysis
 - ✅ **Configurable semantic threshold** tuning
+- ✅ **Dynamic wake word greetings** for personality
+- ✅ **Voice timeout system** for noisy environments
 - ✅ OpenCode integration
 - ✅ Cost tracking and metadata logging
-- ✅ MCP server support
+- ✅ MCP server support (with snake_case enforcement)
 - ✅ Auto-save intelligence
 - ✅ Conversation history
 

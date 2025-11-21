@@ -59,8 +59,9 @@
 | Document | Purpose |
 |----------|---------|
 | **MEMORY_SYSTEM.md** | Memory database architecture and tools |
-| **DUAL_DATABASE_SYSTEM.md** | Cloud/local database with auto-sync (NEW) |
-| **SEMANTIC_THRESHOLD_TUNING.md** | How to tune similarity threshold (NEW) |
+| **FTS5_SEARCH_SYSTEM.md** | FTS5 full-text search with BM25 ranking ⭐ NEW |
+| **DUAL_DATABASE_SYSTEM.md** | Cloud/local database with auto-sync |
+| **SEMANTIC_THRESHOLD_TUNING.md** | How to tune similarity threshold |
 | **MEMORY_SYSTEM_TUNING.md** | Advanced memory optimization |
 | **MEMORY_INTELLIGENCE_FIXES.md** | Auto-save improvements |
 
@@ -85,6 +86,7 @@
 ### Testing & Analysis
 | Document | Purpose |
 |----------|---------|
+| **COMPREHENSIVE_TESTING.md** | Burn test suite for all features ⭐ NEW |
 | **TESTING.md** | Comprehensive testing guide |
 | **BASELINE_TOKEN_USAGE.md** | Token usage tracking |
 | **../tests/README.md** | Test suite overview |
@@ -92,8 +94,10 @@
 ### System Understanding
 | Document | Purpose |
 |----------|---------|
-| **JARVIS_WORKFLOW.md** | 🆕 **Complete workflow with visual flowcharts** |
-| **api/READY_TO_USE.md** | 🔮 **Proactive API (Phase 1 COMPLETE)** - Webhook system for alerts |
+| **JARVIS_WORKFLOW.md** | Complete workflow with visual flowcharts |
+| **AUTO_CONTEXT_SYSTEM.md** | Short-term conversation memory ⭐ NEW |
+| **CONVERSATION_STATE_ARCHITECTURE.md** | State management between cycles ⭐ NEW |
+| **api/READY_TO_USE.md** | Proactive API (Phase 1 COMPLETE) - Webhook system for alerts |
 | **api/PROACTIVE_ASSISTANT_SYSTEM.md** | Full architecture (5 phases, Phase 1 done) |
 | **COMPLETE_SYSTEM_SUMMARY.md** | System overview |
 
@@ -103,6 +107,8 @@
 | **QUICKSTART.md** | Quick setup guide |
 | **../config/README.md** | Configuration reference |
 | **MCP_QUICKSTART.md** | MCP server setup |
+| **MCP_NAMING_CONVENTIONS.md** | MCP snake_case requirements ⭐ NEW |
+| **MCP_REGRESSION_FIX.md** | MCP parsing architecture ⭐ NEW |
 
 ### Advanced Features
 | Document | Purpose |
@@ -192,6 +198,32 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-11-21:**
+- ✅ **Randomized wake word greetings** - Dynamic greeting selection for personality
+- ✅ **Proactive reminder guard** - Prevents unprompted reminder checks by local models
+- ✅ **Voice timeout system** - 30-second hard timeout for recording to handle noisy environments
+- ✅ **Samantha OS personality** - Added support for custom AI personalities with TTS instructions
+
+**2025-11-20:**
+- ✅ **FTS5 Full-Text Search** - SQLite FTS5 with BM25 ranking for faster, more accurate searches
+- ✅ **Levenshtein fuzzy matching** - Typo-tolerant reminder cancellation
+- ✅ **Generic LLM prompting** - Removed hardcoded examples to improve universal understanding
+- ✅ **Configurable Ollama context** - `OLLAMA_CONTEXT_WINDOW` now in `local.env`
+- ✅ **MCP snake_case enforcement** - Fixed regression with MCP server name parsing
+- ✅ **Comprehensive burn test** - Single modular test suite for all features (`tests/comprehensive_test.py`)
+- ✅ **Intel ingestion improvements** - Better fact extraction from prose and headers
+
+**2025-11-19:**
+- ✅ **Auto-context system** - Short-term conversation memory across wake word cycles
+- ✅ **Temperature control** - Dynamic LLM creativity settings (casual vs detailed modes)
+- ✅ **Camera bridge integration** - Ubiquiti Protect webhook middleware (Dockerized)
+- ✅ **Fuzzy reminder cancellation** - Cancel reminders by partial title match with safety checks
+
+**2025-11-18:**
+- ✅ **Natural language time parsing** - Word numbers ("one hour") and special times ("noon", "midnight")
+- ✅ **Enhanced tool descriptions** - Better LLM routing with explicit use cases
+- ✅ **Conversation context improvements** - Fixed temporal vs topic-based query routing
 
 **2025-11-11:**
 - ✅ OpenCode integration complete
