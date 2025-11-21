@@ -335,7 +335,7 @@ db.remember(
     importance=8
 )
 
-# Keyword search (SQL LIKE)
+# Keyword search (FTS5 with BM25 ranking)
 memories = db.search_memory(query="flask", limit=10)
 
 # Semantic search (AI embeddings)
@@ -347,11 +347,13 @@ conversations = db.get_recent_conversations(limit=10)
 
 ### When to Use Which Search
 
-| Search Type | Tool | Use Case | Example |
-|-------------|------|----------|---------|
-| **Keyword** | `search_memory` | 1-3 word lookups | "flask", "webhook", "tetris" |
-| **Semantic** | `semantic_recall` | Natural language questions (4+ words) | "Where is my web application?" |
-| **Conversation** | `search_conversations` | Past interactions | "What did I ask about yesterday?" |
+| Search Type | Tool | Technology | Use Case | Example |
+|-------------|------|------------|----------|---------|
+| **Keyword** | `search_memory` | FTS5 + BM25 | 1-3 word lookups | "flask", "webhook" |
+| **Semantic** | `semantic_recall` | AI embeddings | Natural language questions (4+ words) | "Where is my web application?" |
+| **Conversation** | `search_conversations` | Text search | Past interactions | "What did I ask about yesterday?" |
+
+**Note**: `search_memory` now uses SQLite FTS5 (Full-Text Search) with BM25 ranking for faster, more accurate keyword search. See `docs/FTS5_SEARCH_SYSTEM.md`
 
 ### Semantic Threshold Tuning
 
@@ -378,7 +380,9 @@ from config_loader import load_config, get_config_value, get_int, get_float
 load_config(mode='cloud')  # or 'local'
 
 # In tools (auto-detect mode)
-load_config()  # Detects mode from LLM_PROVIDER env var
+load_config()  # Auto-detects from existing LLM_PROVIDER env var
+              # If LLM_PROVIDER='ollama' → loads local.env
+              # Otherwise → loads cloud.env
 
 # Get values
 api_key = get_config_value('ANTHROPIC_API_KEY')
@@ -464,15 +468,20 @@ fi
 
 ```
 docs/
-├── QUICKSTART.md              # Getting started
-├── MEMORY_SYSTEM.md           # Memory architecture
-├── DUAL_DATABASE_SYSTEM.md    # Cloud/local DB system
-├── TOOL_MANAGEMENT.md         # Enable/disable tools
-├── opencode/                  # OpenCode docs (organized)
+├── QUICKSTART.md                   # Getting started
+├── MEMORY_SYSTEM.md                # Memory architecture
+├── DUAL_DATABASE_SYSTEM.md         # Cloud/local DB system
+├── TOOL_MANAGEMENT.md              # Enable/disable tools
+├── FTS5_SEARCH_SYSTEM.md           # FTS5 full-text search (NEW)
+├── MCP_NAMING_CONVENTIONS.md       # MCP snake_case requirements (NEW)
+├── MCP_REGRESSION_FIX.md           # MCP parsing architecture (NEW)
+├── AUTO_CONTEXT_SYSTEM.md          # Auto-context injection
+├── CONVERSATION_STATE_ARCHITECTURE.md  # State management
+├── opencode/                       # OpenCode docs (organized)
 │   ├── OPENCODE.md
 │   ├── OPENCODE_API_REFERENCE.md
 │   └── ...
-└── archive/                   # Historical docs
+└── archive/                        # Historical docs
     └── ...
 ```
 
@@ -653,9 +662,15 @@ See: `docs/opencode/OPENCODE.md`
 ### MCP Servers
 
 Tools from MCP servers are auto-discovered:
-- `mcp_duckduckgo_search` - Web search
+- `mcp_brave_search_brave_web_search` - Web search (Brave)
 - `mcp_fetch_fetch` - HTTP fetch
-- Tool names prefixed with `mcp_<server>_<tool>`
+- Tool names follow format: `mcp_{server_name}_{tool_name}`
+
+**CRITICAL**: MCP server names **MUST use snake_case** (e.g., `brave_search`, not `brave-search`).
+Local LLMs perform significantly better with snake_case naming. See: `docs/MCP_NAMING_CONVENTIONS.md`
+
+**Architecture**: Dynamic MCP tool parsing matches against registered clients (no hardcoded names).
+This allows ANY MCP server with underscores in its name to work correctly. See: `docs/MCP_REGRESSION_FIX.md`
 
 See: `docs/MCP_QUICKSTART.md`
 
