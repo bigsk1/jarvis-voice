@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "search_memory",
-  "description": "Full-text search with BM25 ranking (industry-standard relevance scoring). Faster and smarter than simple keyword matching. Features: stemming ('running' matches 'run'), phrase search ('\"Flask API\"'), boolean operators ('flask OR express'). Use for 1-3 word searches. For natural language questions (4+ words), use semantic_recall instead.",
+  "description": "KEYWORD/ENTITY SEARCH using FTS5 with BM25 ranking. USE THIS when user mentions specific names, entities, or technical terms they want to find. Fast exact matching with stemming support. Use for queries like: 'find info about X', 'locate Y details', 'what is Z', 'X configuration'. For conceptual questions without specific entity names, use semantic_recall instead.",
   "parameters": {
     "type": "object",
     "properties": {

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "semantic_recall",
-  "description": "Semantic search using AI embeddings - finds memories by MEANING, not just keywords. Use this for NATURAL LANGUAGE QUESTIONS (multiple words, sentence structure). Examples: understands 'spouse' = 'wife', 'born' = 'birthday', 'celebrate' = 'birthday'. If query is a simple keyword (1-2 words), use search_memory instead. More powerful but slower than keyword search.",
+  "description": "CONCEPTUAL/MEANING search using AI embeddings. Use for abstract questions where you need to match by MEANING rather than exact words. Good for: 'where did I put...', 'what was that thing about...', 'find memories related to...'. Matches concepts even if different words used. If user mentions specific entity/name they want to find, use search_memory instead (faster and more accurate).",
   "parameters": {
     "type": "object",
     "properties": {

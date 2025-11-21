@@ -16,10 +16,11 @@ TXT_FILE="${AUDIO_DIR}/logs/qa-$STAMP.txt"
 ANS_WAV="${AUDIO_DIR}/recordings/qa-$STAMP.wav"
 TMP_MP3="/tmp/qa-$STAMP.mp3"
 
-echo "🎤 Speak your question… (auto-stops after ${POST_SIL}s silence)"
+echo "🎤 Speak your question… (auto-stops after ${POST_SIL}s silence or ${MAX_RECORD_TIME}s max)"
 
 # Record with SoX
 sox -t alsa "$IN_DEV" -r "$RATE" -c "$CHAN" -b 16 "$RAW_WAV" \
+    trim 0 "$MAX_RECORD_TIME" \
     highpass 300 \
     silence 1 "$PRE_SIL" "3%" 1 "$POST_SIL" "5%"
 

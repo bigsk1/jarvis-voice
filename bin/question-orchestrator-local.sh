@@ -31,10 +31,11 @@ if [ -n "${1:-}" ]; then
     echo "📝 Using provided transcript: $TRANSCRIPT"
 else
     # Record user's question
-    echo "🎤 Speak your question… (auto-stops after ${POST_SIL}s silence)"
+    echo "🎤 Speak your question… (auto-stops after ${POST_SIL}s silence or ${MAX_RECORD_TIME}s max)"
     sox -t alsa "$IN_DEV" \
         -r "$RATE" -c "$CHAN" -b 16 \
         "$MIC_WAV" \
+        trim 0 "$MAX_RECORD_TIME" \
         silence 1 "$PRE_SIL" "$THRESH" 1 "$POST_SIL" "$THRESH"
     
     # Transcribe with local whisper

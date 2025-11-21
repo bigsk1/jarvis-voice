@@ -14,9 +14,10 @@ mkdir -p "$MIC_DIR" "$OUTDIR/logs" "$OUTDIR/tts"
 STAMP="$(date +%F-%H%M%S)"
 RAW_WAV="$MIC_DIR/mic-$STAMP.wav"
 
-echo "🎤 Speak your question… (auto-stops after ${POST_SIL}s silence)"
+echo "🎤 Speak your question… (auto-stops after ${POST_SIL}s silence or ${MAX_RECORD_TIME}s max)"
 
 sox -t alsa "$IN_DEV" -r "$RATE" -c "$CHAN" -b 16 "$RAW_WAV" \
+    trim 0 "$MAX_RECORD_TIME" \
     highpass 300 \
     silence 1 "$PRE_SIL" "3%" 1 "$POST_SIL" "5%"
 

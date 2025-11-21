@@ -37,7 +37,7 @@ DEVICE_NAME_HINT = get_config_value("DEVICE_NAME_HINT", "TONOR")
 VAD_THRESHOLD = get_float("VAD_THRESHOLD", 0.40)
 PREAMP = get_float("PREAMP", 1.8)
 
-WAKE_GREETING = get_config_value("WAKE_GREETING", "Hello")
+# WAKE_GREETINGS loaded in handle_trigger() for random selection
 
 # Script paths
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -175,9 +175,13 @@ def handle_trigger():
     print("🟢🟢🟢  Wake word detected → Q&A… 🟢🟢🟢")
     stop_stream()
 
-    # Quick acknowledgment
+    # Quick acknowledgment with random greeting
     try:
-        subprocess.run([SAY, WAKE_GREETING], check=False)
+        # Get random greeting from WAKE_GREETINGS (pipe-separated)
+        greetings = get_config_value("WAKE_GREETINGS", "Hello").split('|')
+        import random
+        greeting = random.choice(greetings).strip()
+        subprocess.run([SAY, greeting], check=False)
     except Exception as e:
         print(f"say.sh failed: {e}", file=sys.stderr)
 
