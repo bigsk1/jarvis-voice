@@ -54,10 +54,34 @@ def extract_facts_from_content(content: str, filename: str) -> List[Dict[str, st
     
     for line in lines:
         line = line.strip()
-        if not line or line.startswith('#'):
-            # Update section from headers
-            if line.startswith('#'):
-                current_section = line.lstrip('#').strip()
+        
+        # Update section from headers (but also save header as fact if it has info)
+        if line.startswith('#'):
+            header_text = line.lstrip('#').strip()
+            
+            # If header has substantial content (not just a title), save it as a fact
+            if len(header_text) > 10 and not header_text.endswith(':'):
+                # Determine category
+                category = "technical"
+                if any(keyword in header_text.lower() for keyword in ['ip', 'host', 'server', 'network', 'vlan', 'vram', 'gpu', 'rtx']):
+                    category = "network"
+                elif any(keyword in header_text.lower() for keyword in ['password', 'key', 'secret', 'token']):
+                    category = "credentials"
+                elif any(keyword in header_text.lower() for keyword in ['project', 'repo', 'code']):
+                    category = "project"
+                
+                facts.append({
+                    "key": f"{current_section} info",
+                    "value": header_text,
+                    "category": category,
+                    "source": f"intel/{filename}"
+                })
+            
+            # Update current section for subsequent lines
+            current_section = header_text
+            continue
+        
+        if not line:
             continue
         
         # Detect key-value patterns
@@ -71,7 +95,7 @@ def extract_facts_from_content(content: str, filename: str) -> List[Dict[str, st
                 if value:  # Skip empty values
                     # Determine category from content
                     category = "technical"
-                    if any(keyword in key.lower() for keyword in ['ip', 'host', 'server', 'network', 'vlan']):
+                    if any(keyword in key.lower() or keyword in value.lower() for keyword in ['ip', 'host', 'server', 'network', 'vlan', 'vram', 'gpu', 'rtx']):
                         category = "network"
                     elif any(keyword in key.lower() for keyword in ['password', 'key', 'secret', 'token']):
                         category = "credentials"
@@ -86,13 +110,18 @@ def extract_facts_from_content(content: str, filename: str) -> List[Dict[str, st
                     })
         
         # Detect bullet points with information
-        elif line.startswith(('-', '*', '•')) or line[0].isdigit():
+        elif line.startswith(('-', '*', '•')) or (line and line[0].isdigit() and '. ' in line):
             content_part = line.lstrip('-*•0123456789. ').strip()
-            if content_part:
+            if content_part and len(content_part) > 5:  # Skip very short lines
+                # Determine category
+                category = "technical"
+                if any(keyword in content_part.lower() for keyword in ['ip', 'host', 'server', 'network', 'vlan', 'vram', 'gpu', 'rtx']):
+                    category = "network"
+                
                 facts.append({
                     "key": f"{current_section} note",
                     "value": content_part,
-                    "category": "technical",
+                    "category": category,
                     "source": f"intel/{filename}"
                 })
     
