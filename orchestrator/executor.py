@@ -124,13 +124,17 @@ class ToolExecutor:
             else:
                 timeout = 30 if self.mode == "local" else 15
             
+            # Pass current environment to subprocess so tools inherit LLM_PROVIDER
+            tool_env = os.environ.copy()
+            
             result = subprocess.run(
                 cmd,
                 input=input_json if tool_script.suffix != '.py' else None,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=self.skills_dir
+                cwd=self.skills_dir,
+                env=tool_env  # Pass environment so tools see LLM_PROVIDER
             )
             
             duration_ms = (time.time() - start_time) * 1000

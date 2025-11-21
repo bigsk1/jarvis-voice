@@ -42,16 +42,24 @@ def get_project_root():
     return Path(__file__).parent.parent.resolve()
 
 
-def load_config(mode='cloud'):
+def load_config(mode=None):
     """
     Load configuration for specified mode.
     
     Args:
-        mode: 'cloud' or 'local'
+        mode: 'cloud' or 'local', or None to auto-detect from LLM_PROVIDER
     
     Returns:
         dict: Configuration values
     """
+    # Auto-detect mode from existing LLM_PROVIDER if not specified
+    if mode is None:
+        llm_provider = os.environ.get('LLM_PROVIDER', '').lower()
+        if llm_provider == 'ollama':
+            mode = 'local'
+        else:
+            mode = 'cloud'  # Default to cloud if not set or unknown
+    
     project_root = get_project_root()
     config_file = project_root / 'config' / f'{mode}.env'
     

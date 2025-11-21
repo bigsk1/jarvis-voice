@@ -132,12 +132,15 @@ def measure_baseline(mode='cloud'):
             print(f"   Provider: {provider}")
             print(f"   Context window: ~{context_window:,} tokens (estimate)")
     else:  # local
-        model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
-        # Qwen models typically have 32K-128K context
-        context_window = 12288  # Conservative estimate for Qwen - see lib/llm_provider.py for more details
+        model = get_config_value("OLLAMA_MODEL", "qwen3")
+        # Use OLLAMA_CONTEXT_WINDOW from config if set, else default to 12288
+        try:
+            context_window = int(get_config_value("OLLAMA_CONTEXT_WINDOW", "12288"))
+        except Exception:
+            context_window = 12288  # Fallback
         print(f"🧠 MODEL CAPACITY (Ollama)")
         print(f"   Model: {model}")
-        print(f"   Context window: ~{context_window:,} tokens (estimate)")
+        print(f"   Context window: ~{context_window:,} tokens (from config)")
     
     # Calculate remaining capacity
     baseline_percent = (baseline_tokens / context_window) * 100

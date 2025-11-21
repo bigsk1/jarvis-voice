@@ -226,6 +226,14 @@ def parse_time_expression(when: str, default_hour: int = 10):
     if "tomorrow" in when:
         tomorrow = now + timedelta(days=1)
         
+        # Check for "noon" or "midday"
+        if "noon" in when or "midday" in when:
+            return tomorrow.replace(hour=12, minute=0, second=0, microsecond=0), None
+        
+        # Check for "midnight"
+        if "midnight" in when:
+            return tomorrow.replace(hour=0, minute=0, second=0, microsecond=0), None
+        
         # Check for specific time
         time_match = re.search(r'(\d+)\s*(am|pm)', when)
         if time_match:

@@ -89,6 +89,41 @@ class MemoryDB:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_key ON knowledge_base(key)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp)")
         
+        # FTS5 Full-Text Search Virtual Table (BM25 ranking)
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_base_fts USING fts5(
+                category, key, value, long_form,
+                content='knowledge_base',
+                content_rowid='id',
+                tokenize='porter unicode61'
+            )
+        """)
+        
+        # Triggers to keep FTS5 in sync with knowledge_base
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS kb_fts_insert AFTER INSERT ON knowledge_base BEGIN
+                INSERT INTO knowledge_base_fts(rowid, category, key, value, long_form)
+                VALUES (new.id, new.category, new.key, new.value, new.long_form);
+            END
+        """)
+        
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS kb_fts_update AFTER UPDATE ON knowledge_base BEGIN
+                UPDATE knowledge_base_fts SET 
+                    category = new.category,
+                    key = new.key,
+                    value = new.value,
+                    long_form = new.long_form
+                WHERE rowid = new.id;
+            END
+        """)
+        
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS kb_fts_delete AFTER DELETE ON knowledge_base BEGIN
+                DELETE FROM knowledge_base_fts WHERE rowid = old.id;
+            END
+        """)
+        
         self.conn.commit()
     
     # ========== Knowledge Base Operations ==========
@@ -220,16 +255,62 @@ class MemoryDB:
     
     def search_memory(self, query: str, limit: int = 10) -> List[Dict]:
         """
-        Search all memories by query.
+        Full-text search using FTS5 with BM25 ranking.
+        Much faster and more accurate than SQL LIKE.
         
         Args:
-            query: Search term
+            query: Search term (supports phrases, AND/OR operators)
             limit: Max results
             
         Returns:
-            List of memories with relevance
+            List of memories ranked by relevance (BM25 score)
         """
-        return self.recall(query, limit=limit)
+        return self.fts_search(query, limit=limit)
+    
+    def fts_search(self, query: str, limit: int = 10) -> List[Dict]:
+        """
+        Full-text search with BM25 ranking (industry-standard relevance).
+        
+        Features:
+        - Stemming: "running" matches "run"
+        - Porter algorithm for English text
+        - BM25 ranking (better than simple LIKE matching)
+        - Phrase search: "Flask API" in quotes
+        - Boolean operators: "flask OR express"
+        
+        Args:
+            query: Search query
+            limit: Maximum results
+            
+        Returns:
+            List of memories with relevance scores
+        """
+        cursor = self.conn.cursor()
+        
+        try:
+            # FTS5 BM25 search (lower bm25 = better match)
+            results = cursor.execute("""
+                SELECT kb.*, bm25(knowledge_base_fts) as relevance_score
+                FROM knowledge_base kb
+                JOIN knowledge_base_fts ON kb.id = knowledge_base_fts.rowid
+                WHERE knowledge_base_fts MATCH ?
+                ORDER BY relevance_score ASC, kb.importance DESC
+                LIMIT ?
+            """, (query, limit)).fetchall()
+            
+            memories = []
+            for row in results:
+                memory = dict(row)
+                # Convert BM25 to 0-1 score (lower is better, so invert)
+                memory['relevance'] = 1 / (1 + abs(memory['relevance_score']))
+                del memory['relevance_score']
+                memories.append(memory)
+            
+            return memories
+        except sqlite3.OperationalError as e:
+            # Fallback to old LIKE search if FTS5 query fails
+            # (e.g., invalid FTS5 syntax)
+            return self.recall(query, limit=limit)
     
     def get_all_memories(self, category: str = None) -> List[Dict]:
         """Get all stored memories, optionally filtered by category."""
@@ -397,6 +478,36 @@ class MemoryDB:
         ).fetchone()
         
         return result['value'] if result else default
+    
+    # ========== FTS5 Management ==========
+    
+    def rebuild_fts_index(self) -> int:
+        """
+        Rebuild FTS5 index from existing knowledge_base data.
+        Call this after upgrading to FTS5 or if index is corrupted.
+        
+        Returns:
+            Number of records indexed
+        """
+        cursor = self.conn.cursor()
+        
+        # Rebuild FTS5 index using the 'rebuild' command
+        # This is the proper way to rebuild an FTS5 index
+        try:
+            cursor.execute("INSERT INTO knowledge_base_fts(knowledge_base_fts) VALUES('rebuild')")
+        except (sqlite3.OperationalError, sqlite3.DatabaseError):
+            # Table needs to be populated from scratch
+            # This happens on first run after upgrade
+            cursor.execute("""
+                INSERT INTO knowledge_base_fts(rowid, category, key, value, long_form)
+                SELECT id, category, key, value, long_form FROM knowledge_base
+            """)
+        
+        self.conn.commit()
+        
+        # Return count
+        count = cursor.execute("SELECT COUNT(*) FROM knowledge_base_fts").fetchone()[0]
+        return count
     
     # ========== Utility ==========
     

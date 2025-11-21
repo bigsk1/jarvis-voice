@@ -7,7 +7,7 @@
     "properties": {
       "task": {
         "type": "string",
-        "description": "Detailed description of the task to execute. Be specific about what needs to be done."
+        "description": "Detailed description of the task to execute. Be specific about what needs to be done. If web server, use non standard port."
       },
       "task_type": {
         "type": "string",
@@ -23,7 +23,7 @@
       },
       "session_id": {
         "type": "string",
-        "description": "Optional: OpenCode session ID to resume previous conversation/task"
+        "description": "Optional: OpenCode session ID to resume previous conversation/task or check logs"
       },
       "model": {
         "type": "object",

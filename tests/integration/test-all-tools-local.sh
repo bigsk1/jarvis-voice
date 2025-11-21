@@ -49,13 +49,15 @@ test_tool() {
     fi
 }
 
-echo "========================================="
-echo "  Jarvis Local Tool Testing (Ollama)"
-echo "  Model: qwen3-vl"
-echo "========================================="
-
 # Load local config to get OLLAMA_BASE_URL
 source config/local.env
+
+echo "========================================="
+echo "  Jarvis Local Tool Testing (Ollama)"
+echo -e "${BLUE}  Model: $OLLAMA_MODEL${NC}"
+echo "========================================="
+
+
 
 # Check if Ollama is running (use configured URL)
 OLLAMA_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
@@ -85,7 +87,7 @@ echo -e "\n${BLUE}=== LOCAL TOOLS ===${NC}"
 
 # 1. Time
 test_tool "get_time" \
-    "What time is it?" \
+    "The following questions will be a test of tool and mcp usage. What time is it?" \
     "M"  # Will contain AM or PM
 
 # 2. Date
@@ -141,9 +143,9 @@ echo -e "\n${BLUE}=== MCP TOOLS ===${NC}"
 echo "Ensuring MCP servers are ready..."
 sleep 3
 
-# 11. MCP DuckDuckGo Search
-test_tool "mcp_duckduckgo_search" \
-    "Use DuckDuckGo to search for Ollama AI" \
+# 11. MCP Brave Web Search
+test_tool "mcp_brave_web_search" \
+    "Use brave web search to find Ollama AI" \
     "Ollama"  # Results will mention Ollama
 
 # 12. MCP Fetch

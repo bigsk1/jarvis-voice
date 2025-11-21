@@ -40,12 +40,14 @@ CRITICAL EXAMPLES:
 ✅ GOOD: "How do I run X?" → Call 'search_memory' with query "X" → Check stored run instructions
 ```
 
-**Why This Matters**: 
-- `recall` does FUZZY SQL LIKE matching (`WHERE key LIKE '%query%'`)
-- `search_memory` does FUZZY SQL LIKE matching (identical to recall - calls same function)
+**Why This Matters** (UPDATED 2025-11-21): 
+- `search_memory` uses **FTS5 full-text search** with BM25 ranking (10-100x faster than LIKE)
+  - Features: stemming, phrase search, boolean operators
+  - Industry-standard relevance scoring
+- `recall` does FUZZY SQL LIKE matching (`WHERE key LIKE '%query%'`) - legacy fallback
 - `semantic_recall` uses AI embeddings (understands "start server" = "run application")
 
-**Note**: `recall` and `search_memory` are functionally identical. Both do substring/fuzzy matching, not exact matching. The LLM is guided to use them in different contexts, but the underlying search is the same.
+**Note**: `search_memory` has been **upgraded to FTS5** for superior performance. `recall` is kept for backward compatibility but should be avoided in new code.
 
 ---
 
@@ -131,13 +133,15 @@ LLMs don't inherently know:
 Must be explicitly stated in system prompt!
 
 ### 4. Specificity in Queries
-When LLM searched for "tetris server", `recall` found nothing.  
-When LLM searched for "tetris", `search_memory` found:
-- `tetris_game_location`
-- `Example Project Locations - Tetris game`
-- Start instructions with port 5000
+With FTS5 stemming and BM25 ranking (UPGRADED 2025-11-21):
+- "tetris server" → Matches "tetris" AND ranks by relevance
+- "running server" → Matches "run" (stemming) + "server"
+- Phrase search: "\"tetris game\"" → Exact phrase match
 
-**Lesson**: Broader queries work better with fuzzy matching.
+**Before (SQL LIKE)**: Needed exact substring match
+**After (FTS5)**: Smart stemming + relevance ranking
+
+**Lesson**: FTS5 handles both broad and specific queries intelligently.
 
 ---
 

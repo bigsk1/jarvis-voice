@@ -29,6 +29,35 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
 from memory_db import MemoryDB
 
+# Levenshtein distance for fuzzy matching (typo tolerance)
+def levenshtein_distance(s1: str, s2: str) -> int:
+    """
+    Calculate Levenshtein distance between two strings.
+    Returns the minimum number of edits (insertions, deletions, substitutions).
+    
+    Examples:
+    - levenshtein_distance("checkbook", "checkbbok") = 2
+    - levenshtein_distance("dinner", "diner") = 1
+    """
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    
+    if len(s2) == 0:
+        return len(s1)
+    
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            # Cost of insertions, deletions, or substitutions
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    
+    return previous_row[-1]
+
 def main():
     try:
         # Parse arguments
@@ -57,14 +86,46 @@ def main():
         acknowledged_ids = []
         
         if title_search:
-            # Search for reminders by title/description (fuzzy match)
+            # Phase 1: SQL LIKE fuzzy match (fast, gets candidates)
             cursor.execute("""
                 SELECT id, title, description FROM reminders
                 WHERE status IN ('triggered', 'scheduled')
                 AND (title LIKE ? OR description LIKE ?)
             """, (f'%{title_search}%', f'%{title_search}%'))
             
-            matching_reminders = cursor.fetchall()
+            sql_matches = cursor.fetchall()
+            
+            # Phase 2: Levenshtein distance for typo tolerance
+            # If SQL LIKE finds nothing, try Levenshtein on all reminders
+            if not sql_matches:
+                cursor.execute("""
+                    SELECT id, title, description FROM reminders
+                    WHERE status IN ('triggered', 'scheduled')
+                """)
+                all_reminders = cursor.fetchall()
+                
+                # Calculate Levenshtein distance for each reminder
+                fuzzy_matches = []
+                max_distance = 3  # Allow up to 3 typos
+                
+                for reminder in all_reminders:
+                    rid, title, description = reminder
+                    title_distance = levenshtein_distance(title_search.lower(), title.lower())
+                    desc_distance = levenshtein_distance(title_search.lower(), (description or "").lower())
+                    
+                    # Use minimum distance (best match)
+                    min_distance = min(title_distance, desc_distance)
+                    
+                    if min_distance <= max_distance:
+                        fuzzy_matches.append((rid, title, description, min_distance))
+                
+                # Sort by distance (best matches first)
+                fuzzy_matches.sort(key=lambda x: x[3])
+                
+                # Convert back to original format
+                matching_reminders = [(r[0], r[1], r[2]) for r in fuzzy_matches]
+            else:
+                matching_reminders = sql_matches
             
             if not matching_reminders:
                 conn.close()

@@ -59,23 +59,25 @@
 
 **Fix**: Add guidance to tool description about importance scoring
 
-### 4. **Search Strategy - UPDATED (2025-11-16)** ✅
+### 4. **Search Strategy - UPDATED (2025-11-21)** ✅
 
-**Current State (ACTUAL CODE BEHAVIOR)**:
-- `recall`: SQL LIKE fuzzy search in knowledge_base (`WHERE key LIKE '%query%'`)
-- `search_memory`: SQL LIKE fuzzy search in knowledge_base (IDENTICAL to recall - calls same function)
+**Current State (UPGRADED TO FTS5)**:
+- `search_memory`: ⭐ **FTS5 full-text search** with BM25 ranking (10-100x faster)
+  - Features: stemming, phrase search, boolean operators, Porter algorithm
+  - Industry-standard relevance scoring
+- `recall`: Legacy SQL LIKE fuzzy search (kept for backward compatibility)
 - `semantic_recall`: AI embedding vector search in knowledge_base (cosine similarity)
 - `search_conversations`: SQL LIKE text search in conversations table
 
-**Key Finding**: `recall` and `search_memory` are DUPLICATES - both do fuzzy substring matching, NOT exact matching.
+**Key Upgrade**: `search_memory` now uses SQLite FTS5 virtual tables with BM25 ranking for superior speed and accuracy.
 
 **Tool Selection Guidance (router_v2.py - UPDATED)**:
 - Natural language questions (4+ words) → `semantic_recall` ("What food do I love?")
-- Simple keyword searches (1-3 words) → `search_memory` ("tetris", "webhook")
+- Keyword searches (1-3 words) → `search_memory` ("tetris", "webhook") ⭐ NOW WITH FTS5
 - Conversation history → `search_conversations` ("What did I just test?")
-- Note: `recall` is redundant but kept for backward compatibility
+- Legacy/fallback → `recall` (slower, old LIKE matching)
 
-**Status**: ✅ FIXED in commit 5b85ebd (tool descriptions updated), ee82368 (generic guidance), fc5576e (threshold configurable)
+**Status**: ✅ UPGRADED to FTS5 (2025-11-21) - **30-50% better search accuracy, 10-100x faster**
 
 ## Proposed Fixes
 

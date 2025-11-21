@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "search_memory",
-  "description": "Search all stored memories by keyword (fuzzy text matching). Same as recall but with higher default limit. Use this to see what you know about a topic or find related memories. For natural language questions like 'What food do I love?', use semantic_recall instead.",
+  "description": "Full-text search with BM25 ranking (industry-standard relevance scoring). Faster and smarter than simple keyword matching. Features: stemming ('running' matches 'run'), phrase search ('\"Flask API\"'), boolean operators ('flask OR express'). Use for 1-3 word searches. For natural language questions (4+ words), use semantic_recall instead.",
   "parameters": {
     "type": "object",
     "properties": {

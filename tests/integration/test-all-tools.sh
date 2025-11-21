@@ -80,7 +80,7 @@ echo -e "\n${YELLOW}=== MEMORY TOOLS ===${NC}"
 # 4. Remember
 test_tool "remember" \
     "Remember that I love pizza" \
-    "remember"  # Confirmation mentions remembering
+    "saved"  # Confirmation mentions saving/remembering
 
 # 5. Recall  
 test_tool "recall" \
@@ -108,9 +108,9 @@ echo -e "\n${YELLOW}=== MCP TOOLS ===${NC}"
 echo "Ensuring MCP servers are ready..."
 sleep 2
 
-# 9. MCP DuckDuckGo Search
-test_tool "mcp_duckduckgo_search" \
-    "Use DuckDuckGo to search for OpenAI" \
+# 9. MCP Brave Web Search
+test_tool "mcp_brave_web_search" \
+    "Use brave web search to find OpenAI" \
     "OpenAI"  # Results will mention OpenAI
 
 # 10. MCP Fetch
