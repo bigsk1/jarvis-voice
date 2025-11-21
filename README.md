@@ -56,7 +56,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ### Dual Mode Operation
 - **Cloud Mode**: Anthropic Claude / OpenAI GPT (more powerful, costs money)
-- **Local Mode**: Ollama (qwen3-vl) + faster-whisper + Kokoro TTS (free, offline)
+- **Local Mode**: Ollama (qwen3) + faster-whisper + Kokoro TTS (free, offline)
 
 ### Voice & Wake Word
 - **Wake Detection**: "Hey Jarvis" using OpenWakeWord

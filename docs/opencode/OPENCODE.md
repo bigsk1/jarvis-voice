@@ -1,9 +1,11 @@
 # OpenCode Integration
 
-**Last Updated**: 2025-11-11  
-**Status**: Phase 1 Complete ✅ | Phase 2 In Progress 🚧
+To install OpenCode Server, follow the instructions on the OpenCode Github Repo https://opencode.ai/docs/
 
----
+```bash
+curl -fsSL https://opencode.ai/install | bash
+```
+
 
 ## Quick Start
 
@@ -380,6 +382,4 @@ ls -la ~/jarvis-workspace/
 ```
 
 ---
-
-**Next Steps**: Complete Phase 2 - Memory integration and context injection
 

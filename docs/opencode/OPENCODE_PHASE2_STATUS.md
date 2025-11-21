@@ -88,11 +88,6 @@ context = {
 - [x] Context injection with workspace path
 - [x] Boundary testing and verification
 - [x] Documentation consolidation
-- [ ] **Memory read access for OpenCode**
-- [ ] **Memory write access from OpenCode**
-- [ ] **User preference injection**
-- [ ] **Session context persistence**
-- [ ] **Integration tests for memory features**
 
 ---
 
