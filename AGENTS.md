@@ -83,7 +83,13 @@ Response → User
 
 **Why**: Embedding models are incompatible. Auto-sync on startup ensures shared memories.
 
-See: `docs/DUAL_DATABASE_SYSTEM.md`
+**Cloud Provider Recommendation**: Use **xAI Grok** for best value:
+- 2M context window (10x larger than GPT/Claude)
+- $0.20 input / $0.50 output (10-15x cheaper!)
+- Automatic prompt caching (90% discount)
+- Reasoning models at no extra cost
+
+See: `docs/DUAL_DATABASE_SYSTEM.md`, `docs/XAI_PROVIDER.md`
 
 ### Core Components
 
@@ -94,7 +100,7 @@ See: `docs/DUAL_DATABASE_SYSTEM.md`
 | **Executor** | `orchestrator/executor.py` | Tool execution, error handling |
 | **Tool Registry** | `lib/tool_schema.py` | Tool discovery, enable/disable |
 | **Memory DB** | `lib/memory_db.py` | SQLite with semantic search |
-| **LLM Provider** | `lib/llm_provider.py` | Abstraction for OpenAI/Anthropic/Ollama |
+| **LLM Provider** | `lib/llm_provider.py` | Abstraction for xAI/OpenAI/Anthropic/Ollama |
 | **Config Loader** | `lib/config_loader.py` | Environment variable management |
 
 ---
@@ -406,7 +412,8 @@ config/
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `LLM_PROVIDER` | Main LLM | `anthropic`, `openai`, `ollama` |
+| `LLM_PROVIDER` | Main LLM | `xai`, `anthropic`, `openai`, `ollama` |
+| `XAI_MODEL` | xAI Grok model (2M context!) | `grok-4-fast-reasoning-latest` |
 | `ANTHROPIC_MODEL` | Claude model | `claude-sonnet-4-5-20250929` |
 | `OLLAMA_MODEL` | Local model | `qwen3-vl`, `qwen2.5:7b` |
 | `OPENCODE_PROVIDER` | OpenCode LLM | `anthropic` (recommended) |

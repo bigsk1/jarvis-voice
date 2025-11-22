@@ -289,6 +289,12 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
                 api_key=get_config_value("ANTHROPIC_API_KEY"),
                 model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
             )
+        elif provider_type == "xai":
+            return create_provider(
+                "xai",
+                api_key=get_config_value("XAI_API_KEY"),
+                model=get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+            )
         elif provider_type == "ollama":
             return create_provider(
                 "ollama",

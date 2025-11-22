@@ -6,6 +6,7 @@
 - **[JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md)** - 🆕 **Complete workflow guide with visual flowcharts** (START HERE!)
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
 - **[../config/README.md](../config/README.md)** - Configuration guide
+- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
@@ -23,7 +24,7 @@
 ## 🚀 Quick Start
 
 ```bash
-# Cloud mode (OpenAI/Anthropic)
+# Cloud mode (xAI/Anthropic/OpenAI) - Recommended: xAI Grok
 ./jarvis
 
 # Local mode (Ollama)

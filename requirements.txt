@@ -1,5 +1,6 @@
 # LLM Providers for tool calling
 anthropic>=0.40.0
+openai>=1.0.0  # For OpenAI and xAI (Grok) API support
 openai>=1.0.0
 
 # API Server (Proactive Assistant)

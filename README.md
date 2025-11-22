@@ -55,8 +55,10 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Tool Management**: Enable/disable tools per mode to optimize context window
 
 ### Dual Mode Operation
-- **Cloud Mode**: Anthropic Claude / OpenAI GPT (more powerful, costs money)
-- **Local Mode**: Ollama (qwen3) + faster-whisper + Kokoro TTS (free, offline)
+- **Cloud Mode**: **xAI Grok** (2M context, 10-15x cheaper!), Anthropic Claude, OpenAI GPT
+- **Local Mode**: Ollama (qwen3-coder, mistral-nemo) + faster-whisper + Kokoro TTS (free, offline)
+
+**Recommended Cloud Provider**: **xAI Grok-4-fast** ($0.20/$0.50 per 1M tokens, 2M context window, automatic caching with 90% discount)
 
 ### Voice & Wake Word
 - **Wake Detection**: "Hey Jarvis" using OpenWakeWord
@@ -211,16 +213,21 @@ This will:
 Copy and edit the example configs:
 
 ```bash
-# For cloud mode (Anthropic/OpenAI)
+# For cloud mode (xAI/Anthropic/OpenAI)
 cp config/cloud.env.example config/cloud.env
-nano config/cloud.env  # Add your ANTHROPIC_API_KEY
+nano config/cloud.env  # Add your API keys
+
+# Recommended cloud provider: xAI Grok
+# LLM_PROVIDER="xai"
+# XAI_API_KEY="xai-..."  # Get from https://console.x.ai
+# XAI_MODEL="grok-4-fast-reasoning-latest"  # 2M context, $0.20/$0.50, reasoning mode
 
 # For local mode (Ollama)
 cp config/local.env.example config/local.env
 nano config/local.env  # Adjust Ollama endpoint
 ```
 
-See `config/README.md` for detailed configuration options.
+See `config/README.md` and `docs/XAI_PROVIDER.md` for detailed configuration options.
 
 ### 3. Install Dependencies
 
@@ -767,6 +774,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 **Completed (November 2025):**
 - ✅ Multi-turn tool orchestration
+- ✅ **xAI Grok integration** (2M context, 10-15x cheaper, automatic caching, reasoning mode) ⭐ NEW
 - ✅ **FTS5 full-text search** with BM25 ranking (faster, more accurate keyword searches)
 - ✅ **Auto-context system** (short-term conversation memory across wake word cycles)
 - ✅ **Comprehensive burn test** (modular test suite for all features)

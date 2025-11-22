@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 LLM Provider Abstraction Layer
-Supports OpenAI, Anthropic, and Ollama with unified interface.
+Supports OpenAI, Anthropic, xAI (Grok), and Ollama with unified interface.
 """
 import os
 import json
@@ -348,6 +348,130 @@ class AnthropicProvider(LLMProvider):
             return f"Error: {str(e)}", None, None, None
 
 
+class XAIProvider(LLMProvider):
+    """
+    xAI (Grok) provider using OpenAI-compatible SDK with reasoning support.
+    
+    Features:
+    - 2M context window for grok-4-fast and grok-4-1-fast models
+    - 256k context for grok-4 and grok-code-fast models
+    - Extremely competitive pricing ($0.20 input / $0.50 output per 1M tokens)
+    - Native function calling (OpenAI-compatible)
+    - Reasoning mode support (grok-*-reasoning-* models)
+    - Structured outputs
+    """
+    
+    def __init__(self, api_key: str, model: str = "grok-4-1-fast-non-reasoning-latest"):
+        """Initialize xAI provider using OpenAI SDK."""
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise ImportError("openai package not installed. Run: pip install openai")
+        
+        # xAI uses OpenAI-compatible API with custom base URL
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.x.ai/v1"
+        )
+        self.model = model
+        self.is_reasoning_model = "reasoning" in model.lower()
+    
+    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+        """Simple chat without tools."""
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            import sys
+            print(f"xAI API error: {e}", file=sys.stderr)
+            return f"Error: {str(e)}"
+    
+    def chat_with_tools(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict[str, Any]],
+        system_prompt: Optional[str] = None,
+        enable_thinking: bool = False
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+        """
+        Send chat with xAI function calling and optional reasoning mode.
+        
+        xAI's reasoning models (grok-*-reasoning-*) support extended thinking
+        similar to Anthropic's thinking mode.
+        
+        Returns:
+            Tuple of (text_response, tool_call, usage_info, thinking)
+            - usage_info contains token counts and cost estimates
+            - thinking contains reasoning text for reasoning models
+        """
+        # Add system message if provided
+        full_messages = []
+        if system_prompt:
+            full_messages.append({"role": "system", "content": system_prompt})
+        full_messages.extend(messages)
+        
+        try:
+            # xAI uses OpenAI-compatible tool format
+            request_params = {
+                "model": self.model,
+                "messages": full_messages
+            }
+            
+            # Only add tools if provided
+            if tools:
+                request_params["tools"] = tools
+                request_params["tool_choice"] = "auto"
+            
+            response = self.client.chat.completions.create(**request_params)
+            
+            message = response.choices[0].message
+            
+            # Extract reasoning/thinking for reasoning models
+            thinking_text = None
+            if self.is_reasoning_model and enable_thinking:
+                # xAI reasoning models include thinking in a separate field
+                # Check for reasoning content in response
+                if hasattr(message, 'reasoning_content'):
+                    thinking_text = message.reasoning_content
+                elif hasattr(response, 'reasoning'):
+                    thinking_text = response.reasoning
+            
+            # Extract usage info
+            usage_info = None
+            if hasattr(response, 'usage') and response.usage:
+                from cost_estimator import estimate_cost
+                usage_info = estimate_cost(
+                    provider="xai",
+                    model=self.model,
+                    input_tokens=response.usage.prompt_tokens,
+                    output_tokens=response.usage.completion_tokens
+                )
+            
+            # Check if tool was called
+            if message.tool_calls:
+                tool_call = message.tool_calls[0]
+                return None, {
+                    "name": tool_call.function.name,
+                    "arguments": json.loads(tool_call.function.arguments)
+                }, usage_info, thinking_text
+            
+            # Otherwise return text response
+            return message.content, None, usage_info, thinking_text
+            
+        except Exception as e:
+            import sys
+            print(f"xAI API error: {e}", file=sys.stderr)
+            return f"Error: {str(e)}", None, None, None
+
+
 class OllamaProvider(LLMProvider):
     """Ollama provider using structured prompting (no native tool calling)."""
     
@@ -541,7 +665,7 @@ def create_provider(provider_type: str, **config) -> LLMProvider:
     Factory function to create appropriate provider.
     
     Args:
-        provider_type: "openai", "anthropic", or "ollama"
+        provider_type: "openai", "anthropic", "xai", or "ollama"
         **config: Provider-specific configuration
         
     Returns:
@@ -556,6 +680,11 @@ def create_provider(provider_type: str, **config) -> LLMProvider:
         return AnthropicProvider(
             api_key=config["api_key"],
             model=config.get("model", "claude-sonnet-4-20250514")
+        )
+    elif provider_type == "xai":
+        return XAIProvider(
+            api_key=config["api_key"],
+            model=config.get("model", "grok-4-1-fast-non-reasoning-latest")
         )
     elif provider_type == "ollama":
         return OllamaProvider(

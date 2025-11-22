@@ -826,6 +826,8 @@ def main():
             provider = get_config_value("LLM_PROVIDER", "anthropic")
             if provider == "openai":
                 model = get_config_value("CHAT_MODEL", "gpt-4o")
+            elif provider == "xai":
+                model = get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
             else:
                 model = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
         else:

@@ -81,6 +81,34 @@ PRICING = {
         "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
         "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
         "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
+    },
+    "xai": {
+        # Grok 4 series (xAI/X.AI official pricing as of Nov 2025)
+        # Extremely competitive pricing with 2M context window!
+        # Source: https://docs.x.ai/docs/guides/pricing
+        
+        # Grok 4.1 Fast series (2M context window)
+        "grok-4-1-fast-reasoning": {"input": 0.20, "output": 0.50},  # 2M context
+        "grok-4-1-fast-reasoning-latest": {"input": 0.20, "output": 0.50},  # 2M context
+        "grok-4-1-fast-non-reasoning": {"input": 0.20, "output": 0.50},  # 2M context
+        "grok-4-1-fast-non-reasoning-latest": {"input": 0.20, "output": 0.50},  # 2M context
+        "grok-4-1-fast": {"input": 0.20, "output": 0.50},  # 2M context
+        
+        # Grok 4 Fast series (2M context window)
+        "grok-4-fast-reasoning": {"input": 0.20, "output": 0.50},  # 2M context
+        "grok-4-fast-reasoning-latest": {"input": 0.20, "output": 0.50},  # 2M context
+        "grok-4-fast-non-reasoning": {"input": 0.20, "output": 0.50},  # 2M context
+        "grok-4-fast-non-reasoning-latest": {"input": 0.20, "output": 0.50},  # 2M context
+        "grok-4-fast": {"input": 0.20, "output": 0.50},  # 2M context
+        
+        # Grok Code Fast (256k context window)
+        "grok-code-fast-1": {"input": 0.20, "output": 1.50},  # 256k context
+        "grok-code-fast": {"input": 0.20, "output": 1.50},
+        
+        # Grok 4 (256k context window)
+        "grok-4": {"input": 3.00, "output": 15.00},  # 256k context
+        
+        # Note: grok-2-image-1212 is $0.07/image (image generation, not text)
     }
 }
 
@@ -97,6 +125,13 @@ CACHE_PRICING = {
     "openai": {
         # OpenAI has automatic caching, different pricing
         "cache_read": 1.50,  # 50% discount on cached tokens
+    },
+    "xai": {
+        # xAI has automatic caching (like OpenAI, no cache_control needed)
+        # Cache hits can be 90%+ for repeated prompts
+        # Example: grok-code-fast-1 is $0.02 cached vs $0.20 regular (90% discount)
+        "cache_read": 0.02,  # 90% discount on cached tokens (10x cheaper!)
+        "cache_write_base": 0.20,  # Regular input cost for grok-4-fast models
     }
 }
 
@@ -106,7 +141,7 @@ def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: i
     Estimate cost for an LLM API call.
     
     Args:
-        provider: "openai" or "anthropic"
+        provider: "openai", "anthropic", or "xai"
         model: Model name
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens
@@ -118,6 +153,8 @@ def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: i
         - Pricing as of November 2025
         - Sonnet 4.5 uses base tier pricing (≤200K tokens)
         - For prompts >200K tokens, actual costs may be higher
+        - xAI/Grok-4-fast models: $0.20 input / $0.50 output with 2M context!
+        - xAI pricing is extremely competitive (10-15x cheaper than Claude/GPT)
     """
     if provider not in PRICING:
         return {
@@ -192,7 +229,7 @@ def estimate_cache_cost(provider: str, model: str, cache_creation_tokens: int = 
     Estimate cache-related costs for prompt caching.
     
     Args:
-        provider: "openai" or "anthropic"
+        provider: "openai", "anthropic", or "xai"
         model: Model name (for future model-specific cache pricing)
         cache_creation_tokens: Tokens written to cache (first request)
         cache_read_tokens: Tokens read from cache (subsequent requests)
@@ -210,7 +247,9 @@ def estimate_cache_cost(provider: str, model: str, cache_creation_tokens: int = 
     
     Notes:
         - Pricing as of November 2025
-        - Anthropic: $3.75/1M for cache write, $0.30/1M for cache read
+        - Anthropic: $3.75/1M for cache write, $0.30/1M for cache read (explicit cache_control)
+        - OpenAI: Automatic caching, 50% discount on cached tokens
+        - xAI: Automatic caching (like OpenAI), 90% discount! ($0.02 vs $0.20 for grok-fast)
         - Falls back gracefully for unknown providers
     """
     result = {
@@ -250,6 +289,12 @@ def estimate_cache_cost(provider: str, model: str, cache_creation_tokens: int = 
             # OpenAI has 50% discount on cached tokens
             cache_read_cost = (cache_read_tokens / 1_000_000) * cache_prices["cache_read"]
             regular_cost = (cache_read_tokens / 1_000_000) * 3.00  # Approximate for GPT-4
+            savings = regular_cost - cache_read_cost
+            result["cache_savings_usd"] = round(savings, 6)
+        elif provider == "xai":
+            # xAI has 90% discount on cached tokens (automatic caching!)
+            cache_read_cost = (cache_read_tokens / 1_000_000) * cache_prices["cache_read"]
+            regular_cost = (cache_read_tokens / 1_000_000) * cache_prices["cache_write_base"]
             savings = regular_cost - cache_read_cost
             result["cache_savings_usd"] = round(savings, 6)
         result["cache_hit"] = True
