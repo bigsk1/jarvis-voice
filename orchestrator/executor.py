@@ -114,13 +114,13 @@ class ToolExecutor:
             
             # Use longer timeout for local mode (Ollama can be slower)
             # OpenCode tasks need much more time (building, coding, etc.)
-            # Ingest intel needs time for embedding generation
+            # Ingest intel needs time for embedding generation (especially large profiles)
             if tool_name == "opencode":
                 timeout = 360  # 6 minutes for OpenCode tasks (complex builds)
             elif tool_name == "ingest_intel":
-                timeout = 60  # 1 minute for ingesting files with embeddings
+                timeout = 180  # 3 minutes for ingesting files with embeddings (large profiles can have 300+ facts)
             elif tool_name == "manage_intel":
-                timeout = 60  # 1 minute (can auto-ingest, which needs time for embeddings)
+                timeout = 180  # 3 minutes (can auto-ingest, which needs time for embeddings)
             else:
                 timeout = 30 if self.mode == "local" else 15
             
