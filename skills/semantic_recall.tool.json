@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "semantic_recall",
-  "description": "CONCEPTUAL/MEANING search using AI embeddings. Use for abstract questions where you need to match by MEANING rather than exact words. Good for: 'where did I put...', 'what was that thing about...', 'find memories related to...'. Matches concepts even if different words used. If user mentions specific entity/name they want to find, use search_memory instead (faster and more accurate).",
+  "description": "⚡ PRIORITY TOOL - CHECK FIRST! CONCEPTUAL/MEANING search using AI embeddings. USE THIS BEFORE action tools when user asks questions about things they told you, preferences, or past setups. Matches by meaning, not exact words. Examples: 'what did you say about X', 'how is Y configured', 'where is Z running'. ALWAYS try this first before execute_bash, query_service_logs, or api_call. For specific entity names/keywords, use search_memory (faster).",
   "parameters": {
     "type": "object",
     "properties": {

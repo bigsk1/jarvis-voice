@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "search_memory",
-  "description": "KEYWORD/ENTITY SEARCH using FTS5 with BM25 ranking. USE THIS when user mentions specific names, entities, or technical terms they want to find. Fast exact matching with stemming support. Use for queries like: 'find info about X', 'locate Y details', 'what is Z', 'X configuration'. For conceptual questions without specific entity names, use semantic_recall instead.",
+  "description": "⚡ PRIORITY TOOL - CHECK FIRST! KEYWORD/ENTITY SEARCH using FTS5 with BM25 ranking. USE THIS BEFORE action tools when user asks about anything they might have previously configured, set up, or told you about. Searches stored information by entity names, keywords, or technical terms. Examples: checking server status, finding configurations, locating project details. ALWAYS try this first before execute_bash, query_service_logs, or api_call. For conceptual questions, use semantic_recall instead.",
   "parameters": {
     "type": "object",
     "properties": {

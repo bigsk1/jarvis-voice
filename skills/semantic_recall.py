@@ -9,11 +9,15 @@ import os
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
 from memory_db import get_memory_db
+from config_loader import load_config
 
 
 def main():
     """Semantic search across memories."""
     try:
+        # CRITICAL: Load config to set correct embedding provider (local vs cloud)
+        load_config()  # Auto-detects mode from LLM_PROVIDER
+        
         # Read arguments
         args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
         

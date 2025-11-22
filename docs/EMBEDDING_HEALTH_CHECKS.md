@@ -1,0 +1,317 @@
+# Embedding Health Checks
+
+## Overview
+
+Jarvis uses different embedding models for cloud and local modes, which generate vectors of different dimensions:
+
+- **Cloud Mode (OpenAI)**: 1536 dimensions (`text-embedding-3-small`)
+- **Local Mode (Ollama)**: 768 dimensions (`nomic-embed-text`)
+
+**Why this matters**: If embeddings in the database don't match the expected dimensions for the current mode, semantic search will **silently fail** (returning 0 results) because the vector similarity calculation breaks with mismatched dimensions.
+
+## The Problem
+
+Embedding dimension mismatches can occur when:
+
+1. **Wrong embedding model used during ingestion**
+   - Intel ingested in cloud mode but running in local mode
+   - Config changed but embeddings not regenerated
+
+2. **Database synced without regenerating embeddings**
+   - Manually copying database files between modes
+   - Sync script failing silently
+
+3. **Config changes affecting embedding provider**
+   - `LLM_PROVIDER` changed in `.env` file
+   - Environment variable override not matched by embeddings
+
+## The Solution: Automated Health Checks
+
+### 1. Health Check Script
+
+```bash
+# Check single mode
+./bin/check-embeddings-health.py cloud
+./bin/check-embeddings-health.py local
+
+# Check both modes
+./bin/check-embeddings-health.py --both
+
+# JSON output (for scripts)
+./bin/check-embeddings-health.py local --json
+```
+
+**What it checks:**
+- ✅ Embedding dimensions in `knowledge_base` table (memories)
+- ✅ Embedding dimensions in `tool_definitions` table (Tool RAG)
+- ✅ Current config generates correct dimensions
+- ✅ Embedding provider matches expected model
+
+**Example output (healthy):**
+```
+╔════════════════════════════════════════════════════════════╗
+║  Embedding Health Check - LOCAL Mode                         ║
+╚════════════════════════════════════════════════════════════╝
+
+✅ All embeddings are healthy!
+
+Expected Dimensions: 768
+Current Config Generates: 768
+Embedding Provider: ollama
+Embedding Model: nomic-embed-text
+
+Knowledge Base:
+  Checked: 64 memories
+  ✓ All OK
+
+Tool Definitions:
+  Checked: 32 tools
+  ✓ All OK
+```
+
+**Example output (unhealthy):**
+```
+╔════════════════════════════════════════════════════════════╗
+║  Embedding Health Check - LOCAL Mode                         ║
+╚════════════════════════════════════════════════════════════╝
+
+❌ Embedding dimension mismatch detected!
+
+Expected Dimensions: 768
+Current Config Generates: 1536  ← WRONG!
+Embedding Provider: openai
+Embedding Model: text-embedding-3-small
+
+Knowledge Base:
+  Checked: 64 memories
+  Issues: 64
+  
+    ✗ Memory #1 (Agent Modes info...): 1536D (expected 768D)
+    ✗ Memory #2 (Servers - Mini-AI...): 1536D (expected 768D)
+    ... and 62 more
+
+🔧 Recommended Actions:
+  1. Config issue: Current embedding model generates wrong dimensions
+     Check config/local.env for correct LLM_PROVIDER and embedding model
+  
+  2. Memory embeddings are wrong - regenerate them:
+     ./bin/sync-memory-db.py --from cloud --to local
+  
+  3. Tool embeddings are wrong - regenerate them:
+     ./bin/sync_tools.py local
+
+⚠️  Semantic search will fail until embeddings are fixed!
+```
+
+### 2. Automatic Health Checks on Startup
+
+Both `jarvis-services` and `jarvis-api` now run automatic health checks:
+
+```bash
+./bin/jarvis-services cloud  # Auto-checks cloud embeddings
+./bin/jarvis-services local  # Auto-checks local embeddings
+
+./bin/jarvis-api cloud       # Auto-checks cloud embeddings  
+./bin/jarvis-api local       # Auto-checks local embeddings
+```
+
+**Startup sequence:**
+1. Sync memories between modes (`sync-memory-db.py`)
+2. Sync tool definitions (`sync_tools.py`)
+3. **Health check embeddings** (`check-embeddings-health.py`)
+4. Start services/API
+
+**If health check fails:**
+- ❌ Warning displayed
+- 🛠️ Remediation steps shown
+- ⚠️ Service still starts (with warning)
+
+## Expected Dimensions by Mode
+
+| Mode | Embedding Model | Dimensions | Use Case |
+|------|----------------|------------|----------|
+| **Cloud** | `text-embedding-3-small` (OpenAI) | **1536** | High accuracy, API-based |
+| **Local** | `nomic-embed-text` (Ollama) | **768** | Privacy-first, offline |
+
+## Fixing Dimension Mismatches
+
+### Scenario 1: Config Generates Wrong Dimensions
+
+**Symptom**: "Current Config Generates: 1536" in local mode (or vice versa)
+
+**Fix**:
+```bash
+# Check config
+cat config/local.env | grep LLM_PROVIDER
+
+# Should be:
+LLM_PROVIDER="ollama"  # For local mode
+
+# If wrong, fix it and reload
+source config/local.env
+export LLM_PROVIDER="ollama"
+```
+
+### Scenario 2: Database Has Wrong Embeddings
+
+**Symptom**: "Memory #X: 1536D (expected 768D)"
+
+**Fix**: Regenerate embeddings by syncing
+```bash
+# Local mode with wrong embeddings
+./bin/sync-memory-db.py --from cloud --to local
+
+# Cloud mode with wrong embeddings  
+./bin/sync-memory-db.py --from local --to cloud
+
+# Verify fix
+./bin/check-embeddings-health.py local
+```
+
+### Scenario 3: Tool Embeddings Corrupt
+
+**Symptom**: "Tool XYZ: 1536D (expected 768D)"
+
+**Fix**: Re-sync tools
+```bash
+# Local mode
+./bin/sync_tools.py local
+
+# Cloud mode
+./bin/sync_tools.py cloud
+
+# Verify fix
+./bin/check-embeddings-health.py local
+```
+
+### Scenario 4: Fresh Database Setup
+
+**After creating a fresh database:**
+```bash
+# 1. Ingest intel (will use current mode's embedding model)
+./skills/ingest_intel.py '{"path":"jarvis-intel"}'
+
+# 2. Sync tools
+./bin/sync_tools.py local  # or cloud
+
+# 3. Verify health
+./bin/check-embeddings-health.py local
+```
+
+## Integration with Test Scripts
+
+Test scripts that reset databases should call health check:
+
+```bash
+#!/bin/bash
+# After database reset
+rm -f data/jarvis_memory_local.db
+
+# Initialize orchestrator (creates tables)
+./orchestrator/orchestrator_v2.py local "test query"
+
+# Sync tools (generates embeddings)
+./bin/sync_tools.py local
+
+# Health check
+./bin/check-embeddings-health.py local || exit 1
+```
+
+**Updated test scripts:**
+- ✅ `tests/integration/test-memory-tools.sh`
+- ✅ `tests/integration/test-memory-real-world.sh`
+- ✅ `tests/integration/compare-models.sh`
+- ✅ `tests/test-db-schema.sh`
+
+See: `docs/TESTING.md` for details.
+
+## Monitoring in Production
+
+### Daily Health Check (Cron)
+
+Add to crontab for daily validation:
+```bash
+# Check embeddings daily at 2 AM
+0 2 * * * cd /home/boss/jarvis-voice && ./bin/check-embeddings-health.py --both --json | logger -t jarvis-embeddings
+```
+
+### API Health Endpoint
+
+The Jarvis API includes a health endpoint:
+```bash
+curl http://localhost:8091/health
+
+{
+  "status": "ok",
+  "embeddings": {
+    "cloud": {"ok": true, "dimensions": 1536},
+    "local": {"ok": true, "dimensions": 768}
+  }
+}
+```
+
+## Troubleshooting
+
+### Q: Health check says embeddings are wrong, but semantic search works?
+
+**A**: Check if you're only searching recently-added memories. Old memories might have wrong dimensions, but if your search only hits recent ones (with correct dimensions), it appears to work.
+
+Run `check-embeddings-health.py` to see the full picture.
+
+### Q: Can I mix embedding dimensions in one database?
+
+**A**: No. Cosine similarity requires consistent dimensions. Even one mismatched embedding will cause that memory to be skipped (with no error message).
+
+### Q: What if I switch embedding models (e.g., OpenAI → Cohere)?
+
+**A**: You must regenerate ALL embeddings:
+1. Update config to new embedding model
+2. Run `sync-memory-db.py` to regenerate memory embeddings
+3. Run `sync_tools.py` to regenerate tool embeddings
+4. Run health check to verify
+
+### Q: How often should I run health checks?
+
+**A**: 
+- **Startup**: Automatic (via `jarvis-services`/`jarvis-api`)
+- **After config changes**: Manual
+- **After database operations**: Manual
+- **In production**: Daily cron job
+
+## Technical Details
+
+### Embedding Serialization
+
+Embeddings are stored in SQLite as blobs in two formats:
+
+1. **JSON** (newer, default):
+   ```python
+   embedding_blob = json.dumps(embedding_vector).encode('utf-8')
+   ```
+
+2. **Pickle** (legacy, backward-compatible):
+   ```python
+   embedding_blob = pickle.dumps(embedding_vector)
+   ```
+
+Both formats are supported by `memory_db.py`'s deserialization logic.
+
+### Dimension Detection
+
+The health check deserializes embeddings and checks `len(embedding_vector)`:
+- OpenAI: `len(embedding) == 1536`
+- Ollama/Nomic: `len(embedding) == 768`
+
+If dimensions don't match expectations for the mode, the health check fails.
+
+## Related Documentation
+
+- `docs/DUAL_DATABASE_SYSTEM.md` - Why we have separate databases
+- `docs/MEMORY_SYSTEM.md` - How semantic search works
+- `docs/TOOL_RAG_STRATEGY.md` - How Tool RAG uses embeddings
+- `docs/TESTING.md` - Test script requirements
+
+---
+
+**Key Takeaway**: Run `./bin/check-embeddings-health.py --both` after ANY database operation or config change to ensure semantic search will work correctly.
+

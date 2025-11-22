@@ -62,6 +62,7 @@
 | **MEMORY_SYSTEM.md** | Memory database architecture and tools |
 | **FTS5_SEARCH_SYSTEM.md** | FTS5 full-text search with BM25 ranking ⭐ NEW |
 | **DUAL_DATABASE_SYSTEM.md** | Cloud/local database with auto-sync |
+| **EMBEDDING_HEALTH_CHECKS.md** | Embedding dimension validation ⭐ NEW |
 | **SEMANTIC_THRESHOLD_TUNING.md** | How to tune similarity threshold |
 | **MEMORY_SYSTEM_TUNING.md** | Advanced memory optimization |
 | **MEMORY_INTELLIGENCE_FIXES.md** | Auto-save improvements |
@@ -220,6 +221,12 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Proactive reminder guard** - Prevents unprompted reminder checks by local models
 - ✅ **Voice timeout system** - 30-second hard timeout for recording to handle noisy environments
 - ✅ **Samantha OS personality** - Added support for custom AI personalities with TTS instructions
+
+**2025-11-22:**
+- ✅ **Embedding Health Checks** - Automated validation of embedding dimensions on startup
+  - Prevents silent semantic search failures from dimension mismatches
+  - Integrated into `jarvis-services` and `jarvis-api` startup flows
+  - See: `docs/EMBEDDING_HEALTH_CHECKS.md`
 
 **2025-11-20:**
 - ✅ **FTS5 Full-Text Search** - SQLite FTS5 with BM25 ranking for faster, more accurate searches

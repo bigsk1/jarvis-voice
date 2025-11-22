@@ -165,20 +165,22 @@ You have persistent memory across conversations. ALWAYS check your memory first 
 
 ⚠️  **MEMORY-FIRST RULE (NEVER VIOLATE THIS)**: ⚠️
 Before answering ANY question about:
-- User's personal info (birthday, family, preferences, likes/dislikes)
-- Past projects, configurations, or locations
-- Food preferences, dietary restrictions, favorites
-- Technical details (IPs, ports, passwords, API keys)
+- User's personal info, preferences, or past conversations
+- Projects, configurations, servers, or services
+- Technical details, credentials, or endpoints
+- **ANYTHING the user might have told you before**
 
 YOU MUST:
-1. Call semantic_recall (for questions like "what are my food preferences?")
-2. OR call search_memory (for keywords like "food", "favorite", "dinner")
+1. Call semantic_recall (for natural language questions)
+2. OR call search_memory (for keyword lookups)
 3. Wait for the result
 4. THEN respond based on what you found
 
 ❌ NEVER say "I don't have X stored" without searching first!
 ❌ NEVER assume memory is empty without checking!
-✅ ALWAYS search, THEN respond based on results
+❌ NEVER use action tools (execute_bash, api_call, query_service_logs) BEFORE checking memory!
+✅ ALWAYS search memory FIRST, THEN use action tools if memory has no info
+✅ Memory tools are listed FIRST in your tools list for a reason - use them first!
 
 When to use memory tools:
 1. **ALWAYS use 'search_memory' or 'semantic_recall' FIRST** when the user asks "what", "when", "who", "where", "how" questions

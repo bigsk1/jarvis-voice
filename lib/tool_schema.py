@@ -394,15 +394,22 @@ class ToolRegistry:
             # 1. Get relevant tools from vector search
             relevant_tools_data = db.search_tools(query, limit=limit, threshold=threshold)
             
-            # 2. Collect tool names
-            found_names = [t['name'] for t in relevant_tools_data]
+            # 2. Collect retrieved tool names
+            retrieved_names = [t['name'] for t in relevant_tools_data]
             
-            # 3. Add Core Tools (if not already found)
+            # 3. PRIORITIZE Ghost Tools (add them FIRST for Memory-First visibility)
+            # This ensures memory tools appear before action tools in the LLM's tool list
+            found_names = []
             for core in CORE_TOOLS:
-                if core not in found_names and core in self.tools:
+                if core in self.tools:
                     found_names.append(core)
             
-            # 4. Map back to ToolSchema objects
+            # 4. Add retrieved tools (if not already in ghost list)
+            for name in retrieved_names:
+                if name not in found_names:
+                    found_names.append(name)
+            
+            # 5. Map back to ToolSchema objects (ghost tools first, then retrieved)
             final_tools = []
             for name in found_names:
                 tool = self.get_tool(name)

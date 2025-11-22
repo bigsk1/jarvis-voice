@@ -82,6 +82,19 @@ python3 "$PROJECT_ROOT/bin/sync_tools.py" "$MODE" > /dev/null 2>&1
 echo -e "${GREEN}  ✅ Tool embeddings updated${NC}"
 echo ""
 
+# Health check: Verify embedding dimensions are correct
+echo -e "${BLUE}🩺 Checking embedding health...${NC}"
+if python3 "$PROJECT_ROOT/bin/check-embeddings-health.py" "$MODE" --json > /dev/null 2>&1; then
+    echo -e "${GREEN}  ✅ Embeddings healthy ($([ "$MODE" == "local" ] && echo "768" || echo "1536") dimensions)${NC}"
+else
+    echo -e "${RED}  ❌ Embedding dimension mismatch detected!${NC}"
+    echo -e "${YELLOW}     Run: ./bin/check-embeddings-health.py $MODE${NC}"
+    echo -e "${YELLOW}     This will cause semantic search to fail!${NC}"
+    echo ""
+    # Don't exit, but warn loudly
+fi
+echo ""
+
 # Load appropriate config
 if [ "$MODE" == "local" ]; then
     if [ -f "$PROJECT_ROOT/config/local.env" ]; then
