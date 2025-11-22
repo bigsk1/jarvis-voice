@@ -394,8 +394,13 @@ class MemoryDB:
     
     def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = None) -> List[Dict]:
         """
-        Semantic search using vector embeddings.
+        Semantic search using vector embeddings with smart fallback.
         Finds memories similar in meaning, not just keywords.
+        
+        Strategy:
+        1. Try semantic search with embeddings (meaning-based)
+        2. If 0 results (threshold too high), fall back to FTS5 (keyword-based)
+        3. If FTS5 fails, fall back to LIKE (substring-based)
         
         Args:
             query: Search query (can be natural language)
@@ -406,7 +411,7 @@ class MemoryDB:
                 Higher = fewer results (only close matches)
             
         Returns:
-            List of memories with similarity scores, sorted by relevance
+            List of memories with similarity/relevance scores, sorted by relevance
         """
         try:
             from embeddings import get_embedding, cosine_similarity
@@ -451,11 +456,16 @@ class MemoryDB:
             # Sort by similarity (highest first), then by importance
             scored_memories.sort(key=lambda x: (x['similarity'], x['importance']), reverse=True)
             
+            # If no results, fall back to FTS5 keyword search
+            if not scored_memories:
+                # FTS5 has its own AND→OR→LIKE fallback
+                return self.fts_search(query, limit=limit)
+            
             return scored_memories[:limit]
             
         except Exception as e:
-            # Fallback to keyword search if embedding fails
-            return self.recall(query, limit=limit)
+            # If embedding generation fails, fall back to FTS5
+            return self.fts_search(query, limit=limit)
     
     # ========== Conversation History ==========
     
