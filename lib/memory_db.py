@@ -234,6 +234,9 @@ class MemoryDB:
         for row in results:
             memory = dict(row)
             memory['relevance'] = 0.5  # Default relevance for LIKE search (not as precise as FTS5)
+            # Remove embedding blob (too large for JSON serialization)
+            if 'embedding' in memory:
+                del memory['embedding']
             memories.append(memory)
         
         return memories
@@ -331,6 +334,9 @@ class MemoryDB:
                     # Convert BM25 to 0-1 score (lower is better, so invert)
                     memory['relevance'] = 1 / (1 + abs(memory['relevance_score']))
                     del memory['relevance_score']
+                    # Remove embedding blob (too large for JSON serialization)
+                    if 'embedding' in memory:
+                        del memory['embedding']
                     memories.append(memory)
                 
                 return memories
