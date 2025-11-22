@@ -23,6 +23,12 @@ fi
 
 ./bin/setup-memory-db.sh > /dev/null 2>&1
 
+# CRITICAL: Sync tool definitions to enable Tool RAG
+echo "🔧 Syncing tool definitions for Tool RAG..."
+./bin/sync_tools.py cloud > /dev/null 2>&1
+echo "✅ Tool embeddings ready"
+echo ""
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "PHASE 1: Setup - Save Test Data"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

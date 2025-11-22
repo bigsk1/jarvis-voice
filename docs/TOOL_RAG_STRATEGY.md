@@ -1,6 +1,6 @@
 # Tool RAG Strategy (Dynamic Dispatch)
 
-> **Status**: Technical Specification
+> **Status**: ✅ Implemented & Verified
 > **Goal**: Reduce context window usage by dynamically retrieving only relevant tools for each user query.
 > **Impact**: Enables scaling to 100+ tools while improving accuracy for local models (Ollama) and reducing costs for cloud models.
 
@@ -8,7 +8,7 @@
 
 ## 1. The Problem: Context Flooding
 
-Currently, `ToolRegistry` loads **ALL** enabled tools into the LLM's system prompt every time a user sends a message.
+Previously, `ToolRegistry` loaded **ALL** enabled tools into the LLM's system prompt every time a user sent a message.
 
 -   **Cloud Models (Claude/GPT-4)**: High cost, potential confusion with similar tools.
 -   **Local Models (Ollama)**: **CRITICAL FAILURE POINT**. Small context windows (8k-32k) get filled with tool definitions, leaving no room for conversation history or reasoning.
@@ -19,7 +19,7 @@ Currently, `ToolRegistry` loads **ALL** enabled tools into the LLM's system prom
 
 ## 2. Architecture Overview
 
-We will leverage the existing `MemoryDB` infrastructure to store tool definitions as vector embeddings.
+We leveraged the existing `MemoryDB` infrastructure to store tool definitions as vector embeddings.
 
 ```mermaid
 graph TD
@@ -27,7 +27,7 @@ graph TD
     B --> C{Tool RAG}
     C -- Query Embedding --> D[Memory DB]
     D -- Top-K Tools --> C
-    C -- Selected Tools + Core Tools --> E[LLM System Prompt]
+    C -- Selected Tools + Ghost Tools --> E[LLM System Prompt]
     E --> F[LLM Decision]
 ```
 
@@ -35,11 +35,9 @@ graph TD
 
 ## 3. Database Schema Integration
 
-We will extend `lib/memory_db.py` to support a specialized "Tool Knowledge" store. We can reuse the existing `knowledge_base` table by using a reserved category, or ideally, create a dedicated lightweight table for cleaner separation.
+We extended `lib/memory_db.py` to support a specialized "Tool Knowledge" store.
 
-**Recommendation**: Use a dedicated `tool_definitions` table to avoid polluting user memories.
-
-### New Table Schema (`lib/memory_db.py`)
+### Table Schema (`tool_definitions`)
 
 ```sql
 CREATE TABLE IF NOT EXISTS tool_definitions (
@@ -52,118 +50,85 @@ CREATE TABLE IF NOT EXISTS tool_definitions (
 );
 ```
 
-### Why specific table?
--   **Performance**: Separate from thousands of user memories.
--   **Management**: Easy to `TRUNCATE` and rebuild when tools change.
--   **Versioning**: Tools update frequently; memories don't.
+**Implementation Notes:**
+-   Embeddings are stored as binary blobs (Pickled python lists for OpenAI, or JSON for others).
+-   The system is robust enough to handle different serialization formats.
 
 ---
 
 ## 4. The "Just-in-Time" Registry
 
-We need to modify `lib/tool_schema.py` to support retrieval.
+We modified `lib/tool_schema.py` to support retrieval.
 
-### Current Flow
-```python
-# orchestrator/router_v2.py
-tools = registry.to_openai_format() # Returns ALL tools
-```
-
-### New Flow
-```python
-# orchestrator/router_v2.py
-relevant_tools = registry.find_tools(user_query, limit=5) 
-# Returns Core Tools + Top 5 Relevant Tools
-```
-
-### Implementation Details (`lib/tool_schema.py`)
-
-1.  **`sync_to_db()`**: A method to scan `skills/` and populate the `tool_definitions` table with embeddings.
-    -   Run this on startup or via a management script (`bin/sync_tools.py`).
-    -   Computes embedding for: `f"{tool_name}: {tool_description}"`.
-
-2.  **`find_tools(query)`**:
-    -   Embeds the user query.
-    -   Performs vector search on `tool_definitions`.
-    -   **Critical**: ALWAYS include "Core Tools" (Ghost Pattern).
+### Workflow
+1.  **User speaks**: "What is the price of Bitcoin?"
+2.  **Router**: Calls `registry.find_tools("price of Bitcoin")`.
+3.  **Vector Search**: DB finds `crypto_price` (high similarity).
+4.  **Ghost Injection**: Registry adds critical "Ghost Tools" (Time, Memory, Logs).
+5.  **LLM Prompt**: Receives `[crypto_price, get_time, search_memory, ...]`.
 
 ### The "Ghost Tool" Pattern
-Some tools must **ALWAYS** be available, regardless of the query:
+These tools are **ALWAYS** available, ensuring basic functionality never fails even if retrieval misses:
 -   `search_memory` / `semantic_recall` (Memory access)
 -   `remember` (Saving info)
--   `speak` (If used as a tool)
--   `ask_user` (Clarification)
-
-**Resulting Tool Set**: `[Core Tools] + [Top-K Retrieved Tools]`
+-   `check_tool_logs` (Self-debugging)
+-   `get_recent_conversations` (Context)
+-   `get_time` (Basic utility)
 
 ---
 
-## 5. System Prompt & Routing Logic
+## 5. Implementation Details
 
-### Cloud vs. Local Optimization
+### A. Sync Script (`bin/sync_tools.py`)
+**CRITICAL COMPONENT**: This script iterates through all local and MCP tools, generates embeddings, and saves them to the DB.
 
-| Feature | Cloud Mode (Anthropic/OpenAI) | Local Mode (Ollama) |
-| :--- | :--- | :--- |
-| **Retrieval Limit** | Top 10-15 tools | **Top 3-5 tools** |
-| **Context** | 200k tokens (Loose) | 8k-32k tokens (Strict) |
-| **Selection** | Can handle "maybe relevant" tools | Needs "highly relevant" only |
+**Usage**:
+```bash
+# Must run in the environment where 'openai' package is installed!
+source ~/jarvis-venv/bin/activate
 
-### Router Logic (`orchestrator/router_v2.py`)
+# Sync Cloud Tools (OpenAI Embeddings - 1536 dim)
+./bin/sync_tools.py cloud
 
-```python
-def route(self, transcript):
-    # 1. Retrieve relevant tools
-    limit = 5 if self.mode == 'local' else 15
-    tools = self.registry.find_tools(transcript, limit=limit)
-    
-    # 2. Construct System Prompt
-    # Tell LLM it has access to a *subset* of tools
-    system_prompt = f"""
-    You are Jarvis. You have access to the following tools:
-    {tools_list}
-    
-    Note: If you need a tool that isn't listed, ask the user to clarify 
-    so we can load the correct capabilities.
-    """
-    
-    # 3. Call LLM
-    ...
+# Sync Local Tools (Nomic Embeddings - 768 dim)
+./bin/sync_tools.py local
+```
+
+### B. Router Logic (`orchestrator/router_v2.py`)
+-   **Local Mode**: Retrieves top **5** tools (Strict context limit).
+-   **Cloud Mode**: Retrieves top **15** tools (Broader context).
+
+---
+
+## 6. Findings & troubleshooting
+
+### Critical: Virtual Environment
+We discovered that running `sync_tools.py` outside the virtual environment resulted in **0 embeddings** because the `openai` package wasn't found. The script would fail silently (printing a warning) and store the tool *without* an embedding.
+**Fix**: Always ensure `openai` is installed and venv is active when syncing.
+
+### Critical: Serialization
+The database stores embeddings as BLOBs.
+-   **OpenAI**: Often stores as Pickled Python lists.
+-   **Other**: May store as JSON strings.
+**Fix**: `memory_db.py` implements a robust double-try mechanism (Pickle first, then JSON) to decode the BLOBs correctly during search.
+
+### Verification
+To verify tools are indexed correctly:
+```bash
+# Check database count
+sqlite3 data/jarvis_memory.db "SELECT count(*) FROM tool_definitions WHERE embedding IS NOT NULL;"
 ```
 
 ---
 
-## 6. Implementation Roadmap
+## 7. Maintenance
 
-### Phase 1: Infrastructure (The "Plumbing")
-1.  **Update `MemoryDB`**: Add `tool_definitions` table and methods (`upsert_tool`, `search_tools`).
-2.  **Create `bin/sync_tools.py`**: Script to iterate `ToolRegistry` and populate the DB.
-    -   Needs to handle `mcp_` tools dynamically!
+**When to run `sync_tools.py`?**
+1.  **New Tool Added**: You create a new `my_tool.py` and `.json`.
+2.  **Description Changed**: You update the description in a `.tool.json` (this changes the embedding).
+3.  **MCP Config Changed**: You add/remove servers in `mcp-servers.json`.
 
-### Phase 2: Registry Logic (The "Brain")
-3.  **Update `ToolRegistry`**:
-    -   Add connection to `MemoryDB`.
-    -   Implement `find_tools(query)`.
-    -   Define `CORE_TOOLS` constant list.
-
-### Phase 3: Router Integration (The "Switch")
-4.  **Update `LLMRouter`**:
-    -   Switch from `to_openai_format()` to `find_tools()`.
-    -   Add logging to see *which* tools were retrieved (crucial for debugging).
-
-### Phase 4: Handling "Misses" (The "Safety Net")
-5.  **Fallback Mechanism**:
-    -   If LLM says "I don't have a tool for that", trigger a **Re-Rank**.
-    -   Or, if `confidence` is low, load a broader set of tools for a second attempt.
-
----
-
-## 7. Special Considerations for Your Setup
-
-### MCP Tools
-MCP tools are dynamic. They must be synced to the DB effectively.
--   **Strategy**: On startup, after MCP discovery, run `sync_to_db()` to ensure new MCP tools are vector-indexed.
-
-### Naming Conventions
+**Naming Conventions**
 -   Ensure tool descriptions are **rich** and **descriptive**.
 -   BAD: "Search web"
 -   GOOD: "Search the internet using Brave Search for real-time information, news, and facts not in memory."
@@ -173,4 +138,3 @@ MCP tools are dynamic. They must be synced to the DB effectively.
 ## 8. Conclusion
 
 This architecture decouples **Intelligence** (the LLM) from **Knowledge** (the Tools). It allows you to install 1000+ tools (n8n workflows, specialized scripts) without ever confusing the local model or overflowing the context window.
-

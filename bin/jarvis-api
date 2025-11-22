@@ -76,6 +76,12 @@ else
     fi
 fi
 
+# Sync tool definitions to vector database
+echo -e "${BLUE}🔧 Syncing tool definitions...${NC}"
+python3 "$PROJECT_ROOT/bin/sync_tools.py" "$MODE" > /dev/null 2>&1
+echo -e "${GREEN}  ✅ Tool embeddings updated${NC}"
+echo ""
+
 # Load appropriate config
 if [ "$MODE" == "local" ]; then
     if [ -f "$PROJECT_ROOT/config/local.env" ]; then

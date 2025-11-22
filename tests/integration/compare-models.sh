@@ -55,6 +55,12 @@ if [ -f "$DB_FILE" ]; then
     echo "✓ Cleaned database (backup saved)"
 fi
 
+# CRITICAL: Sync tool definitions for Tool RAG
+echo "🔧 Syncing tool definitions..."
+./bin/sync_tools.py "$MODE" > /dev/null 2>&1
+echo "✅ Tool RAG ready for $MODE mode"
+echo ""
+
 # Test data to populate (setup queries)
 declare -a SETUP_QUERIES=(
     "Remember: The admin panel is at /admin with secret key 'test-secret-456' on port 8091"

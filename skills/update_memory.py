@@ -47,8 +47,17 @@ def main():
                 db.close()
                 return result
             
-            # Search for the memory
+            # Search for the memory (try recall first, then semantic search)
             memories = db.recall(query=search_query, category=category, limit=1)
+            
+            if not memories:
+                # Fallback to semantic search (no category filter available)
+                all_memories = db.semantic_search(query=search_query, limit=5)
+                # Filter by category if specified
+                if category:
+                    memories = [m for m in all_memories if m.get('category') == category][:1]
+                else:
+                    memories = all_memories[:1]
             
             if not memories:
                 result = {

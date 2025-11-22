@@ -99,6 +99,18 @@ class MemoryDB:
             )
         """)
         
+        # Tool Definitions (for Dynamic Retrieval)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tool_definitions (
+                name TEXT PRIMARY KEY,
+                description TEXT NOT NULL,
+                schema_json TEXT NOT NULL,
+                embedding BLOB,
+                enabled BOOLEAN DEFAULT 1,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         # Triggers to keep FTS5 in sync with knowledge_base
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS kb_fts_insert AFTER INSERT ON knowledge_base BEGIN
@@ -509,6 +521,138 @@ class MemoryDB:
         count = cursor.execute("SELECT COUNT(*) FROM knowledge_base_fts").fetchone()[0]
         return count
     
+    # ========== Tool RAG Operations ==========
+    
+    def upsert_tool(self, name: str, description: str, schema_json: str, enabled: bool = True) -> None:
+        """
+        Insert or update a tool definition in the database.
+        Automatically generates embedding for semantic search.
+        """
+        cursor = self.conn.cursor()
+        
+        # Generate embedding
+        embedding_blob = None
+        try:
+            from embeddings import get_embedding
+            # Combine name and description for embedding
+            text = f"Tool {name}: {description}"
+            embedding_vector = get_embedding(text)
+            embedding_blob = pickle.dumps(embedding_vector)
+        except Exception as e:
+            # Log warning but continue (tool will only be findable by name)
+            print(f"⚠️ Failed to generate embedding for tool {name}: {e}")
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO tool_definitions (name, description, schema_json, embedding, enabled, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (name, description, schema_json, embedding_blob, enabled))
+        
+        self.conn.commit()
+    
+    def search_tools(self, query: str, limit: int = 5, threshold: float = 0.0) -> List[Dict]:
+        """
+        Semantically search for relevant tools.
+        
+        Args:
+            query: User's natural language request
+            limit: Max number of tools to return
+            threshold: Minimum similarity score (0.0-1.0). Set to 0.0 to disable.
+            
+        Returns:
+            List of tool definitions with similarity scores
+        """
+        cursor = self.conn.cursor()
+        
+        try:
+            from embeddings import get_embedding, cosine_similarity
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # 1. Generate query embedding
+            query_embedding = get_embedding(query)
+            
+            # 2. Get all ENABLED tools with embeddings
+            results = cursor.execute("""
+                SELECT name, description, schema_json, embedding 
+                FROM tool_definitions 
+                WHERE enabled = 1 AND embedding IS NOT NULL
+            """).fetchall()
+            
+            logger.info(f"[TOOL_SEARCH] Searching {len(results)} enabled tools for query: '{query[:100]}...'")
+            
+            # 3. Calculate similarity
+            scored_tools = []
+            for row in results:
+                tool = dict(row)
+                try:
+                    # Deserialize embedding
+                    blob = tool['embedding']
+                    stored_embedding = None
+                    
+                    # Try pickle first (since we know it's pickle from debug)
+                    try:
+                        stored_embedding = pickle.loads(blob)
+                    except Exception:
+                        # If pickle fails, try JSON (newer format)
+                        try:
+                            if isinstance(blob, bytes):
+                                stored_embedding = json.loads(blob.decode('utf-8'))
+                            else:
+                                stored_embedding = json.loads(blob)
+                        except Exception:
+                            pass
+                    
+                    if stored_embedding:
+                        similarity = cosine_similarity(query_embedding, stored_embedding)
+                        tool['similarity'] = similarity
+                        del tool['embedding']  # Remove blob to save memory
+                        scored_tools.append(tool)
+                except Exception as e:
+                    logger.warning(f"⚠️ Error processing tool {tool.get('name')}: {e}")
+                    continue
+            
+            # 4. Sort by similarity
+            scored_tools.sort(key=lambda x: x['similarity'], reverse=True)
+            
+            # 5. Apply threshold filter if set
+            if threshold > 0.0:
+                filtered = [t for t in scored_tools if t['similarity'] >= threshold]
+                logger.info(f"[TOOL_SEARCH] Threshold {threshold}: {len(filtered)}/{len(scored_tools)} tools passed")
+                scored_tools = filtered
+            
+            # 6. Limit results
+            final_tools = scored_tools[:limit]
+            
+            # Log top results for debugging
+            for i, tool in enumerate(final_tools[:5]):  # Show top 5
+                logger.info(f"[TOOL_SEARCH]   #{i+1}: {tool['name']} (score: {tool['similarity']:.4f})")
+            
+            return final_tools
+            
+        except Exception as e:
+            # Fallback: Basic keyword match
+            print(f"⚠️ Semantic tool search failed: {e}. Falling back to keyword search.")
+            results = cursor.execute("""
+                SELECT name, description, schema_json 
+                FROM tool_definitions 
+                WHERE enabled = 1 AND (name LIKE ? OR description LIKE ?)
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", limit)).fetchall()
+            
+            return [dict(row) for row in results]
+
+    def get_tool_definition(self, name: str) -> Optional[Dict]:
+        """Get specific tool definition by name."""
+        cursor = self.conn.cursor()
+        result = cursor.execute(
+            "SELECT name, description, schema_json FROM tool_definitions WHERE name = ?",
+            (name,)
+        ).fetchone()
+        
+        if result:
+            return dict(result)
+        return None
+
     # ========== Utility ==========
     
     def close(self):

@@ -50,6 +50,42 @@ cd /home/boss/jarvis-voice
 source ~/jarvis-venv/bin/activate
 ```
 
+### Tool RAG System Initialization
+
+**CRITICAL**: After creating/cleaning databases, you MUST sync tool definitions:
+
+```bash
+# For cloud mode
+./bin/sync_tools.py cloud
+
+# For local mode  
+./bin/sync_tools.py local
+
+# Or both
+./bin/sync_tools.py cloud && ./bin/sync_tools.py local
+```
+
+**Why?** The Tool RAG system requires tool definitions to be indexed in the database with embeddings. Without this, the LLM cannot dynamically discover and use tools.
+
+**When to run:**
+- After fresh database creation
+- After deleting/recreating databases for tests
+- After adding new tools
+- After changing tool descriptions
+- **Before running tests** if you've manually cleaned the database
+
+**Note**: The test scripts that clean databases (`test-memory-tools.sh`, `test-memory-real-world.sh`, `compare-models.sh`, `test-db-schema.sh`) now automatically run this sync.
+
+**Test scripts that DON'T need sync:**
+- `test-all-tools.sh` - Uses existing database
+- `test-cloud-comprehensive.sh` - Uses existing database
+- `test-tool-rag.sh` - Uses existing database
+
+**If you see "0 tools retrieved" errors**, run sync:
+```bash
+./bin/sync_tools.py cloud  # or local
+```
+
 ## Test Configuration
 
 ### Response Style
@@ -476,6 +512,51 @@ jq '[.test_run.tests[].cache_savings_usd] | add' logs/test/test-cloud-comprehens
 jq '[.test_run.tests[].cost_usd] | add / length' logs/test/test-cloud-comprehensive_*.json | tail -n 1
 ```
 
+## Tool RAG Troubleshooting
+
+### Issue: "Tool not retrieved" or LLM using wrong tools
+**Symptoms:**
+- LLM uses `get_time` instead of the correct tool
+- Tests fail with wrong tool selection
+- Debug shows 0 or very few tools retrieved
+
+**Fix:**
+```bash
+# 1. Verify tool embeddings exist
+sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embedding IS NOT NULL;"
+# Should return: 32 (or your total tool count)
+
+# 2. If 0 or low, resync:
+./bin/sync_tools.py cloud
+
+# 3. Test again
+./orchestrator/orchestrator_v2.py cloud "What is the price of Bitcoin?"
+```
+
+### Issue: Tool definitions table doesn't exist
+**Symptoms:**
+- Error: `no such table: tool_definitions`
+- Fresh database from backup
+
+**Fix:**
+```bash
+# The table is created automatically on first MemoryDB connection
+# Just run sync:
+./bin/sync_tools.py cloud
+```
+
+### Issue: Tests fail after database restore from backup
+**Symptoms:**
+- Restored old backup, tests now fail
+- Tool RAG not working after restore
+
+**Fix:**
+```bash
+# Old backups don't have tool_definitions table
+# The table will be auto-created, but embeddings need sync:
+./bin/sync_tools.py cloud
+```
+
 ## Known Issues & Workarounds
 
 ### Test Keyword Matching
@@ -553,6 +634,52 @@ Use this for a comprehensive test run:
   - [ ] Memory retrieval
   - [ ] Embedding generation
   - [ ] Conversation logging
+
+## Tool RAG System Testing
+
+### Verify Tool Retrieval
+```bash
+# Test that non-ghost tools are dynamically retrieved
+./tests/integration/test-tool-rag.sh
+
+# Expected: 8/8 tests pass
+# - 4 non-ghost tools retrieved and used
+# - 3 ghost tools always available
+# - Multi-turn self-healing verified
+```
+
+### Debug Tool Retrieval
+```bash
+# See what tools are retrieved for a query
+./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?"
+
+# Expected output:
+# - Similarity scores for all tools
+# - Which tools pass the threshold
+# - Exactly what the LLM receives
+# - Recommendations for threshold tuning
+```
+
+### Verify Tool Embeddings
+```bash
+# Check if tools are indexed
+sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embedding IS NOT NULL;"
+
+# Expected: 32 (or your total tool count)
+# If 0: Run ./bin/sync_tools.py cloud
+```
+
+### Multi-Turn Self-Healing Test
+```bash
+# Test LLM can diagnose and fix errors through multiple attempts
+./tests/integration/test-self-healing.sh
+
+# Expected behaviors:
+# - LLM checks logs after failures
+# - Retries with corrected parameters  
+# - Uses fallback strategies (e.g., semantic_recall → search_memory)
+# - Adapts to error messages
+```
 
 ## Continuous Testing
 

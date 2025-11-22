@@ -27,6 +27,11 @@ LLM_PROVIDER="openai"
 OPENAI_API_KEY="sk-your-key-here"
 ```
 
+# Or use xAI Grok-4-fast
+LLM_PROVIDER="xai"
+XAI_API_KEY="xai-your-key-here"
+XAI_MODEL="grok-4-fast-reasoning-latest"
+
 ### 3. Test It
 
 ```bash
@@ -83,7 +88,7 @@ Wake Word Detection (openwakeword)
             ↓
 Speech-to-Text (OpenAI Whisper / faster-whisper)
             ↓
-LLM Provider (Claude/GPT/Ollama)
+LLM Provider (xAI/Claude/GPT/Ollama)
   • Understands intent: send_webhook tool
   • Extracts parameters: {url: "...", data: {...}}
             ↓
@@ -106,8 +111,9 @@ You hear: "Webhook sent successfully to your server. Status 200."
 | **Anthropic Claude** | ✅ Native | Fast | Medium | Cloud |
 | **OpenAI GPT** | ✅ Native | Fast | Low | Cloud |
 | **Ollama (Local)** | ⚠️ Structured prompts | Slower | Free | Local |
+| **xAI Grok-4-fast** | ✅ Native | Fast | Low | Cloud |
 
-**Recommendation:** Use Anthropic Claude Sonnet 4.5 for best tool calling accuracy.
+**Recommendation:** Use xAI Grok-4-fast for best tool calling accuracy.
 
 ## Creating Custom Tools
 
@@ -252,12 +258,21 @@ bin/
 
 ## Switching Providers
 
-### To Anthropic (Recommended)
+### To xAI Grok-4-fast (Recommended)
+
+`config/cloud.env`:
+```bash
+LLM_PROVIDER="xai"
+XAI_API_KEY="xai-..."
+XAI_MODEL="grok-4-fast-reasoning-latest"
+```
+
+### To Anthropic Claude
 
 `config/cloud.env`:
 ```bash
 LLM_PROVIDER="anthropic"
-ANTHROPIC_API_KEY="sk-ant-..."
+ANTHROPIC_API_KEY="sk-..."
 ANTHROPIC_MODEL="claude-sonnet-4-20250514"
 ```
 
@@ -319,7 +334,7 @@ Then use `jarvis-local` instead of `jarvis`.
 - Check logs in `audio/cloud/logs/` or `audio/local/logs/`
 - Test tools individually: `echo '{}' | ./skills/tool.py`
 - Test orchestrator: `./orchestrator/orchestrator_v2.py cloud "command"`
-- Read testing guide: `TEST_TOOL_SYSTEM.md`
+- Read testing guide: `TESTING.md`
 
 ---
 

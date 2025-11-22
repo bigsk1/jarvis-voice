@@ -350,37 +350,6 @@ class ToolRegistry:
     def get_mcp_info(self, tool_name: str) -> tuple:
         """
         Extract MCP server and tool name from full tool name.
-        
-        CRITICAL: This function MUST dynamically match against registered MCP clients.
-        DO NOT change to simple string splitting - server names can contain underscores!
-        
-        ARCHITECTURAL DECISION: MCP server names MUST use snake_case (underscores).
-        This is intentional - local LLMs get confused with other naming conventions
-        (e.g., "brave-search" with hyphens, "braveSearch" in camelCase).
-        
-        Examples:
-            "mcp_brave_search_brave_web_search" → ("brave_search", "brave_web_search")
-            "mcp_fetch_fetch" → ("fetch", "fetch")
-            "mcp_sequential_thinking_analyze" → ("sequential_thinking", "analyze")
-            "mcp_my_custom_server_name_tool_name" → ("my_custom_server_name", "tool_name")
-        
-        Returns: (server_name, mcp_tool_name) or (None, None) if invalid
-        
-        How it works:
-            1. Tool names follow format: mcp_{server_name}_{mcp_tool_name}
-            2. Server names use snake_case with underscores (e.g., "brave_search", "sequential_thinking")
-            3. We MUST match against self.mcp_clients.keys() to find the correct split point
-            4. We sort by length (longest first) to handle "brave_search" before "brave"
-        
-        Why this matters:
-            - Simple splitting on first underscore would break: "brave_search" → "brave" (WRONG!)
-            - Local LLMs need consistent snake_case naming (no hyphens, no camelCase)
-            - This is the ONLY way to support any MCP server name dynamically
-            - Regression here breaks ALL MCP servers with underscores in their names
-        
-        Historical context:
-            - Previous issues showed local models get confused with non-snake_case names
-            - snake_case is enforced in mcp-servers.json for tool calling reliability
         """
         if not self.is_mcp_tool(tool_name):
             return None, None
@@ -398,9 +367,57 @@ class ToolRegistry:
                 return server_name, mcp_tool_name
         
         # Fallback: split on first underscore (handles simple cases like "mcp_oldstyle_tool")
-        # This should rarely be reached if MCP servers are properly initialized
         parts = remaining.split("_", 1)
         if len(parts) == 2:
             return parts[0], parts[1]
         return None, None
+
+    def find_tools(self, query: str, limit: int = 5) -> List[ToolSchema]:
+        """
+        Find relevant tools for a user query using vector search.
+        Always includes GHOST_TOOLS (configured core tools).
+        """
+        from memory_db import get_memory_db
+        from config_loader import get_config_value, get_float
+        
+        # Get Core "Ghost" Tools from config (or use defaults)
+        # These ensure basic functionality never fails
+        ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time')
+        CORE_TOOLS = [t.strip() for t in ghost_tools_str.split(',')]
+        
+        # Get similarity threshold from config
+        threshold = get_float('TOOL_SIMILARITY_THRESHOLD', 0.0)
+        
+        try:
+            db = get_memory_db()
+            
+            # 1. Get relevant tools from vector search
+            relevant_tools_data = db.search_tools(query, limit=limit, threshold=threshold)
+            
+            # 2. Collect tool names
+            found_names = [t['name'] for t in relevant_tools_data]
+            
+            # 3. Add Core Tools (if not already found)
+            for core in CORE_TOOLS:
+                if core not in found_names and core in self.tools:
+                    found_names.append(core)
+            
+            # 4. Map back to ToolSchema objects
+            final_tools = []
+            for name in found_names:
+                tool = self.get_tool(name)
+                if tool:
+                    final_tools.append(tool)
+            
+            # Close DB connection
+            db.close()
+            
+            return final_tools
+            
+        except Exception as e:
+            print(f"⚠️ Tool retrieval failed: {e}. Falling back to ALL enabled tools.")
+            # Fallback: return all enabled tools
+            return [t for t in self.tools.values() if t.permissions.get('enabled', True)]
+
+
 

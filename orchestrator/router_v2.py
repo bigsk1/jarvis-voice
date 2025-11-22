@@ -90,6 +90,10 @@ CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - After ingest_intel succeeds → task is COMPLETE, switch to Q&A
 - After **list_reminders/list_alerts** → **MUST follow with Q&A** to summarize results (never stop after list!)
 - After search tools (search_memory, semantic_recall) → task is COMPLETE **UNLESS** user's intent requires further action
+- **CRITICAL EXCEPTION FOR MEMORY TOOLS**: If a memory search tool returns NO RESULTS, you MUST try a DIFFERENT memory tool:
+  - semantic_recall fails → try search_memory (with keywords)
+  - search_memory fails → try recall (broader search)
+  - This is NOT "calling same tool twice" - it's using DIFFERENT memory search strategies
 - **Exception**: "cancel my reminder" = (1) list first, (2) acknowledge, (3) Q&A summary
 - Only repeat a tool if user asked for multiple operations or first attempt had wrong parameters or your task explicitly requires it
 
@@ -182,6 +186,7 @@ When to use memory tools:
    - Use 'search_memory' for simple KEYWORD lookups (1-3 words: project names, topics, concepts)
    - Note: 'search_memory' now uses FTS5 with BM25 ranking - faster and smarter than before
    - Rule of thumb: If it's a sentence/question → semantic_recall. If it's a keyword → search_memory.
+   - **CRITICAL FALLBACK**: If semantic_recall returns no results, try search_memory with keywords. If search_memory fails, try recall as last resort.
 2. **PROACTIVELY use 'remember'** when you encounter VALUABLE, REUSABLE information:
    
    A. USER SHARES information (obvious cases):
@@ -344,16 +349,52 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         if sys.stdout.isatty():
             print(f"🧠 Routing with LLM: '{transcript}'")
         
-        # Get tools in appropriate format for provider
+        # DYNAMIC TOOL RETRIEVAL (The "Tool RAG" System)
+        # Instead of loading all tools, we find only the relevant ones
+        
+        # 1. Determine retrieval limit based on mode
+        # Local models (Ollama) have smaller context, so we serve fewer tools
+        # Cloud models (Claude/GPT) can handle more choices
+        retrieval_limit = 5 if self.mode == 'local' else 15
+        
+        # 2. Find relevant tools using vector search
+        # This returns ToolSchema objects for the top matches + ghost tools
+        relevant_tools = self.registry.find_tools(transcript, limit=retrieval_limit)
+        
+        # Separate ghost tools from retrieved tools for visibility
+        from config_loader import get_config_value
+        ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time')
+        ghost_list = [t.strip() for t in ghost_tools_str.split(',')]
+        
+        tool_names = [t.name for t in relevant_tools]
+        retrieved = [name for name in tool_names if name not in ghost_list]
+        ghosts = [name for name in tool_names if name in ghost_list]
+        
+        if sys.stdout.isatty():
+            print(f"📚 Loaded {len(tool_names)} tools ({len(retrieved)} retrieved + {len(ghosts)} ghost)")
+            if retrieved:
+                print(f"   Retrieved: {', '.join(retrieved)}")
+            if ghosts:
+                print(f"   👻 Ghost: {', '.join(ghosts)}")
+        
+        # ALWAYS log tool retrieval details for debugging
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+        logger.info(f"[TOOL_RAG] Query: {transcript[:100]}...")
+        logger.info(f"[TOOL_RAG] Retrieved {len(retrieved)} tools: {retrieved}")
+        logger.info(f"[TOOL_RAG] Ghost tools: {ghosts}")
+        logger.info(f"[TOOL_RAG] Total tools sent to LLM: {len(tool_names)}")
+        
+        # 3. Convert to provider-specific format
         if hasattr(self.provider, '__class__') and 'Anthropic' in self.provider.__class__.__name__:
-            tools = self.registry.to_anthropic_format()
+            tools = [t.to_anthropic_format() for t in relevant_tools]
         else:
-            # OpenAI format also works for Ollama (we convert internally)
-            tools = self.registry.to_openai_format()
+            tools = [t.to_openai_format() for t in relevant_tools]
         
         # For Ollama, convert to Anthropic-like format (simpler)
         if hasattr(self.provider, '__class__') and 'Ollama' in self.provider.__class__.__name__:
-            tools = self.registry.to_anthropic_format()
+            tools = [t.to_anthropic_format() for t in relevant_tools]
         
         # Send to LLM
         messages = [{"role": "user", "content": transcript}]

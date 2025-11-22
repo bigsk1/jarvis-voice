@@ -7,10 +7,11 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (November 2025)
 
 **Production Ready** ✅
+- **Tool RAG System** - Dynamic tool retrieval for infinite scalability ⭐ NEW
 - Multi-turn tool orchestration with LLM routing
-- 17+ working skills (memory, bash, OpenCode, API calls, etc.)
-- **Proactive API** for event-driven alerts and notifications ⭐ NEW
-- **Background services** for auto-resolve and follow-ups ⭐ NEW
+- 32+ working skills (memory, bash, OpenCode, API calls, reminders, etc.)
+- **Proactive API** for event-driven alerts and notifications
+- **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
 - **Intelligent memory** with semantic search + configurable thresholds
 - OpenCode integration for autonomous coding tasks
@@ -25,9 +26,14 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## ✨ Key Features
 
 ### Intelligence & Tools
-- **Advanced Tool Calling**: LLM-powered routing with 24+ skills
+- **Tool RAG System**: Dynamic tool retrieval - loads only relevant tools for each query ⭐ NEW
+  - Scales to 100+ tools without context flooding
+  - Vector-based semantic search for tool discovery
+  - "Ghost tools" always available for core functionality
+  - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
+- **Advanced Tool Calling**: LLM-powered routing with 32+ skills
 - **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
-- **Auto-Context System**: Automatic short-term memory of recent conversations ⭐ NEW
+- **Auto-Context System**: Automatic short-term memory of recent conversations
   - Remembers what you just discussed without needing explicit "remember" commands
   - Catches contradictions, continues workflows seamlessly, learns from failures
   - See [`docs/AUTO_CONTEXT_SYSTEM.md`](docs/AUTO_CONTEXT_SYSTEM.md)

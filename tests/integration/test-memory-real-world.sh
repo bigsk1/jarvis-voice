@@ -19,6 +19,12 @@ if [ -f data/jarvis_memory.db ]; then
 fi
 ./bin/setup-memory-db.sh > /dev/null 2>&1
 
+# CRITICAL: Sync tool definitions for Tool RAG
+echo "🔧 Syncing tool definitions..."
+./bin/sync_tools.py cloud > /dev/null 2>&1
+echo "✅ Tool RAG ready"
+echo ""
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "SCENARIO 1: Complex Context - Multiple Related Facts"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

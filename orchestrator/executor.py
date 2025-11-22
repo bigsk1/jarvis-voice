@@ -139,24 +139,18 @@ class ToolExecutor:
             
             duration_ms = (time.time() - start_time) * 1000
             
-            if result.returncode != 0:
+            # Parse output (tools write JSON to stdout even on failure)
+            try:
+                output = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                # If JSON parsing fails, fallback to error message
                 output = {
                     "ok": False,
                     "speech": f"Tool {tool_name} failed",
-                    "error": result.stderr
+                    "error": result.stderr or result.stdout or "Unknown error"
                 }
-                # Log the failed execution
-                self.logger.log_tool_call(
-                    tool_name=tool_name,
-                    arguments=args,
-                    result=output,
-                    duration_ms=duration_ms,
-                    mode=self.mode
-                )
-                return output
             
-            # Parse output
-            output = json.loads(result.stdout)
+            # Note: We don't check returncode because tools write valid JSON even on failure
             
             # Log successful execution
             self.logger.log_tool_call(

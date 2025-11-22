@@ -69,8 +69,12 @@
 ### Tool System
 | Document | Purpose |
 |----------|---------|
+| **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval ⭐ NEW |
+| **TOOL_RAG_IMPLEMENTATION_SUMMARY.md** | Tool RAG implementation details ⭐ NEW |
+| **TOOL_RAG_TROUBLESHOOTING.md** | Tool RAG debugging guide ⭐ NEW |
+| **TEST_SCRIPT_TOOL_RAG_FIX.md** | Test script integration fixes ⭐ NEW |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
-| **TOOL_MANAGEMENT.md** | Enable/disable tools (NEW) |
+| **TOOL_MANAGEMENT.md** | Enable/disable tools |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |
 | **ERROR_RECOVERY.md** | Error handling and retries |
 
@@ -199,6 +203,17 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-11-22:**
+- ✅ **Tool RAG System** - Dynamic tool retrieval using vector embeddings for infinite scalability
+  - Loads only relevant tools per query (5-15 tools instead of all 32+)
+  - Vector-based semantic search with configurable similarity threshold
+  - "Ghost tools" pattern for always-available core functionality
+  - Optimized for local models (smaller context windows)
+  - See: `docs/TOOL_RAG_STRATEGY.md`, `docs/TOOL_RAG_IMPLEMENTATION_SUMMARY.md`
+- ✅ **Enhanced error propagation** - LLM now receives full error details from failed tools for self-healing
+- ✅ **Test script Tool RAG integration** - All test scripts auto-sync tool embeddings after DB cleanup
+- ✅ **Tool RAG debugging utilities** - `debug_tool_rag.py` for comprehensive retrieval analysis
 
 **2025-11-21:**
 - ✅ **Randomized wake word greetings** - Dynamic greeting selection for personality

@@ -85,6 +85,10 @@ check opencode session is used after i asked jarvis to use opencode to make some
 activate env 
 source ~/jarvis-venv/bin/activate
 
+no db run - cloud or local or both to get all tables made and to create embedding for tools and mcp tools
+ ./bin/sync_tools.py cloud
+ ./bin/sync_tools.py local
+
 test all tools
 cd /home/boss/jarvis-voice/tests/integration && ./test-all-tools.sh
 

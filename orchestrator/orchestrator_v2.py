@@ -734,7 +734,26 @@ Your response:"""
         
         for i, ctx in enumerate(conversation_context, 1):
             tool_name = ctx["tool"]
-            result_summary = json.dumps(ctx["result"], indent=2)[:300]  # Limit size
+            result = ctx["result"]
+            
+            # Smart summarization: prioritize error details
+            if not result.get("ok", True):
+                # For failures, include full error context
+                summary_parts = []
+                summary_parts.append(f"Status: FAILED")
+                if "error" in result:
+                    summary_parts.append(f"Error: {result['error']}")
+                if "data" in result and isinstance(result["data"], dict):
+                    # Include error details from data
+                    if "error" in result["data"]:
+                        summary_parts.append(f"Details: {result['data']['error']}")
+                    if "status_code" in result["data"]:
+                        summary_parts.append(f"Status Code: {result['data']['status_code']}")
+                result_summary = "\n   ".join(summary_parts)
+            else:
+                # For success, use compact JSON (limited to 300 chars)
+                result_summary = json.dumps(result, indent=2)[:300]
+            
             context_parts.append(f"\n{i}. {tool_name}")
             context_parts.append(f"   Result: {result_summary}")
         
