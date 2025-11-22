@@ -654,15 +654,15 @@ Your response:"""
                 return current_query
             
             # Build context block (oldest first for chronological order)
-            context_parts = ["╔══════════════════════════════════════════════════════════╗"]
-            context_parts.append("║ RECENT CONVERSATION HISTORY (for context awareness)     ║")
-            context_parts.append(f"║ Last {len(relevant)} conversation(s) in past {self.auto_context_minutes} minutes             ║")
-            context_parts.append("╚══════════════════════════════════════════════════════════╝\n")
+            # Using simple plain text format (no Unicode boxes - saves tokens!)
+            context_parts = ["=== RECENT CONVERSATION HISTORY ==="]
+            context_parts.append(f"Last {len(relevant)} conversation(s) in past {self.auto_context_minutes} minutes")
+            context_parts.append("")
             
             for i, conv in enumerate(reversed(relevant), 1):  # Oldest first
-                context_parts.append(f"─── Conversation #{i} ───")
-                context_parts.append(f"User asked: {conv['user_query']}")
-                context_parts.append(f"Jarvis replied: {conv['jarvis_response']}")
+                context_parts.append(f"[Previous Exchange {i}]")
+                context_parts.append(f"User: {conv['user_query']}")
+                context_parts.append(f"Assistant: {conv['jarvis_response']}")
                 
                 # Include tools used (critical for self-learning)
                 tools_json = conv.get('tools_used')
@@ -677,10 +677,10 @@ Your response:"""
                 # Flag failures (critical for learning from mistakes!)
                 success = conv.get('success', True)
                 if not success:
-                    context_parts.append("⚠️  STATUS: FAILED - Task did not complete successfully")
-                    context_parts.append("   Consider: Using check_tool_logs to understand why")
+                    context_parts.append("Status: FAILED - Task did not complete successfully")
+                    context_parts.append("Consider using check_tool_logs to understand why")
                 else:
-                    context_parts.append("✅ STATUS: Success")
+                    context_parts.append("Status: Success")
                 
                 # Include model/cost metadata if available (helps understand complexity)
                 metadata_json = conv.get('metadata')
@@ -696,14 +696,15 @@ Your response:"""
                 
                 context_parts.append("")  # Blank line between conversations
             
-            context_parts.append("╔══════════════════════════════════════════════════════════╗")
-            context_parts.append("║ CURRENT USER QUERY (what they just asked)               ║")
-            context_parts.append("╚══════════════════════════════════════════════════════════╝")
+            context_parts.append("=== CURRENT USER QUERY ===")
             context_parts.append(current_query)
             context_parts.append("")
-            context_parts.append("INSTRUCTIONS:")
-            context_parts.append("- Use the above context to provide intelligent, context-aware responses")
+            context_parts.append("Instructions:")
+            context_parts.append("- Use the conversation history to provide context-aware responses")
             context_parts.append("- Reference previous topics naturally when relevant")
+            context_parts.append("- Learn from failed attempts (check_tool_logs if needed)")
+            context_parts.append("- Catch contradictions and continue multi-step workflows seamlessly")
+            context_parts.append("- If you need more history, call get_recent_conversations tool")
             context_parts.append("- Learn from failed attempts (check_tool_logs if needed)")
             context_parts.append("- Catch contradictions (\"You just said X, now saying Y?\")")
             context_parts.append("- Continue multi-step workflows seamlessly")
