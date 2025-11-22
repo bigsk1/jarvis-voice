@@ -229,7 +229,14 @@ class MemoryDB:
                 LIMIT ?
             """, (f"%{query}%", f"%{query}%", limit)).fetchall()
         
-        return [dict(row) for row in results]
+        # Add relevance field for consistency with FTS5 search
+        memories = []
+        for row in results:
+            memory = dict(row)
+            memory['relevance'] = 0.5  # Default relevance for LIKE search (not as precise as FTS5)
+            memories.append(memory)
+        
+        return memories
     
     def update_memory(self, memory_id: int, value: str = None, importance: int = None) -> bool:
         """Update an existing memory."""
@@ -289,40 +296,85 @@ class MemoryDB:
         - BM25 ranking (better than simple LIKE matching)
         - Phrase search: "Flask API" in quotes
         - Boolean operators: "flask OR express"
+        - Smart query expansion: tries AND first (precise), then OR (broad) if no results
+        
+        Strategy:
+        1. Try original query (may use implicit AND for multi-word)
+        2. Try explicit AND with quoted terms (handles hyphens like "Mini-AI")
+        3. Try OR with quoted terms (broader match)
+        4. Fall back to LIKE search (last resort)
         
         Args:
             query: Search query
             limit: Maximum results
             
         Returns:
-            List of memories with relevance scores
+            List of memories ranked by relevance
         """
         cursor = self.conn.cursor()
         
-        try:
-            # FTS5 BM25 search (lower bm25 = better match)
-            results = cursor.execute("""
-                SELECT kb.*, bm25(knowledge_base_fts) as relevance_score
-                FROM knowledge_base kb
-                JOIN knowledge_base_fts ON kb.id = knowledge_base_fts.rowid
-                WHERE knowledge_base_fts MATCH ?
-                ORDER BY relevance_score ASC, kb.importance DESC
-                LIMIT ?
-            """, (query, limit)).fetchall()
+        def _try_fts_query(fts_query: str) -> List[Dict]:
+            """Internal helper to execute FTS query."""
+            try:
+                results = cursor.execute("""
+                    SELECT kb.*, bm25(knowledge_base_fts) as relevance_score
+                    FROM knowledge_base kb
+                    JOIN knowledge_base_fts ON kb.id = knowledge_base_fts.rowid
+                    WHERE knowledge_base_fts MATCH ?
+                    ORDER BY relevance_score ASC, kb.importance DESC
+                    LIMIT ?
+                """, (fts_query, limit)).fetchall()
+                
+                memories = []
+                for row in results:
+                    memory = dict(row)
+                    # Convert BM25 to 0-1 score (lower is better, so invert)
+                    memory['relevance'] = 1 / (1 + abs(memory['relevance_score']))
+                    del memory['relevance_score']
+                    memories.append(memory)
+                
+                return memories
+            except sqlite3.OperationalError:
+                return []
+        
+        def _prepare_terms(query_str: str) -> list:
+            """Extract and quote key terms from query."""
+            stop_words = {'the', 'is', 'at', 'on', 'and', 'or', 'to', 'a', 'an', 'in', 'of', 'for', 'with', 'as', 'by', 'my', 'can', 'you', 'check', 'see', 'if', 'up', 'running', 'status'}
+            terms = [word.strip('?,!.') for word in query_str.split() if word.lower() not in stop_words and len(word) > 2]
             
-            memories = []
-            for row in results:
-                memory = dict(row)
-                # Convert BM25 to 0-1 score (lower is better, so invert)
-                memory['relevance'] = 1 / (1 + abs(memory['relevance_score']))
-                del memory['relevance_score']
-                memories.append(memory)
+            # Quote terms with hyphens or special chars to prevent FTS5 operator interpretation
+            quoted_terms = []
+            for term in terms:
+                if '-' in term or any(c in term for c in [':', '*', '(', ')']):
+                    # FTS5 phrase syntax: wrap in quotes
+                    quoted_terms.append(f'"{term}"')
+                else:
+                    quoted_terms.append(term)
             
-            return memories
-        except sqlite3.OperationalError as e:
-            # Fallback to old LIKE search if FTS5 query fails
-            # (e.g., invalid FTS5 syntax)
+            return quoted_terms
+        
+        # 1. Try original query first (as-is)
+        results = _try_fts_query(query)
+        
+        # If no results and query has multiple words, try AND then OR
+        if not results and len(query.split()) > 1:
+            quoted_terms = _prepare_terms(query)
+            
+            if quoted_terms:
+                # 2. Try explicit AND with quoted terms (precise match)
+                and_query = ' AND '.join(quoted_terms)
+                results = _try_fts_query(and_query)
+                
+                # 3. If still no results, try OR (broader match)
+                if not results:
+                    or_query = ' OR '.join(quoted_terms)
+                    results = _try_fts_query(or_query)
+        
+        # 4. Final fallback: try LIKE search
+        if not results:
             return self.recall(query, limit=limit)
+        
+        return results
     
     def get_all_memories(self, category: str = None) -> List[Dict]:
         """Get all stored memories, optionally filtered by category."""
