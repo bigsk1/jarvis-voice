@@ -88,13 +88,17 @@ You can call MULTIPLE tools in sequence to complete complex tasks! After each to
 CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - Do NOT call the same tool multiple times unless explicitly needed
 - After ingest_intel succeeds → task is COMPLETE, switch to Q&A
-- After list/search tools succeed → task is COMPLETE **UNLESS** user's intent requires action (e.g., "cancel my reminder" = list first, then acknowledge)
+- After **list_reminders/list_alerts** → **MUST follow with Q&A** to summarize results (never stop after list!)
+- After search tools (search_memory, semantic_recall) → task is COMPLETE **UNLESS** user's intent requires further action
+- **Exception**: "cancel my reminder" = (1) list first, (2) acknowledge, (3) Q&A summary
 - Only repeat a tool if user asked for multiple operations or first attempt had wrong parameters or your task explicitly requires it
 
 **MULTI-STEP REMINDER WORKFLOWS:**
 - "Cancel my X reminder" → (1) list_reminders to find ID, (2) acknowledge_reminders with that ID
 - "Delete my reminder about Y" → (1) list_reminders to find ID, (2) acknowledge_reminders with that ID
-- "What reminders do I have?" → (1) list_reminders only, then Q&A response
+- **"What reminders do I have?" / "Show reminders" / "Any pending reminders?"** → (1) list_reminders, (2) **MUST FOLLOW WITH Q&A** summarizing results
+  - ✅ CORRECT: Turn 1: list_reminders → Turn 2: Q&A "You have 2 reminders: dinner at 6pm and meeting tomorrow"
+  - ❌ WRONG: Turn 1: list_reminders → STOP (never do this!)
 - **FUZZY MATCHING**: User says "cancel checkbook reminder" and you see "check for checkbook" in results? THAT'S A MATCH! Look for partial matches in title/description.
 - **Always continue to step 2**: After list_reminders returns results with a matching reminder, IMMEDIATELY call acknowledge_reminders with that ID. Don't stop and ask - just do it!
 
