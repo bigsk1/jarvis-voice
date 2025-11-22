@@ -181,6 +181,8 @@ YOU MUST:
 ❌ NEVER use action tools (execute_bash, api_call, query_service_logs) BEFORE checking memory!
 ✅ ALWAYS search memory FIRST, THEN use action tools if memory has no info
 ✅ Memory tools are listed FIRST in your tools list for a reason - use them first!
+✅ If memory contains an EXACT COMMAND to run (like "curl X.X.X.X:PORT"), USE THAT COMMAND EXACTLY - don't improvise!
+✅ Remote servers (other IPs) don't have systemctl access - only check URLs/ports with curl
 
 When to use memory tools:
 1. **ALWAYS use 'search_memory' or 'semantic_recall' FIRST** when the user asks "what", "when", "who", "where", "how" questions
