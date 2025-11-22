@@ -60,9 +60,10 @@
 | Document | Purpose |
 |----------|---------|
 | **MEMORY_SYSTEM.md** | Memory database architecture and tools |
-| **FTS5_SEARCH_SYSTEM.md** | FTS5 full-text search with BM25 ranking ⭐ NEW |
+| **SEARCH_FALLBACK_SYSTEM.md** | Multi-tier search fallbacks (AND→OR→LIKE) ⭐ NEW |
+| **FTS5_SEARCH_SYSTEM.md** | FTS5 full-text search with BM25 ranking |
 | **DUAL_DATABASE_SYSTEM.md** | Cloud/local database with auto-sync |
-| **EMBEDDING_HEALTH_CHECKS.md** | Embedding dimension validation ⭐ NEW |
+| **EMBEDDING_HEALTH_CHECKS.md** | Embedding dimension validation |
 | **SEMANTIC_THRESHOLD_TUNING.md** | How to tune similarity threshold |
 | **MEMORY_SYSTEM_TUNING.md** | Advanced memory optimization |
 | **MEMORY_INTELLIGENCE_FIXES.md** | Auto-save improvements |
@@ -223,6 +224,11 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Samantha OS personality** - Added support for custom AI personalities with TTS instructions
 
 **2025-11-22:**
+- ✅ **Search Fallback System** - Multi-tier intelligent fallbacks for all search methods ⭐ MAJOR
+  - FTS5: AND → OR → LIKE fallback chain with hyphen handling
+  - Semantic: Falls back to FTS5 if threshold too high
+  - Guarantees results for all queries (no more silent 0 results)
+  - See: `docs/SEARCH_FALLBACK_SYSTEM.md`
 - ✅ **Embedding Health Checks** - Automated validation of embedding dimensions on startup
   - Prevents silent semantic search failures from dimension mismatches
   - Integrated into `jarvis-services` and `jarvis-api` startup flows
