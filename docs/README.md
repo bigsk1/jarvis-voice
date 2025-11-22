@@ -60,7 +60,8 @@
 | Document | Purpose |
 |----------|---------|
 | **MEMORY_SYSTEM.md** | Memory database architecture and tools |
-| **SEARCH_FALLBACK_SYSTEM.md** | Multi-tier search fallbacks (AND→OR→LIKE) ⭐ NEW |
+| **USER_PROFILE_SYSTEM.md** | User profile management (intel + dynamic memories) ⭐ NEW |
+| **SEARCH_FALLBACK_SYSTEM.md** | Multi-tier search fallbacks (AND→OR→LIKE) |
 | **FTS5_SEARCH_SYSTEM.md** | FTS5 full-text search with BM25 ranking |
 | **DUAL_DATABASE_SYSTEM.md** | Cloud/local database with auto-sync |
 | **EMBEDDING_HEALTH_CHECKS.md** | Embedding dimension validation |
