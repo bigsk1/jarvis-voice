@@ -321,7 +321,7 @@ TOOL_SIMILARITY_THRESHOLD=0.0  # 0.0 = no filtering (use top-K only)
 
 ```mermaid
 graph TB
-    Query[User Query: "What is Bitcoin price?"] --> Embed[Generate Query Embedding]
+    Query[User Query: What is Bitcoin price?] --> Embed[Generate Query Embedding]
     
     Embed --> DB[(tool_definitions Table)]
     DB --> AllTools[32+ Tool Embeddings]
