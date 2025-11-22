@@ -357,9 +357,29 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         # Cloud models (Claude/GPT) can handle more choices
         retrieval_limit = 5 if self.mode == 'local' else 15
         
-        # 2. Find relevant tools using vector search
+        # 2. Extract the actual user query (remove auto-context if present)
+        # Auto-context prepends "=== RECENT CONVERSATION HISTORY ===" which dilutes tool search
+        tool_search_query = transcript
+        if "=== RECENT CONVERSATION HISTORY ===" in transcript and "Instructions:" in transcript:
+            # The actual query is between the last conversation exchange and "Instructions:"
+            # Find it by working backwards from "Instructions:"
+            before_instructions = transcript.split("Instructions:")[0]
+            lines = before_instructions.split('\n')
+            # Work backwards to find the first non-empty line that's not part of the context metadata
+            for line in reversed(lines):
+                line = line.strip()
+                if line and not line.startswith('[') and not line.startswith('User:') and \
+                   not line.startswith('Assistant:') and not line.startswith('Tools used:') and \
+                   not line.startswith('Status:') and not line.startswith('===') and \
+                   not line.startswith('Last ') and not line.startswith('Model:') and \
+                   not line.startswith('Cost:') and 'conversation(s)' not in line:
+                    # This is the user query
+                    tool_search_query = line
+                    break
+        
+        # 3. Find relevant tools using vector search
         # This returns ToolSchema objects for the top matches + ghost tools
-        relevant_tools = self.registry.find_tools(transcript, limit=retrieval_limit)
+        relevant_tools = self.registry.find_tools(tool_search_query, limit=retrieval_limit)
         
         # Separate ghost tools from retrieved tools for visibility
         from config_loader import get_config_value
@@ -381,7 +401,7 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         import logging
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
-        logger.info(f"[TOOL_RAG] Query: {transcript[:100]}...")
+        logger.info(f"[TOOL_RAG] Tool search query: {tool_search_query}")
         logger.info(f"[TOOL_RAG] Retrieved {len(retrieved)} tools: {retrieved}")
         logger.info(f"[TOOL_RAG] Ghost tools: {ghosts}")
         logger.info(f"[TOOL_RAG] Total tools sent to LLM: {len(tool_names)}")
