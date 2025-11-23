@@ -350,19 +350,26 @@ class Orchestrator:
 Tool executed: {tool_name}
 Tool result: {json.dumps(data, indent=2)}
 
-Create a SINGLE SENTENCE response for voice output (spoken through speakers).
+Create a short response for voice output (spoken through speakers).
 
 CRITICAL RULES:
-1. MAX 15 WORDS (20 if complex data like search results)
+1. MAX 20 WORDS (25 if complex data like search results or errors)
 2. Answer directly, no greetings or confirmations
 3. No emojis, no markdown, no numbered lists
 4. Don't say URLs unless critical
+5. If a tool failed and you are unable to resolve, say so and the reason why it failed.
 
 GOOD EXAMPLES:
 - "Bitcoin is $101,938, down 1% today"
-- "Found 3 webhook memories: URL, logger, and server port"
+- "Found 3 webhook memories: URL, logger, and port"
 - "Time is 11:51 PM Wednesday"
-- "Server started on port 5000"
+- "Server is up and running started on localhost port 5001"
+
+ERROR EXAMPLES:
+- "Webhook failed to send: 404 Not Found"
+- "Network error sending webhook: Connection timed out"
+- "Unable to create reminder: invalid time format"
+- "Server error: -> error message summarized"
 
 BAD EXAMPLES:
 - "Great! I've successfully looked up the time for you. It's currently 11:51 PM..."
@@ -420,6 +427,7 @@ Your response:"""
             
             tool_name = tools_used[0] if tools_used else ""
             
+            # TODO: Need to be able to dynamiticly add tools as tool list grows to the categories without having to edit the code. Search tools might be fine to hardcode like below. 
             # Define tool categories
             SEARCH_TOOLS = ['search_memory', 'semantic_recall', 'recall', 'mcp_brave_search', 'mcp_fetch_fetch']
             SIMPLE_TOOLS = ['get_time', 'crypto_price', 'get_weather']
@@ -473,7 +481,7 @@ Your response:"""
         try:
             # If already short, return as-is
             word_count = len(raw_response.split())
-            if word_count <= 15:
+            if word_count <= 20:
                 return raw_response
             
             # Use LLM to condense verbose response
@@ -481,7 +489,7 @@ Your response:"""
 
 Your previous verbose response: {raw_response}
 
-Condense this to ONE SENTENCE (MAX 15 words) for voice output.
+Condense this to ONE SENTENCE (MAX 20 words) for voice output.
 
 CRITICAL RULES:
 1. Keep the core answer/outcome
@@ -497,7 +505,7 @@ Concise: "Tetris server started on port 5000"
 
 Your concise response:"""
             
-            response = self.router.provider.chat(context, system_prompt="Output ONE sentence, MAX 15 words. No greetings, no emojis.")
+            response = self.router.provider.chat(context, system_prompt="Output ONE sentence, MAX 20 words. No greetings, no emojis.")
             return response.strip()
         except Exception as e:
             # Fallback: use first sentence of raw response
@@ -530,7 +538,7 @@ Results: {json.dumps(accumulated_data, indent=2)[:500]}
 Create a SINGLE SENTENCE response for voice output (will be spoken aloud through speakers).
 
 CRITICAL RULES:
-1. MAX 15 WORDS
+1. MAX 20 WORDS
 2. State outcome + essential detail only
 3. No emojis, no markdown, no bullet points, no explanations of what you did
 
@@ -546,7 +554,7 @@ BAD EXAMPLES (TOO LONG):
 
 Your response:"""
             
-            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Output ONE sentence, MAX 15 words. No explanations.")
+            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Output ONE sentence, MAX 20 words. No explanations.")
             return response.strip()
         except Exception as e:
             # Fallback to LLM's original response
