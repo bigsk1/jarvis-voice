@@ -1,0 +1,118 @@
+version: '3.8'
+
+volumes:
+  loki-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  monitoring:
+
+services:
+  # Log storage engine
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: jarvis-loki
+    hostname: loki
+    networks: ['monitoring']
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Log shipper (reads Jarvis logs from disk)
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: jarvis-promtail
+    hostname: promtail
+    networks: ['monitoring']
+    restart: unless-stopped
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - ../logs:/var/log/jarvis:ro  # Mount Jarvis logs directory
+      - /var/log:/var/log/host:ro   # Optional: system logs
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  # Metrics storage and alerting
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: jarvis-prometheus
+    hostname: prometheus
+    networks: ['monitoring']
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Visualization and dashboards
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: jarvis-grafana
+    hostname: grafana
+    networks: ['monitoring']
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Admin credentials
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=jarvis_grafana_2025
+      
+      # Server settings
+      - GF_SERVER_ROOT_URL=http://192.168.70.228:3000
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      
+      # Disable telemetry
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      
+      # Anonymous access (optional - disable for production)
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      
+      # Install useful plugins
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel
+      
+      # Allow embedding (for future web UI integration)
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+

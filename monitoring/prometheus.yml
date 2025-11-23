@@ -1,0 +1,141 @@
+# Prometheus configuration for Jarvis metrics collection
+
+global:
+  scrape_interval: 15s        # Scrape targets every 15 seconds
+  evaluation_interval: 15s    # Evaluate rules every 15 seconds
+  external_labels:
+    cluster: 'jarvis-fred'
+    environment: 'production'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # Add alertmanager targets here if you set one up later
+          # - targets: ['localhost:9093']
+
+# Load alert rules
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # ==========================================
+  # Prometheus self-monitoring
+  # ==========================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          instance: 'fred-prometheus'
+
+  # ==========================================
+  # Loki metrics
+  # ==========================================
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+        labels:
+          instance: 'fred-loki'
+
+  # ==========================================
+  # Grafana metrics
+  # ==========================================
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          instance: 'fred-grafana'
+    metrics_path: '/metrics'
+
+  # ==========================================
+  # Jarvis API (if /metrics endpoint exists)
+  # ==========================================
+  - job_name: 'jarvis_api'
+    static_configs:
+      - targets: ['192.168.70.228:8091']  # jarvis-api port
+        labels:
+          instance: 'fred-jarvis-api'
+          host: 'fred'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    # Only scrape if endpoint exists (won't fail if not)
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+
+  # ==========================================
+  # Fred Ollama (local LLM server)
+  # ==========================================
+  - job_name: 'ollama_fred'
+    static_configs:
+      - targets: ['192.168.70.228:11434']
+        labels:
+          instance: 'fred-ollama'
+          host: 'fred'
+          model: 'qwen2.5:7b'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # ==========================================
+  # Mini-AI Ollama (remote LLM server)
+  # ==========================================
+  - job_name: 'ollama_mini_ai'
+    static_configs:
+      - targets: ['192.168.70.226:11434']
+        labels:
+          instance: 'mini-ai-ollama'
+          host: 'mini-ai'
+          model: 'qwen3:14b'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # ==========================================
+  # n8n on Mini-AI
+  # ==========================================
+  - job_name: 'n8n'
+    static_configs:
+      - targets: ['192.168.70.226:5678']
+        labels:
+          instance: 'mini-ai-n8n'
+          host: 'mini-ai'
+    metrics_path: '/metrics'
+    scrape_interval: 60s
+    scrape_timeout: 10s
+
+  # ==========================================
+  # Qdrant (vector DB on Mini-AI)
+  # ==========================================
+  - job_name: 'qdrant'
+    static_configs:
+      - targets: ['192.168.70.226:6333']
+        labels:
+          instance: 'mini-ai-qdrant'
+          host: 'mini-ai'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # ==========================================
+  # Node Exporter (system metrics - optional)
+  # Uncomment if you install node_exporter
+  # ==========================================
+  # - job_name: 'node_fred'
+  #   static_configs:
+  #     - targets: ['192.168.70.228:9100']
+  #       labels:
+  #         instance: 'fred'
+  #         host: 'fred'
+  
+  # - job_name: 'node_mini_ai'
+  #   static_configs:
+  #     - targets: ['192.168.70.226:9100']
+  #       labels:
+  #         instance: 'mini-ai'
+  #         host: 'mini-ai'
+

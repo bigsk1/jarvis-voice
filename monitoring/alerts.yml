@@ -1,0 +1,126 @@
+# Prometheus Alert Rules for Jarvis Monitoring
+
+groups:
+  # ==========================================
+  # Jarvis Application Alerts
+  # ==========================================
+  - name: jarvis_alerts
+    interval: 30s
+    rules:
+      # High tool failure rate
+      - alert: HighToolFailureRate
+        expr: |
+          (
+            sum(rate(jarvis_tool_failures_total[5m]))
+            /
+            sum(rate(jarvis_tool_calls_total[5m]))
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+          component: tools
+        annotations:
+          summary: "High tool failure rate detected"
+          description: "Tool failure rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+
+      # Ollama server down
+      - alert: OllamaServerDown
+        expr: up{job=~"ollama.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: llm
+        annotations:
+          summary: "Ollama server {{ $labels.instance }} is down"
+          description: "Ollama on {{ $labels.host }} has been unreachable for 2 minutes"
+
+      # n8n server down
+      - alert: N8nServerDown
+        expr: up{job="n8n"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: workflow
+        annotations:
+          summary: "n8n workflow server is down"
+          description: "n8n on Mini-AI has been unreachable for 5 minutes"
+
+      # High memory usage (if metrics available)
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            process_resident_memory_bytes{job="jarvis_api"}
+            /
+            (1024 * 1024 * 1024)
+          ) > 4
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "Jarvis API high memory usage"
+          description: "Memory usage is {{ $value | humanize }}GB for 10 minutes"
+
+  # ==========================================
+  # Infrastructure Alerts
+  # ==========================================
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # Loki ingestion lag
+      - alert: LokiIngestionLag
+        expr: |
+          (time() - loki_ingester_oldest_unshipped_block_timestamp_seconds) > 300
+        for: 5m
+        labels:
+          severity: warning
+          component: logging
+        annotations:
+          summary: "Loki has ingestion lag"
+          description: "Loki hasn't shipped logs for {{ $value | humanizeDuration }}"
+
+      # Prometheus target down
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: monitoring
+        annotations:
+          summary: "Prometheus target {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} on job {{ $labels.job }} has been down for 5 minutes"
+
+  # ==========================================
+  # Performance Alerts
+  # ==========================================
+  - name: performance_alerts
+    interval: 60s
+    rules:
+      # Slow tool execution
+      - alert: SlowToolExecution
+        expr: |
+          histogram_quantile(0.95,
+            rate(jarvis_tool_duration_seconds_bucket[10m])
+          ) > 30
+        for: 10m
+        labels:
+          severity: info
+          component: tools
+        annotations:
+          summary: "95th percentile tool execution time is high"
+          description: "95% of tool calls are taking longer than 30 seconds"
+
+      # High LLM response time
+      - alert: HighLLMResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            rate(jarvis_llm_response_time_seconds_bucket[10m])
+          ) > 10
+        for: 10m
+        labels:
+          severity: info
+          component: llm
+        annotations:
+          summary: "LLM response time is high"
+          description: "95% of LLM calls are taking longer than 10 seconds"
+

@@ -1,0 +1,193 @@
+# Promtail configuration for Jarvis log shipping
+# Scrapes JSON logs and ships to Loki
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+# Position tracking (where we are in each log file)
+positions:
+  filename: /tmp/positions.yaml
+
+# Where to send logs
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576  # 1MB
+
+# What logs to scrape
+scrape_configs:
+  # ==========================================
+  # Tool Call Logs (JSONL format)
+  # ==========================================
+  - job_name: jarvis_tools
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: tools
+          host: fred
+          __path__: /var/log/jarvis/tools/tool-calls-*.jsonl
+    
+    pipeline_stages:
+      # Parse JSON structure
+      - json:
+          expressions:
+            timestamp: timestamp
+            tool_name: tool_name
+            status: status
+            duration_ms: duration_ms
+            error: error
+            args: args
+            speech: speech
+            has_data: has_data
+            
+      # Extract labels for filtering
+      - labels:
+          tool_name:
+          status:
+          
+      # Add timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+          
+      # Output format
+      - output:
+          source: message
+
+  # ==========================================
+  # LLM Call Logs
+  # ==========================================
+  - job_name: jarvis_llm
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: llm
+          host: fred
+          __path__: /var/log/jarvis/llm-calls-*.jsonl
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            model: model
+            provider: provider
+            mode: mode
+            tokens_used: tokens_used
+            response_time_ms: response_time_ms
+            success: success
+            error: error
+            
+      - labels:
+          model:
+          provider:
+          mode:
+          
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # ==========================================
+  # OpenCode Logs (Text format)
+  # ==========================================
+  - job_name: jarvis_opencode
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: opencode
+          host: fred
+          __path__: /var/log/jarvis/opencode-*.log
+    
+    pipeline_stages:
+      # Parse log level from text
+      - regex:
+          expression: '^\[(?P<timestamp>.*?)\] \[(?P<level>.*?)\] (?P<message>.*)'
+          
+      - labels:
+          level:
+          
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05'
+
+  # ==========================================
+  # MCP Tool Logs (JSON format)
+  # ==========================================
+  - job_name: jarvis_mcp
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: mcp
+          host: fred
+          __path__: /var/log/jarvis/mcp-*.log
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            server: server
+            tool: tool
+            status: status
+            duration_ms: duration_ms
+            
+      - labels:
+          server:
+          tool:
+          status:
+
+  # ==========================================
+  # Memory Operations (future)
+  # ==========================================
+  - job_name: jarvis_memory
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: memory
+          host: fred
+          __path__: /var/log/jarvis/memory-*.jsonl
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            operation: operation
+            search_type: search_type
+            query: query
+            result_count: result_count
+            duration_ms: duration_ms
+            
+      - labels:
+          operation:
+          search_type:
+
+  # ==========================================
+  # Orchestrator Logs (General)
+  # ==========================================
+  - job_name: jarvis_orchestrator
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: orchestrator
+          host: fred
+          __path__: /var/log/jarvis/orchestrator-*.log
+    
+    pipeline_stages:
+      - regex:
+          expression: '^\[(?P<timestamp>.*?)\] \[(?P<level>.*?)\] (?P<message>.*)'
+          
+      - labels:
+          level:
+

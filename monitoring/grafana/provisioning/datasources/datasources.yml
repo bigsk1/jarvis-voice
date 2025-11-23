@@ -1,0 +1,47 @@
+# Grafana datasource configuration
+# Auto-provisions Loki and Prometheus on startup
+
+apiVersion: 1
+
+datasources:
+  # Primary datasource: Loki for logs
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: true
+    editable: true
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        # Extract tool_name from logs
+        - datasourceName: Loki
+          matcherRegex: '"tool_name":"([^"]+)"'
+          name: tool_name
+          url: ''
+        # Extract duration_ms
+        - datasourceName: Loki
+          matcherRegex: '"duration_ms":(\d+)'
+          name: duration_ms
+          url: ''
+
+  # Secondary datasource: Prometheus for metrics
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 30s
+      queryTimeout: 60s
+      customQueryParameters: ''
+
+  # Optional: TestData for demo dashboards
+  - name: TestData
+    type: testdata
+    access: proxy
+    isDefault: false
+    editable: false
+
