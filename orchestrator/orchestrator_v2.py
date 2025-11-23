@@ -765,17 +765,9 @@ Your response:"""
                         summary_parts.append(f"Status Code: {result['data']['status_code']}")
                 result_summary = "\n   ".join(summary_parts)
             else:
-                # For success: prioritize speech field (where MCP tools put actual content)
-                # then fall back to data field (where native tools put results)
-                if "speech" in result and result["speech"] and len(result["speech"]) > 50:
-                    # Speech has substantial content - use it (truncate to 800 chars for context)
-                    result_summary = result["speech"][:800]
-                elif "data" in result and result["data"]:
-                    # Use data field (truncate JSON to 800 chars)
-                    result_summary = json.dumps(result["data"], indent=2)[:800]
-                else:
-                    # Fallback: show full result structure
-                    result_summary = json.dumps(result, indent=2)[:800]
+                # For success: Pass full result (ok, speech, data, etc.) so LLM sees everything
+                # Increased from 300 to 1500 chars to capture more content (especially for MCP fetch results)
+                result_summary = json.dumps(result, indent=2)[:1500]
             
             context_parts.append(f"\n{i}. {tool_name}")
             context_parts.append(f"   Result: {result_summary}")
