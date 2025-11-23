@@ -34,17 +34,6 @@ groups:
           summary: "Ollama server {{ $labels.instance }} is down"
           description: "Ollama on {{ $labels.host }} has been unreachable for 2 minutes"
 
-      # n8n server down
-      - alert: N8nServerDown
-        expr: up{job="n8n"} == 0
-        for: 5m
-        labels:
-          severity: warning
-          component: workflow
-        annotations:
-          summary: "n8n workflow server is down"
-          description: "n8n on Mini-AI has been unreachable for 5 minutes"
-
       # High memory usage (if metrics available)
       - alert: HighMemoryUsage
         expr: |

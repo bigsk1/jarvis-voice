@@ -128,9 +128,10 @@ cd ~/jarvis-voice/monitoring
    - Create n8n workflow for email/Slack alerts
    - Configure alert rules in Prometheus
 
-3. **Add More Metrics**:
-   - Expose /metrics endpoint in jarvis-api
-   - Add system metrics with node_exporter
+3. **Deep Dive into Logs**:
+   - See the comprehensive **[Grafana Log Analysis Guide](./GRAFANA_LOG_ANALYSIS_GUIDE.md)**
+   - Learn advanced LogQL queries for troubleshooting
+   - Create custom dashboards for your needs
 
 ---
 
