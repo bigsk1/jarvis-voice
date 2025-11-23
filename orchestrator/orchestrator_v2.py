@@ -198,10 +198,11 @@ class Orchestrator:
                     accumulated_data[tool_name] = result.get("data", {})
                     
                     # Add to conversation context for next turn
+                    # Store full result (including speech and data) so LLM can see all information
                     conversation_context.append({
                         "tool": tool_name,
                         "arguments": arguments,
-                        "result": result.get("data", {}),
+                        "result": result,  # Store full result, not just data
                         "speech": result.get("speech", "")
                     })
                     
@@ -429,7 +430,11 @@ Your response:"""
             
             # TODO: Need to be able to dynamiticly add tools as tool list grows to the categories without having to edit the code. Search tools might be fine to hardcode like below. 
             # Define tool categories
-            SEARCH_TOOLS = ['search_memory', 'semantic_recall', 'recall', 'mcp_brave_search', 'mcp_fetch_fetch']
+            SEARCH_TOOLS = [
+                'search_memory', 'semantic_recall', 'recall', 'search_conversations',
+                'mcp_brave_search',  # Matches all brave search variants (web, local, news, image, video)
+                'mcp_fetch'  # Matches mcp_fetch_fetch
+            ]
             SIMPLE_TOOLS = ['get_time', 'crypto_price', 'get_weather']
             COMPLEX_TOOLS = ['opencode', 'execute_bash', 'send_webhook', 'api_call']
             
@@ -589,6 +594,7 @@ CRITICAL RULES:
 1. MAX 20 WORDS (this is urgent/error case, can be slightly longer)
 2. State what was done + what needs checking
 3. No explanations, no numbered lists
+4. If enough context was received to complete the task then provide the final answer!
 
 GOOD EXAMPLES:
 - "Completed 8 steps but hit limit. Server started, check logs for any issues."
@@ -759,8 +765,17 @@ Your response:"""
                         summary_parts.append(f"Status Code: {result['data']['status_code']}")
                 result_summary = "\n   ".join(summary_parts)
             else:
-                # For success, use compact JSON (limited to 300 chars)
-                result_summary = json.dumps(result, indent=2)[:300]
+                # For success: prioritize speech field (where MCP tools put actual content)
+                # then fall back to data field (where native tools put results)
+                if "speech" in result and result["speech"] and len(result["speech"]) > 50:
+                    # Speech has substantial content - use it (truncate to 800 chars for context)
+                    result_summary = result["speech"][:800]
+                elif "data" in result and result["data"]:
+                    # Use data field (truncate JSON to 800 chars)
+                    result_summary = json.dumps(result["data"], indent=2)[:800]
+                else:
+                    # Fallback: show full result structure
+                    result_summary = json.dumps(result, indent=2)[:800]
             
             context_parts.append(f"\n{i}. {tool_name}")
             context_parts.append(f"   Result: {result_summary}")
