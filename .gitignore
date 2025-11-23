@@ -75,3 +75,5 @@ logs/opencode/
 
 # User knowledge base (contains sensitive info: IPs, credentials, network configs)
 jarvis-intel/
+
+.cursor/*
