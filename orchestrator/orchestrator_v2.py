@@ -586,26 +586,30 @@ Your response:"""
 
 Tools executed ({len(tools_used)} actions): {', '.join(tools_used)}
 
-Results: {json.dumps(accumulated_data, indent=2)[:500]}
+Results: {json.dumps(accumulated_data, indent=2)[:5000]}
 
-The task hit the complexity limit ({max_turns} turns). Create a SINGLE SENTENCE for voice output.
+The task hit the complexity limit ({max_turns} turns). YOU MUST ANSWER THE USER'S QUESTION NOW.
 
 CRITICAL RULES:
-1. MAX 20 WORDS (this is urgent/error case, can be slightly longer)
-2. State what was done + what needs checking
-3. No explanations, no numbered lists
-4. If enough context was received to complete the task then provide the final answer!
+1. MAX 25 WORDS (provide actual answer if you have enough data!)
+2. If the results contain the answer to the user's question, PROVIDE IT NOW
+3. Don't say "hit limit" or list tools - just answer the question if possible
+4. Only mention "complexity limit" if you truly cannot answer from the data you have
 
-GOOD EXAMPLES:
-- "Completed 8 steps but hit limit. Server started, check logs for any issues."
-- "Made progress on 5 actions, reached complexity limit. Check if everything's working."
+GOOD EXAMPLES (with data):
+- "The top 3 movies are Wicked, Nosferatu, and Gladiator 2 playing at Regal this week"
+- "Weather is 45°F and cloudy. Bitcoin is $101k. Your server is running on port 5000"
+
+GOOD EXAMPLES (without enough data):
+- "Searched 10 times but got 403 errors. Try checking showtimes.com directly"
 
 BAD EXAMPLES:
-- "I've made significant progress on your request by completing multiple steps. Here's what was accomplished..."
+- "Completed 8 steps but hit limit check the results" (don't mention technical details!)
+- "I made 10 search attempts" (don't list what you did!)
 
 Your response:"""
             
-            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. ONE sentence, MAX 20 words. This is an error case.")
+            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Answer the user's question if you have enough data. MAX 25 words. Don't mention 'complexity limit' unless absolutely necessary.")
             return response.strip()
         except Exception as e:
             # Fallback to simple message
@@ -766,8 +770,15 @@ Your response:"""
                 result_summary = "\n   ".join(summary_parts)
             else:
                 # For success: Pass full result (ok, speech, data, etc.) so LLM sees everything
-                # Increased from 300 to 1500 chars to capture more content (especially for MCP fetch results)
-                result_summary = json.dumps(result, indent=2)[:1500]
+                # Dynamically adjust truncation based on tool type
+                if "search" in tool_name.lower() or "fetch" in tool_name.lower():
+                    # Search/fetch tools: need MORE context (3000 chars) to capture movie titles, URLs, descriptions
+                    max_chars = 3000
+                else:
+                    # Other tools: standard truncation (1500 chars)
+                    max_chars = 1500
+                
+                result_summary = json.dumps(result, indent=2)[:max_chars]
             
             context_parts.append(f"\n{i}. {tool_name}")
             context_parts.append(f"   Result: {result_summary}")

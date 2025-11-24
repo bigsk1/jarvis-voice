@@ -47,7 +47,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 9,
         "x": 0,
         "y": 0
       },
@@ -62,6 +62,7 @@
           ],
           "show": false
         },
+        "frameIndex": 10,
         "showHeader": true
       },
       "pluginVersion": "10.2.3",
@@ -95,8 +96,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 6,
+        "x": 9,
         "y": 0
       },
       "id": 5,
@@ -138,6 +139,59 @@
       "fieldConfig": {
         "defaults": {
           "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 15,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "10.2.3",
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(count_over_time({job=\"jarvis\", log_type=\"tools\"}[24h]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Tool Calls (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Loki",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
             "mode": "palette-classic"
           },
           "custom": {
@@ -153,9 +207,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 8
+        "w": 4,
+        "x": 20,
+        "y": 0
       },
       "id": 3,
       "options": {
@@ -194,9 +248,9 @@
     {
       "datasource": "Loki",
       "gridPos": {
-        "h": 12,
-        "w": 18,
-        "x": 6,
+        "h": 14,
+        "w": 24,
+        "x": 0,
         "y": 8
       },
       "id": 7,
@@ -219,59 +273,6 @@
       ],
       "title": "Recent LLM Calls",
       "type": "logs"
-    },
-    {
-      "datasource": "Loki",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 16
-      },
-      "id": 1,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "10.2.3",
-      "targets": [
-        {
-          "datasource": "Loki",
-          "expr": "sum(count_over_time({job=\"jarvis\", log_type=\"tools\"}[24h]))",
-          "refId": "A"
-        }
-      ],
-      "title": "Total Tool Calls (24h)",
-      "type": "stat"
     }
   ],
   "refresh": "30s",
@@ -291,6 +292,6 @@
   "timezone": "",
   "title": "Jarvis Overview V2",
   "uid": "jarvis-overview-v2",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
