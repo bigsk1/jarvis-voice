@@ -32,22 +32,21 @@ scrape_configs:
           __path__: /var/log/jarvis/tools/tool-calls-*.jsonl
     
     pipeline_stages:
-      # Parse JSON structure
+      # Parse JSON structure (matches tool_logger.py format)
       - json:
           expressions:
             timestamp: timestamp
-            tool_name: tool_name
-            status: status
+            tool_name: tool
+            mode: mode
             duration_ms: duration_ms
-            error: error
-            args: args
-            speech: speech
-            has_data: has_data
+            result_ok: result.ok
+            result_error: result.error
             
       # Extract labels for filtering
       - labels:
           tool_name:
-          status:
+          mode:
+          result_ok:
           
       # Add timestamp
       - timestamp:
@@ -72,21 +71,31 @@ scrape_configs:
           __path__: /var/log/jarvis/llm-calls-*.jsonl
     
     pipeline_stages:
+      # Parse JSON structure (matches llm_logger.py format)
       - json:
           expressions:
             timestamp: timestamp
             model: model
             provider: provider
             mode: mode
-            tokens_used: tokens_used
-            response_time_ms: response_time_ms
+            prompt_type: prompt_type
+            duration_ms: duration_ms
             success: success
             error: error
+            input_tokens: input_tokens      # Flattened fields (easier querying)
+            output_tokens: output_tokens
+            total_tokens: total_tokens
+            cost_usd: cost_usd
+            response_type: response.type
+            tool_name: response.tool_name
             
       - labels:
           model:
           provider:
           mode:
+          prompt_type:
+          success:
+          response_type:
           
       - timestamp:
           source: timestamp

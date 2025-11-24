@@ -432,12 +432,39 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Router calling provider.chat_with_tools (thinking={enable_thinking})", file=sys.stderr)
             
+            # Track LLM call timing
+            import time
+            llm_start_time = time.time()
+            
             text_response, tool_call, usage_info, thinking = self.provider.chat_with_tools(
                 messages=messages,
                 tools=tools,
                 system_prompt=self.system_prompt,
                 enable_thinking=enable_thinking
             )
+            
+            llm_duration_ms = (time.time() - llm_start_time) * 1000
+            
+            # Log LLM call for monitoring
+            try:
+                from llm_logger import get_logger
+                llm_logger = get_logger(self.mode)
+                llm_logger.log_llm_call(
+                    provider=self.provider_type,
+                    model=self.model_name,
+                    prompt_type="routing",
+                    messages=messages,
+                    response_text=text_response,
+                    tool_call=tool_call,
+                    usage_info=usage_info,
+                    thinking=thinking,
+                    duration_ms=llm_duration_ms,
+                    mode=self.mode,
+                    user_query=transcript
+                )
+            except Exception as e:
+                if os.environ.get('JARVIS_DEBUG'):
+                    print(f"DEBUG: Failed to log LLM call: {e}", file=sys.stderr)
             
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Provider returned: tool_call={tool_call is not None}, usage={usage_info is not None}, thinking={thinking is not None}", file=sys.stderr)

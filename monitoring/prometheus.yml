@@ -50,23 +50,18 @@ scrape_configs:
     metrics_path: '/metrics'
 
   # ==========================================
-  # Jarvis API (if /metrics endpoint exists)
+  # Jarvis API (FastAPI with Prometheus metrics)
   # ==========================================
   - job_name: 'jarvis_api'
     static_configs:
-      - targets: ['192.168.70.228:8091']  # jarvis-api port
+      - targets: ['192.168.70.228:8880']  # jarvis-api port (updated)
         labels:
           instance: 'fred-jarvis-api'
           host: 'fred'
+          service: 'jarvis-api'
     metrics_path: '/metrics'
-    scrape_interval: 30s
+    scrape_interval: 15s
     scrape_timeout: 10s
-    # Only scrape if endpoint exists (won't fail if not)
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
 
   # ==========================================
   # Fred Ollama (local LLM server)

@@ -23,6 +23,9 @@
 
 ### Testing & Running
 ```bash
+# ALWAYS FIRST RUN THIS TO GET THE ENVIRONMENT SET UP CORRECTLY
+source ~/jarvis-venv/bin/activate
+
 # Single tool test
 ./orchestrator/orchestrator_v2.py cloud "What time is it?"
 ./orchestrator/orchestrator_v2.py local "What time is it?"

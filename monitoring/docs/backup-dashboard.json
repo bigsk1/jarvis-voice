@@ -1,0 +1,285 @@
+{
+    "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": "-- Grafana --",
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }
+      ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+      {
+        "datasource": "Loki",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "id": 1,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "10.2.3",
+        "targets": [
+          {
+            "datasource": "Loki",
+            "expr": "sum(count_over_time({job=\"jarvis\", log_type=\"tools\"}[24h]))",
+            "refId": "A"
+          }
+        ],
+        "title": "Total Tool Calls (24h)",
+        "type": "stat"
+      },
+      {
+        "datasource": "Loki",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "hideFrom": {
+                "tooltip": false,
+                "viz": false,
+                "legend": false
+              }
+            },
+            "mappings": []
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 0,
+          "y": 4
+        },
+        "id": 3,
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "showLegend": true,
+            "values": [
+              "value"
+            ]
+          },
+          "pieType": "pie",
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": "Loki",
+            "expr": "sum by (status) (count_over_time({job=\"jarvis\", log_type=\"tools\"} | json [24h]))",
+            "refId": "A",
+            "legendFormat": "{{status}}"
+          }
+        ],
+        "title": "Tool Success/Failure (24h)",
+        "type": "piechart"
+      },
+      {
+        "datasource": "Loki",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "hideFrom": {
+                "tooltip": false,
+                "viz": false,
+                "legend": false
+              }
+            },
+            "mappings": []
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 12
+        },
+        "id": 5,
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "showLegend": true,
+            "values": [
+              "value"
+            ]
+          },
+          "pieType": "donut",
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": "Loki",
+            "expr": "sum by (model) (count_over_time({job=\"jarvis\", log_type=\"llm\"} | json [24h]))",
+            "refId": "A",
+            "legendFormat": "{{model}}"
+          }
+        ],
+        "title": "LLM Model Usage (24h)",
+        "type": "piechart"
+      },
+      {
+        "datasource": "Loki",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "custom": {
+              "align": "auto",
+              "cellOptions": {
+                "type": "auto"
+              },
+              "inspect": false
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 20
+        },
+        "id": 6,
+        "options": {
+          "cellHeight": "sm",
+          "footer": {
+            "countRows": false,
+            "fields": "",
+            "reducer": [
+              "sum"
+            ],
+            "show": false
+          },
+          "showHeader": true
+        },
+        "targets": [
+          {
+            "datasource": "Loki",
+            "expr": "topk(10, sum by (tool_name) (count_over_time({job=\"jarvis\", log_type=\"tools\"} | json [24h])))",
+            "refId": "A"
+          }
+        ],
+        "title": "Top 10 Most Used Tools (24h)",
+        "type": "table"
+      },
+      {
+        "datasource": "Loki",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 20
+        },
+        "id": 7,
+        "options": {
+          "dedupStrategy": "none",
+          "enableLogDetails": true,
+          "prettifyLogMessage": false,
+          "showCommonLabels": false,
+          "showLabels": false,
+          "showTime": true,
+          "sortOrder": "Descending",
+          "wrapLogMessage": false
+        },
+        "targets": [
+          {
+            "datasource": "Loki",
+            "expr": "{job=\"jarvis\", log_type=\"llm\"} | json",
+            "refId": "A"
+          }
+        ],
+        "title": "Recent LLM Calls",
+        "type": "logs",
+        "fieldConfig": {
+          "defaults": {
+            "custom": {}
+          },
+          "overrides": []
+        }
+      }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "tags": [
+      "jarvis",
+      "overview"
+    ],
+    "templating": {
+      "list": []
+    },
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "Jarvis Overview V2",
+    "uid": "jarvis-overview-v2",
+    "version": 1,
+    "weekStart": ""
+  }
+  
