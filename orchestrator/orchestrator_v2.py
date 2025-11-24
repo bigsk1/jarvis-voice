@@ -97,7 +97,7 @@ class Orchestrator:
         
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
-            enhanced_transcript = f"{enhanced_transcript}\n\nPrevious attempt failed with error: {error_context}\nPlease try again with corrected parameters or check logs if needed."
+            enhanced_transcript = f"{enhanced_transcript}\n\n===PREVIOUS ATTEMPT FAILED WITH ERROR===: {error_context}\nPlease try again with corrected parameters or check logs if needed."
         
         # Track usage info across all turns
         total_usage = {
