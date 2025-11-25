@@ -24,15 +24,15 @@ groups:
           description: "Tool failure rate is {{ $value | humanizePercentage }} over the last 5 minutes"
 
       # Ollama server down
-      - alert: OllamaServerDown
-        expr: up{job=~"ollama.*"} == 0
-        for: 2m
-        labels:
-          severity: critical
-          component: llm
-        annotations:
-          summary: "Ollama server {{ $labels.instance }} is down"
-          description: "Ollama on {{ $labels.host }} has been unreachable for 2 minutes"
+      # - alert: OllamaServerDown
+      #   expr: up{job=~"ollama.*"} == 0
+      #   for: 2m
+      #   labels:
+      #     severity: critical
+      #     component: llm
+      #   annotations:
+      #     summary: "Ollama server {{ $labels.instance }} is down"
+      #     description: "Ollama on {{ $labels.host }} has been unreachable for 2 minutes"
 
       # High memory usage (if metrics available)
       - alert: HighMemoryUsage
@@ -68,16 +68,16 @@ groups:
           summary: "Loki has ingestion lag"
           description: "Loki hasn't shipped logs for {{ $value | humanizeDuration }}"
 
-      # Prometheus target down
-      - alert: PrometheusTargetDown
-        expr: up == 0
-        for: 5m
-        labels:
-          severity: warning
-          component: monitoring
-        annotations:
-          summary: "Prometheus target {{ $labels.job }} is down"
-          description: "{{ $labels.instance }} on job {{ $labels.job }} has been down for 5 minutes"
+      # Prometheus target down  THIS IS OLD?? NO LONGER USED N8N WORKFLOW FOR ALERTS ALL LABELS SHOWED AS N8N OLLAMA WORKFLOW NOT IN USE ANYMORE
+      # - alert: PrometheusTargetDown
+      #   expr: up == 0
+      #   for: 5m
+      #   labels:
+      #     severity: warning
+      #     component: monitoring
+      #   annotations:
+      #     summary: "Prometheus target {{ $labels.job }} is down"
+      #     description: "{{ $labels.instance }} on job {{ $labels.job }} has been down for 5 minutes"
 
   # ==========================================
   # Performance Alerts

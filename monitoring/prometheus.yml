@@ -64,18 +64,18 @@ scrape_configs:
     scrape_timeout: 10s
 
   # ==========================================
-  # Fred Ollama (local LLM server)
+  # Fred Ollama (local LLM server) NO SUCH THINGS THERE IS NO OLLAMA ON FRED
   # ==========================================
-  - job_name: 'ollama_fred'
-    static_configs:
-      - targets: ['192.168.70.228:11434']
-        labels:
-          instance: 'fred-ollama'
-          host: 'fred'
-          model: 'qwen2.5:7b'
-    metrics_path: '/metrics'
-    scrape_interval: 30s
-    scrape_timeout: 10s
+  # - job_name: 'ollama_fred'
+  #   static_configs:
+  #     - targets: ['192.168.70.228:11434']
+  #       labels:
+  #         instance: 'fred-ollama'
+  #         host: 'fred'
+  #         model: 'qwen2.5:7b'
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 30s
+  #   scrape_timeout: 10s
 
   # ==========================================
   # Mini-AI Ollama (remote LLM server)
@@ -120,17 +120,17 @@ scrape_configs:
   # Node Exporter (system metrics - optional)
   # Uncomment if you install node_exporter
   # ==========================================
-  # - job_name: 'node_fred'
-  #   static_configs:
-  #     - targets: ['192.168.70.228:9100']
-  #       labels:
-  #         instance: 'fred'
-  #         host: 'fred'
+  - job_name: 'node_fred'
+    static_configs:
+      - targets: ['192.168.70.228:9100']
+        labels:
+          instance: 'fred'
+          host: 'fred'
   
-  # - job_name: 'node_mini_ai'
-  #   static_configs:
-  #     - targets: ['192.168.70.226:9100']
-  #       labels:
-  #         instance: 'mini-ai'
-  #         host: 'mini-ai'
+  - job_name: 'node_mini_ai'
+    static_configs:
+      - targets: ['192.168.70.226:9100']
+        labels:
+          instance: 'mini-ai'
+          host: 'mini-ai'
 
