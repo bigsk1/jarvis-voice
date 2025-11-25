@@ -462,7 +462,7 @@ Open browser: `http://192.168.70.226:5678`
 **Option A: Manual Recreation** (if no backup):
 See [`docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`](n8n/docs/GOOGLE_CALENDAR_SYNC.md) and [`docs/n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md`](n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md)
 
-**Option B: Import from JSON** (if you have backups):
+**Option B: Import from JSON** (if you have backups, see docs/n8n/docs/workflows/):
 
 ```bash
 # Workflows are in docs/n8n/workflows/ (if you backed them up)
