@@ -49,6 +49,27 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Remote Monitoring**: Deploy [Jarvis Agent](https://github.com/bigsk1/jarvis-voice) (Docker) anywhere to send health checks and alerts
 - **Voice Notifications**: Jarvis speaks alerts and reminders via TTS
 
+### Integrations & Automation ⭐ NEW
+- **Modular Webhook System**: Named webhook registry for triggering external services
+  - `send_email` - Send emails via SMTP with beautiful HTML templates
+  - `send_webhook` - Trigger any webhook (Slack, Discord, APIs, custom endpoints)
+  - Contact management with name resolution ("email Andrew" → looks up email)
+  - Multiple auth methods (Bearer, Basic, API Key, JWT, custom headers)
+  - Rate limiting to prevent duplicates
+  - See [`docs/WEBHOOK_SYSTEM.md`](docs/WEBHOOK_SYSTEM.md)
+- **Google Calendar Sync**: Bidirectional reminder ↔ calendar event sync via n8n
+  - Create reminder in Jarvis → syncs to Google Calendar
+  - Create event in Google Calendar → syncs to Jarvis
+  - Full CRUD support (create, update, delete) with metadata tracking
+  - Timezone handling (UTC normalization for correct comparison)
+  - See [`docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`](docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md)
+- **n8n Workflow Engine**: Extensible automation workflows
+  - Email sending with SMTP
+  - Calendar sync orchestration
+  - Custom webhook endpoints
+  - OAuth2 handling and token refresh
+  - See [`docs/n8n/docs/`](docs/n8n/docs/)
+
 ### Memory System
 - **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)
 - **Auto-Sync**: Bidirectional sync between modes on startup
@@ -341,7 +362,8 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 
 **Action Tools:**
 - `execute_bash` - Run shell commands
-- `send_webhook` - HTTP POST requests
+- `send_email` - Send emails with contact lookup and HTML templates ⭐ NEW
+- `send_webhook` - Trigger named webhooks (Slack, n8n, APIs) with auth ⭐ ENHANCED
 - `api_call` - Generic HTTP API calls
 - `crypto_price` - Get cryptocurrency prices
 - `get_time` - Current time
@@ -781,6 +803,9 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 **Completed (November 2025):**
 - ✅ Multi-turn tool orchestration
 - ✅ **xAI Grok integration** (2M context, 10-15x cheaper, automatic caching, reasoning mode) ⭐ NEW
+- ✅ **Google Calendar bidirectional sync** (reminders ↔ events via n8n workflows) ⭐ NEW
+- ✅ **Modular webhook system** (send_email, send_webhook with auth support) ⭐ NEW
+- ✅ **Email tool** (contact management, HTML templates, SMTP via n8n) ⭐ NEW
 - ✅ **FTS5 full-text search** with BM25 ranking (faster, more accurate keyword searches)
 - ✅ **Auto-context system** (short-term conversation memory across wake word cycles)
 - ✅ **Comprehensive burn test** (modular test suite for all features)
@@ -827,6 +852,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.2 (November 2025)  
+**Current Version:** v2.3 (November 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Proactive API, background services, auto-resolve, remote monitoring
+**Latest Features:** Google Calendar sync, modular webhook system, email tool with HTML templates, n8n integrations

@@ -1,0 +1,32 @@
+{
+  "enabled": true,
+  "name": "send_email",
+  "description": "Send an email to a contact. Use when user says 'email', 'send email to', 'message', etc. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'work') from config/contacts.json, or use a direct email address. Rate limited to prevent duplicates.",
+  "script": "send_email.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "to": {
+        "type": "string",
+        "description": "Recipient name (from contacts list) or email address. Examples: 'Andrew', 'mom', 'john@example.com'"
+      },
+      "subject": {
+        "type": "string",
+        "description": "Email subject line"
+      },
+      "body": {
+        "type": "string",
+        "description": "Email body content (plain text)"
+      }
+    },
+    "required": ["to", "subject", "body"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": false
+  }
+}
+

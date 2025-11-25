@@ -7,6 +7,8 @@ config/*.env
 !config/*.env.example
 *.key
 *.pem
+config/contacts.json
+config/webhook_registry.json
 
 # ===== Audio Files =====
 audio/
@@ -64,6 +66,8 @@ data/*.db-*
 *.sqlite.*
 *.sqlite-*
 data/backups
+data/.email_rate_limit
+data/.webhook_rate_limit
 
 # Cursor chat history files
 cursor_*.md

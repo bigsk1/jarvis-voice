@@ -1,0 +1,39 @@
+{
+  "_description": "Registry of named webhooks Jarvis can trigger. Add new webhooks here.",
+  "_usage": "Use webhook name instead of URL in send_webhook tool",
+  
+  "webhooks": {
+    "send_email": {
+      "url": "http://192.168.70.226:5678/webhook/jarvis-email",
+      "description": "Send email via n8n SMTP. Requires: to, subject, body",
+      "required_fields": ["to", "subject", "body"],
+      "rate_limit_seconds": 10,
+      "example": {
+        "to": "someone@example.com",
+        "subject": "Hello from Jarvis",
+        "body": "This is the email content."
+      }
+    },
+    "jarvis_reminder": {
+      "url": "http://192.168.70.226:5678/webhook/jarvis-reminder",
+      "description": "Sync reminder to Google Calendar. Used internally by create_reminder.",
+      "required_fields": ["action", "reminder"],
+      "rate_limit_seconds": 5
+    },
+    "notify_slack": {
+      "url": "",
+      "description": "Send Slack notification (configure URL when ready)",
+      "required_fields": ["channel", "message"],
+      "rate_limit_seconds": 5,
+      "enabled": false
+    },
+    "home_assistant": {
+      "url": "",
+      "description": "Trigger Home Assistant automation (configure URL when ready)",
+      "required_fields": ["action"],
+      "rate_limit_seconds": 2,
+      "enabled": false
+    }
+  }
+}
+

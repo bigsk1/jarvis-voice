@@ -1,14 +1,18 @@
 {
   "enabled": true,
   "name": "send_webhook",
-  "description": "Send a POST request webhook to a specified URL with JSON data. Use this when the user wants to trigger an external service, send data to a server, or notify a system.",
+  "description": "Send webhook to trigger n8n workflows or external services. Supports named webhooks from config/webhook_registry.json (e.g., 'notify_slack', 'home_assistant') OR direct URLs. Rate limited to prevent duplicates. Use 'list' to see available webhooks.",
   "script": "send_webhook.py",
   "parameters": {
     "type": "object",
     "properties": {
+      "webhook": {
+        "type": "string",
+        "description": "Named webhook from registry (e.g., 'notify_slack', 'home_assistant'). Use 'list' to see available webhooks."
+      },
       "url": {
         "type": "string",
-        "description": "The webhook URL to send the POST request to"
+        "description": "Direct webhook URL (alternative to named webhook)"
       },
       "data": {
         "type": "object",
@@ -19,10 +23,7 @@
         "description": "Optional HTTP headers to include in the request"
       }
     },
-    "required": [
-      "url",
-      "data"
-    ]
+    "required": ["data"]
   },
   "permissions": {
     "dangerous": false,

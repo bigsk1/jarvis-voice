@@ -12,6 +12,7 @@
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture (NEW)
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity (NEW)
+- **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - 🆕 **Modular webhook system** (email, n8n, external APIs with auth) ⭐ NEW
 - **[opencode/OPENCODE.md](opencode/OPENCODE.md)** - Autonomous coding agent
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools (NEW)
@@ -127,6 +128,15 @@
 | **AUTO_MODE_EXPLAINED.md** | Auto formatting mode |
 | **METADATA_SYSTEM.md** | Cost tracking and metadata |
 | **VOICE_MODE_FIXES.md** | Voice mode improvements |
+
+### Integrations & Webhooks
+| Document | Purpose |
+|----------|---------|
+| **WEBHOOK_SYSTEM.md** | **Modular webhook system** - Email, n8n, external APIs with auth examples ⭐ NEW |
+| **n8n/docs/GOOGLE_CALENDAR_SYNC.md** | Bidirectional Google Calendar sync (reminders ↔ events) |
+| **n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md** | Email tool and webhook registry details |
+| **n8n/docs/N8N_INTEGRATION.md** | n8n setup and workflow management |
+| **api/REMINDER_SYSTEM.md** | Reminder API and voice commands |
 
 ### Reference & Archives
 | Document | Purpose |

@@ -1,0 +1,28 @@
+{
+  "_description": "Contact list for Jarvis. Used by send_email tool to resolve names to emails.",
+  "_usage": "Say 'send email to Andrew' and Jarvis looks up Andrew's email here.",
+  
+  "contacts": {
+    "boss": {
+      "name": "dude",
+      "email": "example@example.com",
+      "notes": "Example contact - update with real email"
+    },
+    "mom": {
+      "name": "Mom",
+      "email": "mom@example.com",
+      "notes": "Example contact"
+    },
+    "work": {
+      "name": "Work",
+      "email": "work@example.com",
+      "notes": "Work email alias"
+    }
+  },
+  
+  "_default_from": {
+    "name": "Jarvis Assistant",
+    "email": "jarvis@example.com"
+  }
+}
+
