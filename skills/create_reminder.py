@@ -24,12 +24,69 @@ import sys
 import os
 import json
 import re
+import requests
 from datetime import datetime, timedelta, timezone
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
+
+
+def sync_to_google_calendar(reminder_id: int, title: str, description: str, 
+                            trigger_time_utc: datetime, recurrence_rule: str = None) -> dict:
+    """Sync reminder to Google Calendar via n8n webhook.
+    
+    Args:
+        reminder_id: Jarvis reminder ID
+        title: Reminder title
+        description: Reminder description
+        trigger_time_utc: Trigger time in UTC
+        recurrence_rule: Optional recurrence rule (WEEKLY:2, MONTHLY:10)
+        
+    Returns:
+        dict with gcal_event_id if successful, None otherwise
+    """
+    webhook_url = get_config_value('N8N_JARVIS_WEBHOOK_URL')
+    
+    if not webhook_url:
+        # n8n sync not configured, skip silently
+        return None
+    
+    try:
+        # Format time as ISO 8601 with Z suffix to indicate UTC
+        # This ensures n8n/Google Calendar interprets the time correctly
+        trigger_time_iso = trigger_time_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        payload = {
+            "action": "create",
+            "reminder": {
+                "id": reminder_id,
+                "title": title,
+                "description": description or "",
+                "trigger_time": trigger_time_iso,
+                "recurrence_rule": recurrence_rule
+            }
+        }
+        
+        response = requests.post(
+            webhook_url,
+            json=payload,
+            timeout=10
+        )
+        
+        if response.ok:
+            result = response.json()
+            return result
+        else:
+            # Log error but don't fail the reminder creation
+            print(f"Warning: Google Calendar sync failed: {response.status_code}", file=sys.stderr)
+            return None
+            
+    except Exception as e:
+        # Log error but don't fail the reminder creation
+        print(f"Warning: Google Calendar sync error: {e}", file=sys.stderr)
+        return None
 
 def word_to_number(word: str) -> int:
     """Convert word numbers to integers."""
@@ -349,6 +406,34 @@ def main():
         conn.commit()
         conn.close()
         
+        # Sync to Google Calendar via n8n (non-blocking, won't fail if n8n is down)
+        gcal_result = sync_to_google_calendar(
+            reminder_id=reminder_id,
+            title=title,
+            description=description,
+            trigger_time_utc=trigger_time_utc,
+            recurrence_rule=recurrence_rule
+        )
+        
+        # If sync succeeded, update reminder metadata with gcal_event_id
+        gcal_synced = False
+        gcal_event_id = None
+        if gcal_result and gcal_result.get('ok'):
+            gcal_event_id = gcal_result.get('gcal_event_id')
+            if gcal_event_id:
+                gcal_synced = True
+                # Update reminder with gcal metadata
+                conn = sqlite3.connect(db.db_path)
+                cursor = conn.cursor()
+                metadata = json.dumps({
+                    "gcal_event_id": gcal_event_id,
+                    "gcal_synced": True,
+                    "gcal_synced_at": datetime.now(timezone.utc).isoformat()
+                })
+                cursor.execute("UPDATE reminders SET metadata = ? WHERE id = ?", (metadata, reminder_id))
+                conn.commit()
+                conn.close()
+        
         # Format response
         time_str = format_local_time(trigger_time_local)
         
@@ -356,6 +441,10 @@ def main():
             speech = f"Recurring reminder set: {title}. First trigger {time_str}"
         else:
             speech = f"Reminder set for {time_str}: {title}"
+        
+        # Add Google Calendar sync status to speech
+        if gcal_synced:
+            speech += ". Also added to Google Calendar."
         
         print(json.dumps({
             "ok": True,
@@ -366,7 +455,9 @@ def main():
                 "trigger_time_local": trigger_time_local.isoformat(),
                 "formatted_time": time_str,
                 "recurring": recurrence_rule is not None,
-                "recurrence_rule": recurrence_rule
+                "recurrence_rule": recurrence_rule,
+                "gcal_synced": gcal_synced,
+                "gcal_event_id": gcal_event_id
             }
         }))
         

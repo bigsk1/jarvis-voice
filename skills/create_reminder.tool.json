@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "create_reminder",
-  "description": "Create a time-based reminder that will trigger TTS notification. Use this when user asks to be reminded about something at a specific time or after a duration. Supports natural time expressions like 'in 30 minutes', 'in 4 hours', 'tomorrow at 3pm', 'every Wednesday at 2pm', 'every month on the 10th'. Recurring reminders (every week/month) will auto-reschedule after triggering. The reminder will speak via TTS when the time comes.",
+  "description": "Create a reminder or calendar event that syncs to Google Calendar and triggers TTS notification. Use when user says: 'remind me', 'set a reminder', 'add to calendar', 'schedule', 'create event', 'calendar event', etc. Supports natural time expressions like 'in 30 minutes', 'in 4 hours', 'tomorrow at 3pm', 'Wednesday at 11am', 'every Wednesday at 2pm', 'every month on the 10th'. Recurring reminders auto-reschedule. Syncs bidirectionally with Google Calendar.",
   "script": "create_reminder.py",
   "parameters": {
     "type": "object",
