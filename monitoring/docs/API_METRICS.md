@@ -171,7 +171,7 @@ open http://192.168.70.228:3000
 
 ---
 
-## 📈 Grafana Dashboard (Future)
+## 📈 Grafana Dashboard
 
 You can create a custom dashboard for API metrics with panels like:
 
@@ -289,8 +289,6 @@ source ~/jarvis-venv/bin/activate
 ./bin/jarvis-api
 ```
 
-### Library Installation
-The `prometheus-fastapi-instrumentator` library is now in `requirements.txt` and installed in your venv.
 
 ---
 

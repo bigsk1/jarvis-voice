@@ -26,8 +26,8 @@ Fred (192.168.70.228) - Jarvis Host
 │   └── Stores 30 days of logs
 ├── Prometheus (metrics)
 │   └── Monitors:
-│       - Fred Ollama (192.168.70.228:11434)
-│       - Mini-AI Ollama (192.168.70.226:11434)
+│  
+│       - Ollama (192.168.70.226:11434)
 │       - Mini-AI n8n (192.168.70.226:5678)
 │       - Mini-AI Qdrant (192.168.70.226:6333)
 └── Grafana (visualization)
@@ -125,8 +125,6 @@ Click **+ Create** → **Dashboard** in Grafana to build custom views.
 ### Prometheus Targets
 
 - `jarvis_api` - Jarvis API health (if /metrics endpoint added)
-- `ollama_fred` - Fred's local Ollama server
-- `ollama_mini_ai` - Mini-AI's Ollama server
 - `n8n` - n8n workflow engine on Mini-AI
 - `qdrant` - Vector database on Mini-AI
 
@@ -135,8 +133,6 @@ Click **+ Create** → **Dashboard** in Grafana to build custom views.
 Open Prometheus (http://192.168.70.228:9090) and try:
 
 ```promql
-# Check if Ollama servers are up
-up{job=~"ollama.*"}
 
 # CPU usage (if node_exporter installed)
 rate(node_cpu_seconds_total[5m])
@@ -259,10 +255,7 @@ docker run --rm \
    - Go to http://192.168.70.228:9090/targets
    - Look for red/down targets
 
-2. Test endpoint manually:
-   ```bash
-   curl http://192.168.70.226:11434/metrics
-   ```
+
 
 ### High Disk Usage
 
