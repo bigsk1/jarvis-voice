@@ -5,6 +5,7 @@
 ### Getting Started
 - **[JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md)** - 🆕 **Complete workflow guide with visual flowcharts** (START HERE!)
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
+- **[DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)** - 🆕 **Complete disaster recovery guide** (rebuild from scratch) ⭐ CRITICAL
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, 10-15x cheaper!) ⭐ RECOMMENDED
 
