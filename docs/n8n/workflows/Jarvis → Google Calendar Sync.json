@@ -1,0 +1,179 @@
+{
+  "name": "Jarvis → Google Calendar Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jarvis-reminder",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-jarvis",
+      "name": "Jarvis Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "jarvis-reminder"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "2e3db6ba-8218-4784-ba9c-8467ac069c08"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-action",
+      "name": "Check Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "tksupps@gmail.com",
+          "mode": "id"
+        },
+        "start": "={{ $json.body.reminder.trigger_time }}",
+        "end": "={{ DateTime.fromISO($json.body.reminder.trigger_time).plus({hours: 1}).toISO() }}",
+        "additionalFields": {
+          "description": "={{ $json.body.reminder.description || '' }}",
+          "summary": "={{ '[Jarvis] ' + $json.body.reminder.title }}"
+        }
+      },
+      "id": "gcal-create",
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        -96
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "wVtoAcFrU4utHVpD",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, gcal_event_id: $json.id, message: 'Event created in Google Calendar' }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        704,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: 'Unknown action or missing data' }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        112
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Jarvis Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Action": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "4b4f537c-ed44-4d11-8b9c-cdfb7f5d58f1",
+  "meta": {
+    "instanceId": "4152adc5d074bd01cc0ec9ba3eb0a17d15f2855e853b80bacc39291f703f7594"
+  },
+  "id": "rDqYkqg6otOWzgX2",
+  "tags": []
+}

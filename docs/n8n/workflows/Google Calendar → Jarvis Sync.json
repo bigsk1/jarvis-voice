@@ -1,0 +1,352 @@
+{
+  "name": "Google Calendar → Jarvis Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "calendarId": {
+          "__rl": true,
+          "value": "tksupps@gmail.com",
+          "mode": "id"
+        },
+        "triggerOn": "eventCreated",
+        "options": {}
+      },
+      "id": "gcal-trigger-create",
+      "name": "GCal Event Created",
+      "type": "n8n-nodes-base.googleCalendarTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -96
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "wVtoAcFrU4utHVpD",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "calendarId": {
+          "__rl": true,
+          "value": "tksupps@gmail.com",
+          "mode": "id"
+        },
+        "triggerOn": "eventCancelled",
+        "options": {}
+      },
+      "id": "gcal-trigger-cancel",
+      "name": "GCal Event Cancelled",
+      "type": "n8n-nodes-base.googleCalendarTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        112
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "wVtoAcFrU4utHVpD",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "skip-jarvis",
+              "leftValue": "={{ $json.summary }}",
+              "rightValue": "[Jarvis]",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-jarvis",
+      "name": "Skip Jarvis Events",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        256,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.70.228:8880/api/reminders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $json.summary }}\",\n  \"description\": \"{{ $json.description || '' }}\",\n  \"trigger_time\": \"{{ DateTime.fromISO($json.start.dateTime || $json.start.date + 'T10:00:00').toUTC().toFormat(\"yyyy-MM-dd'T'HH:mm:ss'Z'\") }}\",\n  \"metadata\": {\n    \"source\": \"google_calendar\",\n    \"gcal_event_id\": \"{{ $json.id }}\",\n    \"gcal_calendar_id\": \"{{ $json.organizer.email || 'primary' }}\",\n    \"synced_at\": \"{{ $now.toISO() }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "create-jarvis-reminder",
+      "name": "Create Jarvis Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        512,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=http://192.168.70.228:8880/api/reminders/by-gcal/{{ $json.id }}",
+        "options": {}
+      },
+      "id": "cancel-jarvis-reminder",
+      "name": "Cancel Jarvis Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        256,
+        112
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log the sync result\nconst items = $input.all();\nfor (const item of items) {\n  console.log('GCal sync result:', JSON.stringify(item.json, null, 2));\n}\nreturn items;"
+      },
+      "id": "log-result",
+      "name": "Log Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "calendarId": {
+          "__rl": true,
+          "value": "tksupps@gmail.com",
+          "mode": "id"
+        },
+        "triggerOn": "eventUpdated",
+        "options": {}
+      },
+      "id": "gcal-trigger-update",
+      "name": "GCal Event Updated",
+      "type": "n8n-nodes-base.googleCalendarTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        320
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "wVtoAcFrU4utHVpD",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "filter-update-jarvis",
+              "leftValue": "={{ $json.summary }}",
+              "rightValue": "[Jarvis]",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "skip-jarvis-update",
+      "name": "Skip Jarvis Events (Update)",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        256,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://192.168.70.228:8880/api/reminders/by-gcal/{{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $json.summary }}\",\n  \"description\": \"{{ $json.description || '' }}\",\n  \"trigger_time\": \"{{ DateTime.fromISO($json.start.dateTime || $json.start.date + 'T10:00:00').toUTC().toFormat(\"yyyy-MM-dd'T'HH:mm:ss'Z'\") }}\",\n  \"metadata\": {\n    \"source\": \"google_calendar\",\n    \"gcal_event_id\": \"{{ $json.id }}\",\n    \"gcal_calendar_id\": \"{{ $json.organizer.email || 'primary' }}\",\n    \"synced_at\": \"{{ $now.toISO() }}\",\n    \"updated_from_gcal\": true\n  }\n}",
+        "options": {}
+      },
+      "id": "update-jarvis-reminder",
+      "name": "Update Jarvis Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        512,
+        320
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "GCal Event Created": {
+      "main": [
+        [
+          {
+            "node": "Skip Jarvis Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Event Cancelled": {
+      "main": [
+        [
+          {
+            "node": "Cancel Jarvis Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Jarvis Events": {
+      "main": [
+        [
+          {
+            "node": "Create Jarvis Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Jarvis Reminder": {
+      "main": [
+        [
+          {
+            "node": "Log Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancel Jarvis Reminder": {
+      "main": [
+        [
+          {
+            "node": "Log Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GCal Event Updated": {
+      "main": [
+        [
+          {
+            "node": "Skip Jarvis Events (Update)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Jarvis Events (Update)": {
+      "main": [
+        [
+          {
+            "node": "Update Jarvis Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Jarvis Reminder": {
+      "main": [
+        [
+          {
+            "node": "Log Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "d516c097-b9ab-4fd2-b48c-c6ee941c4cf6",
+  "meta": {
+    "instanceId": "4152adc5d074bd01cc0ec9ba3eb0a17d15f2855e853b80bacc39291f703f7594"
+  },
+  "id": "ckEvanjTTZJGiH0V",
+  "tags": []
+}
