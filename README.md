@@ -94,6 +94,39 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Fine-tuned Audio**: Optimized for noisy environments + far-field mic
 - **Smart Response Formatting**: Auto-condenses verbose outputs for voice
 
+### Speech Modes - Smart Adaptive Response System
+
+![speech-modes-info-graph](docs/images/speech-modes-info-graph.jpeg)
+
+Jarvis adapts its response style based on your environment and task complexity:
+
+**🎙️ Casual Mode** (Default for Voice)
+- Always 8-12 words for voice output
+- Perfect for: Voice interactions, speakers, TTS
+- Example: *"Website built with dark mode and login system"* (9 words)
+
+**🖥️ Detailed Mode** (Best for CLI/Debugging)
+- Full LLM response with complete context
+- Perfect for: CLI testing, debugging, logs
+- Example: Full technical breakdown with file lists, URLs, next steps
+
+**🤖 Auto Mode** ⭐ (Smart Adaptive)
+- **Search tools** → Always formatted (removes URLs, summarizes)
+- **Simple queries** → Keep short if already concise
+- **Complex builds** → Detailed if >50 words (keeps technical context)
+- **Multi-turn** → Formatted summary
+- Perfect for: Mixed usage, general assistant work
+
+**Configuration:**
+```bash
+# Set in config/cloud.env or config/local.env
+JARVIS_RESPONSE_STYLE="auto"    # Smart adaptive (recommended)
+JARVIS_RESPONSE_STYLE="casual"  # Always short (voice default)
+JARVIS_RESPONSE_STYLE="detailed" # Always verbose (CLI)
+```
+
+See full guide: [`docs/AUTO_MODE_EXPLAINED.md`](docs/AUTO_MODE_EXPLAINED.md)
+
 ---
 
 ## 🔍 How It Works
