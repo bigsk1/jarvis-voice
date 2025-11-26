@@ -433,7 +433,7 @@
             "type": "loki",
             "uid": "P8E80F9AEF21F6940"
           },
-          "expr": "{job=\"jarvis\", log_type=\"llm\"} | json",
+          "expr": "{job=\"jarvis\", log_type=\"llm\"} | json | provider=~\"${provider:regex}\"",
           "refId": "A"
         }
       ],

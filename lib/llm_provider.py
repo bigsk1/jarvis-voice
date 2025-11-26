@@ -586,6 +586,20 @@ CRITICAL RULES:
             result = response.json()
             content = result["message"]["content"]
             
+            # Extract token counts from Ollama response
+            # Ollama returns: eval_count (output tokens), prompt_eval_count (input tokens)
+            usage_info = None
+            eval_count = result.get("eval_count", 0)
+            prompt_eval_count = result.get("prompt_eval_count", 0)
+            if eval_count or prompt_eval_count:
+                usage_info = {
+                    "input_tokens": prompt_eval_count,
+                    "output_tokens": eval_count,
+                    "total_tokens": prompt_eval_count + eval_count,
+                    "cost_usd": 0.0,  # Local models have no cost
+                    "note": "local model - no cost"
+                }
+            
             # Extract thinking if present (qwen3:14b and other reasoning models)
             thinking = None
             if "thinking" in result.get("message", {}):
@@ -627,12 +641,12 @@ CRITICAL RULES:
                         from local_model_corrections import correct_tool_call
                         corrected_call = correct_tool_call(raw_call)
                         
-                        return None, corrected_call, None, thinking  # Return thinking if available
+                        return None, corrected_call, usage_info, thinking  # Return thinking if available
             except (json.JSONDecodeError, ValueError):
                 pass
             
             # Otherwise return as text
-            return content, None, None, thinking  # Return thinking if available
+            return content, None, usage_info, thinking  # Return thinking if available
             
         except Exception as e:
             import sys
