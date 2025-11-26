@@ -2,6 +2,8 @@
 
 A self-hosted, intelligent voice assistant with advanced tool calling, memory, and autonomous coding capabilities.
 
+![jarvis-info-graph](docs/images/jarvis-info-graph.jpeg)
+
 ---
 
 ## 🎯 Current Status (November 2025)
