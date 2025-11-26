@@ -3,6 +3,11 @@
 Sync Tools to Vector Database
 Iterates through all registered tools (Local + MCP) and updates their embeddings in MemoryDB.
 Run this script when adding new tools or changing descriptions.
+
+Handles:
+- Adding new tools with embeddings
+- Updating existing tool descriptions/schemas
+- Disabling tools that are no longer in the registry (removed or set enabled=false)
 """
 import sys
 import os
@@ -32,10 +37,13 @@ def sync_tools(mode='cloud', verbose=True):
     # Get DB connection
     db = get_memory_db()
     
+    # Get list of active tool names from registry
+    active_tools = set(registry.tools.keys())
+    
     count = 0
     total = len(registry.tools)
     
-    print(f"📝 Found {total} tools. Updating embeddings...")
+    print(f"📝 Found {total} active tools. Updating embeddings...")
     
     for tool_name, schema in registry.tools.items():
         try:
@@ -63,8 +71,55 @@ def sync_tools(mode='cloud', verbose=True):
         except Exception as e:
             print(f"  ❌ Failed to sync {tool_name}: {e}")
     
+    # Disable tools that are no longer in the registry
+    # This handles tools that were removed or have enabled=false in their .tool.json
+    disabled_count = _disable_stale_tools(db, active_tools, verbose)
+    
     print(f"\n✅ Successfully synced {count}/{total} tools to vector DB.")
+    if disabled_count > 0:
+        print(f"   Disabled {disabled_count} stale/removed tools.")
     print("   Tools are now ready for dynamic retrieval.")
+
+
+def _disable_stale_tools(db, active_tools: set, verbose: bool) -> int:
+    """
+    Disable tools in the database that are no longer in the active registry.
+    
+    This ensures tools with enabled=false in their .tool.json or
+    tools that have been deleted don't show up in Tool RAG searches.
+    
+    Args:
+        db: MemoryDB instance
+        active_tools: Set of currently active tool names
+        verbose: Print status messages
+        
+    Returns:
+        Number of tools disabled
+    """
+    cursor = db.conn.cursor()
+    
+    # Get all currently enabled tools from DB
+    db_tools = cursor.execute(
+        "SELECT name FROM tool_definitions WHERE enabled = 1"
+    ).fetchall()
+    
+    db_tool_names = {row['name'] for row in db_tools}
+    
+    # Find tools to disable (in DB but not in active registry)
+    stale_tools = db_tool_names - active_tools
+    
+    disabled = 0
+    for tool_name in stale_tools:
+        cursor.execute(
+            "UPDATE tool_definitions SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE name = ?",
+            (tool_name,)
+        )
+        if verbose:
+            print(f"  ⊝ Disabled stale tool: {tool_name}")
+        disabled += 1
+    
+    db.conn.commit()
+    return disabled
 
 def main():
     if len(sys.argv) < 2:

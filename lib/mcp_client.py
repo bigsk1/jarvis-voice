@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 MCP (Model Context Protocol) Client
-Communicates with MCP servers via JSON-RPC over stdin/stdout.
+Communicates with MCP servers via JSON-RPC over multiple transports:
+- stdio: Local subprocess with stdin/stdout
+- sse: Server-Sent Events over HTTP
+- http: Streamable HTTP (JSON-RPC over HTTP POST)
 """
 import sys
 import os
@@ -9,8 +12,10 @@ import json
 import subprocess
 import time
 import re
-from typing import Dict, Any, List, Optional
-from threading import Lock
+import queue
+import requests
+from typing import Dict, Any, List, Optional, Union
+from threading import Lock, Thread, Event
 
 
 class MCPClient:
@@ -314,11 +319,504 @@ class MCPClient:
         self.stop()
 
 
-import os
+class MCPRemoteClient:
+    """
+    Client for communicating with remote MCP servers via SSE or HTTP transport.
+    
+    Supports:
+    - SSE (Server-Sent Events): Bidirectional via SSE stream + HTTP POST  
+    - HTTP (Streamable HTTP): JSON-RPC over HTTP POST with session management
+    
+    For Streamable HTTP (type="http"):
+    - Initialize request is sent WITHOUT session ID
+    - Server returns session ID in Mcp-Session-Id header
+    - Subsequent requests MUST include the session ID header
+    
+    SECURITY: This client follows the same security model as MCPClient (stdio):
+    - Only EXPLICITLY configured headers are sent to the remote server
+    - No environment variables are passed unless explicitly mapped in config
+    - The entire os.environ is NEVER exposed to remote servers
+    
+    Example secure config:
+        "headers": {"Authorization": "Bearer ${MY_API_KEY}"}
+        → Only MY_API_KEY is substituted, nothing else is exposed
+    """
+    
+    def __init__(self, name: str, url: str, transport_type: str, headers: Optional[Dict[str, str]] = None):
+        """
+        Initialize remote MCP client.
+        
+        Args:
+            name: Server name (e.g., "coingecko")
+            url: Base URL for the MCP server
+            transport_type: "sse" or "http"
+            headers: Optional HTTP headers (e.g., for API keys)
+                     SECURITY: Only these explicit headers are sent - no os.environ leakage
+        """
+        self.name = name
+        self.url = url.rstrip('/')
+        self.transport_type = transport_type
+        self.headers = headers or {}
+        self.lock = Lock()
+        self.request_id = 0
+        self._tools_cache = None
+        self._initialized = False
+        
+        # Session management for Streamable HTTP
+        self._session_id = None
+        
+        # SSE-specific attributes (for type="sse")
+        self._sse_endpoint = None  # POST endpoint for sending messages
+        self._sse_response_queue = queue.Queue()
+        self._sse_thread = None
+        self._sse_stop_event = Event()
+        self._sse_connected = Event()
+    
+    def start(self):
+        """Start the remote MCP connection."""
+        if self._initialized:
+            return
+        
+        if self.transport_type == "sse":
+            self._start_sse()
+        elif self.transport_type == "http":
+            self._initialize_http()
+        
+        self._initialized = True
+    
+    def _start_sse(self):
+        """Start SSE connection in a background thread."""
+        self._sse_stop_event.clear()
+        self._sse_thread = Thread(target=self._sse_listener, daemon=True)
+        self._sse_thread.start()
+        
+        # Wait for connection with timeout
+        if not self._sse_connected.wait(timeout=10):
+            raise Exception(f"SSE connection timeout for {self.name}")
+        
+        # Initialize the MCP connection
+        self._initialize_mcp()
+    
+    def _sse_listener(self):
+        """Background thread to listen for SSE events."""
+        try:
+            headers = {
+                'Accept': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                **self.headers
+            }
+            
+            response = requests.get(self.url, headers=headers, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            event_type = None
+            event_data = []
+            
+            for line in response.iter_lines(decode_unicode=True):
+                if self._sse_stop_event.is_set():
+                    break
+                
+                if line is None:
+                    continue
+                
+                # Parse SSE format
+                if line.startswith('event:'):
+                    event_type = line[6:].strip()
+                elif line.startswith('data:'):
+                    event_data.append(line[5:].strip())
+                elif line == '':
+                    # End of event
+                    if event_data:
+                        data = '\n'.join(event_data)
+                        self._handle_sse_event(event_type, data)
+                        event_data = []
+                        event_type = None
+                        
+        except Exception as e:
+            if os.environ.get("MCP_DEBUG"):
+                print(f"[MCP DEBUG] SSE listener error: {e}", file=sys.stderr)
+            self._sse_response_queue.put({"error": str(e)})
+    
+    def _handle_sse_event(self, event_type: Optional[str], data: str):
+        """Handle incoming SSE event."""
+        if os.environ.get("MCP_DEBUG"):
+            print(f"[MCP DEBUG] SSE event: {event_type} - {data[:200]}", file=sys.stderr)
+        
+        if event_type == 'endpoint':
+            # Server is telling us where to POST messages
+            self._sse_endpoint = data.strip()
+            # Handle relative URLs
+            if self._sse_endpoint.startswith('/'):
+                # Extract base URL
+                from urllib.parse import urlparse
+                parsed = urlparse(self.url)
+                self._sse_endpoint = f"{parsed.scheme}://{parsed.netloc}{self._sse_endpoint}"
+            self._sse_connected.set()
+        elif event_type == 'message' or event_type is None:
+            # JSON-RPC response
+            try:
+                parsed = json.loads(data)
+                self._sse_response_queue.put(parsed)
+            except json.JSONDecodeError:
+                if os.environ.get("MCP_DEBUG"):
+                    print(f"[MCP DEBUG] Invalid JSON in SSE: {data}", file=sys.stderr)
+    
+    def _initialize_http(self):
+        """
+        Initialize Streamable HTTP transport connection.
+        
+        For Streamable HTTP:
+        1. Send initialize request WITHOUT session ID
+        2. Server returns session ID in Mcp-Session-Id response header
+        3. Store session ID for subsequent requests
+        """
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+            **self.headers
+        }
+        
+        request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "jarvis-voice",
+                    "version": "1.0.0"
+                }
+            }
+        }
+        
+        if os.environ.get("MCP_DEBUG"):
+            print(f"[MCP DEBUG] HTTP Initialize: {json.dumps(request)}", file=sys.stderr)
+        
+        response = requests.post(
+            self.url,
+            json=request,
+            headers=headers,
+            timeout=30,
+            stream=True
+        )
+        response.raise_for_status()
+        
+        # Extract session ID from response headers
+        self._session_id = response.headers.get('Mcp-Session-Id')
+        
+        if os.environ.get("MCP_DEBUG"):
+            print(f"[MCP DEBUG] Got session ID: {self._session_id}", file=sys.stderr)
+        
+        # Consume the SSE response (initialization result)
+        for line in response.iter_lines(decode_unicode=True):
+            if os.environ.get("MCP_DEBUG") and line:
+                print(f"[MCP DEBUG] Init response: {line}", file=sys.stderr)
+        
+        self.request_id = 1  # We used ID 1 for initialize
+        
+        # Send initialized notification
+        self._send_notification("notifications/initialized")
+    
+    def _initialize_mcp(self):
+        """Send MCP initialization handshake (for SSE transport)."""
+        try:
+            result = self._send_request("initialize", {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "jarvis-voice",
+                    "version": "1.0.0"
+                }
+            })
+            
+            # Send initialized notification
+            self._send_notification("notifications/initialized")
+            
+        except Exception as e:
+            if os.environ.get("MCP_DEBUG"):
+                print(f"[MCP DEBUG] MCP init failed (may be ok): {e}", file=sys.stderr)
+    
+    def _send_notification(self, method: str, params: Optional[Dict] = None):
+        """Send JSON-RPC notification (no response expected)."""
+        notification = {
+            "jsonrpc": "2.0",
+            "method": method
+        }
+        if params:
+            notification["params"] = params
+        
+        self._post_message(notification)
+    
+    def _send_request(self, method: str, params: Optional[Dict] = None) -> Any:
+        """Send JSON-RPC request and wait for response."""
+        with self.lock:
+            if not self._initialized and method != "initialize":
+                self.start()
+            
+            self.request_id += 1
+            request = {
+                "jsonrpc": "2.0",
+                "id": self.request_id,
+                "method": method
+            }
+            if params:
+                request["params"] = params
+            
+            if os.environ.get("MCP_DEBUG"):
+                print(f"[MCP DEBUG] Sending: {json.dumps(request)}", file=sys.stderr)
+            
+            if self.transport_type == "sse":
+                return self._send_sse_request(request)
+            else:
+                return self._send_http_request(request)
+    
+    def _send_sse_request(self, request: Dict) -> Any:
+        """Send request via SSE transport (POST to endpoint, receive via stream)."""
+        if not self._sse_endpoint:
+            raise Exception(f"SSE endpoint not established for {self.name}")
+        
+        # Clear queue of old responses
+        while not self._sse_response_queue.empty():
+            try:
+                self._sse_response_queue.get_nowait()
+            except queue.Empty:
+                break
+        
+        # POST the request
+        headers = {
+            'Content-Type': 'application/json',
+            **self.headers
+        }
+        
+        response = requests.post(
+            self._sse_endpoint,
+            json=request,
+            headers=headers,
+            timeout=30
+        )
+        response.raise_for_status()
+        
+        # Wait for response from SSE stream
+        try:
+            result = self._sse_response_queue.get(timeout=30)
+            
+            if "error" in result and "id" not in result:
+                raise Exception(f"SSE error: {result['error']}")
+            
+            if result.get("id") == request["id"]:
+                if "error" in result:
+                    raise Exception(f"MCP error: {result['error'].get('message', 'Unknown')}")
+                return result.get("result")
+            
+        except queue.Empty:
+            raise Exception(f"Timeout waiting for SSE response from {self.name}")
+        
+        return None
+    
+    def _send_http_request(self, request: Dict) -> Any:
+        """
+        Send request via Streamable HTTP transport.
+        
+        Session ID is required for all requests after initialization.
+        Response can be either JSON or SSE (server decides).
+        """
+        headers = {
+            'Content-Type': 'application/json',
+            # MCP Streamable HTTP requires accepting both JSON and SSE
+            'Accept': 'application/json, text/event-stream',
+            **self.headers
+        }
+        
+        # Include session ID for all requests after initialization
+        if self._session_id:
+            headers['Mcp-Session-Id'] = self._session_id
+        
+        if os.environ.get("MCP_DEBUG"):
+            print(f"[MCP DEBUG] HTTP Request: {json.dumps(request)}", file=sys.stderr)
+            print(f"[MCP DEBUG] Session ID: {self._session_id}", file=sys.stderr)
+        
+        response = requests.post(
+            self.url,
+            json=request,
+            headers=headers,
+            timeout=30,
+            stream=True  # Enable streaming for potential SSE responses
+        )
+        response.raise_for_status()
+        
+        # Check content type to determine response format
+        content_type = response.headers.get('Content-Type', '')
+        
+        if 'text/event-stream' in content_type:
+            # Parse SSE response
+            result = self._parse_sse_response(response)
+        else:
+            # Parse JSON response
+            result = response.json()
+        
+        if os.environ.get("MCP_DEBUG"):
+            print(f"[MCP DEBUG] HTTP response: {json.dumps(result, indent=2)}", file=sys.stderr)
+        
+        if "error" in result:
+            raise Exception(f"MCP error: {result['error'].get('message', 'Unknown')}")
+        
+        return result.get("result")
+    
+    def _parse_sse_response(self, response) -> Dict:
+        """
+        Parse SSE (Server-Sent Events) response from Streamable HTTP.
+        
+        The response may contain multiple events, we want the final JSON-RPC result.
+        """
+        result = None
+        event_type = None
+        event_data = []
+        
+        for line in response.iter_lines(decode_unicode=True):
+            if line is None:
+                continue
+            
+            if line.startswith('event:'):
+                event_type = line[6:].strip()
+            elif line.startswith('data:'):
+                event_data.append(line[5:].strip())
+            elif line == '':
+                # End of event - process it
+                if event_data:
+                    data = '\n'.join(event_data)
+                    try:
+                        parsed = json.loads(data)
+                        # Keep the last valid JSON-RPC response
+                        if 'id' in parsed or 'result' in parsed or 'error' in parsed:
+                            result = parsed
+                    except json.JSONDecodeError:
+                        pass
+                    event_data = []
+                    event_type = None
+        
+        # Handle any remaining data
+        if event_data:
+            data = '\n'.join(event_data)
+            try:
+                parsed = json.loads(data)
+                if 'id' in parsed or 'result' in parsed or 'error' in parsed:
+                    result = parsed
+            except json.JSONDecodeError:
+                pass
+        
+        if result is None:
+            raise Exception("No valid JSON-RPC response in SSE stream")
+        
+        return result
+    
+    def _post_message(self, message: Dict):
+        """Post a message without waiting for response."""
+        if self.transport_type == "sse" and self._sse_endpoint:
+            endpoint = self._sse_endpoint
+        else:
+            endpoint = self.url
+        
+        headers = {
+            'Content-Type': 'application/json',
+            **self.headers
+        }
+        
+        try:
+            requests.post(endpoint, json=message, headers=headers, timeout=10)
+        except Exception as e:
+            if os.environ.get("MCP_DEBUG"):
+                print(f"[MCP DEBUG] Post notification failed: {e}", file=sys.stderr)
+    
+    def stop(self):
+        """Stop the remote MCP connection."""
+        self._sse_stop_event.set()
+        if self._sse_thread and self._sse_thread.is_alive():
+            self._sse_thread.join(timeout=2)
+        self._initialized = False
+        self._session_id = None
+        self._sse_endpoint = None
+        self._sse_connected.clear()
+        self._tools_cache = None
+    
+    def list_tools(self) -> List[Dict[str, Any]]:
+        """List available tools from remote MCP server."""
+        if self._tools_cache:
+            return self._tools_cache
+        
+        try:
+            result = self._send_request("tools/list")
+            tools = result.get("tools", []) if result else []
+            self._tools_cache = tools
+            return tools
+        except Exception as e:
+            print(f"Error listing tools from remote MCP server {self.name}: {e}", file=sys.stderr)
+            return []
+    
+    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool on the remote MCP server."""
+        try:
+            result = self._send_request("tools/call", {
+                "name": tool_name,
+                "arguments": arguments
+            })
+            
+            if not result:
+                return {
+                    "ok": False,
+                    "speech": f"MCP tool {tool_name} returned no result",
+                    "error": "Empty result"
+                }
+            
+            # Extract content from MCP response
+            content = result.get("content", [])
+            
+            if not content:
+                return {
+                    "ok": True,
+                    "speech": str(result),
+                    "data": {"raw": result}
+                }
+            
+            # Combine text content
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get("type") == "text":
+                        text_parts.append(item.get("text", ""))
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            
+            combined_text = "\n".join(text_parts) if text_parts else str(content)
+            
+            return {
+                "ok": True,
+                "speech": combined_text[:500],
+                "data": {"raw": content, "full_text": combined_text}
+            }
+            
+        except Exception as e:
+            import traceback
+            if os.environ.get("MCP_DEBUG"):
+                print(f"MCP remote tool error: {traceback.format_exc()}", file=sys.stderr)
+            return {
+                "ok": False,
+                "speech": f"MCP tool {tool_name} failed",
+                "error": str(e)
+            }
+    
+    def __enter__(self):
+        """Context manager entry."""
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.stop()
 
 
 class MCPManager:
-    """Manages multiple MCP servers."""
+    """Manages multiple MCP servers (stdio, SSE, and HTTP transports)."""
     
     def __init__(self, config_path: str):
         """
@@ -328,11 +826,47 @@ class MCPManager:
             config_path: Path to MCP servers config JSON
         """
         self.config_path = config_path
-        self.servers: Dict[str, MCPClient] = {}
+        self.servers: Dict[str, Union[MCPClient, MCPRemoteClient]] = {}
         self._load_config()
     
     def _load_config(self):
-        """Load MCP servers from config file."""
+        """
+        Load MCP servers from config file.
+        
+        Supports multiple transport types:
+        - stdio: Local subprocess (command + args)
+        - sse: Server-Sent Events (url + type: "sse")
+        - http: Streamable HTTP (url + type: "http")
+        
+        Config examples:
+        
+        stdio (existing format):
+        {
+            "brave_search": {
+                "command": "docker",
+                "args": ["run", "-i", "mcp/brave-search"],
+                "env": {"API_KEY": "${BRAVE_API_KEY}"}
+            }
+        }
+        
+        SSE (new format):
+        {
+            "coingecko": {
+                "type": "sse",
+                "url": "https://mcp.api.coingecko.com/sse",
+                "headers": {"X-API-Key": "${COINGECKO_API_KEY}"}
+            }
+        }
+        
+        HTTP (new format):
+        {
+            "some_api": {
+                "type": "http",
+                "url": "https://api.example.com/mcp",
+                "headers": {}
+            }
+        }
+        """
         if not os.path.exists(self.config_path):
             return
         
@@ -340,11 +874,74 @@ class MCPManager:
             config = json.load(f)
         
         for name, server_config in config.get("mcpServers", {}).items():
-            command = server_config.get("command")
-            args = server_config.get("args", [])
-            env = server_config.get("env", {})
+            # Skip disabled servers
+            if not server_config.get("enabled", True):
+                continue
             
-            self.servers[name] = MCPClient(name, command, args, env)
+            transport_type = server_config.get("type", "").lower()
+            
+            if transport_type in ("sse", "http"):
+                # Remote MCP server (SSE or HTTP transport)
+                url = server_config.get("url")
+                if not url:
+                    print(f"Warning: MCP server '{name}' has type={transport_type} but no url", file=sys.stderr)
+                    continue
+                
+                # Process headers with environment variable substitution
+                raw_headers = server_config.get("headers", {})
+                headers = self._substitute_env_vars(raw_headers)
+                
+                self.servers[name] = MCPRemoteClient(name, url, transport_type, headers)
+                
+                if os.environ.get("MCP_DEBUG"):
+                    print(f"[MCP DEBUG] Loaded remote server: {name} ({transport_type}) -> {url}", file=sys.stderr)
+            
+            elif "command" in server_config:
+                # Local MCP server (stdio transport)
+                command = server_config.get("command")
+                args = server_config.get("args", [])
+                env = server_config.get("env", {})
+                
+                self.servers[name] = MCPClient(name, command, args, env)
+                
+                if os.environ.get("MCP_DEBUG"):
+                    print(f"[MCP DEBUG] Loaded stdio server: {name} -> {command}", file=sys.stderr)
+            
+            else:
+                print(f"Warning: MCP server '{name}' has unknown config (need 'command' or 'type'+'url')", file=sys.stderr)
+    
+    def _substitute_env_vars(self, data: Dict[str, str]) -> Dict[str, str]:
+        """
+        Substitute ${VAR_NAME} placeholders with environment variable values.
+        
+        SECURITY: This method only substitutes values for keys that are
+        EXPLICITLY defined in the input dict. It does NOT pass the entire
+        os.environ to any server. This prevents accidental exposure of
+        sensitive environment variables (SSH keys, API tokens, etc.).
+        
+        Example:
+            Input:  {"Authorization": "Bearer ${MY_API_KEY}"}
+            Output: {"Authorization": "Bearer actual-key-value"}
+            
+            Only MY_API_KEY is read from os.environ, nothing else.
+        
+        Args:
+            data: Dict with potential ${VAR} placeholders
+            
+        Returns:
+            Dict with substituted values (only for explicitly defined keys)
+        """
+        result = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                def replace_var(match):
+                    var_name = match.group(1)
+                    return os.environ.get(var_name, f"${{{var_name}}}")
+                
+                result[key] = re.sub(r'\$\{([^}]+)\}', replace_var, value)
+            else:
+                result[key] = str(value)
+        return result
     
     def get_server(self, name: str) -> Optional[MCPClient]:
         """Get MCP server by name."""

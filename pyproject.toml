@@ -47,3 +47,12 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pyright]
+# Tell pyright/basedpyright where to find local modules
+extraPaths = ["lib", "orchestrator", "skills", "bin", "api"]
+pythonVersion = "3.12"
+# Disable type checking - this codebase works fine without strict types
+typeCheckingMode = "off"
+reportMissingImports = false
+reportMissingTypeStubs = false

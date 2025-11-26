@@ -39,7 +39,8 @@ This directory contains configuration files for Jarvis Voice Assistant.
 5. **(Optional) Configure MCP Servers:**
    - MCP servers add tools like web search (DuckDuckGo), HTTP fetch, etc.
    - Edit `config/mcp-servers.json` to enable/disable servers
-   - See [MCP Server Configuration](#mcp-server-configuration) below for details
+   - See [MCP Server Configuration](#mcp-server-configuration) and [TOOL RAG IMPLEMENTATION SUMMARY](../docs/TOOL_RAG_IMPLEMENTATION_SUMMARY.md) and [MCP REMOTE TRANSPORT](../docs/MCP_REMOTE_TRANSPORT.md) for details
+   - IF YOU MODIFY MCP SERVERS OR TOOLS MAKE SURE TO RE SYNC DB FOR TOOL RAG TO PICK UP NEW TOOLS
 
 ## Configuration Files
 
@@ -165,7 +166,15 @@ OPENCODE_PROVIDER="anthropic"  # Paid, safer
 
 **MCP (Model Context Protocol)** servers extend Jarvis with additional tools like web search, HTTP fetch, etc.
 
+MCP servers can be configured to use the following transports:
+- stdio: Local subprocess with stdin/stdout
+- sse: Server-Sent Events over HTTP
+- http: Streamable HTTP (JSON-RPC over HTTP POST)
+
+The recommended transport is http.
+
 **Important**: These MCP servers are for **Jarvis** only. OpenCode has its own MCP configuration at `~/.config/opencode/opencode.json`.
+
 
 ### Configuration File
 

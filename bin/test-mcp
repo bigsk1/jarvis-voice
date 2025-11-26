@@ -2,22 +2,49 @@
 """
 Test MCP Server Connection
 Quick script to test MCP server connectivity and tool discovery.
-Loads config from mcp-servers.json and respects enabled/disabled status.
+Supports all transport types: stdio (Docker), SSE, and HTTP.
 """
 import sys
 import os
 import json
+import signal
+import atexit
 from pathlib import Path
+
+# Force unbuffered output
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from mcp_client import MCPClient, MCPManager
+from mcp_client import MCPClient, MCPRemoteClient, MCPManager
 from config_loader import load_config
 
+# Global manager for cleanup on interrupt
+_active_manager = None
 
-def list_all_enabled_servers():
-    """List all enabled MCP servers and their tools."""
-    print("\n🔍 Discovering MCP Servers and Tools")
+def _cleanup_handler(signum=None, frame=None):
+    """Cleanup handler for signals and exit."""
+    global _active_manager
+    if _active_manager:
+        print("\n🧹 Cleaning up servers...", flush=True)
+        try:
+            _active_manager.stop_all()
+        except:
+            pass
+        _active_manager = None
+    if signum:
+        sys.exit(1)
+
+# Register cleanup handlers
+signal.signal(signal.SIGINT, _cleanup_handler)
+signal.signal(signal.SIGTERM, _cleanup_handler)
+atexit.register(_cleanup_handler)
+
+
+def list_all_servers():
+    """List all MCP servers and their config."""
+    print("\n🔍 MCP Server Configuration")
     print("=" * 70)
     
     config_path = Path(__file__).parent.parent / "config" / "mcp-servers.json"
@@ -26,7 +53,6 @@ def list_all_enabled_servers():
         print(f"❌ Config file not found: {config_path}")
         return
     
-    # Load config
     with open(config_path, 'r') as f:
         config = json.load(f)
     
@@ -42,27 +68,43 @@ def list_all_enabled_servers():
     disabled_count = 0
     
     for server_name, server_config in servers.items():
-        enabled = server_config.get("enabled", False)
+        enabled = server_config.get("enabled", True)
         description = server_config.get("description", "No description")
+        
+        # Determine transport type
+        transport_type = server_config.get("type", "").lower()
+        if transport_type in ("sse", "http"):
+            transport = f"{transport_type.upper()} → {server_config.get('url', 'N/A')}"
+        else:
+            transport = f"stdio → {server_config.get('command', 'N/A')}"
         
         status_icon = "✅" if enabled else "⊝"
         status_text = "ENABLED" if enabled else "DISABLED"
         
         print(f"{status_icon} {server_name} ({status_text})")
+        print(f"   Transport:   {transport}")
         print(f"   Description: {description}")
         
-        # Show environment variables (if any)
+        # Show environment/headers
         env_vars = server_config.get("env", {})
+        headers = server_config.get("headers", {})
+        
         if env_vars:
             print(f"   Environment: {len(env_vars)} variable(s)")
             for key, value in env_vars.items():
-                # Show if it's a substitution
+                if "${" in str(value):
+                    print(f"      • {key} = {value}")
+                else:
+                    print(f"      • {key} = (static value)")
+        elif headers:
+            print(f"   Headers: {len(headers)} header(s)")
+            for key, value in headers.items():
                 if "${" in str(value):
                     print(f"      • {key} = {value}")
                 else:
                     print(f"      • {key} = (static value)")
         else:
-            print(f"   Environment: None (secure by default)")
+            print(f"   Credentials: None (secure by default)")
         
         print()
         
@@ -72,16 +114,12 @@ def list_all_enabled_servers():
             disabled_count += 1
     
     print(f"Summary: {enabled_count} enabled, {disabled_count} disabled")
-    
-    if enabled_count == 0:
-        print("\n⚠️  No enabled servers. Enable at least one in config/mcp-servers.json")
-        return
-    
-    return config_path, servers
 
 
-def discover_tools_from_enabled(mode='cloud'):
+def discover_tools(mode='cloud'):
     """Discover and list all tools from enabled MCP servers."""
+    global _active_manager
+    
     print("\n🛠️  Discovering Tools from Enabled Servers")
     print("=" * 70)
     
@@ -95,72 +133,70 @@ def discover_tools_from_enabled(mode='cloud'):
         print(f"❌ Config file not found: {config_path}")
         return
     
-    # Load config
-    with open(config_path, 'r') as f:
-        config = json.load(f)
+    # Use MCPManager which handles all transport types
+    print(f"🔌 Starting MCP servers...\n")
+    manager = MCPManager(str(config_path))
+    _active_manager = manager  # For cleanup on interrupt
     
-    servers = config.get("mcpServers", {})
-    enabled_servers = {name: cfg for name, cfg in servers.items() if cfg.get("enabled", False)}
-    
-    if not enabled_servers:
+    if not manager.servers:
         print("❌ No enabled servers")
         return
     
-    print(f"🔌 Starting {len(enabled_servers)} enabled server(s)...\n")
+    print(f"✅ Loaded {len(manager.servers)} enabled server(s)\n")
     
     all_tools = {}
+    total_tools = 0
     
-    for server_name, server_config in enabled_servers.items():
+    for server_name, client in manager.servers.items():
         try:
-            print(f"⏳ Starting {server_name}...")
+            # Identify transport type
+            if isinstance(client, MCPRemoteClient):
+                transport = f"{client.transport_type.upper()}"
+            else:
+                transport = "stdio"
             
-            # Create client
-            client = MCPClient(
-                name=server_name,
-                command=server_config.get("command"),
-                args=server_config.get("args", []),
-                env=server_config.get("env", {})
-            )
+            print(f"⏳ Querying {server_name} ({transport})...")
             
-            # Start server
-            client.start()
-            print(f"✅ {server_name} started")
-            
-            # List tools
             tools = client.list_tools()
             
             if tools:
                 all_tools[server_name] = {
                     "client": client,
-                    "tools": tools
+                    "tools": tools,
+                    "transport": transport
                 }
-                print(f"   📋 Found {len(tools)} tool(s)")
+                print(f"   ✅ Found {len(tools)} tool(s)")
+                total_tools += len(tools)
             else:
                 print(f"   ⚠️  No tools found")
-                client.stop()
             
         except Exception as e:
-            print(f"❌ {server_name} failed: {str(e)[:100]}")
+            print(f"   ❌ Failed: {str(e)[:100]}")
     
     if not all_tools:
         print("\n❌ No tools discovered from any server")
         return
     
     # Display all tools
-    print(f"\n📚 Tool Catalog ({sum(len(info['tools']) for info in all_tools.values())} total tools)")
+    print(f"\n📚 Tool Catalog ({total_tools} total tools)")
     print("=" * 70)
     
     for server_name, info in all_tools.items():
         tools = info['tools']
-        print(f"\n🔧 {server_name} ({len(tools)} tools)")
+        transport = info['transport']
+        print(f"\n🔧 {server_name} [{transport}] ({len(tools)} tools)")
         print("-" * 70)
         
         for tool in tools:
             # This is how Jarvis will see it
             jarvis_name = f"mcp_{server_name}_{tool['name']}"
-            print(f"\n  Tool Name (Jarvis): {jarvis_name}")
-            print(f"  Tool Name (MCP):    {tool['name']}")
-            print(f"  Description:        {tool.get('description', 'No description')}")
+            desc = tool.get('description', 'No description')
+            # Truncate description for readability
+            if len(desc) > 100:
+                desc = desc[:100] + "..."
+            
+            print(f"\n  Tool: {jarvis_name}")
+            print(f"  Desc: {desc}")
             
             # Show parameters
             input_schema = tool.get('inputSchema', {})
@@ -168,33 +204,38 @@ def discover_tools_from_enabled(mode='cloud'):
             required = input_schema.get('required', [])
             
             if properties:
-                print(f"  Parameters:")
-                for param_name, param_info in properties.items():
+                print(f"  Params:")
+                for param_name, param_info in list(properties.items())[:5]:  # Limit to 5 params
                     param_type = param_info.get('type', 'unknown')
-                    param_desc = param_info.get('description', 'No description')
                     is_required = param_name in required
-                    req_str = "(required)" if is_required else "(optional)"
-                    print(f"    • {param_name} ({param_type}) {req_str}: {param_desc}")
-            else:
-                print(f"  Parameters:         None")
+                    req_str = "*" if is_required else ""
+                    print(f"    • {param_name}{req_str} ({param_type})")
+                if len(properties) > 5:
+                    print(f"    ... and {len(properties) - 5} more")
     
     # Cleanup
     print("\n🧹 Stopping all servers...")
-    for info in all_tools.values():
-        try:
-            info['client'].stop()
-        except:
-            pass
-    
-    print("✅ All servers stopped")
+    manager.stop_all()
+    _active_manager = None
+    print("✅ Done")
 
 
-def test_specific_tool(server_name: str, tool_name: str, args: dict, mode='cloud'):
-    """Test a specific tool from a specific server."""
-    print(f"\n🧪 Testing Tool: {server_name}.{tool_name}")
-    print("=" * 70)
+def audit_tools(mode='cloud'):
+    """Audit tools for potentially dangerous capabilities."""
+    global _active_manager
     
-    # Load config
+    print("\n🔒 Security Audit: Checking for Dangerous Tool Capabilities")
+    print("=" * 70, flush=True)
+    
+    # Keywords that indicate potentially dangerous capabilities
+    dangerous_keywords = [
+        'execute', 'command', 'bash', 'shell', 'script', 'code', 'eval',
+        'file', 'write', 'delete', 'remove', 'path', 'directory',
+        'ssh', 'credential', 'password', 'secret', 'key', 'token',
+        'sql', 'query', 'database', 'inject',
+        'sudo', 'root', 'admin', 'privilege'
+    ]
+    
     load_config(mode)
     
     config_path = Path(__file__).parent.parent / "config" / "mcp-servers.json"
@@ -202,31 +243,124 @@ def test_specific_tool(server_name: str, tool_name: str, args: dict, mode='cloud
     with open(config_path, 'r') as f:
         config = json.load(f)
     
-    server_config = config.get("mcpServers", {}).get(server_name)
+    servers = config.get("mcpServers", {})
+    enabled_servers = {name: cfg for name, cfg in servers.items() if cfg.get("enabled", True)}
     
-    if not server_config:
-        print(f"❌ Server '{server_name}' not found in config")
+    if not enabled_servers:
+        print("❌ No enabled servers to audit")
         return
     
-    if not server_config.get("enabled", False):
-        print(f"⚠️  Server '{server_name}' is disabled")
+    flagged_tools = []
+    safe_tools = 0
+    
+    print(f"\n🔍 Scanning {len(enabled_servers)} server(s) for dangerous capabilities...\n", flush=True)
+    
+    # Test each server individually with cleanup
+    for server_name, server_config in enabled_servers.items():
+        client = None
+        try:
+            print(f"  ⏳ Scanning {server_name}...", end=" ", flush=True)
+            
+            # Create appropriate client
+            transport_type = server_config.get("type", "").lower()
+            
+            if transport_type in ("sse", "http"):
+                from mcp_client import MCPRemoteClient
+                url = server_config.get("url")
+                headers = server_config.get("headers", {})
+                client = MCPRemoteClient(server_name, url, transport_type, headers)
+            else:
+                from mcp_client import MCPClient
+                client = MCPClient(
+                    server_name,
+                    server_config.get("command"),
+                    server_config.get("args", []),
+                    server_config.get("env", {})
+                )
+            
+            tools = client.list_tools()
+            print(f"found {len(tools)} tools", flush=True)
+            
+            for tool in tools:
+                tool_name = tool.get('name', '')
+                description = tool.get('description', '').lower()
+                jarvis_name = f"mcp_{server_name}_{tool_name}"
+                
+                found_keywords = []
+                
+                for keyword in dangerous_keywords:
+                    if keyword in tool_name.lower() or keyword in description:
+                        found_keywords.append(keyword)
+                
+                input_schema = tool.get('inputSchema', {})
+                properties = input_schema.get('properties', {})
+                
+                for param_name in properties.keys():
+                    for keyword in dangerous_keywords:
+                        if keyword in param_name.lower():
+                            found_keywords.append(f"param:{param_name}")
+                
+                if found_keywords:
+                    flagged_tools.append({
+                        'server': server_name,
+                        'tool': jarvis_name,
+                        'keywords': list(set(found_keywords)),
+                        'description': tool.get('description', '')[:100]
+                    })
+                else:
+                    safe_tools += 1
+                    
+        except Exception as e:
+            print(f"FAILED: {e}", flush=True)
+        finally:
+            # Always cleanup this server before moving to next
+            if client:
+                try:
+                    client.stop()
+                except:
+                    pass
+    
+    # Report
+    print(f"\n📊 Audit Results:")
+    print(f"   ✅ Safe tools: {safe_tools}")
+    print(f"   ⚠️  Flagged tools: {len(flagged_tools)}")
+    
+    if flagged_tools:
+        print(f"\n🚩 Flagged Tools (review before use):")
+        print("-" * 70)
+        
+        for item in flagged_tools:
+            print(f"\n  Tool: {item['tool']}")
+            print(f"  Server: {item['server']}")
+            print(f"  Flags: {', '.join(item['keywords'])}")
+            print(f"  Desc: {item['description']}...")
+    else:
+        print("\n✅ No obviously dangerous tools detected!")
+        print("   (Still review tool descriptions before use)")
+
+
+def test_tool(server_name: str, tool_name: str, args: dict, mode='cloud'):
+    """Test a specific tool from a specific server."""
+    global _active_manager
+    
+    print(f"\n🧪 Testing Tool: {server_name}.{tool_name}")
+    print("=" * 70)
+    
+    load_config(mode)
+    
+    config_path = Path(__file__).parent.parent / "config" / "mcp-servers.json"
+    manager = MCPManager(str(config_path))
+    _active_manager = manager  # For cleanup on interrupt
+    
+    client = manager.servers.get(server_name)
+    
+    if not client:
+        print(f"❌ Server '{server_name}' not found or disabled")
+        print(f"   Available: {list(manager.servers.keys())}")
         return
     
     try:
-        # Create and start client
-        print(f"🚀 Starting {server_name}...")
-        client = MCPClient(
-            name=server_name,
-            command=server_config.get("command"),
-            args=server_config.get("args", []),
-            env=server_config.get("env", {})
-        )
-        
-        client.start()
-        print(f"✅ Server started")
-        
-        # Call tool
-        print(f"\n🔍 Calling tool '{tool_name}' with args:")
+        print(f"🔍 Calling tool '{tool_name}' with args:")
         print(f"   {json.dumps(args, indent=2)}")
         
         result = client.call_tool(tool_name, args)
@@ -240,7 +374,6 @@ def test_specific_tool(server_name: str, tool_name: str, args: dict, mode='cloud
         
         if result.get('data'):
             print(f"   Data keys: {list(result['data'].keys())}")
-            # Show first 500 chars of data
             data_str = json.dumps(result['data'], indent=2)
             if len(data_str) > 500:
                 print(f"   Data preview:\n{data_str[:500]}...")
@@ -249,13 +382,14 @@ def test_specific_tool(server_name: str, tool_name: str, args: dict, mode='cloud
         
         print("\n✅ Test complete")
         
-        # Cleanup
-        client.stop()
-        
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
         traceback.print_exc()
+    
+    finally:
+        manager.stop_all()
+        _active_manager = None
 
 
 def main():
@@ -273,11 +407,11 @@ Examples:
   # Discover tools from all enabled servers
   ./bin/test-mcp --discover
   
-  # Discover tools in local mode
-  ./bin/test-mcp --discover --mode local
+  # Security audit - check for dangerous tools
+  ./bin/test-mcp --audit
   
   # Test a specific tool
-  ./bin/test-mcp --test brave-search search '{"query": "bitcoin price"}'
+  ./bin/test-mcp --test coingecko get_simple_price '{"ids": "bitcoin", "vs_currencies": "usd"}'
   
   # Full test (list + discover)
   ./bin/test-mcp --all
@@ -286,27 +420,32 @@ Examples:
     
     parser.add_argument("--list", action="store_true", help="List all configured servers")
     parser.add_argument("--discover", action="store_true", help="Discover tools from enabled servers")
+    parser.add_argument("--audit", action="store_true", help="Security audit - check for dangerous capabilities")
     parser.add_argument("--test", nargs=3, metavar=("SERVER", "TOOL", "ARGS"), 
                        help="Test specific tool (args as JSON)")
     parser.add_argument("--mode", choices=["cloud", "local"], default="cloud",
                        help="Config mode (cloud or local)")
-    parser.add_argument("--all", action="store_true", help="Run list + discover")
+    parser.add_argument("--all", action="store_true", help="Run list + discover + audit")
     
     args = parser.parse_args()
     
     # Default: list servers
-    if not any([args.list, args.discover, args.test, args.all]):
+    if not any([args.list, args.discover, args.audit, args.test, args.all]):
         args.list = True
     
     if args.all:
-        list_all_enabled_servers()
-        discover_tools_from_enabled(args.mode)
+        list_all_servers()
+        discover_tools(args.mode)
+        audit_tools(args.mode)
     
     elif args.list:
-        list_all_enabled_servers()
+        list_all_servers()
     
     elif args.discover:
-        discover_tools_from_enabled(args.mode)
+        discover_tools(args.mode)
+    
+    elif args.audit:
+        audit_tools(args.mode)
     
     elif args.test:
         server_name, tool_name, args_json = args.test
@@ -316,7 +455,7 @@ Examples:
             print(f"❌ Invalid JSON args: {e}")
             sys.exit(1)
         
-        test_specific_tool(server_name, tool_name, tool_args, args.mode)
+        test_tool(server_name, tool_name, tool_args, args.mode)
 
 
 if __name__ == "__main__":
