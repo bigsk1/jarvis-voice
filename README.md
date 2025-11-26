@@ -130,6 +130,9 @@ Key decision points:
 
 ## 📁 Project Structure
 
+<details>
+<summary><strong>Project Directory Structure (click to expand)</strong></summary>
+
 ```
 jarvis-voice/
 ├── bin/                      # Executable scripts & utilities
@@ -220,6 +223,9 @@ jarvis-voice/
 └── README.md                 # This file
 ```
 
+</details>
+
+
 ---
 
 ## 🚀 Quick Start
@@ -296,9 +302,12 @@ source ~/jarvis-venv/bin/activate
 
 Say **"Hey Jarvis"** to wake it up!
 
-### 5. Proactive API & Reminders (Optional)
+### 5. Proactive API & Reminders
 
 Enable event-driven alerts, notifications, and smart reminders:
+
+![reactive-vs-proactive-info-graph](docs/images/reactive-vs-proactive-info-graph.jpeg)
+
 
 ```bash
 # Start API server (receives webhooks, processes reminders)
@@ -328,6 +337,8 @@ See [Proactive API docs](docs/api/) and [Reminder System](docs/api/REMINDER_SYST
 ### 6. Remote Monitoring Agent (Optional)
 
 Deploy the **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** (Docker) on remote servers for health checks and alerts:
+
+![jarvis-monitoring-agent-info-graph](docs/images/jarvis-monitoring-agent-info-graph.jpeg)
 
 ```bash
 # On remote server (Docker required)
@@ -412,6 +423,8 @@ Turn 3: Q&A response → "Flask API running on port 8091"
 
 ### Managing Tools (Enable/Disable)
 
+![tool-rag-info-graph](docs/images/tool-rag-info-graph.jpeg)
+
 Control which tools are loaded to optimize context window and performance:
 
 ```bash
@@ -446,6 +459,8 @@ See `docs/TOOL_MANAGEMENT.md` for details.
 ### Knowledge Base
 
 Stores facts, preferences, and technical information with **hybrid search** (FTS5 + semantic):
+
+![memory-info-graph](docs/images/memory-info-graph.jpeg)
 
 ```bash
 # Store a fact
@@ -495,6 +510,8 @@ Full conversation logging with metadata:
 
 OpenCode is an autonomous coding agent that can build entire projects.
 
+![opencode-info-graph](docs/images/opencode-info-graph.jpeg)
+
 ### Usage
 
 ```bash
@@ -533,6 +550,9 @@ See `docs/opencode/OPENCODE.md` for details.
 ### Memory Database (Dual System)
 
 Jarvis uses separate databases for cloud and local modes:
+
+![sync-info-graph](docs/images/sync-info-graph.jpeg)
+
 
 **Cloud Mode** - `data/jarvis_memory.db`:
 - Uses OpenAI embeddings (1536 dimensions)
@@ -581,7 +601,7 @@ LIMIT 7;"
 - `docs/QUICKSTART.md` - Quick setup guide
 - `docs/TOOL_CALLING_SYSTEM.md` - How tools work
 
-**Proactive System (NEW Nov 2025):**
+**Proactive System:**
 - `docs/api/` - **Proactive API** documentation (webhooks, alerts, monitoring)
 - `docs/service/` - **Background Services** documentation (daemons, auto-resolve)
 - **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** - Docker agent for remote health checks
@@ -804,10 +824,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 **Completed (November 2025):**
 - ✅ Multi-turn tool orchestration
-- ✅ **xAI Grok integration** (2M context, 10-15x cheaper, automatic caching, reasoning mode) ⭐ NEW
-- ✅ **Google Calendar bidirectional sync** (reminders ↔ events via n8n workflows) ⭐ NEW
-- ✅ **Modular webhook system** (send_email, send_webhook with auth support) ⭐ NEW
-- ✅ **Email tool** (contact management, HTML templates, SMTP via n8n) ⭐ NEW
+- ✅ **xAI Grok integration** (2M context, 10-15x cheaper, automatic caching, reasoning mode) ⭐
+- ✅ **Google Calendar bidirectional sync** (reminders ↔ events via n8n workflows) ⭐
+- ✅ **Monitoring Stack** (Grafana + Prometheus + Loki for real-time observability) ⭐
+- ✅ **LLM Call Logging** (comprehensive telemetry: cost, latency, tokens, multi-turn analysis) ⭐
+- ✅ **Modular webhook system** (send_email, send_webhook with auth support)
+- ✅ **Email tool** (contact management, HTML templates, SMTP via n8n)
+- ✅ **Ghost tools pattern** (critical tools always available, bypasses semantic search)
+- ✅ **Disaster recovery guide** (complete system rebuild documentation)
 - ✅ **FTS5 full-text search** with BM25 ranking (faster, more accurate keyword searches)
 - ✅ **Auto-context system** (short-term conversation memory across wake word cycles)
 - ✅ **Comprehensive burn test** (modular test suite for all features)
@@ -827,14 +851,15 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 **In Progress:**
 - Voice mode improvements
-- Additional integrations and monitoring templates
+- Additional n8n workflow integrations
 - Performance optimization for local models
 
 **Planned:**
-- Web UI for alerts and memory management
-- Additional automation tools
-- Multi-user support
-- Voice command customization
+- Web UI for memory management and system health
+- Home automation integrations (Home Assistant, MQTT)
+- Multi-user support with isolated memory contexts
+- Custom wake word training
+- Mobile app for remote control
 
 ---
 
