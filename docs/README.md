@@ -1,5 +1,7 @@
 # Jarvis Voice Assistant Documentation
 
+![jarvis-info-graph](images/jarvis-info-graph.jpeg)
+
 ## 📚 Core Documentation
 
 ### Getting Started
@@ -108,8 +110,7 @@
 | **AUTO_CONTEXT_SYSTEM.md** | Short-term conversation memory ⭐ NEW |
 | **CONVERSATION_STATE_ARCHITECTURE.md** | State management between cycles ⭐ NEW |
 | **api/READY_TO_USE.md** | Proactive API (Phase 1 COMPLETE) - Webhook system for alerts |
-| **api/PROACTIVE_ASSISTANT_SYSTEM.md** | Full architecture (5 phases, Phase 1 done) |
-| **COMPLETE_SYSTEM_SUMMARY.md** | System overview |
+| **api/PROACTIVE_ASSISTANT_SYSTEM.md** | Full architecture |
 
 ### Configuration & Setup
 | Document | Purpose |
@@ -217,6 +218,46 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-11-25:**
+- ✅ **Google Calendar Sync** - Bidirectional sync between Jarvis reminders and Google Calendar ⭐ MAJOR
+  - n8n workflows for create/update/delete operations in both directions
+  - Timezone-aware sync (UTC normalization with ISO 8601)
+  - Sync loop prevention with metadata tracking
+  - API routes for update/delete by Google Calendar event ID
+  - See: `docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`
+- ✅ **Modular Webhook System** - Centralized webhook management with authentication support
+  - Webhook registry (`config/webhook_registry.json`) for named webhooks
+  - Generic `send_webhook` tool with auth support (Bearer, API Key, Basic, JWT, Custom Headers)
+  - Rate limiting per webhook
+  - See: `docs/WEBHOOK_SYSTEM.md`
+- ✅ **Email Tool** - Send emails via n8n SMTP integration
+  - Contact management (`config/contacts.json`) with name → email resolution
+  - Rich HTML email templates with Jarvis branding
+  - Ghost tool (always available to LLM)
+  - See: `docs/n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md`
+- ✅ **Monitoring Stack** - Production-grade observability with Grafana, Prometheus, Loki ⭐ MAJOR
+  - Real-time LLM call metrics (cost, latency, token usage, model comparison)
+  - API metrics (request rate, response time, error tracking)
+  - Log aggregation and visualization
+  - Custom dashboards for system health
+  - See: `docs/monitoring/`
+- ✅ **LLM Call Logging** - Comprehensive telemetry for every LLM interaction
+  - Cost tracking per call (input/output tokens, USD)
+  - Multi-turn conversation flow analysis
+  - Tool execution correlation
+  - Grafana dashboard integration
+  - See: `docs/monitoring/GRAFANA_DASHBOARDS.md`
+- ✅ **Disaster Recovery Guide** - Complete system rebuild documentation
+  - Step-by-step server rebuild (OS, audio, Python, n8n, services)
+  - Hardware-specific configuration (audio devices, network IPs)
+  - Data restoration procedures
+  - Validation tests for each component
+  - See: `docs/DISASTER_RECOVERY.md`
+- ✅ **Ghost Tools Pattern** - Critical tools always available via `GHOST_TOOLS` env var
+  - Bypasses semantic search for frequently used tools
+  - Ensures reliable tool discovery (e.g., send_email, send_webhook)
+  - Configurable per deployment mode (cloud/local)
 
 **2025-11-22:**
 - ✅ **Tool RAG System** - Dynamic tool retrieval using vector embeddings for infinite scalability
