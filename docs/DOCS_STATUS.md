@@ -200,7 +200,6 @@ docs/
 ├── System Understanding (Keep) ⭐ NEW
 │   ├── AUTO_CONTEXT_SYSTEM.md (NEW - Nov 2025)
 │   ├── CONVERSATION_STATE_ARCHITECTURE.md (NEW - Nov 2025)
-│   └── COMPLETE_SYSTEM_SUMMARY.md
 │
 ├── Operational (Keep)
 │   ├── INTEL_UPDATE_WORKFLOW.md

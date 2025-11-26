@@ -2,6 +2,8 @@
 
 Jarvis has an intelligent memory system that allows it to remember important information, recall past interactions, and learn from experience.
 
+![memory-info-graph](images/memory-info-graph.jpeg)
+
 ## Database Location
 
 ```
@@ -128,9 +130,8 @@ Removes memories that are no longer needed or incorrect.
 
 ## Managing the Database
 
-### Rebuild FTS5 Index (After Upgrade)
+### Rebuild FTS5 Index
 
-**If upgrading from older version**, rebuild FTS5 index:
 
 ```bash
 cd /home/boss/jarvis-voice

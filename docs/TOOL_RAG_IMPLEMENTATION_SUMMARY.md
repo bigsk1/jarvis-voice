@@ -3,6 +3,8 @@
 ## Overview
 Successfully implemented Dynamic Tool Retrieval (Tool RAG) system for Jarvis Voice Assistant. The system now intelligently loads only relevant tools into the LLM's context, enabling unlimited tool scaling while optimizing for local models with smaller context windows.
 
+![tool-rag-info-graph](images/tool-rag-info-graph.jpeg)
+
 ---
 
 ## What Changed

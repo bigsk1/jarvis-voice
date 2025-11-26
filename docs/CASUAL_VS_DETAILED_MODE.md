@@ -1,10 +1,8 @@
-# Casual vs Detailed Mode - Fixed!
+# Casual vs Detailed Mode
 
-## The Problem You Found
+## The Problem
 
-**User asked**: "Would there be a difference in casual vs detailed?"
-
-**The answer WAS**: **NO!** Both modes were broken and producing verbose output.
+Both casual and detailed modes were broken and producing verbose output.
 
 ## What Was Broken
 
@@ -100,7 +98,7 @@ The server is now accessible at http://192.168.70.228:5000"
 
 ---
 
-### `JARVIS_RESPONSE_STYLE="auto"` (FUTURE)
+### `JARVIS_RESPONSE_STYLE="auto"`
 **Smart mode** - Decides based on context
 
 Currently defaults to `casual` but could be enhanced to:
@@ -205,25 +203,6 @@ JARVIS_RESPONSE_STYLE=casual python3 orchestrator/orchestrator_v2.py cloud "quer
 JARVIS_RESPONSE_STYLE=detailed python3 orchestrator/orchestrator_v2.py cloud "query"
 ```
 
----
-
-## What About Sonnet 4.5?
-
-> "...the model being used is sonnet 4.5 and the latest so the most expensive and smartest there is! so if it can't get this figured out no other model will..."
-
-**You were right to call this out!** The issue wasn't the model's intelligence - it was:
-1. **Weak prompting**: "Be concise" isn't specific enough
-2. **Missing context**: LLM didn't know responses were for voice/TTS
-3. **No word limits**: No hard constraints
-4. **Bad examples**: System prompt lacked concrete good/bad examples
-
-**The fix**: MUCH more specific prompts with:
-- ✅ Hard word limits (15 words max)
-- ✅ Explicit context ("will be SPOKEN ALOUD through speakers")
-- ✅ Multiple good/bad examples
-- ✅ Forbidden patterns ("NO greetings", "NO emojis")
-
-**Result**: Sonnet 4.5 now generates perfect concise responses! The model IS capable, it just needed better instructions.
 
 ---
 

@@ -2,6 +2,8 @@
 
 Event-driven webhook system for proactive notifications.
 
+![reactive-vs-proactive-info-graph](../images/reactive-vs-proactive-info-graph.jpeg)
+
 ---
 
 ## 📚 Documentation Index

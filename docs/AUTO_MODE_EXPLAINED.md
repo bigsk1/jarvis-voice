@@ -1,11 +1,7 @@
 # Auto Mode - Smart Adaptive Response Formatting
 
-## Your Question
 
-> "ok so there was an auto is this no longer maybe the idea or original code was to have it adapt because 'start tetris server' if in auto is short, 'build me a website i want to look like xyz, dark mode, etc..' response in auto longer?"
-
-**Answer**: YES! That's exactly the idea - and it's now **fully implemented**!
-
+![speech-modes-info-graph](images/speech-modes-info-graph.jpeg)
 ---
 
 ## The 3 Modes Explained

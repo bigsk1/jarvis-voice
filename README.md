@@ -858,8 +858,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - Web UI for memory management and system health
 - Home automation integrations (Home Assistant, MQTT)
 - Multi-user support with isolated memory contexts
+- Tool profiles for local vs cloud modes
+- Single start / stop script for api, services, jarvis ( currently have to run 3 different commands )
 - Custom wake word training
 - Mobile app for remote control
+- Improve graphs in Grafana and create purpose build dashboards, improve existing dashboards
+- Additional n8n workflows to integrate features
+- explore metrics api endpoint more
+- test webhook system for universal effectiveness
 
 ---
 

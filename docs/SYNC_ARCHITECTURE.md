@@ -10,6 +10,9 @@ Jarvis uses a **three-tier sync system** to maintain consistency across cloud an
 
 This document explains how these systems work together and when they run.
 
+
+![cloud-vs-local-sync](images/sync-info-graph.jpeg)
+
 ---
 
 ## 1. Memory Database Sync (`sync-memory-db.py`)

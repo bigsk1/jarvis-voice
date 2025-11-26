@@ -1,5 +1,8 @@
 # OpenCode Integration
 
+![opencode-info-graph](../images/opencode-info-graph.jpeg)
+
+
 To install OpenCode Server, follow the instructions on the OpenCode Github Repo https://opencode.ai/docs/
 
 ```bash
