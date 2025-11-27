@@ -608,6 +608,39 @@ from embeddings import get_embedding
 embedding = get_embedding(text)  # Auto-selects model
 ```
 
+### ❌ Incomplete Exception Handling for Pickle/JSON Embeddings
+
+**RECURRING BUG PATTERN** - This has caused issues multiple times!
+
+Embeddings are stored in SQLite as blobs. They can be either:
+- **JSON format** (newer): `b'[0.123, 0.456, ...]'`
+- **Pickle format** (older): `b'\x80\x04\x95...'` (starts with 0x80)
+
+When deserializing, you MUST handle ALL possible errors:
+
+```python
+# BAD - Missing UnicodeDecodeError (causes silent fallback to keyword search!)
+try:
+    stored_embedding = json.loads(blob.decode('utf-8'))
+except (json.JSONDecodeError, AttributeError):
+    stored_embedding = pickle.loads(blob)
+
+# GOOD - Catch all deserialization errors
+try:
+    stored_embedding = json.loads(blob.decode('utf-8'))
+except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
+    stored_embedding = pickle.loads(blob)
+```
+
+**History of pickle/encoding bugs:**
+- Nov 2025: `UnicodeDecodeError` not caught → ALL semantic searches silently fell back to FTS5
+- Earlier: Similar issues when switching between JSON and pickle storage formats
+
+**When modifying embedding serialization code:**
+1. Test with BOTH old pickle-format and new JSON-format data
+2. Always include `UnicodeDecodeError` in exception handling
+3. Add explicit format detection if unsure: `if blob[0:1] == b'\x80':`
+
 ### ❌ Vague Tool Descriptions
 
 ```json

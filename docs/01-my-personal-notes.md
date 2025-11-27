@@ -130,7 +130,7 @@ cat logs/intelligence/intelligence-*.jsonl | jq 'select(.event == "reflection_re
 activate env 
 source ~/jarvis-venv/bin/activate
 
-no db run - cloud or local or both to get all tables made and to create embedding for tools and mcp tools
+no db run - cloud or local  both to get all tables made and to create embedding for tools and mcp tools
  ./bin/sync_tools.py cloud
  ./bin/sync_tools.py local
 
@@ -349,7 +349,22 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
    - Reality: middle tools might have provided the actual answer
    - Need: content attribution (which tool output appeared in response)
 
-3. **Beyond Tool Selection** → See `docs/Psychological-Profile-Ideas.md`
+3. **Reflection Model Problem** ⚠️ IMPORTANT
+   - **Same model grading itself** = reinforces bad behavior!
+   - Same LLM that made the decision is evaluating if it was good
+   - If it thought it was right during the task, it'll think it's right during reflection
+   - **Better approach**: Smarter model (xAI/Anthropic) analyzes less capable model's actions
+   - Current game plan: Run reflections in CLOUD mode (smart LLM), sync to LOCAL
+   - This way Qwen/local models benefit from Grok/Claude's analysis
+   - **The insight persistence IS the value** - fresh sessions forget, but intelligence.db remembers
+
+4. **Response Content Not Captured**
+   - Reflection only sees: query + tools + success/fail
+   - Doesn't see: actual LLM response text
+   - Can't evaluate: "Was the ANSWER correct?" only "Did the tool crash?"
+   - Future fix: Add `llm_response` to experience records
+
+5. **Beyond Tool Selection** → See `docs/Psychological-Profile-Ideas.md`
    - Learn WHEN to save to memory (not just which tool)
    - Learn verbosity preferences (concise vs detailed)
    - Learn communication style (serious, humor, emotional)
@@ -358,7 +373,7 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
    - **Phase 2B**: Style reflection (detect correction patterns)
    - **Phase 2C**: Dreaming/offline learning (process failures at night)
 
-4. **Auto-Parameter Tuning**
+6. **Auto-Parameter Tuning**
    - Run test scenarios to measure intelligence performance
    - Auto-adjust: `INTELLIGENCE_LEARNING_RATE`, `INTELLIGENCE_MIN_CONFIDENCE`
    - Goal: find optimal values for MY usage patterns
