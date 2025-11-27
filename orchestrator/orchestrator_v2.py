@@ -195,7 +195,17 @@ class Orchestrator:
                     
                     # Track tool execution
                     tools_used.append(tool_name)
-                    accumulated_data[tool_name] = result.get("data", {})
+                    
+                    # Aggregate data - handle multiple calls to same tool
+                    tool_data = result.get("data", {})
+                    if tool_name in accumulated_data:
+                        # Convert to list if not already, then append
+                        existing = accumulated_data[tool_name]
+                        if not isinstance(existing, list):
+                            accumulated_data[tool_name] = [existing]
+                        accumulated_data[tool_name].append(tool_data)
+                    else:
+                        accumulated_data[tool_name] = tool_data
                     
                     # Add to conversation context for next turn
                     # Store full result (including speech and data) so LLM can see all information
@@ -534,11 +544,15 @@ Your concise response:"""
         """
         try:
             # Use LLM to create a concise voice summary
+            # Calculate dynamic truncation - more data for repeated tools (arrays)
+            has_arrays = any(isinstance(v, list) for v in accumulated_data.values())
+            max_chars = 2000 if has_arrays else 800
+            
             context = f"""User asked: "{user_query}"
 
 Tools executed: {', '.join(tools_used)}
 
-Results: {json.dumps(accumulated_data, indent=2)[:500]}
+Results: {json.dumps(accumulated_data, indent=2)[:max_chars]}
 
 Create a SINGLE SENTENCE response for voice output (will be spoken aloud through speakers).
 

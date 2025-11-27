@@ -117,26 +117,7 @@ EFFICIENCY RULES:
 
 ---
 
-## 🚨 Issue: Voice Output in CLI Mode
 
-### Problem
-When running `./orchestrator/orchestrator_v2.py cloud "question"`, the response is:
-1. Printed to terminal ✅
-2. **SPOKEN through speakers** ❌ (BAD for automation/testing)
-
-### Expected
-CLI mode should **NEVER** invoke TTS/voice output. Only interactive voice mode should speak.
-
-### Fix
-```python
-# In orchestrator_v2.py or wherever TTS is called
-def should_speak():
-    # Only speak if in interactive voice mode
-    return sys.stdout.isatty() and os.environ.get('JARVIS_VOICE_MODE') == 'true'
-
-if should_speak():
-    # Call TTS
-    pass
 ```
 
 ---
@@ -159,14 +140,4 @@ if should_speak():
 
 ---
 
-## Related Issues
-
-- LLM logging not working (llm-calls-*.jsonl not created) - See TODO_LLM_LOGGING.md
-- Dashboard query performance - See GRAFANA_OPTIMIZATION.md
-
----
-
-**DO NOT IMPLEMENT THESE FIXES YET!**
-
-Focus on getting Grafana dashboards working first. This document is a reminder to come back to these issues after the monitoring stack is stable.
 
