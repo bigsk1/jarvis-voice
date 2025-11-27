@@ -445,7 +445,7 @@ class MemoryDB:
                 try:
                     # Try JSON first (newer format)
                     stored_embedding = json.loads(memory['embedding'].decode('utf-8'))
-                except (json.JSONDecodeError, AttributeError):
+                except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
                     # Fall back to pickle (older format)
                     stored_embedding = pickle.loads(memory['embedding'])
                 
