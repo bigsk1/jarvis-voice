@@ -9,6 +9,8 @@
 
 The Intelligence Layer is Jarvis's self-learning system. It observes interactions, reflects on what worked and what didn't, and applies learned insights to improve future routing decisions.
 
+![Intelligence Layer Info Graph](images/intelligence-info-graph.jpeg)
+
 **Key Principles**:
 - Everything is continuous (vectors), not discrete rules
 - Learning generalizes through semantic similarity

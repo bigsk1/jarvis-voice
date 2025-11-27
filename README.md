@@ -530,7 +530,7 @@ SEMANTIC_SIMILARITY_THRESHOLD=0.40  # Default: 0.40 (balanced)
 
 See `docs/FTS5_SEARCH_SYSTEM.md` and `docs/SEMANTIC_THRESHOLD_TUNING.md` for details.
 
-### Auto-Save Intelligence
+### Auto-Save Memory
 
 Jarvis automatically remembers:
 - ✅ Project locations and run commands (after OpenCode builds)
@@ -546,6 +546,45 @@ Full conversation logging with metadata:
 - Tools used per session
 - Model, tokens, and cost tracking
 - Session IDs for grouping
+
+---
+
+## 🧠 Intelligence Layer
+
+The Intelligence Layer is Jarvis's self-learning system. It observes interactions, reflects on what worked and what didn't, and applies learned insights to improve future routing decisions.
+
+![Intelligence Layer Info Graph](docs/images/intelligence-info-graph.jpeg)
+
+
+**Key Principles**:
+- Everything is continuous (vectors), not discrete rules
+- Learning generalizes through semantic similarity
+- Positive AND negative constraints (what to do AND what NOT to do)
+- Fact vs Procedural classification (only skills stored, not facts)
+- Generalizability filtering (low-value insights filtered out)
+
+**Experience Recording**:
+- Query (as embedding)
+- Tools used (in order)
+- Turns taken
+- Success/failure
+- User satisfaction signals
+
+**Insights Generated**:
+- Pattern: "Status queries need real-time tools"
+- Applies to: "Server health, uptime checks"
+- Preferred approach: "Use fetch tools directly"
+- Confidence: 0.0-1.0
+
+**How Insights Apply**:
+When a new query comes in:
+1. Generate query embedding
+2. Find similar insights (cosine similarity)
+3. Weight by confidence and relevance
+4. Inject into routing context
+
+See `docs/INTELLIGENCE_LAYER.md` for details.
+
 
 ---
 
