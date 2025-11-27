@@ -584,6 +584,7 @@ Your response:"""
     def _format_max_turns_summary(self, user_query: str, tools_used: list, accumulated_data: dict, max_turns: int) -> str:
         """
         Create intelligent summary when max turns is reached.
+        BEST EFFORT MODE: Extract and present whatever useful data was gathered.
         
         Args:
             user_query: Original user request
@@ -595,41 +596,95 @@ Your response:"""
             Voice-friendly explanation of progress and next steps
         """
         try:
+            # Extract useful data from accumulated results (especially for search arrays)
+            extracted_data = self._extract_useful_data(accumulated_data)
+            
             # Use LLM to create an intelligent progress summary
             context = f"""User asked: "{user_query}"
 
-Tools executed ({len(tools_used)} actions): {', '.join(tools_used)}
+Tools executed ({len(tools_used)} actions): {', '.join(set(tools_used))}
 
-Results: {json.dumps(accumulated_data, indent=2)[:5000]}
+ALL GATHERED DATA (BEST EFFORT - use this to answer!):
+{extracted_data}
 
-The task hit the complexity limit ({max_turns} turns). YOU MUST ANSWER THE USER'S QUESTION NOW.
+IMPORTANT: The task hit a complexity limit after {max_turns} tool calls. 
+You MUST provide a BEST EFFORT answer using the data above.
 
 CRITICAL RULES:
-1. MAX 25 WORDS (provide actual answer if you have enough data!)
-2. If the results contain the answer to the user's question, PROVIDE IT NOW
-3. Don't say "hit limit" or list tools - just answer the question if possible
-4. Only mention "complexity limit" if you truly cannot answer from the data you have
+1. MAX 30 WORDS - but ACTUALLY ANSWER the question!
+2. If you found ANY relevant info (movie titles, prices, names, etc.) - INCLUDE IT
+3. Don't apologize or say "couldn't find" - give the best answer you can
+4. If data is incomplete, answer what you CAN and note what's missing briefly
+5. NEVER say "hit limit" or mention tool counts
 
-GOOD EXAMPLES (with data):
-- "The top 3 movies are Wicked, Nosferatu, and Gladiator 2 playing at Regal this week"
-- "Weather is 45°F and cloudy. Bitcoin is $101k. Your server is running on port 5000"
+GOOD BEST-EFFORT EXAMPLES:
+- "Top movies at Regal Hillsboro: Wicked, Avatar Fire and Ash, Zootopia 2. Check fandango.com for exact showtimes."
+- "Bitcoin $90k, Solana $143, Ethereum $3k - all up 2-3% today"
+- "Found theaters: Regal Evergreen Parkway, AMC Progress Ridge. Current showtimes require checking their websites directly."
 
-GOOD EXAMPLES (without enough data):
-- "Searched 10 times but got 403 errors. Try checking showtimes.com directly"
+BAD EXAMPLES (never do this):
+- "I searched 10 times but couldn't find..." (WRONG - use what you found!)
+- "Hit complexity limit after 10 tools..." (WRONG - don't mention technical limits!)
+- "Unable to find showtimes" (WRONG - at least mention the theaters/movies you DID find!)
 
-BAD EXAMPLES:
-- "Completed 8 steps but hit limit check the results" (don't mention technical details!)
-- "I made 10 search attempts" (don't list what you did!)
-
-Your response:"""
+Your BEST EFFORT response:"""
             
-            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Answer the user's question if you have enough data. MAX 25 words. Don't mention 'complexity limit' unless absolutely necessary.")
+            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. MAX 30 words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc.")
             return response.strip()
         except Exception as e:
             # Fallback to simple message
             if sys.stdout.isatty():
                 print(f"⚠️ Failed to format max turns summary: {e}", file=sys.stderr)
             return f"Completed {len(tools_used)} actions but reached the complexity limit. Tools used: {', '.join(tools_used)}. Please review or let me know if you'd like me to continue."
+    
+    def _extract_useful_data(self, accumulated_data: dict) -> str:
+        """
+        Extract the most useful/relevant data from accumulated tool results.
+        Handles arrays (repeated tool calls) and extracts titles, descriptions, key info.
+        
+        Args:
+            accumulated_data: Dict of tool_name -> result or [results]
+            
+        Returns:
+            Formatted string of extracted useful data
+        """
+        extracted_parts = []
+        
+        for tool_name, data in accumulated_data.items():
+            # Handle arrays (multiple calls to same tool)
+            if isinstance(data, list):
+                items = data
+            else:
+                items = [data]
+            
+            tool_info = []
+            for item in items:
+                if isinstance(item, dict):
+                    # Extract search results (brave search, fetch)
+                    if 'raw' in item or 'full_text' in item:
+                        # Parse search results - extract titles and descriptions
+                        text = item.get('full_text', '')
+                        if text:
+                            # Extract first 2000 chars of each search result
+                            tool_info.append(text[:2000])
+                    
+                    # Extract specific data fields
+                    useful_fields = ['title', 'description', 'url', 'name', 'price', 
+                                     'coin', 'price_usd', 'speech', 'result', 'content']
+                    for field in useful_fields:
+                        if field in item and item[field]:
+                            tool_info.append(f"{field}: {str(item[field])[:500]}")
+                else:
+                    # Plain string/value
+                    tool_info.append(str(item)[:1000])
+            
+            if tool_info:
+                extracted_parts.append(f"\n=== {tool_name} ===")
+                extracted_parts.extend(tool_info[:5])  # Limit to 5 items per tool
+        
+        # Join and limit total size
+        result = "\n".join(extracted_parts)
+        return result[:10000]  # 10k chars should be enough for summary
     
     def _build_conversation_context(self, current_query: str) -> str:
         """
