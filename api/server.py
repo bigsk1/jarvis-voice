@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.routes import alerts_router, reminders_router, health_router, voice_router
+from api.routes.intelligence import router as intelligence_router
 
 # Prometheus metrics
 try:
@@ -23,6 +24,14 @@ except ImportError:
     PROMETHEUS_AVAILABLE = False
     print("⚠️  prometheus-fastapi-instrumentator not installed. Metrics disabled.")
     print("   To enable: pip install prometheus-fastapi-instrumentator")
+
+# Intelligence metrics
+try:
+    from api.metrics import update_intelligence_metrics, PROMETHEUS_AVAILABLE as INTEL_METRICS_AVAILABLE
+    print("✅ Intelligence metrics module loaded")
+except ImportError as e:
+    INTEL_METRICS_AVAILABLE = False
+    print(f"⚠️  Intelligence metrics not available: {e}")
 
 # Create FastAPI app
 app = FastAPI(
@@ -67,12 +76,22 @@ app.include_router(health_router)
 app.include_router(alerts_router)
 app.include_router(reminders_router)
 app.include_router(voice_router)
+app.include_router(intelligence_router)
 
 # Add /metrics endpoint LAST
 if PROMETHEUS_AVAILABLE:
     @app.get("/metrics", include_in_schema=False)
     async def metrics():
-        """Expose Prometheus metrics"""
+        """Expose Prometheus metrics including intelligence layer stats"""
+        # Update intelligence metrics before generating response
+        try:
+            if INTEL_METRICS_AVAILABLE:
+                import os
+                mode = 'local' if os.environ.get('LLM_PROVIDER') == 'ollama' else 'cloud'
+                update_intelligence_metrics(mode=mode)
+        except Exception as e:
+            print(f"⚠️  Failed to update intelligence metrics: {e}")
+        
         return Response(content=generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
     
     print("✅ Prometheus metrics endpoint exposed at /metrics")
@@ -85,7 +104,15 @@ async def root():
         "status": "/api/status",
         "alerts": "/api/alerts",
         "reminders": "/api/reminders",
-        "speak": "/api/voice/speak"
+        "speak": "/api/voice/speak",
+        "intelligence": {
+            "stats": "/api/intelligence/stats",
+            "health": "/api/intelligence/health",
+            "metrics": "/api/intelligence/metrics",
+            "insights": "/api/intelligence/insights",
+            "experiences": "/api/intelligence/experiences",
+            "logs": "/api/intelligence/logs/recent"
+        }
     }
     
     if PROMETHEUS_AVAILABLE:

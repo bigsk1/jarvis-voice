@@ -483,5 +483,184 @@ Routine startup syncs handle everything else.
 
 ---
 
-**Summary**: Three-tier sync (memory → tools → health) ensures cloud and local modes stay consistent while using their optimal embedding models.
+## 4. Intelligence Database Sync (`sync-intelligence-db.py`)
+
+### Purpose
+Synchronizes the **intelligence layer** (self-learning system) between cloud and local modes, including experiences, insights, and pending reflections.
+
+### What it Syncs
+- ✅ **Experiences** - Raw interaction data (queries, tools used, outcomes)
+- ✅ **Insights** - Learned patterns (positive/negative constraints, tool preferences)
+- ✅ **Reflection Queue** - Pending reflections awaiting processing
+- ✅ Regenerates all embeddings for target mode dimensions
+
+### Why Intelligence Syncs
+Unlike provider-specific configurations, **learned insights are universal**:
+- "Use `crypto_price` for price queries" applies to ANY LLM
+- "Don't use `search_memory` for server status" helps ALL providers
+- Only the vector embeddings need regeneration for dimension compatibility
+
+### How it Works
+
+```python
+# For each experience/insight being synced:
+# 1. Copy text content (query, description, pattern)
+# 2. Regenerate embeddings with target mode's model
+query_embedding = get_embedding(query)  # 1536-dim (cloud) or 768-dim (local)
+# 3. Insert into target database with new IDs
+# 4. Remap reflection_queue to new experience IDs
+```
+
+### When to Run
+
+**Manually** (not automatic like memory/tool sync):
+```bash
+# Sync from cloud → local (after using cloud mode)
+./bin/sync-intelligence-db.py local
+
+# Sync from local → cloud (after using local mode)
+./bin/sync-intelligence-db.py cloud
+
+# Preview what would sync
+./bin/sync-intelligence-db.py --dry-run local
+
+# Reset (delete) intelligence DB
+./bin/sync-intelligence-db.py --reset local
+```
+
+### Use Cases
+
+1. **After extended cloud session**: Sync learnings to local
+   ```bash
+   # Used cloud mode for a week, want local to benefit
+   ./bin/sync-intelligence-db.py local
+   ```
+
+2. **Before switching modes**: Ensure continuity
+   ```bash
+   # About to switch from local to cloud
+   ./bin/sync-intelligence-db.py cloud
+   ./bin/jarvis  # Start cloud mode with all learnings
+   ```
+
+3. **Fresh local setup**: Populate from cloud learnings
+   ```bash
+   # New local environment, populate from cloud
+   ./bin/sync-intelligence-db.py local
+   ```
+
+4. **After reflection processing**: Share new insights
+   ```bash
+   # Processed reflections in cloud, share with local
+   ./bin/sync-intelligence-db.py local
+   ```
+
+### Database Files
+
+| Mode | Database | Embedding Dimensions |
+|------|----------|---------------------|
+| Cloud | `data/jarvis_intelligence.db` | 1536 (OpenAI) |
+| Local | `data/jarvis_intelligence_local.db` | 768 (Nomic) |
+
+### Health Check Integration
+
+Use `check-intelligence-health.py` to validate:
+```bash
+./bin/check-intelligence-health.py cloud
+./bin/check-intelligence-health.py local
+```
+
+---
+
+## Complete Startup Flow (Updated)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  jarvis-services (cloud/local) OR jarvis-api (cloud/local)  │
+└────────────────────────────┬────────────────────────────────┘
+                             │
+                             ▼
+              ┌──────────────────────────────────┐
+              │  1. MEMORY DATABASE SYNC         │
+              │  sync-memory-db.py               │
+              │                                  │
+              │  • Syncs memories                │
+              │  • Syncs conversations           │
+              │  • REGENERATES embeddings        │
+              │  • Direction: cloud↔local        │
+              └──────────────┬───────────────────┘
+                             │
+                             ▼
+              ┌──────────────────────────────────┐
+              │  2. TOOL DEFINITION SYNC         │
+              │  sync_tools.py                   │
+              │                                  │
+              │  • Discovers tools               │
+              │  • Generates embeddings          │
+              │  • Populates tool_definitions    │
+              └──────────────┬───────────────────┘
+                             │
+                             ▼
+              ┌──────────────────────────────────┐
+              │  3. EMBEDDING HEALTH CHECK       │
+              │  check-embeddings-health.py      │
+              │                                  │
+              │  • Validates dimensions          │
+              │  • Tests 100 memories            │
+              │  • Tests 50 tools                │
+              │  • Shows warnings if fail        │
+              └──────────────┬───────────────────┘
+                             │
+                             ▼
+              ┌──────────────────────────────────┐
+              │  4. INTELLIGENCE LAYER INIT      │  ⭐ NEW
+              │  (automatic on first use)        │
+              │                                  │
+              │  • Creates intelligence.db       │
+              │  • Loads existing insights       │
+              │  • Injects into routing          │
+              └──────────────┬───────────────────┘
+                             │
+                             ▼
+              ┌──────────────────────────────────┐
+              │  5. START SERVICES/API           │
+              │                                  │
+              │  • Follow-up daemon              │
+              │  • Reminder scheduler            │
+              │  • OR API server                 │
+              └──────────────────────────────────┘
+
+Note: Intelligence sync is MANUAL (run when switching modes)
+      Memory/Tool sync is AUTOMATIC (runs on startup)
+```
+
+---
+
+## Sync Scripts Summary
+
+| Script | Syncs | Auto on Startup? | Regenerates Embeddings? |
+|--------|-------|------------------|------------------------|
+| `sync-memory-db.py` | Memories, conversations | ✅ Yes | ✅ Yes |
+| `sync_tools.py` | Tool definitions | ✅ Yes | ✅ Yes |
+| `sync-intelligence-db.py` | Experiences, insights, queue | ❌ Manual | ✅ Yes |
+| `check-embeddings-health.py` | N/A (validation only) | ✅ Yes | N/A |
+| `check-intelligence-health.py` | N/A (validation only) | ❌ Manual | N/A |
+
+---
+
+## Related Documentation
+
+- `docs/EMBEDDING_HEALTH_CHECKS.md` - Detailed health check guide
+- `docs/DUAL_DATABASE_SYSTEM.md` - Why we have separate databases
+- `docs/TOOL_RAG_STRATEGY.md` - How tool sync enables Tool RAG
+- `docs/INTELLIGENCE_LAYER.md` - Self-learning system details ⭐ NEW
+- `docs/TESTING.md` - Test script patterns with sync
+
+---
+
+**Summary**: Four-tier sync system ensures cloud and local modes stay consistent:
+1. **Memory sync** - User data (memories, conversations)
+2. **Tool sync** - System capabilities (available tools)
+3. **Health check** - Validation (embedding dimensions)
+4. **Intelligence sync** - Learned patterns (manual, when switching modes)
 

@@ -33,18 +33,33 @@ The foundational API system is now ready for webhooks and proactive notification
 ## Starting the API Server
 
 ```bash
-# Start the API server (port 8880)
+# Start the API server (cloud mode, port 8880)
 ./bin/jarvis-api
 
-# Or in background
-nohup ./bin/jarvis-api > logs/api.log 2>&1 &
+# Start in local mode
+./bin/jarvis-api --local
+
+# Check if API is running
+./bin/jarvis-api --status
+
+# Stop the API server
+./bin/jarvis-api --stop
+
+# Restart the API server
+./bin/jarvis-api --restart
+
+# Show help
+./bin/jarvis-api --help
 ```
 
 The script will:
 - Auto-install FastAPI/uvicorn if needed
 - Run database migration if needed
-- Start server on port 8880
+- Start server on port 8880 (in background)
+- Create PID file at `logs/jarvis-api.pid`
 - Show API documentation at http://localhost:8880/docs
+
+**New in v2**: The API now runs in the background automatically and can be managed with `--stop`, `--status`, and `--restart` flags.
 
 ---
 
@@ -253,6 +268,69 @@ GET /api/health
 GET /api/status
 ```
 
+### Intelligence (Self-Learning) ⭐ NEW
+
+The intelligence API provides access to Jarvis's self-learning system.
+
+```bash
+# Get statistics (experiences, insights, pending reflections)
+GET /api/intelligence/stats
+
+# Health check (embedding dimensions, database status)
+GET /api/intelligence/health
+
+# Prometheus metrics (for Grafana integration)
+GET /api/intelligence/metrics
+
+# List learned insights
+GET /api/intelligence/insights?limit=50
+
+# List recent experiences
+GET /api/intelligence/experiences?limit=20
+
+# View recent intelligence logs
+GET /api/intelligence/logs/recent?limit=50
+
+# Manually process pending reflections
+POST /api/intelligence/reflect?batch_size=5
+
+# Evaluate query against learned insights
+POST /api/intelligence/evaluate
+Body: {"query": "What's the Bitcoin price?"}
+```
+
+**Example: Check Intelligence Stats**
+```bash
+curl http://localhost:8880/api/intelligence/stats | jq
+```
+
+**Response:**
+```json
+{
+  "total_experiences": 45,
+  "total_insights": 12,
+  "positive_insights": 8,
+  "negative_insights": 4,
+  "pending_reflections": 3,
+  "avg_confidence": 0.72,
+  "intelligence_enabled": true
+}
+```
+
+**Example: Trigger Manual Reflection**
+```bash
+curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "processed": 3,
+  "message": "Processed 3 pending reflections"
+}
+```
+
 ---
 
 ## Interactive API Documentation
@@ -385,13 +463,24 @@ print(f"Reminder created: {result['reminder_id']}")
 
 ### Server won't start
 ```bash
-# Check if port 8880 is in use
-lsof -i :8880
+# Check API status
+./bin/jarvis-api --status
 
-# Kill existing process
-kill $(lsof -t -i :8880)
+# Stop any existing instance
+./bin/jarvis-api --stop
 
 # Try again
+./bin/jarvis-api
+```
+
+### Port already in use (manual cleanup)
+```bash
+# If --stop doesn't work, manual cleanup:
+lsof -i :8880
+kill $(lsof -t -i :8880)
+rm -f logs/jarvis-api.pid
+
+# Then start again
 ./bin/jarvis-api
 ```
 
@@ -407,7 +496,23 @@ pip install fastapi uvicorn pydantic
 
 ### Check logs
 ```bash
-tail -f logs/api.log  # If running in background
+# API logs
+tail -f logs/api/api-$(date +%Y-%m-%d).log
+
+# Intelligence logs
+tail -f logs/intelligence/intelligence-$(date +%Y-%m-%d).jsonl
+```
+
+### Intelligence not working
+```bash
+# Check if enabled
+grep JARVIS_INTELLIGENCE config/cloud.env
+
+# Check health
+curl http://localhost:8880/api/intelligence/health | jq
+
+# Check for pending reflections
+curl http://localhost:8880/api/intelligence/stats | jq
 ```
 
 ---
@@ -423,8 +528,10 @@ tail -f logs/api.log  # If running in background
 
 **See Also:**
 - Full architecture: `docs/PROACTIVE_ASSISTANT_SYSTEM.md`
+- Intelligence Layer: `docs/INTELLIGENCE_LAYER.md`
+- Sync Architecture: `docs/SYNC_ARCHITECTURE.md`
 - Main README: `README.md`
 
-**Status**: Phase 1 Complete ✅  
-**Next**: Phase 2 (Intel Management + Voice Tools)
+**Status**: Production Ready ✅  
+**Last Updated**: Nov 27, 2025
 

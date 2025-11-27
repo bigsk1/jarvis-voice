@@ -13,13 +13,19 @@
 
 ### Main Features
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
-- **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions!) ⭐ NEW
+- **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
-- **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - 🆕 **Modular webhook system** (email, n8n, external APIs with auth) ⭐ NEW
+- **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - Modular webhook system (email, n8n, external APIs with auth)
 - **[opencode/OPENCODE.md](opencode/OPENCODE.md)** - Autonomous coding agent
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system
-- **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools (NEW)
+- **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools
+
+### Monitoring & Observability ⭐ NEW
+- **[../monitoring/README.md](../monitoring/README.md)** - Grafana + Prometheus + Loki stack
+- **Intelligence Dashboard** - Self-learning metrics (experiences, insights, confidence)
+- **Conversation Audit v2** - Deep drill-down into LLM decisions and tool calls
+- **API Intelligence Endpoints** - `/api/intelligence/*` for debugging and metrics
 
 ### System Architecture
 - **Tool system** - Located in `skills/` directory with JSON schemas
@@ -219,6 +225,38 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-11-27:**
+- ✅ **Intelligence Layer Phase 1** - Self-learning system with positive/negative constraints ⭐ MAJOR
+  - Learns what works AND what to avoid (negative constraints)
+  - Fact vs Procedural knowledge classification
+  - Generalizability filtering (only stores reusable insights)
+  - Confidence decay tracking for insight health
+  - Separate databases for cloud/local (embedding dimension compatibility)
+  - See: `docs/INTELLIGENCE_LAYER.md`
+- ✅ **Intelligence Grafana Dashboard** - Real-time self-learning metrics
+  - Experience/insight counts, confidence gauges
+  - Positive vs Negative constraint breakdown
+  - Pending reflections monitoring
+  - Loki log integration for event stream
+- ✅ **Conversation Audit v2 Dashboard** - Complete conversation drill-down
+  - Tools selected vs tools executed comparison
+  - Decision types (tool_call vs text response)
+  - Activity timeline with LLM + Tool logs interleaved
+  - Cost and token tracking over time
+- ✅ **Intelligence API Endpoints** - `/api/intelligence/*`
+  - Stats, health, metrics, insights, experiences
+  - Manual reflection trigger
+  - Meta-cognition evaluation
+- ✅ **Prometheus Intelligence Metrics** - Exposed via `/metrics`
+  - `jarvis_intelligence_experiences_total`
+  - `jarvis_intelligence_insights_total{constraint_type}`
+  - `jarvis_intelligence_avg_confidence`
+  - `jarvis_intelligence_helpful_ratio`
+- ✅ **Intelligence Health & Sync Tools**
+  - `bin/check-intelligence-health.py` - Validate embeddings, check stats
+  - `bin/sync-intelligence-db.py` - Sync between cloud/local modes
+- ✅ **Embedding Fallback** - Deterministic hash-based fallback when APIs fail
 
 **2025-11-25:**
 - ✅ **Google Calendar Sync** - Bidirectional sync between Jarvis reminders and Google Calendar ⭐ MAJOR

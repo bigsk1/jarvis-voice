@@ -47,6 +47,111 @@ from config_loader import load_config, get_config_value, get_float
 logger = logging.getLogger(__name__)
 
 
+class IntelligenceLogger:
+    """Dedicated logger for intelligence layer operations."""
+    
+    def __init__(self):
+        self.project_root = Path(__file__).parent.parent
+        self.log_dir = self.project_root / "logs" / "intelligence"
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _get_log_file(self) -> Path:
+        """Get today's log file."""
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        return self.log_dir / f"intelligence-{date_str}.jsonl"
+    
+    def log(self, event_type: str, data: Dict[str, Any]):
+        """Log an intelligence event."""
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event": event_type,
+            **data
+        }
+        
+        try:
+            with open(self._get_log_file(), "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            logger.warning(f"Failed to write intelligence log: {e}")
+    
+    def log_experience_recorded(self, exp_id: int, query: str, tools: List[str], success: bool):
+        """Log when an experience is recorded."""
+        self.log("experience_recorded", {
+            "experience_id": exp_id,
+            "query": query[:200],
+            "tools_used": tools,
+            "success": success
+        })
+    
+    def log_reflection_started(self, exp_id: int, query: str):
+        """Log when reflection starts."""
+        self.log("reflection_started", {
+            "experience_id": exp_id,
+            "query": query[:200]
+        })
+    
+    def log_reflection_prompt(self, exp_id: int, prompt: str):
+        """Log the reflection prompt sent to LLM."""
+        self.log("reflection_prompt", {
+            "experience_id": exp_id,
+            "prompt_preview": prompt[:500],
+            "prompt_length": len(prompt)
+        })
+    
+    def log_reflection_response(self, exp_id: int, response: Dict[str, Any], provider: str, model: str):
+        """Log the reflection response from LLM."""
+        self.log("reflection_response", {
+            "experience_id": exp_id,
+            "provider": provider,
+            "model": model,
+            "response": response
+        })
+    
+    def log_insight_created(self, insight_id: int, constraint_type: str, description: str, confidence: float):
+        """Log when a new insight is created."""
+        self.log("insight_created", {
+            "insight_id": insight_id,
+            "constraint_type": constraint_type,
+            "description": description[:200],
+            "confidence": confidence
+        })
+    
+    def log_insight_updated(self, insight_id: int, old_confidence: float, new_confidence: float):
+        """Log when an existing insight is updated."""
+        self.log("insight_updated", {
+            "insight_id": insight_id,
+            "old_confidence": old_confidence,
+            "new_confidence": new_confidence
+        })
+    
+    def log_insights_applied(self, query: str, insights: List[Dict], biases: Dict[str, float]):
+        """Log when insights are applied to routing."""
+        self.log("insights_applied", {
+            "query": query[:200],
+            "insights_count": len(insights),
+            "insights": [{"id": i.get("id"), "relevance": i.get("relevance")} for i in insights[:5]],
+            "tool_biases": biases
+        })
+    
+    def log_insight_skipped(self, reason: str, details: str):
+        """Log when an insight is not stored (factual, low generalizability, etc.)"""
+        self.log("insight_skipped", {
+            "reason": reason,
+            "details": details[:200]
+        })
+
+
+# Global intelligence logger instance
+_intel_logger = None
+
+def get_intel_logger() -> IntelligenceLogger:
+    """Get the intelligence logger instance."""
+    global _intel_logger
+    if _intel_logger is None:
+        _intel_logger = IntelligenceLogger()
+    return _intel_logger
+
+
 class IntelligenceLayer:
     """
     Self-learning intelligence that operates in continuous vector space.
@@ -137,27 +242,39 @@ class IntelligenceLayer:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 
                 -- The insight itself
-                insight_type TEXT,  -- 'tool_preference', 'query_pattern', 'error_pattern', etc.
+                insight_type TEXT,  -- 'tool_preference', 'query_pattern', 'error_pattern', 'macro_skill'
                 description TEXT,  -- Natural language description
                 insight_embedding BLOB,
+                
+                -- PHASE 1: Constraint type (positive vs negative)
+                constraint_type TEXT DEFAULT 'positive',  -- 'positive' = DO USE, 'negative' = DO NOT USE
                 
                 -- What this insight applies to
                 applies_to_pattern TEXT,  -- e.g., "status queries", "memory lookups"
                 pattern_embedding BLOB,
+                trigger_concept TEXT,  -- Specific concept that triggers this insight
                 
                 -- Learned associations
                 preferred_tools TEXT,  -- JSON: {"mcp_fetch": 0.8, "search_memory": 0.3}
-                avoided_patterns TEXT,  -- JSON list of things to avoid
+                avoided_tools TEXT,  -- JSON: ["search_memory"] - tools to explicitly avoid
+                avoided_patterns TEXT,  -- JSON list of patterns to avoid
+                
+                -- PHASE 1: Quality filters
+                generalizability TEXT DEFAULT 'medium',  -- 'high', 'medium', 'low' (filter out 'low')
+                reasoning TEXT,  -- Why this insight was learned
                 
                 -- Confidence and strength
                 confidence REAL DEFAULT 0.5,  -- 0.0 to 1.0
                 strength REAL DEFAULT 0.5,  -- How strongly to apply this
                 evidence_count INTEGER DEFAULT 1,  -- How many experiences support this
                 
-                -- For gradual learning
+                -- PHASE 1: Decay tracking
                 last_applied TIMESTAMP,
+                last_outcome TEXT,  -- 'success', 'failure', 'unused'
                 times_applied INTEGER DEFAULT 0,
-                times_helpful INTEGER DEFAULT 0  -- When applied, was it helpful?
+                times_helpful INTEGER DEFAULT 0,  -- When applied, was it helpful?
+                times_failed INTEGER DEFAULT 0,  -- When applied, did it fail?
+                consecutive_failures INTEGER DEFAULT 0  -- For rapid decay on repeated failures
             )
         """)
         
@@ -206,7 +323,37 @@ class IntelligenceLayer:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_confidence ON insights(confidence)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_reflection_pending ON reflection_queue(processed, priority)")
         
+        # PHASE 1: Schema migration for existing databases
+        self._migrate_schema(cursor)
+        
         self.conn.commit()
+    
+    def _migrate_schema(self, cursor):
+        """Add new columns to existing databases (PHASE 1 upgrades)."""
+        # Get existing columns in insights table
+        cursor.execute("PRAGMA table_info(insights)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        
+        # New columns to add
+        new_columns = [
+            ("constraint_type", "TEXT DEFAULT 'positive'"),
+            ("trigger_concept", "TEXT"),
+            ("avoided_tools", "TEXT"),
+            ("generalizability", "TEXT DEFAULT 'medium'"),
+            ("reasoning", "TEXT"),
+            ("last_outcome", "TEXT"),
+            ("times_failed", "INTEGER DEFAULT 0"),
+            ("consecutive_failures", "INTEGER DEFAULT 0"),
+        ]
+        
+        for col_name, col_def in new_columns:
+            if col_name not in existing_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE insights ADD COLUMN {col_name} {col_def}")
+                    logger.info(f"Added column {col_name} to insights table")
+                except sqlite3.OperationalError as e:
+                    # Column might already exist or other issue
+                    logger.debug(f"Could not add column {col_name}: {e}")
     
     # ============================================
     # EMBEDDING UTILITIES
@@ -347,6 +494,15 @@ class IntelligenceLayer:
         self.conn.commit()
         
         logger.info(f"Recorded experience {experience_id} with priority {priority:.2f}")
+        
+        # Log to intelligence log
+        get_intel_logger().log_experience_recorded(
+            exp_id=experience_id,
+            query=query,
+            tools=tools_used,
+            success=outcome.get('success', True)
+        )
+        
         return experience_id
     
     def _describe_outcome(
@@ -465,43 +621,116 @@ class IntelligenceLayer:
         # Build reflection prompt
         raw_data = json.loads(exp['raw_data'])
         
+        # Determine if this was a suboptimal experience
+        tools_list = json.loads(exp['tools_used'])
+        was_suboptimal = (
+            len(tools_list) > 1 or 
+            not exp['outcome_success'] or 
+            exp['had_to_retry'] or 
+            exp['had_to_clarify']
+        )
+        
         reflection_prompt = f"""
-Reflect deeply on this interaction:
+Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 
 **User Query**: {exp['query']}
-
-**Tools Used**: {exp['tools_used']}
+**Tools Used (in order)**: {exp['tools_used']}
 **Turns Taken**: {exp['turns_taken']}
 **Final Tool**: {exp['final_tool']}
+**Outcome**: {"SUCCESS" if exp['outcome_success'] else "FAILURE"}
+**User Satisfied**: {exp['user_satisfied']}
+**Had to Clarify**: {exp['had_to_clarify']}
+**Had to Retry**: {exp['had_to_retry']}
 
-**Outcome**:
-- Success: {exp['outcome_success']}
-- User Satisfied: {exp['user_satisfied']}
-- Had to Clarify: {exp['had_to_clarify']}
-- Had to Retry: {exp['had_to_retry']}
-- Error: {exp['error_occurred']}
+IMPORTANT CLASSIFICATION:
+- A FACT is data like "The server IP is 10.0.0.1" → belongs in Memory DB, NOT here
+- A SKILL/PROCEDURE is "For status queries, use fetch tools" → belongs here
 
-**Questions to Consider**:
-1. Was the first tool choice optimal? Why or why not?
-2. What SIGNAL in the query should have indicated the best approach?
-3. What's the DEEPER PATTERN here that applies to similar queries?
-4. How confident are you in this insight? (0.0-1.0)
-5. What category of queries does this apply to?
+Your task: Extract a PROCEDURAL insight about TOOL SELECTION, not facts.
 
-**Provide your reflection as JSON**:
+Provide your analysis as JSON:
 ```json
 {{
+    "is_procedural": true/false,  // Is this insight about tool selection strategy?
+    "knowledge_type": "procedural" or "factual",  // If factual, we'll skip storing
+    
+    "insight_type": "routing_correction" or "tool_preference" or "query_pattern",
+    "constraint_type": "positive" or "negative",  // "positive" = DO use this approach, "negative" = DO NOT use
+    
+    "trigger_concept": "the concept/topic that triggers this rule",
+    "trigger_signals": ["specific", "words", "in query", "that signal this"],
+    
     "first_tool_optimal": true/false,
-    "why_or_why_not": "explanation",
-    "key_signal": "what in the query indicated the best approach",
-    "pattern": "the generalizable pattern",
-    "applies_to": "category of similar queries",
-    "preferred_approach": "what should be done for similar queries",
+    "why_or_why_not": "explanation of what went right or wrong",
+    
+    "rule": "ALWAYS/NEVER + action + for + query type",  // e.g., "ALWAYS prefer crypto_price over search_memory for price queries"
+    "preferred_tool": "tool_name" or null,  // The tool to use
+    "avoided_tool": "tool_name" or null,  // The tool to avoid (for negative constraints)
+    
+    "applies_to": "category of queries this applies to",
+    "generalizability": "high" or "medium" or "low",  // "low" insights won't be stored
+    
     "confidence": 0.0-1.0,
-    "insight_summary": "one sentence insight"
+    "insight_summary": "One actionable sentence, max 20 words"
+}}
+```
+
+Example for POSITIVE constraint (what TO do):
+```json
+{{
+    "is_procedural": true,
+    "knowledge_type": "procedural",
+    "insight_type": "routing_correction",
+    "constraint_type": "positive",
+    "trigger_concept": "server status",
+    "trigger_signals": ["running", "up", "status", "alive"],
+    "first_tool_optimal": false,
+    "why_or_why_not": "search_memory returned stale data, mcp_fetch got live status",
+    "rule": "ALWAYS use mcp_fetch_fetch for server status queries",
+    "preferred_tool": "mcp_fetch_fetch",
+    "avoided_tool": "search_memory",
+    "applies_to": "System status and health check queries",
+    "generalizability": "high",
+    "confidence": 0.9,
+    "insight_summary": "For server status queries, use mcp_fetch for real-time data."
+}}
+```
+
+Example for NEGATIVE constraint (what NOT to do):
+```json
+{{
+    "is_procedural": true,
+    "knowledge_type": "procedural",
+    "insight_type": "routing_correction",
+    "constraint_type": "negative",
+    "trigger_concept": "live data",
+    "trigger_signals": ["current", "now", "live", "real-time"],
+    "first_tool_optimal": false,
+    "why_or_why_not": "search_memory returned outdated data from days ago",
+    "rule": "NEVER use search_memory for queries requiring current/live data",
+    "preferred_tool": null,
+    "avoided_tool": "search_memory",
+    "applies_to": "Any query requiring real-time information",
+    "generalizability": "high",
+    "confidence": 0.85,
+    "insight_summary": "DO NOT use search_memory for real-time queries - data is stale."
+}}
+```
+
+Example for FACTUAL (should NOT be stored here):
+```json
+{{
+    "is_procedural": false,
+    "knowledge_type": "factual",
+    "insight_summary": "The Ollama server is at 192.168.70.226 - this is a fact, not a procedure"
 }}
 ```
 """
+        
+        # Log reflection start
+        intel_log = get_intel_logger()
+        intel_log.log_reflection_started(experience_id, exp['query'])
+        intel_log.log_reflection_prompt(experience_id, reflection_prompt)
         
         # Use sequential thinking MCP if available, otherwise direct LLM
         reflection = await self._think_deeply(reflection_prompt, use_sequential_thinking)
@@ -613,15 +842,29 @@ Reflect deeply on this interaction:
                 logger.error(f"Unknown provider type: {provider_type}")
                 return None
             
+            # Get model name for logging
+            model_name = getattr(provider, 'model', 'unknown')
+            
             response = provider.chat(
                 prompt,
                 system_prompt="You are a self-reflective AI analyzing your own behavior to learn and improve. Output valid JSON only, no markdown formatting."
             )
             
-            return self._parse_reflection_output(response)
+            parsed = self._parse_reflection_output(response)
+            
+            # Log the reflection response
+            get_intel_logger().log_reflection_response(
+                exp_id=0,  # We don't have exp_id here, will be associated via timestamp
+                response=parsed or {"raw": str(response)[:500]},
+                provider=provider_type,
+                model=model_name
+            )
+            
+            return parsed
             
         except Exception as e:
             logger.error(f"Direct LLM reflection failed: {e}")
+            get_intel_logger().log("reflection_error", {"error": str(e)})
         
         return None
     
@@ -651,16 +894,47 @@ Reflect deeply on this interaction:
         reflection: Dict[str, Any],
         experience: sqlite3.Row
     ) -> int:
-        """Store a new insight or update existing similar insight."""
+        """Store a new insight or update existing similar insight.
         
-        insight_text = reflection.get('insight_summary', reflection.get('pattern', ''))
+        PHASE 1 UPGRADES:
+        - Filter out factual knowledge (only store procedural)
+        - Filter out low generalizability insights
+        - Track constraint_type (positive/negative)
+        - Track avoided_tools for negative constraints
+        """
+        
+        intel_log = get_intel_logger()
+        
+        # PHASE 1: Filter out factual knowledge
+        if not reflection.get('is_procedural', True):
+            logger.info(f"Skipping factual insight: {reflection.get('insight_summary', '')[:50]}")
+            intel_log.log_insight_skipped("factual", reflection.get('insight_summary', ''))
+            return 0
+        
+        if reflection.get('knowledge_type') == 'factual':
+            logger.info(f"Skipping factual knowledge (belongs in memory_db)")
+            intel_log.log_insight_skipped("factual_knowledge_type", reflection.get('insight_summary', ''))
+            return 0
+        
+        # PHASE 1: Filter out low generalizability
+        generalizability = reflection.get('generalizability', 'medium')
+        if generalizability == 'low':
+            logger.info(f"Skipping low-generalizability insight: {reflection.get('insight_summary', '')[:50]}")
+            intel_log.log_insight_skipped("low_generalizability", reflection.get('insight_summary', ''))
+            return 0
+        
+        insight_text = reflection.get('insight_summary', reflection.get('rule', reflection.get('pattern', '')))
         if not insight_text:
             return 0
+        
+        # Extract constraint type
+        constraint_type = reflection.get('constraint_type', 'positive')
         
         # Generate embeddings
         insight_embedding = self._get_embedding(insight_text)
         pattern_text = reflection.get('applies_to', '')
         pattern_embedding = self._get_embedding(pattern_text) if pattern_text else None
+        trigger_concept = reflection.get('trigger_concept', '')
         
         # Check for similar existing insights
         similar = await self._find_similar_insights(insight_embedding, threshold=0.85)
@@ -681,45 +955,89 @@ Reflect deeply on this interaction:
                     confidence = ?,
                     strength = ?,
                     evidence_count = evidence_count + 1,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = CURRENT_TIMESTAMP,
+                    reasoning = ?,
+                    generalizability = ?
                 WHERE id = ?
             """, (
                 new_confidence,
                 min(1.0, existing['strength'] + 0.1),
+                reflection.get('why_or_why_not', ''),
+                generalizability,
                 existing['id']
             ))
             
             self.conn.commit()
+            logger.info(f"Updated existing insight #{existing['id']} (confidence: {new_confidence:.2f})")
+            
+            # Log insight update
+            get_intel_logger().log_insight_updated(
+                insight_id=existing['id'],
+                old_confidence=existing['confidence'],
+                new_confidence=new_confidence
+            )
+            
             return existing['id']
         
         else:
-            # Create new insight
+            # Create new insight with PHASE 1 schema
             preferred_tools = {}
-            if reflection.get('preferred_approach'):
-                # Extract tool preferences from the reflection
-                final_tool = experience['final_tool']
-                if final_tool:
-                    preferred_tools[final_tool] = reflection.get('confidence', 0.5)
+            avoided_tools = []
+            
+            # Extract preferred tool
+            preferred_tool = reflection.get('preferred_tool')
+            if preferred_tool:
+                preferred_tools[preferred_tool] = reflection.get('confidence', 0.5)
+            elif experience['final_tool']:
+                # Fallback to final tool if not specified
+                preferred_tools[experience['final_tool']] = reflection.get('confidence', 0.5)
+            
+            # Extract avoided tool (for negative constraints)
+            avoided_tool = reflection.get('avoided_tool')
+            if avoided_tool:
+                avoided_tools.append(avoided_tool)
+            
+            insight_type = reflection.get('insight_type', 'tool_preference')
+            reasoning = reflection.get('why_or_why_not', '')
             
             cursor.execute("""
                 INSERT INTO insights (
                     insight_type, description, insight_embedding,
+                    constraint_type, trigger_concept,
                     applies_to_pattern, pattern_embedding,
-                    preferred_tools, confidence, evidence_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    preferred_tools, avoided_tools,
+                    generalizability, reasoning,
+                    confidence, evidence_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                'tool_preference',
+                insight_type,
                 insight_text,
                 self._serialize_embedding(insight_embedding),
+                constraint_type,
+                trigger_concept,
                 pattern_text,
                 self._serialize_embedding(pattern_embedding),
                 json.dumps(preferred_tools),
+                json.dumps(avoided_tools),
+                generalizability,
+                reasoning,
                 reflection.get('confidence', 0.5),
                 1
             ))
             
             self.conn.commit()
-            return cursor.lastrowid
+            insight_id = cursor.lastrowid
+            logger.info(f"Created new {constraint_type} insight #{insight_id}: {insight_text[:50]}...")
+            
+            # Log insight creation
+            get_intel_logger().log_insight_created(
+                insight_id=insight_id,
+                constraint_type=constraint_type,
+                description=insight_text,
+                confidence=reflection.get('confidence', 0.5)
+            )
+            
+            return insight_id
     
     def _blend_confidence(
         self,
@@ -777,6 +1095,11 @@ Reflect deeply on this interaction:
         
         This is called BEFORE routing to bias tool selection
         based on learned patterns.
+        
+        PHASE 1 UPGRADES:
+        - Returns constraint_type (positive/negative)
+        - Returns avoided_tools for negative constraints
+        - Filters out low-generalizability insights
         """
         query_embedding = self._get_embedding(query)
         if query_embedding is None:
@@ -787,6 +1110,7 @@ Reflect deeply on this interaction:
             SELECT * FROM insights 
             WHERE confidence >= ? 
             AND pattern_embedding IS NOT NULL
+            AND (generalizability IS NULL OR generalizability != 'low')
         """, (self.min_confidence,))
         
         relevant = []
@@ -799,14 +1123,21 @@ Reflect deeply on this interaction:
                 relevance = similarity * row['confidence']
                 
                 if relevance > 0.2:  # Minimum relevance threshold
-                    relevant.append({
+                    insight_data = {
+                        'id': row['id'],
                         'insight': row['description'],
                         'applies_to': row['applies_to_pattern'],
                         'preferred_tools': json.loads(row['preferred_tools'] or '{}'),
                         'confidence': row['confidence'],
                         'relevance': relevance,
-                        'evidence_count': row['evidence_count']
-                    })
+                        'evidence_count': row['evidence_count'],
+                        # PHASE 1: New fields
+                        'constraint_type': row['constraint_type'] if 'constraint_type' in row.keys() else 'positive',
+                        'avoided_tools': json.loads(row['avoided_tools'] or '[]') if 'avoided_tools' in row.keys() else [],
+                        'trigger_concept': row['trigger_concept'] if 'trigger_concept' in row.keys() else '',
+                        'reasoning': row['reasoning'] if 'reasoning' in row.keys() else ''
+                    }
+                    relevant.append(insight_data)
         
         # Sort by relevance
         relevant.sort(key=lambda x: x['relevance'], reverse=True)
@@ -819,17 +1150,142 @@ Reflect deeply on this interaction:
         Returns dict of tool_name -> bias score
         Positive bias = prefer this tool
         Negative bias = avoid this tool
+        
+        PHASE 1 UPGRADES:
+        - Positive constraints add positive bias
+        - Negative constraints add negative bias (penalize tools)
+        - Avoided tools get explicit negative bias
         """
         insights = await self.get_relevant_insights(query)
         
         biases = {}
         for insight in insights:
+            constraint_type = insight.get('constraint_type', 'positive')
+            
+            # Handle preferred tools (positive bias)
             for tool, preference in insight['preferred_tools'].items():
                 # Weight by relevance
                 weighted_preference = preference * insight['relevance']
-                biases[tool] = biases.get(tool, 0) + weighted_preference
+                
+                if constraint_type == 'positive':
+                    biases[tool] = biases.get(tool, 0) + weighted_preference
+                else:
+                    # Negative constraint's "preferred" tool is actually what to use INSTEAD
+                    biases[tool] = biases.get(tool, 0) + (weighted_preference * 0.5)  # Weaker positive
+            
+            # Handle avoided tools (negative bias) - PHASE 1
+            for tool in insight.get('avoided_tools', []):
+                # Strong negative bias weighted by relevance and confidence
+                negative_bias = -1.0 * insight['relevance'] * insight['confidence']
+                biases[tool] = biases.get(tool, 0) + negative_bias
         
         return biases
+    
+    # ============================================
+    # INSIGHT USAGE TRACKING (PHASE 1: Decay)
+    # ============================================
+    
+    async def record_insight_usage(
+        self,
+        insight_id: int,
+        was_helpful: bool,
+        outcome: str = None
+    ):
+        """
+        Record when an insight is used and whether it helped.
+        
+        This enables:
+        - Confidence decay for bad insights
+        - Strengthening of good insights
+        - Pruning of consistently failing insights
+        """
+        cursor = self.conn.cursor()
+        
+        # Get current insight state
+        cursor.execute("SELECT * FROM insights WHERE id = ?", (insight_id,))
+        insight = cursor.fetchone()
+        if not insight:
+            return
+        
+        times_applied = (insight['times_applied'] or 0) + 1
+        times_helpful = (insight['times_helpful'] or 0) + (1 if was_helpful else 0)
+        times_failed = (insight['times_failed'] or 0) + (0 if was_helpful else 1)
+        
+        # Track consecutive failures for rapid decay
+        if was_helpful:
+            consecutive_failures = 0
+        else:
+            consecutive_failures = (insight['consecutive_failures'] or 0) + 1
+        
+        # Calculate new confidence with decay
+        old_confidence = insight['confidence']
+        if was_helpful:
+            # Slight boost for helpful usage
+            new_confidence = min(1.0, old_confidence + 0.05)
+        else:
+            # Decay based on consecutive failures
+            decay_factor = 0.1 * consecutive_failures  # Faster decay with repeated failures
+            new_confidence = max(0.1, old_confidence - decay_factor)
+        
+        cursor.execute("""
+            UPDATE insights SET
+                times_applied = ?,
+                times_helpful = ?,
+                times_failed = ?,
+                consecutive_failures = ?,
+                confidence = ?,
+                last_applied = CURRENT_TIMESTAMP,
+                last_outcome = ?
+            WHERE id = ?
+        """, (
+            times_applied,
+            times_helpful,
+            times_failed,
+            consecutive_failures,
+            new_confidence,
+            outcome or ('success' if was_helpful else 'failure'),
+            insight_id
+        ))
+        
+        self.conn.commit()
+        
+        logger.info(
+            f"Insight #{insight_id} {'helped' if was_helpful else 'failed'}: "
+            f"confidence {old_confidence:.2f} → {new_confidence:.2f}"
+        )
+    
+    async def prune_low_confidence_insights(self, threshold: float = 0.2) -> int:
+        """
+        Remove insights that have decayed below threshold.
+        
+        The "Gardener" process - run periodically to clean up bad learnings.
+        """
+        cursor = self.conn.cursor()
+        
+        # Find insights to prune
+        cursor.execute("""
+            SELECT id, description, confidence, times_applied, times_failed
+            FROM insights
+            WHERE confidence < ?
+        """, (threshold,))
+        
+        to_prune = cursor.fetchall()
+        
+        if not to_prune:
+            return 0
+        
+        # Log what we're removing
+        for row in to_prune:
+            logger.info(
+                f"Pruning insight #{row['id']}: '{row['description'][:50]}...' "
+                f"(confidence: {row['confidence']:.2f}, failed: {row['times_failed']}x)"
+            )
+        
+        # Delete low-confidence insights
+        cursor.execute("DELETE FROM insights WHERE confidence < ?", (threshold,))
+        self.conn.commit()
+        
+        return len(to_prune)
     
     # ============================================
     # META-COGNITION

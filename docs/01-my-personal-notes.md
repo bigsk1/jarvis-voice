@@ -50,7 +50,15 @@ check opencode session is used after i asked jarvis to use opencode to make some
 ### Ideas
 
 
+Dashboarding the "Brain"
 
+You already have Grafana/Loki. You should add an Intelligence Panel.
+
+    Metric: intelligence_hit_rate (How often was a retrieved insight actually used by the Router?).
+
+    Metric: insight_growth (Are we learning too fast? Might be noise).
+
+    Visual: A table showing the last 5 "Learned Lessons." This makes the "Self-Learning" aspect visible to you, the user, which reinforces the "Full Awareness" feeling.
 
 
 ### Concerns
@@ -88,6 +96,33 @@ python3 -c "from lib.intelligence import get_intelligence_layer; print(get_intel
 # Reset learning (start fresh)
 rm data/jarvis_intelligence.db  # Next run recreates it empty
 
+Health checks for intelligence layer
+# Check single mode
+./bin/check-intelligence-health.py cloud
+./bin/check-intelligence-health.py local
+
+# Check both
+./bin/check-intelligence-health.py --both
+
+# JSON output
+./bin/check-intelligence-health.py --json
+
+# Sync insights (regenerates embeddings)
+./bin/sync-intelligence-db.py local   # cloud → local (1536 → 768)
+./bin/sync-intelligence-db.py cloud   # local → cloud (768 → 1536)
+
+# Reset a database
+./bin/sync-intelligence-db.py --reset cloud
+
+
+# Today's logs for intelligence layer
+cat logs/intelligence/intelligence-$(date +%Y-%m-%d).jsonl | jq '.'
+
+# Just events
+cat logs/intelligence/intelligence-*.jsonl | jq -c '.event'
+
+# Reflection responses only
+cat logs/intelligence/intelligence-*.jsonl | jq 'select(.event == "reflection_response")'
 
 
 ### Commands for testing
@@ -296,5 +331,48 @@ jarvis-local-cli-json "time" | jq '.speech'
 
 # Test 4: View logs
 cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
+```
+
+---
+
+## Intelligence Layer - Future Exploration (2025-11-27)
+
+### To Explore Later
+
+1. **User Bias Injection** - Let users override tool preferences
+   - Via config file or `jarvis-intel/user_preferences.md`
+   - "Always use execute_bash for server checks"
+   - "Never use search_memory for real-time data"
+
+2. **"Last Tool = Success" Problem**
+   - Current: assumes last tool used = the successful one
+   - Reality: middle tools might have provided the actual answer
+   - Need: content attribution (which tool output appeared in response)
+
+3. **Beyond Tool Selection**
+   - Learn WHEN to save to memory (not just which tool)
+   - Learn verbosity preferences (concise vs detailed)
+   - Learn communication style (serious, humor, emotional)
+   - Understand user shortcuts ("the usual", "the thing")
+
+4. **Auto-Parameter Tuning**
+   - Run test scenarios to measure intelligence performance
+   - Auto-adjust: `INTELLIGENCE_LEARNING_RATE`, `INTELLIGENCE_MIN_CONFIDENCE`
+   - Goal: find optimal values for MY usage patterns
+
+### Quick Commands
+
+```bash
+# Check intelligence health
+./bin/check-intelligence-health.py --both
+
+# Trigger pending reflections
+python3 -c "from lib.intelligence_hooks import trigger_reflection; trigger_reflection(10)"
+
+# View current insights
+sqlite3 data/jarvis_intelligence.db "SELECT constraint_type, description, confidence FROM insights"
+
+# Reset intelligence (careful!)
+./bin/sync-intelligence-db.py --reset cloud
 ```
 

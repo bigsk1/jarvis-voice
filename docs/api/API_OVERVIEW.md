@@ -11,8 +11,20 @@ Jarvis Proactive API transforms Jarvis from **reactive** (waits for commands) to
 ## Quick Start
 
 ```bash
-# Start API server
+# Start API server (cloud mode)
 ./bin/jarvis-api
+
+# Start API server (local mode)
+./bin/jarvis-api --local
+
+# Check API status
+./bin/jarvis-api --status
+
+# Stop API server
+./bin/jarvis-api --stop
+
+# Restart API server
+./bin/jarvis-api --restart
 
 # Start background services
 ./bin/jarvis-services
@@ -162,7 +174,7 @@ curl http://localhost:8880/api/alerts
 
 ✅ Alert creation & management
 ✅ URL-based auto-resolve (web services)
-✅ Agent-based auto-resolve (containers, services) ⭐ NEW
+✅ Agent-based auto-resolve (containers, services)
 ✅ Follow-up reminders
 ✅ Time-based reminders
 ✅ TTS notifications
@@ -170,11 +182,14 @@ curl http://localhost:8880/api/alerts
 ✅ Remote monitoring via Docker
 ✅ 10+ ready-to-use code examples
 ✅ Complete documentation
+✅ Intelligence API endpoints ⭐ NEW
+✅ Self-learning metrics & logs ⭐ NEW
+✅ API start/stop/status management ⭐ NEW
 
 ---
 
 **Status**: Production Ready ✅  
-**Last Updated**: Nov 18, 2025
+**Last Updated**: Nov 27, 2025
 
 See [READY_TO_USE.md](READY_TO_USE.md) for detailed setup instructions.
 
@@ -421,6 +436,43 @@ Body: {
   "message": "Boss, urgent alert!",
   "mode": "cloud"
 }
+```
+
+### Intelligence (Self-Learning) ⭐ NEW
+
+```bash
+# Get intelligence statistics
+GET /api/intelligence/stats
+# Returns: total experiences, insights, pending reflections, avg confidence
+
+# Health check for intelligence databases
+GET /api/intelligence/health
+# Returns: embedding dimension checks, insight statistics
+
+# Prometheus-format metrics
+GET /api/intelligence/metrics
+# Returns: metrics for Grafana/Prometheus integration
+
+# List all insights (learned patterns)
+GET /api/intelligence/insights?limit=50
+# Returns: positive/negative constraints, tool preferences
+
+# List recent experiences
+GET /api/intelligence/experiences?limit=20
+# Returns: recent interactions and outcomes
+
+# Get recent intelligence logs
+GET /api/intelligence/logs/recent?limit=50
+# Returns: reflection events, insight creation, etc.
+
+# Manually trigger reflection processing
+POST /api/intelligence/reflect?batch_size=5
+# Processes pending reflections and creates insights
+
+# Evaluate a query against learned insights
+POST /api/intelligence/evaluate
+Body: {"query": "What's the Bitcoin price?"}
+# Returns: relevant insights and tool biases
 ```
 
 ### Health

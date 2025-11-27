@@ -1,19 +1,19 @@
 #!/bin/bash
-# Start Jarvis Proactive Assistant API Server
+# Start/Stop Jarvis Proactive Assistant API Server
 # Runs FastAPI server for webhooks, alerts, and reminders
 #
 # Usage:
-#   ./bin/jarvis-api         # Cloud mode (default)
-#   ./bin/jarvis-api --local # Local mode (Ollama)
+#   ./bin/jarvis-api              # Cloud mode (default)
+#   ./bin/jarvis-api --local      # Local mode (Ollama)
+#   ./bin/jarvis-api --stop       # Stop running server
+#   ./bin/jarvis-api --local --stop  # Stop local mode server
+#   ./bin/jarvis-api --status     # Check if running
+#   ./bin/jarvis-api --restart    # Restart server
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Parse arguments
-MODE="cloud"
-if [ "$1" == "--local" ]; then
-    MODE="local"
-fi
+PID_FILE="$PROJECT_ROOT/logs/jarvis-api.pid"
+PORT=8880
 
 # Colors
 GREEN='\033[0;32m'
@@ -21,6 +21,144 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+# Parse arguments
+MODE="cloud"
+ACTION="start"
+
+for arg in "$@"; do
+    case $arg in
+        --local)
+            MODE="local"
+            ;;
+        --stop)
+            ACTION="stop"
+            ;;
+        --status)
+            ACTION="status"
+            ;;
+        --restart)
+            ACTION="restart"
+            ;;
+        --help|-h)
+            echo "Usage: jarvis-api [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --local     Run in local mode (Ollama)"
+            echo "  --stop      Stop the running server"
+            echo "  --status    Check server status"
+            echo "  --restart   Restart the server"
+            echo "  --help      Show this help message"
+            exit 0
+            ;;
+    esac
+done
+
+# Function to get running PID
+get_running_pid() {
+    # First check PID file
+    if [ -f "$PID_FILE" ]; then
+        local pid=$(cat "$PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+    
+    # Fallback: check by port
+    local pid=$(lsof -ti :$PORT 2>/dev/null | head -1)
+    if [ -n "$pid" ]; then
+        echo "$pid"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Function to stop server
+stop_server() {
+    local pid=$(get_running_pid)
+    
+    if [ -z "$pid" ]; then
+        echo -e "${YELLOW}⚠️  No jarvis-api server running on port $PORT${NC}"
+        rm -f "$PID_FILE" 2>/dev/null
+        return 0
+    fi
+    
+    echo -e "${BLUE}🛑 Stopping jarvis-api (PID: $pid)...${NC}"
+    kill "$pid" 2>/dev/null
+    
+    # Wait up to 5 seconds for graceful shutdown
+    for i in {1..5}; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo -e "${GREEN}✅ Server stopped${NC}"
+            rm -f "$PID_FILE" 2>/dev/null
+            return 0
+        fi
+        sleep 1
+    done
+    
+    # Force kill if still running
+    echo -e "${YELLOW}⚠️  Forcing shutdown...${NC}"
+    kill -9 "$pid" 2>/dev/null
+    rm -f "$PID_FILE" 2>/dev/null
+    echo -e "${GREEN}✅ Server stopped (forced)${NC}"
+    return 0
+}
+
+# Function to check status
+check_status() {
+    local pid=$(get_running_pid)
+    
+    if [ -z "$pid" ]; then
+        echo -e "${YELLOW}⚫ jarvis-api is NOT running${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}🟢 jarvis-api is running${NC}"
+    echo -e "   PID:  ${BLUE}$pid${NC}"
+    echo -e "   Port: ${BLUE}$PORT${NC}"
+    echo -e "   URL:  ${BLUE}http://localhost:$PORT${NC}"
+    
+    # Check health endpoint
+    if curl -s "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+        echo -e "   Health: ${GREEN}✅ OK${NC}"
+    else
+        echo -e "   Health: ${YELLOW}⚠️  Not responding${NC}"
+    fi
+    
+    return 0
+}
+
+# Handle actions
+case $ACTION in
+    stop)
+        stop_server
+        exit $?
+        ;;
+    status)
+        check_status
+        exit $?
+        ;;
+    restart)
+        echo -e "${BLUE}🔄 Restarting jarvis-api...${NC}"
+        stop_server
+        sleep 2
+        # Fall through to start
+        ;;
+esac
+
+# Check if already running (for start action)
+if [ "$ACTION" == "start" ]; then
+    existing_pid=$(get_running_pid)
+    if [ -n "$existing_pid" ]; then
+        echo -e "${YELLOW}⚠️  jarvis-api already running (PID: $existing_pid)${NC}"
+        echo -e "   Use ${BLUE}--stop${NC} to stop it first, or ${BLUE}--restart${NC} to restart"
+        exit 1
+    fi
+fi
+
+# === START SERVER ===
 
 echo -e "${BLUE}╔═══════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     Jarvis Proactive Assistant API Server            ║${NC}"
@@ -116,8 +254,8 @@ fi
 
 echo -e "${GREEN}📡 Starting API server...${NC}"
 echo -e "   Mode: ${BLUE}$MODE${NC}"
-echo -e "   Port: ${BLUE}8880${NC}"
-echo -e "   Docs: ${BLUE}http://localhost:8880/docs${NC}"
+echo -e "   Port: ${BLUE}$PORT${NC}"
+echo -e "   Docs: ${BLUE}http://localhost:$PORT/docs${NC}"
 if [ "$MODE" == "local" ]; then
     echo -e "   TTS:  ${BLUE}say-local.sh${NC} (Kokoro - requires server at $TTS_URL)"
 else
@@ -125,17 +263,27 @@ else
 fi
 echo ""
 echo -e "${GREEN}Ready for webhooks!${NC}"
-echo -e "   POST http://localhost:8880/api/alerts"
-echo -e "   POST http://localhost:8880/api/reminders"
-echo -e "   POST http://localhost:8880/api/voice/speak"
+echo -e "   POST http://localhost:$PORT/api/alerts"
+echo -e "   POST http://localhost:$PORT/api/reminders"
+echo -e "   POST http://localhost:$PORT/api/voice/speak"
+echo -e "   GET  http://localhost:$PORT/api/intelligence/stats"
 echo ""
-echo -e "${YELLOW}Press Ctrl+C to stop${NC}"
+echo -e "${YELLOW}Press Ctrl+C to stop (or use: jarvis-api --stop)${NC}"
 echo ""
 
 # Export mode for Python
 export JARVIS_API_MODE="$MODE"
 
-# Run server
+# Run server and save PID
 cd "$PROJECT_ROOT/api"
-python3 server.py
+python3 server.py &
+SERVER_PID=$!
 
+# Save PID to file
+echo $SERVER_PID > "$PID_FILE"
+
+# Wait for server
+wait $SERVER_PID
+
+# Cleanup PID file on exit
+rm -f "$PID_FILE" 2>/dev/null

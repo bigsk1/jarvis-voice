@@ -212,18 +212,33 @@ def get_routing_insights(query: str) -> Dict[str, Any]:
             else:
                 avg_confidence = 0.0
             
-            return {
+            result = {
                 'tool_biases': biases,
                 'insights': [
                     {
+                        'id': i.get('id'),
                         'description': i['insight'],
                         'applies_to': i['applies_to'],
-                        'relevance': round(i['relevance'], 3)
+                        'relevance': round(i['relevance'], 3),
+                        # PHASE 1: New fields
+                        'constraint_type': i.get('constraint_type', 'positive'),
+                        'avoided_tools': i.get('avoided_tools', []),
+                        'reasoning': i.get('reasoning', '')
                     }
                     for i in insights
                 ],
                 'confidence': round(avg_confidence, 3)
             }
+            
+            # Log when insights are being applied
+            if insights or biases:
+                try:
+                    from intelligence import get_intel_logger
+                    get_intel_logger().log_insights_applied(query, insights, biases)
+                except Exception:
+                    pass  # Don't let logging break the main flow
+            
+            return result
         finally:
             loop.close()
             
@@ -236,28 +251,69 @@ def format_insights_for_prompt(insights: Dict[str, Any]) -> str:
     """
     Format insights as context for the routing prompt.
     
+    PHASE 1 UPGRADES:
+    - Separates positive constraints (WHAT TO DO) from negative (WHAT NOT TO DO)
+    - LLMs respond better to explicitly labeled failures
+    
     Returns a string that can be injected into the system prompt.
     """
     if not insights.get('insights'):
         return ""
     
-    lines = ["=== LEARNED INSIGHTS ==="]
-    lines.append(f"(Confidence: {insights['confidence']:.0%})")
-    lines.append("")
+    # Separate positive and negative constraints
+    positive_insights = [i for i in insights['insights'] if i.get('constraint_type', 'positive') == 'positive']
+    negative_insights = [i for i in insights['insights'] if i.get('constraint_type') == 'negative']
     
-    for i, insight in enumerate(insights['insights'], 1):
-        lines.append(f"{i}. {insight['description']}")
-        if insight['applies_to']:
-            lines.append(f"   Applies to: {insight['applies_to']}")
+    lines = []
     
-    if insights.get('tool_biases'):
+    # Positive constraints (what TO do)
+    if positive_insights:
+        lines.append("=== LEARNED STRATEGIES (WHAT TO DO) ===")
+        lines.append(f"(Based on {len(positive_insights)} successful patterns)")
         lines.append("")
-        lines.append("Tool preferences based on past experience:")
-        for tool, bias in sorted(insights['tool_biases'].items(), key=lambda x: -x[1]):
-            direction = "prefer" if bias > 0 else "avoid"
-            lines.append(f"  - {tool}: {direction} ({bias:+.2f})")
+        for insight in positive_insights:
+            lines.append(f"✅ {insight['description']}")
+            if insight.get('applies_to'):
+                lines.append(f"   → Applies to: {insight['applies_to']}")
+        lines.append("")
     
-    lines.append("")
+    # Negative constraints (what NOT to do) - LLMs respond strongly to explicit failures
+    if negative_insights:
+        lines.append("=== KNOWN FAILURES - AVOID THESE ===")
+        lines.append("⚠️  These approaches have FAILED in the past:")
+        lines.append("")
+        for insight in negative_insights:
+            lines.append(f"❌ {insight['description']}")
+            if insight.get('avoided_tools'):
+                tools = ', '.join(insight['avoided_tools'])
+                lines.append(f"   → DO NOT use: {tools}")
+            if insight.get('reasoning'):
+                lines.append(f"   → Why: {insight['reasoning'][:100]}")
+        lines.append("")
+    
+    # Tool biases summary
+    if insights.get('tool_biases'):
+        prefer_tools = {k: v for k, v in insights['tool_biases'].items() if v > 0}
+        avoid_tools = {k: v for k, v in insights['tool_biases'].items() if v < 0}
+        
+        if prefer_tools or avoid_tools:
+            lines.append("=== TOOL PREFERENCES ===")
+            
+            if prefer_tools:
+                for tool, bias in sorted(prefer_tools.items(), key=lambda x: -x[1]):
+                    lines.append(f"  ✅ PREFER: {tool} (+{bias:.2f})")
+            
+            if avoid_tools:
+                for tool, bias in sorted(avoid_tools.items(), key=lambda x: x[1]):
+                    lines.append(f"  ❌ AVOID: {tool} ({bias:.2f})")
+            
+            lines.append("")
+    
+    # Overall confidence
+    if insights.get('confidence', 0) > 0:
+        lines.append(f"(Overall confidence in these insights: {insights['confidence']:.0%})")
+        lines.append("")
+    
     return "\n".join(lines)
 
 

@@ -27,8 +27,18 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ## ✨ Key Features
 
-### Intelligence & Tools
-- **Tool RAG System**: Dynamic tool retrieval - loads only relevant tools for each query ⭐ NEW
+### Intelligence & Self-Learning ⭐ NEW
+- **Intelligence Layer**: Self-learning system that improves over time
+  - Learns from every interaction (what worked, what didn't)
+  - **Positive constraints**: "Use mcp_fetch for server status checks"
+  - **Negative constraints**: "Avoid search_memory for real-time data"
+  - Generalizability filtering (only stores reusable insights)
+  - Confidence decay tracking for insight health
+  - Separate databases for cloud/local (1536 vs 768 dimensions)
+  - See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
+
+### Tool System
+- **Tool RAG System**: Dynamic tool retrieval - loads only relevant tools for each query
   - Scales to 100+ tools without context flooding
   - Vector-based semantic search for tool discovery
   - "Ghost tools" always available for core functionality
@@ -640,9 +650,17 @@ LIMIT 7;"
 - **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** - Docker agent for remote health checks
 
 **Core System:**
-- `docs/AUTO_CONTEXT_SYSTEM.md` - **Short-term conversation memory** ⭐ NEW
+- `docs/INTELLIGENCE_LAYER.md` - **Self-learning system** (Phase 1: positive/negative constraints) ⭐ NEW
+- `docs/AUTO_CONTEXT_SYSTEM.md` - Short-term conversation memory
 - `docs/JARVIS_WORKFLOW.md` - Complete request flow with examples
 - `docs/TOOL_CALLING_SYSTEM.md` - How tool routing works
+
+**Monitoring & Dashboards:**
+- `monitoring/README.md` - Grafana + Prometheus + Loki stack
+- **Grafana Dashboards:**
+  - `Jarvis Intelligence Layer` - Self-learning metrics, insights, confidence
+  - `Jarvis - Conversation Audit v2` - Deep drill-down into LLM decisions
+  - Plus: LLM Performance, Tool Analysis, API Performance
 
 **Memory System (Updated Nov 2025):**
 - `docs/FTS5_SEARCH_SYSTEM.md` - **NEW**: FTS5 full-text search with BM25 ranking
@@ -856,6 +874,17 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (November 2025):**
+- ✅ **Intelligence Layer Phase 1** - Self-learning system ⭐ MAJOR NEW
+  - Positive AND negative constraints (what to do AND what NOT to do)
+  - Fact vs Procedural knowledge classification
+  - Generalizability filtering, confidence decay tracking
+  - Grafana dashboard with real-time metrics
+  - API endpoints for debugging (`/api/intelligence/*`)
+  - Health check and sync tools
+- ✅ **Conversation Audit v2 Dashboard** - Deep drill-down into LLM decisions ⭐ NEW
+  - Tools selected vs executed comparison
+  - Activity timeline (LLM + Tool logs interleaved)
+  - Cost/token tracking over time
 - ✅ Multi-turn tool orchestration
 - ✅ **xAI Grok integration** (2M context, 10-15x cheaper, automatic caching, reasoning mode) ⭐
 - ✅ **Google Calendar bidirectional sync** (reminders ↔ events via n8n workflows) ⭐
@@ -888,17 +917,17 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - Performance optimization for local models
 
 **Planned:**
+- **Intelligence Layer Phase 2** - Implicit failure detection, tool trashing detection, reaper service
+- **Intelligence Layer Phase 3** - User profile learning (communication style, shortcuts, preferences)
 - Web UI for memory management and system health
 - Home automation integrations (Home Assistant, MQTT)
 - Multi-user support with isolated memory contexts
 - Tool profiles for local vs cloud modes
-- Single start / stop script for api, services, jarvis ( currently have to run 3 different commands )
+- Single start / stop script for api, services, jarvis
 - Custom wake word training
 - Mobile app for remote control
-- Improve graphs in Grafana and create purpose build dashboards, improve existing dashboards
 - Additional n8n workflows to integrate features
-- explore metrics api endpoint more
-- test webhook system for universal effectiveness
+- Test webhook system for universal effectiveness
 
 ---
 
@@ -918,6 +947,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.3 (November 2025)  
+**Current Version:** v2.4 (November 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Google Calendar sync, modular webhook system, email tool with HTML templates, n8n integrations
+**Latest Features:** Intelligence Layer (self-learning with positive/negative constraints), Grafana dashboards (Intelligence + Conversation Audit v2), API intelligence endpoints

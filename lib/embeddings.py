@@ -34,35 +34,86 @@ def get_embedding(text: str, provider: str = None) -> List[float]:
 
 
 def _get_openai_embedding(text: str) -> List[float]:
-    """Generate embedding using OpenAI."""
+    """Generate embedding using OpenAI with fallback to simple hash-based embedding."""
     try:
         from openai import OpenAI
     except ImportError:
-        raise ImportError("openai package required for embeddings. Run: pip install openai")
+        # Fallback if openai not installed
+        return _get_fallback_embedding(text, dimensions=1536)
     
     # Get API key from config
     api_key = get_config_value("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("OPENAI_API_KEY not found in config")
+        # Fallback if no API key
+        return _get_fallback_embedding(text, dimensions=1536)
     
-    client = OpenAI(api_key=api_key)
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Use text-embedding-3-small (cheapest, 1536 dimensions)
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text,
+            encoding_format="float"
+        )
+        
+        return response.data[0].embedding
+    except Exception as e:
+        # Fallback on any API error
+        import logging
+        logging.getLogger(__name__).warning(f"OpenAI embedding failed, using fallback: {e}")
+        return _get_fallback_embedding(text, dimensions=1536)
+
+
+def _get_fallback_embedding(text: str, dimensions: int = 1536) -> List[float]:
+    """
+    Fallback embedding using deterministic hash-based approach.
+    Not semantically meaningful, but allows system to continue functioning.
     
-    # Use text-embedding-3-small (cheapest, 1536 dimensions)
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text,
-        encoding_format="float"
-    )
+    WARNING: This is used when real embedding APIs fail!
+    - Same text → same embedding (deterministic)
+    - Similar text → random similarity (NO semantic meaning)
+    """
+    import hashlib
+    import math
+    import logging
     
-    return response.data[0].embedding
+    logger = logging.getLogger(__name__)
+    logger.warning(f"⚠️  FALLBACK EMBEDDING ACTIVE - semantic matching degraded! (text: '{text[:50]}...')")
+    
+    # Create deterministic hash
+    text_bytes = text.lower().encode('utf-8')
+    hash_bytes = hashlib.sha512(text_bytes).digest()
+    
+    # Expand hash to required dimensions using repeated hashing
+    embedding = []
+    seed = hash_bytes
+    
+    while len(embedding) < dimensions:
+        # Hash the seed to get more bytes
+        seed = hashlib.sha512(seed).digest()
+        # Convert bytes to floats in range [-1, 1]
+        for byte in seed:
+            if len(embedding) >= dimensions:
+                break
+            # Map 0-255 to -1.0 to 1.0
+            embedding.append((byte / 127.5) - 1.0)
+    
+    # Normalize to unit length (important for cosine similarity)
+    magnitude = math.sqrt(sum(x*x for x in embedding))
+    if magnitude > 0:
+        embedding = [x / magnitude for x in embedding]
+    
+    return embedding
 
 
 def _get_ollama_embedding(text: str) -> List[float]:
-    """Generate embedding using Ollama with nomic-embed-text."""
+    """Generate embedding using Ollama with nomic-embed-text, with fallback."""
     try:
         import requests
     except ImportError:
-        raise ImportError("requests package required. Run: pip install requests")
+        # Fallback if requests not installed
+        return _get_fallback_embedding(text, dimensions=768)
     
     # Get Ollama base URL from config
     base_url = get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -70,20 +121,26 @@ def _get_ollama_embedding(text: str) -> List[float]:
     # Use nomic-embed-text model (768 dimensions, fast, local)
     model = get_config_value("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     
-    response = requests.post(
-        f"{base_url}/api/embeddings",
-        json={
-            "model": model,
-            "prompt": text
-        },
-        timeout=30
-    )
-    
-    if response.status_code != 200:
-        raise Exception(f"Ollama API error: {response.text}")
-    
-    result = response.json()
-    return result["embedding"]
+    try:
+        response = requests.post(
+            f"{base_url}/api/embeddings",
+            json={
+                "model": model,
+                "prompt": text
+            },
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"Ollama API error: {response.text}")
+        
+        result = response.json()
+        return result["embedding"]
+    except Exception as e:
+        # Fallback on any error (connection, timeout, etc.)
+        import logging
+        logging.getLogger(__name__).warning(f"Ollama embedding failed, using fallback: {e}")
+        return _get_fallback_embedding(text, dimensions=768)
 
 
 def get_embeddings_batch(texts: List[str], provider: str = None) -> List[List[float]]:

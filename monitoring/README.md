@@ -83,6 +83,23 @@ Open in your browser:
 - Top 10 most used tools
 - Recent LLM calls
 
+### Intelligence Layer Metrics
+
+The intelligence layer exposes Prometheus metrics:
+
+```promql
+# Total experiences and insights
+jarvis_intelligence_experiences_total{mode="cloud"}
+jarvis_intelligence_insights_total{mode="cloud", constraint_type="positive"}
+jarvis_intelligence_insights_total{mode="cloud", constraint_type="negative"}
+
+# Average confidence
+jarvis_intelligence_avg_confidence{mode="cloud"}
+
+# Pending reflections (should be low)
+jarvis_intelligence_pending_reflections{mode="cloud"}
+```
+
 ### Create More Dashboards
 
 Click **+ Create** → **Dashboard** in Grafana to build custom views.

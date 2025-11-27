@@ -181,6 +181,45 @@ scrape_configs:
           search_type:
 
   # ==========================================
+  # Intelligence Layer Logs (Self-Learning)
+  # ==========================================
+  - job_name: jarvis_intelligence
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: intelligence
+          host: fred
+          __path__: /var/log/jarvis/intelligence/intelligence-*.jsonl
+    
+    pipeline_stages:
+      # Parse JSON structure (matches intelligence.py logging format)
+      - json:
+          expressions:
+            timestamp: timestamp
+            event: event
+            experience_id: experience_id
+            insight_id: insight_id
+            query: query
+            tools_used: tools_used
+            constraint_type: constraint_type
+            confidence: confidence
+            provider: provider
+            model: model
+            
+      # Extract labels for filtering
+      - labels:
+          event:
+          constraint_type:
+          provider:
+          model:
+          
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # ==========================================
   # Orchestrator Logs (General)
   # ==========================================
   - job_name: jarvis_orchestrator
