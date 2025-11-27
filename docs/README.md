@@ -147,6 +147,13 @@
 | **n8n/docs/N8N_INTEGRATION.md** | n8n setup and workflow management |
 | **api/REMINDER_SYSTEM.md** | Reminder API and voice commands |
 
+### Intelligence & Learning
+| Document | Purpose |
+|----------|---------|
+| **INTELLIGENCE_LAYER.md** | Self-learning system (Phase 1 - COMPLETE) |
+| **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
+| **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
+
 ### Reference & Archives
 | Document | Purpose |
 |----------|---------|

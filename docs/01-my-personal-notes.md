@@ -349,11 +349,14 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
    - Reality: middle tools might have provided the actual answer
    - Need: content attribution (which tool output appeared in response)
 
-3. **Beyond Tool Selection**
+3. **Beyond Tool Selection** → See `docs/Psychological-Profile-Ideas.md`
    - Learn WHEN to save to memory (not just which tool)
    - Learn verbosity preferences (concise vs detailed)
    - Learn communication style (serious, humor, emotional)
    - Understand user shortcuts ("the usual", "the thing")
+   - **Phase 2A**: User Model table in memory_db (scalar traits 0.0-1.0)
+   - **Phase 2B**: Style reflection (detect correction patterns)
+   - **Phase 2C**: Dreaming/offline learning (process failures at night)
 
 4. **Auto-Parameter Tuning**
    - Run test scenarios to measure intelligence performance
