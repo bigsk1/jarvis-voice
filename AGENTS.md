@@ -368,7 +368,7 @@ conversations = db.get_recent_conversations(limit=10)
 
 ```bash
 # In config/cloud.env or config/local.env
-SEMANTIC_SIMILARITY_THRESHOLD=0.40  # Default (balanced)
+SEMANTIC_SIMILARITY_THRESHOLD=0.30  # Default (balanced)
 # 0.30-0.35 = More results (loose matching)
 # 0.40-0.45 = Balanced (recommended)
 # 0.50+     = Fewer results (strict matching)
@@ -439,7 +439,7 @@ config/
 ./tests/integration/test-memory-real-world.sh        # Complex scenarios
 
 # Model comparison (performance analysis)
-./tests/integration/compare-models.sh local qwen3-vl qwen2.5:7b
+./tests/integration/compare-models.sh local qwen3 qwen3:14b
 
 # Single tool test (during development)
 ./orchestrator/orchestrator_v2.py cloud "use my_tool with X"
