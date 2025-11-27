@@ -88,6 +88,11 @@ class Orchestrator:
         else:
             enhanced_transcript = transcript
         
+        # Inject learned insights from self-learning intelligence
+        learning_context = self._get_learning_insights(transcript)
+        if learning_context:
+            enhanced_transcript = f"{learning_context}\n\n{enhanced_transcript}"
+        
         # Multi-turn context tracking
         max_turns = 10  # Safety limit
         conversation_context = []
@@ -296,6 +301,9 @@ class Orchestrator:
                 # Add thinking to response if available
                 if first_thinking:
                     response["thinking"] = first_thinking
+                
+                # Record experience for self-learning (async, non-blocking)
+                self._record_learning_experience(transcript, tools_used, response, conversation_context)
                 
                 return response
             
@@ -857,6 +865,51 @@ Your BEST EFFORT response:"""
         context_parts.append("2. Respond directly to the user (task complete)")
         
         return "\n".join(context_parts)
+    
+    def _get_learning_insights(self, transcript: str) -> str:
+        """
+        Get learned insights to inform routing decisions.
+        Returns formatted context string or empty string.
+        """
+        try:
+            from intelligence_hooks import get_routing_insights, format_insights_for_prompt
+            
+            insights = get_routing_insights(transcript)
+            
+            # Only include if we have meaningful insights
+            if insights.get('insights') and insights.get('confidence', 0) > 0.3:
+                return format_insights_for_prompt(insights)
+        except Exception as e:
+            # Don't let insight failures affect the main flow
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"⚠️ Learning insights failed: {e}", file=sys.stderr)
+        
+        return ""
+    
+    def _record_learning_experience(
+        self,
+        transcript: str,
+        tools_used: list,
+        result: dict,
+        conversation_context: list
+    ):
+        """
+        Record interaction for self-learning intelligence.
+        Non-blocking - failures are logged but don't affect response.
+        """
+        try:
+            from intelligence_hooks import record_interaction
+            
+            record_interaction(
+                query=transcript,
+                tools_used=tools_used,
+                result=result,
+                conversation_context=conversation_context
+            )
+        except Exception as e:
+            # Don't let learning failures affect the main flow
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"⚠️ Learning recording failed: {e}", file=sys.stderr)
     
     def _log_conversation(self, user_query: str, response: str, tools_used: list, success: bool = True, 
                           execution_time_ms: float = None, token_info: dict = None):

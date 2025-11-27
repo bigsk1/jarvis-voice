@@ -77,7 +77,17 @@ check opencode session is used after i asked jarvis to use opencode to make some
                           
 - Originally was going to have intel api route and there is all ready intel related  columns in db, under reminders, some idea to be able to update modify or add , delete intel files in which jarvis has tools to injest into db for direct access. 
 
-- 
+
+# Enable/Disable (edit config file)
+JARVIS_INTELLIGENCE=true   # Enable (default)
+JARVIS_INTELLIGENCE=false  # Disable
+
+# Check status
+python3 -c "from lib.intelligence import get_intelligence_layer; print(get_intelligence_layer().get_stats())"
+
+# Reset learning (start fresh)
+rm data/jarvis_intelligence.db  # Next run recreates it empty
+
 
 
 ### Commands for testing
