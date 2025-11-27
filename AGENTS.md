@@ -651,6 +651,35 @@ except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
 "description": "Keyword search in memories (SQL LIKE). Use for 1-3 word searches like 'flask', 'webhook'. For questions like 'Where is my app?', use semantic_recall instead."
 ```
 
+### ❌ Using `input_schema` Instead of `parameters` in Tool JSON
+
+**RECURRING BUG** - LLMs expect `parameters` not `input_schema` for tool definitions!
+
+```json
+// BAD - LLM won't recognize parameter schema, passes empty {}
+{
+  "name": "my_tool",
+  "input_schema": {
+    "type": "object",
+    "properties": { "query": { "type": "string" } },
+    "required": ["query"]
+  }
+}
+
+// GOOD - LLM correctly parses and passes parameters
+{
+  "name": "my_tool",
+  "parameters": {
+    "type": "object",
+    "properties": { "query": { "type": "string" } },
+    "required": ["query"]
+  }
+}
+```
+
+**Symptoms**: Tool works when called directly but LLM passes `{}` empty arguments.
+**Check**: `grep -l "input_schema" skills/*.tool.json` should return nothing.
+
 ### ❌ Not Handling Missing Parameters
 
 ```python

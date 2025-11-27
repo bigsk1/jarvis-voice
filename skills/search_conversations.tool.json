@@ -2,7 +2,7 @@
   "enabled": true,
   "name": "search_conversations",
   "description": "Search previous conversation history for a specific TOPIC or KEYWORD. Use ONLY when user asks to find conversations about a specific subject, like: 'did I ask about Bitcoin before?', 'when did I mention Flask?', 'show conversations about reminders'. Requires a 'query' parameter. For temporal queries like 'what was my last question?' or 'what did I just ask?', use 'get_recent_conversations' instead (no query needed, returns by time).",
-  "input_schema": {
+  "parameters": {
     "type": "object",
     "properties": {
       "query": {
