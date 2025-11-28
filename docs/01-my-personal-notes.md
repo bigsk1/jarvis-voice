@@ -333,6 +333,8 @@ jarvis-local-cli-json "time" | jq '.speech'
 cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
 ```
 
+[thinking](docs/THINKING_MODE_TESTING.md)
+
 ---
 
 ## Intelligence Layer - Future Exploration (2025-11-27)
@@ -394,3 +396,4 @@ sqlite3 data/jarvis_intelligence.db "SELECT constraint_type, description, confid
 ./bin/sync-intelligence-db.py --reset cloud
 ```
 
+[Health-check-for-Memory](docs/EMBEDDING_HEALTH_CHECKS.md)

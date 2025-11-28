@@ -23,14 +23,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": false
+            "mode": "continuous-GrYlRd"
           },
           "mappings": [],
           "thresholds": {
@@ -39,6 +32,10 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           }
@@ -53,17 +50,22 @@
       },
       "id": 6,
       "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
+        "displayMode": "lcd",
+        "maxVizHeight": 300,
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
           ],
-          "show": false
+          "fields": "",
+          "values": false
         },
-        "frameIndex": 10,
-        "showHeader": true
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
       },
       "pluginVersion": "10.2.3",
       "targets": [
@@ -74,7 +76,7 @@
         }
       ],
       "title": "Top 10 Most Used Tools (24h)",
-      "type": "table"
+      "type": "bargauge"
     },
     {
       "datasource": "Loki",
@@ -292,6 +294,6 @@
   "timezone": "",
   "title": "Jarvis Overview V2",
   "uid": "jarvis-overview-v2",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }
