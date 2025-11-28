@@ -38,7 +38,7 @@ CREATE TABLE knowledge_base (
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     source TEXT,                      -- How it was learned
-    metadata TEXT,                    -- ⚠️ Always NULL (unused)
+    metadata TEXT,                    
     embedding BLOB                    -- Vector for semantic search
 )
 ```
@@ -58,14 +58,6 @@ This is where **ALL** memory data actually lives. The LLM intelligently categori
 - ✅ Importance scoring (1-10) prioritizes results
 - ✅ Source tracking ("user_conversation", "intel_ingest")
 
-**What's Missing:**
-- ⚠️ `metadata` column is **ALWAYS NULL**
-- No structured metadata like timestamps, tags, or context
-- Missed opportunity for things like:
-  - `{"tags": ["urgent", "server"], "expires": "2025-12-01", "related_project": "tetris"}`
-
-**Why This Table Succeeded:**
-The flexible category system means one table handles everything. The `preferences` table became redundant.
 
 ---
 
@@ -81,7 +73,7 @@ CREATE TABLE conversations (
     jarvis_response TEXT,             -- What Jarvis said
     tools_used TEXT,                  -- JSON array: ["send_webhook", "remember"]
     success BOOLEAN DEFAULT 1,        -- Did it work?
-    metadata TEXT                     -- ⚠️ Always NULL (unused)
+    metadata TEXT                     
 )
 ```
 

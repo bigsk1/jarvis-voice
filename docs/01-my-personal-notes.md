@@ -2,7 +2,7 @@
 
 ### Notes
 
-
+```bash
 - Note on the alerts system the title is what will be read aloud, llm can search for source info on follow up questions but  when webhook comes in will say "You have one pending high severity /test alert from cloud/." test alert from cloud is the title that was sent.
 
 
@@ -41,7 +41,7 @@ check opencode session is used after i asked jarvis to use opencode to make some
  jarvis only checks opencode logs and see it is building X but doesnt mean it is complete and opencode could be still building and jarvis replaces all done, but is it? and working? issues? revisions opencode still doing stuff? or is everything in order? in opencode logs i see sessions id for opencode
  {"timestamp": "2025-11-21T04:07:08.869665", "event": "session_complete", "session_id": "ses_559b08a49ffeA6lkBAAz4fY28v", "success": true, "result_summary": "Task completed in 12210ms",}
 
-
+```
 
 
 ----
@@ -49,7 +49,7 @@ check opencode session is used after i asked jarvis to use opencode to make some
 
 ### Ideas
 
-
+```bash
 Dashboarding the "Brain"
 
 You already have Grafana/Loki. You should add an Intelligence Panel.
@@ -60,9 +60,11 @@ You already have Grafana/Loki. You should add an Intelligence Panel.
 
     Visual: A table showing the last 5 "Learned Lessons." This makes the "Self-Learning" aspect visible to you, the user, which reinforces the "Full Awareness" feeling.
 
+```
 
 ### Concerns
 
+```bash
 - not all jarvis-local features and tools/mcp work because a few reasons cloud uses better models and when designing and adding code / testing we focus on cloud version mostly. 
 
 ### Commands for running 
@@ -123,10 +125,11 @@ cat logs/intelligence/intelligence-*.jsonl | jq -c '.event'
 
 # Reflection responses only
 cat logs/intelligence/intelligence-*.jsonl | jq 'select(.event == "reflection_response")'
-
+```
 
 ### Commands for testing
 
+```bash
 activate env 
 source ~/jarvis-venv/bin/activate
 
@@ -175,7 +178,7 @@ pkill -f "server.py" && echo "✅ Server stopped" || echo "No server running"
 
 ### Commands for checking if tetris server is running
 lsof -i :5000 | grep LISTEN | awk '{print "✅ Flask server running on port 5000 (PID: " $2 ")"}'
-
+```
 
 ### CLI Mode (No Voice/Speaker) - Travel Mode
 
@@ -197,6 +200,8 @@ jarvis-cli "search my memory for tetris"
 jarvis-local-cli "what time is it?"
 jarvis-local-cli "search my memory for opencode"
 jarvis-local-cli "use send_webhook to post test data to https://n8n-roscossscggc4sogsw4s0gck.bigsk1.com/webhook/webhook-logger"
+# Remember something
+jarvis-local-cli "remember that the n8n local webhook url is http://192.168.70.226:5678/webhook/process-data"
 ```
 
 **JSON Output - For Debugging:**
@@ -216,6 +221,9 @@ jarvis-cli-json "bitcoin price" | jq '.ok, .speech, .tools_used'
 # Remember something
 jarvis-cli "remember that the n8n webhook url is https://n8n-roscossscggc4sogsw4s0gck.bigsk1.com/webhook/webhook-logger"
 
+# Remember something
+jarvis-cli "remember that the n8n webhook url is http://192.168.70.226:5678/webhook/process-data"
+
 # Search memory
 jarvis-cli "search memory for webhook"
 
@@ -234,6 +242,9 @@ jarvis-cli "forget memory about old webhook"
 
 **Testing OpenCode:**
 ```bash
+# Check OpenCode is running
+systemctl status opencode-jarvis.service
+
 # Cloud mode
 jarvis-cli "use opencode to list files in the projects directory"
 jarvis-cli "use opencode to show me what projects exist"

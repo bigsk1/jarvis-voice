@@ -256,11 +256,11 @@ OpenCode receives this system prompt with every task:
 - [x] Workspace isolation configured
 
 ### 🚧 Phase 2 In Progress
-- [ ] **Workspace enforcement** - Verify OpenCode respects boundaries (in testing)
-- [ ] **Memory integration** - OpenCode can read/write Jarvis memory
-- [ ] **Context injection** - Pass user preferences, credentials to OpenCode
-- [ ] **Session persistence** - Resume long-running tasks
-- [ ] **Improved condensation** - Better voice response formatting
+- [x] **Workspace enforcement** - Verify OpenCode respects boundaries (DONE Confirmed works)
+- [ ] **Memory integration** - OpenCode can read/write Jarvis memory (or just have jarvis write it instead, which he can already do if ask to save data)
+- [x] **Context injection** - Pass user preferences, credentials to OpenCode (We already have .env in /home/boss/.config/opencode/jarvis-env.env)
+- [ ] **Session persistence** - Resume long-running tasks - with Jarvis to opencode, currently 300 sec timeout on jarvis? waiting for opencode, but jarvis can check opencode logs without triggering another opencode tool call
+- [x] **Improved condensation** - Better voice response formatting - works fine currently
 
 ---
 
@@ -333,7 +333,7 @@ OLLAMA_MODEL=qwen3-vl
 
 **Model costs** (approximate):
 - Claude Sonnet 4: $3 per million input tokens, $15 per million output
-- GPT-4o: $2.50/$10 per million tokens
+- GPT-5: $2.50/$10 per million tokens
 - Ollama (local): Free, but slower
 
 **Cache optimization:**
