@@ -81,7 +81,7 @@ You should: Call check_tool_logs → discover "permission denied" → retry with
 **EXAMPLE - Avoiding Redundancy:**
 Context shows: "User asked Bitcoin price. You replied: $92k. crypto price. Status: SUCCESS"
 User now asks: "Did you just check Bitcoin?"
-You should: Answer "Yes, Bitcoin is $92k" (NO tool call - use context!)
+You should: Answer "Yes, Bitcoin is $92k" (NO tool call - use context because it is recent and you just checked it!)
 
 MULTI-TURN CONVERSATIONS:
 You can call MULTIPLE tools in sequence to complete complex tasks! After each tool executes:
@@ -344,7 +344,7 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         time_prefix = f"""CURRENT DATE AND TIME:
 Today is {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p %Z')}.
 Use this for any time-sensitive queries, web searches, or temporal references.
-When searching the web, use the CURRENT YEAR ({now.year}) not past years.
+When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
 
 """
         return time_prefix + self._system_prompt_base
@@ -357,7 +357,7 @@ When searching the web, use the CURRENT YEAR ({now.year}) not past years.
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),
-                model=get_config_value("CHAT_MODEL", "gpt-4o-mini")
+                model=get_config_value("CHAT_MODEL", "gpt-5-mini-2025-08-07")
             )
         elif provider_type == "anthropic":
             return create_provider(
@@ -369,13 +369,13 @@ When searching the web, use the CURRENT YEAR ({now.year}) not past years.
             return create_provider(
                 "xai",
                 api_key=get_config_value("XAI_API_KEY"),
-                model=get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+                model=get_config_value("XAI_MODEL", "grok-4-fast-reasoning-latest")
             )
         elif provider_type == "ollama":
             return create_provider(
                 "ollama",
                 base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                model=get_config_value("OLLAMA_MODEL", "qwen3-vl:latest")
+                model=get_config_value("OLLAMA_MODEL", "qwen3")
             )
         else:
             raise ValueError(f"Unknown LLM provider: {provider_type}")
