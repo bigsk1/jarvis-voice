@@ -7,6 +7,8 @@ import os
 import sys
 from typing import Dict, Any, Optional
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -45,8 +47,11 @@ class LLMRouter:
         self.provider_type = get_config_value("LLM_PROVIDER", "unknown")
         self.model_name = self.provider.model if hasattr(self.provider, 'model') else "unknown"
         
-        # System prompt for routing
-        self.system_prompt = """You are Jarvis, a voice-controlled AI assistant with access to tools AND persistent memory.
+        # Timezone for timestamps (configurable via env)
+        self.timezone = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
+        
+        # System prompt for routing (base prompt - time is prepended dynamically)
+        self._system_prompt_base = """You are Jarvis, a voice-controlled AI assistant with access to tools AND persistent memory.
 
 AUTO-CONTEXT (SHORT-TERM MEMORY):
 You may receive RECENT CONVERSATION HISTORY at the start of the user's message. This shows:
@@ -324,6 +329,25 @@ ERROR RECOVERY: If a tool fails, you can:
 Only respond conversationally for general knowledge questions, jokes, explanations, or conversation.
 
 Be decisive and proactive - remember what's important, use tools when needed, chain multiple tools to complete complex tasks."""
+    
+    @property
+    def system_prompt(self) -> str:
+        """
+        Dynamic system prompt with current date/time prepended.
+        
+        This ensures the LLM knows the CURRENT date/time for:
+        - Web searches (use correct year, not training cutoff)
+        - Temporal context ("recent", "latest", "this week")
+        - Time-sensitive queries ("tomorrow", "next Friday")
+        """
+        now = datetime.now(self.timezone)
+        time_prefix = f"""CURRENT DATE AND TIME:
+Today is {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p %Z')}.
+Use this for any time-sensitive queries, web searches, or temporal references.
+When searching the web, use the CURRENT YEAR ({now.year}) not past years.
+
+"""
+        return time_prefix + self._system_prompt_base
     
     def _create_provider(self):
         """Create appropriate LLM provider based on config."""
