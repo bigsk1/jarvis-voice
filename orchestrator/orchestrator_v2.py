@@ -6,7 +6,7 @@ Enhanced with LLM-based routing and confirmation flow.
 import os
 import sys
 import json
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 from datetime import datetime
 
 # Add lib to path
@@ -89,7 +89,7 @@ class Orchestrator:
             enhanced_transcript = transcript
         
         # Inject learned insights from self-learning intelligence
-        learning_context = self._get_learning_insights(transcript)
+        learning_context, applied_insights = self._get_learning_insights(transcript)
         if learning_context:
             enhanced_transcript = f"{learning_context}\n\n{enhanced_transcript}"
         
@@ -311,7 +311,7 @@ class Orchestrator:
                     response["thinking"] = first_thinking
                 
                 # Record experience for self-learning (async, non-blocking)
-                self._record_learning_experience(transcript, tools_used, response, conversation_context)
+                self._record_learning_experience(transcript, tools_used, response, conversation_context, applied_insights)
                 
                 return response
             
@@ -874,10 +874,13 @@ Your BEST EFFORT response:"""
         
         return "\n".join(context_parts)
     
-    def _get_learning_insights(self, transcript: str) -> str:
+    def _get_learning_insights(self, transcript: str) -> Tuple[str, List[Dict]]:
         """
         Get learned insights to inform routing decisions.
-        Returns formatted context string or empty string.
+        
+        Returns:
+            Tuple of (formatted_prompt_string, list_of_applied_insights)
+            The insights list is used later to track if they were helpful.
         """
         try:
             from intelligence_hooks import get_routing_insights, format_insights_for_prompt
@@ -886,27 +889,37 @@ Your BEST EFFORT response:"""
             
             # Only include if we have meaningful insights
             if insights.get('insights') and insights.get('confidence', 0) > 0.3:
-                return format_insights_for_prompt(insights)
+                formatted = format_insights_for_prompt(insights)
+                # Return both formatted string and raw insights for tracking
+                return formatted, insights.get('insights', [])
         except Exception as e:
             # Don't let insight failures affect the main flow
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"⚠️ Learning insights failed: {e}", file=sys.stderr)
         
-        return ""
+        return "", []
     
     def _record_learning_experience(
         self,
         transcript: str,
         tools_used: list,
         result: dict,
-        conversation_context: list
+        conversation_context: list,
+        applied_insights: list = None
     ):
         """
         Record interaction for self-learning intelligence.
         Non-blocking - failures are logged but don't affect response.
+        
+        Args:
+            transcript: User's query
+            tools_used: List of tools executed
+            result: Final result dict
+            conversation_context: Conversation history
+            applied_insights: List of insights that were shown to LLM (for tracking)
         """
         try:
-            from intelligence_hooks import record_interaction
+            from intelligence_hooks import record_interaction, track_insight_outcomes
             
             record_interaction(
                 query=transcript,
@@ -914,6 +927,14 @@ Your BEST EFFORT response:"""
                 result=result,
                 conversation_context=conversation_context
             )
+            
+            # Track insight usage if insights were applied
+            if applied_insights:
+                track_insight_outcomes(
+                    insights=applied_insights,
+                    tools_used=tools_used,
+                    result=result
+                )
         except Exception as e:
             # Don't let learning failures affect the main flow
             if os.environ.get('JARVIS_DEBUG'):

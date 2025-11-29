@@ -347,6 +347,119 @@ def format_insights_for_prompt(insights: Dict[str, Any]) -> str:
 
 
 # ============================================
+# INSIGHT OUTCOME TRACKING
+# ============================================
+
+def track_insight_outcomes(
+    insights: List[Dict[str, Any]],
+    tools_used: List[str],
+    result: Dict[str, Any]
+) -> int:
+    """
+    Track whether applied insights were helpful based on interaction outcome.
+    
+    This enables:
+    - Confidence decay for bad insights
+    - Confidence boost for good insights
+    - Parameter tuning based on real effectiveness
+    
+    Args:
+        insights: List of insight dicts that were shown to LLM (from get_routing_insights)
+        tools_used: List of tools actually used in the interaction
+        result: Final result dict with 'ok', 'speech', etc.
+    
+    Returns:
+        Number of insights tracked
+    """
+    intel = _get_intel()
+    if not intel or not insights:
+        return 0
+    
+    tracked = 0
+    outcome_success = result.get('ok', True)
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            for insight in insights:
+                insight_id = insight.get('id')
+                if not insight_id:
+                    continue
+                
+                # Determine if this insight was helpful
+                was_helpful = _evaluate_insight_helpfulness(
+                    insight=insight,
+                    tools_used=tools_used,
+                    outcome_success=outcome_success
+                )
+                
+                # Record the usage
+                loop.run_until_complete(
+                    intel.record_insight_usage(
+                        insight_id=insight_id,
+                        was_helpful=was_helpful,
+                        outcome='success' if outcome_success else 'failure'
+                    )
+                )
+                tracked += 1
+                
+                logger.debug(f"Tracked insight {insight_id}: helpful={was_helpful}")
+            
+            return tracked
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.warning(f"Failed to track insight outcomes: {e}")
+        return tracked
+
+
+def _evaluate_insight_helpfulness(
+    insight: Dict[str, Any],
+    tools_used: List[str],
+    outcome_success: bool
+) -> bool:
+    """
+    Evaluate whether an insight was helpful for this interaction.
+    
+    Logic:
+    - POSITIVE insight ("prefer X") + X was used + success → helpful
+    - POSITIVE insight ("prefer X") + X not used + success → unclear (count as helpful)
+    - POSITIVE insight ("prefer X") + failure → not helpful
+    - NEGATIVE insight ("avoid Y") + Y not used + success → helpful
+    - NEGATIVE insight ("avoid Y") + Y was used + failure → not helpful (should have avoided)
+    - NEGATIVE insight ("avoid Y") + Y was used + success → unclear (count as helpful)
+    """
+    constraint_type = insight.get('constraint_type', 'positive')
+    avoided_tools = insight.get('avoided_tools', [])
+    
+    # Parse avoided_tools if it's a string
+    if isinstance(avoided_tools, str):
+        try:
+            avoided_tools = json.loads(avoided_tools) if avoided_tools else []
+        except:
+            avoided_tools = [avoided_tools] if avoided_tools else []
+    
+    if constraint_type == 'negative':
+        # Negative constraint: "avoid these tools"
+        tools_violated = [t for t in avoided_tools if t in tools_used]
+        
+        if not tools_violated:
+            # Followed the advice (avoided the tool) - helpful regardless of outcome
+            return True
+        else:
+            # Violated the advice (used the avoided tool)
+            # Only mark as not helpful if the outcome was bad
+            return outcome_success
+    else:
+        # Positive constraint: general advice
+        # If outcome was successful, consider helpful
+        # If outcome failed, consider not helpful
+        return outcome_success
+
+
+# ============================================
 # REFLECTION PROCESSING (Background)
 # ============================================
 
