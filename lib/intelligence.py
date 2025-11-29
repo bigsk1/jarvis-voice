@@ -675,11 +675,19 @@ CRITICAL EVALUATION:
 3. Did the LLM response actually answer what the user asked? (llm_response vs query)
 4. Was the FIRST tool the optimal choice, or should a different tool have been used initially?
 
+TOOL CATEGORIES (for understanding what tools do):
+- **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
+- **ACTION TOOLS** (do something live): mcp_fetch_fetch, execute_bash, api_call, send_webhook, send_email
+- **STORAGE TOOLS** (save info): remember, update_memory, forget
+- **UTILITY TOOLS** (simple tasks): get_time, crypto_price, list_reminders, list_alerts
+- **SEARCH TOOLS** (web search): mcp_brave_search_*, mcp_duckduckgo_*
+- **BUILD TOOLS** (create projects): opencode
+
 SYSTEM RULES THE LLM SHOULD HAVE FOLLOWED:
 - **MEMORY-FIRST RULE**: For questions about user's info, servers, configs, preferences → SHOULD check memory FIRST
 - If query mentions a server IP/service → memory might have stored health check commands with CORRECT details
 - If query asks about "my X" or personal info → memory likely has stored preferences
-- Using action tools (fetch, bash, api_call) BEFORE checking memory violates the system rules
+- Using ACTION TOOLS before MEMORY TOOLS violates system rules for personal/stored data queries
 - If memory search was skipped but query was about stored knowledge → first_tool_optimal = FALSE
 
 CRITICAL: Look for signs the user-provided info might be WRONG:
@@ -687,6 +695,12 @@ CRITICAL: Look for signs the user-provided info might be WRONG:
 - If user says "my server at X" but X fails → the stored server might be at a DIFFERENT address
 - A "not running" result could actually mean "wrong IP" if memory wasn't checked first
 - When something FAILS and memory wasn't checked → strongly consider first_tool_optimal = FALSE
+
+RESULT-BASED EVALUATION (most important):
+- 1 tool used + good result = likely optimal first choice
+- Multiple tools + had to retry = first tool probably suboptimal
+- Action tool first + connection failed = should have checked memory
+- Memory empty + action succeeded = action was correct fallback
 
 IMPORTANT CLASSIFICATION:
 - A FACT is data like "The server IP is 10.0.0.1" → belongs in Memory DB, NOT here
