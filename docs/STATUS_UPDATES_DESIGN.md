@@ -288,8 +288,35 @@ def status_update_loop(session_id: str, task: str):
 
 **Why Background Thread**: OpenCode API is blocking (360s timeout). Can't poll mid-request. Background thread with separate status speaker works alongside.
 
-**Alternative - OpenCode Session Polling**:
-If OpenCode session has progress endpoint, could poll that instead of generic messages.
+**Better Approach - OpenCode Session Polling**:
+OpenCode HAS a session status endpoint! Use it for real progress:
+
+```python
+# Poll actual OpenCode session for real status
+def get_opencode_status(session_id: str) -> str:
+    """Get real status from OpenCode session endpoint."""
+    response = requests.get(f"{OPENCODE_BASE_URL}/sessions/{session_id}", timeout=5)
+    if response.status_code == 200:
+        session = response.json()
+        # Extract meaningful status from session data
+        status = session.get('status', 'working')
+        last_message = session.get('messages', [{}])[-1]
+        
+        # Check for tool calls, errors, etc.
+        if last_message.get('type') == 'tool_call':
+            tool = last_message.get('tool', {}).get('name', 'working')
+            return f"Running {tool}"
+        elif status == 'error':
+            return "Hit an issue, recovering"
+        elif status == 'complete':
+            return None  # Don't speak, about to finish
+        else:
+            return "Making progress"
+    return None
+
+# API Docs: http://192.168.70.228:4096/doc
+# Session endpoint: GET /sessions/<uuid>
+```
 
 ---
 
@@ -324,23 +351,39 @@ play_tts(final_response)
 ```
 
 **Changes for Status Updates**:
+
+Both cloud and local modes need support, reusing existing env vars for voice consistency:
+
 ```bash
-# bin/say-status.sh (NEW) - Lightweight status TTS
+# bin/say-status.sh (NEW) - Cloud mode status TTS
 #!/bin/bash
-# Faster TTS for short status messages
-# - Skips padding (status is short)
-# - Uses same voice/model for consistency
-# - Non-blocking option via & 
+# Lightweight status TTS for cloud mode
+# - Reuses ALL existing TTS env vars (VOICE, TTS_MODEL, TTS_INSTRUCTIONS, etc.)
+# - Skips lead-in padding (status is short)
+# - Non-blocking option via background process
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/config_loader.sh"
+load_config "cloud"
 
 TEXT="$1"
 BLOCKING="${2:-true}"
 
-# Generate TTS (same API, shorter audio)
 OUTFILE="/tmp/jarvis-status-$$.wav"
+
+# Build TTS JSON with existing env vars (same voice as main responses)
+TTS_JSON=$(jq -n \
+  --arg model "$TTS_MODEL" \
+  --arg voice "$VOICE" \
+  --arg input "$TEXT" \
+  --arg instructions "$TTS_INSTRUCTIONS" \
+  '{model:$model, voice:$voice, input:$input, instructions:$instructions}')
+
 curl -s -X POST "https://api.openai.com/v1/audio/speech" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"model\":\"$TTS_MODEL\",\"voice\":\"$VOICE\",\"input\":\"$TEXT\"}" \
+  -d "$TTS_JSON" \
   | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
 
 if [ "$BLOCKING" = "true" ]; then
@@ -348,22 +391,69 @@ if [ "$BLOCKING" = "true" ]; then
 else
     aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null &
 fi
-rm -f "$OUTFILE"
+rm -f "$OUTFILE" 2>/dev/null || true
 ```
 
-**Python Wrapper**:
+```bash
+# bin/say-status-local.sh (NEW) - Local mode status TTS
+#!/bin/bash
+# Lightweight status TTS for local mode
+# Uses local TTS (e.g., piper, espeak, or local API)
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/config_loader.sh"
+load_config "local"
+
+TEXT="$1"
+BLOCKING="${2:-true}"
+
+OUTFILE="/tmp/jarvis-status-$$.wav"
+
+# Local TTS options (configure in local.env):
+# Option 1: Piper TTS (fast, offline)
+# Option 2: Local OpenAI-compatible API
+# Option 3: espeak fallback
+
+if [ -n "${LOCAL_TTS_API_URL:-}" ]; then
+    # Local TTS API (OpenAI-compatible)
+    curl -s -X POST "$LOCAL_TTS_API_URL/v1/audio/speech" \
+      -H "Content-Type: application/json" \
+      -d "{\"model\":\"${LOCAL_TTS_MODEL:-tts-1}\",\"voice\":\"${VOICE:-alloy}\",\"input\":\"$TEXT\"}" \
+      | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
+elif command -v piper &>/dev/null; then
+    # Piper TTS (offline)
+    echo "$TEXT" | piper --model "${PIPER_MODEL:-en_US-lessac-medium}" --output_file "$OUTFILE"
+else
+    # espeak fallback
+    espeak -w "$OUTFILE" "$TEXT" 2>/dev/null
+fi
+
+if [ "$BLOCKING" = "true" ]; then
+    aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null
+else
+    aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null &
+fi
+rm -f "$OUTFILE" 2>/dev/null || true
+```
+
+**Python Wrapper** (mode-aware):
 ```python
 # In lib/status_updater.py
 def _speak(self, message: str, blocking: bool = False):
-    """Speak via say-status.sh"""
-    script = os.path.join(self.project_root, 'bin', 'say-status.sh')
+    """Speak via appropriate TTS script based on mode."""
+    script_name = 'say-status-local.sh' if self.mode == 'local' else 'say-status.sh'
+    script = os.path.join(self.project_root, 'bin', script_name)
     blocking_arg = 'true' if blocking else 'false'
     subprocess.Popen([script, message, blocking_arg], 
                      stdout=subprocess.DEVNULL, 
                      stderr=subprocess.DEVNULL)
 ```
 
-**Why**: Status updates should not block task execution. Reuse existing TTS infrastructure.
+**Why**: 
+- Reuses existing TTS infrastructure and env vars
+- Same voice personality across all responses
+- Supports both cloud (OpenAI) and local (Piper/espeak) modes
 
 ---
 
@@ -592,9 +682,272 @@ export STATUS_UPDATE_INTERVAL=10
 
 ---
 
-## Appendix: Example Status Messages
+## Dynamic Phrase System
 
-### Casual Style
+### Why Dynamic?
+- **Feels natural**: Random selection = never know what you'll get
+- **Extensible**: Add phrases without code changes
+- **Personality**: Humor, sass, encouragement as toggle options
+- **Tool-agnostic**: Tools come and go, messages adapt
+
+### Phrase Configuration File
+
+```json
+// config/status_phrases.json
+{
+  "version": "1.0",
+  "settings": {
+    "humor_enabled": true,
+    "sass_level": 1,          // 0=professional, 1=light, 2=sassy
+    "encouragement": true
+  },
+  
+  "categories": {
+    "task_start": {
+      "standard": [
+        "On it",
+        "Got it",
+        "Working on that",
+        "Let me handle that"
+      ],
+      "humor": [
+        "Challenge accepted",
+        "Consider it done... eventually",
+        "Ooh, this looks fun"
+      ]
+    },
+    
+    "progress": {
+      "standard": [
+        "Still working on it",
+        "Making progress",
+        "Getting there",
+        "Hang tight"
+      ],
+      "humor": [
+        "Rome wasn't built in a day, but I'm faster",
+        "Still cooking, almost ready to serve",
+        "Halfway there... I think"
+      ],
+      "encouragement": [
+        "This is going well",
+        "Looking good so far",
+        "Smooth sailing"
+      ]
+    },
+    
+    "searching": {
+      "standard": [
+        "Searching the web",
+        "Looking that up",
+        "Gathering information"
+      ],
+      "humor": [
+        "Consulting the oracle",
+        "Diving into the internet rabbit hole",
+        "Asking the hive mind"
+      ]
+    },
+    
+    "building": {
+      "standard": [
+        "Building your project",
+        "OpenCode is working",
+        "Setting things up"
+      ],
+      "detailed": [
+        "Installing dependencies",
+        "Writing code",
+        "Running tests",
+        "Finalizing build"
+      ],
+      "humor": [
+        "Teaching electrons to dance",
+        "Turning coffee into code",
+        "Assembling digital Legos"
+      ]
+    },
+    
+    "error_retry": {
+      "standard": [
+        "Hit a snag, trying again",
+        "Small hiccup, working around it",
+        "Trying a different approach"
+      ],
+      "humor": [
+        "Well that didn't work, Plan B",
+        "First attempt was just a warm-up",
+        "Okay, let's try that again"
+      ]
+    },
+    
+    "near_complete": {
+      "standard": [
+        "Almost there",
+        "Wrapping up",
+        "Just finishing"
+      ],
+      "humor": [
+        "Home stretch!",
+        "The finish line is in sight",
+        "Putting the cherry on top"
+      ]
+    },
+    
+    "long_wait": {
+      "standard": [
+        "Still working, shouldn't be long",
+        "Taking a bit longer than expected",
+        "Patience, grasshopper"
+      ],
+      "humor": [
+        "Good things come to those who wait",
+        "I'm not frozen, I promise",
+        "Worth the wait, trust me"
+      ]
+    }
+  },
+  
+  "tool_specific": {
+    "_description": "Override messages for specific tools. Falls back to categories if not defined.",
+    "opencode": {
+      "start": ["OpenCode is on it", "Starting the build"],
+      "progress": ["Build in progress", "OpenCode is cooking"],
+      "error": ["Build hit an issue", "OpenCode stumbled, recovering"]
+    },
+    "mcp_brave_search_brave_web_search": {
+      "start": ["Searching the web"],
+      "progress": ["Found some results, analyzing"]
+    }
+    // New tools automatically use category defaults - no config needed
+  }
+}
+```
+
+### Phrase Selection Logic
+
+```python
+# lib/status_phrases.py
+
+import json
+import random
+from pathlib import Path
+
+class StatusPhrases:
+    """Dynamic phrase selection for status updates."""
+    
+    def __init__(self, config_path: str = None):
+        if config_path is None:
+            config_path = Path(__file__).parent.parent / 'config' / 'status_phrases.json'
+        
+        self.config = self._load_config(config_path)
+        self.settings = self.config.get('settings', {})
+        self.categories = self.config.get('categories', {})
+        self.tool_specific = self.config.get('tool_specific', {})
+    
+    def get_phrase(self, category: str, tool_name: str = None, style: str = 'casual') -> str:
+        """
+        Get a random phrase for the given category.
+        
+        Args:
+            category: 'task_start', 'progress', 'searching', 'building', etc.
+            tool_name: Optional tool name for tool-specific overrides
+            style: 'casual' or 'detailed'
+        
+        Returns:
+            Random phrase from appropriate pool
+        """
+        # Check tool-specific first
+        if tool_name and tool_name in self.tool_specific:
+            tool_phrases = self.tool_specific[tool_name]
+            # Map category to tool-specific key (start/progress/error)
+            key = self._category_to_key(category)
+            if key in tool_phrases:
+                return random.choice(tool_phrases[key])
+        
+        # Fall back to category
+        if category not in self.categories:
+            return "Working on it"  # Ultimate fallback
+        
+        cat = self.categories[category]
+        
+        # Build pool based on settings and style
+        pool = list(cat.get('standard', []))
+        
+        if style == 'detailed' and 'detailed' in cat:
+            pool = list(cat['detailed'])  # Replace with detailed
+        
+        if self.settings.get('humor_enabled') and 'humor' in cat:
+            # Add humor phrases with lower weight
+            pool.extend(cat['humor'])
+        
+        if self.settings.get('encouragement') and 'encouragement' in cat:
+            pool.extend(cat['encouragement'])
+        
+        return random.choice(pool) if pool else "Working on it"
+    
+    def _category_to_key(self, category: str) -> str:
+        """Map category to tool-specific key."""
+        mapping = {
+            'task_start': 'start',
+            'progress': 'progress',
+            'building': 'progress',
+            'searching': 'start',
+            'error_retry': 'error',
+            'near_complete': 'progress'
+        }
+        return mapping.get(category, 'progress')
+    
+    def _load_config(self, path: Path) -> dict:
+        """Load config, return defaults if missing."""
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return self._default_config()
+    
+    def _default_config(self) -> dict:
+        """Minimal default if config file missing."""
+        return {
+            'settings': {'humor_enabled': False},
+            'categories': {
+                'progress': {'standard': ['Working on it', 'Making progress']},
+                'error_retry': {'standard': ['Trying again']}
+            }
+        }
+```
+
+### Adding New Tools
+
+When a new tool is added, it **automatically** uses category defaults. No config changes needed.
+
+To add tool-specific messages (optional):
+```json
+// Just add to config/status_phrases.json
+"tool_specific": {
+  "my_new_tool": {
+    "start": ["Starting my new tool"],
+    "progress": ["My tool is working hard"]
+  }
+}
+```
+
+### Config Toggles in .env
+
+```bash
+# config/cloud.env
+
+# Status phrase personality
+STATUS_HUMOR_ENABLED=true        # Include funny phrases
+STATUS_SASS_LEVEL=1              # 0=pro, 1=light, 2=sassy
+STATUS_ENCOURAGEMENT=true        # Include encouraging phrases
+```
+
+---
+
+## Appendix: Default Phrase Examples
+
+### Casual Style (from standard pool)
 ```
 "On it"
 "Searching the web"
@@ -603,19 +956,24 @@ export STATUS_UPDATE_INTERVAL=10
 "Making progress"
 "Almost there"
 "Hit a snag, trying something else"
-"Having some trouble, hang on"
 ```
 
-### Detailed Style
+### Detailed Style (from detailed pool)
 ```
 "Starting your request"
-"Searching web for: latest AI developments"
-"OpenCode: Installing dependencies"
-"OpenCode: Running tests, 3 of 5 passing"
+"Installing dependencies"
+"Running tests, 3 of 5 passing"
 "Step 4 of multi-step task"
-"API returned 500, retrying with backup"
-"Multiple tools failed, switching strategy"
-"Finalizing response"
+"Finalizing build"
+```
+
+### With Humor Enabled (random mix)
+```
+"Challenge accepted"
+"Consulting the oracle"
+"Teaching electrons to dance"
+"First attempt was just a warm-up"
+"Home stretch!"
 ```
 
 ---
