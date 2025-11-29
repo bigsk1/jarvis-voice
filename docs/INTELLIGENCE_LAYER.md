@@ -1,8 +1,8 @@
 # Jarvis Intelligence Layer
 
-**Status**: Active / Phase 1 Complete  
+**Status**: Active / Phase 1.5 Complete  
 **Created**: 2025-11-27  
-**Updated**: 2025-11-27 (Phase 1: Negative Constraints, Fact/Skill Classification)  
+**Updated**: 2025-11-28 (Phase 1.5: Insight Tracking, Decay, Anomaly Detection, Meta-Cognition)  
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
 
 ## Overview
@@ -89,14 +89,119 @@ Insights are scored for generalizability:
 - **Medium**: "Use X for Y in context Z" → Stored with lower weight
 - **Low**: "The weather was rainy today" → NOT stored (too specific)
 
-### 4. Decay Tracking
+### 4. Decay Tracking (ACTIVE)
 
-New fields track insight health:
-- `times_applied` - How often this insight is used
-- `times_helpful` - Success count when applied
-- `times_failed` - Failure count when applied  
-- `consecutive_failures` - Rapid decay trigger
-- `last_outcome` - Most recent result
+Fields that track insight health are now **actively updated**:
+- `times_applied` - How often this insight is used ✅ Updated automatically
+- `times_helpful` - Success count when applied ✅ Updated automatically
+- `times_failed` - Failure count when applied ✅ Updated automatically
+- `consecutive_failures` - Rapid decay trigger ✅ Updated automatically
+- `last_outcome` - Most recent result (`helpful`/`not_helpful`) ✅ Updated automatically
+
+---
+
+## Phase 1.5 Features (Implemented 2025-11-28)
+
+### 1. Enhanced Reflection Context
+
+The reflection LLM now receives **complete context** about each interaction:
+
+```
+**User Query**: Is my server running?
+**Tools Used (in order)**: ["mcp_fetch_fetch"]
+**Turns Taken**: 1
+**Final Tool**: mcp_fetch_fetch
+**Outcome Status**: SUCCESS
+
+**AVAILABLE TOOLS** (what the LLM could choose from):
+search_memory, recall, semantic_recall, remember, mcp_fetch_fetch, execute_bash...
+
+**TOOL CATEGORIES**:
+MEMORY TOOLS (check FIRST per memory-first rule): search_memory, recall, semantic_recall
+ACTION TOOLS (use after memory): mcp_fetch_fetch, execute_bash, api_call, send_webhook
+
+**Tool Results** (what the tools returned):
+{"mcp_fetch_fetch": {"status": 200, "body": "Ollama is running..."}}
+
+**LLM Response** (what was said to the user):
+"Yes, your Ollama server is running and healthy."
+
+CRITICAL EVALUATION:
+1. Did the tool(s) return relevant data for the query? YES/NO
+2. Did the response accurately use the tool data? YES/NO
+3. Did the response actually answer the user's question? YES/NO
+```
+
+**Why this matters**: The reflection LLM can now evaluate **content quality**, not just tool success.
+
+### 2. Content Quality Evaluation
+
+New reflection output fields:
+```json
+{
+  "tool_returned_relevant_data": true,
+  "response_matched_tool_data": true,
+  "response_answered_query": true,
+  "content_quality_notes": "Prices rounded and formatted correctly"
+}
+```
+
+### 3. Insight Tracking (Now Active!)
+
+When an insight matches a query:
+1. `times_applied` incremented
+2. After interaction completes:
+   - Success → `times_helpful` +1, `consecutive_failures` = 0
+   - Failure → `times_failed` +1, `consecutive_failures` +1
+   - `last_outcome` updated to `helpful` or `not_helpful`
+
+### 4. Maintenance Jobs
+
+Three automated maintenance jobs keep the intelligence layer healthy:
+
+#### Decay Job
+```bash
+# Config
+INTELLIGENCE_DECAY_RATE=0.95  # 5% decay per week unused
+```
+
+**What it does**:
+- Checks each insight's `last_applied` timestamp
+- If unused >7 days: `confidence *= DECAY_RATE`
+- If has failures: extra decay `confidence *= 0.9^consecutive_failures`
+- If successful (>80% helpful): slight boost
+- If confidence drops below 0.15: **auto-pruned**
+
+#### Anomaly Detection
+```bash
+# Config
+INTELLIGENCE_ANOMALY_THRESHOLD=2.5  # Z-score threshold
+```
+
+**What it does**:
+- Calculates baseline: average turns, standard deviation
+- Flags experiences with z-score > threshold
+- Flags failed multi-turn (>3 turns) experiences
+- Logged for review but NOT auto-corrected
+
+#### Meta-Cognition
+**What it does**:
+- **Blind spot detection**: Tools with >30% failure rate
+- **Over-generalization**: Insights that fail when applied
+- **Learning quality**: Low avg confidence, unused insights
+- Stores findings in `meta_knowledge` table for analysis
+
+### 5. New Log Events
+
+All logged to `logs/intelligence/intelligence-YYYY-MM-DD.jsonl`:
+
+| Event | When | Key Fields |
+|-------|------|------------|
+| `maintenance_run` | After any maintenance job | `job_type`, `stats` |
+| `decay_applied` | Insight confidence reduced | `insight_id`, `old_confidence`, `new_confidence`, `reason` |
+| `insight_pruned` | Insight removed (conf < 0.15) | `insight_id`, `reason` |
+| `anomaly_detected` | Unusual experience flagged | `experience_id`, `anomaly_type`, `details` |
+| `meta_cognition` | Meta-knowledge finding | `meta_type`, `observation`, `conclusion`, `action_taken` |
 
 ---
 
@@ -247,9 +352,21 @@ USER QUERY → Check Insights → Route & Execute → Record Experience → Refl
 | 4. Record experience | ✅ | ✅ (2 calls) | ❌ | `experience_recorded` |
 | 5. Reflect | ✅ | ❌ | ✅ **Reflection LLM** | `reflection_*` |
 | 6. Store insight | ✅ | ✅ (2 calls) | ❌ | `insight_created` |
-| 7. Meta-cognition | ✅ | ❌ | ❌ | - |
+| 7. Meta-cognition | ✅ | ❌ | ❌ | `meta_cognition` |
+| 8. Decay job | ✅ | ❌ | ❌ | `maintenance_run`, `decay_applied` |
+| 9. Anomaly detection | ✅ | ❌ | ❌ | `maintenance_run`, `anomaly_detected` |
 
 **Key Insight**: The reflection uses the **same LLM provider** as your main config, but it's a **separate session/call** with a different system prompt focused on self-analysis.
+
+### Cost Analysis
+
+| Operation | LLM Calls | Embedding Calls | DB Operations |
+|-----------|-----------|-----------------|---------------|
+| Per user query | 1 main LLM | 1 (query embed) | 2 reads, 2 writes |
+| Per reflection | 1 reflection LLM | 2 (insight + pattern) | 1-2 writes |
+| Per maintenance run | 0 | 0 | N reads/writes |
+
+**Tip**: Batch reflections (trigger 5-10 at a time) to reduce overhead. Maintenance jobs are pure Python—no external API calls.
 
 ---
 
@@ -344,8 +461,12 @@ lib/
 ├── embeddings.py           # Embedding generation (with fallback)
 
 bin/
-├── check-intelligence-health.py  # Health check script
-├── sync-intelligence-db.py       # Sync between cloud/local
+├── check-intelligence-health.py    # Health check script
+├── sync-intelligence-db.py         # Sync between cloud/local
+├── run-intelligence-maintenance.py # Run decay/anomaly/meta-cognition jobs
+
+api/routes/
+├── intelligence.py         # REST API endpoints for intelligence
 
 data/
 ├── jarvis_intelligence.db       # Cloud learning database (1536-dim)
@@ -354,6 +475,9 @@ data/
 config/
 ├── cloud.env   # JARVIS_INTELLIGENCE=true/false + tuning params
 ├── local.env   # JARVIS_INTELLIGENCE=true/false + tuning params
+
+logs/intelligence/
+├── intelligence-YYYY-MM-DD.jsonl  # Daily intelligence logs
 
 tests/integration/
 ├── test_intelligence_integration.py  # Integration tests
@@ -370,11 +494,20 @@ tests/integration/
 JARVIS_INTELLIGENCE=true
 
 # Learning parameters (advanced, optional)
-INTELLIGENCE_LEARNING_RATE=0.1      # How fast to update beliefs
-INTELLIGENCE_DECAY_RATE=0.95        # How fast old knowledge fades
-INTELLIGENCE_ANOMALY_THRESHOLD=2.5  # Outlier detection sensitivity
-INTELLIGENCE_MIN_CONFIDENCE=0.3     # Minimum confidence to apply insight
+INTELLIGENCE_LEARNING_RATE=0.1      # How fast to update confidence on new evidence
+INTELLIGENCE_DECAY_RATE=0.95        # Decay multiplier per week unused (0.95 = 5% decay)
+INTELLIGENCE_ANOMALY_THRESHOLD=2.5  # Z-score threshold for outlier detection
+INTELLIGENCE_MIN_CONFIDENCE=0.3     # Minimum confidence to apply insight to routing
 ```
+
+### Parameter Tuning Guide
+
+| Parameter | Low Value | High Value | Recommendation |
+|-----------|-----------|------------|----------------|
+| `LEARNING_RATE` | 0.05 (slow learning) | 0.3 (fast adaptation) | Start at 0.1 |
+| `DECAY_RATE` | 0.8 (aggressive pruning) | 0.99 (persistent) | 0.95 is balanced |
+| `ANOMALY_THRESHOLD` | 1.5 (flag more) | 3.5 (flag less) | 2.5 catches outliers |
+| `MIN_CONFIDENCE` | 0.1 (use weak insights) | 0.5 (only strong) | 0.3 is balanced |
 
 ### Adding to Config Files
 
@@ -606,6 +739,117 @@ Results
 
 ---
 
+
+## Maintenance Jobs
+
+### Running Maintenance
+
+**CLI (Recommended)**:
+```bash
+# Run ALL jobs with log tail (watch mode)
+./bin/run-intelligence-maintenance.py --watch
+
+# Individual jobs
+./bin/run-intelligence-maintenance.py --decay
+./bin/run-intelligence-maintenance.py --anomaly
+./bin/run-intelligence-maintenance.py --meta
+
+# Specify mode
+./bin/run-intelligence-maintenance.py --mode local --watch
+```
+
+**API Endpoints**:
+```bash
+# Run all maintenance jobs
+curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/all
+
+# Individual jobs
+curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/decay
+curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/anomaly
+curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/meta-cognition
+
+# View meta-knowledge findings
+curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
+```
+
+### What Each Job Does
+
+#### 1. Decay Job (`--decay`)
+**Purpose**: Keep insight pool fresh by decaying unused/failed insights
+
+**Algorithm**:
+```
+For each insight:
+  1. If last_applied > 7 days ago:
+     confidence *= DECAY_RATE  (default 0.95 = 5% decay)
+  
+  2. If consecutive_failures > 0:
+     confidence *= 0.9 ^ consecutive_failures
+  
+  3. If helpful_ratio > 80%:
+     confidence *= 1.02  (2% boost)
+  
+  4. If confidence < 0.15:
+     DELETE insight (pruned)
+```
+
+**Log Events**:
+- `decay_applied` - When confidence reduced
+- `insight_pruned` - When insight deleted
+- `maintenance_run` with `job_type: "decay_job"`
+
+#### 2. Anomaly Detection (`--anomaly`)
+**Purpose**: Flag unusual experiences for manual review
+
+**Algorithm**:
+```
+1. Calculate baseline:
+   avg_turns = mean(all experience turns)
+   std_dev = stddev(all experience turns)
+
+2. For each experience:
+   z_score = (turns - avg_turns) / std_dev
+   
+   If z_score > ANOMALY_THRESHOLD:
+     FLAG as "high_turns" anomaly
+   
+   If turns > 3 AND success = false:
+     FLAG as "failed_multi_turn" anomaly
+```
+
+**Log Events**:
+- `anomaly_detected` - When unusual experience found
+- `maintenance_run` with `job_type: "anomaly_detection"`
+
+#### 3. Meta-Cognition (`--meta`)
+**Purpose**: Analyze learning health and identify issues
+
+**Detects**:
+| Issue Type | Detection | Example |
+|------------|-----------|---------|
+| **Blind Spots** | Tool fails >30% of time | "mcp_fetch fails often for server queries" |
+| **Over-Generalization** | Insight fails >50% when applied | "This insight doesn't work in practice" |
+| **Learning Quality** | Low avg confidence, many unused | "Parameters may need tuning" |
+
+**Log Events**:
+- `meta_cognition` - When finding recorded
+- `maintenance_run` with `job_type: "meta_cognition"`
+
+**Database**: Findings stored in `meta_knowledge` table:
+```sql
+SELECT * FROM meta_knowledge ORDER BY created_at DESC;
+```
+
+### Recommended Schedule
+
+```bash
+# Add to crontab for daily maintenance
+0 4 * * * cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/run-intelligence-maintenance.py --mode cloud
+```
+
+Or trigger manually after heavy usage days.
+
+---
 
 ## Health Check & Sync Tools
 
@@ -844,20 +1088,50 @@ Intelligence logs are scraped via promtail:
 
 # Filter by event type
 {job="jarvis", log_type="intelligence"} | json | event="reflection_response"
+{job="jarvis", log_type="intelligence"} | json | event="insights_applied"
+{job="jarvis", log_type="intelligence"} | json | event="experience_recorded"
+
+# Maintenance job events
+{job="jarvis", log_type="intelligence"} | json | event="maintenance_run"
+{job="jarvis", log_type="intelligence"} | json | event="decay_applied"
+{job="jarvis", log_type="intelligence"} | json | event="anomaly_detected"
+{job="jarvis", log_type="intelligence"} | json | event="meta_cognition"
 
 # Filter by constraint type
 {job="jarvis", log_type="intelligence"} | json | constraint_type="negative"
+{job="jarvis", log_type="intelligence"} | json | constraint_type="positive"
 
 # Show reflection prompts
 {job="jarvis", log_type="intelligence"} | json | event="reflection_prompt"
 
 # Find insights for specific provider
 {job="jarvis", log_type="intelligence"} | json | provider="xai"
+
+# Track tool biases over time
+{job="jarvis", log_type="intelligence"} | json | event="insights_applied" | line_format "{{.tool_biases}}"
 ```
+
+### Log Event Reference
+
+| Event | Description | Key Fields |
+|-------|-------------|------------|
+| `insights_applied` | Insights matched for routing | `query`, `insights_count`, `tool_biases` |
+| `experience_recorded` | Interaction saved | `experience_id`, `query`, `tools_used`, `success` |
+| `reflection_started` | Reflection beginning | `experience_id`, `query` |
+| `reflection_prompt` | What sent to LLM | `experience_id`, `prompt_preview`, `prompt_length` |
+| `reflection_response` | LLM analysis result | `provider`, `model`, `response` (full JSON) |
+| `insight_created` | New insight stored | `insight_id`, `constraint_type`, `description`, `confidence` |
+| `insight_updated` | Existing insight modified | `insight_id`, `old_confidence`, `new_confidence` |
+| `insight_skipped` | Not stored (factual/low-gen) | `reason`, `knowledge_type`, `generalizability` |
+| `maintenance_run` | Job completed | `job_type`, `stats` |
+| `decay_applied` | Confidence reduced | `insight_id`, `old_confidence`, `new_confidence`, `reason` |
+| `insight_pruned` | Insight deleted | `insight_id`, `reason`, `final_confidence` |
+| `anomaly_detected` | Unusual experience | `experience_id`, `anomaly_type`, `details` |
+| `meta_cognition` | Learning finding | `meta_type`, `observation`, `conclusion`, `action_taken` |
 
 ### API Endpoints (REST)
 
-Additional REST endpoints for debugging:
+Full REST API for intelligence management:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -868,6 +1142,11 @@ Additional REST endpoints for debugging:
 | `/api/intelligence/logs/recent` | GET | Today's log entries |
 | `/api/intelligence/reflect` | POST | Trigger reflection manually |
 | `/api/intelligence/evaluate` | GET | Meta-cognition evaluation |
+| `/api/intelligence/meta-knowledge` | GET | View meta_knowledge findings |
+| `/api/intelligence/maintenance/decay` | POST | Run decay job |
+| `/api/intelligence/maintenance/anomaly` | POST | Run anomaly detection |
+| `/api/intelligence/maintenance/meta-cognition` | POST | Run meta-cognition |
+| `/api/intelligence/maintenance/all` | POST | Run all maintenance jobs |
 
 ### Sample REST API Calls
 
@@ -882,31 +1161,83 @@ curl http://192.168.70.228:8880/api/intelligence/insights | jq '.insights'
 curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
 ```
 
-### Grafana Dashboard Suggestions
+### Grafana Dashboard Panels
 
-**Panel 1: Experience & Insight Growth**
-```promql
-# Experiences over time
-jarvis_intelligence_experiences_total
-# Insights over time
-sum(jarvis_intelligence_insights_total)
-```
+The Intelligence Layer dashboard (`grafana/dashboards/jarvis-intelligence.json`) includes:
 
-**Panel 2: Constraint Balance**
+**Panel 1: Key Stats Row**
+- Intelligence enabled status
+- Total experiences
+- Total insights (positive/negative)
+- Pending reflections
+- Average confidence
+- Helpful ratio
+
+**Panel 2: Constraint Type Distribution** (Pie Chart)
 ```promql
-# Positive vs Negative pie chart
 jarvis_intelligence_insights_total{constraint_type="positive"}
 jarvis_intelligence_insights_total{constraint_type="negative"}
 ```
 
-**Panel 3: Confidence Trend**
+**Panel 3: Learning Growth Over Time**
+```promql
+jarvis_intelligence_experiences_total
+sum(jarvis_intelligence_insights_total)
+```
+
+**Panel 4: Confidence Trend**
 ```promql
 jarvis_intelligence_avg_confidence
 ```
 
-**Panel 4: Pending Reflections (alert if > 10)**
+**Panel 5: Pending Reflections Queue**
 ```promql
 jarvis_intelligence_pending_reflections
+```
+Alert if > 10 (reflections backing up)
+
+**Panel 6: Intelligence Event Logs** (Loki)
+```logql
+{job="jarvis", log_type="intelligence"} | json
+```
+
+**Panel 7: Event Type Distribution** (Bar Chart)
+```logql
+sum by (event) (count_over_time({job="jarvis", log_type="intelligence"} | json [24h]))
+```
+
+### LogQL Queries for Analysis
+
+**Tool bias evolution**:
+```logql
+{job="jarvis", log_type="intelligence"} 
+| json 
+| event="insights_applied" 
+| line_format "{{.tool_biases}}"
+```
+
+**Failed insights** (insights that hurt more than help):
+```logql
+{job="jarvis", log_type="intelligence"} 
+| json 
+| event="insight_updated" 
+| new_confidence < old_confidence
+```
+
+**Content quality issues** (tool returned data but answer was wrong):
+```logql
+{job="jarvis", log_type="intelligence"} 
+| json 
+| event="reflection_response" 
+| response_matched_tool_data=false
+```
+
+**Learning quality alerts**:
+```logql
+{job="jarvis", log_type="intelligence"} 
+| json 
+| event="meta_cognition" 
+| meta_type="learning_quality"
 ```
 
 ### After Enabling Intelligence
@@ -933,6 +1264,107 @@ cat logs/intelligence/*.jsonl | jq 'select(.event == "reflection_response")'
 
 # Count events by type
 cat logs/intelligence/*.jsonl | jq -r '.event' | sort | uniq -c
+
+# See maintenance results
+cat logs/intelligence/*.jsonl | jq 'select(.event == "maintenance_run")'
+
+# Find anomalies
+cat logs/intelligence/*.jsonl | jq 'select(.event == "anomaly_detected")'
+
+# Meta-cognition findings
+cat logs/intelligence/*.jsonl | jq 'select(.event == "meta_cognition")'
+```
+
+### Real Log Examples
+
+**Insights Applied** (every query):
+```json
+{
+  "timestamp": "2025-11-28T19:54:11.212759",
+  "event": "insights_applied",
+  "query": "What is the price of Bitcoin?",
+  "insights_count": 3,
+  "insights": [
+    {"id": 8, "relevance": 0.542},
+    {"id": 7, "relevance": 0.518},
+    {"id": 6, "relevance": 0.498}
+  ],
+  "tool_biases": {
+    "crypto_price": 1.533,
+    "search_memory": -0.162
+  }
+}
+```
+
+**Reflection Response** (after reflection):
+```json
+{
+  "timestamp": "2025-11-28T20:09:31.778891",
+  "event": "reflection_response",
+  "provider": "xai",
+  "model": "grok-4-1-fast-reasoning-latest",
+  "response": {
+    "is_procedural": true,
+    "constraint_type": "positive",
+    "trigger_signals": ["current price", "Bitcoin"],
+    "first_tool_optimal": true,
+    "tool_returned_relevant_data": true,
+    "response_matched_tool_data": true,
+    "response_answered_query": true,
+    "rule": "ALWAYS use crypto_price for cryptocurrency queries",
+    "preferred_tool": "crypto_price",
+    "generalizability": "high",
+    "confidence": 1.0
+  }
+}
+```
+
+**Anomaly Detected**:
+```json
+{
+  "timestamp": "2025-11-28T20:51:48.358172",
+  "event": "anomaly_detected",
+  "experience_id": 57,
+  "anomaly_type": "high_turns",
+  "details": {
+    "query": "What's the current price of Bitcoin and Ethereum...",
+    "reasons": [{
+      "type": "high_turns",
+      "turns": 3,
+      "z_score": 3.54,
+      "threshold": 2.5
+    }]
+  }
+}
+```
+
+**Meta-Cognition Finding**:
+```json
+{
+  "timestamp": "2025-11-28T20:51:48.360232",
+  "event": "meta_cognition",
+  "meta_type": "learning_quality",
+  "observation": "Found 2 learning quality issue(s)",
+  "conclusion": "Many insights never applied - may be too specific; Low insight application rate - matching may be too strict",
+  "action_taken": "review_parameters",
+  "confidence": 0.6
+}
+```
+
+**Maintenance Run Summary**:
+```json
+{
+  "timestamp": "2025-11-28T20:51:48.357178",
+  "event": "maintenance_run",
+  "job_type": "decay_job",
+  "stats": {
+    "total_checked": 45,
+    "decayed": 0,
+    "boosted": 0,
+    "unchanged": 45,
+    "pruned": 0
+  }
+}
 ```
 
 ---
@@ -988,12 +1420,25 @@ Current intelligence focuses on **tool routing**. It does NOT learn:
 - [x] Sync script (`sync-intelligence-db.py`)
 - [x] Embedding fallback with logging
 
+### Phase 1.5 (Complete) ✅ - 2025-11-28
+- [x] **Enhanced reflection context** - LLM response, tool results, available tools in prompt
+- [x] **Content quality evaluation** - Reflection evaluates data relevance, not just tool success
+- [x] **Insight tracking (active)** - times_applied, times_helpful, times_failed now updated
+- [x] **Decay job** - Auto-decay unused/failed insights
+- [x] **Anomaly detection** - Flag unusual experiences (high turns, failed multi-turn)
+- [x] **Meta-cognition** - Blind spot detection, over-generalization, learning quality
+- [x] **meta_knowledge table** - Store learning system findings
+- [x] **Maintenance CLI** - `run-intelligence-maintenance.py`
+- [x] **Maintenance API** - REST endpoints for all maintenance jobs
+- [x] **Comprehensive logging** - All events for Grafana visibility
+
 ### Phase 2 (Planned)
 - [ ] **Implicit failure detection** - Detect when user rewords query within 60s
 - [ ] **Tool trashing detection** - When Tool A fails → Tool B succeeds, create negative constraint
-- [ ] **The Reaper service** - Periodic pruning of low-confidence insights
+- [ ] ~~**The Reaper service** - Periodic pruning of low-confidence insights~~ ✅ (now in decay job)
 - [ ] **Conflict resolution** - When new insight contradicts old one
 - [ ] **Content attribution** - Track which tool's output actually answered the query
+- [ ] **User bias injection** - Allow user to specify tool preferences in config
 
 ### Phase 3 (User Profile Learning) 🧠
 - [ ] **User bias injection** - Config/file to specify tool preferences
