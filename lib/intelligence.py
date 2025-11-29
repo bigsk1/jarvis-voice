@@ -236,6 +236,7 @@ class IntelligenceLayer:
         self.decay_rate = get_float('INTELLIGENCE_DECAY_RATE', 0.95)
         self.anomaly_threshold = get_float('INTELLIGENCE_ANOMALY_THRESHOLD', 2.5)
         self.min_confidence = get_float('INTELLIGENCE_MIN_CONFIDENCE', 0.3)
+        self.negative_weight = get_float('INTELLIGENCE_NEGATIVE_WEIGHT', 1.0)  # Multiplier for negative constraints
     
     def _init_db(self):
         """Initialize intelligence database with experience and insight tables."""
@@ -1284,8 +1285,9 @@ Example for FACTUAL (should NOT be stored here):
             
             # Handle avoided tools (negative bias) - PHASE 1
             for tool in insight.get('avoided_tools', []):
-                # Strong negative bias weighted by relevance and confidence
-                negative_bias = -1.0 * insight['relevance'] * insight['confidence']
+                # Strong negative bias weighted by relevance, confidence, and negative_weight
+                # negative_weight > 1.0 makes negative constraints stronger than positive
+                negative_bias = -self.negative_weight * insight['relevance'] * insight['confidence']
                 biases[tool] = biases.get(tool, 0) + negative_bias
         
         return biases
