@@ -481,3 +481,15 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
 # Or for local
 ./bin/say-status-local.sh "THE VOID STARES BACK" true
 ```
+
+# View cache stats
+```bash
+./bin/status-cache stats
+
+# Clear cache (if you change voice settings)
+./bin/status-cache clear
+
+# Pre-warm cache (generate all phrases upfront)
+./bin/status-cache warm cloud   # Cloud mode
+./bin/status-cache warm local   # Local mode
+```

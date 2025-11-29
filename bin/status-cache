@@ -1,0 +1,165 @@
+#!/bin/bash
+# Jarvis Status Audio Cache Management
+#
+# Usage:
+#   status-cache stats    - Show cache statistics
+#   status-cache clear    - Clear all cached audio
+#   status-cache list     - List cached files
+#   status-cache warm     - Pre-generate cache for all phrases
+
+set -euo pipefail
+
+CACHE_DIR_CLOUD="${HOME}/.cache/jarvis/status-tts"
+CACHE_DIR_LOCAL="${HOME}/.cache/jarvis/status-tts-local"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+show_stats() {
+    echo "=== Status Audio Cache Stats ==="
+    echo ""
+    
+    # Cloud cache
+    if [ -d "$CACHE_DIR_CLOUD" ]; then
+        CLOUD_COUNT=$(find "$CACHE_DIR_CLOUD" -name "*.wav" 2>/dev/null | wc -l)
+        CLOUD_SIZE=$(du -sh "$CACHE_DIR_CLOUD" 2>/dev/null | cut -f1)
+        echo "Cloud TTS Cache:"
+        echo "  Location: $CACHE_DIR_CLOUD"
+        echo "  Files:    $CLOUD_COUNT cached phrases"
+        echo "  Size:     $CLOUD_SIZE"
+    else
+        echo "Cloud TTS Cache: (not created yet)"
+    fi
+    
+    echo ""
+    
+    # Local cache
+    if [ -d "$CACHE_DIR_LOCAL" ]; then
+        LOCAL_COUNT=$(find "$CACHE_DIR_LOCAL" -name "*.wav" 2>/dev/null | wc -l)
+        LOCAL_SIZE=$(du -sh "$CACHE_DIR_LOCAL" 2>/dev/null | cut -f1)
+        echo "Local TTS Cache:"
+        echo "  Location: $CACHE_DIR_LOCAL"
+        echo "  Files:    $LOCAL_COUNT cached phrases"
+        echo "  Size:     $LOCAL_SIZE"
+    else
+        echo "Local TTS Cache: (not created yet)"
+    fi
+    
+    echo ""
+    echo "Tip: Use 'status-cache warm' to pre-generate all phrases"
+}
+
+clear_cache() {
+    echo "Clearing status audio cache..."
+    
+    if [ -d "$CACHE_DIR_CLOUD" ]; then
+        rm -rf "$CACHE_DIR_CLOUD"
+        echo "✓ Cleared cloud cache"
+    fi
+    
+    if [ -d "$CACHE_DIR_LOCAL" ]; then
+        rm -rf "$CACHE_DIR_LOCAL"
+        echo "✓ Cleared local cache"
+    fi
+    
+    echo "Done! Cache will rebuild automatically on next use."
+}
+
+list_cache() {
+    echo "=== Cached Audio Files ==="
+    echo ""
+    
+    echo "Cloud TTS Cache ($CACHE_DIR_CLOUD):"
+    if [ -d "$CACHE_DIR_CLOUD" ]; then
+        ls -lh "$CACHE_DIR_CLOUD"/*.wav 2>/dev/null || echo "  (empty)"
+    else
+        echo "  (not created yet)"
+    fi
+    
+    echo ""
+    echo "Local TTS Cache ($CACHE_DIR_LOCAL):"
+    if [ -d "$CACHE_DIR_LOCAL" ]; then
+        ls -lh "$CACHE_DIR_LOCAL"/*.wav 2>/dev/null || echo "  (empty)"
+    else
+        echo "  (not created yet)"
+    fi
+}
+
+warm_cache() {
+    MODE="${1:-cloud}"
+    PHRASES_FILE="$SCRIPT_DIR/../config/status_phrases.json"
+    
+    # Check for unhinged mode
+    if [ -f "$SCRIPT_DIR/../config/${MODE}.env" ]; then
+        source "$SCRIPT_DIR/../lib/config_loader.sh"
+        load_config "$MODE"
+        PHRASE_MODE="${STATUS_PHRASE_MODE:-normal}"
+        if [ "$PHRASE_MODE" = "unhinged" ]; then
+            PHRASES_FILE="$SCRIPT_DIR/../config/status_phrases_unhinged.json"
+        fi
+    fi
+    
+    echo "=== Warming Status Audio Cache ($MODE mode) ==="
+    echo "Phrases file: $PHRASES_FILE"
+    echo ""
+    
+    if [ ! -f "$PHRASES_FILE" ]; then
+        echo "Error: Phrases file not found" >&2
+        exit 1
+    fi
+    
+    # Extract all phrases from JSON
+    PHRASES=$(jq -r '
+        .categories | to_entries[] | .value | 
+        to_entries[] | .value[] 
+    ' "$PHRASES_FILE" 2>/dev/null | sort -u)
+    
+    # Also get tool-specific phrases
+    TOOL_PHRASES=$(jq -r '
+        .tool_specific | to_entries[] | .value | 
+        to_entries[] | .value[]
+    ' "$PHRASES_FILE" 2>/dev/null | sort -u)
+    
+    ALL_PHRASES=$(echo -e "$PHRASES\n$TOOL_PHRASES" | sort -u | grep -v '^$')
+    TOTAL=$(echo "$ALL_PHRASES" | wc -l)
+    
+    echo "Found $TOTAL unique phrases to cache"
+    echo ""
+    
+    COUNT=0
+    if [ "$MODE" = "cloud" ]; then
+        TTS_SCRIPT="$SCRIPT_DIR/say-status.sh"
+    else
+        TTS_SCRIPT="$SCRIPT_DIR/say-status-local.sh"
+    fi
+    
+    echo "$ALL_PHRASES" | while read -r phrase; do
+        COUNT=$((COUNT + 1))
+        echo "[$COUNT/$TOTAL] Caching: ${phrase:0:50}..."
+        # Run TTS but redirect audio to null (just cache it)
+        OUT_DEV="null" "$TTS_SCRIPT" "$phrase" true 2>/dev/null || true
+    done
+    
+    echo ""
+    echo "✓ Cache warming complete!"
+    show_stats
+}
+
+# Main
+case "${1:-stats}" in
+    stats)
+        show_stats
+        ;;
+    clear)
+        clear_cache
+        ;;
+    list)
+        list_cache
+        ;;
+    warm)
+        warm_cache "${2:-cloud}"
+        ;;
+    *)
+        echo "Usage: $0 {stats|clear|list|warm [cloud|local]}"
+        exit 1
+        ;;
+esac
+
