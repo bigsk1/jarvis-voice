@@ -110,7 +110,16 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - "Searching the web", "Building with OpenCode", "Checking the weather"
   - LLM-generated dynamic summaries from tool output
   - Configurable phrases with humor/encouragement toggles
+  - Phrase modes: `normal` or `unhinged` (chaotic/funny)
+  - Audio caching for instant playback of repeated phrases
   - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
+
+### Developer Experience ⭐ NEW
+- **Command Dashboard TUI**: Interactive terminal UI with 60+ commands
+  - Browse, search, and run any Jarvis command from one place
+  - Organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
+  - Live system status (CPU, RAM, API health)
+  - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
 
 ### Speech Modes - Smart Adaptive Response System
 
@@ -349,6 +358,9 @@ source ~/jarvis-venv/bin/activate
 # CLI mode (no voice)
 ./orchestrator/orchestrator_v2.py cloud "What time is it?"
 ./orchestrator/orchestrator_v2.py local "What time is it?"
+
+# Command Dashboard (all commands in one TUI!) ⭐ NEW
+./bin/jarvis-dashboard
 ```
 
 Say **"Hey Jarvis"** to wake it up!
@@ -934,11 +946,17 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (November 2025):**
-- ✅ **Status Updates System** - Real-time voice progress during tasks ⭐ MAJOR NEW
+- ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands ⭐ NEW
+  - 60+ commands organized by category
+  - Search/filter, tab navigation, live system status
+  - Run any command with Enter, view output in real-time
+  - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
+- ✅ **Status Updates System** - Real-time voice progress during tasks ⭐ MAJOR
   - LLM dynamic summaries (gpt-4o-mini/qwen3 generates natural phrases)
   - Tool-aware updates (opencode, search, weather, fetch)
   - Rate limiting, error deduplication, collision prevention
   - Cloud (OpenAI TTS) + Local (Kokoro TTS) support
+  - Phrase modes (`normal` / `unhinged`), audio caching, silence padding
 - ✅ **Weather Tool** - OpenWeatherMap with geocoding for accurate locations
 - ✅ **Intelligence Layer Phase 1.5** - Full insight lifecycle ⭐ MAJOR
   - Positive AND negative constraints (what to do AND what NOT to do)

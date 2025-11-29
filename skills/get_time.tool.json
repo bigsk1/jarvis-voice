@@ -1,11 +1,20 @@
 {
   "enabled": true,
   "name": "get_time",
-  "description": "Get the current date and time. Use this when the user asks: 'what time is it', 'what's the time', 'what day is it', 'what's today's date', 'what is the date', or any time/date related question.",
-  "script": "time.sh",
+  "description": "Get the current date and time, optionally for any location worldwide. Use for: 'what time is it', 'what time is it in Tokyo', 'what's the time in Paris', 'current time in London', 'what day is it', 'what's today's date'. Supports 100+ cities and all IANA timezones. If no location specified, returns local server time.",
+  "script": "get_time.py",
   "parameters": {
     "type": "object",
-    "properties": {}
+    "properties": {
+      "location": {
+        "type": "string",
+        "description": "City or country name (e.g., 'Tokyo', 'Paris', 'New York', 'London'). Leave empty for local time."
+      },
+      "timezone": {
+        "type": "string", 
+        "description": "IANA timezone (e.g., 'Asia/Tokyo', 'Europe/Paris'). Alternative to location parameter."
+      }
+    }
   },
   "permissions": {
     "dangerous": false,

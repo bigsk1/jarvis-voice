@@ -62,6 +62,18 @@ STATUS_UPDATE_INTERVAL=20
 #   detailed → "OpenCode: Installing dependencies (3/5 complete)"
 #   auto     → Adapts based on task type
 # (No new STATUS_UPDATE_STYLE needed - reuse existing)
+
+# ===== Phrase Personality =====
+# Options: 'normal' (professional), 'unhinged' (chaotic/funny)
+STATUS_PHRASE_MODE=normal
+
+# ===== Audio Enhancements =====
+# Add silence padding (ms) before audio to prevent speaker wake-up cutoff
+# Recommended: 250-500ms for Bluetooth speakers
+STATUS_SILENCE_PAD_MS=250
+
+# Cache generated TTS audio for instant playback of repeated phrases
+STATUS_CACHE_ENABLED=true
 ```
 
 ### Defaults
@@ -69,6 +81,38 @@ STATUS_UPDATE_INTERVAL=20
 |----------|---------|-------|
 | `STATUS_UPDATES_ENABLED` | `false` | Opt-in feature |
 | `STATUS_UPDATE_INTERVAL` | `20` | 20s minimum between updates |
+| `STATUS_PHRASE_MODE` | `normal` | `normal` or `unhinged` |
+| `STATUS_SILENCE_PAD_MS` | `250` | Silence padding in milliseconds |
+| `STATUS_CACHE_ENABLED` | `true` | Cache static phrases for instant playback |
+
+### Phrase Modes
+
+**Normal Mode** (`config/status_phrases.json`):
+```
+"Got it boss", "Working on that", "Challenge accepted", "Almost there"
+```
+
+**Unhinged Mode** (`config/status_phrases_unhinged.json`):
+```
+"Yeet! Let's gooo", "Time to unleash chaos", "WHO PUT THIS BUG HERE?!"
+```
+
+### Audio Caching
+
+Static phrases are cached to `~/.cache/jarvis/status-tts/` (cloud) or `~/.cache/jarvis/status-tts-local/` (local).
+
+**Manage cache with:**
+```bash
+./bin/status-cache stats   # View cache statistics
+./bin/status-cache clear   # Clear all cached audio
+./bin/status-cache warm cloud   # Pre-generate all cloud phrases
+./bin/status-cache warm local   # Pre-generate all local phrases
+```
+
+**Cache hit benefits:**
+- Zero LLM calls for cached phrases
+- Instant playback (~10ms vs ~2s)
+- Reduced API costs
 
 ---
 

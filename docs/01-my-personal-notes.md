@@ -125,6 +125,16 @@ cat logs/intelligence/intelligence-*.jsonl | jq -c '.event'
 
 # Reflection responses only
 cat logs/intelligence/intelligence-*.jsonl | jq 'select(.event == "reflection_response")'
+
+# Trigger reflection
+curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
+
+# View insights
+curl http://192.168.70.228:8880/api/intelligence/insights | jq '.insights'
+
+# View meta-knowledge
+curl http://192.168.70.228:8880/api/intelligence/meta-knowledge | jq '.'
+
 ```
 
 ### Commands for testing

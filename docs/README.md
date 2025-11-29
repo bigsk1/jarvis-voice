@@ -42,6 +42,9 @@
 # Local mode (Ollama)
 ./jarvis-local
 
+# Command Dashboard TUI (all commands in one place!) ⭐ NEW
+./bin/jarvis-dashboard   # Or: jarvis-d (if alias set)
+
 # Run tests
 ./test-all-tools.sh
 ./test-all-tools-local.sh
@@ -156,6 +159,11 @@
 | **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Real-time feedback during tasks ⭐ NEW |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
 
+### Developer Tools
+| Document | Purpose |
+|----------|---------|
+| **Command Dashboard** | TUI for all Jarvis commands - `./bin/jarvis-dashboard` ⭐ NEW |
+
 **Intelligence Features (Phase 1.5):**
 - Insight tracking (times_applied, times_helpful, times_failed)
 - Decay job (prunes stale insights)
@@ -244,6 +252,13 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2025-11-29:**
+- ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands ⭐ NEW
+  - 60+ commands organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
+  - Search/filter commands with `/` key
+  - Tab-based navigation by category
+  - Live system status (CPU, RAM, API health)
+  - Run any command with Enter, view output in real-time
+  - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
 - ✅ **Status Updates System** - Real-time voice progress during long tasks ⭐ MAJOR
   - **Phase 1**: Core infrastructure (StatusUpdater, TTS scripts, phrase config)
   - **Phase 2**: Orchestrator integration (tool-aware updates, error handling)
@@ -252,6 +267,9 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Tool-specific updates (opencode, search, weather, fetch, etc.)
   - Rate limiting (20s default), error deduplication, collision prevention
   - Cloud (OpenAI TTS) and Local (Kokoro TTS) support
+  - **Phrase modes**: `normal` (professional) or `unhinged` (chaotic/funny)
+  - **Silence padding**: Prevents speaker wake-up cutoff (`STATUS_SILENCE_PAD_MS`)
+  - **Audio caching**: Pre-gen static phrases to reduce TTS calls (`./bin/status-cache`)
   - See: `docs/STATUS_UPDATES_DESIGN.md`
 - ✅ **Weather Tool** - OpenWeatherMap integration with geocoding
   - Accurate location via Geocoding API (lat/lon)

@@ -27,7 +27,17 @@ from textual.binding import Binding
 # ============================================================================
 
 PROJECT_ROOT = Path(__file__).parent.parent
-VENV_ACTIVATE = f"source {Path.home()}/jarvis-venv/bin/activate"
+VENV_PATH = Path.home() / "jarvis-venv"
+VENV_PYTHON = str(VENV_PATH / "bin" / "python")
+
+# Full environment setup for subprocess
+def get_env():
+    """Get environment with venv and PYTHONPATH set up."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(PROJECT_ROOT / "lib")
+    env["PATH"] = f"{VENV_PATH}/bin:" + env.get("PATH", "")
+    env["VIRTUAL_ENV"] = str(VENV_PATH)
+    return env
 
 @dataclass
 class Command:
@@ -384,13 +394,16 @@ class CommandRunner(App):
         log.write(f"\n[bold green]🚀 EXEC:[/bold green] {cmd.name}")
         log.write(f"[dim]{cmd.command}[/dim]\n")
         
-        full_command = f"{VENV_ACTIVATE} && cd {PROJECT_ROOT} && {cmd.command}"
+         # Run command with proper venv environment
+        full_command = f"cd {PROJECT_ROOT} && {cmd.command}"
         
         try:
             process = await asyncio.create_subprocess_shell(
-                f"bash -c '{full_command}'",
+                full_command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                env=get_env(),  # Use venv environment
+                cwd=str(PROJECT_ROOT)
             )
 
             async def read_stream(stream, color):

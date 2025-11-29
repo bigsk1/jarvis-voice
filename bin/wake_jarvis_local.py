@@ -5,8 +5,12 @@ import numpy as np
 import sounddevice as sd
 from openwakeword.model import Model
 
+# Resolve symlinks to get the REAL script location (critical for symlinks like ./jarvis-local)
+SCRIPT_PATH = os.path.realpath(__file__)
+SCRIPT_DIR = os.path.dirname(SCRIPT_PATH)
+
 # Add lib to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, '..', 'lib'))
 from config_loader import load_config, get_config_value, get_int, get_float
 
 import warnings
@@ -38,8 +42,8 @@ VAD_THRESHOLD = get_float("VAD_THRESHOLD", 0.40)
 
 # WAKE_GREETINGS loaded in handle_trigger() for random selection
 
-# Script paths
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Script paths (using resolved symlink path)
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 SAY = os.path.join(PROJECT_ROOT, "bin", "say-local.sh")
 # Use orchestrator for intelligent tool calling
 ASK = os.path.join(PROJECT_ROOT, "bin", "question-orchestrator-local.sh")
