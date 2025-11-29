@@ -498,6 +498,7 @@ INTELLIGENCE_LEARNING_RATE=0.1      # How fast to update confidence on new evide
 INTELLIGENCE_DECAY_RATE=0.95        # Decay multiplier per week unused (0.95 = 5% decay)
 INTELLIGENCE_ANOMALY_THRESHOLD=2.5  # Z-score threshold for outlier detection
 INTELLIGENCE_MIN_CONFIDENCE=0.3     # Minimum confidence to apply insight to routing
+INTELLIGENCE_NEGATIVE_WEIGHT=1.5    # Multiplier for negative constraints (higher = stronger)
 ```
 
 ### Parameter Tuning Guide
@@ -508,6 +509,9 @@ INTELLIGENCE_MIN_CONFIDENCE=0.3     # Minimum confidence to apply insight to rou
 | `DECAY_RATE` | 0.8 (aggressive pruning) | 0.99 (persistent) | 0.95 is balanced |
 | `ANOMALY_THRESHOLD` | 1.5 (flag more) | 3.5 (flag less) | 2.5 catches outliers |
 | `MIN_CONFIDENCE` | 0.1 (use weak insights) | 0.5 (only strong) | 0.3 is balanced |
+| `NEGATIVE_WEIGHT` | 1.0 (equal to positive) | 2.0 (strong penalty) | 1.5 makes negatives win |
+
+**NEGATIVE_WEIGHT explained**: When multiple insights conflict (e.g., 2 positive + 1 negative for same tool), this multiplier ensures negative constraints are respected. At 1.5, a single negative insight can outweigh multiple weak positives.
 
 ### Adding to Config Files
 
