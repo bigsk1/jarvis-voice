@@ -46,6 +46,7 @@ class Command:
     description: str
     category: str
     dangerous: bool = False
+    interactive: bool = False  # Commands that need a real terminal (audio, long-running)
 
 # ============================================================================
 # CUSTOM WIDGETS
@@ -59,7 +60,12 @@ class CommandItem(ListItem):
         super().__init__()
 
     def compose(self) -> ComposeResult:
-        icon = "⚠️ " if self.command_obj.dangerous else "🚀 "
+        if self.command_obj.dangerous:
+            icon = "⚠️ "
+        elif self.command_obj.interactive:
+            icon = "🎙️ "
+        else:
+            icon = "🚀 "
         yield Label(f"{icon} {self.command_obj.name}", classes="cmd-name")
         yield Label(f"  {self.command_obj.description}", classes="cmd-desc")
 
@@ -92,14 +98,14 @@ class SystemStatus(Static):
 
 COMMANDS: List[Command] = [
     # === 🎙️ JARVIS CORE ===
-    Command("Start Jarvis (Cloud)", "./jarvis", "Voice assistant - cloud mode", "🎙️ Core"),
-    Command("Start Jarvis (Local)", "./jarvis-local", "Voice assistant - local mode", "🎙️ Core"),
+    Command("Start Jarvis (Cloud)", "./jarvis", "Voice assistant - cloud mode", "🎙️ Core", interactive=True),
+    Command("Start Jarvis (Local)", "./jarvis-local", "Voice assistant - local mode", "🎙️ Core", interactive=True),
     Command("CLI Query (Cloud)", './orchestrator/orchestrator_v2.py cloud "What time is it?"', "Single query - cloud", "🎙️ Core"),
     Command("CLI Query (Local)", './orchestrator/orchestrator_v2.py local "What time is it?"', "Single query - local", "🎙️ Core"),
     
     # === 🔧 SERVICES ===
-    Command("Start API Server", "./bin/jarvis-api", "Proactive API (port 8880)", "🔧 Services"),
-    Command("Start Background Svcs", "./bin/jarvis-services", "Background daemons", "🔧 Services"),
+    Command("Start API Server", "./bin/jarvis-api", "Proactive API (port 8880)", "🔧 Services", interactive=True),
+    Command("Start Background Svcs", "./bin/jarvis-services", "Background daemons", "🔧 Services", interactive=True),
     Command("Restart API", "./bin/restart-api", "Restart API server", "🔧 Services"),
     Command("Restart Services", "./bin/restart-services", "Restart background services", "🔧 Services"),
     Command("API Health", "curl -s http://localhost:8880/api/health | jq", "Check API health", "🔧 Services"),
@@ -394,7 +400,12 @@ class CommandRunner(App):
         log.write(f"\n[bold green]🚀 EXEC:[/bold green] {cmd.name}")
         log.write(f"[dim]{cmd.command}[/dim]\n")
         
-         # Run command with proper venv environment
+        # Interactive commands need a real terminal - use tmux
+        if cmd.interactive:
+            await self.run_interactive_command(cmd)
+            return
+        
+        # Run command with proper venv environment
         full_command = f"cd {PROJECT_ROOT} && {cmd.command}"
         
         try:
@@ -428,6 +439,75 @@ class CommandRunner(App):
         except Exception as e:
             log.write(f"\n[bold red]❌ Error: {e}[/bold red]")
             
+        log.write("-" * 50)
+
+    async def run_interactive_command(self, cmd: Command) -> None:
+        """Run interactive commands in tmux (or show instructions)."""
+        log = self.query_one("#output-log", RichLog)
+        
+        # Check if tmux is available
+        tmux_check = await asyncio.create_subprocess_shell(
+            "which tmux",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await tmux_check.wait()
+        has_tmux = tmux_check.returncode == 0
+        
+        # Check if we're inside tmux already
+        in_tmux = os.environ.get("TMUX") is not None
+        
+        if has_tmux:
+            # Create a named session/window for jarvis
+            session_name = "jarvis-voice"
+            window_name = cmd.name.lower().replace(" ", "-").replace("(", "").replace(")", "")
+            
+            # Activate venv and run command
+            full_cmd = f"source {VENV_PATH}/bin/activate && cd {PROJECT_ROOT} && {cmd.command}"
+            
+            if in_tmux:
+                # Create new window in current session
+                tmux_cmd = f'tmux new-window -n "{window_name}" "{full_cmd}; read -p \'Press Enter to close...\'"'
+                log.write(f"[cyan]🖥️  Opening in new tmux window: {window_name}[/cyan]")
+                log.write(f"[dim]Switch windows: Ctrl+B then n (next) or p (prev)[/dim]")
+            else:
+                # Create new detached session or window
+                tmux_cmd = f'tmux new-session -d -s {session_name} -n "{window_name}" "{full_cmd}; read -p \'Press Enter to close...\'"'
+                log.write(f"[cyan]🖥️  Started in tmux session: {session_name}[/cyan]")
+                log.write(f"[yellow]To attach: tmux attach -t {session_name}[/yellow]")
+            
+            try:
+                process = await asyncio.create_subprocess_shell(
+                    tmux_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=get_env(),
+                    cwd=str(PROJECT_ROOT)
+                )
+                await process.wait()
+                
+                if process.returncode == 0:
+                    log.write(f"[bold green]✅ Launched successfully[/bold green]")
+                    if not in_tmux:
+                        log.write(f"[dim]Jarvis is running in the background.[/dim]")
+                        log.write(f"[dim]Use 'tmux attach -t {session_name}' to see output.[/dim]")
+                else:
+                    stderr = await process.stderr.read()
+                    log.write(f"[bold red]❌ Failed to launch: {stderr.decode()}[/bold red]")
+                    
+            except Exception as e:
+                log.write(f"[bold red]❌ Error: {e}[/bold red]")
+        else:
+            # No tmux - give manual instructions
+            log.write(f"[yellow]⚠️  Interactive command requires a real terminal[/yellow]")
+            log.write(f"[white]This command needs audio input and won't work captured.[/white]")
+            log.write(f"")
+            log.write(f"[cyan]Run manually in another terminal:[/cyan]")
+            log.write(f"[bold white]cd {PROJECT_ROOT} && {cmd.command}[/bold white]")
+            log.write(f"")
+            log.write(f"[dim]Tip: Install tmux for better integration:[/dim]")
+            log.write(f"[dim]  sudo apt install tmux[/dim]")
+        
         log.write("-" * 50)
 
 if __name__ == "__main__":
