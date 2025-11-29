@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""
+Jarvis Command Center - State of the Art TUI
+Powered by Textual & Rich
+"""
+
+import os
+import sys
+import asyncio
+import psutil
+import socket
+from pathlib import Path
+from typing import List, Optional
+from dataclasses import dataclass
+
+from textual.app import App, ComposeResult
+from textual.containers import Vertical
+from textual.widgets import (
+    Header, Footer, Input, Static, 
+    Label, ListItem, ListView, TabbedContent, TabPane, 
+    RichLog
+)
+from textual.binding import Binding
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+PROJECT_ROOT = Path(__file__).parent.parent
+VENV_ACTIVATE = f"source {Path.home()}/jarvis-venv/bin/activate"
+
+@dataclass
+class Command:
+    name: str
+    command: str
+    description: str
+    category: str
+    dangerous: bool = False
+
+# ============================================================================
+# CUSTOM WIDGETS
+# ============================================================================
+
+class CommandItem(ListItem):
+    """A custom ListItem that stores the Command object directly."""
+    
+    def __init__(self, command: Command) -> None:
+        self.command_obj = command
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        icon = "⚠️ " if self.command_obj.dangerous else "🚀 "
+        yield Label(f"{icon} {self.command_obj.name}", classes="cmd-name")
+        yield Label(f"  {self.command_obj.description}", classes="cmd-desc")
+
+class SystemStatus(Static):
+    """A widget to display live system stats."""
+    
+    def on_mount(self) -> None:
+        self.set_interval(2, self.update_stats)
+
+    def update_stats(self) -> None:
+        cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory().percent
+        
+        # Check API Port (Non-blocking check)
+        api_status = "⚪ CHECKING"
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.1)
+            result = sock.connect_ex(('127.0.0.1', 8880))
+            api_status = "🟢 ONLINE" if result == 0 else "🔴 OFFLINE"
+            sock.close()
+        except:
+            pass
+
+        self.update(f"CPU: {cpu}%  |  RAM: {ram}%  |  API: {api_status}")
+
+# ============================================================================
+# DATA
+# ============================================================================
+
+COMMANDS: List[Command] = [
+    # === 🎙️ JARVIS CORE ===
+    Command("Start Jarvis (Cloud)", "./jarvis", "Voice assistant - cloud mode", "🎙️ Core"),
+    Command("Start Jarvis (Local)", "./jarvis-local", "Voice assistant - local mode", "🎙️ Core"),
+    Command("CLI Query (Cloud)", './orchestrator/orchestrator_v2.py cloud "What time is it?"', "Single query - cloud", "🎙️ Core"),
+    Command("CLI Query (Local)", './orchestrator/orchestrator_v2.py local "What time is it?"', "Single query - local", "🎙️ Core"),
+    
+    # === 🔧 SERVICES ===
+    Command("Start API Server", "./bin/jarvis-api", "Proactive API (port 8880)", "🔧 Services"),
+    Command("Start Background Svcs", "./bin/jarvis-services", "Background daemons", "🔧 Services"),
+    Command("Restart API", "./bin/restart-api", "Restart API server", "🔧 Services"),
+    Command("Restart Services", "./bin/restart-services", "Restart background services", "🔧 Services"),
+    Command("API Health", "curl -s http://localhost:8880/api/health | jq", "Check API health", "🔧 Services"),
+    Command("OpenCode Status", "systemctl status opencode-jarvis.service", "OpenCode service status", "🔧 Services"),
+    Command("OpenCode Start", "systemctl start opencode-jarvis.service", "Start OpenCode service", "🔧 Services"),
+    Command("OpenCode Health", "curl -s http://localhost:4096/health | jq", "OpenCode API health", "🔧 Services"),
+    
+    # === 🧪 TESTING ===
+    Command("Test All (Cloud)", "./test-all-tools.sh", "All tool tests - cloud", "🧪 Testing"),
+    Command("Test All (Local)", "./test-all-tools-local.sh", "All tool tests - local", "🧪 Testing"),
+    Command("Test Memory Tools", "./tests/integration/test-memory-tools.sh", "Memory tool selection", "🧪 Testing"),
+    Command("Test Intelligence", "python3 tests/integration/test_intelligence_integration.py", "Intelligence layer", "🧪 Testing"),
+    Command("Compare Models", "./tests/integration/compare-models.sh local qwen3-vl qwen3:14b", "Compare two models", "🧪 Testing"),
+    
+    # === 💾 MEMORY ===
+    Command("Memory List", "./bin/memory list", "List all memories", "💾 Memory"),
+    Command("Memory Search", "./bin/memory search", "Search memories", "💾 Memory"),
+    Command("Sync Cloud→Local", "./bin/sync-memory-db.py local", "Sync to local DB", "💾 Memory"),
+    Command("Sync Local→Cloud", "./bin/sync-memory-db.py cloud", "Sync to cloud DB", "💾 Memory"),
+    Command("DB Shell (Cloud)", "sqlite3 data/jarvis_memory.db", "Open cloud memory DB", "💾 Memory"),
+    Command("DB Shell (Local)", "sqlite3 data/jarvis_memory_local.db", "Open local memory DB", "💾 Memory"),
+    Command("Memory Stats", "sqlite3 data/jarvis_memory.db \"SELECT category, COUNT(*) as count FROM knowledge_base GROUP BY category ORDER BY count DESC;\"", "Memory by category", "💾 Memory"),
+    
+    # === 🧠 INTELLIGENCE ===
+    Command("Intel Health", "./bin/check-intelligence-health.py", "Check intelligence health", "🧠 Intelligence"),
+    Command("Intel Sync", "./bin/sync-intelligence-db.py", "Sync intelligence DBs", "🧠 Intelligence"),
+    Command("Run All Maintenance", "./bin/run-intelligence-maintenance.py --all --watch", "All maintenance jobs", "🧠 Intelligence"),
+    Command("Run Decay", "./bin/run-intelligence-maintenance.py --decay", "Decay unused insights", "🧠 Intelligence"),
+    Command("Run Anomaly", "./bin/run-intelligence-maintenance.py --anomaly", "Detect anomalies", "🧠 Intelligence"),
+    Command("View Insights", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(pattern,1,50), constraint_type, confidence FROM insights ORDER BY confidence DESC LIMIT 10;\"", "Top insights", "🧠 Intelligence"),
+    Command("View Experiences", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(query,1,40), tools_used, success FROM experiences ORDER BY id DESC LIMIT 10;\"", "Recent experiences", "🧠 Intelligence"),
+    
+    # === 🛠️ TOOLS ===
+    Command("List Tools", "./bin/manage-tools.py list", "All tools & status", "🛠️ Tools"),
+    Command("Enable All Tools", "./bin/manage-tools.py enable-all", "Enable all tools", "🛠️ Tools"),
+    Command("Sync Tools (Cloud)", "./bin/sync_tools.py cloud", "Sync tool embeddings", "🛠️ Tools"),
+    Command("Sync Tools (Local)", "./bin/sync_tools.py local", "Sync tool embeddings", "🛠️ Tools"),
+    Command("Tool Logs Today", "cat logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{tool,ok: .result.ok}'", "Today's tool calls", "🛠️ Tools"),
+    Command("Debug Tool RAG", "python3 bin/debug_tool_rag.py", "Debug tool retrieval", "🛠️ Tools"),
+    
+    # === 🔊 STATUS UPDATES ===
+    Command("TTS Cache Stats", "./bin/status-cache stats", "TTS cache statistics", "🔊 Status"),
+    Command("TTS Cache Clear", "./bin/status-cache clear", "Clear TTS cache", "🔊 Status"),
+    Command("TTS Warm (Cloud)", "./bin/status-cache warm cloud", "Pre-gen cloud phrases", "🔊 Status"),
+    Command("TTS Warm (Local)", "./bin/status-cache warm local", "Pre-gen local phrases", "🔊 Status"),
+    Command("Test TTS Cloud", './bin/say-status.sh "Testing status update" true', "Test cloud TTS", "🔊 Status"),
+    Command("Test TTS Local", './bin/say-status-local.sh "Testing status update" true', "Test local TTS", "🔊 Status"),
+    
+    # === 📋 LOGS ===
+    Command("Tool Logs", "cat logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -30", "Tool execution logs", "📋 Logs"),
+    Command("LLM Logs", "cat logs/llm-calls-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{model,cost_usd}'", "LLM call logs", "📋 Logs"),
+    Command("Intel Logs", "tail -50 logs/intelligence/intelligence.log 2>/dev/null || echo 'No intel logs'", "Intelligence logs", "📋 Logs"),
+    Command("OpenCode Logs", "./bin/opencode-logs 2>/dev/null | tail -50 || echo 'No OpenCode logs'", "OpenCode session logs", "📋 Logs"),
+    Command("Service Daemon Logs", "tail -50 logs/services/*.log 2>/dev/null || echo 'No service logs'", "Background service logs", "📋 Logs"),
+    
+    # === 📊 MONITORING ===
+    Command("API Metrics", "curl -s http://192.168.70.228:8880/metrics 2>/dev/null | head -50 || echo 'API not running'", "Prometheus metrics", "📊 Monitor"),
+    Command("Open Grafana", "echo '🌐 Open http://192.168.70.228:3000 in browser'", "Grafana dashboard URL", "📊 Monitor"),
+    
+    # === ⚙️ CONFIG ===
+    Command("View Cloud Config", "grep -v '^#' config/cloud.env | grep -v '^$' | head -50", "Cloud settings", "⚙️ Config"),
+    Command("View Local Config", "grep -v '^#' config/local.env | grep -v '^$' | head -50", "Local settings", "⚙️ Config"),
+    Command("Edit Cloud Config", "${EDITOR:-nano} config/cloud.env", "Edit cloud settings", "⚙️ Config"),
+    Command("Edit Local Config", "${EDITOR:-nano} config/local.env", "Edit local settings", "⚙️ Config"),
+    Command("View Status Phrases", "cat config/status_phrases.json | jq '.categories | keys'", "Status phrase categories", "⚙️ Config"),
+    
+    # === 🔒 MAINTENANCE ===
+    Command("Backup All DBs", "cp data/jarvis_memory.db data/jarvis_memory.db.bak && cp data/jarvis_memory_local.db data/jarvis_memory_local.db.bak && cp data/jarvis_intelligence.db data/jarvis_intelligence.db.bak && echo '✅ All DBs backed up'", "Backup all databases", "🔒 Maint"),
+    Command("Disk Usage", "du -sh data/ logs/ ~/.cache/jarvis/ 2>/dev/null", "Check disk usage", "🔒 Maint"),
+    Command("Git Status", "git status -s", "Git status (short)", "🔒 Maint"),
+    Command("Git Log", "git log --oneline -15", "Recent commits", "🔒 Maint"),
+    Command("Clean Old Logs", "find logs/ -name '*.jsonl' -mtime +30 -delete && echo '✅ Cleaned logs >30 days'", "Delete old logs", "🔒 Maint", dangerous=True),
+    
+    # === 🌐 API CALLS ===
+    Command("API: Alerts", "curl -s http://localhost:8880/api/alerts | jq", "Get all alerts", "🌐 API"),
+    Command("API: Reminders", "curl -s http://localhost:8880/api/reminders | jq", "Get all reminders", "🌐 API"),
+    Command("API: Intel Stats", "curl -s http://localhost:8880/api/intelligence/stats | jq", "Intelligence stats", "🌐 API"),
+    Command("API: Intel Health", "curl -s http://localhost:8880/api/intelligence/health | jq", "Intelligence health", "🌐 API"),
+    Command("API: Trigger Reflect", "curl -X POST http://localhost:8880/api/intelligence/reflect | jq", "Trigger reflection", "🌐 API"),
+    Command("API: Run Maintenance", "curl -X POST http://localhost:8880/api/intelligence/maintenance/all | jq", "Run all maintenance", "🌐 API"),
+]
+
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
+
+class CommandRunner(App):
+    """The Main Application."""
+    
+    CSS = """
+    Screen {
+        layout: grid;
+        grid-size: 2;
+        grid-columns: 1fr 2fr; 
+        grid-rows: 1fr 3;
+        background: #0f172a;
+    }
+
+    /* LEFT PANE - COMMAND SELECTION */
+    #left-pane {
+        row-span: 1;
+        background: #1e293b;
+        border-right: solid #334155;
+        height: 100%;
+        overflow: hidden; /* Prevents container from stretching weirdly */
+    }
+
+    Input {
+        dock: top;
+        margin-bottom: 1;
+        border: solid cyan;
+    }
+
+    /* FIX: Ensure TabPane and ListView fill vertical space */
+    TabbedContent {
+        height: 1fr;
+    }
+    
+    TabPane {
+        height: 1fr;
+        padding: 0;
+    }
+
+    ListView {
+        height: 100%;
+        scrollbar-size-vertical: 1;
+    }
+
+    CommandItem {
+        padding: 1;
+        background: #334155 0%; 
+        border-bottom: solid #475569;
+        height: auto;
+    }
+    
+    CommandItem:hover {
+        background: #475569;
+    }
+
+    CommandItem.-highlight {
+        background: #0ea5e9;
+        border-left: solid white;
+    }
+    
+    Label {
+        color: #e2e8f0;
+    }
+
+    .cmd-name {
+        text-style: bold;
+    }
+    
+    .cmd-desc {
+        color: #94a3b8; 
+        text-style: italic;
+    }
+
+    /* RIGHT PANE - OUTPUT */
+    #right-pane {
+        row-span: 1;
+        background: #0f172a;
+        padding: 1;
+        height: 100%;
+    }
+
+    RichLog {
+        background: #0f172a;
+        color: #e2e8f0;
+        border: solid #334155;
+        height: 1fr;
+    }
+
+    #status-bar {
+        column-span: 2;
+        height: 3;
+        background: #1e293b;
+        content-align: center middle;
+        color: cyan;
+        border-top: solid #334155;
+    }
+    """
+
+    BINDINGS = [
+        Binding("q", "quit", "Quit"),
+        Binding("ctrl+c", "quit", "Quit"),
+        Binding("c", "clear_log", "Clear Log"),
+        Binding("/", "focus_search", "Search"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        """Create child widgets."""
+        yield Header(show_clock=True)
+        
+        # LEFT PANE
+        with Vertical(id="left-pane"):
+            yield Input(placeholder="Search commands... (/)", id="search-box")
+            
+            with TabbedContent(id="tabs"):
+                # 1. All Commands Tab
+                with TabPane("All", id="tab-all"):
+                    # Create CommandItems directly
+                    items = [CommandItem(c) for c in COMMANDS]
+                    yield ListView(*items, id="list-all")
+                
+                # 2. Category Tabs
+                categories = sorted(list(set(c.category for c in COMMANDS)))
+                for cat in categories:
+                    clean_id = cat.split(" ")[-1].lower() # e.g. "Core" -> "core"
+                    # Handle special chars if any, though "Core", "Services" etc are safe
+                    clean_id = "".join(x for x in clean_id if x.isalnum())
+                    
+                    cat_cmds = [c for c in COMMANDS if c.category == cat]
+                    items = [CommandItem(c) for c in cat_cmds]
+                    
+                    with TabPane(cat.split(" ")[-1], id=f"tab-{clean_id}"):
+                        yield ListView(*items, id=f"list-{clean_id}")
+
+        # RIGHT PANE
+        with Vertical(id="right-pane"):
+            yield Label("[bold cyan]System Output[/bold cyan]")
+            yield RichLog(id="output-log", markup=True, wrap=True)
+
+        yield SystemStatus(id="status-bar")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.query_one("#search-box").focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Handle search filtering."""
+        self.populate_lists(event.value)
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        """Refresh list when changing tabs."""
+        try:
+            val = self.query_one("#search-box", Input).value
+            self.populate_lists(val)
+        except:
+            pass
+
+    def populate_lists(self, filter_text: str):
+        """Update lists based on search."""
+        filter_text = filter_text.lower()
+        
+        # Helper to filter items
+        def filter_cmd(cmd: Command) -> bool:
+            if not filter_text: return True
+            return (filter_text in cmd.name.lower() or 
+                    filter_text in cmd.command.lower())
+
+        # Update ALL List
+        try:
+            list_view = self.query_one("#list-all", ListView)
+            list_view.clear()
+            for cmd in COMMANDS:
+                if filter_cmd(cmd):
+                    list_view.append(CommandItem(cmd))
+        except: pass
+
+        # Update Category Lists
+        categories = sorted(list(set(c.category for c in COMMANDS)))
+        for cat in categories:
+            clean_id = "".join(x for x in cat.split(" ")[-1].lower() if x.isalnum())
+            try:
+                list_view = self.query_one(f"#list-{clean_id}", ListView)
+                list_view.clear()
+                for cmd in COMMANDS:
+                    if cmd.category == cat and filter_cmd(cmd):
+                        list_view.append(CommandItem(cmd))
+            except: pass
+
+    def action_focus_search(self) -> None:
+        self.query_one("#search-box").focus()
+
+    def action_clear_log(self) -> None:
+        self.query_one("#output-log", RichLog).clear()
+
+    async def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Handle selection using the custom CommandItem."""
+        # 1. Get the custom item
+        command_item = event.item
+        
+        # 2. Check type safety (just in case)
+        if isinstance(command_item, CommandItem):
+            cmd = command_item.command_obj
+            await self.run_command(cmd)
+
+    async def run_command(self, cmd: Command) -> None:
+        """Execute command asynchronously."""
+        log = self.query_one("#output-log", RichLog)
+        
+        log.write(f"\n[bold green]🚀 EXEC:[/bold green] {cmd.name}")
+        log.write(f"[dim]{cmd.command}[/dim]\n")
+        
+        full_command = f"{VENV_ACTIVATE} && cd {PROJECT_ROOT} && {cmd.command}"
+        
+        try:
+            process = await asyncio.create_subprocess_shell(
+                f"bash -c '{full_command}'",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            async def read_stream(stream, color):
+                while True:
+                    line = await stream.readline()
+                    if not line: break
+                    text = line.decode().strip()
+                    if text: log.write(f"[{color}]{text}[/{color}]")
+
+            await asyncio.gather(
+                read_stream(process.stdout, "white"),
+                read_stream(process.stderr, "red")
+            )
+            
+            await process.wait()
+            
+            if process.returncode == 0:
+                log.write(f"\n[bold green]✅ Finished[/bold green]")
+            else:
+                log.write(f"\n[bold red]❌ Failed (Code {process.returncode})[/bold red]")
+                
+        except Exception as e:
+            log.write(f"\n[bold red]❌ Error: {e}[/bold red]")
+            
+        log.write("-" * 50)
+
+if __name__ == "__main__":
+    app = CommandRunner()
+    app.run()
