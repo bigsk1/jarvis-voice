@@ -182,14 +182,17 @@ curl http://localhost:8880/api/alerts
 ✅ Remote monitoring via Docker
 ✅ 10+ ready-to-use code examples
 ✅ Complete documentation
-✅ Intelligence API endpoints ⭐ NEW
-✅ Self-learning metrics & logs ⭐ NEW
-✅ API start/stop/status management ⭐ NEW
+✅ Intelligence API endpoints
+✅ Self-learning metrics & logs
+✅ API start/stop/status management
+✅ Insight tracking (times_applied, helpful/failed) ⭐ NEW
+✅ Maintenance jobs (decay, anomaly, meta-cognition) ⭐ NEW
+✅ Meta-knowledge table & API ⭐ NEW
 
 ---
 
 **Status**: Production Ready ✅  
-**Last Updated**: Nov 27, 2025
+**Last Updated**: Nov 28, 2025
 
 See [READY_TO_USE.md](READY_TO_USE.md) for detailed setup instructions.
 
@@ -438,9 +441,11 @@ Body: {
 }
 ```
 
-### Intelligence (Self-Learning) ⭐ NEW
+### Intelligence (Self-Learning) ⭐ ENHANCED
 
 ```bash
+# === STATS & MONITORING ===
+
 # Get intelligence statistics
 GET /api/intelligence/stats
 # Returns: total experiences, insights, pending reflections, avg confidence
@@ -452,6 +457,8 @@ GET /api/intelligence/health
 # Prometheus-format metrics
 GET /api/intelligence/metrics
 # Returns: metrics for Grafana/Prometheus integration
+
+# === DATA ACCESS ===
 
 # List all insights (learned patterns)
 GET /api/intelligence/insights?limit=50
@@ -465,6 +472,12 @@ GET /api/intelligence/experiences?limit=20
 GET /api/intelligence/logs/recent?limit=50
 # Returns: reflection events, insight creation, etc.
 
+# View meta-knowledge findings (learning system health)
+GET /api/intelligence/meta-knowledge
+# Returns: blind spots, over-generalization issues, learning quality
+
+# === ACTIONS ===
+
 # Manually trigger reflection processing
 POST /api/intelligence/reflect?batch_size=5
 # Processes pending reflections and creates insights
@@ -473,7 +486,33 @@ POST /api/intelligence/reflect?batch_size=5
 POST /api/intelligence/evaluate
 Body: {"query": "What's the Bitcoin price?"}
 # Returns: relevant insights and tool biases
+
+# === MAINTENANCE JOBS (NEW) ===
+
+# Run decay job (reduce stale insight confidence)
+POST /api/intelligence/maintenance/decay
+# Returns: { decayed: N, boosted: N, pruned: N }
+
+# Run anomaly detection (flag unusual experiences)
+POST /api/intelligence/maintenance/anomaly
+# Returns: { anomalies_found: N, details: [...] }
+
+# Run meta-cognition (analyze learning health)
+POST /api/intelligence/maintenance/meta-cognition
+# Returns: { findings: [...], quality_stats: {...} }
+
+# Run ALL maintenance jobs at once
+POST /api/intelligence/maintenance/all
+# Returns: { decay: {...}, anomaly: {...}, meta_cognition: {...} }
 ```
+
+**Maintenance Job Details:**
+
+| Job | What It Does | When to Run |
+|-----|--------------|-------------|
+| **Decay** | Reduces confidence of unused/failed insights, prunes <0.15 | Daily or after heavy use |
+| **Anomaly** | Flags experiences with unusually high turns or failures | Weekly or on-demand |
+| **Meta-Cognition** | Detects blind spots, over-generalization, learning issues | Weekly for health check |
 
 ### Health
 

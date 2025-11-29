@@ -21,11 +21,12 @@
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools
 
-### Monitoring & Observability ⭐ NEW
+### Monitoring & Observability ⭐ ENHANCED
 - **[../monitoring/README.md](../monitoring/README.md)** - Grafana + Prometheus + Loki stack
-- **Intelligence Dashboard** - Self-learning metrics (experiences, insights, confidence)
+- **Intelligence Dashboard** - Self-learning metrics (experiences, insights, confidence, decay)
 - **Conversation Audit v2** - Deep drill-down into LLM decisions and tool calls
-- **API Intelligence Endpoints** - `/api/intelligence/*` for debugging and metrics
+- **API Intelligence Endpoints** - `/api/intelligence/*` for stats, health, maintenance jobs
+- **Maintenance Jobs** - Decay, anomaly detection, meta-cognition via API or CLI
 
 ### System Architecture
 - **Tool system** - Located in `skills/` directory with JSON schemas
@@ -150,9 +151,17 @@
 ### Intelligence & Learning
 | Document | Purpose |
 |----------|---------|
-| **INTELLIGENCE_LAYER.md** | Self-learning system (Phase 1 - COMPLETE) |
+| **INTELLIGENCE_LAYER.md** | Self-learning system (Phase 1.5 - COMPLETE) ⭐ ENHANCED |
 | **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
+
+**Intelligence Features (Phase 1.5):**
+- Insight tracking (times_applied, times_helpful, times_failed)
+- Decay job (prunes stale insights)
+- Anomaly detection (flags unusual experiences)
+- Meta-cognition (learning health analysis)
+- CLI: `./bin/run-intelligence-maintenance.py`
+- API: `/api/intelligence/maintenance/*`
 
 ### Reference & Archives
 | Document | Purpose |
@@ -232,6 +241,27 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-11-28:**
+- ✅ **Intelligence Layer Phase 1.5** - Full insight lifecycle management ⭐ MAJOR
+  - **Insight Tracking**: `times_applied`, `times_helpful`, `times_failed` now active
+  - **Decay Job**: Auto-decay unused/failed insights, prune <0.15 confidence
+  - **Anomaly Detection**: Flag high-turn or failed multi-turn experiences
+  - **Meta-Cognition**: Detect blind spots, over-generalization, learning quality
+  - **meta_knowledge Table**: Store learning system health findings
+  - **Enhanced Reflection**: Now includes LLM response, tool results, available tools
+  - **Content Quality Eval**: Reflection evaluates data relevance, not just tool success
+  - See: `docs/INTELLIGENCE_LAYER.md`
+- ✅ **Maintenance CLI** - `./bin/run-intelligence-maintenance.py`
+  - Run decay, anomaly, meta-cognition jobs on demand
+  - `--watch` mode to tail logs
+- ✅ **Maintenance API Endpoints** - `/api/intelligence/maintenance/*`
+  - `/decay`, `/anomaly`, `/meta-cognition`, `/all`
+  - `/meta-knowledge` to view findings
+- ✅ **13 Intelligence Log Events** - Full Grafana/Loki visibility
+  - `insights_applied`, `experience_recorded`, `reflection_*`
+  - `maintenance_run`, `decay_applied`, `insight_pruned`
+  - `anomaly_detected`, `meta_cognition`
 
 **2025-11-27:**
 - ✅ **Intelligence Layer Phase 1** - Self-learning system with positive/negative constraints ⭐ MAJOR

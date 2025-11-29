@@ -433,3 +433,41 @@ FROM insights WHERE times_applied > 0"
 ```
 
 [Health-check-for-Memory](docs/EMBEDDING_HEALTH_CHECKS.md)
+
+
+# Intelligence Maintenance Commands
+
+```bash
+# All jobs with log tail
+./bin/run-intelligence-maintenance.py --watch
+
+# Individual jobs
+./bin/run-intelligence-maintenance.py --decay
+./bin/run-intelligence-maintenance.py --anomaly
+./bin/run-intelligence-maintenance.py --meta
+
+# All jobs
+curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/all
+
+# Individual
+curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/decay
+curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/anomaly
+curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/meta-cognition
+
+# View meta-knowledge
+curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
+
+```
+
+### LogQL Queries for Analysis
+
+```bash
+# See all maintenance results
+{job="jarvis", log_type="intelligence"} | json | event="maintenance_run"
+
+# Track tool bias evolution
+{job="jarvis", log_type="intelligence"} | json | event="insights_applied" 
+
+# Find content quality issues
+{job="jarvis", log_type="intelligence"} | json | event="reflection_response" | response_matched_tool_data=false
+```

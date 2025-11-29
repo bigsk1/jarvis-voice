@@ -27,13 +27,16 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ## ✨ Key Features
 
-### Intelligence & Self-Learning ⭐ NEW
+### Intelligence & Self-Learning ⭐ ENHANCED
 - **Intelligence Layer**: Self-learning system that improves over time
   - Learns from every interaction (what worked, what didn't)
   - **Positive constraints**: "Use mcp_fetch for server status checks"
   - **Negative constraints**: "Avoid search_memory for real-time data"
   - Generalizability filtering (only stores reusable insights)
-  - Confidence decay tracking for insight health
+  - **Insight tracking**: times_applied, times_helpful, times_failed ⭐ NEW
+  - **Decay job**: Auto-prunes stale/failed insights ⭐ NEW
+  - **Anomaly detection**: Flags unusual experiences ⭐ NEW
+  - **Meta-cognition**: Analyzes learning health ⭐ NEW
   - Separate databases for cloud/local (1536 vs 768 dimensions)
   - See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
 
@@ -569,12 +572,23 @@ The Intelligence Layer is Jarvis's self-learning system. It observes interaction
 - Turns taken
 - Success/failure
 - User satisfaction signals
+- LLM response & tool results (for content quality eval) ⭐ NEW
 
 **Insights Generated**:
 - Pattern: "Status queries need real-time tools"
 - Applies to: "Server health, uptime checks"
 - Preferred approach: "Use fetch tools directly"
 - Confidence: 0.0-1.0
+- Tracking: times_applied, times_helpful, times_failed ⭐ NEW
+
+**Maintenance Jobs** ⭐ NEW:
+```bash
+# Run all maintenance (decay, anomaly, meta-cognition)
+./bin/run-intelligence-maintenance.py --watch
+
+# Or via API
+curl -X POST http://localhost:8880/api/intelligence/maintenance/all
+```
 
 **How Insights Apply**:
 When a new query comes in:
@@ -582,6 +596,8 @@ When a new query comes in:
 2. Find similar insights (cosine similarity)
 3. Weight by confidence and relevance
 4. Inject into routing context
+5. Track which insights were applied ⭐ NEW
+6. Update helpful/failed counts after interaction ⭐ NEW
 
 See `docs/INTELLIGENCE_LAYER.md` for details.
 
@@ -913,14 +929,20 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (November 2025):**
-- ✅ **Intelligence Layer Phase 1** - Self-learning system ⭐ MAJOR NEW
+- ✅ **Intelligence Layer Phase 1.5** - Full insight lifecycle ⭐ MAJOR NEW
   - Positive AND negative constraints (what to do AND what NOT to do)
   - Fact vs Procedural knowledge classification
   - Generalizability filtering, confidence decay tracking
+  - **Insight tracking**: times_applied, helpful, failed now active
+  - **Decay job**: Auto-prunes stale insights (<0.15 confidence)
+  - **Anomaly detection**: Flags unusual experiences (high turns)
+  - **Meta-cognition**: Detects blind spots, learning issues
+  - **13 log events** for full Grafana/Loki visibility
   - Grafana dashboard with real-time metrics
   - API endpoints for debugging (`/api/intelligence/*`)
+  - Maintenance CLI (`./bin/run-intelligence-maintenance.py`)
   - Health check and sync tools
-- ✅ **Conversation Audit v2 Dashboard** - Deep drill-down into LLM decisions ⭐ NEW
+- ✅ **Conversation Audit v2 Dashboard** - Deep drill-down into LLM decisions
   - Tools selected vs executed comparison
   - Activity timeline (LLM + Tool logs interleaved)
   - Cost/token tracking over time
@@ -956,7 +978,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - Performance optimization for local models
 
 **Planned:**
-- **Intelligence Layer Phase 2** - Implicit failure detection, tool trashing detection, reaper service
+- **Intelligence Layer Phase 2** - Implicit failure detection, tool trashing detection, conflict resolution
 - **Intelligence Layer Phase 3** - User profile learning (communication style, shortcuts, preferences)
 - Web UI for memory management and system health
 - Home automation integrations (Home Assistant, MQTT)
@@ -986,6 +1008,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.4 (November 2025)  
+**Current Version:** v2.5 (November 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Intelligence Layer (self-learning with positive/negative constraints), Grafana dashboards (Intelligence + Conversation Audit v2), API intelligence endpoints
+**Latest Features:** Intelligence Layer Phase 1.5 (insight tracking, decay, anomaly detection, meta-cognition), maintenance jobs (CLI + API), 13 intelligence log events for Grafana/Loki
