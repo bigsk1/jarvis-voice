@@ -1,0 +1,28 @@
+{
+  "enabled": true,
+  "name": "weather",
+  "description": "Get current weather and forecast for any location. Returns temperature, conditions, humidity, wind. Use for questions like 'What's the weather in Seattle?', 'Is it raining in London?', 'What's the forecast for tomorrow?'. Supports any city name worldwide.",
+  "script": "weather.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "location": {
+        "type": "string",
+        "description": "City name, optionally with country code. Examples: 'Seattle', 'London, UK', 'Tokyo, JP', 'New York'"
+      },
+      "forecast": {
+        "type": "boolean",
+        "description": "If true, include today's high/low forecast. Default: false (current weather only)"
+      }
+    },
+    "required": ["location"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+

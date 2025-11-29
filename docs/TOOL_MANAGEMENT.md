@@ -543,13 +543,13 @@ npx -y @modelcontextprotocol/server-slack
 # Google Maps (directions, places)
 npx -y @modelcontextprotocol/server-google-maps
 
-# Filesystem (file operations)
-npx -y @modelcontextprotocol/server-filesystem
 ```
 
 ---
 
-## Playwright MCP Server (Browser Automation)
+## Playwright MCP Server (Browser Automation) 
+
+[Playwright MCP Server](https://github.com/microsoft/playwright-mcp)
 
 ### Why Playwright?
 
@@ -607,7 +607,7 @@ npx -y @modelcontextprotocol/server-filesystem
 // Add to args array as needed:
 "--allowed-origins", "https://trusted.com",     // Restrict navigation
 "--blocked-origins", "https://ads.com",         // Block domains
-"--proxy-server", "http://yourproxy:3128",      // Route through proxy
+"--proxy-server", "http://yourproxy:3128",      // Route through proxy currently does not support http://user:pass@host:port
 "--user-agent", "Mozilla/5.0...",               // Custom UA
 "--storage-state", "/state/state.json",         // Persist cookies/auth
 "--save-trace"                                   // Debug traces to /output

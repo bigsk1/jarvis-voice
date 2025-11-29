@@ -34,6 +34,9 @@ source ~/jarvis-venv/bin/activate
 ./test-all-tools.sh        # Cloud mode (OpenAI/Anthropic)
 ./test-all-tools-local.sh  # Local mode (Ollama)
 
+# New tools have to run sync before llm can see them by
+cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && python3 bin/sync_tools.py cloud 2>&1
+
 # Memory system tests
 ./tests/integration/test-memory-tools.sh        # Tool selection
 ./tests/integration/test-memory-real-world.sh   # Complex scenarios
