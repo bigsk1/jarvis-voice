@@ -319,3 +319,233 @@ Automatically disable unused tools after 7 days:
 - `skills/README.md` - Creating custom tools
 - `config/mcp-servers.json` - MCP server configuration
 
+---
+
+## Tool Roadmap & Brainstorm
+
+### Current Coverage
+
+#### Local Tools (25)
+| Category | Tools | Status |
+|----------|-------|--------|
+| **Memory** | remember, recall, search_memory, semantic_recall, forget, update_memory | ✅ Complete |
+| **Conversations** | get_recent_conversations, search_conversations | ✅ Complete |
+| **Intelligence** | manage_intel, ingest_intel | ✅ Complete |
+| **Reminders/Alerts** | create_reminder, list_reminders, acknowledge_reminders, list_alerts, acknowledge_alerts | ✅ Complete |
+| **Development** | opencode, check_opencode_sessions, execute_bash, check_tool_logs, query_service_logs | ✅ Complete |
+| **Communication** | send_email, send_webhook | ✅ Partial |
+| **External APIs** | api_call, crypto_price, get_time | ✅ Partial |
+
+#### MCP Servers (5)
+| Server | Capability | Notes |
+|--------|------------|-------|
+| `brave_search` | Web search | Primary search |
+| `duckduckgo` | Web search | Backup/privacy |
+| `fetch` | HTTP GET/POST | URL content retrieval |
+| `coingecko` | Crypto prices | Redundant with crypto_price tool |
+| `sequentialthinking` | Deep reasoning | For complex reflection |
+
+---
+
+### Missing Tools - Priority List
+
+#### 🔴 HIGH PRIORITY (Most Requested)
+
+| Tool | Description | Implementation |
+|------|-------------|----------------|
+| **weather** | Current conditions, forecasts, alerts | MCP: `@modelcontextprotocol/weather` or n8n |
+| **calendar** | Google/Outlook calendar read/write | n8n workflow or MCP |
+| **slack_message** | Send Slack messages, read channels | n8n workflow (Slack node) |
+| **file_search** | Search files by name/content in workspace | Local tool (Python) |
+| **clipboard** | Read/write system clipboard | Local tool (pyperclip) |
+| **screenshot** | Capture screen/window | Local tool (PIL/mss) |
+
+#### 🟡 MEDIUM PRIORITY (Nice to Have)
+
+| Tool | Description | Implementation |
+|------|-------------|----------------|
+| **todoist** | Task management (add, complete, list) | MCP or n8n |
+| **spotify** | Play/pause, queue, search music | n8n workflow (Spotify node) |
+| **youtube_search** | Search YouTube videos | MCP or n8n |
+| **github_issues** | Create/list GitHub issues & PRs | MCP: `@modelcontextprotocol/github` |
+| **translate** | Language translation | Local tool (googletrans) |
+| **stock_price** | Stock quotes and market data | MCP or n8n (Alpha Vantage) |
+| **rss_feed** | Read RSS/Atom feeds | Local tool (feedparser) |
+| **qr_code** | Generate/read QR codes | Local tool (qrcode/pyzbar) |
+
+#### 🟢 LOW PRIORITY (Future Ideas)
+
+| Tool | Description | Implementation |
+|------|-------------|----------------|
+| **home_assistant** | Smart home control (lights, locks, etc.) | n8n or direct API |
+| **mqtt_publish** | IoT device messaging | Local tool (paho-mqtt) |
+| **sms_send** | Send SMS via Twilio | n8n workflow |
+| **discord_message** | Post to Discord channels | n8n workflow |
+| **image_generate** | AI image generation (DALL-E, Stable Diffusion) | n8n or API call |
+| **ocr_image** | Extract text from images | Local tool (pytesseract) |
+| **pdf_extract** | Read PDF content | Local tool (PyPDF2) |
+| **maps_directions** | Get directions, travel time | n8n (Google Maps node) |
+| **linear_issues** | Linear.app issue tracking | MCP: `@anthropics/linear-mcp` |
+| **notion** | Notion page read/write | MCP or n8n |
+
+---
+
+### Implementation Guide
+
+#### Option 1: Local Tool (Python Script)
+Best for: Simple, fast, no external dependencies
+
+```bash
+# Create tool files
+touch skills/weather.py skills/weather.tool.json
+
+# Template
+./bin/manage-tools.py template weather
+```
+
+**Pros:** Fast, no network latency, full control  
+**Cons:** Must implement yourself, maintain code
+
+#### Option 2: MCP Server (Docker/npx)
+Best for: Complex tools, community-maintained
+
+```json
+// config/mcp-servers.json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "..." }
+    }
+  }
+}
+```
+
+**Available MCP Servers:**
+- `@modelcontextprotocol/server-github` - GitHub integration
+- `@modelcontextprotocol/server-slack` - Slack integration  
+- `@modelcontextprotocol/server-google-maps` - Maps/directions
+- `@modelcontextprotocol/server-puppeteer` - Browser automation
+- See: https://github.com/modelcontextprotocol/servers
+
+**Pros:** Pre-built, tested, community support  
+**Cons:** Docker/npx overhead, external dependency
+
+#### Option 3: n8n Workflow
+Best for: Complex integrations, visual design, auth handling
+
+```bash
+# n8n exposes workflows as webhooks
+# Create workflow in n8n UI, then call via send_webhook
+
+# Example: Slack message via n8n
+./orchestrator/orchestrator_v2.py cloud "Send a Slack message to #general: Hello team!"
+# → Uses send_webhook to trigger n8n workflow
+```
+
+**n8n Advantages:**
+- 400+ pre-built integrations (Slack, Google, Notion, etc.)
+- OAuth handling built-in
+- Visual workflow debugging
+- Can combine multiple services in one call
+
+**Recommended n8n Workflows:**
+| Workflow | Triggers | Actions |
+|----------|----------|---------|
+| `slack-message` | Webhook | Slack: Post Message |
+| `calendar-events` | Webhook | Google Calendar: Get Events |
+| `spotify-control` | Webhook | Spotify: Play/Pause/Search |
+| `todoist-tasks` | Webhook | Todoist: Create/List Tasks |
+| `sms-alert` | Webhook | Twilio: Send SMS |
+
+---
+
+### Quick Win Tools (Easy to Add)
+
+These can be implemented in < 1 hour:
+
+#### 1. Weather Tool
+```python
+# skills/weather.py
+import requests
+API_KEY = os.environ.get('OPENWEATHER_API_KEY')
+url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}"
+```
+
+#### 2. File Search Tool
+```python
+# skills/file_search.py
+import subprocess
+result = subprocess.run(['find', path, '-name', pattern], capture_output=True)
+```
+
+#### 3. Clipboard Tool
+```python
+# skills/clipboard.py
+import pyperclip
+content = pyperclip.paste()  # Read
+pyperclip.copy(text)         # Write
+```
+
+#### 4. Translate Tool
+```python
+# skills/translate.py
+from googletrans import Translator
+translator = Translator()
+result = translator.translate(text, dest=target_lang)
+```
+
+#### 5. RSS Feed Tool
+```python
+# skills/rss_feed.py
+import feedparser
+feed = feedparser.parse(url)
+entries = [{'title': e.title, 'link': e.link} for e in feed.entries[:10]]
+```
+
+---
+
+### Tool Categories We Excel At vs Need Help
+
+| Category | Current Status | Gap |
+|----------|----------------|-----|
+| **Memory & Context** | ⭐⭐⭐⭐⭐ | None - excellent |
+| **Development/Coding** | ⭐⭐⭐⭐⭐ | None - OpenCode is powerful |
+| **Web Search** | ⭐⭐⭐⭐ | Could add news aggregation |
+| **Communication** | ⭐⭐ | Need Slack, Discord, SMS |
+| **Productivity** | ⭐ | Need calendar, tasks, notes |
+| **Smart Home** | ⭐ | Need Home Assistant, MQTT |
+| **Media** | ⭐ | Need Spotify, YouTube |
+| **Finance** | ⭐⭐⭐ | Crypto good, need stocks |
+| **System/Local** | ⭐⭐ | Need clipboard, screenshots |
+
+---
+
+### Recommended Next Steps
+
+1. **Add Weather** - Most common assistant request
+2. **Add Calendar Integration** - n8n + Google Calendar
+3. **Add Slack Integration** - n8n workflow for team comms
+4. **Add File Search** - Local tool for workspace search
+5. **Add Clipboard** - Quick data transfer
+
+### MCP Servers to Consider
+
+```bash
+# GitHub (issues, PRs, repos)
+npx -y @modelcontextprotocol/server-github
+
+# Slack (messages, channels)  
+npx -y @modelcontextprotocol/server-slack
+
+# Google Maps (directions, places)
+npx -y @modelcontextprotocol/server-google-maps
+
+# Puppeteer (browser automation)
+npx -y @modelcontextprotocol/server-puppeteer
+
+# Filesystem (file operations)
+npx -y @modelcontextprotocol/server-filesystem
+```
+
