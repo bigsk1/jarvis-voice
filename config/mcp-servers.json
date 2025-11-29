@@ -76,7 +76,8 @@
         "--no-sandbox",
         "--browser", "chromium",
         "--caps", "pdf",
-        "--timeout", "60000",
+        "--timeout-action", "30000",
+        "--timeout-navigation", "60000",
         "--viewport-size", "1920x1080"
       ],
       "description": "Browser automation for JS-heavy sites: navigate, click, fill forms, screenshots, PDFs. Use when fetch fails on dynamic content.",
