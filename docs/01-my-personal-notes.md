@@ -391,6 +391,18 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
    - Auto-adjust: `INTELLIGENCE_LEARNING_RATE`, `INTELLIGENCE_MIN_CONFIDENCE`
    - Goal: find optimal values for MY usage patterns
 
+7. **CRITICAL GAP: Insight Usage Tracking** (2025-11-28)
+   - `record_insight_usage()` EXISTS but is NEVER CALLED!
+   - All insights have `times_applied = 0`, `times_helpful = 0`
+   - Parameters `decay_rate`, `learning_rate` have NO EFFECT until this is fixed
+   - **FIX NEEDED**: After interaction, compare outcome to applied insights
+   - **Implementation**: Track which insights were retrieved → check outcome → update
+
+8. **Hardcoded Tool Categories**
+   - Tool categories in reflection prompt are hardcoded
+   - Won't scale with 100+ tools from Tool RAG
+   - **Future**: Auto-generate categories from tool metadata/tags
+
 ### Quick Commands
 
 ```bash
@@ -400,8 +412,21 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
 # Trigger pending reflections
 python3 -c "from lib.intelligence_hooks import trigger_reflection; trigger_reflection(10)"
 
-# View current insights
-sqlite3 data/jarvis_intelligence.db "SELECT constraint_type, description, confidence FROM insights"
+# Run hard intelligence tests (complex scenarios)
+./tests/integration/test-intelligence-hard.sh cloud
+
+# View current insights with usage stats
+sqlite3 data/jarvis_intelligence.db "
+SELECT constraint_type, description, confidence, 
+       times_applied, times_helpful, times_failed 
+FROM insights ORDER BY times_applied DESC"
+
+# View insight effectiveness (once tracking works)
+sqlite3 data/jarvis_intelligence.db "
+SELECT description, 
+       ROUND(100.0 * times_helpful / NULLIF(times_applied, 0), 1) as success_rate,
+       times_applied
+FROM insights WHERE times_applied > 0"
 
 # Reset intelligence (careful!)
 ./bin/sync-intelligence-db.py --reset cloud
