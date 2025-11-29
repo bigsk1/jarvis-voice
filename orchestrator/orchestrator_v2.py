@@ -218,12 +218,18 @@ class Orchestrator:
                     self.status_updater.update(category='searching', tool_name=tool_name)
                 elif 'fetch' in tool_name or 'playwright' in tool_name:
                     self.status_updater.update(category='fetching', tool_name=tool_name)
+                elif tool_name == 'weather':
+                    self.status_updater.update(category='fetching', tool_name=tool_name)
                 elif 'memory' in tool_name or 'recall' in tool_name:
                     # Memory tools are fast, skip status
                     pass
                 elif turn_num >= 2:
                     # Multi-turn progress
                     self.status_updater.update(category='multi_turn', tool_name=tool_name)
+                else:
+                    # Default: acknowledge any other tool at first turn
+                    if turn_num == 0:
+                        self.status_updater.update(category='task_start', tool_name=tool_name)
                 
                 # Execute the tool
                 result = self.executor.execute(tool_name, arguments)

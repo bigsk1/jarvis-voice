@@ -121,6 +121,8 @@ class ToolExecutor:
                 timeout = 180  # 3 minutes for ingesting files with embeddings (large profiles can have 300+ facts)
             elif tool_name == "manage_intel":
                 timeout = 180  # 3 minutes (can auto-ingest, which needs time for embeddings)
+            elif tool_name == "weather":
+                timeout = 30  # Weather API can be slow with proxy fallback
             else:
                 timeout = 30 if self.mode == "local" else 15
             

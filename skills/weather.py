@@ -23,12 +23,110 @@ from http_client import http_request, get_proxy_config
 
 
 # ============================================================================
+# US STATE CODES (for location normalization)
+# ============================================================================
+
+US_STATE_CODES = {
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+}
+
+def normalize_location(location: str) -> str:
+    """
+    Normalize location string for OpenWeatherMap API.
+    
+    Converts "City, STATE" to "City,US" since OWM doesn't understand US state codes.
+    Examples:
+        "Hillsboro, OR" -> "Hillsboro,US"
+        "Portland, OR" -> "Portland,US"
+        "London, UK" -> "London,UK" (unchanged)
+        "Seattle" -> "Seattle" (unchanged)
+    """
+    # Split on comma
+    parts = [p.strip() for p in location.split(',')]
+    
+    if len(parts) == 2:
+        city, region = parts
+        # Check if region is a US state code
+        if region.upper() in US_STATE_CODES:
+            return f"{city},US"
+        # Otherwise keep as-is (might be country code)
+        return f"{city},{region}"
+    
+    # Single word or already formatted
+    return location
+
+
+# ============================================================================
 # PROVIDER IMPLEMENTATIONS
 # ============================================================================
+
+def geocode_location(location: str, api_key: str) -> Optional[Tuple[float, float, str, str]]:
+    """
+    Use OpenWeatherMap Geocoding API to get coordinates for a location.
+    
+    Returns: (lat, lon, city_name, country) or None if not found
+    """
+    # Normalize location for geocoding query
+    # Convert "City, STATE" to "City,STATE,US" for better US state matching
+    parts = [p.strip() for p in location.split(',')]
+    
+    if len(parts) == 2:
+        city, region = parts
+        if region.upper() in US_STATE_CODES:
+            # Add US country code for US states
+            query = f"{city},{region},US"
+        else:
+            query = f"{city},{region}"
+    else:
+        query = location
+    
+    geo_url = "http://api.openweathermap.org/geo/1.0/direct"
+    params = {
+        "q": query,
+        "limit": 1,
+        "appid": api_key
+    }
+    
+    try:
+        response = http_request(
+            'GET',
+            geo_url,
+            params=params,
+            timeout=10,
+            use_proxy=True,
+            fallback_on_proxy_fail=True
+        )
+        response.raise_for_status()
+        results = response.json()
+        
+        if results and len(results) > 0:
+            loc = results[0]
+            city_name = loc.get("name", "Unknown")
+            country = loc.get("country", "")
+            state = loc.get("state", "")
+            
+            # Build display name with state for US locations
+            if country == "US" and state:
+                display_name = f"{city_name}, {state}"
+            else:
+                display_name = f"{city_name}, {country}" if country else city_name
+            
+            return (loc["lat"], loc["lon"], display_name, country)
+    except Exception as e:
+        print(f"[Weather] Geocoding failed: {e}", file=sys.stderr)
+    
+    return None
+
 
 def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> Tuple[Dict[str, Any], str]:
     """
     Fetch weather from OpenWeatherMap API.
+    
+    Uses Geocoding API first for accurate lat/lon, then fetches weather.
     
     Free tier limits:
     - 60 calls/minute
@@ -38,13 +136,30 @@ def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> Tuple[D
     """
     base_url = "https://api.openweathermap.org/data/2.5"
     
+    # Step 1: Geocode location to get accurate lat/lon
+    geo_result = geocode_location(location, api_key)
+    
+    if geo_result:
+        lat, lon, location_str, country = geo_result
+        # Use coordinates for weather (most accurate)
+        params = {
+            "lat": lat,
+            "lon": lon,
+            "appid": api_key,
+            "units": "imperial"  # Fahrenheit
+        }
+    else:
+        # Fallback to city name query (less accurate)
+        normalized_location = normalize_location(location)
+        params = {
+            "q": normalized_location,
+            "appid": api_key,
+            "units": "imperial"
+        }
+        location_str = None  # Will get from response
+    
     # Get current weather
     current_url = f"{base_url}/weather"
-    params = {
-        "q": location,
-        "appid": api_key,
-        "units": "imperial"  # Fahrenheit
-    }
     
     response = http_request(
         'GET',
@@ -63,11 +178,12 @@ def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> Tuple[D
     humidity = current["main"]["humidity"]
     condition = current["weather"][0]["description"]
     wind_speed = round(current["wind"]["speed"])
-    city_name = current["name"]
-    country = current["sys"].get("country", "")
     
-    # Build location string
-    location_str = f"{city_name}, {country}" if country else city_name
+    # Use geocoded location string if available, otherwise from response
+    if not location_str:
+        city_name = current["name"]
+        country = current["sys"].get("country", "")
+        location_str = f"{city_name}, {country}" if country else city_name
     
     # Get forecast if requested
     forecast_data = None

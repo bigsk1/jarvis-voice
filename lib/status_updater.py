@@ -19,6 +19,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int, get_float
 from status_phrases import StatusPhrases, get_phrase
+from status_llm import StatusSummarizer, get_status_summarizer
 
 
 class StatusUpdater:
@@ -68,9 +69,15 @@ class StatusUpdater:
         # Phrase generator
         self.phrases = StatusPhrases()
         
+        # LLM summarizer for dynamic status (falls back to phrases)
+        self.summarizer = get_status_summarizer()
+        
         # Background update thread (for long tasks)
         self._background_thread: Optional[threading.Thread] = None
         self._stop_background = threading.Event()
+        
+        # Store last tool context for dynamic summaries
+        self._last_context: Optional[str] = None
     
     def reset(self):
         """Reset for new task."""
@@ -130,9 +137,24 @@ class StatusUpdater:
                 if time_since_last < self.interval:
                     return False
             
-            # Get message
+            # Get message (try LLM first if context available, then static phrases)
             if custom_message:
                 message = custom_message
+            elif self._last_context and self.summarizer.is_enabled():
+                # Try dynamic LLM summary
+                event_type = 'error' if 'error' in category else 'progress'
+                message = self.summarizer.summarize(
+                    self._last_context,
+                    tool_name=tool_name or self.current_tool,
+                    event_type=event_type
+                )
+                # Fallback to static phrase if LLM fails
+                if not message:
+                    message = self.phrases.get_phrase(
+                        category=category,
+                        tool_name=tool_name or self.current_tool,
+                        style=self.style
+                    )
             else:
                 message = self.phrases.get_phrase(
                     category=category,
@@ -148,6 +170,33 @@ class StatusUpdater:
         # Speak in background (don't block)
         self._speak_async(message)
         return True
+    
+    def update_with_context(
+        self,
+        context: str,
+        category: str = 'progress',
+        tool_name: Optional[str] = None,
+        priority: str = 'normal'
+    ) -> bool:
+        """
+        Update with tool output context for LLM-based dynamic summary.
+        
+        Args:
+            context: Tool output, logs, or current state to summarize
+            category: Phrase category (fallback if LLM fails)
+            tool_name: Tool name for context
+            priority: 'normal' or 'high'
+        
+        Returns:
+            True if update was spoken, False if skipped
+        """
+        # Store context for LLM summarization
+        self._last_context = context
+        return self.update(category=category, tool_name=tool_name, priority=priority)
+    
+    def set_context(self, context: str):
+        """Set the current tool context for dynamic summaries."""
+        self._last_context = context
     
     def update_error(
         self,
@@ -267,7 +316,8 @@ class StatusUpdater:
         self,
         tool_name: Optional[str] = None,
         category: str = 'progress',
-        interval_override: Optional[int] = None
+        interval_override: Optional[int] = None,
+        session_id: Optional[str] = None
     ):
         """
         Start background thread that emits periodic updates.
@@ -278,6 +328,7 @@ class StatusUpdater:
             tool_name: Tool name for specific phrases
             category: Base category for updates
             interval_override: Override default interval
+            session_id: OpenCode session ID for live progress polling
         """
         if not self.enabled:
             return
@@ -294,6 +345,15 @@ class StatusUpdater:
                 
                 update_count += 1
                 
+                # Try to get live context from OpenCode session
+                context = None
+                if session_id and tool_name == 'opencode':
+                    context = self._poll_opencode_session(session_id)
+                
+                # If we have context, use LLM summarization
+                if context:
+                    self.set_context(context)
+                
                 # Progress through categories
                 if update_count >= 4:
                     cat = 'near_complete'
@@ -306,6 +366,59 @@ class StatusUpdater:
         
         self._background_thread = threading.Thread(target=background_loop, daemon=True)
         self._background_thread.start()
+    
+    def _poll_opencode_session(self, session_id: str) -> Optional[str]:
+        """
+        Poll OpenCode session for current progress.
+        
+        Args:
+            session_id: OpenCode session ID
+        
+        Returns:
+            Context string with recent activity, or None
+        """
+        try:
+            import requests
+            opencode_url = get_config_value('OPENCODE_BASE_URL', 'http://localhost:4096')
+            
+            response = requests.get(
+                f'{opencode_url}/session/{session_id}',
+                timeout=3
+            )
+            
+            if response.status_code != 200:
+                return None
+            
+            session = response.json()
+            
+            # Extract recent messages/activity
+            messages = session.get('messages', [])
+            if not messages:
+                return None
+            
+            # Get last 2-3 messages for context
+            recent = messages[-3:]
+            context_parts = []
+            
+            for msg in recent:
+                # Extract meaningful content
+                if msg.get('type') == 'tool_call':
+                    tool = msg.get('tool', {})
+                    context_parts.append(f"Running: {tool.get('name', 'tool')}")
+                elif msg.get('type') == 'tool_result':
+                    result = msg.get('result', '')
+                    if isinstance(result, str):
+                        context_parts.append(result[:200])
+                elif msg.get('content'):
+                    content = msg.get('content', '')
+                    if isinstance(content, str):
+                        context_parts.append(content[:200])
+            
+            return '\n'.join(context_parts) if context_parts else None
+            
+        except Exception as e:
+            # Silently fail - just use static phrases
+            return None
     
     def stop_background_updates(self):
         """Stop background update thread."""

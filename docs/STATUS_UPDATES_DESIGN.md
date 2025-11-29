@@ -698,7 +698,7 @@ export STATUS_UPDATE_INTERVAL=10
   "version": "1.0",
   "settings": {
     "humor_enabled": true,
-    "sass_level": 1,          // 0=professional, 1=light, 2=sassy
+    "sass_level": 2,          // 0=professional, 1=light, 2=sassy
     "encouragement": true
   },
   
@@ -949,9 +949,9 @@ STATUS_ENCOURAGEMENT=true        # Include encouraging phrases
 
 ### Casual Style (from standard pool)
 ```
-"On it"
+"On it boss"
 "Searching the web"
-"Still working on it"
+"Still working on it boss"
 "OpenCode is building"
 "Making progress"
 "Almost there"
@@ -978,7 +978,279 @@ STATUS_ENCOURAGEMENT=true        # Include encouraging phrases
 
 ---
 
-*Document Version: 1.0*
+---
+
+## Phase 3: LLM-Based Dynamic Summaries
+
+### Concept
+
+Instead of hardcoded phrases OR complex log parsing, use a **small/fast/cheap LLM** to generate natural status summaries from tool output.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Tool Execution                                 │
+│                        │                                         │
+│                        ▼                                         │
+│              ┌─────────────────┐                                │
+│              │  Tool Output    │                                │
+│              │  (logs, data)   │                                │
+│              └────────┬────────┘                                │
+│                       │                                         │
+│                       ▼                                         │
+│     ┌─────────────────────────────────────────┐                │
+│     │   StatusSummarizer (lib/status_llm.py)  │                │
+│     │   ┌───────────────────────────────────┐ │                │
+│     │   │ Small LLM (gpt-4o-mini, grok-4)   │ │                │
+│     │   │ Prompt: "Summarize in 5-8 words"  │ │                │
+│     │   └───────────────────────────────────┘ │                │
+│     │              │                          │                │
+│     │              ▼                          │                │
+│     │   "Installing 3 packages, tests pass"  │                │
+│     │              │                          │                │
+│     │   ┌──────────┴──────────┐              │                │
+│     │   │ Fallback: Static    │              │                │
+│     │   │ phrases if LLM fails│              │                │
+│     │   └─────────────────────┘              │                │
+│     └─────────────────────────────────────────┘                │
+│                       │                                         │
+│                       ▼                                         │
+│              ┌─────────────────┐                                │
+│              │   TTS Engine    │                                │
+│              │ (say-status.sh) │                                │
+│              └─────────────────┘                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+```bash
+# config/cloud.env
+
+# ===== Status Updates LLM (for dynamic summaries) =====
+# Enable LLM-based status summaries (falls back to static phrases if disabled/fails)
+STATUS_LLM_ENABLED=true
+
+# Provider: openai, xai, anthropic, ollama
+STATUS_LLM_PROVIDER=openai
+
+# Model: Use small/fast/cheap models
+# OpenAI: gpt-4o-mini (fast, cheap)
+# xAI: grok-2-mini (if available) or grok-2
+# Ollama: qwen2.5:1.5b, phi3:mini
+STATUS_LLM_MODEL=gpt-4o-mini
+
+# Max tokens for summary (keep short for fast TTS)
+STATUS_LLM_MAX_TOKENS=30
+```
+
+### Implementation
+
+```python
+# lib/status_llm.py
+
+class StatusSummarizer:
+    """Generate dynamic status summaries using small LLM."""
+    
+    def __init__(self):
+        self.enabled = get_config_value('STATUS_LLM_ENABLED', 'false').lower() == 'true'
+        self.provider = get_config_value('STATUS_LLM_PROVIDER', 'openai')
+        self.model = get_config_value('STATUS_LLM_MODEL', 'gpt-4o-mini')
+        self.max_tokens = get_int('STATUS_LLM_MAX_TOKENS', 30)
+        
+        # Initialize client based on provider
+        self._init_client()
+    
+    def summarize(self, context: str, tool_name: str = None) -> str:
+        """
+        Generate a 5-8 word status summary.
+        
+        Args:
+            context: Tool output, logs, or current state
+            tool_name: Optional tool name for context
+        
+        Returns:
+            Short summary string for TTS
+        """
+        if not self.enabled:
+            return None  # Caller should use fallback phrases
+        
+        prompt = f'''Summarize this tool progress in exactly 5-8 words for voice output.
+Be conversational and natural. No technical jargon.
+
+Tool: {tool_name or 'unknown'}
+Current state:
+{context[:500]}
+
+Summary (5-8 words):'''
+        
+        try:
+            response = self._call_llm(prompt)
+            return response.strip().strip('"').strip("'")
+        except Exception as e:
+            return None  # Use fallback
+    
+    def _call_llm(self, prompt: str) -> str:
+        """Call LLM based on provider."""
+        if self.provider == 'openai':
+            return self._call_openai(prompt)
+        elif self.provider == 'xai':
+            return self._call_xai(prompt)
+        elif self.provider == 'ollama':
+            return self._call_ollama(prompt)
+        else:
+            raise ValueError(f"Unknown provider: {self.provider}")
+```
+
+### Cost Analysis
+
+| Provider | Model | Cost per 1K tokens | Est. per status |
+|----------|-------|-------------------|-----------------|
+| OpenAI | gpt-4o-mini | $0.15 input, $0.60 output | ~$0.0001 |
+| xAI | grok-4 | $0.20 input, $0.50 output | ~$0.0001 |
+| Ollama | qwen3:14b | Free (local) | $0 |
+
+With ~500 token input + ~30 token output per summary:
+- **100 status updates = ~$0.01** (OpenAI/xAI)
+- **Free** with local Ollama
+
+### OpenCode Integration
+
+```python
+# In status_updater.py background thread for OpenCode
+
+def _opencode_status_loop(self, session_id: str):
+    """Poll OpenCode session and generate dynamic summaries."""
+    summarizer = StatusSummarizer()
+    
+    while not self._stop_background.is_set():
+        time.sleep(self.interval)
+        
+        # Get latest session state
+        session = self._get_opencode_session(session_id)
+        if not session:
+            continue
+        
+        # Extract recent activity
+        messages = session.get('messages', [])[-3:]
+        context = self._format_messages(messages)
+        
+        # Try LLM summary first
+        summary = summarizer.summarize(context, tool_name='opencode')
+        
+        if summary:
+            self._speak(summary)
+        else:
+            # Fallback to static phrase
+            phrase = get_phrase('building', tool_name='opencode')
+            self._speak(phrase)
+```
+
+### Example Outputs
+
+**OpenCode building project:**
+```
+Context: "Creating snake_game.py... Adding pygame imports... Setting up game loop..."
+LLM Summary: "Writing game code, almost ready"
+
+Context: "Running pytest... 5 tests passed... No errors found..."
+LLM Summary: "All tests passing, looking good"
+
+Context: "Error: ModuleNotFoundError pygame... Installing pygame..."
+LLM Summary: "Installing missing package, one moment"
+```
+
+**Web search:**
+```
+Context: "Found 10 results for 'AI news'... Fetching summaries..."
+LLM Summary: "Found good results, summarizing now"
+```
+
+### Fallback Chain
+
+1. **LLM Summary** (if enabled and succeeds)
+2. **Tool-specific phrase** (from status_phrases.json)
+3. **Category phrase** (generic progress message)
+4. **Hardcoded default** ("Working on it")
+
+---
+
+---
+
+## Current Implementation Status
+
+### ✅ Phase 1: Core Infrastructure (COMPLETE)
+
+| Component | File | Status |
+|-----------|------|--------|
+| Phrase config | `config/status_phrases.json` | ✅ 225 phrases, 11 categories |
+| Phrase selector | `lib/status_phrases.py` | ✅ Random selection, dedup |
+| Status manager | `lib/status_updater.py` | ✅ Rate limiting, threading |
+| Cloud TTS | `bin/say-status.sh` | ✅ OpenAI TTS |
+| Local TTS | `bin/say-status-local.sh` | ✅ Kokoro TTS |
+
+### ✅ Phase 2: Orchestrator Integration (COMPLETE)
+
+| Integration Point | Status |
+|-------------------|--------|
+| Reset on new task | ✅ `status_updater.reset()` |
+| Tool execution updates | ✅ opencode, search, fetch |
+| Multi-turn progress | ✅ Turn 3+ updates |
+| Error notifications | ✅ Dedup, max 2 per task |
+| Near-complete signal | ✅ Before Q&A response |
+| Collision prevention | ✅ `mark_complete()` |
+
+### ✅ Phase 3: LLM Dynamic Summaries (COMPLETE)
+
+| Component | File | Status |
+|-----------|------|--------|
+| LLM Summarizer | `lib/status_llm.py` | ✅ OpenAI/xAI/Ollama |
+| Context integration | `lib/status_updater.py` | ✅ `update_with_context()` |
+| OpenCode polling | `lib/status_updater.py` | ✅ Session endpoint |
+| Fallback chain | All | ✅ LLM → phrases → default |
+
+### Configuration Summary
+
+```bash
+# Basic status updates (static phrases)
+STATUS_UPDATES_ENABLED=true
+STATUS_UPDATE_INTERVAL=20        # 10-30 recommended
+
+# LLM dynamic summaries (natural language)
+STATUS_LLM_ENABLED=true          # Set false for static only
+STATUS_LLM_PROVIDER=openai       # openai, xai, ollama
+STATUS_LLM_MODEL=gpt-4o-mini     # Small/fast model
+```
+
+### Tested Scenarios
+
+| Scenario | Mode | Result |
+|----------|------|--------|
+| Web search | Cloud | ✅ "Searching the web" |
+| OpenCode build | Cloud | ✅ ~15 progress updates during long build |
+| Crypto price | Local | ✅ "Almost there" via Kokoro |
+| Tool error + fallback | Cloud | ✅ "Snag" then search fallback |
+| LLM summaries | Cloud | ✅ "Building the snake game, almost there!" |
+
+### Fallback Behavior
+
+```
+STATUS_LLM_ENABLED=false + STATUS_UPDATES_ENABLED=true
+  → Uses static phrases from status_phrases.json
+
+STATUS_LLM_ENABLED=true + STATUS_UPDATES_ENABLED=true  
+  → LLM generates natural summaries from tool context
+  → Falls back to static phrases if LLM fails
+
+STATUS_UPDATES_ENABLED=false
+  → No status updates at all (silent during tasks)
+```
+
+---
+
+*Document Version: 1.2*
 *Created: 2025-11-29*
-*Status: Design Phase*
+*Updated: 2025-11-29 - All 3 phases complete and tested*
+*Status: ✅ COMPLETE - Production Ready*
 

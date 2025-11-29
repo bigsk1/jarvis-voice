@@ -153,6 +153,7 @@
 |----------|---------|
 | **INTELLIGENCE_LAYER.md** | Self-learning system (Phase 1.5 - COMPLETE) ⭐ ENHANCED |
 | **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
+| **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Real-time feedback during tasks ⭐ NEW |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
 
 **Intelligence Features (Phase 1.5):**
@@ -241,6 +242,22 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-11-29:**
+- ✅ **Status Updates System** - Real-time voice progress during long tasks ⭐ MAJOR
+  - **Phase 1**: Core infrastructure (StatusUpdater, TTS scripts, phrase config)
+  - **Phase 2**: Orchestrator integration (tool-aware updates, error handling)
+  - **Phase 3**: LLM dynamic summaries (natural language from tool output)
+  - Configurable phrases with humor/encouragement toggles
+  - Tool-specific updates (opencode, search, weather, fetch, etc.)
+  - Rate limiting (20s default), error deduplication, collision prevention
+  - Cloud (OpenAI TTS) and Local (Kokoro TTS) support
+  - See: `docs/STATUS_UPDATES_DESIGN.md`
+- ✅ **Weather Tool** - OpenWeatherMap integration with geocoding
+  - Accurate location via Geocoding API (lat/lon)
+  - US state code handling ("Hillsboro, OR" → "Hillsboro, Oregon")
+  - wttr.in fallback if API unavailable
+  - See: `skills/weather.py`
 
 **2025-11-28:**
 - ✅ **Intelligence Layer Phase 1.5** - Full insight lifecycle management ⭐ MAJOR

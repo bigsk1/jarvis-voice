@@ -106,6 +106,11 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Wake Detection**: "Hey Jarvis" using OpenWakeWord
 - **Fine-tuned Audio**: Optimized for noisy environments + far-field mic
 - **Smart Response Formatting**: Auto-condenses verbose outputs for voice
+- **Status Updates**: Real-time voice progress during long tasks ⭐ NEW
+  - "Searching the web", "Building with OpenCode", "Checking the weather"
+  - LLM-generated dynamic summaries from tool output
+  - Configurable phrases with humor/encouragement toggles
+  - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
 
 ### Speech Modes - Smart Adaptive Response System
 
@@ -929,7 +934,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (November 2025):**
-- ✅ **Intelligence Layer Phase 1.5** - Full insight lifecycle ⭐ MAJOR NEW
+- ✅ **Status Updates System** - Real-time voice progress during tasks ⭐ MAJOR NEW
+  - LLM dynamic summaries (gpt-4o-mini/qwen3 generates natural phrases)
+  - Tool-aware updates (opencode, search, weather, fetch)
+  - Rate limiting, error deduplication, collision prevention
+  - Cloud (OpenAI TTS) + Local (Kokoro TTS) support
+- ✅ **Weather Tool** - OpenWeatherMap with geocoding for accurate locations
+- ✅ **Intelligence Layer Phase 1.5** - Full insight lifecycle ⭐ MAJOR
   - Positive AND negative constraints (what to do AND what NOT to do)
   - Fact vs Procedural knowledge classification
   - Generalizability filtering, confidence decay tracking
@@ -1008,6 +1019,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.5 (November 2025)  
+**Current Version:** v2.6 (November 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Intelligence Layer Phase 1.5 (insight tracking, decay, anomaly detection, meta-cognition), maintenance jobs (CLI + API), 13 intelligence log events for Grafana/Loki
+**Latest Features:** Status Updates System (real-time voice progress with LLM summaries), Weather Tool (OpenWeatherMap + geocoding), Intelligence Layer Phase 1.5

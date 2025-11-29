@@ -11,8 +11,8 @@
   "categories": {
     "task_start": {
       "standard": [
-        "On it",
-        "Got it",
+        "On it boss",
+        "Got it boss",
         "Working on that",
         "Let me handle that",
         "Starting now"
@@ -180,7 +180,7 @@
     "_description": "Override messages for specific tools. Falls back to categories if not defined.",
     
     "opencode": {
-      "start": ["OpenCode is on it", "Starting the build", "Firing up OpenCode"],
+      "start": ["OpenCode is on it boss", "Starting the build", "Firing up OpenCode"],
       "progress": ["Build in progress", "OpenCode is working hard", "Code is flowing"],
       "error": ["Build hit an issue, recovering", "OpenCode stumbled but is getting back up"]
     },
@@ -206,8 +206,8 @@
     },
     
     "weather": {
-      "start": ["Checking the weather", "Looking up conditions"],
-      "progress": ["Got the forecast"]
+      "start": ["Checking the weather", "Looking up conditions", "Getting the forecast"],
+      "progress": ["Got the weather"]
     },
     
     "crypto_price": {

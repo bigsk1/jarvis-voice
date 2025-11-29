@@ -87,7 +87,7 @@ class StatusPhrases:
         
         # 3. Ultimate fallback
         if phrase is None:
-            phrase = "Working on it"
+            phrase = "Working on it boss"
         
         # Track to avoid repetition
         self._track_phrase(phrase)
@@ -167,10 +167,10 @@ class StatusPhrases:
             },
             'categories': {
                 'task_start': {
-                    'standard': ['On it', 'Working on that', 'Got it']
+                    'standard': ['On it boss', 'Working on that', 'Got it boss']
                 },
                 'progress': {
-                    'standard': ['Working on it', 'Making progress', 'Still working']
+                    'standard': ['Working on it boss', 'Making progress', 'Still working']
                 },
                 'searching': {
                     'standard': ['Searching', 'Looking that up']
