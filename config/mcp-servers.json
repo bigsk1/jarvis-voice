@@ -73,6 +73,7 @@
         "-v", "/tmp/playwright-output:/output",
         "mcr.microsoft.com/playwright/mcp",
         "--headless",
+        "--proxy-server", "${LOCAL_PROXY}",
         "--no-sandbox",
         "--browser", "chromium",
         "--caps", "pdf",

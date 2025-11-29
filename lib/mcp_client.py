@@ -49,9 +49,12 @@ class MCPClient:
         # SECURITY: Only pass explicitly listed env vars, not the entire os.environ
         mcp_env = self._build_env_with_substitution()
         
+        # Expand ${VAR} in args as well
+        expanded_args = self._expand_args()
+        
         # Start process
         self.process = subprocess.Popen(
-            [self.command] + self.args,
+            [self.command] + expanded_args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -70,6 +73,28 @@ class MCPClient:
         
         # Initialize the MCP connection
         self._initialize()
+    
+    def _expand_args(self) -> List[str]:
+        """
+        Expand ${VAR_NAME} syntax in args from environment variables.
+        
+        This allows mcp-servers.json to use variables like:
+            "--proxy-server", "${LOCAL_PROXY}"
+        
+        Returns:
+            List of args with variables expanded
+        """
+        def replace_var(match):
+            var_name = match.group(1)
+            return os.environ.get(var_name, f"${{{var_name}}}")
+        
+        expanded = []
+        for arg in self.args:
+            if isinstance(arg, str) and '${' in arg:
+                expanded.append(re.sub(r'\$\{([^}]+)\}', replace_var, arg))
+            else:
+                expanded.append(arg)
+        return expanded
     
     def _build_env_with_substitution(self) -> Dict[str, str]:
         """
