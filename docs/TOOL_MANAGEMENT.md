@@ -578,7 +578,8 @@ npx -y @modelcontextprotocol/server-filesystem
     "--no-sandbox",
     "--browser", "chromium",
     "--caps", "pdf",
-    "--timeout", "60000",
+    "--timeout-action", "30000",
+    "--timeout-navigation", "60000",
     "--viewport-size", "1920x1080"
   ],
   "description": "Browser automation for JS-heavy sites",
@@ -595,7 +596,8 @@ npx -y @modelcontextprotocol/server-filesystem
 | `--browser chromium` | Browser engine | Chromium (default, fastest) |
 | `--caps pdf` | Enable PDF generation | Optional, adds `browser_pdf_save` |
 | `--caps vision` | Coordinate-based clicks | For complex UI automation |
-| `--timeout 60000` | 60s action timeout | Increase for slow sites |
+| `--timeout-action 30000` | 30s per action (click, type) | Increase for slow sites |
+| `--timeout-navigation 60000` | 60s for page loads | Increase for heavy pages |
 | `--viewport-size 1920x1080` | Screen size | Standard desktop |
 | `--isolated` | Memory-only, no disk | Security for untrusted sites |
 
