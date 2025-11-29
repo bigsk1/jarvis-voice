@@ -77,7 +77,7 @@
         "--caps", "pdf",
         "--timeout-action", "30000",
         "--timeout-navigation", "60000",
-        "--viewport-size", "1920x1080"
+        "--viewport-size", "1280x720"
       ],
       "description": "Browser automation for JS-heavy sites: navigate, click, fill forms, screenshots, PDFs. Use when fetch fails on dynamic content.",
       "enabled": true
