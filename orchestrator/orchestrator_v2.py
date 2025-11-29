@@ -13,6 +13,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
 from memory_db import get_memory_db
+from status_updater import StatusUpdater
 
 from router_v2 import LLMRouter
 from executor import ToolExecutor
@@ -54,6 +55,9 @@ class Orchestrator:
         self.auto_context_enabled = get_config_value('AUTO_CONTEXT_ENABLED', 'true').lower() == 'true'
         self.auto_context_window = get_int('AUTO_CONTEXT_WINDOW', 3)
         self.auto_context_minutes = get_int('AUTO_CONTEXT_MINUTES', 10)
+        
+        # Status updates for voice progress feedback
+        self.status_updater = StatusUpdater(mode)
     
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None) -> Dict[str, Any]:
         """
@@ -74,6 +78,9 @@ class Orchestrator:
                 "error": str (optional)
             }
         """
+        # Reset status updater for new task
+        self.status_updater.reset()
+        
         # Auto-inject recent conversation context (if enabled)
         if self.auto_context_enabled:
             enhanced_transcript = self._build_conversation_context(transcript)
@@ -180,6 +187,9 @@ class Orchestrator:
                     
                     self._log_conversation(transcript, final_speech, tools_used, success=True)
                     
+                    # Mark status updates complete
+                    self.status_updater.mark_complete()
+                    
                     return {
                         "speech": final_speech,
                         "ok": True,
@@ -196,8 +206,31 @@ class Orchestrator:
                     print(f"🔧 Executing tool: {tool_name}{turn_marker}")
                     print(f"📝 Arguments: {json.dumps(arguments, indent=2)}")
                 
+                # Status update before tool execution
+                self.status_updater.set_turn(turn_num + 1)
+                
+                # Determine category based on tool type
+                if tool_name == 'opencode':
+                    # OpenCode is long-running - start background updates
+                    self.status_updater.update(category='building', tool_name=tool_name)
+                    self.status_updater.start_background_updates(tool_name=tool_name, category='building')
+                elif 'search' in tool_name or 'brave' in tool_name:
+                    self.status_updater.update(category='searching', tool_name=tool_name)
+                elif 'fetch' in tool_name or 'playwright' in tool_name:
+                    self.status_updater.update(category='fetching', tool_name=tool_name)
+                elif 'memory' in tool_name or 'recall' in tool_name:
+                    # Memory tools are fast, skip status
+                    pass
+                elif turn_num >= 2:
+                    # Multi-turn progress
+                    self.status_updater.update(category='multi_turn', tool_name=tool_name)
+                
                 # Execute the tool
                 result = self.executor.execute(tool_name, arguments)
+                
+                # Stop background updates after tool completes
+                if tool_name == 'opencode':
+                    self.status_updater.stop_background_updates()
                 
                 if result["ok"]:
                     # Success - add to context and continue
@@ -238,6 +271,14 @@ class Orchestrator:
                     if sys.stdout.isatty():
                         print(f"❌ Tool failed: {error}")
                     
+                    # Status update on error
+                    is_server_error = '500' in str(error) or 'Internal Server Error' in str(error)
+                    self.status_updater.update_error(
+                        error_type='server' if is_server_error else 'retry',
+                        error_message=error,
+                        is_server_error=is_server_error
+                    )
+                    
                     # Retry if we haven't exceeded max retries
                     if retry_count < self.max_retries:
                         if sys.stdout.isatty():
@@ -255,6 +296,9 @@ class Orchestrator:
                     # Auto-log failed conversation
                     self._log_conversation(transcript, final_speech, tools_used, success=False)
                     
+                    # Mark status updates complete
+                    self.status_updater.mark_complete()
+                    
                     return {
                         "speech": final_speech,
                         "ok": False,
@@ -265,6 +309,10 @@ class Orchestrator:
             
             # Handle Q&A (task complete - LLM decided to respond directly)
             elif route["intent"] == "qa":
+                # Status update: near complete (if tools were used)
+                if tools_used:
+                    self.status_updater.update(category='near_complete')
+                
                 raw_speech = route.get("text_response", "I'm not sure how to respond.")
                 
                 # Apply response style formatting (for ALL responses, not just multi-turn)
@@ -313,6 +361,9 @@ class Orchestrator:
                 # Record experience for self-learning (async, non-blocking)
                 self._record_learning_experience(transcript, tools_used, response, conversation_context, applied_insights)
                 
+                # Mark status updates complete before final TTS
+                self.status_updater.mark_complete()
+                
                 return response
             
             # Handle routing errors
@@ -324,6 +375,9 @@ class Orchestrator:
                 
                 # Auto-log error
                 self._log_conversation(transcript, speech, tools_used, success=False)
+                
+                # Mark status updates complete
+                self.status_updater.mark_complete()
                 
                 return {
                     "speech": speech,
@@ -346,6 +400,9 @@ class Orchestrator:
             print(f"⚠️  Max turns ({max_turns}) reached")
         
         self._log_conversation(transcript, final_speech, tools_used, success=True)
+        
+        # Mark status updates complete
+        self.status_updater.mark_complete()
         
         return {
             "speech": final_speech,
