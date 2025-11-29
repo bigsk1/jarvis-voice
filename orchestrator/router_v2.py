@@ -524,7 +524,8 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
                     "tool_name": tool_call["name"],
                     "arguments": tool_call["arguments"],
                     "confidence": 1.0,
-                    "usage_info": usage_info  # Include token/cost data
+                    "usage_info": usage_info,  # Include token/cost data
+                    "available_tools": tool_names  # Tools shown to LLM for reflection
                 }
                 
                 # Add thinking if present
@@ -561,7 +562,8 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
                     "intent": "qa",
                     "text_response": text_response or "I'm not sure how to respond to that.",
                     "confidence": 1.0,
-                    "usage_info": usage_info  # Include token/cost data
+                    "usage_info": usage_info,  # Include token/cost data
+                    "available_tools": tool_names  # Tools shown to LLM for reflection
                 }
                 
                 # Add thinking if present

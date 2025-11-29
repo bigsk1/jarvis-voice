@@ -113,6 +113,10 @@ def record_interaction(
         # Actual tool results (data returned by tools)
         tool_results = result.get('data', {})
         
+        # Tools that were AVAILABLE to the LLM (from Tool RAG + ghost tools)
+        # This is critical for reflection - shows what LLM COULD have chosen
+        available_tools = result.get('available_tools', [])
+        
         # Truncate to prevent DB bloat but keep enough for evaluation
         if len(llm_response) > 2000:
             llm_response = llm_response[:2000] + "... [truncated]"
@@ -129,7 +133,9 @@ def record_interaction(
             'timestamp': datetime.now().isoformat(),
             # NEW: Include response content for reflection
             'llm_response': llm_response,
-            'tool_results': tool_results_str
+            'tool_results': tool_results_str,
+            # CRITICAL: What tools the LLM could have chosen from
+            'available_tools': available_tools
         }
         
         # Run async in sync context

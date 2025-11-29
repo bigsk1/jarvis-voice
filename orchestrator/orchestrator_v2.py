@@ -117,6 +117,9 @@ class Orchestrator:
         # Track thinking from first turn (for display)
         first_thinking = None
         
+        # Track available tools from first routing (for intelligence reflection)
+        available_tools = []
+        
         # Multi-turn loop
         for turn_num in range(max_turns):
             # Build context for this turn
@@ -154,6 +157,10 @@ class Orchestrator:
             # Capture thinking from first turn (for display)
             if turn_num == 0 and route.get("thinking") and not first_thinking:
                 first_thinking = route["thinking"]
+            
+            # Capture available tools from first turn (for intelligence reflection)
+            if turn_num == 0 and route.get("available_tools"):
+                available_tools = route["available_tools"]
             
             # Handle tool execution
             if route["intent"] == "tool":
@@ -291,7 +298,8 @@ class Orchestrator:
                     "speech": speech,
                     "ok": True,
                     "tools_used": tools_used,
-                    "data": accumulated_data
+                    "data": accumulated_data,
+                    "available_tools": available_tools  # Tools LLM could choose from
                 }
                 
                 # Add token info to response if available (cloud only)

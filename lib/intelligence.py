@@ -626,6 +626,9 @@ class IntelligenceLayer:
         llm_response = context_data.get('llm_response', '[Not captured]')
         tool_results = context_data.get('tool_results', '[Not captured]')
         
+        # CRITICAL: What tools were AVAILABLE to the LLM (from Tool RAG + ghost tools)
+        available_tools = context_data.get('available_tools', [])
+        
         # Determine if this was a suboptimal experience
         tools_list = json.loads(exp['tools_used'])
         was_suboptimal = (
@@ -635,11 +638,24 @@ class IntelligenceLayer:
             exp['had_to_clarify']
         )
         
+        # Format available tools list
+        available_tools_str = ', '.join(available_tools) if available_tools else '[Not captured]'
+        tools_used_list = json.loads(exp['tools_used']) if exp['tools_used'] else []
+        
+        # Identify tools that were available but NOT used (for reflection analysis)
+        unused_tools = [t for t in available_tools if t not in tools_used_list] if available_tools else []
+        unused_tools_str = ', '.join(unused_tools[:10]) if unused_tools else 'None'  # Limit to 10
+        
         reflection_prompt = f"""
 Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 
 **User Query**: {exp['query']}
-**Tools Used (in order)**: {exp['tools_used']}
+
+**AVAILABLE TOOLS** (what the LLM could choose from):
+{available_tools_str}
+
+**Tools Actually Used (in order)**: {exp['tools_used']}
+**Tools Available But NOT Used**: {unused_tools_str}
 **Turns Taken**: {exp['turns_taken']}
 **Final Tool**: {exp['final_tool']}
 **Outcome Status**: {"SUCCESS" if exp['outcome_success'] else "FAILURE"}
@@ -808,35 +824,30 @@ Example for FACTUAL (should NOT be stored here):
             return None
     
     async def _call_sequential_thinking(self, prompt: str) -> Optional[Dict[str, Any]]:
-        """Call the sequential thinking MCP server for structured reasoning."""
-        try:
-            from mcp_client import MCPClient
-            
-            # Initialize MCP client
-            project_root = Path(__file__).parent.parent
-            mcp_config_path = project_root / "config" / "mcp-servers.json"
-            
-            client = MCPClient(str(mcp_config_path))
-            await client.initialize()
-            
-            # Call sequential thinking
-            result = await client.call_tool(
-                "mcp_sequentialthinking_sequentialthinking",
-                {
-                    "thought": prompt,
-                    "nextThoughtNeeded": True
-                }
-            )
-            
-            if result and result.get('ok'):
-                # Parse the thinking result
-                thinking_output = result.get('data', {})
-                return self._parse_reflection_output(thinking_output)
-            
-        except Exception as e:
-            logger.warning(f"Sequential thinking unavailable: {e}")
+        """Call the sequential thinking MCP server for structured reasoning.
         
+        NOTE: Sequential thinking MCP is optional - falls back to direct LLM if unavailable.
+        Currently disabled until MCP client async support is fully implemented.
+        """
+        # TODO: Re-enable when MCP client supports async initialization properly
+        # For now, return None to use direct LLM reflection (which works well)
+        logger.debug("Sequential thinking MCP disabled - using direct LLM reflection")
         return None
+        
+        # Original implementation (disabled):
+        # try:
+        #     from mcp_client import MCPManager
+        #     project_root = Path(__file__).parent.parent
+        #     mcp_config_path = project_root / "config" / "mcp-servers.json"
+        #     manager = MCPManager(str(mcp_config_path))
+        #     if 'sequentialthinking' not in manager.servers:
+        #         return None
+        #     client = manager.servers['sequentialthinking']
+        #     # MCP client doesn't have async initialize - needs refactoring
+        #     ...
+        # except Exception as e:
+        #     logger.warning(f"Sequential thinking unavailable: {e}")
+        # return None
     
     async def _direct_llm_reflection(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Direct LLM call for reflection when sequential thinking unavailable."""
