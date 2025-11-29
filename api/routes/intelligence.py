@@ -333,3 +333,151 @@ async def evaluate_learning_endpoint():
             "error": str(e)
         }
 
+
+# ============================================
+# MAINTENANCE JOBS
+# ============================================
+
+@router.post("/maintenance/decay")
+async def run_decay_job_endpoint():
+    """Run the confidence decay job.
+    
+    Reduces confidence of stale/unused insights.
+    Uses INTELLIGENCE_DECAY_RATE from config.
+    """
+    try:
+        from intelligence import get_intelligence_layer
+        
+        intel = get_intelligence_layer()
+        if not intel:
+            return {"status": "error", "error": "Intelligence layer not available"}
+        
+        result = await intel.run_decay_job()
+        
+        return {
+            "status": "ok",
+            "job": "decay",
+            **result
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.post("/maintenance/anomaly")
+async def run_anomaly_detection_endpoint():
+    """Run anomaly detection on recent experiences.
+    
+    Flags experiences that deviate significantly from norms.
+    Uses INTELLIGENCE_ANOMALY_THRESHOLD from config.
+    """
+    try:
+        from intelligence import get_intelligence_layer
+        
+        intel = get_intelligence_layer()
+        if not intel:
+            return {"status": "error", "error": "Intelligence layer not available"}
+        
+        result = await intel.run_anomaly_detection()
+        
+        return {
+            "status": "ok",
+            "job": "anomaly",
+            **result
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.post("/maintenance/meta-cognition")
+async def run_meta_cognition_endpoint():
+    """Run meta-cognition analysis.
+    
+    Higher-level reflection on the learning process:
+    - Detects blind spots (repeated failures)
+    - Detects over-generalization
+    - Assesses learning quality
+    
+    Populates meta_knowledge table with findings.
+    """
+    try:
+        from intelligence import get_intelligence_layer
+        
+        intel = get_intelligence_layer()
+        if not intel:
+            return {"status": "error", "error": "Intelligence layer not available"}
+        
+        result = await intel.run_meta_cognition()
+        
+        return {
+            "status": "ok",
+            "job": "meta_cognition",
+            **result
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.post("/maintenance/all")
+async def run_all_maintenance_endpoint():
+    """Run all maintenance jobs (decay, anomaly, meta-cognition)."""
+    try:
+        from intelligence import get_intelligence_layer
+        
+        intel = get_intelligence_layer()
+        if not intel:
+            return {"status": "error", "error": "Intelligence layer not available"}
+        
+        result = await intel.run_all_maintenance()
+        
+        return {
+            "status": "ok",
+            "job": "all",
+            **result
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.get("/meta-knowledge")
+async def get_meta_knowledge():
+    """Get recent meta-knowledge findings (blind spots, over-generalizations, etc.)."""
+    try:
+        from intelligence import get_intelligence_layer
+        import sqlite3
+        
+        intel = get_intelligence_layer()
+        if not intel:
+            return {"status": "error", "error": "Intelligence layer not available"}
+        
+        cursor = intel.conn.cursor()
+        cursor.execute("""
+            SELECT id, timestamp, meta_type, description, observation, 
+                   conclusion, action_taken, confidence, validated
+            FROM meta_knowledge
+            ORDER BY timestamp DESC
+            LIMIT 20
+        """)
+        
+        rows = cursor.fetchall()
+        findings = []
+        for row in rows:
+            findings.append({
+                'id': row['id'],
+                'timestamp': row['timestamp'],
+                'meta_type': row['meta_type'],
+                'description': row['description'],
+                'observation': row['observation'],
+                'conclusion': row['conclusion'],
+                'action_taken': row['action_taken'],
+                'confidence': row['confidence'],
+                'validated': bool(row['validated'])
+            })
+        
+        return {
+            "status": "ok",
+            "count": len(findings),
+            "findings": findings
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+

@@ -534,6 +534,112 @@ def evaluate_learning() -> Dict[str, Any]:
 
 
 # ============================================
+# MAINTENANCE JOBS
+# ============================================
+
+def run_decay_job() -> Dict[str, Any]:
+    """
+    Run the confidence decay job.
+    
+    Reduces confidence of stale/unused insights based on DECAY_RATE.
+    
+    Returns:
+        Stats about decayed/pruned insights
+    """
+    intel = _get_intel()
+    if not intel:
+        return {'status': 'unavailable'}
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(intel.run_decay_job())
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.warning(f"Decay job failed: {e}")
+        return {'status': 'error', 'error': str(e)}
+
+
+def run_anomaly_detection() -> Dict[str, Any]:
+    """
+    Run anomaly detection on recent experiences.
+    
+    Flags experiences that deviate significantly from norms.
+    Uses ANOMALY_THRESHOLD from config.
+    
+    Returns:
+        Stats and list of detected anomalies
+    """
+    intel = _get_intel()
+    if not intel:
+        return {'status': 'unavailable'}
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(intel.run_anomaly_detection())
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.warning(f"Anomaly detection failed: {e}")
+        return {'status': 'error', 'error': str(e)}
+
+
+def run_meta_cognition() -> Dict[str, Any]:
+    """
+    Run meta-cognition analysis.
+    
+    Higher-level reflection on the learning process:
+    - Detects blind spots (repeated failures)
+    - Detects over-generalization
+    - Assesses learning quality
+    
+    Returns:
+        Findings and actions taken
+    """
+    intel = _get_intel()
+    if not intel:
+        return {'status': 'unavailable'}
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(intel.run_meta_cognition())
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.warning(f"Meta-cognition failed: {e}")
+        return {'status': 'error', 'error': str(e)}
+
+
+def run_all_maintenance() -> Dict[str, Any]:
+    """
+    Run all maintenance jobs (decay, anomaly, meta-cognition).
+    
+    Returns:
+        Combined results from all jobs
+    """
+    intel = _get_intel()
+    if not intel:
+        return {'status': 'unavailable'}
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(intel.run_all_maintenance())
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.warning(f"Maintenance failed: {e}")
+        return {'status': 'error', 'error': str(e)}
+
+
+# ============================================
 # CLI for testing
 # ============================================
 

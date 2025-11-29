@@ -116,6 +116,54 @@ class IntelligenceLogger:
             "confidence": confidence
         })
     
+    def log_decay_applied(self, insight_id: int, old_confidence: float, new_confidence: float, 
+                          days_since_applied: int, reason: str):
+        """Log when confidence decay is applied to an insight."""
+        self.log("decay_applied", {
+            "insight_id": insight_id,
+            "old_confidence": round(old_confidence, 4),
+            "new_confidence": round(new_confidence, 4),
+            "decay_amount": round(old_confidence - new_confidence, 4),
+            "days_since_applied": days_since_applied,
+            "reason": reason
+        })
+    
+    def log_anomaly_detected(self, experience_id: int, anomaly_type: str, details: Dict[str, Any]):
+        """Log when an anomaly is detected in an experience."""
+        self.log("anomaly_detected", {
+            "experience_id": experience_id,
+            "anomaly_type": anomaly_type,
+            "details": details
+        })
+    
+    def log_meta_cognition(self, meta_type: str, observation: str, conclusion: str, 
+                           action: str, confidence: float):
+        """Log meta-cognition findings."""
+        self.log("meta_cognition", {
+            "meta_type": meta_type,
+            "observation": observation,
+            "conclusion": conclusion,
+            "action_taken": action,
+            "confidence": confidence
+        })
+    
+    def log_maintenance_run(self, job_type: str, stats: Dict[str, Any]):
+        """Log when a maintenance job runs."""
+        self.log("maintenance_run", {
+            "job_type": job_type,
+            "stats": stats
+        })
+    
+    def log_insight_pruned(self, insight_id: int, description: str, reason: str, 
+                           final_confidence: float):
+        """Log when an insight is pruned/removed."""
+        self.log("insight_pruned", {
+            "insight_id": insight_id,
+            "description": description[:200],
+            "reason": reason,
+            "final_confidence": final_confidence
+        })
+    
     def log_insight_updated(self, insight_id: int, old_confidence: float, new_confidence: float):
         """Log when an existing insight is updated."""
         self.log("insight_updated", {
@@ -1422,6 +1470,388 @@ Example for FACTUAL (should NOT be stored here):
                 processed += 1
         
         return processed
+    
+    # ============================================
+    # MAINTENANCE JOBS (Decay, Anomaly, Meta-Cognition)
+    # ============================================
+    
+    async def run_decay_job(self) -> Dict[str, Any]:
+        """
+        Apply confidence decay to stale/unused insights.
+        
+        Uses INTELLIGENCE_DECAY_RATE from config.
+        Insights that haven't been applied recently lose confidence.
+        Insights that have failed repeatedly decay faster.
+        
+        Returns:
+            Stats about the decay job run
+        """
+        intel_log = get_intel_logger()
+        cursor = self.conn.cursor()
+        
+        # Get insights with tracking data
+        cursor.execute("""
+            SELECT id, description, confidence, times_applied, times_helpful, 
+                   times_failed, consecutive_failures, last_applied, created_at
+            FROM insights
+            WHERE confidence > 0.1
+        """)
+        
+        insights = cursor.fetchall()
+        stats = {
+            'total_checked': len(insights),
+            'decayed': 0,
+            'boosted': 0,
+            'unchanged': 0,
+            'pruned': 0
+        }
+        
+        now = datetime.now()
+        
+        for insight in insights:
+            old_confidence = insight['confidence']
+            new_confidence = old_confidence
+            reason = None
+            
+            # Calculate days since last application
+            if insight['last_applied']:
+                last_applied = datetime.fromisoformat(insight['last_applied'].replace('Z', '+00:00').replace('+00:00', ''))
+                days_since = (now - last_applied).days
+            else:
+                # Never applied - use creation date
+                created = datetime.fromisoformat(insight['created_at'].replace('Z', '+00:00').replace('+00:00', ''))
+                days_since = (now - created).days
+            
+            # Apply decay based on various factors
+            
+            # 1. Time-based decay (unused insights fade)
+            if days_since > 7:
+                decay_factor = self.decay_rate ** (days_since / 7)  # Compound decay per week
+                new_confidence *= decay_factor
+                reason = f"time_decay_{days_since}d"
+            
+            # 2. Failure-based decay (failed insights decay faster)
+            if insight['consecutive_failures'] and insight['consecutive_failures'] > 0:
+                failure_decay = 0.9 ** insight['consecutive_failures']
+                new_confidence *= failure_decay
+                reason = f"failure_decay_{insight['consecutive_failures']}_consecutive"
+            
+            # 3. Success rate boost (proven insights get slight boost)
+            if insight['times_applied'] and insight['times_applied'] > 3:
+                success_rate = insight['times_helpful'] / insight['times_applied']
+                if success_rate > 0.8:
+                    # Slight boost for highly successful insights
+                    new_confidence = min(1.0, new_confidence * 1.02)
+                    reason = f"success_boost_{success_rate:.0%}"
+                    stats['boosted'] += 1
+            
+            # Apply change if significant
+            if abs(new_confidence - old_confidence) > 0.01:
+                cursor.execute("""
+                    UPDATE insights SET confidence = ? WHERE id = ?
+                """, (new_confidence, insight['id']))
+                
+                intel_log.log_decay_applied(
+                    insight['id'], old_confidence, new_confidence, 
+                    days_since, reason or 'general_decay'
+                )
+                
+                if new_confidence < old_confidence:
+                    stats['decayed'] += 1
+            else:
+                stats['unchanged'] += 1
+            
+            # Prune very low confidence insights
+            if new_confidence < 0.15:
+                cursor.execute("DELETE FROM insights WHERE id = ?", (insight['id'],))
+                intel_log.log_insight_pruned(
+                    insight['id'], insight['description'], 
+                    'below_threshold', new_confidence
+                )
+                stats['pruned'] += 1
+        
+        self.conn.commit()
+        
+        intel_log.log_maintenance_run('decay_job', stats)
+        return stats
+    
+    async def run_anomaly_detection(self) -> Dict[str, Any]:
+        """
+        Detect anomalous experiences that might indicate issues.
+        
+        Uses INTELLIGENCE_ANOMALY_THRESHOLD from config.
+        Flags experiences that deviate significantly from norms.
+        
+        Returns:
+            Stats and list of detected anomalies
+        """
+        intel_log = get_intel_logger()
+        cursor = self.conn.cursor()
+        
+        # Get baseline statistics
+        cursor.execute("""
+            SELECT 
+                AVG(turns_taken) as avg_turns,
+                AVG(CASE WHEN outcome_success THEN 1 ELSE 0 END) as success_rate
+            FROM experiences
+            WHERE timestamp > datetime('now', '-7 days')
+        """)
+        baseline = cursor.fetchone()
+        
+        if not baseline or baseline['avg_turns'] is None:
+            return {'status': 'insufficient_data', 'anomalies': []}
+        
+        avg_turns = baseline['avg_turns']
+        
+        # Calculate standard deviation for turns
+        cursor.execute("""
+            SELECT AVG((turns_taken - ?) * (turns_taken - ?)) as variance
+            FROM experiences
+            WHERE timestamp > datetime('now', '-7 days')
+        """, (avg_turns, avg_turns))
+        variance = cursor.fetchone()['variance'] or 1
+        std_dev = variance ** 0.5
+        
+        anomalies = []
+        stats = {
+            'baseline_avg_turns': round(avg_turns, 2),
+            'baseline_std_dev': round(std_dev, 2),
+            'anomalies_found': 0
+        }
+        
+        # Find anomalous experiences (recent only)
+        cursor.execute("""
+            SELECT id, query, turns_taken, outcome_success, tools_used
+            FROM experiences
+            WHERE timestamp > datetime('now', '-1 day')
+        """)
+        
+        for exp in cursor.fetchall():
+            anomaly_reasons = []
+            
+            # Check for high turn count
+            if std_dev > 0:
+                z_score = (exp['turns_taken'] - avg_turns) / std_dev
+                if abs(z_score) > self.anomaly_threshold:
+                    anomaly_reasons.append({
+                        'type': 'high_turns',
+                        'turns': exp['turns_taken'],
+                        'z_score': round(z_score, 2),
+                        'threshold': self.anomaly_threshold
+                    })
+            
+            # Check for failure with many tools
+            if not exp['outcome_success'] and exp['turns_taken'] > 3:
+                anomaly_reasons.append({
+                    'type': 'failed_multi_turn',
+                    'turns': exp['turns_taken']
+                })
+            
+            if anomaly_reasons:
+                anomaly = {
+                    'experience_id': exp['id'],
+                    'query': exp['query'][:100],
+                    'reasons': anomaly_reasons
+                }
+                anomalies.append(anomaly)
+                
+                intel_log.log_anomaly_detected(
+                    exp['id'],
+                    anomaly_reasons[0]['type'],
+                    {'query': exp['query'][:100], 'reasons': anomaly_reasons}
+                )
+        
+        stats['anomalies_found'] = len(anomalies)
+        stats['anomalies'] = anomalies[:10]  # Limit for stats
+        
+        intel_log.log_maintenance_run('anomaly_detection', stats)
+        return stats
+    
+    async def run_meta_cognition(self) -> Dict[str, Any]:
+        """
+        Higher-level reflection on the learning process itself.
+        
+        Detects:
+        - Blind spots (repeated failures in certain areas)
+        - Over-generalization (insights applied too broadly)
+        - Learning quality issues
+        
+        Populates meta_knowledge table with findings.
+        
+        Returns:
+            Findings and actions taken
+        """
+        intel_log = get_intel_logger()
+        cursor = self.conn.cursor()
+        
+        findings = []
+        
+        # ============================================
+        # 1. DETECT BLIND SPOTS
+        # Areas where we consistently fail
+        # ============================================
+        cursor.execute("""
+            SELECT 
+                final_tool,
+                COUNT(*) as total,
+                SUM(CASE WHEN outcome_success = 0 THEN 1 ELSE 0 END) as failures,
+                ROUND(100.0 * SUM(CASE WHEN outcome_success = 0 THEN 1 ELSE 0 END) / COUNT(*), 1) as failure_rate
+            FROM experiences
+            WHERE timestamp > datetime('now', '-7 days')
+            GROUP BY final_tool
+            HAVING failures > 2 AND failure_rate > 30
+        """)
+        
+        for row in cursor.fetchall():
+            finding = {
+                'meta_type': 'blind_spot',
+                'observation': f"Tool '{row['final_tool']}' has {row['failure_rate']}% failure rate ({row['failures']}/{row['total']} calls)",
+                'conclusion': f"Possible issue with {row['final_tool']} usage or selection",
+                'action': 'flag_for_review',
+                'confidence': min(0.9, row['failures'] / 10)
+            }
+            findings.append(finding)
+            
+            # Store in meta_knowledge
+            cursor.execute("""
+                INSERT INTO meta_knowledge (meta_type, description, observation, conclusion, action_taken, confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                finding['meta_type'],
+                f"Blind spot: {row['final_tool']}",
+                finding['observation'],
+                finding['conclusion'],
+                finding['action'],
+                finding['confidence']
+            ))
+            
+            intel_log.log_meta_cognition(
+                finding['meta_type'], finding['observation'],
+                finding['conclusion'], finding['action'], finding['confidence']
+            )
+        
+        # ============================================
+        # 2. DETECT OVER-GENERALIZATION
+        # Insights that are applied too broadly
+        # ============================================
+        cursor.execute("""
+            SELECT 
+                id, description, times_applied, times_helpful, times_failed,
+                ROUND(100.0 * times_failed / NULLIF(times_applied, 0), 1) as failure_rate
+            FROM insights
+            WHERE times_applied > 5
+            AND times_failed > times_helpful
+        """)
+        
+        for row in cursor.fetchall():
+            finding = {
+                'meta_type': 'over_generalization',
+                'observation': f"Insight #{row['id']} applied {row['times_applied']}x with {row['failure_rate']}% failure rate",
+                'conclusion': f"Insight may be too general: '{row['description'][:50]}...'",
+                'action': 'reduce_confidence',
+                'confidence': 0.7
+            }
+            findings.append(finding)
+            
+            # Reduce confidence of over-generalized insight
+            cursor.execute("""
+                UPDATE insights SET confidence = confidence * 0.7 WHERE id = ?
+            """, (row['id'],))
+            
+            cursor.execute("""
+                INSERT INTO meta_knowledge (meta_type, description, observation, conclusion, action_taken, confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                finding['meta_type'],
+                f"Over-generalization: insight #{row['id']}",
+                finding['observation'],
+                finding['conclusion'],
+                finding['action'],
+                finding['confidence']
+            ))
+            
+            intel_log.log_meta_cognition(
+                finding['meta_type'], finding['observation'],
+                finding['conclusion'], finding['action'], finding['confidence']
+            )
+        
+        # ============================================
+        # 3. ASSESS LEARNING QUALITY
+        # Overall health of the learning system
+        # ============================================
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_insights,
+                AVG(confidence) as avg_confidence,
+                AVG(times_applied) as avg_applications,
+                SUM(CASE WHEN times_applied > 0 THEN 1 ELSE 0 END) as insights_used
+            FROM insights
+        """)
+        quality = cursor.fetchone()
+        
+        issues = []
+        
+        if quality['avg_confidence'] and quality['avg_confidence'] < 0.5:
+            issues.append("Low average confidence - insights may not be reliable")
+        
+        if quality['total_insights'] > 20 and quality['insights_used'] < quality['total_insights'] * 0.2:
+            issues.append("Many insights never applied - may be too specific")
+        
+        if quality['avg_applications'] and quality['avg_applications'] < 1:
+            issues.append("Low insight application rate - matching may be too strict")
+        
+        if issues:
+            finding = {
+                'meta_type': 'learning_quality',
+                'observation': f"Found {len(issues)} learning quality issue(s)",
+                'conclusion': '; '.join(issues),
+                'action': 'review_parameters',
+                'confidence': 0.6
+            }
+            findings.append(finding)
+            
+            cursor.execute("""
+                INSERT INTO meta_knowledge (meta_type, description, observation, conclusion, action_taken, confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                finding['meta_type'],
+                "Learning quality assessment",
+                finding['observation'],
+                finding['conclusion'],
+                finding['action'],
+                finding['confidence']
+            ))
+            
+            intel_log.log_meta_cognition(
+                finding['meta_type'], finding['observation'],
+                finding['conclusion'], finding['action'], finding['confidence']
+            )
+        
+        self.conn.commit()
+        
+        stats = {
+            'findings_count': len(findings),
+            'findings': findings,
+            'quality_stats': {
+                'total_insights': quality['total_insights'],
+                'avg_confidence': round(quality['avg_confidence'] or 0, 3),
+                'insights_used': quality['insights_used'],
+                'avg_applications': round(quality['avg_applications'] or 0, 2)
+            }
+        }
+        
+        intel_log.log_maintenance_run('meta_cognition', stats)
+        return stats
+    
+    async def run_all_maintenance(self) -> Dict[str, Any]:
+        """Run all maintenance jobs and return combined results."""
+        results = {}
+        
+        results['decay'] = await self.run_decay_job()
+        results['anomalies'] = await self.run_anomaly_detection()
+        results['meta_cognition'] = await self.run_meta_cognition()
+        
+        return results
     
     # ============================================
     # CLEANUP & MAINTENANCE
