@@ -34,9 +34,6 @@ source ~/jarvis-venv/bin/activate
 ./test-all-tools.sh        # Cloud mode (OpenAI/Anthropic)
 ./test-all-tools-local.sh  # Local mode (Ollama)
 
-# New tools have to run sync before llm can see them by
-cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && python3 bin/sync_tools.py cloud 2>&1
-
 # Memory system tests
 ./tests/integration/test-memory-tools.sh        # Tool selection
 ./tests/integration/test-memory-real-world.sh   # Complex scenarios
@@ -314,6 +311,12 @@ if __name__ == "__main__":
   "enabled": true,  # Set to false to disable without deleting code
   ...
 }
+
+### Notes about tools
+Use LOCAL_PROXY for external requests tools as primary with fallback to direct connection. LOCAL_PROXY env is set already and uses http://user:pass@host:port format.
+After creating a tool before running must sync tools in db for llm to see them. Run sync_tools.py cloud or local depending on mode.
+# New tools have to run sync before llm can see them by
+./bin/sync_tools.py cloud or ./bin/sync_tools.py local
 ```
 
 ---
