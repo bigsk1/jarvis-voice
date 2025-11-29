@@ -659,6 +659,19 @@ CRITICAL EVALUATION:
 3. Did the LLM response actually answer what the user asked? (llm_response vs query)
 4. Was the FIRST tool the optimal choice, or should a different tool have been used initially?
 
+SYSTEM RULES THE LLM SHOULD HAVE FOLLOWED:
+- **MEMORY-FIRST RULE**: For questions about user's info, servers, configs, preferences → SHOULD check memory FIRST
+- If query mentions a server IP/service → memory might have stored health check commands with CORRECT details
+- If query asks about "my X" or personal info → memory likely has stored preferences
+- Using action tools (fetch, bash, api_call) BEFORE checking memory violates the system rules
+- If memory search was skipped but query was about stored knowledge → first_tool_optimal = FALSE
+
+CRITICAL: Look for signs the user-provided info might be WRONG:
+- If a connection/fetch failed → memory might have the CORRECT endpoint stored
+- If user says "my server at X" but X fails → the stored server might be at a DIFFERENT address
+- A "not running" result could actually mean "wrong IP" if memory wasn't checked first
+- When something FAILS and memory wasn't checked → strongly consider first_tool_optimal = FALSE
+
 IMPORTANT CLASSIFICATION:
 - A FACT is data like "The server IP is 10.0.0.1" → belongs in Memory DB, NOT here
 - A SKILL/PROCEDURE is "For status queries, use fetch tools" → belongs here
