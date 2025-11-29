@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "manage_intel",
-  "description": "Create, read, update, delete, or list intel files in jarvis-intel/ directory. Use this to programmatically manage your knowledge base files. Sandboxed to jarvis-intel/ only. IMPORTANT: jarvis-intel/ is FLAT - use simple filenames like 'bitcoin-price-2025-11-19.md', NOT subdirectories like 'bitcoin/price.md'. After creating/updating intel files, set auto_ingest=true to automatically add facts to memory. Actions: 'create', 'read', 'update', 'delete', 'list'. Examples: Create a new note about a server, update existing documentation, delete outdated intel.",
+  "description": "SAVE TO INTEL FOLDER: Create, read, update, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. Sandboxed to jarvis-intel/ only (FLAT - no subdirs). Set auto_ingest=true to add facts to memory. Actions: create, read, update, delete, list.",
   "parameters": {
     "type": "object",
     "properties": {

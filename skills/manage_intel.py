@@ -192,7 +192,7 @@ def auto_ingest(project_root: Path) -> Dict[str, Any]:
             ['python3', str(ingest_script)],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=180
         )
         
         if result.returncode == 0:
@@ -212,7 +212,7 @@ def auto_ingest(project_root: Path) -> Dict[str, Any]:
                 "error": result.stderr or result.stdout
             }
     except subprocess.TimeoutExpired:
-        return {"ingested": False, "error": "Ingest timeout (30s)"}
+        return {"ingested": False, "error": "Ingest timeout (180s)"}
     except Exception as e:
         return {"ingested": False, "error": str(e)}
 

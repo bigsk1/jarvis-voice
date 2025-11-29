@@ -423,13 +423,22 @@ def _evaluate_insight_helpfulness(
     """
     Evaluate whether an insight was helpful for this interaction.
     
-    Logic:
-    - POSITIVE insight ("prefer X") + X was used + success → helpful
-    - POSITIVE insight ("prefer X") + X not used + success → unclear (count as helpful)
-    - POSITIVE insight ("prefer X") + failure → not helpful
-    - NEGATIVE insight ("avoid Y") + Y not used + success → helpful
-    - NEGATIVE insight ("avoid Y") + Y was used + failure → not helpful (should have avoided)
-    - NEGATIVE insight ("avoid Y") + Y was used + success → unclear (count as helpful)
+    CORRECTED LOGIC (Nov 2025):
+    
+    POSITIVE insight ("prefer X"):
+    - X was used + success → HELPFUL (advice followed, worked)
+    - X was used + failure → NOT helpful (advice followed, didn't work)
+    - X not used + success → NOT helpful (advice ignored, still worked = advice wasn't needed)
+    - X not used + failure → NOT helpful (advice ignored, failed = should have followed?)
+    
+    NEGATIVE insight ("avoid Y"):
+    - Y not used + success → HELPFUL (advice followed, worked)
+    - Y not used + failure → NOT helpful (advice followed, still failed)
+    - Y was used + success → NOT helpful (advice ignored, still worked = advice was WRONG)
+    - Y was used + failure → UNCLEAR, count as helpful (advice was correct, should have avoided)
+    
+    Key insight: When advice is CONTRADICTED and the outcome is SUCCESS, 
+    the advice was WRONG and should be marked NOT helpful.
     """
     constraint_type = insight.get('constraint_type', 'positive')
     avoided_tools = insight.get('avoided_tools', [])
@@ -446,16 +455,24 @@ def _evaluate_insight_helpfulness(
         tools_violated = [t for t in avoided_tools if t in tools_used]
         
         if not tools_violated:
-            # Followed the advice (avoided the tool) - helpful regardless of outcome
-            return True
-        else:
-            # Violated the advice (used the avoided tool)
-            # Only mark as not helpful if the outcome was bad
+            # Followed the advice (avoided the tool)
+            # Helpful only if outcome was successful
             return outcome_success
+        else:
+            # VIOLATED the advice (used the tool we were told to avoid)
+            if outcome_success:
+                # The tool we were told to avoid actually WORKED!
+                # This means the "avoid" advice was WRONG → NOT helpful
+                logger.debug(f"Negative insight contradicted: avoided_tools={avoided_tools} were used successfully")
+                return False
+            else:
+                # Used the avoided tool and FAILED
+                # The advice was correct (should have avoided) → helpful
+                return True
     else:
-        # Positive constraint: general advice
-        # If outcome was successful, consider helpful
-        # If outcome failed, consider not helpful
+        # Positive constraint: "prefer these tools"
+        # For simplicity, just use outcome success
+        # Future enhancement: check if preferred_tools were actually used
         return outcome_success
 
 

@@ -3,6 +3,23 @@
 ### Notes
 
 ```bash
+./orchestrator/orchestrator_v2.py cloud "Use playwright and download the details about this repo https://github.com/bigsk1/opencode-doc and save to my intel folder"
+
+./orchestrator/orchestrator_v2.py cloud "Check my service logs for any errors in the last hour, summarize them, and email boss the summary"
+./orchestrator/orchestrator_v2.py cloud "Look up whether the domain bigsk1.com has any outages reported online"
+./orchestrator/orchestrator_v2.py cloud "Search my intel for anything related to my latest birthdate, update the memory with the latest one found, can't have a birthday two different dates, the most recent one in db is correct"
+./orchestrator/orchestrator_v2.py cloud "Scan my recent conversations for references to Docker"
+./orchestrator/orchestrator_v2.py cloud "Fetch external data about Ubuntu 24.04 kernel regressions and correlate it with my current system"
+./orchestrator/orchestrator_v2.py cloud "Find any unresolved reminders older than 1 day, acknowledge them, and create a intel file about it"
+
+./orchestrator/orchestrator_v2.py cloud "Check my opencode sessions for any recent builds that were done, verify that it was previously saved in memory"
+./orchestrator/orchestrator_v2.py cloud "Fetch the Cloudflare API docs, extract rate-limit rules via the sequential thinking tool, and add notes to my intel"
+
+./orchestrator/orchestrator_v2.py cloud "Query all alert sources, filter for ones mentioning 'kokoro', and email boss a prioritized list"
+
+```
+
+```bash
 - Note on the alerts system the title is what will be read aloud, llm can search for source info on follow up questions but  when webhook comes in will say "You have one pending high severity /test alert from cloud/." test alert from cloud is the title that was sent.
 
 
@@ -86,6 +103,13 @@ You already have Grafana/Loki. You should add an Intelligence Panel.
                           # Reminder scheduler (triggers time-based reminders)
                           
 - Originally was going to have intel api route and there is all ready intel related  columns in db, under reminders, some idea to be able to update modify or add , delete intel files in which jarvis has tools to injest into db for direct access. 
+```
+
+
+```bash
+./tests/integration/test_intelligence_sandbox.py --verbose
+./tests/integration/test_intelligence_sandbox.py --test helpfulness
+./tests/integration/test_intelligence_sandbox.py --test analysis
 
 
 # Enable/Disable (edit config file)
@@ -502,4 +526,4 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
 # Pre-warm cache (generate all phrases upfront)
 ./bin/status-cache warm cloud   # Cloud mode
 ./bin/status-cache warm local   # Local mode
-```
+```2025-11-29: Fixed insight tracking - negative constraints now correctly marked as NOT helpful when contradicted by successful tool usage

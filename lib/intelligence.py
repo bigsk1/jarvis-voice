@@ -451,10 +451,20 @@ class IntelligenceLayer:
         return pickle.dumps(embedding)
     
     def _deserialize_embedding(self, blob: bytes) -> Optional[np.ndarray]:
-        """Deserialize numpy array from database."""
+        """Deserialize numpy array from database.
+        
+        Handles both JSON format (newer) and pickle format (older).
+        CRITICAL: Must catch UnicodeDecodeError for pickle blobs!
+        """
         if blob is None:
             return None
-        return pickle.loads(blob)
+        
+        # Try JSON first (newer format)
+        try:
+            return np.array(json.loads(blob.decode('utf-8')))
+        except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
+            # Fall back to pickle (older format)
+            return pickle.loads(blob)
     
     # ============================================
     # EXPERIENCE RECORDING
