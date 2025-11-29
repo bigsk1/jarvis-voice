@@ -112,9 +112,9 @@ warm_cache() {
         to_entries[] | .value[] 
     ' "$PHRASES_FILE" 2>/dev/null | sort -u)
     
-    # Also get tool-specific phrases
+    # Also get tool-specific phrases (filter out non-object values like _description)
     TOOL_PHRASES=$(jq -r '
-        .tool_specific | to_entries[] | .value | 
+        .tool_specific | to_entries[] | select(.value | type == "object") | .value | 
         to_entries[] | .value[]
     ' "$PHRASES_FILE" 2>/dev/null | sort -u)
     
