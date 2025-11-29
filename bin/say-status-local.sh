@@ -53,7 +53,21 @@ if [ ! -f "$OUTFILE" ] || [ ! -s "$OUTFILE" ]; then
     exit 1
 fi
 
-# Play audio (skip padding for status - keep it snappy)
+# Silence padding (ms) - helps speakers "wake up" before speech starts
+SILENCE_PAD_MS="${STATUS_SILENCE_PAD_MS:-250}"
+
+# Add silence padding at the beginning (helps Bluetooth/wireless speakers wake up)
+if command -v sox &>/dev/null && [ "$SILENCE_PAD_MS" -gt 0 ]; then
+    PADDED_FILE="/tmp/jarvis-status-local-padded-$$.wav"
+    # Convert ms to seconds for sox (e.g., 250ms = 0.25s)
+    SILENCE_SECS=$(echo "scale=3; $SILENCE_PAD_MS / 1000" | bc)
+    sox -n -r "$RATE" -c 2 -b 16 "/tmp/jarvis-silence-local-$$.wav" trim 0.0 "$SILENCE_SECS" 2>/dev/null
+    sox "/tmp/jarvis-silence-local-$$.wav" "$OUTFILE" "$PADDED_FILE" 2>/dev/null
+    mv "$PADDED_FILE" "$OUTFILE"
+    rm -f "/tmp/jarvis-silence-local-$$.wav" 2>/dev/null
+fi
+
+# Play audio
 if [ "$BLOCKING" = "true" ]; then
     aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null || true
     rm -f "$OUTFILE" 2>/dev/null || true

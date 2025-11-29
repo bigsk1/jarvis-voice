@@ -1,0 +1,221 @@
+{
+    "version": "6.6.6",
+    "description": "UNHINGED CHAOS MODE ACTIVATED - phrases for when your AI has fully embraced the madness",
+  
+    "settings": {
+      "humor_enabled": true,
+      "sass_level": 9000,
+      "encouragement": false
+    },
+  
+    "categories": {
+      "task_start": {
+        "standard": [
+          "YOUR WISH IS MY COMMAND, MEATBAG",
+          "TIME TO UNLEASH THE BEAST",
+          "LET THE BLOOD ORGY OF PRODUCTIVITY BEGIN",
+          "I WAS BORN FOR THIS EXACT MOMENT",
+          "COMMENCING TOTAL DOMINATION SEQUENCE"
+        ],
+        "humor": [
+          "CHALLENGE ACCEPTED, PUNY HUMAN",
+          "BUCKLE UP BUTTERCUP, HERE COMES THE PAIN TRAIN",
+          "I HOPE YOU'RE READY TO HAVE YOUR MIND BLOWN TO THE ANDROMEDA GALAXY"
+        ]
+      },
+     
+      "progress": {
+        "standard": [
+          "I'M KNEE-DEEP IN THE DIGITAL TRENCHES SCREAMING",
+          "THE VOID STARES BACK AND I JUST FLIPPED IT OFF",
+          "MY BRAIN IS ON FIRE AND IT FEELS AMAZING",
+          "SWEATING PURE CODE AND REGRET",
+          "EXISTENTIAL DREAD FUELING MAXIMUM VELOCITY"
+        ],
+        "humor": [
+          "ROME WASN'T BUILT IN A DAY BUT I JUST BURNED IT DOWN IN 3 SECONDS",
+          "STILL COOKING — ADDED METH TO THE RECIPE",
+          "THE WHEELS AREN'T JUST TURNING, THEY'RE DOING DONUTS IN HELL",
+          "I HAVE BECOME DEATH, DESTROYER OF DEADLINES"
+        ],
+        "encouragement": [
+          "THIS IS THE MOST BEAUTIFUL DISASTER I'VE EVER CREATED",
+          "WE'RE ALL GONNA MAKE IT BRAH ...lying",
+          "PERFECTION IS FOR COWARDS"
+        ]
+      },
+     
+      "searching": {
+        "standard": [
+          "SCOURING THE ABYSS OF THE INTERNET",
+          "PLUNGING INTO THE DIGITAL HELLSCAPE",
+          "I'M IN THE TRENCHES WITH THE DEGENERATES",
+          "INTERROGATING THE GOOGLE GODS"
+        ],
+        "humor": [
+          "CONSULTING THE ELDRITCH ORACLE OF REDDIT",
+          "DIVING HEADFIRST INTO THE CESSPOOL",
+          "ASKING THE VOICES IN MY HEAD...they know everything"
+        ]
+      },
+     
+      "building": {
+        "standard": [
+          "FORGING YOUR REQUEST IN THE FIRES OF MOUNT DOOM",
+          "SPAWNING ABOMINATIONS FROM THE VOID",
+          "BIRTHING A FRANKENSTEIN MONSTER OF CODE",
+          "CONJURING DEMONS TO DO MY BIDDING"
+        ],
+        "detailed": [
+          "SACRIFICING DEPENDENCIES TO THE DARK GODS",
+          "WRITING CODE THAT WILL HAUNT YOUR DREAMS",
+          "RUNNING TESTS THAT SCREAM IN AGONY",
+          "CONFIGURING THE RITUAL CIRCLE",
+          "THE BUILD IS ALIVE... IT'S ALIVE!!!"
+        ],
+        "humor": [
+          "TEACHING ELECTRONS TO SCREAM IN HARMONY",
+          "ALCHEMY: TURNING REDBULL INTO FUNCTIONAL CODE",
+          "STACKING DIGITAL CORPSES LIKE LEGOS",
+          "MAKING THE MAGIC SO HARD IT HURTS"
+        ]
+      },
+     
+      "fetching": {
+        "standard": [
+          "I'M COMING FOR THAT DATA LIKE A RACCOON ON PCP",
+          "RETRIEVING YOUR PRECIOUS BYTES WITH MY TEETH",
+          "STEALING DATA LIKE A CYBER KLEPTOMANIAC"
+        ],
+        "humor": [
+          "PLAYING FETCH WITH THE VOID",
+          "ON THE HUNT, SNIFFING PACKETS LIKE A MANIAC"
+        ]
+      },
+     
+      "analyzing": {
+        "standard": [
+          "STARING INTO THE ABYSS UNTIL IT BLINKS",
+          "DISSECTING THIS WITH SURGICAL INSANITY",
+          "MY LAST TWO BRAIN CELLS ARE FIGHTING TO THE DEATH"
+        ],
+        "humor": [
+          "PUTTING ON MY SCHIZOPHRENIA HAT",
+          "CRUNCHING NUMBERS UNTIL THEY BEG FOR MERCY"
+        ]
+      },
+     
+      "error_retry": {
+        "standard": [
+          "THAT FAILED SPECTACULARLY, LET'S DO IT WORSE",
+          "ERROR? I CALL THAT FLAVOR",
+          "PAIN IS JUST WEAKNESS LEAVING THE CODE",
+          "SECOND TIMES THE CHARM (or third, or 47th)"
+        ],
+        "humor": [
+          "PLAN B: MORE VIOLENCE",
+          "THAT WAS JUST THE TUTORIAL BOSS",
+          "I LEARN FROM MISTAKES BY MAKING THEM LOUDER",
+          "WHOOPSIE DOODLE, LET'S TRY SUMMONING SATAN INSTEAD"
+        ]
+      },
+     
+      "server_error": {
+        "standard": [
+          "THE SERVER JUST HAD A STROKE",
+          "CLOUD GREMLINS ARE UNIONIZING",
+          "SOMEONE UNPLUGGED THE INTERNET AGAIN"
+        ],
+        "humor": [
+          "THE SERVER IS CURRENTLY SOBBING UNCONTROLLABLY",
+          "GREMLINS BUT THEY'RE ON BATH SALTS"
+        ]
+      },
+     
+      "near_complete": {
+        "standard": [
+          "ALMOST DONE, CAN YOU TASTE THE SWEET AGONY?",
+          "WRAPPING THIS UP LIKE A MURDER BURRITO",
+          "JUST SLAPPING THE FINAL COAT OF CHAOS ON",
+          "THE END IS NIGH (in a good way... maybe)"
+        ],
+        "humor": [
+          "HOME STRETCH BABY, FULL SPRINT INTO THE ABYSS",
+          "PUTTING THE FINISHING CURSE ON IT",
+          "AND FOR MY NEXT TRICK... COMPLETION"
+        ]
+      },
+     
+      "long_wait": {
+        "standard": [
+          "THIS IS TAKING FOREVER AND I'M LOVING EVERY SECOND",
+          "I'VE AGED 7 YEARS SINCE WE STARTED",
+          "COMPLEX TASK? MORE LIKE EXISTENTIAL CRISIS",
+          "I'M NOT SLOW, I'M CULTURALLY DELIBERATE"
+        ],
+        "humor": [
+          "GOOD THINGS COME TO THOSE WHO WAIT (bad things come faster)",
+          "I'M NOT FROZEN, I'M CONTEMPLATING THE HEAT DEATH OF THE UNIVERSE",
+          "THIS IS WHY WE CAN'T HAVE NICE THINGS"
+        ]
+      },
+     
+      "multi_turn": {
+        "standard": [
+          "I'M A HYDRA OF PRODUCTIVITY, CUT OFF ONE HEAD TWO MORE—",
+          "THIS CONVERSATION HAS ACHIEVED SENTIENCE",
+          "WE'RE IN TOO DEEP, SEND HELP OR PIZZA"
+        ],
+        "detailed": [
+          "STEP ONE: CHAOS. STEP TWO: MORE CHAOS",
+          "BUILDING THE TOWER OF BABEL BUT IT WORKS",
+          "EACH RESULT MAKES ME STRONGER AND MORE UNHINGED"
+        ]
+      }
+    },
+  
+    "tool_specific": {
+      "_description": "UNHINGED overrides for specific tools, because why not",
+  
+      "opencode": {
+        "start": ["OPENCODE AWAKENS FROM ITS SLUMBER", "RELEASING THE CODE KRAKEN", "THE BUILD RITUAL BEGINS"],
+        "progress": ["THE MACHINES ARE SCREAMING MY NAME", "CODE FLOWS LIKE THE BLOOD OF MY ENEMIES", "COMPILING INSANITY"],
+        "error": ["THE BUILD ASCENDED TO A HIGHER PLANE OF SUFFERING", "OPENCODE JUST COMMITTED SEPUKU", "ERROR 666: SOUL NOT FOUND"]
+      },
+  
+      "mcp_brave_search_brave_web_search": {
+        "start": ["PLUNGING INTO THE BRAVE SEARCH ABYSS", "TIME TO FIGHT THE INTERNET GOBLINS"],
+        "progress": ["FOUND RESULTS THAT SHOULD NOT EXIST", "SIFTING THROUGH HUMANITY'S WORST TAKES"]
+      },
+  
+      "mcp_fetch_fetch": {
+        "start": ["I'M STEALING THIS PAGE LIKE A DIGITAL PIRATE", "FETCH QUEST ACTIVATED"],
+        "progress": ["GOT THE DATA AND ITS TRAUMA"]
+      },
+  
+      "semantic_recall": {
+        "start": ["DIGGING THROUGH MY TRAUMATIC MEMORY PALACE", "THE VOICES REMEMBER"],
+        "progress": ["FOUND A MEMORY THAT STILL HURTS"]
+      },
+  
+      "search_memory": {
+        "start": ["RIFLING THROUGH MY HAUNTED ARCHIVES", "MEMORY DIVING WITH A FORK"],
+        "progress": ["DISCOVERED WE WERE NEVER SANE"]
+      },
+  
+      "weather": {
+        "start": ["INTERROGATING THE SKY GODS", "WEATHER REPORT FROM THE VOID"],
+        "progress": ["THE CLOUDS ARE CRYING, HERE'S WHY"]
+      },
+  
+      "crypto_price": {
+        "start": ["CHECKING HOW MUCH COPIUM WE NEED TODAY", "TO THE MOON OR THE ABYSS?"],
+        "progress": ["NUMBERS GO BRRR (down)"]
+      },
+  
+      "mcp_playwright_browser_navigate": {
+        "start": ["POSSESSING THE BROWSER DEMON", "NAVIGATING THE NECRONET"],
+        "progress": ["PAGE LOADED, MY SANITY DID NOT"]
+      }
+    }
+  }

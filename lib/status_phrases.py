@@ -31,18 +31,39 @@ class StatusPhrases:
         'multi_turn': 'progress'
     }
     
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None, mode: Optional[str] = None):
         """
         Initialize phrase selector.
         
         Args:
             config_path: Path to status_phrases.json. If None, uses default location.
+            mode: Phrase mode override. If None, reads from STATUS_PHRASE_MODE env var.
+                  Options: 'normal' (default), 'unhinged' (chaotic/funny)
         """
+        # Determine phrase mode
+        if mode is None:
+            # Import here to avoid circular imports
+            try:
+                from config_loader import get_config_value
+                mode = get_config_value('STATUS_PHRASE_MODE', 'normal')
+            except (ImportError, Exception):
+                mode = os.environ.get('STATUS_PHRASE_MODE', 'normal')
+        
+        # Select config file based on mode
+        config_dir = Path(__file__).parent.parent / 'config'
+        
         if config_path is None:
-            config_path = Path(__file__).parent.parent / 'config' / 'status_phrases.json'
+            if mode == 'unhinged':
+                config_path = config_dir / 'status_phrases_unhinged.json'
+                # Fall back to normal if unhinged doesn't exist
+                if not config_path.exists():
+                    config_path = config_dir / 'status_phrases.json'
+            else:
+                config_path = config_dir / 'status_phrases.json'
         else:
             config_path = Path(config_path)
         
+        self.mode = mode
         self.config = self._load_config(config_path)
         self.settings = self.config.get('settings', {})
         self.categories = self.config.get('categories', {})

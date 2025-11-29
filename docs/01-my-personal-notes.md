@@ -471,3 +471,13 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
 # Find content quality issues
 {job="jarvis", log_type="intelligence"} | json | event="reflection_response" | response_matched_tool_data=false
 ```
+
+# Status Phrases testing
+
+```bash
+# Quick test
+./bin/say-status.sh "BUCKLE UP BUTTERCUP" true
+
+# Or for local
+./bin/say-status-local.sh "THE VOID STARES BACK" true
+```
