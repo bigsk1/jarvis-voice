@@ -382,6 +382,9 @@ curl http://localhost:4096/health
 # Workspace
 ls -la ~/jarvis-workspace/
 ./setup_opencode_workspace.sh
+
+# Update opencode
+opencode upgrade
 ```
 
 ---

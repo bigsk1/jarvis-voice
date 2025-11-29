@@ -58,7 +58,7 @@
         "--rm",
         "mcp/sequentialthinking"
       ],
-      "description": "Sequential thinking for complex tasks",
+      "description": "Sequential thinking for complex tasks, use this when you need to think step by step to solve a problem",
       "enabled": true
     }
   }
