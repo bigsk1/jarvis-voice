@@ -620,6 +620,11 @@ class IntelligenceLayer:
         
         # Build reflection prompt
         raw_data = json.loads(exp['raw_data'])
+        context_data = raw_data.get('context', {})
+        
+        # Extract LLM response and tool results for content evaluation
+        llm_response = context_data.get('llm_response', '[Not captured]')
+        tool_results = context_data.get('tool_results', '[Not captured]')
         
         # Determine if this was a suboptimal experience
         tools_list = json.loads(exp['tools_used'])
@@ -637,10 +642,22 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 **Tools Used (in order)**: {exp['tools_used']}
 **Turns Taken**: {exp['turns_taken']}
 **Final Tool**: {exp['final_tool']}
-**Outcome**: {"SUCCESS" if exp['outcome_success'] else "FAILURE"}
+**Outcome Status**: {"SUCCESS" if exp['outcome_success'] else "FAILURE"}
 **User Satisfied**: {exp['user_satisfied']}
 **Had to Clarify**: {exp['had_to_clarify']}
 **Had to Retry**: {exp['had_to_retry']}
+
+**Tool Results** (what the tools returned):
+{tool_results[:1500] if tool_results != '[Not captured]' else '[Not available]'}
+
+**LLM Response** (what was said to the user):
+{llm_response[:1000] if llm_response != '[Not captured]' else '[Not available]'}
+
+CRITICAL EVALUATION:
+1. Did the tool(s) return relevant data for the query? (tool_results vs query)
+2. Did the LLM response accurately reflect the tool data? (llm_response vs tool_results)
+3. Did the LLM response actually answer what the user asked? (llm_response vs query)
+4. Was the FIRST tool the optimal choice, or should a different tool have been used initially?
 
 IMPORTANT CLASSIFICATION:
 - A FACT is data like "The server IP is 10.0.0.1" → belongs in Memory DB, NOT here
@@ -662,6 +679,12 @@ Provide your analysis as JSON:
     
     "first_tool_optimal": true/false,
     "why_or_why_not": "explanation of what went right or wrong",
+    
+    // CONTENT EVALUATION (new)
+    "tool_returned_relevant_data": true/false,  // Did the tool return useful data for the query?
+    "response_matched_tool_data": true/false,   // Did the LLM accurately use the tool's output?
+    "response_answered_query": true/false,      // Did the final response actually answer the user's question?
+    "content_quality_notes": "brief notes on response quality issues if any",
     
     "rule": "ALWAYS/NEVER + action + for + query type",  // e.g., "ALWAYS prefer crypto_price over search_memory for price queries"
     "preferred_tool": "tool_name" or null,  // The tool to use

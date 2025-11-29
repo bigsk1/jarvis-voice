@@ -79,7 +79,7 @@ def record_interaction(
     Args:
         query: Original user query
         tools_used: List of tools invoked
-        result: The final result dict from orchestrator
+        result: The final result dict from orchestrator (contains speech, data, ok, etc.)
         conversation_context: Optional list of conversation turns
     
     Returns:
@@ -102,11 +102,34 @@ def record_interaction(
         # Infer user signals from context
         user_signals = _infer_user_signals(query, result, conversation_context)
         
-        # Context summary
+        # ============================================
+        # CRITICAL: Capture LLM response and tool data
+        # This enables reflection to evaluate CONTENT quality
+        # ============================================
+        
+        # LLM's final response to user (the speech output)
+        llm_response = result.get('speech', '')
+        
+        # Actual tool results (data returned by tools)
+        tool_results = result.get('data', {})
+        
+        # Truncate to prevent DB bloat but keep enough for evaluation
+        if len(llm_response) > 2000:
+            llm_response = llm_response[:2000] + "... [truncated]"
+        
+        # Serialize tool results, truncate if too large
+        tool_results_str = json.dumps(tool_results, default=str)
+        if len(tool_results_str) > 5000:
+            tool_results_str = tool_results_str[:5000] + "... [truncated]"
+        
+        # Context summary with full data
         context = {
             'tools_available': len(tools_used) > 0,
             'multi_turn': len(tools_used) > 1,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            # NEW: Include response content for reflection
+            'llm_response': llm_response,
+            'tool_results': tool_results_str
         }
         
         # Run async in sync context
