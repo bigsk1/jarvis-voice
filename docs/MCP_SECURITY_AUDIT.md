@@ -250,7 +250,18 @@ Keep `"enabled": true` after audit passes.
 
 **Why Safe:** Server only gets what it needs, not your entire environment.
 
-### ❌ Empty Env (Still Secure!)
+### ✅ Args Expansion (Secure)
+
+```json
+"args": [
+  "--proxy-server", "${LOCAL_PROXY}",  // Expanded to CLI arg, NOT env var
+  "--api-key", "${MY_API_KEY}"
+]
+```
+
+**Why Safe:** Values become command-line arguments, not container environment. The MCP server cannot enumerate other env vars - it only sees the final value in the arg string.
+
+### ✅ Empty Env (Still Secure!)
 
 ```json
 "env": {}  // Or omit "env" entirely
