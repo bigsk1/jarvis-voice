@@ -1,0 +1,224 @@
+{
+  "version": "1.0",
+  "description": "Dynamic phrase configuration for status updates. Phrases are randomly selected for natural variety.",
+  
+  "settings": {
+    "humor_enabled": true,
+    "sass_level": 1,
+    "encouragement": true
+  },
+  
+  "categories": {
+    "task_start": {
+      "standard": [
+        "On it",
+        "Got it",
+        "Working on that",
+        "Let me handle that",
+        "Starting now"
+      ],
+      "humor": [
+        "Challenge accepted",
+        "Consider it done",
+        "Ooh, this looks interesting"
+      ]
+    },
+    
+    "progress": {
+      "standard": [
+        "Still working on it",
+        "Making progress",
+        "Getting there",
+        "Hang tight",
+        "Working away"
+      ],
+      "humor": [
+        "Rome wasn't built in a day, but I'm faster",
+        "Still cooking",
+        "Halfway there, I think",
+        "The gears are turning"
+      ],
+      "encouragement": [
+        "This is going well",
+        "Looking good so far",
+        "Smooth sailing"
+      ]
+    },
+    
+    "searching": {
+      "standard": [
+        "Searching the web",
+        "Looking that up",
+        "Gathering information",
+        "Checking sources"
+      ],
+      "humor": [
+        "Consulting the oracle",
+        "Diving into the internet",
+        "Asking the hive mind"
+      ]
+    },
+    
+    "building": {
+      "standard": [
+        "Building your project",
+        "OpenCode is working",
+        "Setting things up",
+        "Constructing"
+      ],
+      "detailed": [
+        "Installing dependencies",
+        "Writing code",
+        "Running tests",
+        "Configuring project",
+        "Finalizing build"
+      ],
+      "humor": [
+        "Teaching electrons to dance",
+        "Turning coffee into code",
+        "Assembling digital legos",
+        "Making the magic happen"
+      ]
+    },
+    
+    "fetching": {
+      "standard": [
+        "Fetching data",
+        "Retrieving information",
+        "Getting that for you"
+      ],
+      "humor": [
+        "Playing fetch",
+        "On the hunt"
+      ]
+    },
+    
+    "analyzing": {
+      "standard": [
+        "Analyzing results",
+        "Processing data",
+        "Thinking about this"
+      ],
+      "humor": [
+        "Putting on my thinking cap",
+        "Crunching the numbers"
+      ]
+    },
+    
+    "error_retry": {
+      "standard": [
+        "Hit a snag, trying again",
+        "Small hiccup, working around it",
+        "Trying a different approach",
+        "Adjusting strategy"
+      ],
+      "humor": [
+        "Well that didn't work, Plan B",
+        "First attempt was just a warm-up",
+        "Okay, let's try that again",
+        "Learning from mistakes"
+      ]
+    },
+    
+    "server_error": {
+      "standard": [
+        "Server issue, retrying",
+        "Service hiccup",
+        "Connection problem, trying again"
+      ],
+      "humor": [
+        "The server sneezed",
+        "Gremlins in the system"
+      ]
+    },
+    
+    "near_complete": {
+      "standard": [
+        "Almost there",
+        "Wrapping up",
+        "Just finishing",
+        "Final touches"
+      ],
+      "humor": [
+        "Home stretch",
+        "The finish line is in sight",
+        "Putting the cherry on top",
+        "And for my final act"
+      ]
+    },
+    
+    "long_wait": {
+      "standard": [
+        "Still working, shouldn't be long",
+        "Taking a bit longer than expected",
+        "Complex task, bear with me",
+        "Processing"
+      ],
+      "humor": [
+        "Good things come to those who wait",
+        "I'm not frozen, I promise",
+        "Worth the wait, trust me",
+        "Still here, still working"
+      ]
+    },
+    
+    "multi_turn": {
+      "standard": [
+        "Making progress, still gathering info",
+        "Working through multiple steps",
+        "Getting closer"
+      ],
+      "detailed": [
+        "Step complete, moving to next",
+        "Gathering more data",
+        "Building on previous results"
+      ]
+    }
+  },
+  
+  "tool_specific": {
+    "_description": "Override messages for specific tools. Falls back to categories if not defined.",
+    
+    "opencode": {
+      "start": ["OpenCode is on it", "Starting the build", "Firing up OpenCode"],
+      "progress": ["Build in progress", "OpenCode is working hard", "Code is flowing"],
+      "error": ["Build hit an issue, recovering", "OpenCode stumbled but is getting back up"]
+    },
+    
+    "mcp_brave_search_brave_web_search": {
+      "start": ["Searching the web", "Querying Brave Search"],
+      "progress": ["Found some results, analyzing", "Sifting through results"]
+    },
+    
+    "mcp_fetch_fetch": {
+      "start": ["Fetching that page", "Retrieving content"],
+      "progress": ["Got the data, processing"]
+    },
+    
+    "semantic_recall": {
+      "start": ["Checking my memories", "Searching what I know"],
+      "progress": ["Found something relevant"]
+    },
+    
+    "search_memory": {
+      "start": ["Looking through memories", "Searching stored info"],
+      "progress": ["Found some matches"]
+    },
+    
+    "weather": {
+      "start": ["Checking the weather", "Looking up conditions"],
+      "progress": ["Got the forecast"]
+    },
+    
+    "crypto_price": {
+      "start": ["Checking crypto prices", "Looking up the market"],
+      "progress": ["Got the latest prices"]
+    },
+    
+    "mcp_playwright_browser_navigate": {
+      "start": ["Opening the browser", "Navigating to page"],
+      "progress": ["Page loaded, examining content"]
+    }
+  }
+}
+
