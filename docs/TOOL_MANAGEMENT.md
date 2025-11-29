@@ -336,14 +336,15 @@ Automatically disable unused tools after 7 days:
 | **Communication** | send_email, send_webhook | ✅ Partial |
 | **External APIs** | api_call, crypto_price, get_time | ✅ Partial |
 
-#### MCP Servers (5)
+#### MCP Servers (6)
 | Server | Capability | Notes |
 |--------|------------|-------|
 | `brave_search` | Web search | Primary search |
-| `duckduckgo` | Web search | Backup/privacy |
-| `fetch` | HTTP GET/POST | URL content retrieval |
-| `coingecko` | Crypto prices | Redundant with crypto_price tool |
+| `duckduckgo` | Web search | Backup/privacy (disabled) |
+| `fetch` | HTTP GET/POST | URL content retrieval (static HTML) |
+| `coingecko` | Crypto prices | Redundant with crypto_price tool (disabled) |
 | `sequentialthinking` | Deep reasoning | For complex reflection |
+| `playwright` | Browser automation | JS-heavy sites, forms, screenshots, PDFs |
 
 ---
 
@@ -542,10 +543,144 @@ npx -y @modelcontextprotocol/server-slack
 # Google Maps (directions, places)
 npx -y @modelcontextprotocol/server-google-maps
 
-# Puppeteer (browser automation)
-npx -y @modelcontextprotocol/server-puppeteer
-
 # Filesystem (file operations)
 npx -y @modelcontextprotocol/server-filesystem
 ```
+
+---
+
+## Playwright MCP Server (Browser Automation)
+
+### Why Playwright?
+
+| Scenario | `fetch` MCP | `playwright` MCP |
+|----------|-------------|------------------|
+| Static HTML pages | ✅ Fast, lightweight | ⚠️ Overkill |
+| JavaScript SPAs (React, Vue) | ❌ Returns empty HTML | ✅ Renders JS first |
+| Login/authentication flows | ❌ No session handling | ✅ Full browser state |
+| Form filling & submission | ❌ No interaction | ✅ Click, type, submit |
+| Screenshots & PDFs | ❌ Not supported | ✅ Built-in |
+| CAPTCHA handling | ❌ No | ⚠️ Basic (vision mode) |
+
+**Rule of thumb:** Try `fetch` first. If page is blank/broken, switch to `playwright`.
+
+### Configuration (Headless Ubuntu)
+
+```json
+"playwright": {
+  "command": "docker",
+  "args": [
+    "run", "-i", "--rm", "--init",
+    "--network", "host",
+    "-v", "/tmp/playwright-output:/output",
+    "mcr.microsoft.com/playwright/mcp",
+    "--headless",
+    "--no-sandbox",
+    "--browser", "chromium",
+    "--caps", "pdf",
+    "--timeout", "60000",
+    "--viewport-size", "1920x1080"
+  ],
+  "description": "Browser automation for JS-heavy sites",
+  "enabled": true
+}
+```
+
+### Key Options Explained
+
+| Flag | Purpose | Home Lab Recommendation |
+|------|---------|------------------------|
+| `--headless` | No display required | ✅ Required for Ubuntu server |
+| `--no-sandbox` | Docker compatibility | ✅ Required in containers |
+| `--browser chromium` | Browser engine | Chromium (default, fastest) |
+| `--caps pdf` | Enable PDF generation | Optional, adds `browser_pdf_save` |
+| `--caps vision` | Coordinate-based clicks | For complex UI automation |
+| `--timeout 60000` | 60s action timeout | Increase for slow sites |
+| `--viewport-size 1920x1080` | Screen size | Standard desktop |
+| `--isolated` | Memory-only, no disk | Security for untrusted sites |
+
+### Advanced Options
+
+```json
+// Add to args array as needed:
+"--allowed-origins", "https://trusted.com",     // Restrict navigation
+"--blocked-origins", "https://ads.com",         // Block domains
+"--proxy-server", "http://yourproxy:3128",      // Route through proxy
+"--user-agent", "Mozilla/5.0...",               // Custom UA
+"--storage-state", "/state/state.json",         // Persist cookies/auth
+"--save-trace"                                   // Debug traces to /output
+```
+
+### Playwright Tools Available
+
+| Tool | Description | Example Use |
+|------|-------------|-------------|
+| `browser_navigate` | Go to URL | Navigate to login page |
+| `browser_click` | Click element | Click "Submit" button |
+| `browser_type` | Type into field | Fill username/password |
+| `browser_snapshot` | Get page accessibility tree | Better than screenshot for LLM |
+| `browser_take_screenshot` | Capture image | Visual verification |
+| `browser_pdf_save` | Save page as PDF | Generate reports |
+| `browser_evaluate` | Run JavaScript | Extract dynamic data |
+| `browser_select_option` | Dropdown selection | Choose from menus |
+| `browser_wait_for` | Wait for element/text | Handle loading states |
+| `browser_tabs` | Manage tabs | Multi-tab workflows |
+
+### Example Workflows
+
+**1. Scrape JS-heavy dashboard:**
+```
+User: "Get my server stats from the Proxmox dashboard"
+→ browser_navigate(url="https://proxmox:8006")
+→ browser_type(ref="#username", text="root")
+→ browser_type(ref="#password", text="***")
+→ browser_click(ref="#login-btn")
+→ browser_snapshot() → Extract stats from accessibility tree
+```
+
+**2. Generate PDF report:**
+```
+User: "Save this webpage as PDF"
+→ browser_navigate(url="https://example.com/report")
+→ browser_pdf_save(filename="report.pdf")
+```
+
+**3. Fill web form:**
+```
+User: "Submit a support ticket on the portal"
+→ browser_navigate(url="https://support.example.com")
+→ browser_type(ref="#subject", text="Server issue")
+→ browser_type(ref="#description", text="...")
+→ browser_click(ref="#submit")
+```
+
+### When NOT to Use Playwright
+
+- Simple API calls → Use `api_call` tool
+- Static HTML pages → Use `fetch` MCP (10x faster)
+- File downloads → Use `fetch` or `api_call`
+- Frequent polling → Too slow, use dedicated monitoring
+
+### Troubleshooting
+
+```bash
+# Test Playwright MCP manually
+docker run -it --rm mcr.microsoft.com/playwright/mcp --help
+
+# Check if running
+docker ps | grep playwright
+
+# View screenshots/PDFs
+ls -la /tmp/playwright-output/
+
+# Increase timeout for slow sites
+# Add: "--timeout", "120000" (2 minutes)
+```
+
+### Security Notes
+
+- **Headless Ubuntu:** `--no-sandbox` is safe inside Docker
+- **Allowed origins:** Restrict to trusted domains in production
+- **Storage state:** Mount read-only (`/host/state:/state:ro`)
+- **Isolated mode:** Use `--isolated` for untrusted URLs
 

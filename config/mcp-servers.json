@@ -60,7 +60,27 @@
       ],
       "description": "Sequential thinking for complex tasks, use this when you need to think step by step to solve a problem",
       "enabled": true
+    },
+    "playwright": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--init",
+        "--network",
+        "host",
+        "-v", "/tmp/playwright-output:/output",
+        "mcr.microsoft.com/playwright/mcp",
+        "--headless",
+        "--no-sandbox",
+        "--browser", "chromium",
+        "--caps", "pdf",
+        "--timeout", "60000",
+        "--viewport-size", "1920x1080"
+      ],
+      "description": "Browser automation for JS-heavy sites: navigate, click, fill forms, screenshots, PDFs. Use when fetch fails on dynamic content.",
+      "enabled": true
     }
   }
 }
-
