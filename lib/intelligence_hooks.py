@@ -317,7 +317,8 @@ def format_insights_for_prompt(insights: Dict[str, Any]) -> str:
                 tools = ', '.join(insight['avoided_tools'])
                 lines.append(f"   → DO NOT use: {tools}")
             if insight.get('reasoning'):
-                lines.append(f"   → Why: {insight['reasoning'][:100]}")
+                # Show full reasoning (truncated was causing confusion - e.g., ending mid-word)
+                lines.append(f"   → Why: {insight['reasoning']}")
         lines.append("")
     
     # Tool biases summary

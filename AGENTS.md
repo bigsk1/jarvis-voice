@@ -716,6 +716,62 @@ def main():
         sys.exit(1)
 ```
 
+### ❌ Using Wrong Result Key Names
+
+**RECURRING BUG** - The orchestrator result uses specific key names!
+
+```python
+# BAD - Wrong key name (tools_called doesn't exist)
+tools_used = result.get("tools_called", [])
+
+# GOOD - Correct key name
+tools_used = result.get("tools_used", [])
+```
+
+**Orchestrator result keys:**
+- `speech` - Text response for TTS
+- `ok` - Boolean success status
+- `tools_used` - List of tool names executed (NOT "tools_called")
+- `data` - Optional data payload
+- `usage` - Token usage info
+
+### ❌ Using Wrong LLM Provider Function
+
+**RECURRING BUG** - The function is `create_provider`, not `get_provider`!
+
+```python
+# BAD - Function doesn't exist
+from llm_provider import get_provider
+provider = get_provider()  # ImportError!
+
+# GOOD - Correct function with required arguments
+from llm_provider import create_provider
+from config_loader import get_config_value
+
+# For xAI
+provider = create_provider(
+    "xai",
+    api_key=get_config_value("XAI_API_KEY"),
+    model=get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+)
+
+# For Anthropic
+provider = create_provider(
+    "anthropic",
+    api_key=get_config_value("ANTHROPIC_API_KEY"),
+    model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+)
+
+# For Ollama
+provider = create_provider(
+    "ollama",
+    model=get_config_value("OLLAMA_MODEL", "qwen3:14b"),
+    base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
+)
+```
+
+**Available providers:** `xai`, `anthropic`, `openai`, `ollama`
+
 ---
 
 ## Special Integrations

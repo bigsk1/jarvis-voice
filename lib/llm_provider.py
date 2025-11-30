@@ -422,7 +422,8 @@ class XAIProvider(LLMProvider):
             # xAI uses OpenAI-compatible tool format
             request_params = {
                 "model": self.model,
-                "messages": full_messages
+                "messages": full_messages,
+                "max_tokens": 1024  # Ensure adequate response length
             }
             
             # Only add tools if provided

@@ -19,7 +19,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int, get_float
 from status_phrases import StatusPhrases, get_phrase
-from status_llm import StatusSummarizer, get_status_summarizer
+from status_llm import StatusSummarizer
 
 
 class StatusUpdater:
@@ -70,7 +70,8 @@ class StatusUpdater:
         self.phrases = StatusPhrases()
         
         # LLM summarizer for dynamic status (falls back to phrases)
-        self.summarizer = get_status_summarizer()
+        # Create new instance to get config loaded at this point (not cached singleton)
+        self.summarizer = StatusSummarizer()
         
         # Background update thread (for long tasks)
         self._background_thread: Optional[threading.Thread] = None
@@ -137,22 +138,32 @@ class StatusUpdater:
                 if time_since_last < self.interval:
                     return False
             
-            # Get message (try LLM first if context available, then static phrases)
+            # Get message - try LLM first (if enabled), then fall back to static phrases
             if custom_message:
                 message = custom_message
-            elif self._last_context and self.summarizer.is_enabled():
+            elif self.summarizer.is_enabled():
                 # Try dynamic LLM summary
-                event_type = 'error' if 'error' in category else 'progress'
+                # Build context from available info (explicit context, tool name, category)
+                effective_tool = tool_name or self.current_tool
+                event_type = 'error' if 'error' in category else ('start' if category == 'task_start' else 'progress')
+                
+                # Use explicit context if available, otherwise build minimal context
+                if self._last_context:
+                    llm_context = self._last_context
+                else:
+                    # Build context from tool name and category for LLM to work with
+                    llm_context = self._build_minimal_context(effective_tool, category, context)
+                
                 message = self.summarizer.summarize(
-                    self._last_context,
-                    tool_name=tool_name or self.current_tool,
+                    llm_context,
+                    tool_name=effective_tool,
                     event_type=event_type
                 )
                 # Fallback to static phrase if LLM fails
                 if not message:
                     message = self.phrases.get_phrase(
                         category=category,
-                        tool_name=tool_name or self.current_tool,
+                        tool_name=effective_tool,
                         style=self.style
                     )
             else:
@@ -269,6 +280,71 @@ class StatusUpdater:
         msg = re.sub(r'https?://\S+', 'URL', msg)
         msg = re.sub(r'[a-f0-9-]{36}', 'UUID', msg)
         return msg[:100]  # Truncate
+    
+    def _build_minimal_context(self, tool_name: Optional[str], category: str, context: Optional[Dict[str, Any]]) -> str:
+        """Build minimal context for LLM when no explicit context is set."""
+        parts = []
+        
+        # Tool name mapping to human-readable descriptions
+        tool_descriptions = {
+            'opencode': 'Building code project with AI coding assistant',
+            'mcp_brave_search_brave_web_search': 'Searching the web for information',
+            'mcp_brave_search_brave_local_search': 'Searching for local businesses',
+            'mcp_brave_search_brave_news_search': 'Searching for news articles',
+            'mcp_fetch_fetch': 'Fetching data from a website',
+            'mcp_playwright_browser_navigate': 'Navigating to a webpage',
+            'mcp_playwright_browser_snapshot': 'Taking a snapshot of a webpage',
+            'weather': 'Getting weather information',
+            'get_time': 'Getting the current time',
+            'remember': 'Saving something to memory',
+            'search_memory': 'Searching through memories',
+            'semantic_recall': 'Recalling memories semantically',
+            'crypto_price': 'Getting cryptocurrency prices',
+            'api_call': 'Making an API request',
+        }
+        
+        # Category descriptions
+        category_descriptions = {
+            'task_start': 'Starting a new task',
+            'building': 'Building/coding something',
+            'searching': 'Searching for information',
+            'fetching': 'Fetching data',
+            'multi_turn': 'Working through multiple steps',
+            'progress': 'Making progress on the task',
+            'near_complete': 'Almost finished with the task',
+            'long_wait': 'Task is taking longer than expected',
+            'error_retry': 'Encountered an issue, trying again',
+        }
+        
+        # Add tool description if available
+        if tool_name:
+            if tool_name in tool_descriptions:
+                parts.append(tool_descriptions[tool_name])
+            elif 'search' in tool_name.lower():
+                parts.append('Searching for information')
+            elif 'brave' in tool_name.lower():
+                parts.append('Searching the web')
+            elif 'memory' in tool_name.lower() or 'recall' in tool_name.lower():
+                parts.append('Working with memory')
+            elif 'fetch' in tool_name.lower() or 'playwright' in tool_name.lower():
+                parts.append('Fetching web content')
+            else:
+                parts.append(f'Running {tool_name}')
+        
+        # Add category description
+        if category in category_descriptions:
+            parts.append(category_descriptions[category])
+        
+        # Add turn info if available
+        if self.turn_number > 1:
+            parts.append(f'Step {self.turn_number} of multi-step task')
+        
+        # Add elapsed time context
+        elapsed = self.get_elapsed()
+        if elapsed > 30:
+            parts.append(f'Been working for {int(elapsed)} seconds')
+        
+        return '\n'.join(parts) if parts else 'Working on a task'
     
     def _speak_async(self, message: str):
         """Speak message in background thread."""

@@ -350,6 +350,7 @@ class Orchestrator:
                 # Build response
                 response = {
                     "speech": speech,
+                    "raw_llm_response": raw_speech,  # Original LLM response before voice formatting
                     "ok": True,
                     "tools_used": tools_used,
                     "data": accumulated_data,
@@ -1049,9 +1050,11 @@ def main():
         print("  mode: 'cloud' or 'local'", file=sys.stderr)
         print("  --json: Output only JSON (for scripting)", file=sys.stderr)
         print("  --debug-thinking: Show LLM reasoning (for debugging)", file=sys.stderr)
+        print("  --feedback: Ask LLM for feedback about the experience (QA mode)", file=sys.stderr)
         print("\nExample:")
         print("  ./orchestrator_v2.py cloud 'Send a webhook to my server'")
         print("  ./orchestrator_v2.py cloud 'Should I save this?' --debug-thinking")
+        print("  ./orchestrator_v2.py cloud 'Test a task' --feedback")
         sys.exit(1)
     
     mode = sys.argv[1]
@@ -1069,6 +1072,11 @@ def main():
         sys.argv.remove("--debug-thinking")
         # Set env var for thinking module
         os.environ['JARVIS_DEBUG_THINKING'] = '1'
+    
+    # Check for --feedback flag (LLM-as-QA mode)
+    collect_feedback = "--feedback" in sys.argv
+    if collect_feedback:
+        sys.argv.remove("--feedback")
     
     transcript = " ".join(sys.argv[2:])
     
@@ -1098,6 +1106,92 @@ def main():
     
     orch = Orchestrator(mode)
     result = orch.process(transcript)
+    
+    # Collect feedback if requested
+    if collect_feedback:
+        from feedback import FeedbackCollector
+        from config_loader import get_config_value
+        
+        if not json_only:
+            print("\n" + "=" * 60)
+            print("🔍 COLLECTING FEEDBACK (LLM-as-QA Mode)")
+            print("=" * 60)
+        
+        collector = FeedbackCollector(mode)
+        
+        # Get tools used from result
+        tools_used = result.get("tools_used", [])
+        if isinstance(tools_used, str):
+            tools_used = [tools_used]
+        
+        num_tools = len(orch.registry.list_tools())
+        
+        # Get the ACTUAL system prompt from router (it's a property)
+        system_prompt = orch.router.system_prompt if hasattr(orch.router, 'system_prompt') else None
+        
+        # Get tool descriptions for tools that were used (and some that should have been)
+        tool_descriptions = {}
+        relevant_tools = set(tools_used)
+        # Add likely relevant tools based on query keywords
+        query_lower = transcript.lower()
+        if "time" in query_lower:
+            relevant_tools.add("get_time")
+        if "weather" in query_lower:
+            relevant_tools.add("weather")
+        if "bitcoin" in query_lower or "crypto" in query_lower or "price" in query_lower:
+            relevant_tools.add("crypto_price")
+        if "memory" in query_lower or "remember" in query_lower:
+            relevant_tools.update(["semantic_recall", "search_memory", "remember"])
+        
+        for tool_name in relevant_tools:
+            try:
+                tool = orch.registry.get_tool(tool_name)
+                if tool:
+                    tool_descriptions[tool_name] = tool.description
+            except:
+                pass
+        
+        # Get intelligence insights that were used (if available)
+        intelligence_insights = result.get("intelligence_context", "Intelligence insights not captured in result.")
+        
+        # Build config context
+        config_context = f"""
+Auto-Context: {'Enabled' if orch.auto_context_enabled else 'Disabled'} (window={orch.auto_context_window}, minutes={orch.auto_context_minutes})
+Response Style: {get_config_value('JARVIS_RESPONSE_STYLE', 'auto')}
+Tools Available: {num_tools}
+Mode: {mode}
+"""
+        
+        feedback = collector.collect(
+            query=transcript,
+            result=result,
+            tools_used=tools_used,
+            num_tools=num_tools,
+            system_prompt=system_prompt,
+            tool_descriptions=tool_descriptions,
+            intelligence_insights=intelligence_insights,
+            config_context=config_context,
+            session_id=orch.session_id
+        )
+        
+        # Add feedback to result
+        result["feedback"] = feedback
+        
+        if not json_only:
+            print(f"\n📊 Feedback Rating: {feedback.get('rating', 'N/A')}/5")
+            print(f"📝 Summary: {feedback.get('summary', 'No summary')}")
+            
+            if feedback.get('issues'):
+                print("\n⚠️  Issues Found:")
+                for issue in feedback['issues']:
+                    print(f"   [{issue.get('category', 'other')}] {issue.get('description', 'No description')}")
+                    if issue.get('suggestion'):
+                        print(f"      💡 Suggestion: {issue['suggestion']}")
+            
+            if feedback.get('positive'):
+                print(f"\n✅ What Worked: {feedback['positive']}")
+            
+            print(f"\n📁 Feedback logged to: logs/feedback/feedback-{datetime.now().strftime('%Y-%m-%d')}.jsonl")
     
     if json_only:
         # Output only JSON for scripting

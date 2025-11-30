@@ -1,0 +1,21 @@
+# Feedback Test Queries
+# One query per line. Lines starting with # are comments.
+
+# Basic queries
+What time is it?
+What's the weather like in Portland, OR?
+What's the current price of Bitcoin?
+
+# Memory operations
+Search my memory for flask projects
+What do you remember about my server?
+
+# Tool usage
+Search the web for latest AI news
+
+# Complex/multi-step
+What are my pending reminders?
+
+# Meta questions (for testing detailed responses)
+What tools do you have available?
+

@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""
+Jarvis Feedback Tool - Batch testing and feedback analysis
+
+Usage:
+    jarvis-feedback run "Test query here"       # Run single query with feedback
+    jarvis-feedback batch queries.txt           # Run batch of queries from file
+    jarvis-feedback summary                     # Show feedback summary
+    jarvis-feedback recent                      # Show recent feedback
+    jarvis-feedback issues                      # Show only issues (rating < 5)
+
+Examples:
+    ./bin/jarvis-feedback run "What time is it?"
+    ./bin/jarvis-feedback run "Search memory for flask projects" --mode local
+    ./bin/jarvis-feedback batch tests/feedback-queries.txt
+    ./bin/jarvis-feedback summary --days 7
+"""
+
+import os
+import sys
+import json
+import argparse
+from pathlib import Path
+from datetime import datetime
+
+# Setup paths
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
+
+# Activate venv environment
+VENV_PATH = Path.home() / "jarvis-venv"
+os.environ["VIRTUAL_ENV"] = str(VENV_PATH)
+os.environ["PATH"] = f"{VENV_PATH}/bin:" + os.environ.get("PATH", "")
+
+
+def run_with_feedback(query: str, mode: str = "cloud", verbose: bool = True) -> dict:
+    """Run a query through orchestrator and collect feedback."""
+    from config_loader import load_config
+    from orchestrator_v2 import Orchestrator
+    from feedback import FeedbackCollector
+    
+    load_config(mode)
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"🎯 Query: {query}")
+        print(f"📡 Mode: {mode}")
+        print(f"{'='*60}")
+    
+    # Run query
+    orch = Orchestrator(mode)
+    result = orch.process(query)
+    
+    if verbose:
+        print(f"\n✅ Result: {result.get('speech', 'No response')}")
+        print(f"   Status: {'OK' if result.get('ok') else 'Failed'}")
+    
+    # Collect feedback
+    if verbose:
+        print(f"\n🔍 Collecting feedback...")
+    
+    collector = FeedbackCollector(mode)
+    
+    tools_used = result.get("tools_used", [])
+    if isinstance(tools_used, str):
+        tools_used = [tools_used]
+    
+    num_tools = len(orch.registry.list_tools())
+    
+    # Get the ACTUAL system prompt from router
+    system_prompt = orch.router.system_prompt if hasattr(orch.router, 'system_prompt') else None
+    
+    # Get tool descriptions for tools that were used (and some that should have been)
+    tool_descriptions = {}
+    relevant_tools = set(tools_used)
+    # Add likely relevant tools based on query keywords
+    query_lower = query.lower()
+    if "time" in query_lower:
+        relevant_tools.add("get_time")
+    if "weather" in query_lower:
+        relevant_tools.add("weather")
+    if "bitcoin" in query_lower or "crypto" in query_lower or "price" in query_lower:
+        relevant_tools.add("crypto_price")
+    if "memory" in query_lower or "remember" in query_lower:
+        relevant_tools.update(["semantic_recall", "search_memory", "remember"])
+    
+    for tool_name in relevant_tools:
+        try:
+            tool = orch.registry.get_tool(tool_name)
+            if tool:
+                tool_descriptions[tool_name] = tool.description
+        except:
+            pass
+    
+    # Get intelligence insights that were used
+    intelligence_insights = result.get("intelligence_context", "Intelligence insights not captured.")
+    
+    # Build config context
+    from config_loader import get_config_value
+    config_context = f"""
+Auto-Context: {'Enabled' if orch.auto_context_enabled else 'Disabled'} (window={orch.auto_context_window}, minutes={orch.auto_context_minutes})
+Response Style: {get_config_value('JARVIS_RESPONSE_STYLE', 'auto')}
+Tools Available: {num_tools}
+Mode: {mode}
+"""
+    
+    feedback = collector.collect(
+        query=query,
+        result=result,
+        tools_used=tools_used,
+        num_tools=num_tools,
+        system_prompt=system_prompt,
+        tool_descriptions=tool_descriptions,
+        intelligence_insights=intelligence_insights,
+        config_context=config_context,
+        session_id=orch.session_id
+    )
+    
+    if verbose:
+        print(f"\n📊 Rating: {feedback.get('rating', 'N/A')}/5")
+        print(f"📝 Summary: {feedback.get('summary', 'No summary')}")
+        
+        if feedback.get('issues'):
+            print(f"\n⚠️  Issues:")
+            for issue in feedback['issues']:
+                print(f"   [{issue.get('category')}] {issue.get('description')}")
+                if issue.get('suggestion'):
+                    print(f"      💡 {issue['suggestion']}")
+        
+        if feedback.get('positive'):
+            print(f"\n✅ Positive: {feedback['positive']}")
+    
+    return {
+        "query": query,
+        "result": result,
+        "feedback": feedback
+    }
+
+
+def run_batch(file_path: str, mode: str = "cloud") -> list:
+    """Run batch of queries from file."""
+    queries_file = Path(file_path)
+    
+    if not queries_file.exists():
+        print(f"❌ File not found: {file_path}")
+        sys.exit(1)
+    
+    queries = [
+        line.strip() 
+        for line in queries_file.read_text().splitlines() 
+        if line.strip() and not line.startswith("#")
+    ]
+    
+    print(f"📋 Running {len(queries)} queries...")
+    print(f"{'='*60}")
+    
+    results = []
+    for i, query in enumerate(queries, 1):
+        print(f"\n[{i}/{len(queries)}] {query[:50]}...")
+        result = run_with_feedback(query, mode, verbose=False)
+        results.append(result)
+        
+        rating = result['feedback'].get('rating', '?')
+        print(f"   Rating: {rating}/5")
+        
+        if result['feedback'].get('issues'):
+            print(f"   ⚠️  {len(result['feedback']['issues'])} issue(s) found")
+    
+    # Summary
+    ratings = [r['feedback'].get('rating', 0) for r in results if r['feedback'].get('rating')]
+    issues_count = sum(len(r['feedback'].get('issues', [])) for r in results)
+    
+    print(f"\n{'='*60}")
+    print(f"📊 BATCH SUMMARY")
+    print(f"{'='*60}")
+    print(f"   Queries: {len(queries)}")
+    print(f"   Avg Rating: {sum(ratings)/len(ratings):.1f}/5" if ratings else "   No ratings")
+    print(f"   Total Issues: {issues_count}")
+    
+    return results
+
+
+def show_summary(days: int = 7, mode: str = "cloud"):
+    """Show feedback summary."""
+    from feedback import FeedbackCollector
+    from config_loader import load_config
+    
+    load_config(mode)
+    collector = FeedbackCollector(mode)
+    summary = collector.get_issues_summary(days)
+    
+    print(f"\n📊 FEEDBACK SUMMARY (Last {days} days)")
+    print(f"{'='*60}")
+    print(f"Total Feedback: {summary['total_feedback']}")
+    
+    if summary['average_rating']:
+        print(f"Average Rating: {summary['average_rating']:.1f}/5")
+    
+    if summary['issues_by_category']:
+        print(f"\n⚠️  Issues by Category:")
+        for cat, issues in summary['issues_by_category'].items():
+            print(f"\n   [{cat}] ({len(issues)} issues)")
+            for issue in issues[:3]:  # Show first 3
+                print(f"      • {issue['description'][:60]}...")
+    
+    if summary['low_ratings']:
+        print(f"\n🔴 Low Ratings (≤2):")
+        for fb in summary['low_ratings'][:5]:
+            print(f"   • {fb.get('query', 'N/A')[:50]}... → Rating: {fb.get('rating')}")
+
+
+def show_recent(days: int = 7, mode: str = "cloud"):
+    """Show recent feedback."""
+    from feedback import FeedbackCollector
+    from config_loader import load_config
+    
+    load_config(mode)
+    collector = FeedbackCollector(mode)
+    feedback_list = collector.get_recent_feedback(days)
+    
+    print(f"\n📋 RECENT FEEDBACK (Last {days} days)")
+    print(f"{'='*60}")
+    
+    for fb in feedback_list:
+        print(f"\n🕐 {fb.get('timestamp', 'Unknown time')}")
+        print(f"   Query: {fb.get('query', 'N/A')[:60]}...")
+        print(f"   Rating: {fb.get('rating', 'N/A')}/5")
+        print(f"   Summary: {fb.get('summary', 'N/A')[:80]}...")
+
+
+def show_issues(days: int = 7, mode: str = "cloud"):
+    """Show only issues (rating < 5)."""
+    from feedback import FeedbackCollector
+    from config_loader import load_config
+    
+    load_config(mode)
+    collector = FeedbackCollector(mode)
+    feedback_list = collector.get_recent_feedback(days)
+    
+    issues_feedback = [fb for fb in feedback_list if fb.get('rating', 5) < 5]
+    
+    print(f"\n⚠️  ISSUES FOUND (Last {days} days)")
+    print(f"{'='*60}")
+    print(f"   {len(issues_feedback)} / {len(feedback_list)} tasks had issues")
+    
+    for fb in issues_feedback:
+        print(f"\n{'─'*60}")
+        print(f"🕐 {fb.get('timestamp', 'Unknown')}")
+        print(f"📝 Query: {fb.get('query', 'N/A')}")
+        print(f"⭐ Rating: {fb.get('rating', 'N/A')}/5")
+        
+        for issue in fb.get('issues', []):
+            print(f"\n   [{issue.get('category')}]")
+            print(f"   Issue: {issue.get('description')}")
+            if issue.get('suggestion'):
+                print(f"   💡 Fix: {issue['suggestion']}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Jarvis Feedback Tool - LLM-as-QA for self-improvement",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
+    
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+    
+    # run command
+    run_parser = subparsers.add_parser("run", help="Run single query with feedback")
+    run_parser.add_argument("query", help="Query to test")
+    run_parser.add_argument("--mode", default="cloud", help="Mode (cloud/local)")
+    
+    # batch command
+    batch_parser = subparsers.add_parser("batch", help="Run batch of queries from file")
+    batch_parser.add_argument("file", help="File with queries (one per line)")
+    batch_parser.add_argument("--mode", default="cloud", help="Mode (cloud/local)")
+    
+    # summary command
+    summary_parser = subparsers.add_parser("summary", help="Show feedback summary")
+    summary_parser.add_argument("--days", type=int, default=7, help="Days to look back")
+    summary_parser.add_argument("--mode", default="cloud", help="Mode (cloud/local)")
+    
+    # recent command
+    recent_parser = subparsers.add_parser("recent", help="Show recent feedback")
+    recent_parser.add_argument("--days", type=int, default=7, help="Days to look back")
+    recent_parser.add_argument("--mode", default="cloud", help="Mode (cloud/local)")
+    
+    # issues command
+    issues_parser = subparsers.add_parser("issues", help="Show only issues")
+    issues_parser.add_argument("--days", type=int, default=7, help="Days to look back")
+    issues_parser.add_argument("--mode", default="cloud", help="Mode (cloud/local)")
+    
+    args = parser.parse_args()
+    
+    if args.command == "run":
+        run_with_feedback(args.query, args.mode)
+    elif args.command == "batch":
+        run_batch(args.file, args.mode)
+    elif args.command == "summary":
+        show_summary(args.days, args.mode)
+    elif args.command == "recent":
+        show_recent(args.days, args.mode)
+    elif args.command == "issues":
+        show_issues(args.days, args.mode)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
+

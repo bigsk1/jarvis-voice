@@ -22,9 +22,9 @@ from config_loader import get_config_value, get_int
 class StatusSummarizer:
     """Generate dynamic status summaries using small LLM."""
     
-    # System prompt for status summaries
-    SYSTEM_PROMPT = """You are a voice assistant status updater. Generate VERY short (5-8 words) 
-conversational status updates. Be natural, friendly, and avoid technical jargon.
+    # Base system prompt for status summaries
+    BASE_SYSTEM_PROMPT = """You are a voice assistant status updater. Generate VERY short (5-8 words) 
+conversational status updates. Be natural and avoid technical jargon.
 Only output the status phrase, nothing else."""
     
     def __init__(self):
@@ -33,6 +33,15 @@ Only output the status phrase, nothing else."""
         self.provider = get_config_value('STATUS_LLM_PROVIDER', 'openai').lower()
         self.model = get_config_value('STATUS_LLM_MODEL', 'gpt-4o-mini')
         self.max_tokens = get_int('STATUS_LLM_MAX_TOKENS', 30)
+        
+        # Personality settings (same as static phrases use)
+        self.phrase_mode = get_config_value('STATUS_PHRASE_MODE', 'normal').lower()
+        self.humor_enabled = get_config_value('STATUS_HUMOR_ENABLED', 'true').lower() == 'true'
+        self.sass_level = get_int('STATUS_SASS_LEVEL', 1)  # 0=pro, 1=light, 2=sassy
+        self.encouragement = get_config_value('STATUS_ENCOURAGEMENT', 'true').lower() == 'true'
+        
+        # Build dynamic system prompt based on personality
+        self.system_prompt = self._build_system_prompt()
         
         # API keys/URLs based on provider
         self.api_key = None
@@ -50,6 +59,38 @@ Only output the status phrase, nothing else."""
         elif self.provider == 'ollama':
             self.base_url = get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
             self.model = get_config_value('STATUS_LLM_MODEL', 'qwen3')
+    
+    def _build_system_prompt(self) -> str:
+        """Build system prompt based on personality settings."""
+        parts = [self.BASE_SYSTEM_PROMPT]
+        
+        # Unhinged mode = chaotic, over-the-top
+        if self.phrase_mode == 'unhinged':
+            parts.append("""
+Personality: UNHINGED MODE! Be chaotic, dramatic, over-the-top, and hilarious!
+Use expressions like: "YEET!", "Let's gooo!", "Chaos mode activated!", "WHO SUMMONED ME?!"
+Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
+        else:
+            # Normal mode with configurable personality
+            personality_notes = []
+            
+            if self.humor_enabled:
+                personality_notes.append("Include occasional humor, wit, or playful remarks.")
+            
+            if self.sass_level == 0:
+                personality_notes.append("Be professional and straightforward.")
+            elif self.sass_level == 1:
+                personality_notes.append("Be friendly with a hint of sass.")
+            elif self.sass_level >= 2:
+                personality_notes.append("Be confidently sassy and playfully superior.")
+            
+            if self.encouragement:
+                personality_notes.append("Add encouraging, positive vibes when appropriate.")
+            
+            if personality_notes:
+                parts.append("\nPersonality: " + " ".join(personality_notes))
+        
+        return "\n".join(parts)
     
     def summarize(
         self, 
@@ -120,11 +161,11 @@ Generate a natural 5-8 word status update:"""
         payload = {
             'model': self.model,
             'messages': [
-                {'role': 'system', 'content': self.SYSTEM_PROMPT},
+                {'role': 'system', 'content': self.system_prompt},
                 {'role': 'user', 'content': prompt}
             ],
             'max_tokens': self.max_tokens,
-            'temperature': 0.7
+            'temperature': 0.8  # Slightly higher for more creative/varied responses
         }
         
         response = requests.post(
@@ -150,7 +191,7 @@ Generate a natural 5-8 word status update:"""
         payload = {
             'model': self.model,
             'max_tokens': self.max_tokens,
-            'system': self.SYSTEM_PROMPT,
+            'system': self.system_prompt,
             'messages': [
                 {'role': 'user', 'content': prompt}
             ]
@@ -172,11 +213,11 @@ Generate a natural 5-8 word status update:"""
         """Call local Ollama API."""
         payload = {
             'model': self.model,
-            'prompt': f"{self.SYSTEM_PROMPT}\n\n{prompt}",
+            'prompt': f"{self.system_prompt}\n\n{prompt}",
             'stream': False,
             'options': {
                 'num_predict': self.max_tokens,
-                'temperature': 0.7
+                'temperature': 0.8
             }
         }
         
