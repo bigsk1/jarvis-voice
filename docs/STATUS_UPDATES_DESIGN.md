@@ -984,7 +984,7 @@ To add tool-specific messages (optional):
 # Status phrase personality
 STATUS_HUMOR_ENABLED=true        # Include funny phrases
 STATUS_SASS_LEVEL=1              # 0=pro, 1=light, 2=sassy
-STATUS_ENCOURAGEMENT=true        # Include encouraging phrases
+STATUS_ENCOURAGEMENT_ENABLED=true        # Include encouraging phrases
 ```
 
 ---

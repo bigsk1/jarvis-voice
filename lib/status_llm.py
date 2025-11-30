@@ -38,7 +38,7 @@ Only output the status phrase, nothing else."""
         self.phrase_mode = get_config_value('STATUS_PHRASE_MODE', 'normal').lower()
         self.humor_enabled = get_config_value('STATUS_HUMOR_ENABLED', 'true').lower() == 'true'
         self.sass_level = get_int('STATUS_SASS_LEVEL', 1)  # 0=pro, 1=light, 2=sassy
-        self.encouragement = get_config_value('STATUS_ENCOURAGEMENT', 'true').lower() == 'true'
+        self.encouragement = get_config_value('STATUS_ENCOURAGEMENT_ENABLED', 'true').lower() == 'true'
         
         # Build dynamic system prompt based on personality
         self.system_prompt = self._build_system_prompt()

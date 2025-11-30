@@ -88,7 +88,7 @@ run_test(
         'STATUS_PHRASE_MODE': 'normal',
         'STATUS_HUMOR_ENABLED': 'true',
         'STATUS_SASS_LEVEL': '1',
-        'STATUS_ENCOURAGEMENT': 'true',
+        'STATUS_ENCOURAGEMENT_ENABLED': 'true',
     },
     TRIGGERS
 )
@@ -117,7 +117,7 @@ run_test(
         'STATUS_PHRASE_MODE': 'normal',
         'STATUS_HUMOR_ENABLED': 'false',
         'STATUS_SASS_LEVEL': '0',
-        'STATUS_ENCOURAGEMENT': 'false',
+        'STATUS_ENCOURAGEMENT_ENABLED': 'false',
     },
     TRIGGERS[:4]
 )
