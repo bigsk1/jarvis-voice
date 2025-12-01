@@ -337,7 +337,6 @@ jarvis-cli-json "what time is it?" 2>&1 | grep -i error
 cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && python3 orchestrator/orchestrator_v2.py cloud "what time is it?" --json
 
 # Check logs
-tail -f logs/orchestrator/orchestrator-$(date +%Y-%m-%d).log
 tail -f logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl
 ```
 

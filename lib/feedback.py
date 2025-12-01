@@ -390,7 +390,7 @@ class FeedbackCollector:
             "total_feedback": len(feedback),
             "average_rating": sum(ratings) / len(ratings) if ratings else None,
             "issues_by_category": categories,
-            "low_ratings": [fb for fb in feedback if fb.get("rating", 5) <= 2]
+            "low_ratings": [fb for fb in feedback if (fb.get("rating") or 5) <= 2]
         }
 
 

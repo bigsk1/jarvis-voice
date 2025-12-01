@@ -239,7 +239,7 @@ def show_issues(days: int = 7, mode: str = "cloud"):
     collector = FeedbackCollector(mode)
     feedback_list = collector.get_recent_feedback(days)
     
-    issues_feedback = [fb for fb in feedback_list if fb.get('rating', 5) < 5]
+    issues_feedback = [fb for fb in feedback_list if (fb.get('rating') or 5) < 5]
     
     print(f"\n⚠️  ISSUES FOUND (Last {days} days)")
     print(f"{'='*60}")

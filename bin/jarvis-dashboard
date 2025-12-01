@@ -104,14 +104,18 @@ COMMANDS: List[Command] = [
     Command("CLI Query (Local)", './orchestrator/orchestrator_v2.py local "What time is it?"', "Single query - local", "🎙️ Core"),
     
     # === 🔧 SERVICES ===
-    Command("Start API Server", "./bin/jarvis-api", "Proactive API (port 8880)", "🔧 Services", interactive=True),
+    Command("Start API (Cloud)", "./bin/jarvis-api", "API server - cloud mode", "🔧 Services", interactive=True),
+    Command("Start API (Local)", "./bin/jarvis-api --local", "API server - local mode", "🔧 Services", interactive=True),
     Command("Start Background Svcs", "./bin/jarvis-services", "Background daemons", "🔧 Services", interactive=True),
     Command("Restart API", "./bin/restart-api", "Restart API server", "🔧 Services"),
     Command("Restart Services", "./bin/restart-services", "Restart background services", "🔧 Services"),
     Command("API Health", "curl -s http://localhost:8880/api/health | jq", "Check API health", "🔧 Services"),
-    Command("OpenCode Status", "systemctl status opencode-jarvis.service", "OpenCode service status", "🔧 Services"),
-    Command("OpenCode Start", "systemctl start opencode-jarvis.service", "Start OpenCode service", "🔧 Services"),
-    Command("OpenCode Health", "curl -s http://localhost:4096/health | jq", "OpenCode API health", "🔧 Services"),
+    Command("OpenCode Status", "systemctl status opencode-jarvis.service 2>/dev/null || echo 'Service not installed'", "OpenCode service status", "🔧 Services"),
+    Command("OpenCode Start", "systemctl start opencode-jarvis.service 2>/dev/null || echo 'Service not installed'", "Start OpenCode service", "🔧 Services"),
+    Command("OpenCode Health", "curl -sf http://localhost:4096/config >/dev/null && echo '✅ OpenCode is running on port 4096' || echo '❌ OpenCode not running'", "OpenCode API status", "🔧 Services"),
+    Command("OpenCode Sessions", "./bin/opencode-session list 2>/dev/null || curl -s http://localhost:4096/sessions | jq -c '.[] | {id: .id[:8], status}'", "List OpenCode sessions", "🔧 Services"),
+    Command("OpenCode Clear", "./bin/opencode-clear-sessions 2>/dev/null || echo 'Script not found'", "Clear ALL sessions", "🔧 Services", dangerous=True),
+    Command("Test MCP", "./bin/test-mcp", "Test MCP connections", "🔧 Services"),
     
     # === 🧪 TESTING ===
     Command("Test All (Cloud)", "./test-all-tools.sh", "All tool tests - cloud", "🧪 Testing"),
@@ -128,8 +132,7 @@ COMMANDS: List[Command] = [
     Command("Memory Search", "./bin/memory search", "Search memories", "💾 Memory"),
     Command("Sync Cloud→Local", "./bin/sync-memory-db.py local", "Sync to local DB", "💾 Memory"),
     Command("Sync Local→Cloud", "./bin/sync-memory-db.py cloud", "Sync to cloud DB", "💾 Memory"),
-    Command("DB Shell (Cloud)", "sqlite3 data/jarvis_memory.db", "Open cloud memory DB", "💾 Memory"),
-    Command("DB Shell (Local)", "sqlite3 data/jarvis_memory_local.db", "Open local memory DB", "💾 Memory"),
+    Command("Rebuild FTS Index", "./bin/rebuild-fts-index", "Rebuild search index", "💾 Memory"),
     Command("Memory Stats", "sqlite3 data/jarvis_memory.db \"SELECT category, COUNT(*) as count FROM knowledge_base GROUP BY category ORDER BY count DESC;\"", "Memory by category", "💾 Memory"),
     
     # === 🧠 INTELLIGENCE ===
@@ -138,8 +141,11 @@ COMMANDS: List[Command] = [
     Command("Run All Maintenance", "./bin/run-intelligence-maintenance.py --all --watch", "All maintenance jobs", "🧠 Intelligence"),
     Command("Run Decay", "./bin/run-intelligence-maintenance.py --decay", "Decay unused insights", "🧠 Intelligence"),
     Command("Run Anomaly", "./bin/run-intelligence-maintenance.py --anomaly", "Detect anomalies", "🧠 Intelligence"),
-    Command("View Insights", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(pattern,1,50), constraint_type, confidence FROM insights ORDER BY confidence DESC LIMIT 10;\"", "Top insights", "🧠 Intelligence"),
-    Command("View Experiences", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(query,1,40), tools_used, success FROM experiences ORDER BY id DESC LIMIT 10;\"", "Recent experiences", "🧠 Intelligence"),
+    Command("Run Meta-Cognition", "./bin/run-intelligence-maintenance.py --meta", "Meta-cognition analysis", "🧠 Intelligence"),
+    Command("View Meta-Knowledge", "curl -s http://192.168.70.228:8880/api/intelligence/meta-knowledge | jq '.' 2>/dev/null || echo 'API not running'", "Meta-cognition findings", "🧠 Intelligence"),
+    Command("View Insights", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(applies_to_pattern,1,40), constraint_type, round(confidence,2) FROM insights ORDER BY confidence DESC LIMIT 10;\"", "Top insights", "🧠 Intelligence"),
+    Command("View Experiences", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(query,1,40), tools_used, outcome_success FROM experiences ORDER BY id DESC LIMIT 10;\"", "Recent experiences", "🧠 Intelligence"),
+    Command("Re-embed Insight", "echo '📝 To re-embed an insight after editing:' && echo '   ./bin/re-embed-insight <id>' && echo '   ./bin/re-embed-insight <id> local' && echo '' && echo 'Example: ./bin/re-embed-insight 42'", "Re-embed after edit", "🧠 Intelligence"),
     
     # === 🛠️ TOOLS ===
     Command("List Tools", "./bin/manage-tools.py list", "All tools & status", "🛠️ Tools"),
@@ -151,7 +157,7 @@ COMMANDS: List[Command] = [
     
     # === 🔊 STATUS UPDATES ===
     Command("TTS Cache Stats", "./bin/status-cache stats", "TTS cache statistics", "🔊 Status"),
-    Command("TTS Cache Clear", "./bin/status-cache clear", "Clear TTS cache", "🔊 Status"),
+    Command("TTS Cache Clear", "./bin/status-cache clear", "Clear TTS cache", "🔊 Status", dangerous=True),
     Command("TTS Warm (Cloud)", "./bin/status-cache warm cloud", "Pre-gen cloud phrases", "🔊 Status"),
     Command("TTS Warm (Local)", "./bin/status-cache warm local", "Pre-gen local phrases", "🔊 Status"),
     Command("Test TTS Cloud", './bin/say-status.sh "Testing status update" true', "Test cloud TTS", "🔊 Status"),
@@ -160,27 +166,31 @@ COMMANDS: List[Command] = [
     # === 📋 LOGS ===
     Command("Tool Logs", "cat logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -30", "Tool execution logs", "📋 Logs"),
     Command("LLM Logs", "cat logs/llm-calls-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{model,cost_usd}'", "LLM call logs", "📋 Logs"),
-    Command("Intel Logs", "tail -50 logs/intelligence/intelligence.log 2>/dev/null || echo 'No intel logs'", "Intelligence logs", "📋 Logs"),
-    Command("OpenCode Logs", "./bin/opencode-logs 2>/dev/null | tail -50 || echo 'No OpenCode logs'", "OpenCode session logs", "📋 Logs"),
+    Command("Intel Logs", "cat logs/intelligence/intelligence-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{event,query:.query[:100]}' || echo 'No intel logs today'", "Intelligence logs", "📋 Logs"),
+    Command("Feedback Logs", "cat logs/feedback/feedback-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -10 | jq -c '{rating,query:.query[:100]}' || echo 'No feedback logs today'", "LLM feedback logs", "📋 Logs"),
+    Command("OpenCode Logs", "cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{event,session_id}' || echo 'No OpenCode logs today'", "OpenCode session logs", "📋 Logs"),
     Command("Service Daemon Logs", "tail -50 logs/services/*.log 2>/dev/null || echo 'No service logs'", "Background service logs", "📋 Logs"),
     
     # === 📊 MONITORING ===
     Command("API Metrics", "curl -s http://192.168.70.228:8880/metrics 2>/dev/null | head -50 || echo 'API not running'", "Prometheus metrics", "📊 Monitor"),
     Command("Open Grafana", "echo '🌐 Open http://192.168.70.228:3000 in browser'", "Grafana dashboard URL", "📊 Monitor"),
+    Command("Monitor Status", "cd monitoring && ./manage.sh status", "Show running services", "📊 Monitor"),
+    Command("Monitor Restart", "cd monitoring && ./manage.sh restart", "Restart monitoring", "📊 Monitor"),
+    Command("Monitor Backup", "cd monitoring && ./manage.sh backup", "Backup monitoring data", "📊 Monitor"),
     
     # === ⚙️ CONFIG ===
     Command("View Cloud Config", "grep -v '^#' config/cloud.env | grep -v '^$' | head -50", "Cloud settings", "⚙️ Config"),
     Command("View Local Config", "grep -v '^#' config/local.env | grep -v '^$' | head -50", "Local settings", "⚙️ Config"),
-    Command("Edit Cloud Config", "${EDITOR:-nano} config/cloud.env", "Edit cloud settings", "⚙️ Config"),
-    Command("Edit Local Config", "${EDITOR:-nano} config/local.env", "Edit local settings", "⚙️ Config"),
     Command("View Status Phrases", "cat config/status_phrases.json | jq '.categories | keys'", "Status phrase categories", "⚙️ Config"),
+    Command("View Contacts", "cat config/contacts.json | jq 'keys'", "Email contacts", "⚙️ Config"),
     
     # === 🔒 MAINTENANCE ===
     Command("Backup All DBs", "cp data/jarvis_memory.db data/jarvis_memory.db.bak && cp data/jarvis_memory_local.db data/jarvis_memory_local.db.bak && cp data/jarvis_intelligence.db data/jarvis_intelligence.db.bak && echo '✅ All DBs backed up'", "Backup all databases", "🔒 Maint"),
+    Command("Embeddings Health (Cloud)", "./bin/check-embeddings-health.py cloud", "Check cloud embeddings", "🔒 Maint"),
+    Command("Embeddings Health (Local)", "./bin/check-embeddings-health.py local", "Check local embeddings", "🔒 Maint"),
     Command("Disk Usage", "du -sh data/ logs/ ~/.cache/jarvis/ 2>/dev/null", "Check disk usage", "🔒 Maint"),
     Command("Git Status", "git status -s", "Git status (short)", "🔒 Maint"),
     Command("Git Log", "git log --oneline -15", "Recent commits", "🔒 Maint"),
-    Command("Clean Old Logs", "find logs/ -name '*.jsonl' -mtime +30 -delete && echo '✅ Cleaned logs >30 days'", "Delete old logs", "🔒 Maint", dangerous=True),
     
     # === 🌐 API CALLS ===
     Command("API: Alerts", "curl -s http://localhost:8880/api/alerts | jq", "Get all alerts", "🌐 API"),
@@ -461,9 +471,18 @@ class CommandRunner(App):
         in_tmux = os.environ.get("TMUX") is not None
         
         if has_tmux:
-            # Create a named session/window for jarvis
-            session_name = "jarvis-voice"
+            # Create unique session/window names based on command
             window_name = cmd.name.lower().replace(" ", "-").replace("(", "").replace(")", "")
+            
+            # Determine session name based on command type
+            if "jarvis" in cmd.command and ("./jarvis" == cmd.command or cmd.command.startswith("./jarvis-local")):
+                session_name = "jarvis-voice"  # Wake word loop
+            elif "jarvis-api" in cmd.command:
+                session_name = "jarvis-api-local" if "--local" in cmd.command else "jarvis-api"
+            elif "jarvis-services" in cmd.command:
+                session_name = "jarvis-services"  # Background services
+            else:
+                session_name = window_name  # Use window name as session name
             
             # Activate venv and run command
             full_cmd = f"source {VENV_PATH}/bin/activate && cd {PROJECT_ROOT} && {cmd.command}"
@@ -474,7 +493,7 @@ class CommandRunner(App):
                 log.write(f"[cyan]🖥️  Opening in new tmux window: {window_name}[/cyan]")
                 log.write(f"[dim]Switch windows: Ctrl+B then n (next) or p (prev)[/dim]")
             else:
-                # Create new detached session or window
+                # Create new detached session (unique per service type)
                 tmux_cmd = f'tmux new-session -d -s {session_name} -n "{window_name}" "{full_cmd}; read -p \'Press Enter to close...\'"'
                 log.write(f"[cyan]🖥️  Started in tmux session: {session_name}[/cyan]")
                 log.write(f"[yellow]To attach: tmux attach -t {session_name}[/yellow]")
