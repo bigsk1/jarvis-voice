@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "send_email",
-  "description": "Send an email to a contact. Use when user says 'email', 'send email to', 'message', etc. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'work') from config/contacts.json, or use a direct email address. Rate limited to prevent duplicates.",
+  "description": "Send an email to a contact. Use when user says 'email', 'send email to', 'message', etc. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'work') from config/contacts.json, or use a direct email address. Rate limited to prevent duplicates. After sending, briefly confirm to the user: who received it, the subject, and key content summary.",
   "script": "send_email.py",
   "parameters": {
     "type": "object",

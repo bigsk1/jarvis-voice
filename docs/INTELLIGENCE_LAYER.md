@@ -464,6 +464,8 @@ bin/
 ├── check-intelligence-health.py    # Health check script
 ├── sync-intelligence-db.py         # Sync between cloud/local
 ├── run-intelligence-maintenance.py # Run decay/anomaly/meta-cognition jobs
+├── re-embed-insight                # Re-embed insight after manual edit
+├── re-embed-experience             # Re-embed experience after manual edit
 
 api/routes/
 ├── intelligence.py         # REST API endpoints for intelligence
@@ -1019,6 +1021,100 @@ sqlite3 data/jarvis_intelligence.db "DELETE FROM experiences; DELETE FROM insigh
 3. Router picks: mcp_fetch directly (1 turn!)
 4. Response delivered faster
 ```
+
+## Manually Editing Insights
+
+You can edit insights directly in SQLite (e.g., using SQLite Pro, DB Browser, or command line). However, understanding what needs re-embedding is critical.
+
+### What Needs Re-embedding?
+
+| Field | Embedded? | Safe to Edit? | Impact |
+|-------|-----------|---------------|--------|
+| `preferred_tools` | ❌ No | ✅ Yes | Directly controls tool bias |
+| `avoided_tools` | ❌ No | ✅ Yes | Directly controls tool penalties |
+| `confidence` | ❌ No | ✅ Yes | Controls insight weight |
+| `reasoning` | ❌ No | ✅ Yes | Documentation only |
+| `description` | ✅ Yes (`insight_embedding`) | ⚠️ Re-embed | Affects duplicate detection |
+| `applies_to_pattern` | ✅ Yes (`pattern_embedding`) | ⚠️ Re-embed | **Critical for query matching** |
+
+### How Embeddings Work
+
+```
+Query: "curl 192.168.70.226 to check ollama"
+         │
+         ▼
+    [Get query embedding]
+         │
+         ▼
+    [Compare to pattern_embedding of each insight]  ← Uses applies_to_pattern
+         │
+         ▼
+    [Find matches: "server health check queries"]
+         │
+         ▼
+    [Apply preferred_tools bias: execute_bash +0.9]  ← Uses preferred_tools (not embedded)
+```
+
+### Re-embedding After Manual Edits
+
+If you change `description` or `applies_to_pattern`, run these commands to regenerate embeddings:
+
+**Re-embed an Insight:**
+```bash
+# Re-embed insight ID 2 (cloud mode - default)
+./bin/re-embed-insight 2
+
+# Re-embed insight ID 36 (local mode)
+./bin/re-embed-insight 36 local
+
+# Re-embed multiple insights
+./bin/re-embed-insight 2 && ./bin/re-embed-insight 36 && ./bin/re-embed-insight 56
+```
+
+**Re-embed an Experience:**
+```bash
+# Re-embed experience ID 5 (cloud mode - default)
+./bin/re-embed-experience 5
+
+# Re-embed experience ID 10 (local mode)
+./bin/re-embed-experience 10 local
+```
+
+**Embedding Dimensions by Mode:**
+
+| Mode | Provider | Dimensions | Database |
+|------|----------|------------|----------|
+| `cloud` | OpenAI (`text-embedding-3-small`) | 1536 | `jarvis_intelligence.db` |
+| `local` | Ollama (`nomic-embed-text`) | 768 | `jarvis_intelligence_local.db` |
+
+The scripts automatically use the correct embedding provider based on the mode parameter. Cloud and local databases are **incompatible** - you cannot copy embeddings between them.
+
+### Example: Fixing an Incorrect Insight
+
+```bash
+# 1. Edit in SQLite (or SQLite Pro)
+sqlite3 data/jarvis_intelligence.db "
+UPDATE insights SET 
+    description = 'Use execute_bash for private network checks (192.168.x, localhost)',
+    preferred_tools = '{\"execute_bash\": 0.9}'
+WHERE id = 42;
+"
+
+# 2. Re-embed to update vectors
+./bin/re-embed-insight 42
+
+# 3. Verify
+sqlite3 data/jarvis_intelligence.db "SELECT id, description, length(insight_embedding) FROM insights WHERE id = 42"
+```
+
+### Bottom Line
+
+**Safe to edit directly (no re-embed needed):**
+- `preferred_tools`, `avoided_tools`, `confidence`, `reasoning`, `trigger_concept`
+
+**Must re-embed after editing:**
+- `description` → run `./bin/re-embed-insight <id>`
+- `applies_to_pattern` → run `./bin/re-embed-insight <id>`
 
 ---
 

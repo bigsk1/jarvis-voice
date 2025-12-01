@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""
+Re-embed an insight by ID after manual text edits.
+
+Usage: ./bin/re-embed-insight <id> [mode]
+  
+Examples:
+  ./bin/re-embed-insight 2           # Re-embed insight ID 2 (cloud mode)
+  ./bin/re-embed-insight 36 local    # Re-embed insight ID 36 (local mode)
+"""
+
+import sys
+import os
+import json
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from config_loader import load_config, get_config_value
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+    
+    insight_id = int(sys.argv[1])
+    mode = sys.argv[2] if len(sys.argv) > 2 else 'cloud'
+    
+    # Load config
+    load_config(mode)
+    
+    # Import after config loaded
+    from intelligence import IntelligenceLayer
+    import asyncio
+    
+    async def re_embed():
+        intel = IntelligenceLayer()
+        
+        # Get current insight
+        cursor = intel.conn.cursor()
+        cursor.execute("SELECT id, description, applies_to_pattern FROM insights WHERE id = ?", (insight_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            print(f"❌ Insight ID {insight_id} not found")
+            return False
+        
+        print(f"📝 Re-embedding insight {insight_id}:")
+        print(f"   Description: {row['description'][:80]}...")
+        print(f"   Pattern: {row['applies_to_pattern'] or 'None'}")
+        
+        # Generate new embeddings
+        description = row['description']
+        pattern = row['applies_to_pattern']
+        
+        print("   Generating embeddings...")
+        insight_embedding = intel._get_embedding(description)
+        pattern_embedding = intel._get_embedding(pattern) if pattern else None
+        
+        # Serialize embeddings
+        insight_blob = intel._serialize_embedding(insight_embedding)
+        pattern_blob = intel._serialize_embedding(pattern_embedding) if pattern is not None else None
+        
+        # Update database
+        cursor.execute("""
+            UPDATE insights SET
+                insight_embedding = ?,
+                pattern_embedding = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (
+            insight_blob,
+            pattern_blob,
+            insight_id
+        ))
+        intel.conn.commit()
+        
+        print(f"✅ Insight {insight_id} re-embedded successfully!")
+        return True
+    
+    asyncio.run(re_embed())
+
+if __name__ == "__main__":
+    main()
+

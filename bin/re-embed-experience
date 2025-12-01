@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""
+Re-embed an experience by ID after manual text edits.
+
+Usage: ./bin/re-embed-experience <id> [mode]
+  
+Examples:
+  ./bin/re-embed-experience 5           # Re-embed experience ID 5 (cloud mode)
+  ./bin/re-embed-experience 10 local    # Re-embed experience ID 10 (local mode)
+"""
+
+import sys
+import os
+import json
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from config_loader import load_config, get_config_value
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+    
+    experience_id = int(sys.argv[1])
+    mode = sys.argv[2] if len(sys.argv) > 2 else 'cloud'
+    
+    # Load config
+    load_config(mode)
+    
+    # Import after config loaded
+    from intelligence import IntelligenceLayer
+    import asyncio
+    
+    async def re_embed():
+        intel = IntelligenceLayer()
+        
+        # Get current experience
+        cursor = intel.conn.cursor()
+        cursor.execute("SELECT id, query, context_summary FROM experiences WHERE id = ?", (experience_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            print(f"❌ Experience ID {experience_id} not found")
+            return False
+        
+        print(f"📝 Re-embedding experience {experience_id}:")
+        print(f"   Query: {row['query'][:80]}...")
+        print(f"   Context: {(row['context_summary'] or 'None')[:60]}...")
+        
+        # Generate new embeddings
+        query = row['query']
+        context = row['context_summary']
+        
+        print("   Generating embeddings...")
+        query_embedding = intel._get_embedding(query)
+        context_embedding = intel._get_embedding(context) if context else None
+        
+        # Build outcome text for outcome embedding
+        cursor.execute("SELECT outcome_success, tools_used, error_occurred FROM experiences WHERE id = ?", (experience_id,))
+        exp = cursor.fetchone()
+        outcome_text = f"{'Success' if exp['outcome_success'] else 'Failed'} using {exp['tools_used'] or 'no tools'}"
+        if exp['error_occurred']:
+            outcome_text += " with errors"
+        outcome_embedding = intel._get_embedding(outcome_text)
+        
+        # Serialize embeddings
+        query_blob = intel._serialize_embedding(query_embedding)
+        context_blob = intel._serialize_embedding(context_embedding) if context is not None else None
+        outcome_blob = intel._serialize_embedding(outcome_embedding)
+        
+        # Update database
+        cursor.execute("""
+            UPDATE experiences SET
+                query_embedding = ?,
+                context_embedding = ?,
+                outcome_embedding = ?
+            WHERE id = ?
+        """, (
+            query_blob,
+            context_blob,
+            outcome_blob,
+            experience_id
+        ))
+        intel.conn.commit()
+        
+        print(f"✅ Experience {experience_id} re-embedded successfully!")
+        return True
+    
+    asyncio.run(re_embed())
+
+if __name__ == "__main__":
+    main()
+

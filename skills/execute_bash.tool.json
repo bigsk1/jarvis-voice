@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "execute_bash",
-  "description": "Execute a bash command on the system. Use this when the user wants to run system commands, check system status, or perform command-line operations. BE CAREFUL with destructive commands.",
+  "description": "Execute a bash command on the system. USE THIS for: curl commands, checking services on private/local networks (192.168.x.x, 10.x.x.x, localhost), running system utilities, checking ports, ping, docker commands, systemctl, etc. When user says 'curl' or asks to check a local/private IP service → use this, NOT mcp_fetch (which only works for public internet URLs). BE CAREFUL with destructive commands.",
   "script": "execute_bash.py",
   "parameters": {
     "type": "object",
