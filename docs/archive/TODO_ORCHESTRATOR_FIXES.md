@@ -10,7 +10,7 @@
 ## 🚨 Issue: LLM Looping Without Final Answer
 
 ### Problem
-When asked: **"What are the top 3 movies in Hillsboro, OR?"**
+When asked: **"What are the top 3 movies in Portland, OR?"**
 
 **What happened:**
 ```bash
