@@ -6,12 +6,15 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ---
 
-## 🎯 Current Status (November 2025)
+## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
-- **Tool RAG System** - Dynamic tool retrieval for infinite scalability ⭐ NEW
+- **Canvas System** - Visual knowledge viewer for rich content display ⭐ NEW
+- **Calculator Tool** - Advanced math, statistics, unit conversions ⭐ NEW
+- **Feedback System** - LLM self-critique and cross-model grading ⭐ NEW
+- **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 32+ working skills (memory, bash, OpenCode, API calls, reminders, etc.)
+- 35+ working skills (memory, bash, OpenCode, API calls, reminders, canvas, calculator, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -114,12 +117,22 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Audio caching for instant playback of repeated phrases
   - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
 
-### Developer Experience ⭐ NEW
-- **Command Dashboard TUI**: Interactive terminal UI with 60+ commands
+### Developer Experience ⭐ ENHANCED
+- **Command Dashboard TUI**: Interactive terminal UI with 70+ commands
   - Browse, search, and run any Jarvis command from one place
   - Organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
   - Live system status (CPU, RAM, API health)
   - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
+- **Canvas Viewer**: Visual knowledge display at localhost:8890
+  - Jarvis saves research results, code snippets, comparisons
+  - Beautiful dark UI with Markdown rendering
+  - Search, pin, edit, delete pages
+  - Launch: `./bin/jarvis-canvas`
+- **Feedback System**: LLM self-critique for continuous improvement
+  - Per-query feedback: `--feedback` flag on orchestrator
+  - Batch testing: `./bin/jarvis-feedback batch tests/queries.txt`
+  - Cross-model grading via `FEEDBACK_PROVIDER`/`FEEDBACK_MODEL`
+  - View issues: `./bin/jarvis-feedback issues --days 7`
 
 ### Speech Modes - Smart Adaptive Response System
 
@@ -424,12 +437,12 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 
 ## 🛠️ Tool System
 
-### Available Skills (24+)
+### Available Skills (35+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
 - `recall` - Retrieve specific memories by category/key
-- `search_memory` - **FTS5 full-text search** with BM25 ranking (keyword/entity searches) ⭐ NEW
+- `search_memory` - **FTS5 full-text search** with BM25 ranking (keyword/entity searches)
 - `semantic_recall` - AI-powered conceptual search (natural language questions)
 - `update_memory` - Modify existing memories
 - `forget` - Delete memories
@@ -438,11 +451,14 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 
 **Action Tools:**
 - `execute_bash` - Run shell commands
-- `send_email` - Send emails with contact lookup and HTML templates ⭐ NEW
-- `send_webhook` - Trigger named webhooks (Slack, n8n, APIs) with auth ⭐ ENHANCED
+- `send_email` - Send emails with contact lookup and HTML templates
+- `send_webhook` - Trigger named webhooks (Slack, n8n, APIs) with auth
 - `api_call` - Generic HTTP API calls
 - `crypto_price` - Get cryptocurrency prices
 - `get_time` - Current time
+- `calculator` - **Advanced math**: arithmetic, percentages, statistics, unit conversions, trig ⭐ NEW
+- `canvas` - **Visual viewer**: save rich content (research, code, comparisons) to web UI ⭐ NEW
+- `weather` - Weather forecasts with OpenWeatherMap
 
 **Development:**
 - `opencode` - Autonomous coding agent (builds apps, games, APIs)
@@ -945,8 +961,29 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
+**Completed (December 2025):**
+- ✅ **Canvas System** - Visual knowledge viewer ⭐ NEW
+  - Beautiful dark web UI at localhost:8890
+  - Jarvis saves research, comparisons, code to visual pages
+  - Markdown rendering, syntax highlighting, live reload
+  - Search, pin, edit, delete - all auto-saved to memory
+  - Launch: `./bin/jarvis-canvas`
+- ✅ **Calculator Tool** - Advanced calculations ⭐ NEW
+  - Arithmetic, percentages (15% of 200), statistics (mean, stdev)
+  - Unit conversions (miles↔km, °F↔°C, GB↔TB, cups↔ml)
+  - Trig (sin, cos, tan with degree variants), logarithms, factorials
+- ✅ **Feedback System** - LLM self-critique ⭐ NEW
+  - `--feedback` flag for per-query feedback
+  - `./bin/jarvis-feedback` CLI (run, batch, summary, issues)
+  - Cross-model grading (FEEDBACK_PROVIDER/FEEDBACK_MODEL)
+  - Full context analysis (system prompt, tools, intelligence)
+- ✅ **Dashboard Enhancements** - 70+ commands
+  - Canvas, feedback, monitoring commands added
+  - Unique tmux sessions per service
+  - Fixed SQL queries and log paths
+
 **Completed (November 2025):**
-- ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands ⭐ NEW
+- ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands
   - 60+ commands organized by category
   - Search/filter, tab navigation, live system status
   - Run any command with Enter, view output in real-time
@@ -1037,6 +1074,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.6 (November 2025)  
+**Current Version:** v2.7 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Status Updates System (real-time voice progress with LLM summaries), Weather Tool (OpenWeatherMap + geocoding), Intelligence Layer Phase 1.5
+**Latest Features:** Canvas System (visual knowledge viewer), Calculator Tool (math/stats/conversions), Feedback System (LLM self-critique), Dashboard 70+ commands

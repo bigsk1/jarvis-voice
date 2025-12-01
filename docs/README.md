@@ -14,6 +14,8 @@
 ### Main Features
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
+- **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results) ⭐ NEW
+- **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) ⭐ NEW
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
 - **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - Modular webhook system (email, n8n, external APIs with auth)
@@ -163,6 +165,8 @@
 | Document | Purpose |
 |----------|---------|
 | **Command Dashboard** | TUI for all Jarvis commands - `./bin/jarvis-dashboard` ⭐ NEW |
+| **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8890) ⭐ NEW |
+| **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag ⭐ NEW |
 
 **Intelligence Features (Phase 1.5):**
 - Insight tracking (times_applied, times_helpful, times_failed)
@@ -250,6 +254,38 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-12-01:**
+- ✅ **Canvas System** - Visual knowledge viewer for rich content ⭐ NEW
+  - Beautiful dark-themed web UI at localhost:8890
+  - Jarvis saves research results, comparisons, code snippets
+  - Markdown rendering with syntax highlighting
+  - Search, pin, edit, delete pages
+  - Auto-saves to memory for recall
+  - Live reload when new content added
+  - Launch: `./bin/jarvis-canvas`
+  - See: `docs/CANVAS_SYSTEM.md`
+- ✅ **Calculator Tool** - Advanced math, statistics, unit conversions ⭐ NEW
+  - Arithmetic, percentages (15% of 200)
+  - Statistics (mean, median, stdev, variance)
+  - Unit conversions (5 miles to km, 100°F to °C, 500 GB to TB)
+  - Trigonometry, logarithms, factorials
+  - Constants (pi, e, tau)
+  - See: `skills/calculator.py`
+- ✅ **Feedback System** - LLM self-critique and grading ⭐ NEW
+  - `--feedback` flag on orchestrator for per-query feedback
+  - `./bin/jarvis-feedback` standalone script (run, batch, summary, issues)
+  - Cross-LLM grading (FEEDBACK_PROVIDER/FEEDBACK_MODEL)
+  - Logs to `logs/feedback/feedback-YYYY-MM-DD.jsonl`
+  - Full context (system prompt, tools, intelligence) for accurate critique
+  - See: `docs/FEEDBACK_SYSTEM.md`
+- ✅ **Dashboard Enhancements** - 70+ commands ⭐ ENHANCED
+  - Canvas commands (start, health, pages)
+  - Feedback commands (summary, issues, test)
+  - Monitor commands (status, restart, backup)
+  - API local mode support
+  - Unique tmux sessions per service
+  - Fixed SQL queries and log paths
 
 **2025-11-29:**
 - ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands ⭐ NEW
@@ -431,4 +467,5 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
+**Last Updated:** 2025-12-01  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
