@@ -182,7 +182,7 @@ COMMANDS: List[Command] = [
     Command("View Cloud Config", "grep -v '^#' config/cloud.env | grep -v '^$' | head -50", "Cloud settings", "⚙️ Config"),
     Command("View Local Config", "grep -v '^#' config/local.env | grep -v '^$' | head -50", "Local settings", "⚙️ Config"),
     Command("View Status Phrases", "cat config/status_phrases.json | jq '.categories | keys'", "Status phrase categories", "⚙️ Config"),
-    Command("View Contacts", "cat config/contacts.json | jq 'keys'", "Email contacts", "⚙️ Config"),
+    Command("View Contacts", "cat config/contacts.json", "Email contacts", "⚙️ Config"),
     
     # === 🔒 MAINTENANCE ===
     Command("Backup All DBs", "cp data/jarvis_memory.db data/jarvis_memory.db.bak && cp data/jarvis_memory_local.db data/jarvis_memory_local.db.bak && cp data/jarvis_intelligence.db data/jarvis_intelligence.db.bak && echo '✅ All DBs backed up'", "Backup all databases", "🔒 Maint"),

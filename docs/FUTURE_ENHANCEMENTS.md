@@ -63,7 +63,7 @@ Jarvis: "Okay, executing... Done."
 - `orchestrator/executor.py` - Add confirmation flow
 - `bin/confirm.sh` - Record and transcribe approval
 
-### 2. Tool Discovery Optimization
+### 2. Tool Discovery Optimization -  DONE! ✅
 **Priority:** Medium  
 **Status:** Design phase
 
@@ -90,7 +90,7 @@ query_embedding = embed(user_query)
 relevant_tools = find_similar(query_embedding, tool_embeddings, top_k=15)
 ```
 
-### 3. Multi-Session Context
+### 3. Multi-Session Context -  DONE! ✅
 **Priority:** Medium  
 **Status:** Concept
 
@@ -135,7 +135,7 @@ You: "Is the garage door open?"
 - `hass_state_check`
 - Device discovery
 
-### 5. Calendar & Reminder System
+### 5. Calendar & Reminder System -  DONE! ✅
 **Priority:** Medium
 
 ```
@@ -145,11 +145,11 @@ You: "Schedule a meeting for next Tuesday"
 ```
 
 **Requirements:**
-- CalDAV integration or local calendar
+- CalDAV integration or local calendar - gogle calander integration via n8n
 - Background reminder daemon
 - Natural language time parsing
 
-### 6. Email Integration
+### 6. Email Integration -  DONE! ✅
 **Priority:** Low
 **Complexity:** High
 
@@ -176,12 +176,12 @@ You: "Any unread messages?"
 
 ### 8. Memory Improvements
 
-#### 8.1. Bulk Embedding Regeneration
+#### 8.1. Bulk Embedding Regeneration -  DONE! ✅
 ```bash
 # Currently embeddings only created at remember()
 # Need tool to regenerate all embeddings after config changes
 
-./bin/memory regenerate-embeddings
+./bin/sync-memory-db.py --from cloud --to local
 ```
 
 #### 8.2. Memory Expiration

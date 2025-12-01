@@ -1,6 +1,5 @@
 # Jarvis Voice Assistant - Quick Start
 
-## 5-Minute Setup
 
 ### 1. Navigate & Setup
 ```bash
@@ -29,7 +28,7 @@ Say: **"Hey Jarvis"** 🎙️
 For more details:
 - Full docs: `README.md`
 - Migration: `MIGRATION.md`
-- Architecture: `/home/boss/jarvis-docs/jarvis-voice-architecture.md`
+- Architecture: `JARVIS_WORKFLOW.md`
 
 ---
 
@@ -51,6 +50,24 @@ source ~/jarvis-venv/bin/activate
 # Just speak text
 ./bin/say.sh "Hello world"
 ```
+
+## Dashboard
+
+```bash
+./bin/jarvis-dashboard
+```
+
+
+All unique sessions now:
+```bash
+tmux attach -t jarvis-voice       # Wake word loop (cloud)
+tmux attach -t jarvis-api         # API cloud mode
+tmux attach -t jarvis-api-local   # API local mode
+tmux attach -t jarvis-services    # Background services
+```
+
+# List all
+tmux ls
 
 ---
 
