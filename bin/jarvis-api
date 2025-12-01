@@ -214,6 +214,29 @@ else
     fi
 fi
 
+# Optional: Sync evolution data (prompt versions) between modes
+# Set EVOLUTION_AUTO_SYNC=true in your .env to enable
+# Default: false (manual sync recommended - evolution changes tool behavior)
+if [ "${EVOLUTION_AUTO_SYNC:-false}" == "true" ]; then
+    if [ "$MODE" == "local" ]; then
+        if [ -f "$PROJECT_ROOT/data/jarvis_memory.db" ]; then
+            echo -e "${BLUE}🧬 Syncing evolution data: cloud → local...${NC}"
+            "$PROJECT_ROOT/bin/sync-evolution-db.py" local --update-files 2>/dev/null && \
+                echo -e "${GREEN}  ✅ Evolution data synced${NC}" || \
+                echo -e "${YELLOW}  ⚠️  Evolution sync skipped (no changes)${NC}"
+            echo ""
+        fi
+    else
+        if [ -f "$PROJECT_ROOT/data/jarvis_memory_local.db" ]; then
+            echo -e "${BLUE}🧬 Syncing evolution data: local → cloud...${NC}"
+            "$PROJECT_ROOT/bin/sync-evolution-db.py" cloud --update-files 2>/dev/null && \
+                echo -e "${GREEN}  ✅ Evolution data synced${NC}" || \
+                echo -e "${YELLOW}  ⚠️  Evolution sync skipped (no changes)${NC}"
+            echo ""
+        fi
+    fi
+fi
+
 # Sync tool definitions to vector database
 echo -e "${BLUE}🔧 Syncing tool definitions...${NC}"
 python3 "$PROJECT_ROOT/bin/sync_tools.py" "$MODE" > /dev/null 2>&1

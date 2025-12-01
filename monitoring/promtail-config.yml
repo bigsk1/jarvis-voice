@@ -220,6 +220,79 @@ scrape_configs:
           format: RFC3339Nano
 
   # ==========================================
+  # Feedback Logs (LLM-as-QA grading)
+  # ==========================================
+  - job_name: jarvis_feedback
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: feedback
+          host: fred
+          __path__: /var/log/jarvis/feedback/feedback-*.jsonl
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            rating: rating
+            mode: mode
+            session_id: session_id
+            result_ok: result_ok
+            feedback_provider: feedback_provider
+            feedback_model: feedback_model
+            query: query
+            summary: summary
+            
+      - labels:
+          rating:
+          mode:
+          result_ok:
+          feedback_provider:
+          feedback_model:
+          
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # ==========================================
+  # Evolution Logs (Prompt/Tool improvements)
+  # ==========================================
+  - job_name: jarvis_evolution
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: evolution
+          host: fred
+          __path__: /var/log/jarvis/evolution/evolution-*.jsonl
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            event: event
+            component: component
+            component_type: component_type
+            version: version
+            mode: mode
+            auto_deploy: auto_deploy
+            change_summary: change_summary
+            
+      - labels:
+          event:
+          component:
+          component_type:
+          mode:
+          auto_deploy:
+          
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # ==========================================
   # Orchestrator Logs (General)
   # ==========================================
   - job_name: jarvis_orchestrator

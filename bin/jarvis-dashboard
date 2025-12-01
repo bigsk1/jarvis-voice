@@ -150,6 +150,18 @@ COMMANDS: List[Command] = [
     Command("View Experiences", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(query,1,40), tools_used, outcome_success FROM experiences ORDER BY id DESC LIMIT 10;\"", "Recent experiences", "🧠 Intelligence"),
     Command("Re-embed Insight", "echo '📝 To re-embed an insight after editing:' && echo '   ./bin/re-embed-insight <id>' && echo '   ./bin/re-embed-insight <id> local' && echo '' && echo 'Example: ./bin/re-embed-insight 42'", "Re-embed after edit", "🧠 Intelligence"),
     
+    # === 🧬 PROMPT EVOLUTION ===
+    Command("Evolution Check", "./bin/evolve-prompts check", "Check prompts needing evolution", "🧬 Evolution"),
+    Command("Evolution Check (Local)", "./bin/evolve-prompts check -m local", "Check local prompts", "🧬 Evolution"),
+    Command("List Versions", "./bin/evolve-prompts list", "All tracked prompts", "🧬 Evolution"),
+    Command("Auto Evolution", "./bin/evolve-prompts auto --deploy --activate", "Run auto evolution", "🧬 Evolution", dangerous=True),
+    Command("Evolution History", "sqlite3 data/jarvis_memory.db \"SELECT datetime(timestamp), action, component, status FROM prompt_evolution_log ORDER BY timestamp DESC LIMIT 10;\"", "Recent evolution activity", "🧬 Evolution"),
+    Command("Prompt Backups", "sqlite3 data/jarvis_memory.db \"SELECT id, datetime(created_at), component, reason FROM prompt_backups ORDER BY created_at DESC LIMIT 10;\"", "View prompt backups", "🧬 Evolution"),
+    Command("Evolution Logs", "cat logs/evolution/evolution-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{event,component,change_summary}' 2>/dev/null || echo 'No evolution logs today'", "Today's evolution events", "🧬 Evolution"),
+    Command("Sync Evolution → Local", "./bin/sync-evolution-db.py local --update-files && ./bin/sync_tools.py local", "Sync cloud evolutions to local", "🧬 Evolution"),
+    Command("Sync Evolution → Cloud", "./bin/sync-evolution-db.py cloud --update-files && ./bin/sync_tools.py cloud", "Sync local evolutions to cloud", "🧬 Evolution"),
+    Command("System Prompt Suggestions", "cat logs/evolution/system_prompt_suggestions.md 2>/dev/null | tail -50 || echo 'No system prompt suggestions yet'", "View pending system prompt improvements", "🧬 Evolution"),
+    
     # === 🛠️ TOOLS ===
     Command("List Tools", "./bin/manage-tools.py list", "All tools & status", "🛠️ Tools"),
     Command("Enable All Tools", "./bin/manage-tools.py enable-all", "Enable all tools", "🛠️ Tools"),

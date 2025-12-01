@@ -268,6 +268,10 @@ Rate your experience (1-5)...
 {
     "rating": 4,
     "summary": "Task completed but tool description could be clearer",
+    "tool_ratings": {
+        "get_time": {"rating": 5, "note": "Returned correct time"},
+        "remember": {"rating": 5, "note": "Stored data correctly"}
+    },
     "issues": [
         {
             "category": "tool_description",
@@ -280,10 +284,43 @@ Rate your experience (1-5)...
     "session_id": "20251130_094500",
     "query": "What time is it?",
     "result_ok": true,
-    "result_speech": "It's 2:15 PM on Sunday",
+    "raw_llm_response": "It's 2:15 PM on Sunday, December 1st, 2025.",
+    "final_speech": "It's 2:15 PM on Sunday",
     "tools_used": ["get_time"],
-    "mode": "cloud"
+    "mode": "cloud",
+    "feedback_provider": "anthropic",
+    "feedback_model": "claude-sonnet-4-5-20250929"
 }
+```
+
+### Per-Tool Ratings (Multi-Tool Attribution)
+
+When multiple tools are used, each tool is rated **individually**:
+
+```json
+"tool_ratings": {
+    "remember": {"rating": 5, "note": "Correctly stored data"},
+    "search_memory": {"rating": 5, "note": "Found relevant memories"},
+    "crypto_price": {"rating": 5, "note": "Accurate price data"}
+}
+```
+
+**Why this matters:**
+- Overall `rating` may be low (e.g., 2) due to LLM decision failures
+- But individual tools that worked well get high `tool_ratings` (e.g., 5)
+- Evolution system uses per-tool ratings to correctly attribute issues
+- Tools that work well aren't penalized for system prompt issues
+
+**Example:**
+```
+Query: "get bitcoin price and tell me the time"
+Tools used: crypto_price (only)
+Overall rating: 2 (LLM failed to call get_time)
+
+tool_ratings:
+  - crypto_price: 5 (worked perfectly)
+  
+Result: crypto_price keeps its good rating, system_prompt takes the hit
 ```
 
 ### Issue Categories
@@ -445,6 +482,94 @@ The Jarvis Dashboard (Testing tab) includes:
 - **Feedback Summary** - `./bin/jarvis-feedback summary --days 7`
 - **Feedback Issues** - `./bin/jarvis-feedback issues --days 7`
 - **Feedback Test** - `./bin/jarvis-feedback run "What time is it?"`
+
+---
+
+## Grafana & Loki Integration
+
+### Log Shipping
+
+Feedback logs are shipped to Loki via Promtail:
+
+```yaml
+# monitoring/promtail-config.yml
+- job_name: jarvis_feedback
+  static_configs:
+    - targets: [localhost]
+      labels:
+        job: jarvis
+        log_type: feedback
+        __path__: /var/log/jarvis/feedback/feedback-*.jsonl
+```
+
+### Labels Available
+
+| Label | Values | Use |
+|-------|--------|-----|
+| `log_type` | `feedback` | Filter feedback logs |
+| `rating` | `1-5` | Filter by rating |
+| `mode` | `cloud`, `local` | Filter by mode |
+| `result_ok` | `true`, `false` | Filter by task success |
+| `feedback_provider` | `anthropic`, `openai`, etc. | Filter by grading LLM |
+
+### LogQL Queries
+
+**All feedback logs:**
+```logql
+{job="jarvis", log_type="feedback"} | json
+```
+
+**Low ratings only (< 4):**
+```logql
+{job="jarvis", log_type="feedback"} | json | rating < 4
+```
+
+**Feedback by tool (from tool_ratings):**
+```logql
+{job="jarvis", log_type="feedback"} 
+| json 
+| line_format "{{.tool_ratings}}"
+```
+
+**Issues grouped by category:**
+```logql
+sum by (category) (
+  count_over_time(
+    {job="jarvis", log_type="feedback"} 
+    | json 
+    | unwrap issues [24h]
+  )
+)
+```
+
+**Average rating over time:**
+```logql
+avg_over_time(
+  {job="jarvis", log_type="feedback"} 
+  | json 
+  | unwrap rating [1h]
+)
+```
+
+### Dashboard Panels (Suggested)
+
+1. **Rating Distribution** (Pie/Bar Chart)
+   - Count of ratings 1-5
+
+2. **Rating Trend** (Time Series)
+   - Average rating over time
+
+3. **Issues by Category** (Bar Chart)
+   - system_prompt, tool_description, other
+
+4. **Low-Rated Queries** (Table)
+   - Queries with rating < 4
+
+5. **Per-Tool Performance** (Table)
+   - Average tool_ratings per tool
+
+6. **Evolution Candidates** (Stat)
+   - Components with 2+ low ratings
 
 ---
 

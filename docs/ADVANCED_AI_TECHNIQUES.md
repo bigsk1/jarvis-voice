@@ -17,6 +17,34 @@
 
 ---
 
+## TL;DR - Super Simple Explanation
+
+**What is Prompt Evolution?**
+Jarvis grades itself after every task. If a tool or the system prompt keeps getting bad grades, Jarvis automatically improves it.
+
+**How it Works:**
+1. **Feedback** → After each query, feedback LLM rates performance (1-5)
+2. **Track** → Ratings are stored per-tool and for system prompt
+3. **Detect** → If something has 2+ low ratings, it becomes an evolution candidate
+4. **Improve** → LLM generates a better description/prompt
+5. **Deploy** → Verified improvement gets deployed (tools auto, system prompt manual)
+
+**Manual Commands:**
+```bash
+# See what needs improvement
+./bin/evolve-prompts check cloud
+
+# Generate improvements for candidates
+./bin/evolve-prompts auto cloud
+
+# Review system prompt suggestions
+cat logs/evolution/system_prompt_suggestions.md
+```
+
+**Multi-Tool Fairness:** When 3 tools are used but only 1 failed, only that tool gets a bad rating. The other tools keep their good ratings.
+
+---
+
 ## Overview & Philosophy
 
 ### Core Principles
@@ -138,27 +166,74 @@ CREATE INDEX idx_prompt_active ON prompt_versions(component, is_active);
 CREATE INDEX idx_prompt_performance ON prompt_versions(component, avg_rating);
 ```
 
+### Configuration (Environment Variables)
+
+All evolution settings can be configured in `config/cloud.env` or `config/local.env`:
+
+```bash
+# --- Thresholds ---
+EVOLUTION_MIN_LOW_RATINGS=2      # Min low ratings to trigger (testing: 2, prod: 5)
+EVOLUTION_LOW_THRESHOLD=7        # Ratings below this are "low" (testing: 7, prod: 6)
+EVOLUTION_WINDOW_DAYS=3          # Days to look back (testing: 3, prod: 7)
+
+# --- Rate Limits ---
+EVOLUTION_MAX_PER_DAY=5          # Max evolutions per day (testing: 5, prod: 3)
+
+# --- Automation ---
+EVOLUTION_AUTO_ENABLED=false     # Auto-evolve after feedback threshold
+EVOLUTION_AUTO_CHECK_AFTER=10    # Feedback count to trigger auto-check
+
+# --- Degradation Detection ---
+EVOLUTION_DEGRADATION_ALERT_PCT=15    # Alert when perf drops by %
+EVOLUTION_DEGRADATION_ROLLBACK_PCT=25 # Auto-rollback when perf drops by %
+
+# --- A/B Testing ---
+EVOLUTION_AB_TEST_SIZE=10        # Sample size for A/B tests (testing: 10, prod: 20)
+```
+
 ### Trigger Conditions
 
 Evolution is triggered when:
+- A component has `EVOLUTION_MIN_LOW_RATINGS` or more ratings below `EVOLUTION_LOW_THRESHOLD`
+- Within the last `EVOLUTION_WINDOW_DAYS` days
+- Rate limit (`EVOLUTION_MAX_PER_DAY`) not exceeded
 
-```python
-EVOLUTION_TRIGGERS = {
-    # Minimum low ratings before considering evolution
-    "min_low_ratings": 5,
-    
-    # What counts as "low"
-    "low_rating_threshold": 6,
-    
-    # Time window to accumulate feedback
-    "window_days": 7,
-    
-    # Minimum improvement required to promote
-    "min_improvement_pct": 10,  # New version must be 10% better
-    
-    # A/B test sample size
-    "ab_test_interactions": 20,
+### Multi-Tool Attribution (Per-Tool Ratings)
+
+**Problem**: Most queries use multiple tools. If overall rating is low, which tool is at fault?
+
+**Solution**: The feedback LLM rates each tool separately:
+
+```json
+{
+  "rating": 2,  // Overall: low because time was skipped
+  "tool_ratings": {
+    "remember": {"rating": 5, "note": "Correctly stored data"},
+    "search_memory": {"rating": 5, "note": "Found relevant memories"},
+    // get_time wasn't called, so no rating recorded
+  }
 }
+```
+
+**Attribution Logic**:
+
+| Scenario | System Prompt Rating | Tool Ratings |
+|----------|---------------------|--------------|
+| All tools worked, overall good | Overall rating | Per-tool ratings |
+| Tools worked, LLM made bad decision | Overall rating (low) | Per-tool ratings (high) |
+| Specific tool failed | Overall rating | That tool gets low rating |
+
+**Key Insight**: When the LLM fails to use a tool (like skipping `get_time` when user asks for time), the **system prompt** takes the rating hit, not the tools that were actually used. This correctly identifies that the LLM's routing decision was the problem, not the individual tool implementations.
+
+**Example Database State After Multi-Tool Tests**:
+
+```
+Component                | Uses | Avg Rating | Notes
+-------------------------|------|------------|----------------------
+system_prompt           |   9  |    3.56    | Takes hit from LLM decision errors
+tool:remember           |   2  |    5.00    | Perfect uses
+tool:search_memory      |   1  |    5.00    | Per-tool rating preserved
+tool:weather            |   1  |    5.00    | Individual rating correct
 ```
 
 ### Audit Trail Example
@@ -187,17 +262,94 @@ EVOLUTION_TRIGGERS = {
 
 ```
 bin/
-├── evolve-prompts           # Main evolution script
-├── verify-prompt            # Validation helper
-└── prompt-history           # View version history
+├── evolve-prompts           # Main evolution CLI
+├── setup-prompt-versions.py # Database schema setup
+├── sync-evolution-db.py     # Sync evolution data between cloud/local
 
 lib/
-├── prompt_evolution.py      # Core evolution logic
-└── prompt_versioning.py     # DB operations
+├── prompt_evolution.py      # Core evolution logic + LLM generation
+└── prompt_versioning.py     # DB operations + version tracking
 
 data/
-└── jarvis_memory.db         # Contains prompt_versions table
+├── jarvis_memory.db         # Contains prompt_versions, prompt_evolution_log, prompt_backups
+└── jarvis_memory_local.db   # Same tables for local mode
+
+logs/evolution/
+└── evolution-YYYY-MM-DD.jsonl  # JSONL logs for Grafana/Loki
 ```
+
+### Grafana Dashboard
+
+A dedicated dashboard for monitoring feedback and evolution:
+
+**Dashboard**: `Jarvis Feedback & Evolution`
+**URL**: http://192.168.70.228:3000/d/jarvis-feedback-evolution
+
+**Panels:**
+1. **Feedback Overview** - Total feedback entries (24h)
+2. **Average Rating** - Avg rating with color thresholds
+3. **Low Ratings** - Count of ratings < 4
+4. **Evolution Events** - Count of evolution events
+5. **Rating Trend** - Rating over time graph
+6. **Rating Distribution** - Pie chart of ratings 1-5
+7. **Evolution by Component** - Which components evolved
+8. **Recent Feedback Logs** - Live log stream
+9. **Evolution Event Log** - Evolution activity stream
+
+**LogQL Queries:**
+```logql
+# All feedback
+{job="jarvis", log_type="feedback"} | json
+
+# Low ratings
+{job="jarvis", log_type="feedback"} | json | rating < 4
+
+# Evolution events
+{job="jarvis", log_type="evolution"} | json
+
+# Rating trend
+avg_over_time({job="jarvis", log_type="feedback"} | json | unwrap rating [1h])
+```
+
+### Cloud ↔ Local Sync
+
+Evolution improvements can be synced between cloud and local databases:
+
+```bash
+# Sync cloud improvements to local (recommended)
+# Use stronger cloud models to evolve, then sync to local
+./bin/sync-evolution-db.py local --update-files
+./bin/sync_tools.py local
+
+# Sync local to cloud (if needed)
+./bin/sync-evolution-db.py cloud --update-files
+./bin/sync_tools.py cloud
+```
+
+**Recommended Workflow:**
+1. Run evolution with cloud mode (stronger LLMs for generation)
+2. Sync improvements to local: `./bin/sync-evolution-db.py local --update-files`
+3. Sync tool embeddings: `./bin/sync_tools.py local`
+
+### Logging & Monitoring
+
+Evolution events are logged in JSONL format for Grafana/Loki integration:
+
+```bash
+# View today's evolution logs
+cat logs/evolution/evolution-$(date +%Y-%m-%d).jsonl | jq '.'
+
+# Via dashboard
+jarvis-dashboard → 🧬 Evolution → Evolution Logs
+```
+
+**Logged Events:**
+- `evolution_check_started` - Check initiated
+- `evolution_deployed` - New version deployed
+- `evolution_verification_failed` - Candidate failed validation
+- `evolution_blocked` - Rate limit hit
+- `degradation_detected` - Performance drop detected
+- `auto_rollback` - Automatic rollback triggered
 
 ### CLI Usage
 
@@ -345,6 +497,33 @@ skills/
     }
   ]
 }
+```
+
+### OpenCode Workspace Isolation
+
+**Important Constraint**: OpenCode is isolated to `~/jarvis-workspace` and CANNOT write directly to `~/jarvis-voice/skills/`.
+
+**Solution - Two-Stage Build**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    TOOL BUILDING WITH OPENCODE ISOLATION                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Stage 1: OpenCode builds in workspace                                      │
+│  ─────────────────────────────────────                                      │
+│    OpenCode → ~/jarvis-workspace/tools/new_tool.py                          │
+│            → ~/jarvis-workspace/tools/new_tool.tool.json                    │
+│                                                                             │
+│  Stage 2: Install script moves to Jarvis                                    │
+│  ─────────────────────────────────────────                                  │
+│    ./bin/install-tool ~/jarvis-workspace/tools/new_tool                     │
+│      1. Validates tool files                                                │
+│      2. Copies to skills/auto-tools/                                        │
+│      3. Runs sync_tools.py                                                  │
+│      4. Updates registry                                                    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### OpenCode Tool Builder Subagent
@@ -1101,7 +1280,19 @@ Each phase builds on the previous, with safety guardrails ensuring stability.
 
 ---
 
-**Document Version:** 1.0  
+## Implementation Status
+
+| Phase | Feature | Status | Files |
+|-------|---------|--------|-------|
+| **3** | Self-Evolving Prompts | ✅ **IMPLEMENTED** | `lib/prompt_evolution.py`, `lib/prompt_versioning.py`, `bin/evolve-prompts` |
+| **7** | Versioned Rollback | ✅ **IMPLEMENTED** | Included in Phase 3 |
+| **4** | Dynamic Tool Creation | 📋 Planned | - |
+| **5** | Parallel Subagents | 📋 Planned | - |
+| **6** | Self-Play Optimization | 📋 Planned | - |
+
+---
+
+**Document Version:** 1.1  
 **Last Updated:** 2025-12-01  
-**Status:** Planning / Design Phase
+**Status:** Phase 3 & 7 Implemented, Testing Mode Active
 

@@ -42,11 +42,21 @@ Tools Used: {tools_used}
 **FINAL VOICE OUTPUT** (formatted for speakers, ~25 word limit):
 {final_speech}
 
-⚠️ IMPORTANT: The voice output is SHORT BY DESIGN - it's spoken aloud through speakers.
-The system INTENTIONALLY formats the LLM's response to be concise for voice.
-DO NOT penalize for brief voice output - that's correct behavior!
-Grade the ORIGINAL LLM RESPONSE for accuracy and completeness.
-Grade the VOICE OUTPUT only for whether it's a reasonable summary for speaking.
+⚠️ IMPORTANT CONTEXT FOR GRADING:
+
+1. **VOICE OUTPUT IS SHORT BY DESIGN** - it's spoken through speakers.
+   DO NOT penalize for brief voice output - that's correct behavior!
+   Grade the ORIGINAL LLM RESPONSE for accuracy and completeness.
+
+2. **CURRENT DATE/TIME IS INJECTED INTO THE SYSTEM PROMPT** on every request.
+   The LLM ALREADY HAS the current date and time in its system prompt.
+   Therefore:
+   - NOT calling get_time when asked for time is ACCEPTABLE if the LLM uses system prompt time
+   - The LLM using time from system prompt instead of calling a tool is EFFICIENT, not wrong
+   - Only penalize if the time in the response is INCORRECT, not if get_time wasn't called
+   
+3. **CHECK THE SYSTEM PROMPT BELOW** - it shows what context the LLM had available.
+   If data was already in the system prompt, the LLM didn't need to call a tool for it.
 
 === SYSTEM PROMPT THE LLM WAS GIVEN ===
 {system_prompt_excerpt}
@@ -62,12 +72,51 @@ Grade the VOICE OUTPUT only for whether it's a reasonable summary for speaking.
 
 === PROVIDE SPECIFIC FEEDBACK ===
 
-Rate your experience (1-5):
-- 5 = Perfect, everything worked as expected
-- 4 = Minor improvements possible  
-- 3 = Some issues but workable
-- 2 = Significant issues
-- 1 = Major problems
+Rate the interaction (1-5) using this STRICT rubric:
+
+**5 = PERFECT** - All criteria met:
+  ✓ Correct tool(s) selected
+  ✓ Response accurately addresses the query
+  ✓ No hallucinations or incorrect information
+  ✓ Voice output is appropriate for speaking
+  
+**4 = GOOD with minor issues** - Task completed but:
+  - Slightly verbose or could be more concise
+  - Minor formatting issue
+  - Correct but not optimal tool choice
+  
+**3 = ACCEPTABLE with issues** - Task completed but:
+  - Response partially addresses query
+  - Tool description caused suboptimal selection
+  - Some unnecessary steps taken
+  
+**2 = PROBLEMATIC** - Significant issues:
+  - Wrong tool selected due to poor description
+  - Response contains inaccuracies
+  - Important information missing
+  - System prompt guidance not followed
+  
+**1 = FAILURE** - Major problems:
+  - Task failed or wrong result
+  - Hallucinated information
+  - Completely wrong approach taken
+
+BE CONSISTENT: Apply this rubric the same way every time.
+
+⚠️ CRITICAL CONSTRAINT - CONTEXT LENGTH BUDGET:
+Tool descriptions and system prompts must be CONCISE. Every token costs:
+- Latency (slower responses)
+- Money (API costs)  
+- Context window space (less room for conversation)
+
+When suggesting improvements:
+- Tool descriptions: MAX 200 words (ideal: 50-100 words)
+- Keep suggestions focused and actionable
+- Don't add unnecessary examples or edge cases
+- Prioritize: WHEN to use > HOW it works > edge cases
+
+A description that's 50 words and covers 90% of use cases is BETTER than
+a 200 word description that covers 100% of use cases.
 
 Provide SPECIFIC, ACTIONABLE feedback:
 
@@ -96,6 +145,12 @@ FORMAT YOUR RESPONSE AS JSON:
 {{
     "rating": <1-5>,
     "summary": "<one sentence summary>",
+    "tool_ratings": {{
+        "<tool_name>": {{
+            "rating": <1-5>,
+            "note": "<brief note about this tool's performance>"
+        }}
+    }},
     "issues": [
         {{
             "category": "system_prompt|tool_description|intelligence_insights|config|other",
@@ -106,6 +161,12 @@ FORMAT YOUR RESPONSE AS JSON:
     ],
     "positive": "<what worked well, if anything>"
 }}
+
+IMPORTANT for tool_ratings:
+- Rate EACH tool that was used separately (1-5)
+- If a tool worked perfectly: 5
+- If a tool had issues: rate accordingly (1-4)
+- Example: {{"get_time": {{"rating": 5, "note": "correct"}}, "mcp_fetch_fetch": {{"rating": 2, "note": "couldn't reach private IP"}}}}
 """
 
 
@@ -232,11 +293,12 @@ class FeedbackCollector:
         """
         timestamp = datetime.now().isoformat()
         
-        # Format system prompt excerpt (key sections)
+        # Format system prompt - provide FULL context for accurate feedback
+        # Truncation can lead to missed context and bad evolution decisions
         system_prompt_excerpt = system_prompt or "System prompt not provided for analysis."
-        if len(system_prompt_excerpt) > 3000:
-            # Truncate but keep key sections
-            system_prompt_excerpt = system_prompt_excerpt[:3000] + "\n... [truncated for length]"
+        if len(system_prompt_excerpt) > 8000:
+            # Only truncate if extremely long, keep most of it
+            system_prompt_excerpt = system_prompt_excerpt[:8000] + "\n... [truncated - full prompt is " + str(len(system_prompt)) + " chars]"
         
         # Format tool descriptions
         if tool_descriptions:
@@ -292,8 +354,15 @@ class FeedbackCollector:
             rating = feedback.get("rating")
             has_error = feedback.get("raw_response", "").startswith("Error:") or feedback.get("error")
             
+            # Log feedback for evolution system
+            # Rating scale is 1-5, so ratings < 5 (i.e., 1-4) are logged for evolution
+            # Rating 5 = perfect, 4 = minor issues, 3 = some issues, 2 = significant, 1 = major
             if has_error or rating is None or rating < 5 or os.environ.get('JARVIS_FEEDBACK_ALWAYS_LOG'):
                 self._log_feedback(feedback)
+            
+            # Record usage in prompt versioning system for evolution tracking
+            # Pass feedback to enable per-tool attribution when multiple tools used
+            self._record_prompt_usage(tools_used, rating, feedback)
             
             return feedback
             
@@ -344,6 +413,88 @@ class FeedbackCollector:
         
         with open(log_file, "a") as f:
             f.write(json.dumps(feedback) + "\n")
+    
+    def _record_prompt_usage(self, tools_used: list, rating: float, feedback: dict = None) -> None:
+        """Record usage for prompt evolution tracking.
+        
+        Uses per-tool ratings if available from feedback LLM.
+        Falls back to overall rating if per-tool ratings not provided.
+        """
+        try:
+            from prompt_versioning import PromptVersionDB, EVOLUTION_CONFIG
+            db = PromptVersionDB(self.mode)
+            
+            # Record for system prompt (always gets the overall rating)
+            db.record_usage('system_prompt', rating)
+            
+            # Check for per-tool ratings (new structured format)
+            tool_ratings = {}
+            if feedback and feedback.get('tool_ratings'):
+                tool_ratings = feedback['tool_ratings']
+            
+            # Record ratings for each tool
+            for tool in (tools_used or []):
+                component = f"tool:{tool}"
+                
+                if tool in tool_ratings:
+                    # Use per-tool rating (more accurate)
+                    tool_rating = tool_ratings[tool].get('rating', rating)
+                    db.record_usage(component, tool_rating)
+                else:
+                    # Fallback: use overall rating
+                    # This is less accurate but ensures we don't lose data
+                    db.record_usage(component, rating)
+            
+            # Check if auto-evolution is enabled
+            if EVOLUTION_CONFIG.get('auto_evolve_enabled', False):
+                self._maybe_trigger_auto_evolution()
+                
+        except Exception as e:
+            # Don't fail feedback collection if versioning fails
+            pass
+    
+    def _maybe_trigger_auto_evolution(self) -> None:
+        """Check if we should run auto-evolution based on feedback count."""
+        try:
+            from prompt_versioning import EVOLUTION_CONFIG
+            
+            # Count today's feedback entries
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            log_file = self.log_dir / f"feedback-{date_str}.jsonl"
+            
+            if not log_file.exists():
+                return
+            
+            with open(log_file) as f:
+                count = sum(1 for _ in f)
+            
+            threshold = EVOLUTION_CONFIG.get('auto_check_after_feedback', 10)
+            
+            # Check if we've hit the threshold and haven't run yet today
+            marker_file = self.log_dir / f".auto_evolution_run_{date_str}"
+            
+            if count >= threshold and not marker_file.exists():
+                # Run evolution check in background
+                import subprocess
+                import sys
+                
+                evolve_script = Path(__file__).parent.parent / 'bin' / 'evolve-prompts'
+                
+                # Run async - don't block feedback return
+                subprocess.Popen(
+                    [sys.executable, str(evolve_script), 'auto', '--deploy', '--activate', '-m', self.mode],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                
+                # Mark as run today
+                marker_file.touch()
+                
+                print(f"🧬 Auto-evolution triggered ({count} feedback entries)")
+                
+        except Exception as e:
+            # Don't fail if auto-evolution check fails
+            pass
     
     def get_recent_feedback(self, days: int = 7) -> list:
         """Get feedback from recent days."""

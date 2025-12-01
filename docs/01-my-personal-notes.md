@@ -176,9 +176,140 @@ source ~/jarvis-venv/bin/activate
 ./bin/jarvis-canvas
 ./bin/jarvis-dashboard
 
-no db run - cloud or local  both to get all tables made and to create embedding for tools and mcp tools
+cloud or local  both to get all tables made and to create embedding for tools and mcp tools
  ./bin/sync_tools.py cloud
  ./bin/sync_tools.py local
+
+# trigger reflection manually
+python3 -c "from lib.intelligence_hooks import trigger_reflection; trigger_reflection(10)"
+curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
+```
+
+# Feedback Commands
+
+## Usage Methods
+
+### Method 1: `--feedback` Flag (Quick Debugging)
+
+Add `--feedback` to any orchestrator command:
+
+```bash
+# Basic usage
+./orchestrator/orchestrator_v2.py cloud "What time is it?" --feedback
+
+# With other flags
+./orchestrator/orchestrator_v2.py cloud "Search memory" --feedback --json
+./orchestrator/orchestrator_v2.py cloud "Complex task" --feedback --debug-thinking
+```
+
+**When to use**: 
+- Debugging a specific query
+- Spot-checking after changes
+- One-off testing
+
+### Method 2: `bin/jarvis-feedback` (Dedicated Tool)
+
+Standalone tool with multiple commands:
+
+```bash
+./bin/jarvis-feedback run "Query here"      # Single query with feedback
+./bin/jarvis-feedback batch file.txt        # Batch testing
+./bin/jarvis-feedback summary               # Summarize recent feedback
+./bin/jarvis-feedback recent                # Show recent feedback entries
+./bin/jarvis-feedback issues                # Show only issues (rating < 5)
+```
+
+
+# Evolution Commands
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    EVOLUTION WORKFLOW (Manual)                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  STEP 1: Collect Feedback (happens during normal use)           │
+│  ──────────────────────────────────────────────────             │
+│    ./orchestrator/orchestrator_v2.py cloud "query" --feedback   │
+│    → Feedback LLM grades interaction (1-5 scale)                │
+│    → Logged to logs/feedback/feedback-YYYY-MM-DD.jsonl          │
+│                                                                 │
+│  STEP 2: Check Evolution Candidates (run when you want)         │
+│  ─────────────────────────────────────────────────────          │
+│    ./bin/evolve-prompts check                                   │
+│    → Shows components with low ratings                          │
+│    → Ratings 1,2,3 count as "low" (need 2+ to trigger)          │
+│                                                                 │
+│  STEP 3: Generate Improvements (run for specific component)     │
+│  ───────────────────────────────────────────────────────        │
+│    ./bin/evolve-prompts generate tool:xyz                       │
+│    → LLM generates improved description                         │
+│    → Shows before/after comparison                              │
+│                                                                 │
+│  STEP 4: Review & Apply                                         │
+│  ─────────────────────────                                      │
+│    Tool descriptions:                                           │
+│      ./bin/evolve-prompts generate tool:xyz --deploy --activate │
+│      → Auto-updates tool.json file                              │
+│                                                                 │
+│    System prompt:                                                │
+│      ./bin/evolve-prompts generate system_prompt --deploy       │
+│      → Saves to logs/evolution/system_prompt_suggestions.md     │
+│      → YOU manually apply to router_v2.py                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+# 1. Run queries with feedback collection
+# Manual - per query
+./orchestrator/orchestrator_v2.py cloud "Do something" --feedback
+
+# 2. Check what needs evolution
+./bin/evolve-prompts check
+
+# 3. Generate & preview improvement
+./bin/evolve-prompts generate tool:xyz
+
+# 4. Deploy tool improvement
+./bin/evolve-prompts generate tool:xyz --deploy --activate
+
+# 5. Generate system prompt suggestions
+./bin/evolve-prompts generate system_prompt --deploy
+
+# 6. View system prompt suggestions
+cat logs/evolution/system_prompt_suggestions.md
+
+# Check what needs evolution (includes MCP status)
+./bin/evolve-prompts check --show-mcp
+
+# Auto-evolve (dry run)
+./bin/evolve-prompts auto
+
+# Auto-evolve (deploy but don't activate - for A/B testing)
+./bin/evolve-prompts auto --deploy
+
+# Auto-evolve (deploy AND activate immediately)
+./bin/evolve-prompts auto --deploy --activate
+
+# View evolution logs
+cat logs/evolution/evolution-$(date +%Y-%m-%d).jsonl | jq '.'
+
+Test evolution_test - Run queries with --feedback, accumulate low ratings
+Watch logs - cat logs/evolution/evolution-$(date +%Y-%m-%d).jsonl | jq '.'
+Run evolution - ./bin/evolve-prompts check to see candidates
+Verify improvements - Compare before/after descriptions
+
+## local
+# After evolving prompts in cloud mode:
+./bin/sync-evolution-db.py local --update-files
+./bin/sync_tools.py local
+
+# Or via dashboard:
+jarvis-dashboard → 🧬 Evolution → Sync Evolution → Local
+
+# CLI for system prompt suggestions
+cat logs/evolution/system_prompt_suggestions.md
+
+# Dashboard for system prompt suggestions
+jarvis-dashboard → 🧬 Evolution → System Prompt Suggestions
+---
+
 
 test all tools
 cd /home/boss/jarvis-voice/tests/integration && ./test-all-tools.sh

@@ -32,6 +32,8 @@ JARVIS_INTELLIGENCE=true
 
 # Disable for testing/debugging
 JARVIS_INTELLIGENCE=false
+
+# Uses current LLM_PROVIDER and related MODEL when you run it
 ```
 
 When disabled:
@@ -1261,6 +1263,12 @@ curl http://192.168.70.228:8880/api/intelligence/insights | jq '.insights'
 curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
 ```
 
+or use to run manually
+
+```bash
+python3 -c "from lib.intelligence_hooks import trigger_reflection; trigger_reflection(10)"
+```
+
 ### Grafana Dashboard Panels
 
 The Intelligence Layer dashboard (`grafana/dashboards/jarvis-intelligence.json`) includes:
@@ -1645,4 +1653,5 @@ This is the difference between a tool and a true assistant.
 - [KNOWLEDGE_GRAPH_MEMORY_EXPLORATION.md](KNOWLEDGE_GRAPH_MEMORY_EXPLORATION.md) - Vision doc
 - [MEMORY_SYSTEM.md](MEMORY_SYSTEM.md) - Main memory system
 - [MEMORY_SYSTEM_TUNING.md](MEMORY_SYSTEM_TUNING.md) - Memory optimization
-
+- [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) - Feedback system
+- [ADVANCED_AI_TECHNIQUES.md](ADVANCED_AI_TECHNIQUES.md) - Advanced AI techniques
