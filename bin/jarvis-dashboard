@@ -509,10 +509,14 @@ class CommandRunner(App):
                 await process.wait()
                 
                 if process.returncode == 0:
-                    log.write(f"[bold green]✅ Launched successfully[/bold green]")
+                    log.write("[bold green]✅ Launched successfully[/bold green]")
                     if not in_tmux:
-                        log.write(f"[dim]Jarvis is running in the background.[/dim]")
-                        log.write(f"[dim]Use 'tmux attach -t {session_name}' to see output.[/dim]")
+                        log.write("[dim]Jarvis is running in the background inside a tmux session.[/dim]")
+                        log.write(f"[dim]Attach:  tmux attach -t {session_name}[/dim]")
+                        log.write("[dim]Detach:  Press Ctrl+b, then d[/dim]")
+                        log.write("[dim]List:    tmux ls[/dim]")
+                        log.write(f"[dim]Stop:    tmux kill-session -t {session_name}[/dim]")
+
                 else:
                     stderr = await process.stderr.read()
                     log.write(f"[bold red]❌ Failed to launch: {stderr.decode()}[/bold red]")
