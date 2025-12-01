@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "name": "calculator",
+  "description": "Advanced calculator for math, statistics, and unit conversions. Use for: arithmetic (2+2, 5^3, sqrt(144)), percentages (15% of 200, what percent is 30 of 200), statistics (mean of 1,2,3,4,5, stdev, median, mode, variance), unit conversions (5 miles to km, 100 fahrenheit to celsius, 2 cups to ml, 500 gb to tb), trigonometry (sin, cos, tan - use sind/cosd/tand for degrees), logarithms (log, log10, ln), and special functions (factorial, gcd, lcm). Constants available: pi, e, tau. Example: 'sqrt(144) + 5^2' returns 37.",
+  "script": "calculator.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "expression": {
+        "type": "string",
+        "description": "The calculation to perform. Can be: math expression (2+2, 5^3, sqrt(144)), percentage (15% of 200), unit conversion (5 miles to km), or statistics (mean of 1,2,3,4,5)"
+      },
+      "type": {
+        "type": "string",
+        "enum": ["auto", "expression", "percentage", "conversion", "statistics"],
+        "description": "Type hint for parsing. Usually 'auto' works best."
+      }
+    },
+    "required": ["expression"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+
