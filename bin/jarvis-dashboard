@@ -116,6 +116,9 @@ COMMANDS: List[Command] = [
     Command("OpenCode Sessions", "./bin/opencode-session list 2>/dev/null || curl -s http://localhost:4096/sessions | jq -c '.[] | {id: .id[:8], status}'", "List OpenCode sessions", "🔧 Services"),
     Command("OpenCode Clear", "./bin/opencode-clear-sessions 2>/dev/null || echo 'Script not found'", "Clear ALL sessions", "🔧 Services", dangerous=True),
     Command("Test MCP", "./bin/test-mcp", "Test MCP connections", "🔧 Services"),
+    Command("Start Canvas", "./bin/jarvis-canvas", "Visual knowledge viewer", "🔧 Services", interactive=True),
+    Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq || echo '❌ Canvas not running'", "Canvas status", "🔧 Services"),
+    Command("Canvas Pages", "curl -s http://localhost:8890/api/pages | jq -c '.[] | {title, tags, created}' 2>/dev/null || echo '❌ Canvas not running'", "List canvas pages", "🔧 Services"),
     
     # === 🧪 TESTING ===
     Command("Test All (Cloud)", "./test-all-tools.sh", "All tool tests - cloud", "🧪 Testing"),
@@ -481,6 +484,8 @@ class CommandRunner(App):
                 session_name = "jarvis-api-local" if "--local" in cmd.command else "jarvis-api"
             elif "jarvis-services" in cmd.command:
                 session_name = "jarvis-services"  # Background services
+            elif "jarvis-canvas" in cmd.command:
+                session_name = "jarvis-canvas"  # Canvas viewer
             else:
                 session_name = window_name  # Use window name as session name
             

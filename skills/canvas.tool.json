@@ -1,0 +1,54 @@
+{
+  "enabled": true,
+  "name": "canvas",
+  "description": "Save rich content to Jarvis Canvas - a visual viewer for research results, code snippets, comparisons, and reference material. Use when: (1) user asks to research something and results are complex, (2) user explicitly asks to 'save to canvas' or 'put in viewer', (3) content has tables, code, or detailed formatting that benefits from visual display. Canvas shows Markdown beautifully with syntax highlighting. After saving, tell user 'I've put that in your canvas' so they know to look. Actions: create (new page), update (modify existing), delete (remove page), list (show all pages), open (get canvas URL).",
+  "script": "canvas.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["create", "update", "delete", "list", "open"],
+        "description": "Action to perform. create=new page, update=modify existing, delete=remove, list=show all, open=get URL"
+      },
+      "title": {
+        "type": "string",
+        "description": "Page title (required for create, optional for update)"
+      },
+      "content": {
+        "type": "string",
+        "description": "Markdown content for the page. Supports headers, lists, tables, code blocks with syntax highlighting."
+      },
+      "tags": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Tags for categorization. Examples: research, code, reference, movies, servers"
+      },
+      "source_query": {
+        "type": "string",
+        "description": "The original user query that led to this content (for reference)"
+      },
+      "page_id": {
+        "type": "string",
+        "description": "Page ID for update/delete actions. Format: page_YYYYMMDD_HHMMSS"
+      },
+      "pinned": {
+        "type": "boolean",
+        "description": "Pin page to top of list"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Max pages to return for list action (default 10)"
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+

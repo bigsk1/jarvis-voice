@@ -10,6 +10,9 @@ pydantic>=2.0.0
 # Prometheus metrics
 prometheus-fastapi-instrumentator>=6.0.0  
 
+# Canvas Viewer
+flask-cors>=4.0.0
+
 # Existing dependencies
 av==15.1.0
 certifi==2025.8.3

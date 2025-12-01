@@ -68,6 +68,7 @@ data/*.db-*
 data/backups
 data/.email_rate_limit
 data/.webhook_rate_limit
+data/canvas
 
 # Cursor chat history files
 cursor_*.md

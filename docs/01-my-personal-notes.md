@@ -167,6 +167,15 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge | jq '.'
 activate env 
 source ~/jarvis-venv/bin/activate
 
+# Test sync manually
+./bin/sync-memory-db.py --from cloud --to local
+
+# Or start API/services and sync happens automatically
+./bin/jarvis-api --local
+./bin/jarvis-services --local
+./bin/jarvis-canvas
+./bin/jarvis-dashboard
+
 no db run - cloud or local  both to get all tables made and to create embedding for tools and mcp tools
  ./bin/sync_tools.py cloud
  ./bin/sync_tools.py local

@@ -29,6 +29,12 @@ Jarvis Proactive API transforms Jarvis from **reactive** (waits for commands) to
 # Start background services
 ./bin/jarvis-services
 
+# Start canvas
+./bin/jarvis-canvas
+
+# Start dashboard
+./bin/jarvis-dashboard
+
 # Send test alert
 curl -X POST http://localhost:8880/api/alerts \
   -H "Content-Type: application/json" \
