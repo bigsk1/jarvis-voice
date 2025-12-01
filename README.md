@@ -1043,7 +1043,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - Additional n8n workflow integrations
 - Performance optimization for local models
 
-**Planned:**
+**Planned (Advanced AI - See `docs/ADVANCED_AI_TECHNIQUES.md`):**
+- **Phase 3: Self-Evolving Prompts** - Auto-improve prompts based on feedback, A/B testing, versioned rollback
+- **Phase 4: Dynamic Tool Creation** - OpenCode subagent builds tools on-demand when capability gaps detected
+- **Phase 5: Parallel Subagents** - Concurrent execution for multi-part queries (3x speedup)
+- **Phase 6: Self-Play Optimization** - Nightly simulation to discover better routing strategies
+- **Phase 7: Versioned Prompts** - Auto-rollback on performance degradation
+
+**Other Planned:**
 - **Intelligence Layer Phase 2** - Implicit failure detection, tool trashing detection, conflict resolution
 - **Intelligence Layer Phase 3** - User profile learning (communication style, shortcuts, preferences)
 - Web UI for memory management and system health

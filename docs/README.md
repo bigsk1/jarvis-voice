@@ -157,8 +157,9 @@
 | Document | Purpose |
 |----------|---------|
 | **INTELLIGENCE_LAYER.md** | Self-learning system (Phase 1.5 - COMPLETE) ⭐ ENHANCED |
+| **ADVANCED_AI_TECHNIQUES.md** | 🚀 **AGI Roadmap** - Self-evolving prompts, parallel subagents, self-play ⭐ NEW |
 | **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
-| **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Real-time feedback during tasks ⭐ NEW |
+| **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Real-time feedback during tasks |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
 
 ### Developer Tools
