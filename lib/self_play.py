@@ -113,6 +113,14 @@ EXCLUDED_CATEGORIES = [
     "alert",       # Don't send real alerts
 ]
 
+# Categories to SKIP (user doesn't have these capabilities)
+# Edit this list based on your setup
+DISABLED_CATEGORIES = [
+    "home_automation",  # No smart home devices
+    # "productivity",   # Uncomment if no calendar integration
+    # "media",          # Uncomment if no media tools
+]
+
 
 @dataclass
 class QueryResult:
@@ -183,10 +191,16 @@ class SelfPlayEngine:
         if categories is None:
             categories = list(QUERY_CATEGORIES.keys())
         
-        # Filter to valid categories
+        # Filter to valid categories and remove disabled ones
         categories = [c for c in categories if c in QUERY_CATEGORIES]
+        categories = [c for c in categories if c not in DISABLED_CATEGORIES]
+        
         if not categories:
-            categories = list(QUERY_CATEGORIES.keys())
+            # Fallback if all filtered out
+            categories = [c for c in QUERY_CATEGORIES.keys() if c not in DISABLED_CATEGORIES]
+        
+        if not categories:
+            raise ValueError("No valid categories available after filtering")
         
         # Calculate queries per category based on weights
         total_weight = sum(QUERY_CATEGORIES[c]["weight"] for c in categories)
