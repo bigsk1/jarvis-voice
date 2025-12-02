@@ -340,6 +340,20 @@ jarvis-dashboard → 🧬 Evolution → System Prompt Suggestions
 ./bin/sync_tools.py cloud
 ```
 
+# Self-Play Commands
+
+```bash
+# Quick test (5 queries)
+./bin/jarvis-self-play --queries 5 --mode cloud
+
+# Standard session with feedback
+./bin/jarvis-self-play --queries 20 --mode cloud
+
+# List past sessions
+./bin/jarvis-self-play list
+
+# View results
+./bin/jarvis-self-play results --session latest
 
 # Testing Commands
 
