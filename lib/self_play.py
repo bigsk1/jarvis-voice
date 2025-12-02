@@ -379,10 +379,21 @@ Generate {count} queries:"""
                 "tools_used": query_result.tools_used,
             }
             
-            # Run feedback collection
-            feedback_data = collector.collect_and_log(
+            # Get response style for context
+            response_style = get_config_value("JARVIS_RESPONSE_STYLE", "casual")
+            
+            # Build config context to help feedback understand the style
+            config_context = f"""Response Style: {response_style}
+- casual: Brief voice output (~25 words), no URLs for speech
+- auto: Adapts based on query complexity
+- detailed: Full output for display/reading, markdown and URLs allowed"""
+            
+            # Run feedback collection with proper parameters
+            feedback_data = collector.collect(
                 query=query_result.query,
                 result=result_dict,
+                tools_used=query_result.tools_used,
+                config_context=config_context,
                 session_id=f"self_play_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             )
             
