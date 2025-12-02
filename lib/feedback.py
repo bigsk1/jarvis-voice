@@ -45,7 +45,7 @@ Tools Used: {tools_used}
 ⚠️ IMPORTANT CONTEXT FOR GRADING:
 
 1. **RESPONSE STYLE DETERMINES OUTPUT FORMAT** - check Configuration section FIRST!
-   - If style is "casual" or "auto": Apply 20-word limit, no URLs, no markdown (voice output)
+   - If style is "casual" or "auto": Apply 25-word limit, no URLs, no markdown (voice output)
    - If style is "detailed": Output is for DISPLAY/READING, not voice synthesis
      → Markdown IS allowed (links, bold, lists)
      → Full URLs with markdown links ARE correct
@@ -503,7 +503,9 @@ class FeedbackCollector:
                 # Mark as run today
                 marker_file.touch()
                 
-                print(f"🧬 Auto-evolution triggered ({count} feedback entries)")
+                # Log to stderr so it doesn't interfere with JSON output
+                import sys as _sys
+                print(f"🧬 Auto-evolution triggered ({count} feedback entries)", file=_sys.stderr)
                 
         except Exception as e:
             # Don't fail if auto-evolution check fails
