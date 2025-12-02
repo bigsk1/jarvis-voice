@@ -9,6 +9,8 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
+- **Prompt Evolution** - Self-evolving prompts and tool descriptions ⭐ NEW
+- **Dynamic Tool Builder** - Autonomous tool creation with safety checks ⭐ NEW
 - **Canvas System** - Visual knowledge viewer for rich content display ⭐ NEW
 - **Calculator Tool** - Advanced math, statistics, unit conversions ⭐ NEW
 - **Feedback System** - LLM self-critique and cross-model grading ⭐ NEW
@@ -962,9 +964,28 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
+- ✅ **Prompt Evolution System** - Self-evolving prompts ⭐ MAJOR
+  - Auto-improves tool descriptions based on feedback (1-5 rating scale)
+  - System prompt suggestions saved to Canvas for manual review
+  - A/B testing, versioning, auto-rollback on degradation
+  - Random feedback collection (`FEEDBACK_RANDOM_ENABLED=true`)
+  - `./bin/evolve-prompts check cloud` - See what needs improvement
+  - `./bin/evolve-prompts auto cloud` - Generate and deploy
+  - See: `docs/ADVANCED_AI_TECHNIQUES.md`
+- ✅ **Dynamic Tool Builder** - Autonomous tool creation ⭐ MAJOR
+  - Creates new tools when capability gaps detected
+  - **Duplicate detection** - Checks ALL existing tools (local + MCP + auto-tools)
+  - **Ouroboros Research** 🐍 - Tool Builder calls Jarvis for live API research!
+  - API key awareness (flags tools needing new credentials)
+  - Syntax verification, import checks, runtime testing
+  - Dependency gating (new packages require human approval)
+  - Full audit trail with report cards + Grafana dashboard
+  - `./bin/build-tool --mode cloud build "Check URL accessibility"`
+  - See: `docs/TOOL_BUILDER.md`
 - ✅ **Canvas System** - Visual knowledge viewer ⭐ NEW
   - Beautiful dark web UI at localhost:8890
   - Jarvis saves research, comparisons, code to visual pages
+  - Evolution suggestions now auto-create Canvas pages
   - Markdown rendering, syntax highlighting, live reload
   - Search, pin, edit, delete - all auto-saved to memory
   - Launch: `./bin/jarvis-canvas`
@@ -976,11 +997,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - `--feedback` flag for per-query feedback
   - `./bin/jarvis-feedback` CLI (run, batch, summary, issues)
   - Cross-model grading (FEEDBACK_PROVIDER/FEEDBACK_MODEL)
+  - Per-tool rating attribution (multi-tool fairness)
   - Full context analysis (system prompt, tools, intelligence)
 - ✅ **Dashboard Enhancements** - 70+ commands
-  - Canvas, feedback, monitoring commands added
+  - Evolution commands (check, list versions, auto, history)
+  - Tool builder commands (list pending, approve, reject)
+  - Canvas, feedback, monitoring commands
   - Unique tmux sessions per service
-  - Fixed SQL queries and log paths
 
 **Completed (November 2025):**
 - ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands
@@ -1044,11 +1067,11 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - Performance optimization for local models
 
 **Planned (Advanced AI - See `docs/ADVANCED_AI_TECHNIQUES.md`):**
-- **Phase 3: Self-Evolving Prompts** - Auto-improve prompts based on feedback, A/B testing, versioned rollback
-- **Phase 4: Dynamic Tool Creation** - OpenCode subagent builds tools on-demand when capability gaps detected
+- ✅ **Phase 3: Self-Evolving Prompts** - COMPLETE! Auto-improve prompts, A/B testing, rollback
+- ✅ **Phase 4: Dynamic Tool Creation** - COMPLETE! In-house tool builder with safety checks
 - **Phase 5: Parallel Subagents** - Concurrent execution for multi-part queries (3x speedup)
 - **Phase 6: Self-Play Optimization** - Nightly simulation to discover better routing strategies
-- **Phase 7: Versioned Prompts** - Auto-rollback on performance degradation
+- ✅ **Phase 7: Versioned Prompts** - COMPLETE! Auto-rollback on performance degradation
 
 **Other Planned:**
 - **Intelligence Layer Phase 2** - Implicit failure detection, tool trashing detection, conflict resolution
@@ -1081,6 +1104,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.7 (December 2025)  
+**Current Version:** v2.8 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Canvas System (visual knowledge viewer), Calculator Tool (math/stats/conversions), Feedback System (LLM self-critique), Dashboard 70+ commands
+**Latest Features:** Prompt Evolution (self-improving prompts), Dynamic Tool Builder (autonomous tool creation), Canvas System, Calculator, Feedback System, Dashboard 70+ commands

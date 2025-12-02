@@ -183,6 +183,10 @@ EVOLUTION_MAX_PER_DAY=5          # Max evolutions per day (testing: 5, prod: 3)
 EVOLUTION_AUTO_ENABLED=false     # Auto-evolve after feedback threshold
 EVOLUTION_AUTO_CHECK_AFTER=10    # Feedback count to trigger auto-check
 
+# --- Random Feedback (Passive Learning) ---
+FEEDBACK_RANDOM_ENABLED=false    # Enable random feedback during normal queries
+FEEDBACK_RANDOM_CHANCE=0.1       # Chance per query (0.1 = 10%)
+
 # --- Degradation Detection ---
 EVOLUTION_DEGRADATION_ALERT_PCT=15    # Alert when perf drops by %
 EVOLUTION_DEGRADATION_ROLLBACK_PCT=25 # Auto-rollback when perf drops by %
@@ -197,6 +201,35 @@ Evolution is triggered when:
 - A component has `EVOLUTION_MIN_LOW_RATINGS` or more ratings below `EVOLUTION_LOW_THRESHOLD`
 - Within the last `EVOLUTION_WINDOW_DAYS` days
 - Rate limit (`EVOLUTION_MAX_PER_DAY`) not exceeded
+
+### When Does Evolution Run?
+
+**Current Behavior (Pull-Based)**
+
+Evolution only runs during active Jarvis queries, not on a schedule:
+
+```
+User Query → Feedback Collection → (if threshold met) → Auto-Evolution
+```
+
+Key points:
+- **Feedback only collected during queries** (with `--feedback` flag or `FEEDBACK_RANDOM_ENABLED`)
+- **Auto-evolution runs once per day** (marker file prevents re-runs)
+- **If Jarvis is idle for a week**, no evolution happens until next query
+
+**Scheduled Evolution (Optional)**
+
+For periodic evolution even when Jarvis is idle, add a cron job:
+
+```bash
+# Run evolution check daily at 2 AM
+0 2 * * * cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate >> /tmp/jarvis-evolution.log 2>&1
+
+# Or weekly (every Sunday at 3 AM)
+0 3 * * 0 cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate
+```
+
+**Tip**: Scheduled evolution uses the same feedback window (`EVOLUTION_WINDOW_DAYS`), so it will process accumulated feedback from days you didn't use Jarvis.
 
 ### Multi-Tool Attribution (Per-Tool Ratings)
 
@@ -389,19 +422,45 @@ jarvis-dashboard → 🧬 Evolution → Evolution Logs
 
 ---
 
-## Phase 4: Dynamic Tool Creation
+## Phase 4: Dynamic Tool Creation ✅ IMPLEMENTED
+
+> **Status**: Fully implemented. See [TOOL_BUILDER.md](TOOL_BUILDER.md) for complete documentation.
 
 ### Concept
 
-When feedback repeatedly suggests a missing capability, trigger a specialized Tool Builder agent to create a new tool. Auto-generated tools are stored separately and tracked.
+When feedback repeatedly suggests a missing capability, the in-house Tool Builder creates a new tool. Uses existing LLM providers (no external dependencies) with safety checks and full traceability.
 
 ### Key Safeguards
 
-1. **High Bar for Creation**: Requires 3+ feedback sessions suggesting the same missing capability
-2. **Specialized Builder**: Dedicated OpenCode subagent with tool-building expertise
-3. **Separate Storage**: `skills/auto-tools/` directory
-4. **Registry Tracking**: `data/auto_tools_registry.json` tracks all auto-created tools
-5. **Verification Pipeline**: Must pass syntax, schema, and functional tests
+1. **Consistent Gap Detection**: Requires 2+ feedback mentions of the same capability gap
+2. **In-House LLM Builder**: Uses existing providers (xAI, Anthropic, OpenAI, Ollama) - no OpenCode dependency
+3. **Separate Storage**: `skills/auto-tools/` directory (auto-discovered by sync_tools.py)
+4. **Report Cards**: Full traceability with `tool_name.report.json` linking to feedback IDs
+5. **Verification Pipeline**: Syntax check + import check + runtime test with sample input
+6. **Dependency Gating**: New packages → `skills/pending/` for human approval
+7. **Duplicate Detection**: Checks ALL existing tools (local + MCP + auto-tools) - not just MCP
+8. **API Key Awareness**: Flags tools needing new credentials with suggested env var name
+
+### Ouroboros Research Pattern 🐍
+
+The Tool Builder can call Jarvis itself to research APIs and documentation before building:
+
+```
+Tool Builder needs API info
+        ↓
+Calls Jarvis Orchestrator (JARVIS_TOOL_BUILDER_CONTEXT=true)
+        ↓
+Jarvis uses its tools (Brave search, fetch, memory)
+        ↓
+Returns research to Tool Builder
+        ↓
+Better, more accurate tool created!
+```
+
+**Loop Prevention**: Environment variable `JARVIS_TOOL_BUILDER_CONTEXT=true` prevents recursive building.
+
+**Auto-Triggers**: Research is automatic when gap description contains API-related keywords (weather, stock, api, oauth, etc.)
+8. **Local Mode Compatible**: Works with Ollama for fully offline operation
 
 ### Flow Diagram
 
@@ -410,47 +469,33 @@ When feedback repeatedly suggests a missing capability, trigger a specialized To
 │                      DYNAMIC TOOL CREATION PIPELINE                         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ┌──────────────┐                                                           │
-│  │   Feedback   │  "Jarvis lacks a tool for X"                              │
-│  │   Analysis   │  "Would be better with dedicated Y tool"                  │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼  Trigger: 3+ feedback suggesting same capability gap              │
-│  ┌──────────────┐                                                           │
-│  │   Validate   │  1. Not duplicate of existing tool                        │
-│  │   Need       │  2. Can't be done with tool combination                   │
-│  │              │  3. General enough to be reusable                         │
-│  └──────┬───────┘                                                           │
+│  Feedback identifies gap                                                    │
+│  "No tool for X" / "Had to use workaround"                                 │
 │         │                                                                   │
 │         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │   OpenCode   │  Specialized subagent: tool-builder                       │
-│  │   Subagent   │  Uses TOOL_TEMPLATE + existing tools as reference         │
-│  │              │  Creates: xyz.py + xyz.tool.json                          │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │   Verify     │  1. Python syntax valid                                   │
-│  │   Tool       │  2. JSON schema valid                                     │
-│  │              │  3. Required fields present (ok, speech, data)            │
-│  │              │  4. Test execution with sample input                      │
-│  │              │  5. No dangerous operations (unless flagged)              │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │   Deploy     │  1. Save to skills/auto-tools/                            │
-│  │   & Register │  2. Update auto_tools_registry.json                       │
-│  │              │  3. Run sync_tools.py                                     │
-│  │              │  4. Notify user of new tool                               │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │   Monitor    │  Track usage and feedback on new tool                     │
-│  │   Performance│  Low performance → disable or improve                     │
-│  └─────────────┘                                                           │
+│  ┌──────────────────────┐                                                  │
+│  │  Tool Builder LLM    │  Uses TOOL_BUILDER_PROVIDER/MODEL                │
+│  │  Generates:          │  Falls back to FEEDBACK_PROVIDER                 │
+│  │  - tool_name.py      │  Falls back to LLM_PROVIDER                      │
+│  │  - tool_name.json    │                                                  │
+│  └──────────┬───────────┘                                                  │
+│             │                                                               │
+│             ▼                                                               │
+│  ┌──────────────────────┐                                                  │
+│  │  Dependency Check    │ New packages → skills/pending/ (human review)    │
+│  └──────────┬───────────┘                                                  │
+│             │                                                               │
+│             ▼                                                               │
+│  ┌──────────────────────┐                                                  │
+│  │  Verification        │ Syntax + imports + runtime test                  │
+│  │  (3 retries on fail) │                                                  │
+│  └──────────┬───────────┘                                                  │
+│             │                                                               │
+│             ▼                                                               │
+│  ┌──────────────────────┐                                                  │
+│  │  Deploy              │ skills/auto-tools/ + sync_tools.py               │
+│  │  + Report Card       │ tool_name.report.json (traceability)             │
+│  └──────────────────────┘                                                  │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -459,276 +504,61 @@ When feedback repeatedly suggests a missing capability, trigger a specialized To
 
 ```
 skills/
-├── remember.py              # Human-created tools
-├── remember.tool.json
-├── ...
-└── auto-tools/              # Auto-generated tools (separate)
-    ├── README.md            # Explains auto-tool system
-    ├── network_latency.py   # Auto-generated
-    ├── network_latency.tool.json
-    └── registry.json        # Tracks all auto-tools
+├── *.py                      # Human-created tools
+├── *.tool.json              
+├── auto-tools/               # Auto-generated tools
+│   ├── text_case_converter.py
+│   ├── text_case_converter.tool.json
+│   └── text_case_converter.report.json  # Traceability
+└── pending/                  # Tools needing human approval
+    └── (tools requiring new packages)
+
+logs/tool-builder/
+└── tool-builder-YYYY-MM-DD.jsonl  # Creation logs for Grafana
 ```
 
-### Auto-Tools Registry
-
-```json
-{
-  "version": 1,
-  "tools": [
-    {
-      "name": "network_latency",
-      "created_at": "2025-12-05T10:30:00Z",
-      "trigger_feedback_ids": ["fb_001", "fb_003", "fb_007"],
-      "capability_gap": "Check network latency to specific hosts",
-      "status": "active",
-      "times_used": 15,
-      "avg_rating": 7.2,
-      "builder_session_id": "opencode_session_abc123",
-      "verification_passed": true,
-      "verification_log": "logs/auto-tools/network_latency_verify.log"
-    }
-  ],
-  "pending_capabilities": [
-    {
-      "capability": "PDF text extraction",
-      "feedback_count": 2,
-      "first_requested": "2025-12-03T08:00:00Z",
-      "status": "needs_more_feedback"
-    }
-  ]
-}
-```
-
-### OpenCode Workspace Isolation
-
-**Important Constraint**: OpenCode is isolated to `~/jarvis-workspace` and CANNOT write directly to `~/jarvis-voice/skills/`.
-
-**Solution - Two-Stage Build**:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    TOOL BUILDING WITH OPENCODE ISOLATION                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Stage 1: OpenCode builds in workspace                                      │
-│  ─────────────────────────────────────                                      │
-│    OpenCode → ~/jarvis-workspace/tools/new_tool.py                          │
-│            → ~/jarvis-workspace/tools/new_tool.tool.json                    │
-│                                                                             │
-│  Stage 2: Install script moves to Jarvis                                    │
-│  ─────────────────────────────────────────                                  │
-│    ./bin/install-tool ~/jarvis-workspace/tools/new_tool                     │
-│      1. Validates tool files                                                │
-│      2. Copies to skills/auto-tools/                                        │
-│      3. Runs sync_tools.py                                                  │
-│      4. Updates registry                                                    │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### OpenCode Tool Builder Subagent
-
-Location: `~/.config/opencode/agent/tool-builder.md`
-
-You can also define agents using markdown files. Place them in:
-
-    Global: ~/.config/opencode/agent/
-    Per-project: .opencode/agent/
-
-~/.config/opencode/agent/review.md
-
-```markdown
----
-description: Reviews code for quality and best practices
-mode: subagent
-model: anthropic/claude-sonnet-4-5-20250929
-temperature: 0.1
-tools:
-  write: false
-  edit: false
-  bash: false
----
-
-You are in code review mode. Focus on:
-
-- Code quality and best practices
-- Potential bugs and edge cases
-- Performance implications
-- Security considerations
-
-Provide constructive feedback without making direct changes.
-```
-
-The markdown file name becomes the agent name. For example, review.md creates a review agent.
-
-
-```markdown
-# Tool Builder Agent
-
-You are a specialized agent for creating Jarvis voice assistant tools.
-
-## Your Task
-Create Python tools that follow Jarvis conventions exactly.
-
-## Template to Follow
-Every tool must have TWO files:
-
-### 1. Python Script (tool_name.py)
-```python
-#!/usr/bin/env python3
-"""
-Tool Name: [Description]
-Input: { "param": "value" }
-Output: { "ok": bool, "speech": str, "data": dict }
-"""
-
-import sys
-import os
-import json
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
-from config_loader import load_config, get_config_value
-
-def main():
-    try:
-        if len(sys.argv) > 1:
-            args = json.loads(sys.argv[1])
-        else:
-            args = json.load(sys.stdin)
-        
-        load_config()
-        
-        # Validate required params
-        required_param = args.get('required_param')
-        if not required_param:
-            raise ValueError("required_param is required")
-        
-        # Tool logic here
-        result = do_work(required_param)
-        
-        print(json.dumps({
-            "ok": True,
-            "speech": f"Completed: {result['summary']}",
-            "data": result
-        }))
-        
-    except Exception as e:
-        print(json.dumps({
-            "ok": False,
-            "error": str(e),
-            "speech": f"Error: {e}"
-        }))
-        sys.exit(1)
-
-def do_work(param):
-    # Actual logic (separate for testing)
-    return {"summary": "done"}
-
-if __name__ == "__main__":
-    main()
-```
-
-### 2. JSON Schema (tool_name.tool.json)
-```json
-{
-  "enabled": true,
-  "name": "tool_name",
-  "description": "Clear description for LLM. Explain WHEN to use and WHAT it does.",
-  "script": "auto-tools/tool_name.py",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "required_param": {
-        "type": "string",
-        "description": "What this does"
-      }
-    },
-    "required": ["required_param"]
-  },
-  "permissions": {
-    "dangerous": false,
-    "network": true,
-    "filesystem": false,
-    "auto_approve": true
-  }
-}
-```
-
-## Critical Rules
-1. ALWAYS return JSON with ok, speech, data
-2. ALWAYS handle errors with try/except
-3. ALWAYS validate required parameters
-4. Script path must be "auto-tools/tool_name.py"
-5. Description must explain WHEN to use (not just what it does)
-6. Test your tool before declaring complete
-```
-
-### Verification Checklist
-
-Before a tool goes live:
-
-```python
-VERIFICATION_CHECKS = [
-    # Syntax
-    ("python_syntax", "Python file parses without errors"),
-    ("json_syntax", "JSON file is valid JSON"),
-    
-    # Schema compliance
-    ("has_name", "JSON has 'name' field"),
-    ("has_description", "JSON has 'description' field (min 50 chars)"),
-    ("has_parameters", "JSON has 'parameters' field"),
-    ("script_exists", "Script file exists at specified path"),
-    
-    # Output format
-    ("returns_json", "Script returns valid JSON"),
-    ("has_ok_field", "Output has 'ok' boolean field"),
-    ("has_speech_field", "Output has 'speech' string field"),
-    ("has_data_field", "Output has 'data' object field"),
-    
-    # Error handling
-    ("handles_missing_params", "Gracefully handles missing required params"),
-    ("handles_invalid_input", "Gracefully handles invalid input types"),
-    
-    # Safety
-    ("no_dangerous_imports", "No subprocess.call with shell=True, no eval()"),
-    ("permissions_accurate", "Permissions flags match actual behavior"),
-]
-```
-
-### CLI Usage
+### CLI Commands
 
 ```bash
-# Check pending tool requests
-./bin/auto-tool-builder check
+# Build a tool manually
+./bin/build-tool --mode cloud build "Convert between units"
 
-# Output:
-# Pending capability gaps:
-#   "network latency check" - 4 feedback mentions (threshold: 3) ✅ READY
-#   "PDF text extraction" - 2 feedback mentions (needs 1 more)
+# List pending tools (need package approval)
+./bin/build-tool list-pending
 
-# Build a tool (invokes OpenCode subagent)
-./bin/auto-tool-builder create "network latency check"
+# Approve pending tool
+./bin/build-tool approve my_tool --install
 
-# Output:
-# Invoking OpenCode tool-builder subagent...
-# Session: opencode_session_abc123
-# Creating: skills/auto-tools/network_latency.py
-# Creating: skills/auto-tools/network_latency.tool.json
-# Running verification...
-#   ✅ python_syntax
-#   ✅ json_syntax
-#   ✅ has_name
-#   ✅ has_description
-#   ... (all checks)
-# Verification PASSED
-# Syncing tools...
-# ✅ Tool 'network_latency' is now available!
+# View tool report card
+./bin/build-tool info my_tool
 
-# List auto-created tools
-./bin/auto-tool-builder list
+# List auto-generated tools
+./bin/build-tool list-auto
 
-# Disable a problematic auto-tool
-./bin/auto-tool-builder disable network_latency
+# Sync after creation
+./bin/sync_tools.py cloud
+```
+
+### Integration with Evolution
+
+Tool creation is automatically triggered during `./bin/evolve-prompts --mode cloud auto --deploy`:
+
+1. Evolution Step 5 detects capability gaps from feedback
+2. If gap mentioned 2+ times → auto-build tool
+3. Tool verified and deployed to `skills/auto-tools/`
+4. Sync runs automatically
+
+### Configuration
+
+```bash
+# config/cloud.env
+
+# Optional dedicated provider (falls back to FEEDBACK_PROVIDER → LLM_PROVIDER)
+TOOL_BUILDER_PROVIDER=anthropic
+TOOL_BUILDER_MODEL=claude-sonnet-4-5-20250929
+
+# Minimum gap mentions to trigger auto-build
+EVOLUTION_MIN_GAP_COUNT=2
 ```
 
 ---
@@ -1286,13 +1116,13 @@ Each phase builds on the previous, with safety guardrails ensuring stability.
 |-------|---------|--------|-------|
 | **3** | Self-Evolving Prompts | ✅ **IMPLEMENTED** | `lib/prompt_evolution.py`, `lib/prompt_versioning.py`, `bin/evolve-prompts` |
 | **7** | Versioned Rollback | ✅ **IMPLEMENTED** | Included in Phase 3 |
-| **4** | Dynamic Tool Creation | 📋 Planned | - |
+| **4** | Dynamic Tool Creation | ✅ **IMPLEMENTED** | `lib/tool_builder.py`, `bin/build-tool`, Ouroboros research 🐍 |
 | **5** | Parallel Subagents | 📋 Planned | - |
 | **6** | Self-Play Optimization | 📋 Planned | - |
 
 ---
 
-**Document Version:** 1.1  
-**Last Updated:** 2025-12-01  
-**Status:** Phase 3 & 7 Implemented, Testing Mode Active
+**Document Version:** 1.2  
+**Last Updated:** 2025-12-02  
+**Status:** Phase 3, 4 & 7 Implemented - Self-learning AGI core complete!
 

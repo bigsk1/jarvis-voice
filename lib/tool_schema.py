@@ -178,7 +178,13 @@ class ToolRegistry:
         opencode_enabled = get_config_value('OPENCODE_ENABLED', 'false').lower() == 'true'
         
         # Sort tool files alphabetically by name for consistent ordering
+        # Include root skills/ and subdirectories like auto-tools/
         tool_files = sorted(self.skills_dir.glob("*.tool.json"))
+        
+        # Also include auto-tools subdirectory (auto-generated tools)
+        auto_tools_dir = self.skills_dir / "auto-tools"
+        if auto_tools_dir.exists():
+            tool_files.extend(sorted(auto_tools_dir.glob("*.tool.json")))
         
         for tool_file in tool_files:
             try:

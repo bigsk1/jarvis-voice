@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""
+Jarvis Tool Builder CLI
+
+Build new tools from capability gaps identified in feedback.
+
+Usage:
+    ./bin/build-tool build "Description of the capability gap"
+    ./bin/build-tool list-pending
+    ./bin/build-tool approve tool_name
+    ./bin/build-tool reject tool_name
+    ./bin/build-tool info tool_name
+"""
+
+import sys
+import os
+import json
+import argparse
+import shutil
+from pathlib import Path
+from datetime import datetime
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from tool_builder import ToolBuilder, list_pending_tools, approve_pending_tool
+
+SKILLS_DIR = Path(__file__).parent.parent / "skills"
+AUTO_TOOLS_DIR = SKILLS_DIR / "auto-tools"
+PENDING_DIR = SKILLS_DIR / "pending"
+
+
+def cmd_build(args):
+    """Build a new tool from a gap description."""
+    print(f"\n🔧 Tool Builder ({args.mode} mode)")
+    print("=" * 60)
+    print(f"Gap: {args.gap}")
+    print()
+    
+    builder = ToolBuilder(mode=args.mode)
+    
+    # Optionally load feedback context
+    feedback_context = ""
+    feedback_ids = []
+    if args.feedback_ids:
+        feedback_ids = args.feedback_ids.split(",")
+        # Could load actual feedback content here
+    
+    enable_research = not getattr(args, 'no_research', False)
+    if enable_research:
+        print("🐍 Ouroboros research enabled (Tool Builder may query Jarvis)")
+    
+    print("⏳ Generating tool...")
+    result = builder.build_tool(
+        gap_description=args.gap,
+        feedback_ids=feedback_ids,
+        feedback_context=feedback_context,
+        max_retries=args.retries,
+        enable_research=enable_research
+    )
+    
+    print()
+    if result.success:
+        if result.status == "created":
+            print(f"✅ Tool created: {result.tool_name}")
+            print(f"   Path: {result.tool_path}")
+            print()
+            print("📋 Report Card:")
+            if result.report_card:
+                print(f"   Purpose: {result.report_card.get('purpose', 'N/A')}")
+                print(f"   Capabilities: {', '.join(result.report_card.get('capabilities', []))}")
+                print(f"   Verification: {'✅ Passed' if result.report_card.get('verification_passed') else '❌ Failed'}")
+            print()
+            print("🔄 Run sync to enable:")
+            print(f"   ./bin/sync_tools.py {args.mode}")
+        
+        elif result.status == "pending_review":
+            print(f"⏸️  Tool pending review: {result.tool_name}")
+            print(f"   Needs packages: {', '.join(result.needs_packages)}")
+            print()
+            print("📋 To approve:")
+            print(f"   ./bin/build-tool approve {result.tool_name}")
+            print()
+            print("📋 To reject:")
+            print(f"   ./bin/build-tool reject {result.tool_name}")
+    else:
+        if result.status == "skipped_mcp":
+            print(f"⏭️  Skipped: MCP tool already exists")
+            print(f"   Reason: {result.message}")
+        elif result.status == "skipped_trivial":
+            print(f"⏭️  Skipped: Tool deemed trivial/unnecessary")
+            print(f"   Reason: {result.message}")
+        else:
+            print(f"❌ Failed to create tool")
+            print(f"   Error: {result.message}")
+            print(f"   Retries used: {result.retries_used}")
+
+
+def cmd_list_pending(args):
+    """List tools pending human review."""
+    pending = list_pending_tools()
+    
+    print(f"\n📋 Pending Tools ({len(pending)})")
+    print("=" * 60)
+    
+    if not pending:
+        print("No pending tools.")
+        return
+    
+    for tool in pending:
+        print(f"\n🔧 {tool['name']}")
+        print(f"   Description: {tool['description'][:60]}...")
+        if tool.get('packages_needed'):
+            print(f"   ⚠️  Needs packages: {', '.join(tool['packages_needed'])}")
+        if tool.get('requires_api_key'):
+            env_var = tool.get('suggested_env_var') or 'UNSPECIFIED_API_KEY'
+            print(f"   🔑 Requires API key: {env_var}")
+        print(f"   Created: {tool['created_at']}")
+        print(f"   Feedback IDs: {', '.join(tool['feedback_ids'][:3])}")
+
+
+def cmd_approve(args):
+    """Approve a pending tool."""
+    tool_name = args.tool_name
+    
+    # Check if exists
+    py_path = PENDING_DIR / f"{tool_name}.py"
+    if not py_path.exists():
+        print(f"❌ Tool not found in pending: {tool_name}")
+        return
+    
+    # Load report to check packages
+    report_path = PENDING_DIR / f"{tool_name}.report.json"
+    needs_packages = []
+    if report_path.exists():
+        with open(report_path) as f:
+            report = json.load(f)
+        needs_packages = report.get('packages_new', [])
+    
+    if needs_packages and not args.install_packages:
+        print(f"⚠️  Tool needs packages: {', '.join(needs_packages)}")
+        print()
+        print("Options:")
+        print(f"  1. Approve with install: ./bin/build-tool approve {tool_name} --install")
+        print(f"  2. Install manually first: pip install {' '.join(needs_packages)}")
+        print(f"  3. Reject: ./bin/build-tool reject {tool_name}")
+        return
+    
+    if approve_pending_tool(tool_name, install_packages=args.install_packages):
+        print(f"✅ Approved: {tool_name}")
+        print(f"   Moved to: skills/auto-tools/")
+        if needs_packages and args.install_packages:
+            print(f"   Installed: {', '.join(needs_packages)}")
+        print()
+        print("🔄 Run sync to enable:")
+        print(f"   ./bin/sync_tools.py cloud")
+    else:
+        print(f"❌ Failed to approve: {tool_name}")
+
+
+def cmd_reject(args):
+    """Reject (delete) a pending tool."""
+    tool_name = args.tool_name
+    
+    # Check if exists
+    py_path = PENDING_DIR / f"{tool_name}.py"
+    if not py_path.exists():
+        print(f"❌ Tool not found in pending: {tool_name}")
+        return
+    
+    # Confirm
+    if not args.yes:
+        confirm = input(f"Delete pending tool '{tool_name}'? [y/N] ")
+        if confirm.lower() != 'y':
+            print("Cancelled.")
+            return
+    
+    # Delete files
+    for ext in ['.py', '.tool.json', '.report.json']:
+        path = PENDING_DIR / f"{tool_name}{ext}"
+        if path.exists():
+            path.unlink()
+    
+    print(f"🗑️  Rejected and deleted: {tool_name}")
+
+
+def cmd_info(args):
+    """Show info about a tool (pending or auto)."""
+    tool_name = args.tool_name
+    
+    # Check pending first
+    report_path = PENDING_DIR / f"{tool_name}.report.json"
+    if not report_path.exists():
+        report_path = AUTO_TOOLS_DIR / f"{tool_name}.report.json"
+    
+    if not report_path.exists():
+        print(f"❌ Report not found for: {tool_name}")
+        return
+    
+    with open(report_path) as f:
+        report = json.load(f)
+    
+    print(f"\n📋 Tool Report Card: {tool_name}")
+    print("=" * 60)
+    print(f"Created: {report.get('created_at')}")
+    print(f"Mode: {report.get('mode')}")
+    print(f"Created by: {report.get('created_by')}")
+    print()
+    print("📝 Purpose:")
+    print(f"   {report.get('gap_description')}")
+    print()
+    print("🎯 Capabilities:")
+    for cap in report.get('capabilities', []):
+        print(f"   • {cap}")
+    print()
+    print("🔗 Traceability:")
+    print(f"   Feedback IDs: {', '.join(report.get('feedback_ids', []))}")
+    print(f"   Evolution IDs: {', '.join(report.get('evolution_ids', []))}")
+    print()
+    print("📦 Dependencies:")
+    print(f"   Required: {', '.join(report.get('packages_required', [])) or 'None'}")
+    print(f"   New (needed install): {', '.join(report.get('packages_new', [])) or 'None'}")
+    print()
+    print("✅ Verification:")
+    print(f"   Passed: {'Yes' if report.get('verification_passed') else 'No'}")
+    print(f"   Test input: {json.dumps(report.get('test_input_used', {}))}")
+    print(f"   Output: {report.get('verification_output', 'N/A')[:100]}")
+    print()
+    print("🤖 Generation:")
+    print(f"   Provider: {report.get('builder_provider')}")
+    print(f"   Model: {report.get('builder_model')}")
+    print(f"   Retries: {report.get('generation_retries')}")
+    print()
+    print("🔍 MCP Check:")
+    print(f"   Reason for building: {report.get('mcp_overlap_reason', 'N/A')}")
+
+
+def cmd_list_auto(args):
+    """List auto-generated tools."""
+    print(f"\n🤖 Auto-Generated Tools")
+    print("=" * 60)
+    
+    tools = list(AUTO_TOOLS_DIR.glob("*.tool.json"))
+    if not tools:
+        print("No auto-generated tools yet.")
+        return
+    
+    for json_path in tools:
+        with open(json_path) as f:
+            config = json.load(f)
+        print(f"\n🔧 {config.get('name')}")
+        print(f"   {config.get('description', 'No description')[:60]}...")
+        print(f"   Created: {config.get('created_at', 'Unknown')}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Jarvis Tool Builder - Create tools from capability gaps",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Build a new tool
+  ./bin/build-tool build "Convert between different units (meters to feet, etc.)"
+  
+  # Build with feedback context
+  ./bin/build-tool build "Parse RSS feeds" --feedback-ids fb_001,fb_002
+  
+  # List pending tools needing approval
+  ./bin/build-tool list-pending
+  
+  # Approve a tool (with package install)
+  ./bin/build-tool approve my_tool --install
+  
+  # View tool report card
+  ./bin/build-tool info my_tool
+"""
+    )
+    
+    parser.add_argument("--mode", default="cloud", choices=["cloud", "local"],
+                       help="Mode to use (cloud/local)")
+    
+    subparsers = parser.add_subparsers(dest="command", help="Command")
+    
+    # Build command
+    build_parser = subparsers.add_parser("build", help="Build a new tool")
+    build_parser.add_argument("gap", help="Description of the capability gap")
+    build_parser.add_argument("--feedback-ids", help="Comma-separated feedback IDs")
+    build_parser.add_argument("--retries", type=int, default=3, help="Max retries")
+    build_parser.add_argument("--no-research", action="store_true", 
+                             help="Disable Ouroboros research (no Jarvis lookup)")
+    
+    # List pending
+    subparsers.add_parser("list-pending", help="List tools pending review")
+    
+    # List auto
+    subparsers.add_parser("list-auto", help="List auto-generated tools")
+    
+    # Approve
+    approve_parser = subparsers.add_parser("approve", help="Approve a pending tool")
+    approve_parser.add_argument("tool_name", help="Tool name to approve")
+    approve_parser.add_argument("--install", dest="install_packages", action="store_true",
+                               help="Install required packages")
+    
+    # Reject
+    reject_parser = subparsers.add_parser("reject", help="Reject a pending tool")
+    reject_parser.add_argument("tool_name", help="Tool name to reject")
+    reject_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
+    
+    # Info
+    info_parser = subparsers.add_parser("info", help="Show tool report card")
+    info_parser.add_argument("tool_name", help="Tool name")
+    
+    args = parser.parse_args()
+    
+    if args.command == "build":
+        cmd_build(args)
+    elif args.command == "list-pending":
+        cmd_list_pending(args)
+    elif args.command == "list-auto":
+        cmd_list_auto(args)
+    elif args.command == "approve":
+        cmd_approve(args)
+    elif args.command == "reject":
+        cmd_reject(args)
+    elif args.command == "info":
+        cmd_info(args)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
+

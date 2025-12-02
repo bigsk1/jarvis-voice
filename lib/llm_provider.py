@@ -39,7 +39,7 @@ class LLMProvider(ABC):
         pass
     
     @abstractmethod
-    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
         """
         Simple chat without tool calling.
         
@@ -66,7 +66,7 @@ class OpenAIProvider(LLMProvider):
         self.client = OpenAI(api_key=api_key)
         self.model = model
     
-    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
         messages = []
         if system_prompt:
@@ -74,10 +74,10 @@ class OpenAIProvider(LLMProvider):
         messages.append({"role": "user", "content": message})
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages
-            )
+            params = {"model": self.model, "messages": messages}
+            if max_tokens:
+                params["max_tokens"] = max_tokens
+            response = self.client.chat.completions.create(**params)
             return response.choices[0].message.content or ""
         except Exception as e:
             import sys
@@ -156,7 +156,7 @@ class AnthropicProvider(LLMProvider):
         self.client = Anthropic(api_key=api_key)
         self.model = model
     
-    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
         """
         Simple chat without tools.
         
@@ -174,7 +174,7 @@ class AnthropicProvider(LLMProvider):
             
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=max_tokens or 1024,
                 system=system_blocks,
                 messages=[{"role": "user", "content": message}]
             )
@@ -376,7 +376,7 @@ class XAIProvider(LLMProvider):
         self.model = model
         self.is_reasoning_model = "reasoning" in model.lower()
     
-    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
         messages = []
         if system_prompt:
@@ -384,10 +384,10 @@ class XAIProvider(LLMProvider):
         messages.append({"role": "user", "content": message})
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages
-            )
+            params = {"model": self.model, "messages": messages}
+            if max_tokens:
+                params["max_tokens"] = max_tokens
+            response = self.client.chat.completions.create(**params)
             return response.choices[0].message.content or ""
         except Exception as e:
             import sys
@@ -481,7 +481,7 @@ class OllamaProvider(LLMProvider):
         self.base_url = base_url.rstrip('/')
         self.model = model
     
-    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
         import requests
         
@@ -498,8 +498,16 @@ class OllamaProvider(LLMProvider):
             }
             
             # Extended context for capable models
+            options = {}
             if any(m in self.model.lower() for m in ['qwen', 'mistral-nemo']):
-                request_data["options"] = {"num_ctx": 8192}
+                options["num_ctx"] = 8192
+            
+            # Allow longer output for code generation
+            if max_tokens:
+                options["num_predict"] = max_tokens
+            
+            if options:
+                request_data["options"] = options
             
             response = requests.post(
                 f"{self.base_url}/api/chat",

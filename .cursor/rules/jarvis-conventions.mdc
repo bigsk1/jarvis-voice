@@ -1,0 +1,112 @@
+---
+alwaysApply: true
+---
+
+# Jarvis Voice Assistant - Development Conventions
+
+## Mode System (CRITICAL)
+
+Jarvis operates in TWO modes with separate configurations and databases:
+- **cloud** - Uses cloud LLMs (xAI, Anthropic, OpenAI) + OpenAI embeddings (1536-dim)
+- **local** - Uses Ollama + nomic-embed-text embeddings (768-dim)
+
+### Config Loading Pattern
+```python
+from config_loader import load_config, get_config_value
+
+# At startup (orchestrator, API server)
+load_config(mode='cloud')  # or 'local'
+
+# In tools/libraries (auto-detect from LLM_PROVIDER env)
+load_config()  # If LLM_PROVIDER='ollama' → local.env, else → cloud.env
+```
+
+### Provider Configuration Chain
+For specialized LLM tasks (feedback, evolution, tool building), providers fall back in this order:
+```
+TOOL_BUILDER_PROVIDER → FEEDBACK_PROVIDER → LLM_PROVIDER
+```
+Always set explicit providers in both cloud.env and local.env for consistency.
+
+### Database Paths (Auto-Selected)
+```python
+from memory_db import MemoryDB
+db = MemoryDB()  # Auto-selects based on mode - NEVER hardcode paths!
+# cloud → data/jarvis_memory.db
+# local → data/jarvis_memory_local.db
+```
+
+## Tool Development
+
+### Output Format (Required)
+All tools MUST return JSON to stdout:
+```python
+print(json.dumps({
+    "ok": True,          # Boolean success
+    "speech": "...",     # Voice output (keep brief)
+    "data": {...}        # Optional structured data
+}))
+```
+
+### Tool JSON Schema
+Use `parameters` NOT `input_schema`:
+```json
+{
+  "name": "tool_name",
+  "parameters": {        // NOT "input_schema"!
+    "type": "object",
+    "properties": {...}
+  }
+}
+```
+
+### After Creating Tools
+```bash
+./bin/sync_tools.py cloud  # or local - REQUIRED for LLM to see new tools
+```
+
+## Provider Creation
+```python
+from llm_provider import create_provider  # NOT get_provider!
+
+# Cloud providers
+provider = create_provider("xai", api_key=..., model=...)
+provider = create_provider("anthropic", api_key=..., model=...)
+
+# Local provider
+provider = create_provider("ollama", model=..., base_url=...)
+```
+
+## Orchestrator Result Keys
+```python
+result.get("tools_used", [])   # NOT "tools_called"
+result.get("speech")
+result.get("ok")
+```
+
+## Logging with Mode
+Always include `mode` in log entries for Grafana filtering:
+```python
+log_data = {
+    "mode": self.mode,  # 'cloud' or 'local'
+    "component": ...,
+    ...
+}
+```
+
+## Anti-Patterns to Avoid
+- ❌ Hardcoding database paths
+- ❌ Using `os.environ.get()` instead of `get_config_value()`
+- ❌ Using `input_schema` in tool JSON
+- ❌ Returning plain text from tools
+- ❌ Calling `get_provider()` (doesn't exist - use `create_provider()`)
+- ❌ Using `result.get("tools_called")` (correct: `tools_used`)
+
+## Testing Commands
+```bash
+source ~/jarvis-venv/bin/activate  # Always first!
+./orchestrator/orchestrator_v2.py cloud "query"
+./orchestrator/orchestrator_v2.py local "query"
+```
+
+See AGENTS.md for complete guidelines.

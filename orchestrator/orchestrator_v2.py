@@ -1080,8 +1080,19 @@ def main():
     
     transcript = " ".join(sys.argv[2:])
     
-    # Load config once for displaying model and creating orchestrator
+    # Load config early for random feedback check
     load_config(mode)
+    
+    # Random feedback during normal operation (if enabled)
+    if not collect_feedback:
+        import random
+        from config_loader import get_config_value, get_float
+        random_enabled = get_config_value('FEEDBACK_RANDOM_ENABLED', 'false').lower() == 'true'
+        random_chance = get_float('FEEDBACK_RANDOM_CHANCE', 0.0)  # 0.1 = 10%
+        if random_enabled and random.random() < random_chance:
+            collect_feedback = True
+            if not json_only:
+                print("🎲 Random feedback collection triggered")
     
     if not json_only:
         from config_loader import get_config_value

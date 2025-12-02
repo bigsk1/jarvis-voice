@@ -489,6 +489,7 @@ Only output the JSON, nothing else."""
         if candidate.component == 'system_prompt':
             self._save_system_prompt_suggestion(candidate)
             log_evolution_event("system_prompt_suggestion", {
+                "mode": self.mode,
                 "component": candidate.component,
                 "change_summary": candidate.change_summary,
                 "action": "saved_for_manual_review"
@@ -498,6 +499,7 @@ Only output the JSON, nothing else."""
         # Check rate limit
         if not self.db.check_evolution_rate_limit():
             log_evolution_event("evolution_blocked", {
+                "mode": self.mode,
                 "component": candidate.component,
                 "reason": "daily_limit_reached"
             })
@@ -507,6 +509,7 @@ Only output the JSON, nothing else."""
         valid, errors = self.verify_candidate(candidate)
         if not valid:
             log_evolution_event("evolution_verification_failed", {
+                "mode": self.mode,
                 "component": candidate.component,
                 "errors": errors
             })
@@ -556,6 +559,7 @@ Only output the JSON, nothing else."""
         
         # Log to JSONL for Grafana/Loki
         log_evolution_event("evolution_deployed", {
+            "mode": self.mode,
             "component": candidate.component,
             "from_version": current.version if current else None,
             "to_version": new_version.version,
@@ -571,9 +575,11 @@ Only output the JSON, nothing else."""
         suggestions_dir = Path(__file__).parent.parent / 'logs' / 'evolution'
         suggestions_dir.mkdir(parents=True, exist_ok=True)
         
+        # Main file (appends all suggestions)
         suggestions_file = suggestions_dir / 'system_prompt_suggestions.md'
         
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        timestamp_file = datetime.now().strftime('%Y%m%d_%H%M%S')
         
         entry = f"""
 ## Suggestion - {timestamp}
@@ -594,10 +600,75 @@ Only output the JSON, nothing else."""
 
 """
         
+        # Append to main file
         with open(suggestions_file, 'a') as f:
             f.write(entry)
         
+        # Also save individual timestamped file for tracking
+        individual_file = suggestions_dir / f'system_prompt_suggestion_{timestamp_file}.md'
+        with open(individual_file, 'w') as f:
+            f.write(f"# System Prompt Suggestion\n")
+            f.write(f"**Generated**: {timestamp}\n")
+            f.write(f"**Mode**: {self.mode}\n\n")
+            f.write(entry)
+        
+        # Create Canvas page for easy viewing
+        self._create_canvas_page(candidate, timestamp)
+        
         print(f"    📝 System prompt suggestion saved to: {suggestions_file}")
+        print(f"    📄 Individual file: {individual_file}")
+    
+    def _create_canvas_page(self, candidate: EvolutionCandidate, timestamp: str):
+        """Create a Canvas page for the suggestion (visible in Canvas UI)."""
+        try:
+            canvas_dir = Path(__file__).parent.parent / 'data' / 'canvas'
+            canvas_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp_file = datetime.now().strftime('%Y%m%d_%H%M%S')
+            page_file = canvas_dir / f'evolution_{timestamp_file}.json'
+            
+            # Canvas page format
+            page_data = {
+                "id": f"evolution_{timestamp_file}",
+                "title": f"🔄 System Prompt Suggestion - {timestamp}",
+                "content": f"""# System Prompt Evolution Suggestion
+
+**Generated**: {timestamp}  
+**Mode**: {self.mode}  
+**Triggered by**: {len(candidate.trigger_feedback_ids)} low ratings
+
+## Summary
+{candidate.change_summary}
+
+## Feedback IDs
+{', '.join(candidate.trigger_feedback_ids[:5])}
+
+## Suggested Changes
+
+```
+{candidate.proposed_content[:3000]}
+```
+
+---
+*Review and apply manually to router_v2.py if appropriate.*
+""",
+                "created": datetime.now().isoformat(),
+                "updated": datetime.now().isoformat(),
+                "source": "evolution_system",
+                "metadata": {
+                    "type": "system_prompt_suggestion",
+                    "mode": self.mode,
+                    "feedback_count": len(candidate.trigger_feedback_ids)
+                }
+            }
+            
+            with open(page_file, 'w') as f:
+                json.dump(page_data, f, indent=2)
+            
+            print(f"    🎨 Canvas page created: {page_file.name}")
+        except Exception as e:
+            # Don't fail the whole operation if canvas fails
+            print(f"    ⚠️ Could not create Canvas page: {e}")
     
     def _update_tool_file(self, tool_name: str, new_description: str):
         """Update the tool.json file with new description."""
@@ -673,6 +744,7 @@ Only output the JSON, nothing else."""
         for item in degraded:
             # Log degradation detected
             log_evolution_event("degradation_detected", {
+                "mode": self.mode,
                 "component": item['component'],
                 "severity": item['severity'],
                 "drop_pct": item['drop_pct'],
@@ -688,6 +760,7 @@ Only output the JSON, nothing else."""
                     
                     # Log rollback
                     log_evolution_event("auto_rollback", {
+                        "mode": self.mode,
                         "component": item['component'],
                         "reason": "critical_degradation",
                         "drop_pct": item['drop_pct']
@@ -771,9 +844,122 @@ def run_evolution_check(mode: str = 'cloud', auto_deploy: bool = False, dry_run:
             status = "✅" if success else "❌"
             print(f"    {status} {imp.component}: {msg}")
     
+    # 5. Check for capability gaps (potential new tools)
+    print("\nStep 5: Checking for capability gaps...")
+    gaps = detect_capability_gaps(engine.load_feedback())
+    
+    if gaps:
+        print(f"  Found {len(gaps)} potential capability gaps:")
+        for gap in gaps[:3]:  # Show top 3
+            print(f"    - {gap['description'][:60]}...")
+            print(f"      Mentioned {gap['count']} times, feedback IDs: {gap['feedback_ids'][:2]}")
+        
+        if auto_deploy and not dry_run:
+            # LOOP PREVENTION: Don't build tools if we're already in tool builder context
+            if os.environ.get('JARVIS_TOOL_BUILDER_CONTEXT') == 'true':
+                print("\n  ⚠️  Skipping tool building (already in tool builder context)")
+            else:
+                print("\n  🔧 Auto-building tools for gaps...")
+                try:
+                    from tool_builder import ToolBuilder
+                    builder = ToolBuilder(mode=mode)
+                    
+                    for gap in gaps[:2]:  # Build max 2 tools per run
+                        print(f"    Building tool for: {gap['description'][:50]}...")
+                        result = builder.build_tool(
+                            gap_description=gap['description'],
+                            feedback_ids=gap['feedback_ids'],
+                            feedback_context=gap.get('context', '')
+                        )
+                        if result.success:
+                            print(f"      ✅ Created: {result.tool_name}")
+                        else:
+                            print(f"      ⚠️  {result.status}: {result.message[:50]}")
+                except Exception as e:
+                    print(f"    ❌ Tool builder error: {e}")
+        else:
+            print("  [DRY RUN - not building tools]")
+    else:
+        print("  ✅ No capability gaps detected")
+    
     print("\n" + "="*60)
     print("Evolution check complete")
     print("="*60)
+
+
+def detect_capability_gaps(feedback: List[Dict]) -> List[Dict]:
+    """
+    Detect capability gaps from feedback - issues suggesting a missing tool.
+    
+    Looks for patterns like:
+    - "no tool for X"
+    - "had to use workaround"
+    - "couldn't do X"
+    - "missing capability"
+    """
+    import re
+    from collections import defaultdict
+    
+    gap_patterns = [
+        r"no tool (?:for|to) (.+?)(?:\.|,|$)",
+        r"missing (?:tool|capability) (?:for|to) (.+?)(?:\.|,|$)",
+        r"couldn't (?:find a tool|do) (.+?)(?:\.|,|$)",
+        r"had to (?:use workaround|manually) (.+?)(?:\.|,|$)",
+        r"would be useful to have (.+?)(?:\.|,|$)",
+        r"need(?:s|ed)? a tool (?:for|to) (.+?)(?:\.|,|$)",
+    ]
+    
+    gaps = defaultdict(lambda: {"count": 0, "feedback_ids": [], "context": ""})
+    
+    for entry in feedback:
+        # Check issues array
+        fb = entry.get('feedback', entry)
+        issues = fb.get('issues', [])
+        
+        for issue in issues:
+            desc = issue.get('description', '') + ' ' + issue.get('suggestion', '')
+            
+            for pattern in gap_patterns:
+                match = re.search(pattern, desc.lower())
+                if match:
+                    gap_desc = match.group(1).strip()
+                    # Normalize
+                    gap_desc = gap_desc[:100]  # Limit length
+                    
+                    gaps[gap_desc]["count"] += 1
+                    gaps[gap_desc]["feedback_ids"].append(
+                        entry.get('feedback_id', entry.get('timestamp', 'unknown'))
+                    )
+                    gaps[gap_desc]["context"] = desc[:200]
+        
+        # Also check summary for gap mentions
+        summary = fb.get('summary', '')
+        for pattern in gap_patterns:
+            match = re.search(pattern, summary.lower())
+            if match:
+                gap_desc = match.group(1).strip()[:100]
+                gaps[gap_desc]["count"] += 1
+                gaps[gap_desc]["feedback_ids"].append(
+                    entry.get('feedback_id', entry.get('timestamp', 'unknown'))
+                )
+    
+    # Filter to gaps mentioned at least 2 times (consistent pattern)
+    MIN_GAP_COUNT = int(os.environ.get('EVOLUTION_MIN_GAP_COUNT', 2))
+    
+    result = []
+    for desc, data in gaps.items():
+        if data["count"] >= MIN_GAP_COUNT:
+            result.append({
+                "description": desc,
+                "count": data["count"],
+                "feedback_ids": list(set(data["feedback_ids"]))[:5],
+                "context": data["context"]
+            })
+    
+    # Sort by count (most mentioned first)
+    result.sort(key=lambda x: x["count"], reverse=True)
+    
+    return result
 
 
 if __name__ == "__main__":

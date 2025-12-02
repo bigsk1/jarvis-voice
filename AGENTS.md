@@ -808,6 +808,29 @@ This allows ANY MCP server with underscores in its name to work correctly. See: 
 
 See: `docs/MCP_QUICKSTART.md`
 
+### Tool Builder (Ouroboros Pattern)
+
+The Tool Builder can call Jarvis itself to research APIs before building:
+
+```python
+# In tool_builder.py - research_via_jarvis method
+env = os.environ.copy()
+env['JARVIS_TOOL_BUILDER_CONTEXT'] = 'true'  # LOOP PREVENTION!
+
+result = subprocess.run(
+    [sys.executable, orchestrator_path, self.mode, question, '--json'],
+    env=env,  # Prevents recursive tool building
+    timeout=180
+)
+```
+
+**Key points:**
+- `JARVIS_TOOL_BUILDER_CONTEXT=true` prevents infinite loops
+- Checks in `feedback.py` and `prompt_evolution.py` skip auto-evolution when set
+- Research logs go to `logs/tool-builder/ouroboros-research-*.jsonl`
+
+See: `docs/TOOL_BUILDER.md`
+
 ---
 
 ## Quick Troubleshooting

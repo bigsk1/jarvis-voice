@@ -293,6 +293,78 @@ scrape_configs:
           format: RFC3339Nano
 
   # ==========================================
+  # Tool Builder Logs (Auto-generated tools)
+  # ==========================================
+  - job_name: jarvis_tool_builder
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: tool_builder
+          host: fred
+          __path__: /var/log/jarvis/tool-builder/tool-builder-*.jsonl
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            event: event
+            tool_name: tool_name
+            status: status
+            mode: mode
+            purpose: purpose
+            verification_passed: verification_passed
+            builder_provider: builder_provider
+            builder_model: builder_model
+            
+      - labels:
+          event:
+          tool_name:
+          status:
+          mode:
+          verification_passed:
+          builder_provider:
+          
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # ==========================================
+  # Ouroboros Research Logs (Tool Builder → Jarvis)
+  # ==========================================
+  - job_name: jarvis_ouroboros
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: ouroboros
+          host: fred
+          __path__: /var/log/jarvis/tool-builder/ouroboros-research-*.jsonl
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            event: event
+            mode: mode
+            query: query
+            status: status
+            duration_ms: duration_ms
+            tools_used: jarvis_response.tools_used
+            response_length: response_length
+            
+      - labels:
+          event:
+          mode:
+          status:
+          
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # ==========================================
   # Orchestrator Logs (General)
   # ==========================================
   - job_name: jarvis_orchestrator

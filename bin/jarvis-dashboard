@@ -170,6 +170,11 @@ COMMANDS: List[Command] = [
     Command("Tool Logs Today", "cat logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{tool,ok: .result.ok}'", "Today's tool calls", "🛠️ Tools"),
     Command("Debug Tool RAG", "python3 bin/debug_tool_rag.py", "Debug tool retrieval", "🛠️ Tools"),
     
+    # Tool Builder
+    Command("List Auto Tools", "./bin/build-tool list-auto", "Auto-generated tools", "🛠️ Tools"),
+    Command("List Pending Tools", "./bin/build-tool list-pending", "Tools awaiting approval", "🛠️ Tools"),
+    Command("Tool Builder Logs", "cat logs/tool-builder/tool-builder-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -10 | jq -c '{event,tool_name,status}'", "Tool creation logs", "🛠️ Tools"),
+    
     # === 🔊 STATUS UPDATES ===
     Command("TTS Cache Stats", "./bin/status-cache stats", "TTS cache statistics", "🔊 Status"),
     Command("TTS Cache Clear", "./bin/status-cache clear", "Clear TTS cache", "🔊 Status", dangerous=True),

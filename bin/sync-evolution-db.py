@@ -29,18 +29,19 @@ def get_db_path(mode: str) -> str:
     return os.path.join(base_path, 'jarvis_memory.db')
 
 
-def sync_prompt_versions(source_db: str, target_db: str):
+def sync_prompt_versions(source_db: str, target_db: str, dry_run: bool = False, force: bool = False):
     """Sync prompt_versions table from source to target."""
     source_conn = sqlite3.connect(source_db)
     source_conn.row_factory = sqlite3.Row
     target_conn = sqlite3.connect(target_db)
+    target_conn.row_factory = sqlite3.Row
     
     source_cursor = source_conn.cursor()
     target_cursor = target_conn.cursor()
     
     # Get all components and their active versions from source
     source_cursor.execute("""
-        SELECT component, content, version, created_by, change_summary
+        SELECT component, content, version, created_by, change_summary, created_at
         FROM prompt_versions 
         WHERE is_active = TRUE
     """)
@@ -48,61 +49,89 @@ def sync_prompt_versions(source_db: str, target_db: str):
     
     synced = 0
     skipped = 0
+    conflicts = 0
     
     for row in source_versions:
         component = row['component']
         content = row['content']
         version = row['version']
+        source_time = row['created_at'] or ''
         
         # Check if target has this component
         target_cursor.execute("""
-            SELECT version, content FROM prompt_versions 
+            SELECT version, content, created_by, created_at FROM prompt_versions 
             WHERE component = ? AND is_active = TRUE
         """, (component,))
         target_row = target_cursor.fetchone()
         
         if target_row:
-            target_version = target_row[0]
-            target_content = target_row[1]
+            target_version = target_row['version']
+            target_content = target_row['content']
+            target_created_by = target_row['created_by'] or ''
+            target_time = target_row['created_at'] or ''
+            
+            # Check for conflict: both evolved independently
+            is_conflict = (
+                target_version >= version and 
+                target_content != content and
+                'sync' not in target_created_by.lower()  # Not from a previous sync
+            )
+            
+            if is_conflict and not force:
+                print(f"  ⚠️  CONFLICT {component}:")
+                print(f"      Source: v{version} ({source_time})")
+                print(f"      Target: v{target_version} ({target_time}, by {target_created_by})")
+                print(f"      Use --force to override target")
+                conflicts += 1
+                continue
             
             # Only sync if source is newer or content different
-            if version > target_version or content != target_content:
-                # Deactivate current version
-                target_cursor.execute("""
-                    UPDATE prompt_versions SET is_active = FALSE 
-                    WHERE component = ? AND is_active = TRUE
-                """, (component,))
-                
-                # Insert new version
-                target_cursor.execute("""
-                    INSERT INTO prompt_versions 
-                    (component, component_type, version, content, created_by, 
-                     change_summary, is_active)
-                    VALUES (?, 'tool_description', ?, ?, 'sync_from_cloud', ?, TRUE)
-                """, (component, version, content, row['change_summary']))
-                
-                print(f"  ✅ Synced {component}: v{target_version} → v{version}")
-                synced += 1
+            if version > target_version or content != target_content or force:
+                if dry_run:
+                    print(f"  🔍 Would sync {component}: v{target_version} → v{version}")
+                    synced += 1
+                else:
+                    # Deactivate current version
+                    target_cursor.execute("""
+                        UPDATE prompt_versions SET is_active = FALSE 
+                        WHERE component = ? AND is_active = TRUE
+                    """, (component,))
+                    
+                    # Insert new version
+                    target_cursor.execute("""
+                        INSERT INTO prompt_versions 
+                        (component, component_type, version, content, created_by, 
+                         change_summary, is_active, created_at)
+                        VALUES (?, 'tool_description', ?, ?, 'sync_from_cloud', ?, TRUE, ?)
+                    """, (component, version, content, row['change_summary'], datetime.now().isoformat()))
+                    
+                    print(f"  ✅ Synced {component}: v{target_version} → v{version}")
+                    synced += 1
             else:
                 print(f"  ⏭️  Skipped {component}: already at v{version}")
                 skipped += 1
         else:
             # New component - insert
-            target_cursor.execute("""
-                INSERT INTO prompt_versions 
-                (component, component_type, version, content, created_by, 
-                 change_summary, is_active)
-                VALUES (?, 'tool_description', ?, ?, 'sync_from_cloud', ?, TRUE)
-            """, (component, version, content, row['change_summary']))
-            
-            print(f"  ➕ Added {component}: v{version}")
-            synced += 1
+            if dry_run:
+                print(f"  🔍 Would add {component}: v{version}")
+                synced += 1
+            else:
+                target_cursor.execute("""
+                    INSERT INTO prompt_versions 
+                    (component, component_type, version, content, created_by, 
+                     change_summary, is_active, created_at)
+                    VALUES (?, 'tool_description', ?, ?, 'sync_from_cloud', ?, TRUE, ?)
+                """, (component, version, content, row['change_summary'], datetime.now().isoformat()))
+                
+                print(f"  ➕ Added {component}: v{version}")
+                synced += 1
     
-    target_conn.commit()
+    if not dry_run:
+        target_conn.commit()
     source_conn.close()
     target_conn.close()
     
-    return synced, skipped
+    return synced, skipped, conflicts
 
 
 def update_tool_files_from_db(mode: str):
@@ -153,6 +182,10 @@ def main():
                        help='Target database to sync TO (syncs FROM the other)')
     parser.add_argument('--update-files', action='store_true',
                        help='Also update tool JSON files after sync')
+    parser.add_argument('--dry-run', action='store_true',
+                       help='Preview changes without applying them')
+    parser.add_argument('--force', action='store_true',
+                       help='Force sync even when conflicts detected')
     args = parser.parse_args()
     
     if args.target == 'cloud':
@@ -165,23 +198,37 @@ def main():
         target_db = get_db_path('local')
     
     print(f"\n{'='*60}")
-    print(f"Syncing prompt_versions: {source_mode} → {args.target}")
+    if args.dry_run:
+        print(f"🔍 DRY RUN - Syncing prompt_versions: {source_mode} → {args.target}")
+    else:
+        print(f"Syncing prompt_versions: {source_mode} → {args.target}")
     print(f"{'='*60}\n")
     
     print(f"Source: {source_db}")
     print(f"Target: {target_db}\n")
     
-    synced, skipped = sync_prompt_versions(source_db, target_db)
+    synced, skipped, conflicts = sync_prompt_versions(
+        source_db, target_db, 
+        dry_run=args.dry_run,
+        force=args.force
+    )
     
-    print(f"\n📊 Summary: {synced} synced, {skipped} skipped")
+    print(f"\n📊 Summary: {synced} synced, {skipped} skipped, {conflicts} conflicts")
     
-    if args.update_files:
+    if conflicts > 0 and not args.force:
+        print(f"\n⚠️  {conflicts} conflict(s) detected!")
+        print(f"   Run with --force to override, or resolve manually")
+    
+    if args.update_files and not args.dry_run:
         print(f"\n📝 Updating tool files for {args.target} mode...")
         updated = update_tool_files_from_db(args.target)
         print(f"   Updated {updated} tool files")
     
-    print(f"\n✅ Sync complete!")
-    print(f"\n💡 Tip: Run ./bin/sync_tools.py {args.target} to update embeddings")
+    if args.dry_run:
+        print(f"\n🔍 Dry run complete - no changes made")
+    else:
+        print(f"\n✅ Sync complete!")
+        print(f"\n💡 Tip: Run ./bin/sync_tools.py {args.target} to update embeddings")
 
 
 if __name__ == "__main__":

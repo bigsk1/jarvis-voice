@@ -161,6 +161,11 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge | jq '.'
 
 ```
 
+
+
+---
+
+
 ### Commands for testing
 
 ```bash
@@ -256,6 +261,8 @@ Standalone tool with multiple commands:
 │      → YOU manually apply to router_v2.py                       │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
+
+```bash
 # 1. Run queries with feedback collection
 # Manual - per query
 ./orchestrator/orchestrator_v2.py cloud "Do something" --feedback
@@ -310,6 +317,26 @@ cat logs/evolution/system_prompt_suggestions.md
 jarvis-dashboard → 🧬 Evolution → System Prompt Suggestions
 ---
 
+# Tool builder commands
+
+```bash
+# Build a tool from a gap
+./bin/build-tool --mode cloud build "Description of capability needed"
+
+# List pending tools (need package approval)
+./bin/build-tool list-pending
+
+# Approve pending tool (with package install)
+./bin/build-tool approve tool_name --install
+
+# View tool report card
+./bin/build-tool info tool_name
+
+# Sync to enable
+./bin/sync_tools.py cloud
+```
+
+```bash
 
 test all tools
 cd /home/boss/jarvis-voice/tests/integration && ./test-all-tools.sh

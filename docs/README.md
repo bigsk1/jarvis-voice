@@ -157,7 +157,8 @@
 | Document | Purpose |
 |----------|---------|
 | **INTELLIGENCE_LAYER.md** | Self-learning system (Phase 1.5 - COMPLETE) ⭐ ENHANCED |
-| **ADVANCED_AI_TECHNIQUES.md** | 🚀 **AGI Roadmap** - Self-evolving prompts, parallel subagents, self-play ⭐ NEW |
+| **ADVANCED_AI_TECHNIQUES.md** | 🚀 **AGI Roadmap** - Self-evolving prompts, tool builder, parallel subagents ⭐ ENHANCED |
+| **TOOL_BUILDER.md** | 🔧 **Dynamic Tool Creation** - Autonomous tool building with safety checks ⭐ NEW |
 | **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
 | **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Real-time feedback during tasks |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
@@ -168,6 +169,8 @@
 | **Command Dashboard** | TUI for all Jarvis commands - `./bin/jarvis-dashboard` ⭐ NEW |
 | **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8890) ⭐ NEW |
 | **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag ⭐ NEW |
+| **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check cloud` ⭐ NEW |
+| **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."` ⭐ NEW |
 
 **Intelligence Features (Phase 1.5):**
 - Insight tracking (times_applied, times_helpful, times_failed)
@@ -257,6 +260,32 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2025-12-01:**
+- ✅ **Prompt Evolution System** - Self-evolving prompts and tool descriptions ⭐ MAJOR
+  - Auto-improves tool descriptions based on feedback ratings (1-5 scale)
+  - System prompt suggestions saved to Canvas for review
+  - A/B testing, versioning, and auto-rollback on degradation
+  - Random feedback collection during normal operation (`FEEDBACK_RANDOM_ENABLED`)
+  - `./bin/evolve-prompts check cloud` - See what needs improvement
+  - `./bin/evolve-prompts auto cloud` - Generate and deploy improvements
+  - See: `docs/ADVANCED_AI_TECHNIQUES.md`, `docs/FEEDBACK_SYSTEM.md`
+- ✅ **Dynamic Tool Builder** - Autonomous tool creation ⭐ MAJOR
+  - Creates new tools when capability gaps detected
+  - **Duplicate detection** - Checks ALL existing tools (local + MCP + auto-tools)
+  - **Ouroboros Research** 🐍 - Tool Builder calls Jarvis for API research!
+  - Syntax verification, import checks, runtime testing
+  - Dependency gating (new packages require human approval)
+  - API key awareness (flags tools needing new credentials)
+  - Full audit trail with report cards
+  - Grafana dashboard: `Jarvis Tool Builder`
+  - `./bin/build-tool --mode cloud build "Get stock prices"`
+  - See: `docs/TOOL_BUILDER.md`
+- ✅ **Evolution Sync** - Cloud ↔ Local prompt version sync
+  - Conflict detection with `--dry-run` preview
+  - `--force` flag for override
+  - `./bin/sync-evolution-db.py local --dry-run`
+- ✅ **Grafana Dashboard Updates** - Mode dropdown for feedback/evolution
+  - Toggle between cloud/local data in dashboards
+  - All logs now include `mode` field for filtering
 - ✅ **Canvas System** - Visual knowledge viewer for rich content ⭐ NEW
   - Beautiful dark-themed web UI at localhost:8890
   - Jarvis saves research results, comparisons, code snippets
@@ -468,5 +497,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-01  
+**Last Updated:** 2025-12-01 (v2.8)  
+**Latest:** Prompt Evolution, Dynamic Tool Builder, Canvas, Calculator, Feedback System  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

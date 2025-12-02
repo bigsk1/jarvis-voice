@@ -456,6 +456,10 @@ class FeedbackCollector:
     def _maybe_trigger_auto_evolution(self) -> None:
         """Check if we should run auto-evolution based on feedback count."""
         try:
+            # LOOP PREVENTION: Don't trigger evolution if we're in tool builder context
+            if os.environ.get('JARVIS_TOOL_BUILDER_CONTEXT') == 'true':
+                return
+            
             from prompt_versioning import EVOLUTION_CONFIG
             
             # Count today's feedback entries
@@ -482,7 +486,7 @@ class FeedbackCollector:
                 
                 # Run async - don't block feedback return
                 subprocess.Popen(
-                    [sys.executable, str(evolve_script), 'auto', '--deploy', '--activate', '-m', self.mode],
+                    [sys.executable, str(evolve_script), '--mode', self.mode, 'auto', '--deploy', '--activate'],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
