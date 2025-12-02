@@ -53,7 +53,7 @@ def run_session(args):
     else:
         print(f"  ├── Categories: all ({len(QUERY_CATEGORIES)})")
     print(f"  ├── Feedback: {'disabled' if args.no_feedback else 'enabled'}")
-    print(f"  └── Silent: {'yes' if args.silent else 'no'}")
+    print(f"  └── TTS: {'enabled' if args.tts else 'disabled (silent)'}")
     print()
     
     engine = SelfPlayEngine(mode=args.mode)
@@ -78,7 +78,7 @@ def run_session(args):
         summary = engine.run_session(
             num_queries=args.queries,
             categories=args.categories,
-            silent=args.silent,
+            silent=not args.tts,
             collect_feedback=not args.no_feedback,
             progress_callback=progress_callback,
         )
@@ -241,8 +241,8 @@ Examples:
                         help="Limit to specific categories")
     parser.add_argument("--no-feedback", action="store_true",
                         help="Skip feedback collection")
-    parser.add_argument("--silent", "-s", action="store_true", default=True,
-                        help="Disable TTS (default: True)")
+    parser.add_argument("--tts", action="store_true",
+                        help="Enable TTS voice output (default: silent)")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Show verbose output")
     
