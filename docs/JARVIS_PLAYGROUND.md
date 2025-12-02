@@ -309,9 +309,15 @@ def run_self_play_session(
     gaps = analyze_tool_gaps(results)
     low_ratings = [r for r in results if r["feedback"]["rating"] < 4]
     
+    # Safe average calculation (avoid division by zero)
+    avg_rating = (
+        sum(r["feedback"]["rating"] for r in results) / len(results)
+        if results else 0.0
+    )
+    
     return {
         "total_queries": num_queries,
-        "avg_rating": sum(r["feedback"]["rating"] for r in results) / len(results),
+        "avg_rating": avg_rating,
         "low_ratings": len(low_ratings),
         "tool_gaps": gaps,
         "evolution_triggered": check_evolution_triggered(),
