@@ -893,7 +893,7 @@ MUTATION_STRATEGIES = {
 # Output:
 # Self-Play Session Started
 # ├── Generating queries...
-# │   ├── 50 from conversation history
+# │   ├── 50 from conversation history  ( not good if recending emails and alerts and remindered need to modify this )
 # │   ├── 30 mutations
 # │   └── 20 edge cases
 # ├── Executing in sandbox...

@@ -159,7 +159,7 @@ You: "Send an email to John about the meeting"
 You: "Any unread messages?"
 ```
 
-### 7. Multi-User Support
+### 7. Multi-User Support - not intersted in this , maybe a profile which loads tools, features, ect.. 
 **Priority:** Low
 
 **Goal:** Recognize different users, separate memories.
@@ -184,7 +184,7 @@ You: "Any unread messages?"
 ./bin/sync-memory-db.py --from cloud --to local
 ```
 
-#### 8.2. Memory Expiration
+#### 8.2. Memory Expiration  - Not interested in this reminders handles it fine already
 ```python
 # Auto-expire old memories
 remember("I'm going to the store", importance=3, expires_in="2 hours")
@@ -219,7 +219,7 @@ You: "Search for the latest AI paper and summarize it"
 # Uses: search → fetch → summarize (3 tools)
 ```
 
-#### 9.3. MCP Performance Optimization
+#### 9.3. MCP Performance Optimization  - not issues with current mcp , no reason to keep running 
 - Keep containers warm (don't restart every time)
 - Connection pooling
 - Parallel tool execution
