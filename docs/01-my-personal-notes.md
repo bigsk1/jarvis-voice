@@ -170,11 +170,6 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge | jq '.'
 
 ```
 
-
-
----
-
-
 ### Commands for testing
 
 ```bash
@@ -297,7 +292,7 @@ cat logs/evolution/system_prompt_suggestions.md
 # Auto-evolve (dry run)
 ./bin/evolve-prompts auto
 
-# Auto-evolve (deploy but don't activate - for A/B testing)
+# Auto-evolve (deploy but don't activate - for A/B testing) - NOT SETUP YET
 ./bin/evolve-prompts auto --deploy
 
 # Auto-evolve (deploy AND activate immediately)
@@ -344,6 +339,9 @@ jarvis-dashboard → 🧬 Evolution → System Prompt Suggestions
 # Sync to enable
 ./bin/sync_tools.py cloud
 ```
+
+
+# Testing Commands
 
 ```bash
 

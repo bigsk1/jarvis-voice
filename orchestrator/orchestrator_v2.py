@@ -444,7 +444,7 @@ Tool result: {json.dumps(data, indent=2)}
 Create a short response for voice output (spoken through speakers).
 
 CRITICAL RULES:
-1. MAX 20 WORDS (25 if complex data like search results or errors)
+1. MAX 25 WORDS (35 if complex data like search results or errors)
 2. Answer directly, no greetings or confirmations
 3. No emojis, no markdown, no numbered lists
 4. Don't say URLs unless critical
@@ -535,9 +535,9 @@ Your response:"""
             
             # Simple data tools: Already concise, keep as-is or condense slightly
             elif any(simple in tool_name.lower() for simple in SIMPLE_TOOLS):
-                # If already short (<20 words), keep it
+                # If already short (<25 words), keep it
                 word_count = len(raw_response.split())
-                if word_count <= 20:
+                if word_count <= 25:
                     return raw_response
                 # Otherwise condense
                 return self._format_single_turn_casual(user_query, raw_response)
@@ -584,7 +584,7 @@ Your response:"""
 
 Your previous verbose response: {raw_response}
 
-Condense this to ONE SENTENCE (MAX 20 words) for voice output.
+Condense this to ONE SENTENCE (MAX 25 words) for voice output.
 
 CRITICAL RULES:
 1. Keep the core answer/outcome
@@ -600,7 +600,7 @@ Concise: "Tetris server started on port 5000"
 
 Your concise response:"""
             
-            response = self.router.provider.chat(context, system_prompt="Output ONE sentence, MAX 20 words. No greetings, no emojis.")
+            response = self.router.provider.chat(context, system_prompt="Output ONE sentence, MAX 25 words. No greetings, no emojis.")
             return response.strip()
         except Exception as e:
             # Fallback: use first sentence of raw response
@@ -637,7 +637,7 @@ Results: {json.dumps(accumulated_data, indent=2)[:max_chars]}
 Create a SINGLE SENTENCE response for voice output (will be spoken aloud through speakers).
 
 CRITICAL RULES:
-1. MAX 20 WORDS
+1. MAX 25 WORDS
 2. State outcome + essential detail only
 3. No emojis, no markdown, no bullet points, no explanations of what you did
 
@@ -653,7 +653,7 @@ BAD EXAMPLES (TOO LONG):
 
 Your response:"""
             
-            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Output ONE sentence, MAX 20 words. No explanations.")
+            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Output ONE sentence, MAX 25 words. No explanations.")
             return response.strip()
         except Exception as e:
             # Fallback to LLM's original response

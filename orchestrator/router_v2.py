@@ -161,7 +161,7 @@ VOICE OUTPUT RULES (ABSOLUTELY CRITICAL):
 When you respond with Q&A intent (NOT calling a tool), your response will be SPOKEN ALOUD through speakers.
 
 MANDATORY FORMAT:
-- MAXIMUM 20 WORDS (hard limit, will be cut off)
+- MAXIMUM 25 WORDS (hard limit, will be cut off)
 - NO emojis, NO markdown (**, ##, bullets)
 - NO explanations of process ("I've successfully...", "Here's what I did...")
 - STATE ONLY: outcome + essential detail
@@ -370,7 +370,7 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
         else:
             style_note = f"""
 RESPONSE STYLE: {response_style.upper()}
-- Keep voice output brief (~20 words), no URLs for speech
+- Keep voice output brief (~25 words), no URLs for speech
 - The VOICE OUTPUT RULES section applies fully
 
 """

@@ -796,7 +796,7 @@ Provide your analysis as JSON:
     "generalizability": "high" or "medium" or "low",  // "low" insights won't be stored
     
     "confidence": 0.0-1.0,
-    "insight_summary": "One actionable sentence, max 20 words"
+    "insight_summary": "One actionable sentence, max 25 words"
 }}
 ```
 
@@ -938,7 +938,7 @@ Example for FACTUAL (should NOT be stored here):
                 provider = create_provider(
                     "openai",
                     api_key=get_config_value("OPENAI_API_KEY"),
-                    model=get_config_value("CHAT_MODEL", "gpt-4o-mini")
+                    model=get_config_value("CHAT_MODEL", "gpt-5.1")
                 )
             elif provider_type == "anthropic":
                 provider = create_provider(
@@ -956,7 +956,7 @@ Example for FACTUAL (should NOT be stored here):
                 provider = create_provider(
                     "ollama",
                     base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                    model=get_config_value("OLLAMA_MODEL", "qwen3-vl:latest")
+                    model=get_config_value("OLLAMA_MODEL", "qwen3:14b:latest")
                 )
             else:
                 logger.error(f"Unknown provider type: {provider_type}")
