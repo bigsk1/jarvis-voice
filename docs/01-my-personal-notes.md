@@ -2,6 +2,15 @@
 
 ### Notes
 
+
+On a reflection intellegence it shows user retries, and the reflection is graded on if there was a user retry and not satisfied with responce, however i dont think the is added yet, as a reflection is doing one llm session at a time, it doesnt know if the next question to the llm was not satisfied with the responce and user retried, so it is not graded on that.
+
+
+
+
+
+
+
 ```bash
 ./orchestrator/orchestrator_v2.py cloud "Use playwright and download the details about this repo https://github.com/bigsk1/opencode-doc and save to my intel folder"
 

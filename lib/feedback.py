@@ -39,16 +39,25 @@ Tools Used: {tools_used}
 **ORIGINAL LLM RESPONSE** (what the LLM generated):
 {raw_llm_response}
 
-**FINAL VOICE OUTPUT** (formatted for speakers, ~25 word limit):
+**FINAL VOICE OUTPUT** (see style in Configuration - may be short OR detailed):
 {final_speech}
 
 ⚠️ IMPORTANT CONTEXT FOR GRADING:
 
-1. **VOICE OUTPUT IS SHORT BY DESIGN** - it's spoken through speakers.
-   DO NOT penalize for brief voice output - that's correct behavior!
-   Grade the ORIGINAL LLM RESPONSE for accuracy and completeness.
+1. **RESPONSE STYLE DETERMINES OUTPUT FORMAT** - check Configuration section FIRST!
+   - If style is "casual" or "auto": Apply 20-word limit, no URLs, no markdown (voice output)
+   - If style is "detailed": Output is for DISPLAY/READING, not voice synthesis
+     → Markdown IS allowed (links, bold, lists)
+     → Full URLs with markdown links ARE correct
+     → No word limit - verbose output is expected
+   
+2. **DO NOT PENALIZE DETAILED MODE OUTPUT** - When style="detailed":
+   - Long responses = CORRECT (output is read, not spoken)
+   - URLs with markdown links = CORRECT (displayed, not synthesized)
+   - Markdown formatting = CORRECT (**, ##, bullets are fine for display)
+   - This is NOT a voice interface in detailed mode - it's a display interface
 
-2. **CURRENT DATE/TIME IS INJECTED INTO THE SYSTEM PROMPT** on every request.
+3. **CURRENT DATE/TIME IS INJECTED INTO THE SYSTEM PROMPT** on every request.
    The LLM ALREADY HAS the current date and time in its system prompt.
    Therefore:
    - NOT calling get_time when asked for time is ACCEPTABLE if the LLM uses system prompt time
@@ -78,12 +87,12 @@ Rate the interaction (1-5) using this STRICT rubric:
   ✓ Correct tool(s) selected
   ✓ Response accurately addresses the query
   ✓ No hallucinations or incorrect information
-  ✓ Voice output is appropriate for speaking
+  ✓ Output format matches the configured style (check Configuration section!)
   
 **4 = GOOD with minor issues** - Task completed but:
-  - Slightly verbose or could be more concise
-  - Minor formatting issue
+  - Minor formatting issue (NOT verbosity if style is "detailed"!)
   - Correct but not optimal tool choice
+  - Note: In "detailed" style, long responses with URLs are CORRECT, not a flaw
   
 **3 = ACCEPTABLE with issues** - Task completed but:
   - Response partially addresses query

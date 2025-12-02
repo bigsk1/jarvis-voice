@@ -1165,10 +1165,22 @@ def main():
         # Get intelligence insights that were used (if available)
         intelligence_insights = result.get("intelligence_context", "Intelligence insights not captured in result.")
         
-        # Build config context
+        # Build config context with EXPLANATIONS for style modes
+        response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
+        
+        # Explain what the style means so feedback LLM doesn't penalize correct behavior
+        style_explanations = {
+            'casual': 'Short voice-friendly output. URLs are REMOVED, search results summarized to ~25 words.',
+            'auto': 'Smart mode. Search tools get condensed (no URLs), complex tools keep full details.',
+            'detailed': 'FULL LLM response preserved. URLs ARE INCLUDED. Verbose output is EXPECTED and CORRECT.'
+        }
+        style_explanation = style_explanations.get(response_style, 'Unknown style')
+        
         config_context = f"""
 Auto-Context: {'Enabled' if orch.auto_context_enabled else 'Disabled'} (window={orch.auto_context_window}, minutes={orch.auto_context_minutes})
-Response Style: {get_config_value('JARVIS_RESPONSE_STYLE', 'auto')}
+Response Style: {response_style}
+  → Style Behavior: {style_explanation}
+  → DO NOT penalize verbose output or URLs if style is 'detailed' - that's CORRECT behavior!
 Tools Available: {num_tools}
 Mode: {mode}
 """

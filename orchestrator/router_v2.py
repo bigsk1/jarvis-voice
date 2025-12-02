@@ -352,12 +352,34 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         - Time-sensitive queries ("tomorrow", "next Friday")
         """
         now = datetime.now(self.timezone)
+        
+        # Get response style - this affects output formatting rules
+        response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
+        
+        # Build style-aware prefix
+        if response_style == 'detailed':
+            style_note = """
+RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
+- Output will be DISPLAYED, not spoken through TTS
+- Markdown formatting IS allowed (links, bold, lists)
+- Full URLs with markdown links ARE allowed: [Title](https://...)
+- No word limit - provide comprehensive information
+- The VOICE OUTPUT RULES section does NOT apply in detailed mode
+
+"""
+        else:
+            style_note = f"""
+RESPONSE STYLE: {response_style.upper()}
+- Keep voice output brief (~20 words), no URLs for speech
+- The VOICE OUTPUT RULES section applies fully
+
+"""
+        
         time_prefix = f"""CURRENT DATE AND TIME:
 Today is {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p %Z')}.
 Use this for any time-sensitive queries, web searches, or temporal references.
 When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
-
-"""
+{style_note}"""
         return time_prefix + self._system_prompt_base
     
     def _create_provider(self):
