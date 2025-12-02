@@ -175,6 +175,14 @@ COMMANDS: List[Command] = [
     Command("List Pending Tools", "./bin/build-tool list-pending", "Tools awaiting approval", "🛠️ Tools"),
     Command("Tool Builder Logs", "cat logs/tool-builder/tool-builder-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -10 | jq -c '{event,tool_name,status}'", "Tool creation logs", "🛠️ Tools"),
     
+    # === 🎮 SELF-PLAY ===
+    Command("Self-Play (5 queries)", "./bin/jarvis-self-play --queries 5 --mode cloud", "Quick self-play session", "🎮 Self-Play"),
+    Command("Self-Play (20 queries)", "./bin/jarvis-self-play --queries 20 --mode cloud", "Standard self-play session", "🎮 Self-Play"),
+    Command("Self-Play (Local)", "./bin/jarvis-self-play --queries 10 --mode local", "Local mode self-play", "🎮 Self-Play"),
+    Command("List Sessions", "./bin/jarvis-self-play list", "Recent self-play sessions", "🎮 Self-Play"),
+    Command("Latest Results", "./bin/jarvis-self-play results --session latest", "View latest session", "🎮 Self-Play"),
+    Command("Self-Play Logs", "cat logs/self-play/self-play-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -10 | jq -c '{query: .query[:40], category, ok}'", "Today's self-play queries", "🎮 Self-Play"),
+    
     # === 🔊 STATUS UPDATES ===
     Command("TTS Cache Stats", "./bin/status-cache stats", "TTS cache statistics", "🔊 Status"),
     Command("TTS Cache Clear", "./bin/status-cache clear", "Clear TTS cache", "🔊 Status", dangerous=True),

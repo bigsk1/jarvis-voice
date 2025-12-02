@@ -1,0 +1,279 @@
+#!/usr/bin/env python3
+"""
+Jarvis Self-Play CLI
+
+Run self-play sessions to generate training data, find tool gaps,
+and trigger evolution improvements.
+
+Usage:
+    ./bin/jarvis-self-play --queries 50 --mode cloud
+    ./bin/jarvis-self-play results --session latest
+    ./bin/jarvis-self-play list
+"""
+
+import os
+import sys
+import argparse
+from datetime import datetime
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+
+
+def print_banner():
+    """Print startup banner."""
+    print("""
+╔═══════════════════════════════════════════════════════════════╗
+║                    JARVIS SELF-PLAY                           ║
+║               Training Through Practice                        ║
+╚═══════════════════════════════════════════════════════════════╝
+""")
+
+
+def print_progress_bar(current: int, total: int, width: int = 30) -> str:
+    """Generate a progress bar string."""
+    filled = int(width * current / total)
+    bar = "█" * filled + "░" * (width - filled)
+    percent = 100 * current / total
+    return f"[{bar}] {percent:.0f}%"
+
+
+def run_session(args):
+    """Run a self-play session."""
+    from self_play import SelfPlayEngine, QUERY_CATEGORIES
+    
+    print_banner()
+    
+    # Show configuration
+    print(f"Configuration:")
+    print(f"  ├── Mode: {args.mode}")
+    print(f"  ├── Queries: {args.queries}")
+    if args.categories:
+        print(f"  ├── Categories: {', '.join(args.categories)}")
+    else:
+        print(f"  ├── Categories: all ({len(QUERY_CATEGORIES)})")
+    print(f"  ├── Feedback: {'disabled' if args.no_feedback else 'enabled'}")
+    print(f"  └── Silent: {'yes' if args.silent else 'no'}")
+    print()
+    
+    engine = SelfPlayEngine(mode=args.mode)
+    
+    # Track progress state
+    state = {"current": 0, "total": args.queries, "phase": "generating"}
+    
+    def progress_callback(current, total, query):
+        state["current"] = current
+        state["total"] = total
+        state["phase"] = "executing"
+        
+        # Clear line and print progress
+        bar = print_progress_bar(current, total)
+        query_preview = query[:40] + "..." if len(query) > 40 else query
+        print(f"\r  {bar} {current}/{total} | {query_preview}".ljust(100), end="", flush=True)
+    
+    print("Generating queries...")
+    start_time = datetime.now()
+    
+    try:
+        summary = engine.run_session(
+            num_queries=args.queries,
+            categories=args.categories,
+            silent=args.silent,
+            collect_feedback=not args.no_feedback,
+            progress_callback=progress_callback,
+        )
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Session interrupted by user")
+        return 1
+    
+    print("\n")  # Clear progress line
+    
+    # Print results
+    print("═" * 60)
+    print("SESSION COMPLETE")
+    print("═" * 60)
+    print()
+    
+    print(f"Summary:")
+    print(f"  ├── Session ID: {summary.session_id}")
+    print(f"  ├── Duration: {summary.duration_seconds:.1f}s")
+    print(f"  ├── Total queries: {summary.total_queries}")
+    print(f"  ├── Average rating: {summary.avg_rating:.1f}/5")
+    print(f"  ├── Low ratings (<4): {summary.low_ratings}")
+    print(f"  ├── Evolution triggered: {'✅ Yes' if summary.evolution_triggered else '❌ No'}")
+    print(f"  └── Tool gaps found: {len(summary.tool_gaps)}")
+    print()
+    
+    # Show tool gaps if any
+    if summary.tool_gaps:
+        print("Tool Gaps Detected:")
+        for gap in summary.tool_gaps:
+            print(f"  ├── {gap.pattern}: {gap.query_count} queries hit Brave search")
+            print(f"  │   Examples:")
+            for ex in gap.example_queries[:3]:
+                print(f"  │     - {ex[:50]}{'...' if len(ex) > 50 else ''}")
+            print(f"  │   Suggestion: {gap.suggestion}")
+        print()
+    
+    # Show category breakdown
+    categories = {}
+    for result in summary.results:
+        cat = result.get("category", "unknown")
+        if cat not in categories:
+            categories[cat] = {"count": 0, "ratings": []}
+        categories[cat]["count"] += 1
+        if "feedback" in result:
+            categories[cat]["ratings"].append(result["feedback"]["rating"])
+    
+    print("Category Breakdown:")
+    for cat, data in sorted(categories.items()):
+        avg = sum(data["ratings"]) / len(data["ratings"]) if data["ratings"] else 0
+        print(f"  ├── {cat}: {data['count']} queries, avg rating: {avg:.1f}")
+    print()
+    
+    # Calculate query breakdown by tool usage
+    tool_counts = {}
+    for result in summary.results:
+        for tool in result.get("tools_used", []):
+            tool_counts[tool] = tool_counts.get(tool, 0) + 1
+    
+    if tool_counts:
+        print("Top Tools Used:")
+        for tool, count in sorted(tool_counts.items(), key=lambda x: -x[1])[:10]:
+            print(f"  ├── {tool}: {count}")
+        print()
+    
+    print(f"Session log: logs/self-play/session-{summary.session_id}.json")
+    
+    return 0
+
+
+def list_sessions(args):
+    """List recent sessions."""
+    from self_play import SelfPlayEngine
+    
+    engine = SelfPlayEngine(mode=args.mode)
+    sessions = engine.list_sessions(limit=args.limit)
+    
+    if not sessions:
+        print("No self-play sessions found.")
+        return 0
+    
+    print(f"Recent Self-Play Sessions (last {len(sessions)}):")
+    print()
+    print(f"{'Session ID':<18} {'Mode':<6} {'Queries':<8} {'Avg':<5} {'Low':<5} {'Gaps':<5} {'Evolution'}")
+    print("─" * 75)
+    
+    for s in sessions:
+        evo = "✅" if s.get("evolution_triggered") else "❌"
+        print(f"{s['session_id']:<18} {s['mode']:<6} {s['total_queries']:<8} {s['avg_rating']:<5.1f} {s['low_ratings']:<5} {s['tool_gaps']:<5} {evo}")
+    
+    return 0
+
+
+def show_results(args):
+    """Show results from a specific session."""
+    from self_play import SelfPlayEngine
+    import json
+    
+    engine = SelfPlayEngine(mode=args.mode)
+    
+    if args.session == "latest":
+        data = engine.get_latest_session()
+        if not data:
+            print("No sessions found.")
+            return 1
+    else:
+        session_file = engine.logs_dir / f"session-{args.session}.json"
+        if not session_file.exists():
+            print(f"Session not found: {args.session}")
+            return 1
+        with open(session_file) as f:
+            data = json.load(f)
+    
+    print(f"Session: {data['session_id']}")
+    print(f"Mode: {data['mode']}")
+    print(f"Timestamp: {data['timestamp']}")
+    print(f"Total queries: {data['total_queries']}")
+    print(f"Average rating: {data['avg_rating']:.1f}/5")
+    print(f"Low ratings: {data['low_ratings']}")
+    print()
+    
+    # Show individual results
+    print("Query Results:")
+    print("─" * 80)
+    
+    for i, result in enumerate(data.get("results", []), 1):
+        rating = result.get("feedback", {}).get("rating", "N/A")
+        status = "✅" if result.get("ok") else "❌"
+        tools = ", ".join(result.get("tools_used", [])) or "none"
+        
+        print(f"{i}. [{status}] {result['query'][:60]}...")
+        print(f"   Category: {result['category']} | Rating: {rating}/5 | Tools: {tools[:40]}")
+        if result.get("error"):
+            print(f"   Error: {result['error'][:60]}")
+        print()
+    
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Jarvis Self-Play System",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  ./bin/jarvis-self-play --queries 50 --mode cloud     Run 50 queries in cloud mode
+  ./bin/jarvis-self-play -n 10 -c research coding      Run 10 queries in specific categories
+  ./bin/jarvis-self-play list                          List recent sessions
+  ./bin/jarvis-self-play results --session latest      Show latest session results
+        """
+    )
+    
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+    
+    # Default run command
+    parser.add_argument("--mode", "-m", choices=["cloud", "local"], default="cloud",
+                        help="LLM mode (default: cloud)")
+    parser.add_argument("--queries", "-n", type=int, default=10,
+                        help="Number of queries to generate (default: 10)")
+    parser.add_argument("--categories", "-c", nargs="+",
+                        help="Limit to specific categories")
+    parser.add_argument("--no-feedback", action="store_true",
+                        help="Skip feedback collection")
+    parser.add_argument("--silent", "-s", action="store_true", default=True,
+                        help="Disable TTS (default: True)")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Show verbose output")
+    
+    # List subcommand
+    list_parser = subparsers.add_parser("list", help="List recent sessions")
+    list_parser.add_argument("--mode", "-m", choices=["cloud", "local"], default="cloud")
+    list_parser.add_argument("--limit", "-l", type=int, default=10,
+                            help="Number of sessions to show")
+    
+    # Results subcommand
+    results_parser = subparsers.add_parser("results", help="Show session results")
+    results_parser.add_argument("--session", "-s", default="latest",
+                                help="Session ID or 'latest'")
+    results_parser.add_argument("--mode", "-m", choices=["cloud", "local"], default="cloud")
+    
+    args = parser.parse_args()
+    
+    # Activate venv if needed
+    venv_activate = os.path.expanduser("~/jarvis-venv/bin/activate_this.py")
+    if os.path.exists(venv_activate):
+        exec(open(venv_activate).read(), {'__file__': venv_activate})
+    
+    if args.command == "list":
+        return list_sessions(args)
+    elif args.command == "results":
+        return show_results(args)
+    else:
+        # Default: run session
+        return run_session(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

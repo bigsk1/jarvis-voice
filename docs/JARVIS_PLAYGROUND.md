@@ -1,6 +1,6 @@
 # Jarvis Playground Design Document
 
-> **Status:** Planning  
+> **Status:** Self-Play IMPLEMENTED, others planned  
 > **Last Updated:** 2025-12-02  
 > **Purpose:** Design doc for testing, training, and experimental Jarvis environments
 
@@ -685,7 +685,7 @@ Jarvis Canvas (existing)
 
 | Priority | Feature | Effort | Impact | Status |
 |----------|---------|--------|--------|--------|
-| **P0** | Self-Play System | 1-2 days | High | Planned |
+| **P0** | Self-Play System | 1-2 days | High | ✅ **IMPLEMENTED** |
 | **P1** | Jarvis VM Workspace | 1 day | Medium | Planned |
 | **P1** | Dockerized Image | 1 day | Medium | Planned |
 | **P2** | Digital Twin (Carvis) | 2-3 days | Medium | Future |

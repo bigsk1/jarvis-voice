@@ -365,6 +365,40 @@ scrape_configs:
           format: RFC3339Nano
 
   # ==========================================
+  # Self-Play Logs (Training sessions)
+  # ==========================================
+  - job_name: jarvis_self_play
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: self_play
+          host: fred
+          __path__: /var/log/jarvis/self-play/self-play-*.jsonl
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            session_id: session_id
+            mode: mode
+            query: query
+            category: category
+            ok: ok
+            duration_ms: duration_ms
+            
+      - labels:
+          session_id:
+          mode:
+          category:
+          ok:
+          
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # ==========================================
   # Orchestrator Logs (General)
   # ==========================================
   - job_name: jarvis_orchestrator
