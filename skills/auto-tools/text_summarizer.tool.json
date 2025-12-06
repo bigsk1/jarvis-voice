@@ -1,0 +1,59 @@
+{
+  "enabled": true,
+  "name": "text_summarizer",
+  "description": "Text processing tool for summarization, keyword extraction, word/character counting, and sentiment analysis. Use when user asks to: 'summarize this text', 'extract keywords from', 'count words in', 'analyze sentiment of', 'is this positive or negative', 'get key terms from', or 'how many words/characters in'.",
+  "script": "text_summarizer.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "The text to process"
+      },
+      "operation": {
+        "type": "string",
+        "enum": [
+          "summarize",
+          "keywords",
+          "count",
+          "sentiment"
+        ],
+        "description": "Operation to perform: 'summarize' for text summary, 'keywords' for keyword extraction, 'count' for word/character count, 'sentiment' for sentiment analysis"
+      },
+      "num_sentences": {
+        "type": "integer",
+        "description": "Number of sentences in summary (only for summarize operation)",
+        "default": 3
+      },
+      "top_n": {
+        "type": "integer",
+        "description": "Number of top keywords to extract (only for keywords operation)",
+        "default": 10
+      }
+    },
+    "required": [
+      "text",
+      "operation"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "test_input": {
+    "text": "Artificial intelligence is transforming the world. Machine learning algorithms are becoming more sophisticated. Natural language processing enables computers to understand human language. This technology has many applications in business and research.",
+    "operation": "summarize",
+    "num_sentences": 2
+  },
+  "expected_output_contains": [
+    "summary",
+    "ok",
+    "true"
+  ],
+  "auto_generated": true,
+  "created_at": "2025-12-05T23:50:33.620065",
+  "feedback_ids": []
+}
