@@ -260,6 +260,39 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2025-12-06:**
+- ✅ **Network Tools** - Comprehensive network diagnostics ⭐ NEW
+  - Ping with full statistics (min/avg/max latency, packet loss)
+  - DNS lookup and resolution
+  - Port connectivity checks with latency measurement
+  - HTTP/HTTPS status checks with SSL verification
+  - Traceroute (cross-platform: Linux/Windows/Mac)
+  - Internet connectivity testing
+  - See: `skills/auto-tools/network_tools.py`
+- ✅ **System Monitor** - Real-time system resource monitoring ⭐ NEW
+  - CPU usage (total + per-core percentages)
+  - Memory stats (RAM + swap with GB conversions)
+  - Disk usage for all mount points
+  - Process list (top N by CPU or memory)
+  - Network I/O statistics (bytes sent/received, errors, drops)
+  - System uptime with boot time
+  - See: `skills/auto-tools/system_monitor.py`
+- ✅ **Text Summarizer** - Text processing and analysis ⭐ NEW
+  - Extractive summarization (sentence ranking)
+  - Keyword extraction with stopword filtering
+  - Word/character/sentence/paragraph counting
+  - Basic sentiment analysis (positive/negative/neutral)
+  - See: `skills/auto-tools/text_summarizer.py`
+- ✅ **System Dependencies Documentation** - Reproducibility improvements
+  - Created `system-packages.txt` for all Ubuntu/Debian packages
+  - Created `install-system-deps.sh` for one-command setup
+  - Updated `setup.sh` to check for traceroute
+  - Added traceroute to README installation steps
+- ✅ **Tool Builder AVAILABLE_PACKAGES Sync** - Updated with all requirements.txt packages
+  - Added 50+ packages from requirements.txt to prevent unnecessary pending reviews
+  - Includes: psutil, numpy, scipy, fastapi, uvicorn, scikit-learn, textual, etc.
+  - Tool Builder now knows which packages are already installed
+
 **2025-12-01:**
 - ✅ **Prompt Evolution System** - Self-evolving prompts and tool descriptions ⭐ MAJOR
   - Auto-improves tool descriptions based on feedback ratings (1-5 scale)
@@ -498,6 +531,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-01 (v2.8)  
-**Latest:** Prompt Evolution, Dynamic Tool Builder, Canvas, Calculator, Feedback System  
+**Last Updated:** 2025-12-06 (v2.9)  
+**Latest:** Network Tools, System Monitor, Text Summarizer, Prompt Evolution, Dynamic Tool Builder, Canvas, Calculator, Feedback System  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

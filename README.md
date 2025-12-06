@@ -9,6 +9,9 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
+- **Network Tools** - Ping, DNS, port checks, HTTP/HTTPS status, traceroute ⭐ NEW
+- **System Monitor** - CPU, RAM, disk, processes, network I/O, uptime ⭐ NEW
+- **Text Summarizer** - Summarization, keywords, sentiment, word count ⭐ NEW
 - **Prompt Evolution** - Self-evolving prompts and tool descriptions ⭐ NEW
 - **Dynamic Tool Builder** - Autonomous tool creation with safety checks ⭐ NEW
 - **Canvas System** - Visual knowledge viewer for rich content display ⭐ NEW
@@ -16,7 +19,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading ⭐ NEW
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 35+ working skills (memory, bash, OpenCode, API calls, reminders, canvas, calculator, etc.)
+- 38+ working skills (memory, bash, OpenCode, API calls, reminders, canvas, calculator, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -463,6 +466,9 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 - `calculator` - **Advanced math**: arithmetic, percentages, statistics, unit conversions, trig ⭐ NEW
 - `canvas` - **Visual viewer**: save rich content (research, code, comparisons) to web UI ⭐ NEW
 - `weather` - Weather forecasts with OpenWeatherMap
+- `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute ⭐ NEW
+- `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime ⭐ NEW
+- `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis ⭐ NEW
 
 **Development:**
 - `opencode` - Autonomous coding agent (builds apps, games, APIs)
@@ -966,6 +972,18 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
+- ✅ **Network Tools** - Network diagnostics (ping, DNS, port, HTTP/HTTPS, traceroute) ⭐ NEW
+  - Enhanced ping with min/avg/max/loss statistics
+  - HTTP/HTTPS checks with SSL verification and response times
+  - Port connectivity with latency measurement
+  - Cross-platform traceroute support
+- ✅ **System Monitor** - Real-time system resource monitoring ⭐ NEW
+  - CPU usage (total + per-core), memory (RAM + swap)
+  - Disk usage per mount point, process list (sortable)
+  - Network I/O stats, system uptime with boot time
+- ✅ **Text Summarizer** - Text processing and analysis ⭐ NEW
+  - Extractive summarization, keyword extraction
+  - Word/character/sentence counting, sentiment analysis
 - ✅ **Prompt Evolution System** - Self-evolving prompts ⭐ MAJOR
   - Auto-improves tool descriptions based on feedback (1-5 rating scale)
   - System prompt suggestions saved to Canvas for manual review
@@ -1106,6 +1124,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.8 (December 2025)  
+**Current Version:** v2.9 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Prompt Evolution (self-improving prompts), Dynamic Tool Builder (autonomous tool creation), Canvas System, Calculator, Feedback System, Dashboard 70+ commands
+**Latest Features:** Network Tools (ping, DNS, HTTP checks), System Monitor (CPU, RAM, disk), Text Summarizer, Prompt Evolution, Dynamic Tool Builder, Canvas System, Calculator, Feedback System
