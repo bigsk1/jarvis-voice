@@ -387,7 +387,7 @@ jarvis-dashboard → 🧬 Evolution → Evolution Logs
 ### CLI Usage
 
 ```bash
-# Check what needs evolution (based on feedback)
+# Check what needs evolution (based on feedback)  evolve prompt created but no prompt history A/B feature yet as of 12/5/25
 ./bin/evolve-prompts check
 
 # Output:
