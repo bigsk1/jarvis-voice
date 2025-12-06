@@ -1,0 +1,75 @@
+{
+  "tool_name": "system_monitor",
+  "created_at": "2025-12-06T00:56:53.540236",
+  "created_by": "auto_builder",
+  "mode": "cloud",
+  "gap_description": "create a System Monitor Tool called system_monitor.py Gap: Limited system visibility (only logs via query_service_logs) Actions:\n\ncpu_usage - Current CPU usage %\nmemory_usage - RAM usage stats\ndisk_usage - Disk space per mount\nprocess_list - List running processes\nnetwork_stats - Network I/O statistics\nsystem_uptime - System uptime\nLibraries: psutil as an example, cover many possible system monitoring needs",
+  "purpose": "Provides detailed system visibility beyond just service logs - monitors hardware resources, processes, and system health in real-time",
+  "feedback_ids": [],
+  "evolution_ids": [],
+  "capabilities": [
+    "cpu_usage - Current CPU usage percentage and per-core stats",
+    "memory_usage - RAM usage stats (total, used, available, percent)",
+    "disk_usage - Disk space statistics per mount point",
+    "process_list - List running processes with CPU/memory usage",
+    "network_stats - Network I/O statistics (bytes sent/received)",
+    "system_uptime - System uptime and boot time",
+    "all - Get all system stats at once"
+  ],
+  "parameters": {
+    "action": "What to monitor: 'cpu_usage', 'memory_usage', 'disk_usage', 'process_list', 'network_stats', 'system_uptime', or 'all' (default)",
+    "limit": "For process_list: number of processes to return (default: 10)",
+    "sort_by": "For process_list: sort by 'cpu' or 'memory' (default: 'cpu')"
+  },
+  "verification_passed": false,
+  "verification_output": "",
+  "test_input_used": {
+    "action": "all"
+  },
+  "test_output": "",
+  "packages_required": [
+    "psutil"
+  ],
+  "packages_new": [
+    "psutil"
+  ],
+  "mcp_alternatives_checked": [
+    "- semantic_recall: \u26a1 PRIORITY TOOL - CHECK FIRST! CONCEPTUAL/MEANING search in persistent MEMORY DATABASE using AI embeddings. This searches stored memories by MEANING, ",
+    "- search_memory: \u26a1 PRIORITY TOOL - CHECK FIRST! KEYWORD/ENTITY SEARCH in persistent MEMORY DATABASE using FTS5 with BM25 ranking. This searches the MEMORY DB (key-valu",
+    "- check_opencode_sessions: Check OpenCode build sessions and progress via API. Lists recent OpenCode projects, shows session details, token usage, and build history. READ-ONLY -",
+    "- forget: Delete a memory that is no longer needed, incorrect, or outdated. Use this to keep the knowledge base clean and current. First use 'recall' to find th",
+    "- list_alerts: List alerts from the proactive API system. ALWAYS use this tool for ANY alert-related query, including: 'any alerts?', 'what alerts do I have?', 'show",
+    "- manage_intel: FILE MANAGER for jarvis-intel/ folder. Create, read, update, delete, or list FILES (not memory). Use when user says 'save to intel', 'create intel fil",
+    "- acknowledge_reminders: Mark reminders as acknowledged/completed/cancelled. Use when user says 'cancel reminder', 'delete reminder', 'clear reminder', 'remove reminder', 'mar",
+    "- evolution_test: A test tool for validating evolutionary algorithm implementations and genetic programming systems. Use this tool when you need to verify mutation oper",
+    "- list_reminders: List reminders by status. ALWAYS use this tool for ANY reminder-related query, including: 'when is my next reminder?', 'what reminders do I have?', 'c",
+    "- get_recent_conversations: Get recent conversation history in chronological order. ALWAYS use this tool for temporal queries like: 'what was the last conversation?', 'what did I",
+    "- send_webhook: Send webhook to trigger n8n workflows or external services. Supports named webhooks from config/webhook_registry.json (e.g., 'notify_slack', 'home_ass",
+    "- canvas: Save rich content to Jarvis Canvas - a visual viewer for research results, code snippets, comparisons, and reference material. Use when: (1) user asks",
+    "- query_service_logs: Query background service logs (follow-up daemon, self-healing daemon, reminder scheduler). Use this to check what the services are doing, find errors,",
+    "- ingest_intel: Ingest knowledge from files in jarvis-intel/ folder into Jarvis's memory. Processes .txt and .md files containing network configs, IPs, project detail",
+    "- recall: Keyword search in stored memories (fuzzy text matching). Finds memories where the key or value contains your search term. Use for simple keyword looku",
+    "- execute_bash: Execute a bash command on the system. USE THIS for: curl commands, checking services on private/local networks (192.168.x.x, 10.x.x.x, localhost), run",
+    "- opencode: Execute complex autonomous tasks using OpenCode: coding, building projects, deploying, file operations, git operations, analysis, and multi-step workf",
+    "- acknowledge_alerts: Acknowledge or clear alerts from the proactive API system. Use when user wants to mark alerts as handled, clear notifications, or dismiss pending aler",
+    "- check_tool_logs: Check recent tool execution logs to see if there were errors. Use this when a tool fails to understand what went wrong and how to fix it. Returns the ",
+    "- weather: Get current weather and forecast for any location. Returns temperature, conditions, humidity, wind. Use for questions like 'What's the weather in Seat",
+    "- create_reminder: Create a reminder or calendar event that syncs to Google Calendar and triggers TTS notification. Use when user says: 'remind me', 'set a reminder', 'a",
+    "- calculator: Advanced calculator for math, statistics, and unit conversions. Use for: arithmetic (2+2, 5^3, sqrt(144)), percentages (15% of 200, what percent is 30",
+    "- api_call: Make an HTTP API call (GET or POST) to any REST API endpoint. Use this when the user wants to fetch data from an API, check API status, or interact wi",
+    "- get_time: Get the current date and time, optionally for any location worldwide. Use for: 'what time is it', 'what time is it in Tokyo', 'what's the time in Pari",
+    "- send_email: Send an email to a contact. Use when user says 'email', 'send email to', 'message', etc. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'work'",
+    "- search_conversations: Search previous conversation history for a specific TOPIC or KEYWORD. Use ONLY when user asks to find conversations about a specific subject, like: 'd",
+    "- update_memory: Update or correct an existing memory. Use this when you realize a stored fact is outdated, incorrect, or needs to be changed. Can search for the memor",
+    "- remember: Store important information in persistent memory. Use this when the user shares information that should be remembered for future conversations, such a",
+    "- crypto_price: Get current cryptocurrency price in USD from CoinGecko API. Supports 50+ coins: bitcoin, ethereum, solana, xrp, cardano, dogecoin, polygon, avalanche,",
+    "- network_tools: Network diagnostics tool for ping, DNS lookup, port scanning, HTTP/HTTPS checks, traceroute, and connectivity tests. Use for: 'ping google.com', 'chec",
+    "- text_summarizer: Text processing tool for summarization, keyword extraction, word/character counting, and sentiment analysis. Use when user asks to: 'summarize this te"
+  ],
+  "mcp_overlap_reason": "No existing tool found for this specific use case",
+  "builder_provider": "anthropic",
+  "builder_model": "claude-sonnet-4-5-20250929",
+  "generation_retries": 0,
+  "requires_api_key": false,
+  "suggested_env_var": null
+}

@@ -348,7 +348,9 @@ source ~/jarvis-venv/bin/activate
 pip install -r requirements.txt
 
 # System packages (Ubuntu/Debian)
-sudo apt install sox ffmpeg jq sqlite3
+sudo apt install sox ffmpeg jq sqlite3 traceroute inetutils-traceroute
+
+# See system-packages.txt for complete list of system dependencies
 
 # Ollama (for local mode)
 curl https://ollama.ai/install.sh | sh

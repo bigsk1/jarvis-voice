@@ -1,0 +1,28 @@
+# System-Level Dependencies for Jarvis Voice Assistant
+# Ubuntu/Debian APT packages required for full functionality
+# Install with: sudo apt install <package>
+
+# Core Audio (Required for voice mode)
+sox                    # Audio processing and conversion
+ffmpeg                 # Audio/video encoding and streaming
+alsa-utils             # ALSA audio utilities (includes aplay)
+
+# Utilities (Required)
+jq                     # JSON processing for CLI tools
+curl                   # HTTP requests and API calls
+git                    # Version control
+python3                # Python 3.x runtime
+python3-pip            # Python package manager
+python3-venv           # Python virtual environment support
+
+# Network Tools (Required for network_tools skill)
+traceroute             # Network path tracing
+inetutils-traceroute   # Alternative traceroute implementation
+ping                   # Network connectivity testing (usually pre-installed)
+dnsutils               # DNS lookup tools (dig, nslookup) - optional but recommended
+
+# Optional (Recommended)
+build-essential        # C/C++ compilers (needed for some Python packages)
+libportaudio2          # PortAudio library (for sounddevice)
+libsndfile1            # Audio file reading/writing library
+

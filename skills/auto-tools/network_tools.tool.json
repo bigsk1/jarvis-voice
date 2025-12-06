@@ -1,0 +1,84 @@
+{
+  "enabled": true,
+  "name": "network_tools",
+  "description": "Network diagnostics tool for ping, DNS lookup, port scanning, HTTP/HTTPS checks, traceroute, and connectivity tests. Use for: 'ping google.com', 'check if port 443 is open on example.com', 'DNS lookup for domain.com', 'check HTTP status of bigsk1.com', 'is bigsk1.com responding?', 'trace route to 8.8.8.8', 'is my internet working?'",
+  "script": "network_tools.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "enum": [
+          "ping",
+          "dns",
+          "port",
+          "http",
+          "traceroute",
+          "connectivity"
+        ],
+        "description": "Type of network operation to perform"
+      },
+      "host": {
+        "type": "string",
+        "description": "Target hostname or IP address (required for ping, dns, port, traceroute)"
+      },
+      "url": {
+        "type": "string",
+        "description": "Target URL for HTTP/HTTPS check (can use host instead, scheme added automatically)"
+      },
+      "port": {
+        "type": "integer",
+        "description": "Target port number (required for port operation)"
+      },
+      "method": {
+        "type": "string",
+        "description": "HTTP method for http operation (default: GET)",
+        "enum": ["GET", "POST", "HEAD", "OPTIONS"]
+      },
+      "follow_redirects": {
+        "type": "boolean",
+        "description": "Follow HTTP redirects for http operation (default: true)"
+      },
+      "count": {
+        "type": "integer",
+        "description": "Number of ping packets to send (default: 4)"
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "Timeout in seconds (default: 3)"
+      },
+      "max_hops": {
+        "type": "integer",
+        "description": "Maximum hops for traceroute (default: 30)"
+      },
+      "test_hosts": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "List of hosts to test for connectivity check"
+      }
+    },
+    "required": [
+      "operation"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "test_input": {
+    "operation": "dns",
+    "host": "google.com"
+  },
+  "expected_output_contains": [
+    "primary_ip",
+    "ip_addresses"
+  ],
+  "auto_generated": true,
+  "created_at": "2025-12-06T00:20:21.147584",
+  "feedback_ids": []
+}

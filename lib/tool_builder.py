@@ -50,9 +50,46 @@ AVAILABLE_PACKAGES = {
     
     # Already installed in jarvis-venv
     "requests", "anthropic", "openai", "httpx", "pydantic",
-    "numpy", "flask", "flask_cors", "pint", "markdown",
-    "bs4", "beautifulsoup4", "lxml", "yaml", "pyyaml",
-    "python_dateutil", "dateutil", "pytz", "dotenv",
+    "fastapi", "uvicorn",
+    
+    # Data Science & Math
+    "numpy", "scipy", "sympy", "mpmath",
+    "scikit-learn", "sklearn", "joblib", "threadpoolctl",
+    
+    # Web & Parsing
+    "flask", "flask_cors", "bs4", "beautifulsoup4", "lxml",
+    
+    # Config & Data Formats
+    "yaml", "pyyaml", "dotenv", "toml",
+    
+    # Date/Time
+    "python_dateutil", "dateutil", "pytz",
+    
+    # System & Process
+    "psutil", "packaging", "setuptools",
+    
+    # Audio/Video
+    "av", "sounddevice", "soundfile", "speexdsp",
+    
+    # ML/AI
+    "ctranslate2", "faster-whisper", "openwakeword",
+    "huggingface-hub", "tokenizers", "onnxruntime",
+    
+    # File & I/O
+    "filelock", "fsspec", "certifi", "charset-normalizer",
+    "idna", "urllib3", "tqdm",
+    
+    # Monitoring
+    "prometheus-fastapi-instrumentator", "coloredlogs", "humanfriendly",
+    
+    # Protocol & Encoding
+    "protobuf", "flatbuffers", "cffi", "pycparser",
+    
+    # UI
+    "textual",
+    
+    # Misc
+    "typing_extensions", "hf-xet",
 }
 
 

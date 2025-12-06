@@ -1,0 +1,55 @@
+{
+  "enabled": true,
+  "name": "system_monitor",
+  "description": "Get comprehensive system monitoring information including CPU usage, memory stats, disk usage, running processes, network I/O, and system uptime. Use when user asks about system performance, resource usage, system health, 'how much RAM', 'CPU usage', 'disk space', 'what processes are running', 'network activity', 'how long has system been running', or needs system diagnostics.",
+  "script": "system_monitor.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "What to monitor: 'cpu_usage', 'memory_usage', 'disk_usage', 'process_list', 'network_stats', 'system_uptime', or 'all' (default)",
+        "enum": [
+          "cpu_usage",
+          "memory_usage",
+          "disk_usage",
+          "process_list",
+          "network_stats",
+          "system_uptime",
+          "all"
+        ]
+      },
+      "limit": {
+        "type": "integer",
+        "description": "For process_list: number of processes to return (default: 10)"
+      },
+      "sort_by": {
+        "type": "string",
+        "description": "For process_list: sort by 'cpu' or 'memory' (default: 'cpu')",
+        "enum": [
+          "cpu",
+          "memory"
+        ]
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "test_input": {
+    "action": "all"
+  },
+  "expected_output_contains": [
+    "CPU usage",
+    "RAM usage",
+    "uptime"
+  ],
+  "auto_generated": true,
+  "created_at": "2025-12-06T00:56:53.540236",
+  "feedback_ids": []
+}

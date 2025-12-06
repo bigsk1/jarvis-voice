@@ -14,7 +14,7 @@ echo ""
 echo "🔍 Checking dependencies..."
 MISSING_DEPS=()
 
-for cmd in sox ffmpeg aplay jq curl git python3; do
+for cmd in sox ffmpeg aplay jq curl git python3 traceroute; do
   if ! command -v $cmd &> /dev/null; then
     MISSING_DEPS+=("$cmd")
   fi
@@ -22,7 +22,7 @@ done
 
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
   echo "❌ Missing dependencies: ${MISSING_DEPS[*]}"
-  echo "   Install with: sudo apt install sox ffmpeg alsa-utils jq curl git python3"
+  echo "   Install with: sudo apt install sox ffmpeg alsa-utils jq curl git python3 traceroute inetutils-traceroute"
   exit 1
 fi
 echo "✅ All system dependencies found"
