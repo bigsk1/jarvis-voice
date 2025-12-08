@@ -657,6 +657,12 @@ When adding a new tool idea to this document:
 
 ---
 
+## 🔗 Related Documentation
+
+- **[Blinko Integration Ideas](BLINKO_INTEGRATION_IDEAS.md)** - Exploration of integrating Blinko AI note-taking system with Jarvis
+
+---
+
 **Questions or suggestions?** Add them to this doc or discuss in issues!
 
 **Ready to build?** Pick a tool and run:

@@ -147,6 +147,7 @@
 ### Integrations & Webhooks
 | Document | Purpose |
 |----------|---------|
+| **BLINKO_INTEGRATION_IDEAS.md** | 🆕 **Blinko note-taking integration** - Exploration of AI RAG note system integration with Jarvis |
 | **WEBHOOK_SYSTEM.md** | **Modular webhook system** - Email, n8n, external APIs with auth examples ⭐ NEW |
 | **n8n/docs/GOOGLE_CALENDAR_SYNC.md** | Bidirectional Google Calendar sync (reminders ↔ events) |
 | **n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md** | Email tool and webhook registry details |

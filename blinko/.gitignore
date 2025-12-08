@@ -1,0 +1,9 @@
+# Ignore everything in this directory
+*
+
+# Except these files
+!.gitignore
+!docker-compose.yml
+!install.sh
+!README.md
+!.env.example
