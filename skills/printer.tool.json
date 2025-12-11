@@ -1,19 +1,19 @@
 {
   "enabled": true,
   "name": "printer",
-  "description": "Print text, files, or canvas pages. Use for printing documents, search results, or saved canvas research.\n\nExamples:\n- 'Print this: Hello World' → action: print, text: Hello World\n- 'Print my canvas' → action: print_canvas (prints most recent)\n- 'Print the text summarizer canvas' → action: print_canvas, canvas_id: text_summarizer\n- 'Is the printer ready?' → action: status\n- 'Cancel the print job' → action: cancel\n\nCanvas pages are formatted with headers, code blocks, and proper margins for multi-page printing.",
+  "description": "Print text, files, images, or canvas pages. Supports color printing and compact mode for smaller text.\n\nExamples:\n- 'Print this: Hello World' → action: print, text: Hello World\n- 'Print in compact mode' → action: print, text: ..., compact: true\n- 'Print my canvas' → action: print_canvas (auto-compact)\n- 'Print this image' → action: print, file_path: /path/to/image.jpg\n- 'Print in black and white' → color: false\n- 'Is the printer ready?' → action: status\n\nCanvas pages auto-use compact mode. Images auto-fit to page.",
   "script": "printer.py",
   "parameters": {
     "type": "object",
     "properties": {
       "action": {
         "type": "string",
-        "description": "Action: 'print' (text/file), 'print_canvas' (canvas page), 'status' (check), 'cancel' (stop)",
+        "description": "Action: 'print' (text/file/image), 'print_canvas', 'status', 'cancel'",
         "enum": ["print", "print_canvas", "status", "cancel"]
       },
       "text": {
         "type": "string",
-        "description": "Text content to print (for action=print)"
+        "description": "Text content to print"
       },
       "title": {
         "type": "string",
@@ -21,15 +21,28 @@
       },
       "file_path": {
         "type": "string",
-        "description": "Path to file to print (alternative to text)"
+        "description": "Path to file (text, PDF, or image: jpg/png/gif)"
       },
       "canvas_id": {
         "type": "string",
-        "description": "Canvas page ID or search term (for action=print_canvas). Omit for most recent."
+        "description": "Canvas page ID or search term. Omit for most recent."
+      },
+      "compact": {
+        "type": "boolean",
+        "description": "Use smaller text for more content per page (default false, canvas auto-true)"
+      },
+      "color": {
+        "type": "boolean",
+        "description": "Print in color (default true). Set false for grayscale."
+      },
+      "quality": {
+        "type": "string",
+        "description": "Print quality: Draft, Normal (default), or High",
+        "enum": ["Draft", "Normal", "High"]
       },
       "job_id": {
         "type": "string",
-        "description": "Specific job ID to cancel (for action=cancel)"
+        "description": "Specific job ID to cancel"
       }
     },
     "required": ["action"]

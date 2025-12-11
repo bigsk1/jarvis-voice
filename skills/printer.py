@@ -70,25 +70,35 @@ def get_printer_status(printer: str) -> dict:
         return {"status": "error", "error": str(e)}
 
 
-def print_text(printer: str, text: str, title: str = None) -> dict:
-    """Print text content to printer."""
+def print_text(printer: str, text: str, title: str = None, compact: bool = False, color: bool = True) -> dict:
+    """Print text content to printer.
+    
+    Args:
+        printer: Printer name
+        text: Content to print
+        title: Optional header title
+        compact: If True, use smaller text (more content per page)
+        color: If True, print in color (default), False for grayscale
+    """
     try:
         # Add header with timestamp if no title
         header = title or "Jarvis Print"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         
+        # Adjust line width based on compact mode
+        line_width = 70 if compact else 50
+        
         # Format content with margins (add blank lines at top for margin)
         formatted = f"""
 
-
-{'=' * 50}
+{'=' * line_width}
 {header}
 {timestamp}
-{'=' * 50}
+{'=' * line_width}
 
 {text}
 
-{'=' * 50}
+{'=' * line_width}
 Printed by Jarvis Voice Assistant
 """
         
@@ -98,9 +108,22 @@ Printed by Jarvis Voice Assistant
             temp_path = f.name
         
         try:
+            # Build print command with options
+            cmd = ['lp', '-d', printer]
+            
+            # Add compact mode options (smaller text)
+            if compact:
+                cmd.extend(['-o', 'cpi=14', '-o', 'lpi=8'])
+            
+            # Color mode
+            if not color:
+                cmd.extend(['-o', 'ColorModel=Gray'])
+            
+            cmd.append(temp_path)
+            
             # Print the file
             result = subprocess.run(
-                ['lp', '-d', printer, temp_path],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -131,14 +154,39 @@ Printed by Jarvis Voice Assistant
         return {"ok": False, "error": str(e)}
 
 
-def print_file(printer: str, file_path: str) -> dict:
-    """Print a file to printer."""
+def print_file(printer: str, file_path: str, color: bool = True, quality: str = "Normal") -> dict:
+    """Print a file (text, PDF, or image) to printer.
+    
+    Args:
+        printer: Printer name
+        file_path: Path to file
+        color: Color or grayscale
+        quality: Draft, Normal, or High
+    """
     try:
         if not os.path.exists(file_path):
             return {"ok": False, "error": f"File not found: {file_path}"}
         
+        # Build command with options
+        cmd = ['lp', '-d', printer]
+        
+        # Color mode
+        if not color:
+            cmd.extend(['-o', 'ColorModel=Gray'])
+        
+        # Quality
+        if quality in ['Draft', 'Normal', 'High']:
+            cmd.extend(['-o', f'cupsPrintQuality={quality}'])
+        
+        # For images, fit to page
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff']:
+            cmd.extend(['-o', 'fit-to-page'])
+        
+        cmd.append(file_path)
+        
         result = subprocess.run(
-            ['lp', '-d', printer, file_path],
+            cmd,
             capture_output=True,
             text=True,
             timeout=30
@@ -236,8 +284,15 @@ def markdown_to_text(md: str) -> str:
     return '\n'.join(lines)
 
 
-def print_canvas(printer: str, canvas_id: str = None) -> dict:
-    """Print a canvas page by ID or most recent."""
+def print_canvas(printer: str, canvas_id: str = None, compact: bool = True, color: bool = True) -> dict:
+    """Print a canvas page by ID or most recent.
+    
+    Args:
+        printer: Printer name
+        canvas_id: Canvas ID or search term (None for most recent)
+        compact: Use smaller text (default True for canvas)
+        color: Color or grayscale
+    """
     try:
         # Find canvas directory
         project_root = Path(__file__).parent.parent
@@ -300,8 +355,8 @@ Printed from Jarvis Canvas
         
         full_document = header + formatted_content + footer
         
-        # Print it
-        return print_text(printer, full_document, title=None)  # Already has header
+        # Print it (canvas defaults to compact mode)
+        return print_text(printer, full_document, title=None, compact=compact, color=color)
         
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -324,12 +379,15 @@ def main():
         title = args.get('title', '')
         file_path = args.get('file_path', '')
         job_id = args.get('job_id', '')
+        canvas_id = args.get('canvas_id', '')
+        
+        # Print options
+        compact = args.get('compact', False)  # Smaller text
+        color = args.get('color', True)  # Color printing (default)
+        quality = args.get('quality', 'Normal')  # Draft, Normal, High
         
         # Get printer
         printer = get_printer_name()
-        
-        # Get canvas_id if provided
-        canvas_id = args.get('canvas_id', '')
         
         # Handle actions
         if action == 'status':
@@ -351,12 +409,14 @@ def main():
             }))
             
         elif action == 'print_canvas':
-            result = print_canvas(printer, canvas_id if canvas_id else None)
+            # Canvas defaults to compact mode
+            result = print_canvas(printer, canvas_id if canvas_id else None, 
+                                  compact=True, color=color)
             
             if result.get('ok'):
                 print(json.dumps({
                     "ok": True,
-                    "speech": f"Canvas page sent to printer",
+                    "speech": f"Canvas page sent to printer in compact mode",
                     "data": result
                 }))
             else:
@@ -369,9 +429,9 @@ def main():
             
         elif action == 'print':
             if file_path:
-                result = print_file(printer, file_path)
+                result = print_file(printer, file_path, color=color, quality=quality)
             elif text:
-                result = print_text(printer, text, title)
+                result = print_text(printer, text, title, compact=compact, color=color)
             else:
                 raise ValueError("Either 'text' or 'file_path' is required for print action")
             
