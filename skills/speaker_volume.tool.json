@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "name": "speaker_volume",
+  "description": "Control Jarvis's speaker volume. Use this when the user asks to adjust, change, set, raise, lower, or check the speaker/audio volume.\n\nExamples:\n- 'Turn up the volume' → action: up\n- 'Lower the speaker' → action: down\n- 'Set volume to 50%' → action: set, level: 50\n- 'What's the volume?' → action: get\n- 'Mute' → action: mute\n- 'A little louder' → action: up, level: 15",
+  "script": "speaker_volume.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Volume action: 'get' (check current), 'set' (specific level), 'up' (increase), 'down' (decrease), 'mute'",
+        "enum": ["get", "set", "up", "down", "mute"]
+      },
+      "level": {
+        "type": "integer",
+        "description": "Volume level 0-100 for 'set', or adjustment amount for 'up'/'down' (default 10)"
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": true,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+
