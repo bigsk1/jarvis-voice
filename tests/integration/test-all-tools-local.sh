@@ -110,7 +110,7 @@ echo -e "\n${BLUE}=== MEMORY TOOLS ===${NC}"
 # 5. Remember
 test_tool "remember" \
     "Remember that my favorite color is blue" \
-    "remember"  # Confirmation mentions remembering
+    "blue"  # Confirmation mentions the saved value
 
 # 6. Recall  
 test_tool "recall" \

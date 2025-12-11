@@ -1,18 +1,20 @@
 {
   "enabled": true,
   "name": "forget",
-  "description": "Delete a memory that is no longer needed, incorrect, or outdated. Use this to keep the knowledge base clean and current. First use 'recall' to find the memory ID, then forget it.",
+  "description": "DELETE/REMOVE a memory permanently. Use when user says 'forget', 'delete', 'remove', or 'erase' a memory. Can search by keywords if memory_id unknown. This is for DELETION - use update_memory if you need to CHANGE a value instead.",
   "parameters": {
     "type": "object",
     "properties": {
       "memory_id": {
         "type": "integer",
-        "description": "The ID of the memory to delete (from recall results)"
+        "description": "The ID of the memory to delete (optional if search_query provided)"
+      },
+      "search_query": {
+        "type": "string",
+        "description": "Search keywords to find the memory to delete (e.g., 'favorite color', 'birthday'). Used if memory_id not provided."
       }
     },
-    "required": [
-      "memory_id"
-    ]
+    "required": []
   },
   "permissions": {
     "filesystem": true,
