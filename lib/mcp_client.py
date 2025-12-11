@@ -596,7 +596,7 @@ class MCPRemoteClient:
             else:
                 return self._send_http_request(request)
     
-    def _send_sse_request(self, request: Dict) -> Any:
+    def _send_sse_request(self, request: Dict, retry_count: int = 0) -> Any:
         """Send request via SSE transport (POST to endpoint, receive via stream)."""
         if not self._sse_endpoint:
             raise Exception(f"SSE endpoint not established for {self.name}")
@@ -614,15 +614,47 @@ class MCPRemoteClient:
             **self.headers
         }
         
-        response = requests.post(
-            self._sse_endpoint,
-            json=request,
-            headers=headers,
-            timeout=30
-        )
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                self._sse_endpoint,
+                json=request,
+                headers=headers,
+                timeout=30
+            )
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            # Check for stale session error (Blinko returns 400 with "No transport found for sessionId")
+            if e.response.status_code == 400 and retry_count < 1:
+                error_text = e.response.text if hasattr(e.response, 'text') else ''
+                if 'session' in error_text.lower() or 'transport' in error_text.lower():
+                    if os.environ.get("MCP_DEBUG"):
+                        print(f"[MCP DEBUG] Stale SSE session detected for {self.name}, reconnecting...", file=sys.stderr)
+                    # Reconnect SSE
+                    self._reconnect_sse()
+                    # Retry the request once
+                    return self._send_sse_request(request, retry_count=1)
+            raise
         
         # Wait for response from SSE stream
+        return self._wait_for_sse_response(request)
+    
+    def _reconnect_sse(self):
+        """Reconnect the SSE connection (for stale session recovery)."""
+        # Stop existing connection
+        self._sse_stop_event.set()
+        if self._sse_thread and self._sse_thread.is_alive():
+            self._sse_thread.join(timeout=2)
+        
+        # Reset state
+        self._sse_endpoint = None
+        self._sse_connected.clear()
+        self._initialized = False
+        
+        # Restart
+        self._start_sse()
+    
+    def _wait_for_sse_response(self, request: Dict) -> Any:
+        """Wait for response from SSE stream after sending a request."""
         try:
             result = self._sse_response_queue.get(timeout=30)
             

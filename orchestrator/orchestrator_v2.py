@@ -19,6 +19,55 @@ from router_v2 import LLMRouter
 from executor import ToolExecutor
 
 
+def _sanitize_error_for_speech(error: str) -> str:
+    """
+    Sanitize technical error messages for voice output.
+    Removes URLs, IPs, session IDs, and simplifies to user-friendly messages.
+    """
+    import re
+    
+    if not error:
+        return "an unknown error occurred"
+    
+    error_lower = error.lower()
+    
+    # Map common errors to friendly messages
+    if "400" in error or "bad request" in error_lower:
+        return "the service returned an error"
+    if "401" in error or "unauthorized" in error_lower:
+        return "authentication failed"
+    if "403" in error or "forbidden" in error_lower:
+        return "access was denied"
+    if "404" in error or "not found" in error_lower:
+        return "the resource was not found"
+    if "429" in error or "rate limit" in error_lower:
+        return "too many requests, try again later"
+    if "500" in error or "internal server error" in error_lower:
+        return "the service encountered an error"
+    if "502" in error or "bad gateway" in error_lower:
+        return "the service is temporarily unavailable"
+    if "503" in error or "service unavailable" in error_lower:
+        return "the service is temporarily unavailable"
+    if "timeout" in error_lower:
+        return "the request timed out"
+    if "connection" in error_lower and ("refused" in error_lower or "error" in error_lower):
+        return "couldn't connect to the service"
+    if "session" in error_lower or "transport" in error_lower:
+        return "connection issue with the service"
+    
+    # Remove URLs, IPs, and session IDs from error if no pattern matched
+    sanitized = re.sub(r'https?://[^\s]+', '', error)
+    sanitized = re.sub(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?', '', sanitized)
+    sanitized = re.sub(r'session[Ii]d[=:][^\s&]+', '', sanitized)
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+    
+    # If sanitized is too long or still technical, use generic message
+    if len(sanitized) > 100 or not sanitized:
+        return "there was a technical error"
+    
+    return sanitized
+
+
 class Orchestrator:
     """Main orchestration with LLM-based routing, error recovery, and retry logic."""
     
@@ -296,8 +345,9 @@ class Orchestrator:
                         # Recursive retry with error context
                         return self.process(transcript, retry_count + 1, error_context)
                     
-                    # Max retries exceeded
-                    final_speech = f"{speech}. Error: {error}. I tried {retry_count + 1} time(s) but couldn't complete the task."
+                    # Max retries exceeded - sanitize error for voice output
+                    friendly_error = _sanitize_error_for_speech(error)
+                    final_speech = f"{speech}. {friendly_error.capitalize()}. I tried {retry_count + 1} time(s) but couldn't complete the task."
                     
                     # Auto-log failed conversation
                     self._log_conversation(transcript, final_speech, tools_used, success=False)
