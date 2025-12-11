@@ -884,7 +884,7 @@ Stash is not just a tool API—it's Jarvis's **internal artifact system**.
 
 ### Phase 5: Polish
 - [ ] Add session-implicit space tracking
-- [ ] Add Memory DB integration for cross-session
+- [ ] Add Memory DB integration for cross-session ( local and cloud and way to safely sync , use with existing sync scripts that start up on services and or api? or manually? 
 - [ ] Add quota management UI/commands
 - [ ] Documentation and examples
 
