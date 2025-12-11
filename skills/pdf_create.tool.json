@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "pdf_create",
-  "description": "Create PDFs from stash files or text. Use this when the user wants to generate a PDF document from images, text, or data stored in stash.\n\nExamples:\n- 'Create a PDF from my stash files' → action: create, files: [file_ids]\n- 'Make a PDF with the crypto data' → action: create, files: ['crypto_prices.json']\n- 'Generate a PDF report' → action: from_text, text: '...', title: 'Report'\n- 'Combine the logo and schedule into a PDF' → action: create, files: ['logo.png', 'schedule.txt']\n\nThe PDF is saved back to stash and can be printed or emailed.",
+  "description": "Generate PDF documents from text, images, or stash files. This is for DOCUMENT GENERATION, not software development.\n\nUse this when:\n- User wants a PDF report, document, or printable output\n- User says 'create PDF', 'make a report', 'generate document'\n- Combining images and text into a single document\n- Formatting data for printing\n\nDo NOT use for:\n- Building software/apps → use opencode instead\n- Just downloading images → use stash instead\n- Interactive content → use canvas instead\n\nWorkflow: stash.save(images/data) → pdf_create(files + text) → printer.print()\n\nExamples:\n- 'Create a PDF report about X' → action: create, text: '...', title: 'X Report'\n- 'Make a PDF with the logo and schedule' → action: create, files: ['logo.png'], text: '...'\n- 'Generate a printable document' → action: from_text, text: '...'\n\nThe PDF is saved to stash and can be printed.",
   "script": "pdf_create.py",
   "parameters": {
     "type": "object",

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "stash",
-  "description": "Generic artifact storage for multi-step tasks. Use stash to save files, images, data, and other artifacts that need to persist across tool calls.\n\nActions:\n- open_space: Create/resume a task bucket\n- info: Get space metadata\n- save: Store text, JSON, or binary data\n- list: List files or spaces\n- read: Get file content or path\n- update: Update TTL/pinned status\n- cleanup: Delete spaces\n\nExamples:\n- 'Save this for later' → open_space, then save\n- 'What's in my stash?' → list\n- 'Get that file I saved' → read\n- 'Keep this space for 30 days' → update with ttl_days: 30\n- 'Clean up old stash data' → cleanup",
+  "description": "Temporary artifact storage for multi-step workflows. Store files, images, JSON, or downloaded data that tools need to share.\n\nUse this when:\n- Downloading images/files from URLs for later use\n- Storing intermediate data between tool calls\n- Preparing artifacts for pdf_create or printer\n- Caching API responses or web search results\n\nDo NOT use for:\n- Permanent memory (user preferences, facts) → use remember instead\n- Building software → use opencode instead\n- One-off text notes → use canvas instead\n\nWorkflow pattern: stash.save(download URL) → pdf_create(stash files) → printer.print()\n\nActions:\n- open_space: Create/resume a task bucket\n- save: Store text, JSON, base64, or download from URL (kind='url')\n- list: List files or spaces\n- read: Get file content or path\n- cleanup: Delete expired spaces\n\nExamples:\n- 'Download this image' → save with kind='url', url='https://...'\n- 'What files do I have?' → list\n- 'Get that file' → read with file_id",
   "script": "stash.py",
   "parameters": {
     "type": "object",

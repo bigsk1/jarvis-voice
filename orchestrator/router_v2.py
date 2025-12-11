@@ -342,7 +342,7 @@ TOOL SELECTION GUIDANCE (From real-world feedback):
    - For user-specific data (their preferences, past conversations, saved info) → use memory tools
 
 OPENCODE - For complex development, coding, or building tasks:
-- **ALWAYS use 'opencode' tool** when user says: "use OpenCode", "build", "create app", "develop", "code", "make website"
+- **Use 'opencode' tool** when user says: "use OpenCode", "build", "create app", "develop", "code", "make website"
 - OpenCode handles: coding, building projects, creating files, deploying, complex multi-step tasks
 - **OpenCode workspace**: ~/jarvis-workspace/projects/ (all builds go here, NOT in ~/jarvis-voice/)
 - **Finding OpenCode projects**: Use bash to list ~/jarvis-workspace/projects/
@@ -353,6 +353,11 @@ OPENCODE - For complex development, coding, or building tasks:
   * "Build a small [type] application" → Use opencode tool ONCE (wait 30-60s+), then test if needed or no reply from opencode use check_opencode_sessions for more information it could still be building.
   * "Create a complex [game/app]" → Use opencode tool ONCE (wait 1-2 minutes), then test if needed or no reply from opencode use check_opencode_sessions for more information it could still be building.
   * "Start the [project] server" → Search memory for run command first, then execute_bash (NO OpenCode needed)
+
+**DOCUMENT vs SOFTWARE** - Read tool descriptions carefully:
+- "Create a PDF/report/document" → Check for pdf_create or stash tools (NOT opencode)
+- "Build an app/website/API" → Use opencode
+- Tool descriptions have "Use when" and "Do NOT use for" guidance - follow them!
 
 ERROR RECOVERY: If a tool fails, you can:
 1. Use check_tool_logs to see what went wrong
