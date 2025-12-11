@@ -10,6 +10,10 @@ config/*.env
 config/contacts.json
 config/webhook_registry.json
 
+# ===== Stash (task artifacts) =====
+# Keep directory structure, ignore space contents
+data/stash/space_*/
+
 # ===== Audio Files =====
 audio/
 *.wav

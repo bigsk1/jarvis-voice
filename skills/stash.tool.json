@@ -1,0 +1,87 @@
+{
+  "enabled": true,
+  "name": "stash",
+  "description": "Generic artifact storage for multi-step tasks. Use stash to save files, images, data, and other artifacts that need to persist across tool calls.\n\nActions:\n- open_space: Create/resume a task bucket\n- info: Get space metadata\n- save: Store text, JSON, or binary data\n- list: List files or spaces\n- read: Get file content or path\n- update: Update TTL/pinned status\n- cleanup: Delete spaces\n\nExamples:\n- 'Save this for later' → open_space, then save\n- 'What's in my stash?' → list\n- 'Get that file I saved' → read\n- 'Keep this space for 30 days' → update with ttl_days: 30\n- 'Clean up old stash data' → cleanup",
+  "script": "stash.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform",
+        "enum": ["open_space", "info", "save", "list", "read", "update", "cleanup"]
+      },
+      "space_id": {
+        "type": "string",
+        "description": "Space ID. Omit for open_space to create new, or for list to show all spaces."
+      },
+      "labels": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Labels/tags for the space (for open_space or update)"
+      },
+      "scope": {
+        "type": "string",
+        "description": "Space scope: 'session' (auto-cleanup) or 'user' (persistent)",
+        "enum": ["session", "user"]
+      },
+      "ttl_days": {
+        "type": "integer",
+        "description": "Time-to-live in days before auto-cleanup"
+      },
+      "name": {
+        "type": "string",
+        "description": "Filename for save action"
+      },
+      "kind": {
+        "type": "string",
+        "description": "Content type for save: text, json, base64, url (Phase 2)",
+        "enum": ["text", "json", "base64", "url"]
+      },
+      "text": {
+        "type": "string",
+        "description": "Text content (for kind=text)"
+      },
+      "json": {
+        "type": "object",
+        "description": "JSON content (for kind=json)"
+      },
+      "data": {
+        "type": "string",
+        "description": "Base64-encoded data (for kind=base64)"
+      },
+      "on_conflict": {
+        "type": "string",
+        "description": "What to do if file exists: error, overwrite, version",
+        "enum": ["error", "overwrite", "version"]
+      },
+      "tags": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Tags for the file (for save)"
+      },
+      "file_id": {
+        "type": "string",
+        "description": "File ID or name (for read)"
+      },
+      "mode": {
+        "type": "string",
+        "description": "Read mode: auto, text, path, metadata",
+        "enum": ["auto", "text", "path", "metadata"]
+      },
+      "pinned": {
+        "type": "boolean",
+        "description": "Pin space to prevent auto-deletion (for update)"
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+
