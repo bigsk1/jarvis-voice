@@ -86,3 +86,5 @@ jarvis-intel/
 blinko/data/
 blinko/postgres-data/
 blinko/.env
+
+opencodetmp/

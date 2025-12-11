@@ -1,13 +1,19 @@
 {
   "enabled": true,
   "name": "manage_intel",
-  "description": "FILE MANAGER for jarvis-intel/ folder. Create, read, update, delete, or list FILES (not memory). Use when user says 'save to intel', 'create intel file', 'list intel files'. To SEARCH MEMORY (key-value pairs), use search_memory or semantic_recall instead. This tool manages FILES on disk, not the memory database. Sandboxed to jarvis-intel/ only. Set auto_ingest=true to extract facts from files into memory. Actions: create, read, update, delete, list.",
+  "description": "SAVE TO INTEL FOLDER: Create, read, update, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. Sandboxed to jarvis-intel/ only (FLAT - no subdirs). Set auto_ingest=true to add facts to memory. Actions: create, read, update, delete, list.",
   "parameters": {
     "type": "object",
     "properties": {
       "action": {
         "type": "string",
-        "enum": ["create", "read", "update", "delete", "list"],
+        "enum": [
+          "create",
+          "read",
+          "update",
+          "delete",
+          "list"
+        ],
         "description": "Action to perform: create (new file), read (get content), update (modify existing), delete (remove file + memories), list (show all files)"
       },
       "path": {
@@ -27,7 +33,9 @@
         "description": "If true, automatically run ingest_intel after create/update/delete to update memory. Recommended: true."
       }
     },
-    "required": ["action"]
+    "required": [
+      "action"
+    ]
   },
   "handler": "skills/manage_intel.py",
   "permissions": {
@@ -38,4 +46,3 @@
     "auto_approve": false
   }
 }
-

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "semantic_recall",
-  "description": "⚡ PRIORITY TOOL - CHECK FIRST! CONCEPTUAL/MEANING search in persistent MEMORY DATABASE using AI embeddings. This searches stored memories by MEANING, finding related info even with different wording. USE THIS BEFORE action tools when user asks natural language questions about things they told you, preferences, past setups, or anything saved to memory. Examples: 'what food does the user like', 'where is the server running', 'what did we discuss about the project'. For specific entity names/keywords (single words), use search_memory instead (faster). NOTE: This searches MEMORY, not files. For FILES in jarvis-intel, use manage_intel with action=list.",
+  "description": "\u26a1 PRIORITY TOOL - CHECK FIRST! CONCEPTUAL/MEANING search using AI embeddings. USE THIS BEFORE action tools when user asks questions about things they told you, preferences, or past setups. Matches by meaning, not exact words. Examples: 'what did you say about X', 'how is Y configured', 'where is Z running'. ALWAYS try this first before execute_bash, query_service_logs, or api_call. For specific entity names/keywords, use search_memory (faster).",
   "parameters": {
     "type": "object",
     "properties": {
