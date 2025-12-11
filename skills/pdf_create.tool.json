@@ -1,0 +1,46 @@
+{
+  "enabled": true,
+  "name": "pdf_create",
+  "description": "Create PDFs from stash files or text. Use this when the user wants to generate a PDF document from images, text, or data stored in stash.\n\nExamples:\n- 'Create a PDF from my stash files' → action: create, files: [file_ids]\n- 'Make a PDF with the crypto data' → action: create, files: ['crypto_prices.json']\n- 'Generate a PDF report' → action: from_text, text: '...', title: 'Report'\n- 'Combine the logo and schedule into a PDF' → action: create, files: ['logo.png', 'schedule.txt']\n\nThe PDF is saved back to stash and can be printed or emailed.",
+  "script": "pdf_create.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action: 'create' (from stash files/text) or 'from_text' (quick text-only)",
+        "enum": ["create", "from_text"]
+      },
+      "space_id": {
+        "type": "string",
+        "description": "Stash space ID containing source files and for output"
+      },
+      "files": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "List of stash file_ids or stash:// refs to include in PDF"
+      },
+      "text": {
+        "type": "string",
+        "description": "Text content to include (supports basic markdown headers)"
+      },
+      "title": {
+        "type": "string",
+        "description": "PDF title (shown in header)"
+      },
+      "output_name": {
+        "type": "string",
+        "description": "Output filename (default: document_YYYYMMDD_HHMMSS.pdf)"
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+

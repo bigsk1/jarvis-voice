@@ -53,3 +53,5 @@ tqdm==4.67.1
 typing_extensions==4.15.0
 urllib3==2.5.0
 textual==6.6.0
+fpdf2==2.10.0
+fpdf2
