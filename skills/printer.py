@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Tool Name: Printer
-Description: Print text or files to the configured printer
-Input: { "action": "print|status|cancel", "text": "...", "title": "..." }
+Description: Print text, files, or canvas pages to the configured printer
+Input: { "action": "print|status|cancel|print_canvas", "text": "...", "title": "..." }
 Output: { "ok": bool, "speech": str, "data": { "job_id": str } }
 """
 
@@ -11,7 +11,10 @@ import os
 import json
 import subprocess
 import tempfile
+import re
+import glob
 from datetime import datetime
+from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -188,6 +191,122 @@ def cancel_job(printer: str, job_id: str = None) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def markdown_to_text(md: str) -> str:
+    """Convert markdown to nicely formatted plain text for printing."""
+    lines = []
+    
+    for line in md.split('\n'):
+        # Headers - add underlines
+        if line.startswith('# '):
+            text = line[2:]
+            lines.append('')
+            lines.append('=' * 60)
+            lines.append(text.upper())
+            lines.append('=' * 60)
+        elif line.startswith('## '):
+            text = line[3:]
+            lines.append('')
+            lines.append('-' * 50)
+            lines.append(text)
+            lines.append('-' * 50)
+        elif line.startswith('### '):
+            text = line[4:]
+            lines.append('')
+            lines.append(f">>> {text}")
+        # Code blocks - indent
+        elif line.startswith('```'):
+            if line == '```':
+                lines.append('    ' + '-' * 40)
+            else:
+                lang = line[3:]
+                lines.append(f'    [{lang}]')
+                lines.append('    ' + '-' * 40)
+        # Bold/italic - clean up
+        elif '**' in line or '*' in line:
+            # Remove markdown formatting
+            clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)  # bold
+            clean = re.sub(r'\*([^*]+)\*', r'\1', clean)  # italic
+            lines.append(clean)
+        # Lists - keep as-is but clean bullets
+        elif line.strip().startswith('- '):
+            lines.append('  • ' + line.strip()[2:])
+        else:
+            lines.append(line)
+    
+    return '\n'.join(lines)
+
+
+def print_canvas(printer: str, canvas_id: str = None) -> dict:
+    """Print a canvas page by ID or most recent."""
+    try:
+        # Find canvas directory
+        project_root = Path(__file__).parent.parent
+        canvas_dir = project_root / "data" / "canvas"
+        
+        if not canvas_dir.exists():
+            return {"ok": False, "error": "Canvas directory not found"}
+        
+        # Find the canvas file
+        if canvas_id:
+            # Look for specific canvas
+            matches = list(canvas_dir.glob(f"*{canvas_id}*.json"))
+            if not matches:
+                return {"ok": False, "error": f"Canvas '{canvas_id}' not found"}
+            canvas_file = matches[0]
+        else:
+            # Get most recent canvas
+            canvas_files = sorted(canvas_dir.glob("*.json"), key=os.path.getmtime, reverse=True)
+            if not canvas_files:
+                return {"ok": False, "error": "No canvas pages found"}
+            canvas_file = canvas_files[0]
+        
+        # Load canvas
+        with open(canvas_file, 'r') as f:
+            canvas = json.load(f)
+        
+        title = canvas.get('title', 'Canvas Page')
+        content = canvas.get('content', '')
+        content_type = canvas.get('content_type', 'text')
+        tags = canvas.get('tags', [])
+        created = canvas.get('created', '')[:10]  # Just date
+        
+        # Convert markdown to printable text
+        if content_type == 'markdown':
+            formatted_content = markdown_to_text(content)
+        else:
+            formatted_content = content
+        
+        # Build printable document
+        tag_str = ', '.join(tags) if tags else 'none'
+        header = f"""
+
+
+{'=' * 60}
+JARVIS CANVAS: {title}
+{'=' * 60}
+Date: {created}
+Tags: {tag_str}
+{'=' * 60}
+
+"""
+        
+        footer = f"""
+
+{'=' * 60}
+Printed from Jarvis Canvas
+{datetime.now().strftime('%Y-%m-%d %H:%M')}
+{'=' * 60}
+"""
+        
+        full_document = header + formatted_content + footer
+        
+        # Print it
+        return print_text(printer, full_document, title=None)  # Already has header
+        
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def main():
     try:
         # Parse arguments
@@ -209,6 +328,9 @@ def main():
         # Get printer
         printer = get_printer_name()
         
+        # Get canvas_id if provided
+        canvas_id = args.get('canvas_id', '')
+        
         # Handle actions
         if action == 'status':
             status = get_printer_status(printer)
@@ -227,6 +349,23 @@ def main():
                 "speech": f"Printer is {status['status']} {queue_msg}",
                 "data": status
             }))
+            
+        elif action == 'print_canvas':
+            result = print_canvas(printer, canvas_id if canvas_id else None)
+            
+            if result.get('ok'):
+                print(json.dumps({
+                    "ok": True,
+                    "speech": f"Canvas page sent to printer",
+                    "data": result
+                }))
+            else:
+                print(json.dumps({
+                    "ok": False,
+                    "speech": "Failed to print canvas",
+                    "error": result.get('error')
+                }))
+                sys.exit(1)
             
         elif action == 'print':
             if file_path:

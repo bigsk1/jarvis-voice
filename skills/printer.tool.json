@@ -1,15 +1,15 @@
 {
   "enabled": true,
   "name": "printer",
-  "description": "Print text or check printer status. Use this when the user wants to print something, check if the printer is ready, or cancel a print job.\n\nExamples:\n- 'Print this: Hello World' → action: print, text: Hello World\n- 'Print the movie showtimes' → action: print, text: [showtimes from previous search]\n- 'Is the printer ready?' → action: status\n- 'Cancel the print job' → action: cancel\n\nTip: For printing search results, first search for the info, then use this tool with the results as text.",
+  "description": "Print text, files, or canvas pages. Use for printing documents, search results, or saved canvas research.\n\nExamples:\n- 'Print this: Hello World' → action: print, text: Hello World\n- 'Print my canvas' → action: print_canvas (prints most recent)\n- 'Print the text summarizer canvas' → action: print_canvas, canvas_id: text_summarizer\n- 'Is the printer ready?' → action: status\n- 'Cancel the print job' → action: cancel\n\nCanvas pages are formatted with headers, code blocks, and proper margins for multi-page printing.",
   "script": "printer.py",
   "parameters": {
     "type": "object",
     "properties": {
       "action": {
         "type": "string",
-        "description": "Action: 'print' (send to printer), 'status' (check printer), 'cancel' (stop print job)",
-        "enum": ["print", "status", "cancel"]
+        "description": "Action: 'print' (text/file), 'print_canvas' (canvas page), 'status' (check), 'cancel' (stop)",
+        "enum": ["print", "print_canvas", "status", "cancel"]
       },
       "text": {
         "type": "string",
@@ -22,6 +22,10 @@
       "file_path": {
         "type": "string",
         "description": "Path to file to print (alternative to text)"
+      },
+      "canvas_id": {
+        "type": "string",
+        "description": "Canvas page ID or search term (for action=print_canvas). Omit for most recent."
       },
       "job_id": {
         "type": "string",
