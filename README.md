@@ -9,17 +9,21 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
-- **Network Tools** - Ping, DNS, port checks, HTTP/HTTPS status, traceroute ⭐ NEW
-- **System Monitor** - CPU, RAM, disk, processes, network I/O, uptime ⭐ NEW
-- **Text Summarizer** - Summarization, keywords, sentiment, word count ⭐ NEW
-- **Prompt Evolution** - Self-evolving prompts and tool descriptions ⭐ NEW
-- **Dynamic Tool Builder** - Autonomous tool creation with safety checks ⭐ NEW
-- **Canvas System** - Visual knowledge viewer for rich content display ⭐ NEW
-- **Calculator Tool** - Advanced math, statistics, unit conversions ⭐ NEW
-- **Feedback System** - LLM self-critique and cross-model grading ⭐ NEW
+- **Stash System** - Artifact storage for multi-step workflows (URL downloads, SSRF protection) ⭐ NEW
+- **PDF Create** - Generate PDFs from stash files, images, or text ⭐ NEW
+- **Printer Tool** - Print from stash, files, or Canvas pages (CUPS integration) ⭐ NEW
+- **Speaker Volume** - Control system audio volume via voice ⭐ NEW
+- **Network Tools** - Ping, DNS, port checks, HTTP/HTTPS status, traceroute
+- **System Monitor** - CPU, RAM, disk, processes, network I/O, uptime
+- **Text Summarizer** - Summarization, keywords, sentiment, word count
+- **Prompt Evolution** - Self-evolving prompts and tool descriptions
+- **Dynamic Tool Builder** - Autonomous tool creation with safety checks
+- **Canvas System** - Visual knowledge viewer for rich content display
+- **Calculator Tool** - Advanced math, statistics, unit conversions
+- **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 38+ working skills (memory, bash, OpenCode, API calls, reminders, canvas, calculator, etc.)
+- 42+ working skills (memory, bash, OpenCode, stash, printer, pdf, reminders, canvas, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -463,12 +467,18 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 - `api_call` - Generic HTTP API calls
 - `crypto_price` - Get cryptocurrency prices
 - `get_time` - Current time
-- `calculator` - **Advanced math**: arithmetic, percentages, statistics, unit conversions, trig ⭐ NEW
-- `canvas` - **Visual viewer**: save rich content (research, code, comparisons) to web UI ⭐ NEW
+- `calculator` - **Advanced math**: arithmetic, percentages, statistics, unit conversions, trig
+- `canvas` - **Visual viewer**: save rich content (research, code, comparisons) to web UI
 - `weather` - Weather forecasts with OpenWeatherMap
-- `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute ⭐ NEW
-- `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime ⭐ NEW
-- `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis ⭐ NEW
+- `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute
+- `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime
+- `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
+
+**Artifact & Output Tools:** ⭐ NEW
+- `stash` - **Artifact storage**: download URLs, store files/images/JSON for multi-step workflows
+- `pdf_create` - **PDF generation**: create PDFs from stash files, images, or text
+- `printer` - **Print output**: print from stash, file paths, or Canvas pages (CUPS)
+- `speaker_volume` - **Audio control**: get/set/adjust system speaker volume
 
 **Development:**
 - `opencode` - Autonomous coding agent (builds apps, games, APIs)
@@ -748,7 +758,8 @@ LIMIT 7;"
 - **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** - Docker agent for remote health checks
 
 **Core System:**
-- `docs/INTELLIGENCE_LAYER.md` - **Self-learning system** (Phase 1: positive/negative constraints) ⭐ NEW
+- `docs/STASH_SYSTEM.md` - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection) ⭐ NEW
+- `docs/INTELLIGENCE_LAYER.md` - **Self-learning system** (Phase 1: positive/negative constraints)
 - `docs/AUTO_CONTEXT_SYSTEM.md` - Short-term conversation memory
 - `docs/JARVIS_WORKFLOW.md` - Complete request flow with examples
 - `docs/TOOL_CALLING_SYSTEM.md` - How tool routing works
@@ -1124,6 +1135,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.9 (December 2025)  
+**Current Version:** v2.10 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Network Tools (ping, DNS, HTTP checks), System Monitor (CPU, RAM, disk), Text Summarizer, Prompt Evolution, Dynamic Tool Builder, Canvas System, Calculator, Feedback System
+**Latest Features:** Stash System (artifact storage, SSRF protection), PDF Create, Printer Tool (CUPS), Speaker Volume Control

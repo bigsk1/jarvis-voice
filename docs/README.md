@@ -13,6 +13,7 @@
 
 ### Main Features
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
+- **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, SSRF protection) ⭐ NEW
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
 - **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results) ⭐ NEW
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) ⭐ NEW
@@ -260,6 +261,33 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-12-11:**
+- ✅ **Stash System** - Artifact storage for multi-step workflows ⭐ NEW
+  - Temporary file/image/data storage across tool calls
+  - URL downloads with SSRF protection (blocks private IPs)
+  - Content-type validation, file size limits, quota management
+  - Workflow pattern: `stash.save()` → `pdf_create()` → `printer.print()`
+  - See: `docs/STASH_SYSTEM.md`
+- ✅ **PDF Create Tool** - Generate PDF documents ⭐ NEW
+  - Create PDFs from text, images, or stash files
+  - Basic markdown header support (# ## ###)
+  - Image centering and scaling
+  - Saves back to stash for printing/emailing
+  - See: `skills/pdf_create.py`
+- ✅ **Printer Tool** - Print from stash, files, or text ⭐ NEW
+  - CUPS integration for network printers
+  - Color/grayscale, compact mode, quality settings
+  - Print from file paths, stash refs, or Canvas pages
+  - See: `skills/printer.py`
+- ✅ **Speaker Volume Tool** - Control system audio ⭐ NEW
+  - Get/set/adjust speaker volume via amixer
+  - Uses OUT_DEV from cloud.env/local.env
+  - See: `skills/speaker_volume.py`
+- ✅ **Improved Tool Descriptions** - Better LLM routing
+  - Added "Use this when / Do NOT use for" guidance to tools
+  - Helps LLM distinguish document generation vs software development
+  - opencode, pdf_create, stash descriptions updated
 
 **2025-12-06:**
 - ✅ **Network Tools** - Comprehensive network diagnostics ⭐ NEW
@@ -532,6 +560,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-06 (v2.9)  
-**Latest:** Network Tools, System Monitor, Text Summarizer, Prompt Evolution, Dynamic Tool Builder, Canvas, Calculator, Feedback System  
+**Last Updated:** 2025-12-11 (v2.10)  
+**Latest:** Stash System, PDF Create, Printer, Speaker Volume, Improved Tool Descriptions  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
