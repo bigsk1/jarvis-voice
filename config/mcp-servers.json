@@ -81,7 +81,7 @@
         "--viewport-size", "1280x720"
       ],
       "description": "Browser automation for JS-heavy sites: navigate, click, fill forms, screenshots, PDFs. Use when fetch fails on dynamic content.",
-      "enabled": true
+      "enabled": false
     },
     "blinko": {
       "type": "sse",
