@@ -1,0 +1,41 @@
+{
+  "enabled": true,
+  "name": "printer",
+  "description": "Print text or check printer status. Use this when the user wants to print something, check if the printer is ready, or cancel a print job.\n\nExamples:\n- 'Print this: Hello World' → action: print, text: Hello World\n- 'Print the movie showtimes' → action: print, text: [showtimes from previous search]\n- 'Is the printer ready?' → action: status\n- 'Cancel the print job' → action: cancel\n\nTip: For printing search results, first search for the info, then use this tool with the results as text.",
+  "script": "printer.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action: 'print' (send to printer), 'status' (check printer), 'cancel' (stop print job)",
+        "enum": ["print", "status", "cancel"]
+      },
+      "text": {
+        "type": "string",
+        "description": "Text content to print (for action=print)"
+      },
+      "title": {
+        "type": "string",
+        "description": "Optional title/header for the printout"
+      },
+      "file_path": {
+        "type": "string",
+        "description": "Path to file to print (alternative to text)"
+      },
+      "job_id": {
+        "type": "string",
+        "description": "Specific job ID to cancel (for action=cancel)"
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": true,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+
