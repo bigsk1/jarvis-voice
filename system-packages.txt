@@ -26,3 +26,4 @@ build-essential        # C/C++ compilers (needed for some Python packages)
 libportaudio2          # PortAudio library (for sounddevice)
 libsndfile1            # Audio file reading/writing library
 cups                   # printer tool
+sqlite3-dev            # db search

@@ -55,7 +55,9 @@ apt install -y \
     build-essential \
     libportaudio2 \
     libsndfile1 \
-    sqlite3
+    sqlite3 \
+    cups \
+    sqlite3-dev
 
 echo ""
 echo "======================================"
