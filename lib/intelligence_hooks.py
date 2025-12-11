@@ -276,7 +276,7 @@ def get_routing_insights(query: str) -> Dict[str, Any]:
         return {'tool_biases': {}, 'insights': [], 'confidence': 0.0}
 
 
-def format_insights_for_prompt(insights: Dict[str, Any]) -> str:
+def format_insights_for_prompt(insights: Dict[str, Any], available_tools: List[str] = None) -> str:
     """
     Format insights as context for the routing prompt.
     
@@ -284,14 +284,46 @@ def format_insights_for_prompt(insights: Dict[str, Any]) -> str:
     - Separates positive constraints (WHAT TO DO) from negative (WHAT NOT TO DO)
     - LLMs respond better to explicitly labeled failures
     
+    PHASE 2 UPGRADE:
+    - Filters out insights recommending unavailable/blocked tools
+    - Safe for cross-mode sync (cloud→local, local→cloud)
+    
+    Args:
+        insights: Dict with insights, tool_biases, confidence
+        available_tools: List of tool names currently available (if None, no filtering)
+    
     Returns a string that can be injected into the system prompt.
     """
     if not insights.get('insights'):
         return ""
     
+    # Filter insights if available_tools provided
+    all_insights = insights['insights']
+    if available_tools:
+        available_set = set(available_tools)
+        
+        def insight_has_available_tools(insight):
+            """Check if insight references only available tools."""
+            # Check applies_to field (tool recommendations)
+            applies_to = insight.get('applies_to', '')
+            if applies_to:
+                # Simple heuristic: if any word in applies_to matches a tool name, check it
+                for tool in available_set:
+                    if tool in applies_to:
+                        return True
+                # If applies_to mentions specific tools but none are available, skip
+                # But if it's general advice (no tool names), keep it
+                for word in applies_to.split():
+                    if word.startswith('mcp_') or word.endswith('_tool') or '_' in word:
+                        # Looks like a tool name but not in available set
+                        return False
+            return True  # General advice, keep it
+        
+        all_insights = [i for i in all_insights if insight_has_available_tools(i)]
+    
     # Separate positive and negative constraints
-    positive_insights = [i for i in insights['insights'] if i.get('constraint_type', 'positive') == 'positive']
-    negative_insights = [i for i in insights['insights'] if i.get('constraint_type') == 'negative']
+    positive_insights = [i for i in all_insights if i.get('constraint_type', 'positive') == 'positive']
+    negative_insights = [i for i in all_insights if i.get('constraint_type') == 'negative']
     
     lines = []
     
@@ -321,10 +353,17 @@ def format_insights_for_prompt(insights: Dict[str, Any]) -> str:
                 lines.append(f"   → Why: {insight['reasoning']}")
         lines.append("")
     
-    # Tool biases summary
+    # Tool biases summary (filtered to available tools)
     if insights.get('tool_biases'):
-        prefer_tools = {k: v for k, v in insights['tool_biases'].items() if v > 0}
-        avoid_tools = {k: v for k, v in insights['tool_biases'].items() if v < 0}
+        biases = insights['tool_biases']
+        
+        # Filter to available tools if list provided
+        if available_tools:
+            available_set = set(available_tools)
+            biases = {k: v for k, v in biases.items() if k in available_set}
+        
+        prefer_tools = {k: v for k, v in biases.items() if v > 0}
+        avoid_tools = {k: v for k, v in biases.items() if v < 0}
         
         if prefer_tools or avoid_tools:
             lines.append("=== TOOL PREFERENCES ===")

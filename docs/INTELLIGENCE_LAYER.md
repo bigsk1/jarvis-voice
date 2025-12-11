@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete  
 **Created**: 2025-11-27  
-**Updated**: 2025-11-28 (Phase 1.5: Insight Tracking, Decay, Anomaly Detection, Meta-Cognition)  
+**Updated**: 2025-12-11 (Tool Blocklist, Insight Filtering for Unavailable Tools)  
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
 
 ## Overview
@@ -420,11 +420,40 @@ rm data/jarvis_intelligence.db
 | Disable a tool | ✅ Works | Old insights still valid, tool just won't be selected |
 | Enable a tool | ✅ Works | New experiences will include it |
 | Add new tool | ✅ Works | System learns about it naturally |
-| Remove tool | ✅ Works | Insights mentioning it become less relevant over time |
+| Remove tool | ✅ Works | Insights filtered at prompt time (won't recommend unavailable tools) |
+| Block tool via `BLOCKED_TOOLS` | ✅ Works | Tool skipped during sync, insights filtered |
 | Disable MCP server | ✅ Works | MCP tools unavailable, learning continues |
 | Add new MCP server | ✅ Works | New tools discovered, learning includes them |
 
 **Why it's resilient**: Insights are stored as **semantic embeddings**, not exact tool names. If a tool is removed, similar tools may still match the learned patterns.
+
+#### Tool Blocklist (BLOCKED_TOOLS)
+
+Block specific tools from being synced to the database:
+
+```bash
+# In config/cloud.env or config/local.env
+BLOCKED_TOOLS="mcp_blinko_webSearch,mcp_blinko_webExtra"
+```
+
+**Precedence** (highest to lowest):
+1. `BLOCKED_TOOLS` in `.env` → Always skipped during sync
+2. `enabled=false` in `.tool.json` → Skipped (local skills)
+3. MCP discovered / `enabled=true` → Synced normally
+
+After editing `BLOCKED_TOOLS`, run `./bin/sync_tools.py cloud` (or `local`).
+
+#### Insight Filtering for Unavailable Tools
+
+When insights are formatted for the LLM prompt:
+1. Query `tool_definitions` for available tool names
+2. Filter out insights that recommend blocked/unavailable tools
+3. Filter tool_biases to only include available tools
+
+This ensures:
+- **Cross-mode safety**: Cloud insights synced to local won't recommend cloud-only tools
+- **Profile support**: Different `BLOCKED_TOOLS` per mode creates effective tool profiles
+- **No wasted tokens**: LLM only sees relevant tool recommendations
 
 ---
 

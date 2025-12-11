@@ -144,8 +144,17 @@ class Orchestrator:
         else:
             enhanced_transcript = transcript
         
+        # Pre-fetch available tool names for insight filtering
+        # This ensures insights about blocked/unavailable tools aren't shown
+        try:
+            from memory_db import get_memory_db
+            db = get_memory_db()
+            available_tool_names = db.get_enabled_tool_names() if hasattr(db, 'get_enabled_tool_names') else []
+        except Exception:
+            available_tool_names = []  # Fallback: no filtering
+        
         # Inject learned insights from self-learning intelligence
-        learning_context, applied_insights = self._get_learning_insights(transcript)
+        learning_context, applied_insights = self._get_learning_insights(transcript, available_tool_names)
         if learning_context:
             enhanced_transcript = f"{learning_context}\n\n{enhanced_transcript}"
         
@@ -988,9 +997,13 @@ Your BEST EFFORT response:"""
         
         return "\n".join(context_parts)
     
-    def _get_learning_insights(self, transcript: str) -> Tuple[str, List[Dict]]:
+    def _get_learning_insights(self, transcript: str, available_tools: List[str] = None) -> Tuple[str, List[Dict]]:
         """
         Get learned insights to inform routing decisions.
+        
+        Args:
+            transcript: User's query
+            available_tools: List of currently available tool names (for filtering)
         
         Returns:
             Tuple of (formatted_prompt_string, list_of_applied_insights)
@@ -1003,7 +1016,8 @@ Your BEST EFFORT response:"""
             
             # Only include if we have meaningful insights
             if insights.get('insights') and insights.get('confidence', 0) > 0.3:
-                formatted = format_insights_for_prompt(insights)
+                # Pass available_tools to filter out insights for blocked/unavailable tools
+                formatted = format_insights_for_prompt(insights, available_tools)
                 # Return both formatted string and raw insights for tracking
                 return formatted, insights.get('insights', [])
         except Exception as e:

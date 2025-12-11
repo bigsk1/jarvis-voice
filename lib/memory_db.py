@@ -721,6 +721,17 @@ class MemoryDB:
             return dict(result)
         return None
 
+    def get_enabled_tool_names(self) -> List[str]:
+        """
+        Get list of all enabled tool names.
+        Used for filtering insights to only recommend available tools.
+        """
+        cursor = self.conn.cursor()
+        results = cursor.execute(
+            "SELECT name FROM tool_definitions WHERE enabled = 1"
+        ).fetchall()
+        return [row[0] for row in results]
+
     # ========== Utility ==========
     
     def close(self):

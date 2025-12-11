@@ -27,9 +27,10 @@
         "--rm",
         "--network",
         "host",
-        "mcp/fetch"
+        "mcp/fetch",
+        "--ignore-robots-txt"
       ],
-      "description": "Fetch and extract content from URLs as markdown",
+      "description": "Fetch and extract content from URLs as markdown. Does NOT check robots.txt.",
       "enabled": true
     },
     "brave_search": {
@@ -80,7 +81,7 @@
         "--viewport-size", "1280x720"
       ],
       "description": "Browser automation for JS-heavy sites: navigate, click, fill forms, screenshots, PDFs. Use when fetch fails on dynamic content.",
-      "enabled": false
+      "enabled": true
     },
     "blinko": {
       "type": "sse",

@@ -37,15 +37,36 @@ def sync_tools(mode='cloud', verbose=True):
     # Get DB connection
     db = get_memory_db()
     
-    # Get list of active tool names from registry
-    active_tools = set(registry.tools.keys())
+    # Load blocked tools from config (comma-separated list)
+    # Example: BLOCKED_TOOLS="mcp_blinko_webSearch,mcp_blinko_webExtra"
+    from config_loader import get_config_value
+    blocked_tools_str = get_config_value('BLOCKED_TOOLS', '')
+    blocked_tools = set(t.strip() for t in blocked_tools_str.split(',') if t.strip())
+    
+    if blocked_tools:
+        print(f"🚫 Blocked tools (from BLOCKED_TOOLS config): {len(blocked_tools)}")
+        if verbose:
+            for t in sorted(blocked_tools):
+                print(f"     - {t}")
+    
+    # Get list of active tool names from registry (excluding blocked)
+    active_tools = set(registry.tools.keys()) - blocked_tools
     
     count = 0
+    skipped = 0
     total = len(registry.tools)
+    syncing = total - len(blocked_tools)
     
-    print(f"📝 Found {total} active tools. Updating embeddings...")
+    print(f"📝 Found {total} tools, syncing {syncing} (blocked: {len(blocked_tools)})...")
     
     for tool_name, schema in registry.tools.items():
+        # Skip blocked tools
+        if tool_name in blocked_tools:
+            if verbose:
+                print(f"  ⊘ Skipped (blocked): {tool_name}")
+            skipped += 1
+            continue
+            
         try:
             # Serialize schema for storage
             # We store the OpenAI format as it's the most universal standard
@@ -75,7 +96,9 @@ def sync_tools(mode='cloud', verbose=True):
     # This handles tools that were removed or have enabled=false in their .tool.json
     disabled_count = _disable_stale_tools(db, active_tools, verbose)
     
-    print(f"\n✅ Successfully synced {count}/{total} tools to vector DB.")
+    print(f"\n✅ Successfully synced {count}/{syncing} tools to vector DB.")
+    if skipped > 0:
+        print(f"   Skipped {skipped} blocked tools (configure via BLOCKED_TOOLS in .env).")
     if disabled_count > 0:
         print(f"   Disabled {disabled_count} stale/removed tools.")
     print("   Tools are now ready for dynamic retrieval.")
