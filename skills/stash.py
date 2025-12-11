@@ -96,7 +96,7 @@ def action_save(args: Dict) -> Dict:
     kind = args.get('kind', 'text')
     on_conflict = args.get('on_conflict', 'error')
     tags = args.get('tags', [])
-    tool_origin = args.get('tool_origin')
+    tool_origin = args.get('tool_origin', 'stash')  # Default to 'stash' when called directly
     
     if not name:
         raise ValueError("name is required")
