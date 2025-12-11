@@ -35,7 +35,7 @@
       },
       "kind": {
         "type": "string",
-        "description": "Content type for save: text, json, base64, url (Phase 2)",
+        "description": "Content type for save: text, json, base64, or url",
         "enum": ["text", "json", "base64", "url"]
       },
       "text": {
@@ -49,6 +49,10 @@
       "data": {
         "type": "string",
         "description": "Base64-encoded data (for kind=base64)"
+      },
+      "url": {
+        "type": "string",
+        "description": "URL to download (for kind=url). Includes SSRF protection."
       },
       "on_conflict": {
         "type": "string",

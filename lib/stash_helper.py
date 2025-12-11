@@ -13,14 +13,241 @@ import json
 import hashlib
 import re
 import shutil
+import socket
+import ipaddress
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
+from urllib.parse import urlparse
 import mimetypes
+
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
+
+try:
+    import magic
+    HAS_MAGIC = True
+except ImportError:
+    HAS_MAGIC = False
 
 # Add lib to path for config
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
+
+
+# ============================================================================
+# URL Download Security (SSRF Protection)
+# ============================================================================
+
+ALLOWED_SCHEMES = ['http', 'https']
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+MAX_REDIRECTS = 3
+DOWNLOAD_TIMEOUT = 30
+
+# Allowed MIME types for downloads
+ALLOWED_MIME_TYPES = [
+    # Images
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    # Documents
+    'application/pdf',
+    # Text
+    'text/plain', 'text/csv', 'text/html', 'text/markdown',
+    # Data
+    'application/json', 'application/xml', 'text/xml',
+    # Audio (for future TTS/STT workflows)
+    'audio/mpeg', 'audio/wav', 'audio/ogg',
+]
+
+# Blocked IP ranges (prevent SSRF to internal networks)
+BLOCKED_IP_NETWORKS = [
+    ipaddress.ip_network('127.0.0.0/8'),       # Loopback
+    ipaddress.ip_network('10.0.0.0/8'),        # Private Class A
+    ipaddress.ip_network('172.16.0.0/12'),     # Private Class B
+    ipaddress.ip_network('192.168.0.0/16'),    # Private Class C
+    ipaddress.ip_network('169.254.0.0/16'),    # Link-local
+    ipaddress.ip_network('0.0.0.0/8'),         # Current network
+    ipaddress.ip_network('224.0.0.0/4'),       # Multicast
+    ipaddress.ip_network('240.0.0.0/4'),       # Reserved
+]
+
+# IPv6 blocked ranges
+BLOCKED_IP6_NETWORKS = [
+    ipaddress.ip_network('::1/128'),           # Loopback
+    ipaddress.ip_network('fe80::/10'),         # Link-local
+    ipaddress.ip_network('fc00::/7'),          # Unique local
+    ipaddress.ip_network('ff00::/8'),          # Multicast
+]
+
+
+class SecurityError(Exception):
+    """Raised when a security check fails."""
+    pass
+
+
+def is_blocked_ip(ip_str: str) -> bool:
+    """Check if an IP address is in a blocked range."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        
+        if isinstance(ip, ipaddress.IPv4Address):
+            return any(ip in network for network in BLOCKED_IP_NETWORKS)
+        else:
+            return any(ip in network for network in BLOCKED_IP6_NETWORKS)
+    except ValueError:
+        # Invalid IP = treat as blocked
+        return True
+
+
+def validate_url(url: str) -> str:
+    """
+    Validate a URL for safe downloading.
+    
+    Checks:
+    - Scheme is http/https
+    - Host resolves to a non-private IP
+    - Returns the validated URL
+    
+    Raises SecurityError if validation fails.
+    """
+    parsed = urlparse(url)
+    
+    # Check scheme
+    if parsed.scheme not in ALLOWED_SCHEMES:
+        raise SecurityError(f"URL scheme '{parsed.scheme}' not allowed. Use http or https.")
+    
+    hostname = parsed.hostname
+    if not hostname:
+        raise SecurityError("URL has no hostname")
+    
+    # Resolve hostname to IP and check for private ranges
+    try:
+        # Get all IPs for the hostname
+        ips = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        resolved_ips = set(ip[4][0] for ip in ips)
+        
+        for ip_str in resolved_ips:
+            if is_blocked_ip(ip_str):
+                raise SecurityError(f"URL hostname '{hostname}' resolves to blocked IP range")
+        
+    except socket.gaierror as e:
+        raise SecurityError(f"Cannot resolve hostname '{hostname}': {e}")
+    
+    return url
+
+
+def safe_download(url: str, max_size: int = None) -> Tuple[bytes, str, str]:
+    """
+    Safely download content from a URL with SSRF protection.
+    
+    Args:
+        url: URL to download
+        max_size: Maximum file size in bytes (default: MAX_FILE_SIZE)
+    
+    Returns:
+        Tuple of (data, content_type, final_url)
+    
+    Raises:
+        SecurityError: If security validation fails
+        ValueError: If content type not allowed or file too large
+    """
+    if not HAS_REQUESTS:
+        raise ImportError("requests library required for URL downloads. pip install requests")
+    
+    max_size = max_size or MAX_FILE_SIZE
+    
+    # Validate initial URL
+    validate_url(url)
+    
+    # Use proxy if configured
+    proxies = {}
+    proxy = get_config_value('LOCAL_PROXY', '')
+    if proxy:
+        proxies = {'http': proxy, 'https': proxy}
+    
+    # Download with manual redirect handling for security
+    session = requests.Session()
+    session.max_redirects = 0  # We'll handle redirects manually
+    
+    current_url = url
+    redirects = 0
+    
+    while True:
+        try:
+            response = session.get(
+                current_url,
+                stream=True,
+                timeout=DOWNLOAD_TIMEOUT,
+                allow_redirects=False,
+                proxies=proxies if proxies else None,
+                headers={'User-Agent': 'Jarvis-Stash/1.0'}
+            )
+        except requests.exceptions.RequestException as e:
+            raise SecurityError(f"Download failed: {e}")
+        
+        # Handle redirects manually (validate each redirect URL)
+        if response.is_redirect:
+            redirects += 1
+            if redirects > MAX_REDIRECTS:
+                raise SecurityError(f"Too many redirects (max {MAX_REDIRECTS})")
+            
+            redirect_url = response.headers.get('Location')
+            if not redirect_url:
+                raise SecurityError("Redirect without Location header")
+            
+            # Handle relative redirects
+            if redirect_url.startswith('/'):
+                parsed = urlparse(current_url)
+                redirect_url = f"{parsed.scheme}://{parsed.netloc}{redirect_url}"
+            
+            # Validate redirect URL (SSRF check)
+            validate_url(redirect_url)
+            current_url = redirect_url
+            continue
+        
+        break
+    
+    response.raise_for_status()
+    
+    # Check content type
+    content_type = response.headers.get('Content-Type', '').split(';')[0].strip()
+    if not content_type:
+        content_type = 'application/octet-stream'
+    
+    # Allow through if MIME type is in allowed list
+    mime_allowed = content_type in ALLOWED_MIME_TYPES
+    
+    # Check content length if provided
+    content_length = response.headers.get('Content-Length')
+    if content_length and int(content_length) > max_size:
+        raise ValueError(f"File too large: {int(content_length)} bytes (max {max_size})")
+    
+    # Stream download with size check
+    data = b''
+    for chunk in response.iter_content(chunk_size=8192):
+        data += chunk
+        if len(data) > max_size:
+            raise ValueError(f"File exceeded max size during download ({max_size} bytes)")
+    
+    # Verify content type with magic if available
+    if HAS_MAGIC and data:
+        detected_type = magic.from_buffer(data, mime=True)
+        
+        # If claimed type is generic but detected is specific and not allowed
+        if content_type == 'application/octet-stream':
+            content_type = detected_type
+        
+        # Check if detected type is allowed
+        if detected_type not in ALLOWED_MIME_TYPES and not mime_allowed:
+            raise SecurityError(f"Detected content type '{detected_type}' not allowed")
+    
+    # Final MIME check
+    if not mime_allowed and content_type not in ALLOWED_MIME_TYPES:
+        raise SecurityError(f"Content type '{content_type}' not allowed")
+    
+    return data, content_type, current_url
 
 
 # ============================================================================
@@ -312,6 +539,52 @@ class StashFile:
             mime_type, _ = mimetypes.guess_type(name)
             mime_type = mime_type or 'application/octet-stream'
         return self._save_data(data, name, mime_type, on_conflict, tags, tool_origin)
+    
+    def save_from_url(self, url: str, name: str = None, on_conflict: str = 'error',
+                      tags: List[str] = None, tool_origin: str = None) -> Dict:
+        """
+        Download content from URL and save to stash.
+        
+        Includes full SSRF protection:
+        - Validates URL scheme (http/https only)
+        - Blocks private/internal IP ranges
+        - Validates redirect URLs
+        - Checks content type
+        - Enforces size limits
+        
+        Args:
+            url: URL to download
+            name: Filename (optional, derived from URL if not provided)
+            on_conflict: error, overwrite, or version
+            tags: Optional tags for the file
+            tool_origin: Tool that initiated the download
+        
+        Returns:
+            File metadata dict with file_id, ref, path, etc.
+        """
+        # Download with security checks
+        data, content_type, final_url = safe_download(url)
+        
+        # Derive filename from URL if not provided
+        if not name:
+            parsed = urlparse(final_url)
+            path_name = os.path.basename(parsed.path)
+            if path_name and '.' in path_name:
+                name = path_name
+            else:
+                # Generate name from content type
+                ext = mimetypes.guess_extension(content_type) or ''
+                name = f"download_{datetime.utcnow().strftime('%H%M%S')}{ext}"
+        
+        # Save the data
+        result = self._save_data(data, name, content_type, on_conflict, tags, tool_origin)
+        
+        # Add source URL to result
+        result['source_url'] = url
+        if final_url != url:
+            result['final_url'] = final_url
+        
+        return result
     
     def _save_data(self, data: bytes, name: str, mime_type: str,
                    on_conflict: str, tags: List[str], tool_origin: str) -> Dict:

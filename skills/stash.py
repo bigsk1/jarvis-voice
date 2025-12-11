@@ -130,8 +130,10 @@ def action_save(args: Dict) -> Dict:
                                         on_conflict, tags, tool_origin)
         
     elif kind == 'url':
-        # URL downloads will be implemented in Phase 2
-        raise ValueError("URL downloads not yet implemented. Use kind='text', 'json', or 'base64'")
+        url = args.get('url')
+        if not url:
+            raise ValueError("url is required for kind='url'")
+        result = stash_file.save_from_url(url, name, on_conflict, tags, tool_origin)
         
     else:
         raise ValueError(f"Unknown kind: {kind}. Use: text, json, base64, url")
