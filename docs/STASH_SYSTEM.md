@@ -1,7 +1,7 @@
 # Stash System Design
 
-> **Status**: Design Phase  
-> **Purpose**: Structured file store for multi-step task artifacts  
+> **Status**: Design Phase (v2 - refined)  
+> **Purpose**: Generic artifact storage layer for the Jarvis ecosystem  
 > **Author**: Design discussion 2025-12-11
 
 ---
@@ -34,18 +34,34 @@ Each tool has no standard way to:
 
 ## 2. What is Stash?
 
-**Stash** is a structured, tool-accessible file store for intermediate artifacts.
+**Stash** is a **generic, structured artifact storage layer** for the entire Jarvis ecosystem.
+
+> **Key Principle**: Stash is **storage-first**. Document composition (`stash.compose`) is 
+> one consumer of stash, not its core purpose. Any tool that produces or consumes files 
+> should use stash as the standard artifact layer.
 
 ### Characteristics
 
 | Property | Description |
 |----------|-------------|
 | **Machine-facing** | Not a user UI surface like Canvas |
-| **Multimodal** | Images, PDFs, JSON, text, binaries |
+| **Multimodal** | Images, PDFs, JSON, text, audio, binaries |
 | **Addressable** | Tools reference by `space_id` + `file_id` |
 | **Scoped** | Organized by "space" (task/run), not one giant folder |
-| **Lifecycle-managed** | TTL-based auto-cleanup |
+| **Lifecycle-managed** | TTL + scope-based auto-cleanup |
 | **Cross-session** | Spaces can persist across conversations |
+
+### Use Cases Beyond Documents
+
+| Use Case | Examples |
+|----------|----------|
+| **Downloaded media** | Images, audio clips, video thumbnails |
+| **Cached model outputs** | Expensive research summaries, API responses |
+| **Intermediate data** | CSV for analytics, JSON config snapshots |
+| **Audio workflows** | TTS output clips, STT transcriptions |
+| **Training artifacts** | Prompt examples, evaluation outputs |
+| **Debug artifacts** | Conversation logs, tool call traces |
+| **Composed documents** | PDFs, reports (one consumer, not the only one) |
 
 ### Directory Structure
 
@@ -70,20 +86,44 @@ data/stash/
   "last_used_at": "2025-12-11T12:36:10Z",
   "labels": ["french_bulldog", "exercise_schedule"],
   "owner": "boss",
+  "scope": "session",
   "ttl_days": 7,
+  "pinned": false,
   "files": [
     {
-      "file_id": "french_bulldog.jpg",
+      "file_id": "f_94d9846c5f124f37",
       "name": "french_bulldog.jpg",
+      "stored_name": "french_bulldog.jpg",
       "mime_type": "image/jpeg",
       "size_bytes": 123456,
+      "hash_sha256": "a1b2c3d4...",
       "source": "url",
       "source_url": "https://example.com/dog.jpg",
+      "tool_origin": "web_search",
+      "tags": ["image", "dog"],
       "created_at": "2025-12-11T12:35:00Z"
     }
   ]
 }
 ```
+
+### Space Scope Types
+
+| Scope | Description | Cleanup Behavior |
+|-------|-------------|------------------|
+| `session` | Ephemeral, tied to single conversation | Auto-clean at session end + TTL |
+| `user` | Cross-session, owned by user | Respect TTL, require explicit cleanup |
+| `shared` | (Future) Global templates/resources | Never auto-delete |
+
+### File ID vs Filename
+
+**Important**: `file_id` and `name` are separate concepts:
+
+- `file_id`: Internal unique identifier (can be UUID or sanitized name)
+- `name`: Human-readable display name  
+- `stored_name`: Actual filename on disk (sanitized)
+
+For v1, `file_id == stored_name` is acceptable, but the schema supports decoupling later.
 
 ---
 
@@ -98,6 +138,7 @@ Create or resume a space.
 {
   "space_id": "optional - omit to create new",
   "labels": ["optional", "tags"],
+  "scope": "session",
   "ttl_days": 7
 }
 ```
@@ -111,6 +152,7 @@ Create or resume a space.
   "data": {
     "space_id": "space_20251211_123456_abcd",
     "path": "data/stash/space_20251211_123456_abcd",
+    "scope": "session",
     "is_new": true
   }
 }
@@ -123,7 +165,44 @@ Create or resume a space.
 
 ---
 
-### 3.2 `stash.save`
+### 3.2 `stash.info`
+
+Get metadata about a space (without listing all files).
+
+**Input:**
+```json
+{
+  "space_id": "space_20251211_123456_abcd"
+}
+```
+
+**Output:**
+```json
+{
+  "ok": true,
+  "speech": "Space has 3 files, 456KB total",
+  "data": {
+    "space_id": "space_20251211_123456_abcd",
+    "created_at": "2025-12-11T12:34:56Z",
+    "last_used_at": "2025-12-11T12:36:10Z",
+    "labels": ["french_bulldog"],
+    "scope": "session",
+    "ttl_days": 7,
+    "pinned": false,
+    "total_size_bytes": 456789,
+    "file_count": 3
+  }
+}
+```
+
+**Use cases:**
+- Decide whether to reuse or clean a space
+- Quick summaries in logs/monitoring
+- LLM choosing between existing spaces
+
+---
+
+### 3.3 `stash.save`
 
 Unified entry point for saving content.
 
@@ -133,7 +212,9 @@ Unified entry point for saving content.
   "space_id": "optional - uses current session space",
   "name": "schedule.txt",
   "kind": "text",
-  "text": "Exercise schedule for French Bulldog..."
+  "text": "Exercise schedule for French Bulldog...",
+  "on_conflict": "error",
+  "tags": ["schedule", "generated"]
 }
 ```
 
@@ -143,7 +224,8 @@ Unified entry point for saving content.
   "space_id": "optional",
   "name": "bulldog.jpg",
   "kind": "url",
-  "url": "https://example.com/french-bulldog.jpg"
+  "url": "https://example.com/french-bulldog.jpg",
+  "on_conflict": "overwrite"
 }
 ```
 
@@ -174,10 +256,13 @@ Unified entry point for saving content.
   "speech": "Saved bulldog.jpg to stash",
   "data": {
     "space_id": "space_20251211_123456_abcd",
-    "file_id": "bulldog.jpg",
+    "file_id": "f_94d9846c5f124f37",
+    "name": "bulldog.jpg",
+    "ref": "stash://space_20251211_123456_abcd/f_94d9846c5f124f37",
     "path": "data/stash/space_.../bulldog.jpg",
     "mime_type": "image/jpeg",
-    "size_bytes": 123456
+    "size_bytes": 123456,
+    "hash_sha256": "a1b2c3d4..."
   }
 }
 ```
@@ -190,9 +275,53 @@ Unified entry point for saving content.
 | `url` | HTTP GET, save binary (with security checks) |
 | `base64` | Decode and save raw bytes |
 
+**Conflict policy (`on_conflict`):**
+| Policy | Behavior |
+|--------|----------|
+| `error` | Fail if file with same name exists (default) |
+| `overwrite` | Replace content, update metadata |
+| `version` | Auto-version (schedule.txt → schedule_2.txt) |
+
+The response always includes the actual `file_id` so the agent knows which file to reference.
+
 ---
 
-### 3.3 `stash.list`
+## 3.5 Standard Reference Format
+
+**URI format** (for logs, LLM-level references, human-readable):
+```
+stash://space_20251211_123456_abcd/f_94d9846c5f124f37
+```
+
+**Structured format** (for tool argument schemas):
+```json
+{
+  "space_id": "space_20251211_123456_abcd",
+  "file_id": "f_94d9846c5f124f37"
+}
+```
+
+**Convention**: All tools that accept stash files should accept either:
+- `stash_ref`: URI string
+- OR `space_id` + `file_id`: Explicit fields
+
+Example in printer tool:
+```json
+{
+  "action": "print",
+  "stash_ref": "stash://space_.../schedule.pdf"
+}
+// OR
+{
+  "action": "print", 
+  "space_id": "space_...",
+  "file_id": "schedule.pdf"
+}
+```
+
+---
+
+### 3.4 `stash.list`
 
 List files in a space.
 
@@ -327,7 +456,41 @@ Combine artifacts into a document (PDF).
 
 ---
 
-### 3.6 `stash.cleanup`
+### 3.7 `stash.update`
+
+Update space metadata (TTL, pinned status, labels).
+
+**Input:**
+```json
+{
+  "space_id": "space_20251211_123456_abcd",
+  "ttl_days": 30,
+  "pinned": true,
+  "labels": ["important", "keep"]
+}
+```
+
+**Output:**
+```json
+{
+  "ok": true,
+  "speech": "Space pinned and TTL updated to 30 days",
+  "data": {
+    "space_id": "space_20251211_123456_abcd",
+    "pinned": true,
+    "ttl_days": 30
+  }
+}
+```
+
+**Pinning behavior:**
+- `pinned: true` → Space will NOT be auto-deleted by cleanup jobs
+- Useful for long-term report libraries, reference materials
+- Explicit `stash.cleanup(space_id)` still works on pinned spaces
+
+---
+
+### 3.8 `stash.cleanup`
 
 Delete spaces (single or expired).
 
@@ -357,25 +520,36 @@ Delete spaces (single or expired).
 }
 ```
 
+**Cleanup strategy (combined):**
+1. **Periodic job** (cron/systemd timer):
+   - Delete expired where `pinned=false`
+   - Enforce global quota (LRU beyond 5GB)
+2. **On-demand**:
+   - `mode: "expired_only"` for manual maintenance
+   - `space_id: "..."` for single space deletion
+
 ---
 
 ## 4. Security Considerations
 
-### 4.1 URL Download Security
+### 4.1 URL Download Security (Redirect-Aware SSRF Protection)
 
 **Risks:**
 - Downloading malware disguised as images
 - SSRF (Server-Side Request Forgery) to internal services
+- Redirect-based SSRF bypass (benign.com → 127.0.0.1)
 - Large file DoS
 
 **Mitigations:**
 
 ```python
 # In stash.save when kind="url"
+import socket
+import ipaddress
 
 ALLOWED_SCHEMES = ['http', 'https']
-BLOCKED_HOSTS = ['localhost', '127.0.0.1', '169.254.169.254', '10.', '192.168.', '172.16.']
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+MAX_REDIRECTS = 3
 ALLOWED_MIME_TYPES = [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
     'application/pdf',
@@ -383,25 +557,62 @@ ALLOWED_MIME_TYPES = [
     'application/json',
 ]
 
-def validate_url(url: str) -> bool:
-    """Validate URL before downloading."""
+# Block private/internal IP ranges
+BLOCKED_IP_RANGES = [
+    ipaddress.ip_network('127.0.0.0/8'),       # Loopback
+    ipaddress.ip_network('10.0.0.0/8'),        # Private
+    ipaddress.ip_network('172.16.0.0/12'),     # Private
+    ipaddress.ip_network('192.168.0.0/16'),    # Private
+    ipaddress.ip_network('169.254.0.0/16'),    # Link-local
+    ipaddress.ip_network('::1/128'),           # IPv6 loopback
+    ipaddress.ip_network('fe80::/10'),         # IPv6 link-local
+    ipaddress.ip_network('fc00::/7'),          # IPv6 private
+]
+
+def is_blocked_ip(ip_str: str) -> bool:
+    """Check if IP is in blocked ranges."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return any(ip in network for network in BLOCKED_IP_RANGES)
+    except ValueError:
+        return True  # Invalid IP = blocked
+
+def validate_url_with_dns(url: str) -> bool:
+    """Validate URL including DNS resolution to prevent SSRF."""
     parsed = urlparse(url)
     
     # Check scheme
     if parsed.scheme not in ALLOWED_SCHEMES:
         raise SecurityError(f"Scheme {parsed.scheme} not allowed")
     
-    # Check for internal hosts
-    host = parsed.hostname.lower()
-    for blocked in BLOCKED_HOSTS:
-        if host.startswith(blocked) or host == blocked:
-            raise SecurityError(f"Host {host} is blocked")
+    # Resolve hostname to IP and check
+    hostname = parsed.hostname
+    try:
+        ip = socket.gethostbyname(hostname)
+        if is_blocked_ip(ip):
+            raise SecurityError(f"Host {hostname} resolves to blocked IP {ip}")
+    except socket.gaierror:
+        raise SecurityError(f"Cannot resolve hostname {hostname}")
     
     return True
 
 def safe_download(url: str, max_size: int = MAX_FILE_SIZE) -> bytes:
-    """Download with size limit and content-type check."""
-    response = requests.get(url, stream=True, timeout=30)
+    """Download with redirect handling, size limit, and content-type check."""
+    
+    # Disable auto-redirects, handle manually
+    session = requests.Session()
+    response = session.get(url, stream=True, timeout=30, allow_redirects=False)
+    
+    redirects = 0
+    while response.is_redirect and redirects < MAX_REDIRECTS:
+        redirect_url = response.headers.get('Location')
+        # Re-validate each redirect URL!
+        validate_url_with_dns(redirect_url)
+        response = session.get(redirect_url, stream=True, timeout=30, allow_redirects=False)
+        redirects += 1
+    
+    if response.is_redirect:
+        raise SecurityError(f"Too many redirects (>{MAX_REDIRECTS})")
     
     # Check content-type
     content_type = response.headers.get('Content-Type', '').split(';')[0]
@@ -430,22 +641,38 @@ def safe_download(url: str, max_size: int = MAX_FILE_SIZE) -> bytes:
 ```python
 import magic  # python-magic library
 
-def validate_file_content(data: bytes, expected_mime: str) -> bool:
+def validate_file_content(data: bytes, claimed_mime: str) -> bool:
     """Validate actual file content matches claimed type."""
     detected = magic.from_buffer(data, mime=True)
     
+    # If Content-Type was missing/generic, but magic detects unsupported type → reject
+    if claimed_mime in ['application/octet-stream', '']:
+        if detected not in ALLOWED_MIME_TYPES:
+            raise SecurityError(f"Detected unsupported type: {detected}")
+    
     # Allow some flexibility (jpeg vs jpg)
-    if detected != expected_mime:
-        # Check if it's a known safe mismatch
+    if detected != claimed_mime:
         safe_mismatches = {
             ('image/jpeg', 'image/jpg'),
             ('text/plain', 'application/octet-stream'),
         }
-        if (detected, expected_mime) not in safe_mismatches:
-            raise SecurityError(f"Content mismatch: claimed {expected_mime}, detected {detected}")
+        if (detected, claimed_mime) not in safe_mismatches:
+            raise SecurityError(f"Content mismatch: claimed {claimed_mime}, detected {detected}")
     
     return True
 ```
+
+### 4.3 Archive/Decompression Bombs
+
+**For v1: DO NOT allow compressed formats in `ALLOWED_MIME_TYPES`:**
+- No `application/zip`
+- No `application/x-tar`
+- No `application/gzip`
+
+If archive support is needed later, create a separate `unzip` tool with:
+- Decompressed size limits
+- Nested archive limits
+- Explicit user confirmation
 
 ### 4.3 Filename Sanitization
 
@@ -503,57 +730,95 @@ def check_space_quota(space_path: str, new_file_size: int) -> bool:
 
 ---
 
-## 5. Integration with Existing Tools
+## 5. Integration Patterns
 
-### 5.1 How Tools Use Stash
+### 5.1 Core Pattern: "If You Emit External Data, Stash It"
 
-**Standard contract:**
-> When a tool returns a URL or large content, persist it via `stash.save` and pass `file_id` to downstream tools.
+**Guideline for ALL future tools:**
 
-**Example flow:**
+> If a tool downloads data or creates a large artifact → it should:
+> 1. Write it into stash (via internal helper or tool call)
+> 2. Return `stash_ref` or `{space_id, file_id}` instead of raw bytes
+
+This prevents huge payloads in tool arguments and keeps everything inspectable on disk.
+
+**Tool responsibilities:**
+
+| Tool Type | Responsibility |
+|-----------|---------------|
+| **Data fetchers** (web_search) | Return URLs only (lightweight) |
+| **Materializers** (stash.save) | Turn URLs into stash entries |
+| **Processors** (ocr, summarizer) | Read from stash, write to stash |
+| **Consumers** (printer, email) | Accept stash references only |
+
+### 5.2 Standard Contract
 
 ```python
 # web_search returns URLs only
 results = web_search("french bulldog images")
 # → {"images": [{"url": "https://...", "title": "..."}]}
 
-# Agent saves to stash
+# Agent materializes URL to stash
 stash.save(kind="url", url=results["images"][0]["url"], name="bulldog.jpg")
-# → {"file_id": "bulldog.jpg", "space_id": "space_..."}
+# → {"file_id": "f_abc123", "ref": "stash://space_.../f_abc123"}
 
-# Printer uses file_id
-printer.print(space_id="space_...", file_id="bulldog.jpg")
+# Downstream tools use stash reference
+printer.print(stash_ref="stash://space_.../f_abc123")
 ```
 
-### 5.2 Tool Updates Needed
+### 5.3 Tool Updates for Stash Support
 
 | Tool | Change |
 |------|--------|
-| `printer` | Accept `space_id` + `file_id` as alternative to `file_path` |
-| `canvas` | Add "save to stash" action for canvas content |
+| `printer` | Accept `stash_ref` or `space_id` + `file_id` |
+| `canvas` | Add "export to stash" action |
 | `send_email` | Accept attachments from stash |
 | Future `ocr` | Read from stash, write results to stash |
+| Future `transcriber` | Save audio to stash, output text to stash |
 
-### 5.3 Printer Integration Example
+### 5.4 Resolver Helper
 
 ```python
-# In printer.py
+# In lib/stash_resolver.py (shared by all tools)
 
 def resolve_file_path(args: dict) -> str:
     """Resolve file path from args (direct path or stash reference)."""
+    # Option 1: Direct path
     if args.get('file_path'):
         return args['file_path']
     
-    if args.get('space_id') and args.get('file_id'):
-        # Load from stash
-        space_path = f"data/stash/{args['space_id']}"
-        file_path = os.path.join(space_path, args['file_id'])
-        if os.path.exists(file_path):
-            return file_path
-        raise FileNotFoundError(f"File {args['file_id']} not found in stash")
+    # Option 2: Stash URI
+    if args.get('stash_ref'):
+        # Parse stash://space_id/file_id
+        ref = args['stash_ref']
+        if ref.startswith('stash://'):
+            parts = ref[8:].split('/', 1)
+            space_id, file_id = parts[0], parts[1]
+            return f"data/stash/{space_id}/{file_id}"
     
-    raise ValueError("Either file_path or space_id+file_id required")
+    # Option 3: Explicit space_id + file_id
+    if args.get('space_id') and args.get('file_id'):
+        return f"data/stash/{args['space_id']}/{args['file_id']}"
+    
+    raise ValueError("Provide file_path, stash_ref, or space_id+file_id")
 ```
+
+### 5.5 Non-Tool Internal Consumers
+
+Stash is not just a tool API—it's Jarvis's **internal artifact system**.
+
+**Internal use cases:**
+
+| Consumer | Use Case |
+|----------|----------|
+| **Logs** | Store full conversation logs as JSON for debugging |
+| **Evaluation** | Keep transcripts + outputs for analysis |
+| **Caching** | Store expensive LLM outputs, attach `stash_ref` to Memory DB |
+| **Orchestrator** | Save intermediate results between multi-turn tasks |
+
+**Implementation note:**
+> Internal services can write to stash directly using the same directory convention 
+> and `meta.json` schema. The tool API is a public façade over that.
 
 ---
 
@@ -641,30 +906,34 @@ STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
 
 ---
 
-## 9. Open Questions
+## 9. Design Decisions (Resolved)
 
-1. **Session tracking**: How does the orchestrator track the "current" space for a session?
-   - Option A: Store in conversation state
+| Question | Decision |
+|----------|----------|
+| **Reference format** | URI (`stash://space/file`) for humans, `{space_id, file_id}` for tools |
+| **File ID vs name** | Separate concepts; `file_id` is internal, `name` is display |
+| **Conflict handling** | `on_conflict` param: error (default), overwrite, version |
+| **Space scoping** | `scope`: session (auto-cleanup), user (persistent), shared (future) |
+| **Pinning** | `pinned: true` prevents auto-delete; explicit cleanup still works |
+| **Cleanup strategy** | Combined: cron for expired + on-demand for manual |
+| **SSRF protection** | IP-based blocking + redirect validation (not just hostname) |
+| **Archives** | Not allowed in v1; separate `unzip` tool if needed later |
+
+## 10. Remaining Open Questions
+
+1. **Session tracking**: How does orchestrator track "current" space for a session?
+   - Option A: Store in conversation state (cleanest)
    - Option B: Return space_id in every response, LLM remembers
-   - Option C: Global "active space" variable
+   - Option C: Global "active space" variable per session
 
-2. **Automatic cleanup**: Cron job vs on-demand?
-   - Cron is simpler but requires setup
-   - On-demand cleanup at session end is more predictable
-
-3. **Virus scanning**: Worth integrating ClamAV for downloaded files?
+2. **Virus scanning**: Worth integrating ClamAV for downloaded files?
    - Adds complexity and dependencies
    - May be overkill for personal assistant
-   - Could be optional/configurable
-
-4. **Cross-tool references**: Standard format for file references?
-   - `stash://space_id/file_id`
-   - `{"space_id": "...", "file_id": "..."}`
-   - Just pass paths after resolution
+   - Could be optional/configurable (default off)
 
 ---
 
-## 10. Related Docs
+## 11. Related Docs
 
 - [Memory System](MEMORY_SYSTEM.md) - Long-term fact storage
 - [Canvas System](CANVAS_SYSTEM.md) - Human-facing research notes  
