@@ -24,6 +24,21 @@ warnings.filterwarnings(
 print("🔧 Loading cloud configuration...")
 load_config('cloud')
 
+# Display mode and model info
+provider = get_config_value('LLM_PROVIDER', 'anthropic')
+if provider == 'xai':
+    model = get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
+elif provider == 'anthropic':
+    model = get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+elif provider == 'openai':
+    model = get_config_value('OPENAI_MODEL', 'gpt-4o')
+else:
+    model = 'unknown'
+print(f"📡 Mode: cloud")
+print(f"🤖 LLM Provider: {provider}")
+print(f"🧠 Model: {model}")
+print()
+
 # ---- CONFIG (from env) ----
 WAKE_MODEL = get_config_value("WAKE_MODEL", "hey_jarvis")
 SAMPLE_RATE = get_int("SAMPLE_RATE", 16000)
@@ -52,7 +67,7 @@ ASK = os.path.join(PROJECT_ROOT, "bin", "question-orchestrator.sh")
 
 print("🔊 Loading openWakeWord model…")
 oww = Model(vad_threshold=VAD_THRESHOLD)
-print("Available wakewords:", list(oww.models.keys()))
+# print("Available wakewords:", list(oww.models.keys()))
 
 # Display available tools
 print("\n🛠️  Available Tools:")

@@ -24,6 +24,12 @@ warnings.filterwarnings(
 print("🔧 Loading local configuration...")
 load_config('local')
 
+# Display mode and model info
+print(f"📡 Mode: local")
+print(f"🤖 LLM Provider: {get_config_value('LLM_PROVIDER', 'ollama')}")
+print(f"🧠 Model: {get_config_value('OLLAMA_MODEL', 'qwen3')}")
+print()
+
 # ---- CONFIG (from env) ----
 WAKE_MODEL = get_config_value("WAKE_MODEL", "hey_jarvis")
 SAMPLE_RATE = get_int("SAMPLE_RATE", 16000)
@@ -51,7 +57,7 @@ ASK = os.path.join(PROJECT_ROOT, "bin", "question-orchestrator-local.sh")
 
 print("🔊 Loading openWakeWord model…")
 oww = Model(vad_threshold=VAD_THRESHOLD)
-print("Available wakewords:", list(oww.models.keys()))
+# print("Available wakewords:", list(oww.models.keys()))
 
 # Display available tools
 print("\n🛠️  Available Tools:")

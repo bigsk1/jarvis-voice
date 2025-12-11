@@ -4,6 +4,7 @@ LLM Provider Abstraction Layer
 Supports OpenAI, Anthropic, xAI (Grok), and Ollama with unified interface.
 """
 import os
+import sys
 import json
 from typing import Dict, Any, List, Optional, Tuple
 from abc import ABC, abstractmethod
@@ -474,7 +475,7 @@ class XAIProvider(LLMProvider):
 
 
 class OllamaProvider(LLMProvider):
-    """Ollama provider using structured prompting (no native tool calling)."""
+    """Ollama provider using native tool calling API (Ollama 0.3.0+)."""
     
     def __init__(self, base_url: str, model: str):
         """Initialize Ollama provider."""
@@ -498,9 +499,7 @@ class OllamaProvider(LLMProvider):
             }
             
             # Extended context for capable models
-            options = {}
-            if any(m in self.model.lower() for m in ['qwen', 'mistral-nemo']):
-                options["num_ctx"] = 8192
+            options = self._get_context_options()
             
             # Allow longer output for code generation
             if max_tokens:
@@ -523,6 +522,44 @@ class OllamaProvider(LLMProvider):
             print(f"Ollama API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     
+    def _get_context_options(self) -> Dict[str, Any]:
+        """Get context window options for the current model."""
+        options = {}
+        # Extended context for models that support it
+        # Configurable via OLLAMA_CONTEXT_WINDOW in local.env
+        # Models known to support large context: qwen3, ministral, mistral-nemo
+        model_lower = self.model.lower()
+        if any(m in model_lower for m in ['qwen3', 'ministral', 'mistral-nemo', 'llama3']):
+            from config_loader import get_int
+            context_window = get_int('OLLAMA_CONTEXT_WINDOW', 32000)
+            options["num_ctx"] = context_window
+        return options
+    
+    def _convert_to_ollama_tools(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Convert tools from Anthropic format to Ollama/OpenAI native format.
+        
+        Anthropic format (input):
+        {"name": "...", "description": "...", "input_schema": {...}}
+        
+        Ollama format (output):
+        {"type": "function", "function": {"name": "...", "description": "...", "parameters": {...}}}
+        """
+        ollama_tools = []
+        for tool in tools:
+            # Handle both Anthropic format (input_schema) and OpenAI format (parameters)
+            parameters = tool.get("input_schema") or tool.get("parameters", {})
+            
+            ollama_tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool.get("name", "unknown"),
+                    "description": tool.get("description", ""),
+                    "parameters": parameters
+                }
+            })
+        return ollama_tools
+    
     def chat_with_tools(
         self,
         messages: List[Dict[str, str]],
@@ -531,17 +568,154 @@ class OllamaProvider(LLMProvider):
         enable_thinking: bool = False
     ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
         """
-        Send chat with Ollama using structured prompting with smart corrections.
-        Since Ollama doesn't have native tool calling, we use a structured prompt.
+        Send chat with Ollama using native tool calling API with structured prompting fallback.
+        
+        This uses Ollama's native tool calling (available since v0.3.0) which is more
+        reliable than structured prompting, especially for models like ministral-3.
+        
+        For models that don't support native tool calling (e.g., deepseek-r1), it falls
+        back to structured prompting where tools are described in the system prompt.
         
         Returns:
             Tuple of (text_response, tool_call, usage_info, thinking)
-            - usage_info is None for Ollama (no cost tracking for local models)
-            - thinking is None for most Ollama models (only certain models support it)
+            - usage_info contains token counts (cost is always 0 for local models)
+            - thinking is available for reasoning models (qwen3:14b, etc.)
         """
         import requests
+        import os
         
-        # Build tool descriptions
+        # Convert tools to Ollama/OpenAI format
+        ollama_tools = self._convert_to_ollama_tools(tools) if tools else []
+        
+        # Build full messages with system prompt
+        full_messages = []
+        if system_prompt:
+            full_messages.append({"role": "system", "content": system_prompt})
+        full_messages.extend(messages)
+        
+        try:
+            # Build request
+            request_data = {
+                "model": self.model,
+                "messages": full_messages,
+                "stream": False
+            }
+            
+            # Add tools if provided (native tool calling)
+            if ollama_tools:
+                request_data["tools"] = ollama_tools
+            
+            # Set context window options
+            options = self._get_context_options()
+            if options:
+                request_data["options"] = options
+            
+            # Debug logging
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"DEBUG: Ollama request - model={self.model}, tools={len(ollama_tools)}, messages={len(full_messages)}", file=sys.stderr)
+            
+            response = requests.post(
+                f"{self.base_url}/api/chat",
+                json=request_data,
+                timeout=180  # 3 minutes for local models
+            )
+            
+            # Check for "does not support tools" error (HTTP 400) - fall back to structured prompting
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    if "does not support tools" in error_data.get("error", ""):
+                        if os.environ.get('JARVIS_DEBUG'):
+                            print(f"DEBUG: Model {self.model} doesn't support native tools, falling back to structured prompting", file=sys.stderr)
+                        return self._chat_with_tools_structured(messages, tools, system_prompt, enable_thinking)
+                except json.JSONDecodeError:
+                    pass
+            
+            response.raise_for_status()
+            
+            result = response.json()
+            message = result.get("message", {})
+            content = message.get("content", "")
+            tool_calls = message.get("tool_calls", [])
+            
+            # Extract token counts from Ollama response
+            usage_info = None
+            eval_count = result.get("eval_count", 0)
+            prompt_eval_count = result.get("prompt_eval_count", 0)
+            if eval_count or prompt_eval_count:
+                usage_info = {
+                    "input_tokens": prompt_eval_count,
+                    "output_tokens": eval_count,
+                    "total_tokens": prompt_eval_count + eval_count,
+                    "cost_usd": 0.0,  # Local models have no cost
+                    "note": "local model - no cost"
+                }
+            
+            # Extract thinking if present (qwen3:14b and other reasoning models)
+            thinking = None
+            if "thinking" in message:
+                thinking = message["thinking"]
+            elif "thinking" in result:
+                thinking = result["thinking"]
+            
+            # Check if tool was called (native tool calling response)
+            if tool_calls:
+                # Take the first tool call
+                tool_call = tool_calls[0]
+                function_data = tool_call.get("function", {})
+                
+                # Parse arguments - can be dict or JSON string
+                arguments = function_data.get("arguments", {})
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                
+                raw_call = {
+                    "name": function_data.get("name", ""),
+                    "arguments": arguments
+                }
+                
+                # Apply smart corrections for local models
+                from local_model_corrections import correct_tool_call
+                corrected_call = correct_tool_call(raw_call)
+                
+                if os.environ.get('JARVIS_DEBUG'):
+                    print(f"DEBUG: Ollama tool call - {corrected_call['name']} with {corrected_call['arguments']}", file=sys.stderr)
+                
+                return None, corrected_call, usage_info, thinking
+            
+            # No tool call - return text response (Q&A mode)
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"DEBUG: Ollama Q&A response - {len(content)} chars", file=sys.stderr)
+            
+            return content, None, usage_info, thinking
+            
+        except requests.exceptions.Timeout:
+            print(f"Ollama API timeout after 180s", file=sys.stderr)
+            return "Error: Request timed out. The model may be overloaded.", None, None, None
+        except Exception as e:
+            print(f"Ollama API error: {e}", file=sys.stderr)
+            return f"Error: {str(e)}", None, None, None
+    
+    def _chat_with_tools_structured(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict[str, Any]],
+        system_prompt: Optional[str] = None,
+        enable_thinking: bool = False
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+        """
+        Fallback: Send chat using structured prompting for models that don't support native tools.
+        
+        This is used for models like deepseek-r1 that don't have native tool calling support.
+        Tools are described in the system prompt and the model is asked to output JSON.
+        """
+        import requests
+        import os
+        
+        # Build tool descriptions for prompt
         tools_text = self._format_tools_for_prompt(tools)
         
         # Create enhanced system prompt with tool instructions
@@ -569,34 +743,31 @@ CRITICAL RULES:
         full_messages.extend(messages)
         
         try:
-            # Build request with extended context for capable models
             request_data = {
                 "model": self.model,
                 "messages": full_messages,
                 "stream": False
             }
             
-            # Extended context for models that support it
-            # Configurable via OLLAMA_CONTEXT_WINDOW in local.env
-            # See local.env for VRAM usage guide and recommendations
-            if any(m in self.model.lower() for m in ['qwen3', 'mistral-nemo']):
-                from config_loader import get_int
-                context_window = get_int('OLLAMA_CONTEXT_WINDOW', 12288)
-                request_data["options"] = {"num_ctx": context_window}
-                # see bin/measure-baseline-tokens for current usage
+            # Set context window options
+            options = self._get_context_options()
+            if options:
+                request_data["options"] = options
+            
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"DEBUG: Ollama structured prompting fallback - model={self.model}", file=sys.stderr)
             
             response = requests.post(
                 f"{self.base_url}/api/chat",
                 json=request_data,
-                timeout=180  # 3 minutes for local models (qwen3-vl vision model is heavy with full tool context)
+                timeout=180
             )
             response.raise_for_status()
             
             result = response.json()
-            content = result["message"]["content"]
+            content = result.get("message", {}).get("content", "")
             
-            # Extract token counts from Ollama response
-            # Ollama returns: eval_count (output tokens), prompt_eval_count (input tokens)
+            # Extract token counts
             usage_info = None
             eval_count = result.get("eval_count", 0)
             prompt_eval_count = result.get("prompt_eval_count", 0)
@@ -605,21 +776,19 @@ CRITICAL RULES:
                     "input_tokens": prompt_eval_count,
                     "output_tokens": eval_count,
                     "total_tokens": prompt_eval_count + eval_count,
-                    "cost_usd": 0.0,  # Local models have no cost
-                    "note": "local model - no cost"
+                    "cost_usd": 0.0,
+                    "note": "local model - no cost (structured prompting fallback)"
                 }
             
-            # Extract thinking if present (qwen3:14b and other reasoning models)
+            # Extract thinking if present
             thinking = None
             if "thinking" in result.get("message", {}):
                 thinking = result["message"]["thinking"]
             elif "thinking" in result:
                 thinking = result["thinking"]
             
-            # Try to parse as tool call
-            # Handle both pure JSON and markdown-wrapped JSON
+            # Try to parse as tool call (handle markdown-wrapped JSON)
             try:
-                # Strip whitespace and try direct JSON parse
                 stripped = content.strip()
                 
                 # Remove markdown code blocks if present
@@ -632,9 +801,8 @@ CRITICAL RULES:
                     if stripped.endswith("```"):
                         stripped = stripped[:-3]
                 
-                # Extract JSON if wrapped in markdown or text
+                # Extract JSON if present
                 if "{" in stripped and "}" in stripped:
-                    # Find the JSON object
                     start = stripped.index("{")
                     end = stripped.rindex("}") + 1
                     json_str = stripped[start:end]
@@ -650,20 +818,19 @@ CRITICAL RULES:
                         from local_model_corrections import correct_tool_call
                         corrected_call = correct_tool_call(raw_call)
                         
-                        return None, corrected_call, usage_info, thinking  # Return thinking if available
+                        return None, corrected_call, usage_info, thinking
             except (json.JSONDecodeError, ValueError):
                 pass
             
-            # Otherwise return as text
-            return content, None, usage_info, thinking  # Return thinking if available
+            # Otherwise return as text (Q&A mode)
+            return content, None, usage_info, thinking
             
         except Exception as e:
-            import sys
-            print(f"Ollama API error: {e}", file=sys.stderr)
+            print(f"Ollama API error (structured fallback): {e}", file=sys.stderr)
             return f"Error: {str(e)}", None, None, None
     
     def _format_tools_for_prompt(self, tools: List[Dict[str, Any]]) -> str:
-        """Format tools as text for Ollama prompt."""
+        """Format tools as text for fallback structured prompting."""
         tool_descriptions = []
         for tool in tools:
             name = tool.get("name", "unknown")
