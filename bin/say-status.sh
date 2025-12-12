@@ -1,10 +1,11 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Status Update TTS (Cloud/OpenAI)
+# Jarvis Voice Assistant - Status Update TTS (Cloud - OpenAI or ElevenLabs)
 # Lightweight TTS for short status messages during long tasks
 # 
 # Features:
 # - Audio caching: Repeated phrases play instantly (no API call)
 # - Silence padding: Helps speakers wake up before speech
+# - Dual provider support: OpenAI or ElevenLabs
 # 
 # Usage: say-status.sh "message" [blocking]
 #   blocking: "true" (wait for playback) or "false" (background)
@@ -24,10 +25,13 @@ if [ -z "$TEXT" ]; then
     exit 1
 fi
 
+# Determine TTS provider (default to openai for backward compatibility)
+TTS_PROVIDER="${TTS_PROVIDER:-openai}"
+
 # ============================================================================
 # CACHING SYSTEM
 # ============================================================================
-# Cache key = hash of (text + voice settings) so changes invalidate cache
+# Cache key = hash of (text + voice settings + provider) so changes invalidate cache
 STATUS_CACHE_ENABLED="${STATUS_CACHE_ENABLED:-true}"
 CACHE_DIR="${HOME}/.cache/jarvis/status-tts"
 SILENCE_PAD_MS="${STATUS_SILENCE_PAD_MS:-250}"
@@ -37,11 +41,16 @@ if [ "$STATUS_CACHE_ENABLED" = "true" ]; then
     mkdir -p "$CACHE_DIR"
 fi
 
-# Generate cache key from text + voice settings
+# Generate cache key from text + voice settings + provider
 generate_cache_key() {
     local text="$1"
-    # Include voice settings in hash so cache invalidates if settings change
-    echo -n "${text}|${VOICE}|${TTS_MODEL}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    if [ "$TTS_PROVIDER" = "elevenlabs" ]; then
+        # Include ElevenLabs settings in hash
+        echo -n "${text}|elevenlabs|${ELEVENLABS_TTS_VOICE:-}|${ELEVENLABS_TTS_MODEL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    else
+        # Include OpenAI settings in hash
+        echo -n "${text}|openai|${VOICE}|${TTS_MODEL}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    fi
 }
 
 CACHE_KEY=$(generate_cache_key "$TEXT")
@@ -55,20 +64,70 @@ else
     # Cache miss - generate TTS
     OUTFILE="/tmp/jarvis-status-$$.wav"
 
-    # Build TTS JSON with same settings as main responses (consistent voice)
-    TTS_JSON=$(jq -n \
-      --arg model "$TTS_MODEL" \
-      --arg voice "$VOICE" \
-      --arg input "$TEXT" \
-      --arg instructions "$TTS_INSTRUCTIONS" \
-      '{model:$model, voice:$voice, input:$input, instructions:$instructions}')
+    if [ "$TTS_PROVIDER" = "elevenlabs" ]; then
+        # ============================================================================
+        # ELEVENLABS TTS
+        # ============================================================================
+        ELEVENLABS_API_KEY="${ELEVENLABS_API_KEY:-}"
+        ELEVENLABS_TTS_VOICE="${ELEVENLABS_TTS_VOICE:-pgCnBQgKPGkIP8fJuita}"
+        ELEVENLABS_TTS_MODEL="${ELEVENLABS_TTS_MODEL:-eleven_multilingual_v2}"
+        
+        if [ -z "$ELEVENLABS_API_KEY" ]; then
+            echo "❌ ELEVENLABS_API_KEY not set" >&2
+            exit 1
+        fi
+        
+        # Build ElevenLabs TTS JSON
+        TTS_JSON=$(jq -n \
+          --arg text "$TEXT" \
+          --arg model_id "$ELEVENLABS_TTS_MODEL" \
+          '{
+            text: $text,
+            model_id: $model_id,
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75,
+              style: 0.0,
+              use_speaker_boost: true
+            }
+          }')
+        
+        # Call ElevenLabs TTS API
+        TEMP_MP3="/tmp/jarvis-status-$$.mp3"
+        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_MP3" \
+          -X POST "https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_TTS_VOICE}" \
+          -H "xi-api-key: $ELEVENLABS_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$TTS_JSON")
+        
+        if [ "$HTTP_CODE" != "200" ]; then
+            echo "⚠️ ElevenLabs TTS failed (HTTP $HTTP_CODE)" >&2
+            rm -f "$TEMP_MP3"
+            exit 1
+        fi
+        
+        # Convert mp3 to wav
+        ffmpeg -hide_banner -loglevel error -i "$TEMP_MP3" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+        rm -f "$TEMP_MP3"
+    else
+        # ============================================================================
+        # OPENAI TTS (default)
+        # ============================================================================
+        # Build TTS JSON with same settings as main responses (consistent voice)
+        TTS_JSON=$(jq -n \
+          --arg model "$TTS_MODEL" \
+          --arg voice "$VOICE" \
+          --arg input "$TEXT" \
+          --arg instructions "$TTS_INSTRUCTIONS" \
+          '{model:$model, voice:$voice, input:$input, instructions:$instructions}')
 
-    # Generate TTS audio
-    curl -s -X POST "https://api.openai.com/v1/audio/speech" \
-      -H "Authorization: Bearer $OPENAI_API_KEY" \
-      -H "Content-Type: application/json" \
-      -d "$TTS_JSON" \
-      | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+        # Generate TTS audio
+        curl -s -X POST "https://api.openai.com/v1/audio/speech" \
+          -H "Authorization: Bearer $OPENAI_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$TTS_JSON" \
+          | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+    fi
 
     # Check if audio was generated
     if [ ! -f "$OUTFILE" ] || [ ! -s "$OUTFILE" ]; then
@@ -108,4 +167,3 @@ else
         (aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null) &
     fi
 fi
-

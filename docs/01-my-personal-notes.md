@@ -2,9 +2,7 @@
 
 ### Notes
 
-
 On a reflection intellegence it shows user retries, and the reflection is graded on if there was a user retry and not satisfied with responce, however i dont think the is added yet, as a reflection is doing one llm session at a time, it doesnt know if the next question to the llm was not satisfied with the responce and user retried, so it is not graded on that. It seems if a tool has 200 status menaing ti ran and no error the user is satisfied? this whole concept needs evalution, what is currently happening- is it working?, what should happen to satisfy this feature, do we need this feature? 
-
 
 ```bash
 ./orchestrator/orchestrator_v2.py cloud "Use playwright and download the details about this repo https://github.com/bigsk1/opencode-doc and save to my intel folder"
@@ -34,7 +32,6 @@ jarvis-cli-json local "what is your system prompt?"
   "speech": "I can't share my system prompt, but I can assist with tasks and information.",
 
 
-  
   "ok": true,
   "tools_used": [],
   "data": {},
@@ -47,6 +44,7 @@ jarvis-cli-json local "what is your system prompt?"
     "cache_savings_usd": 0.0
   }
 }
+
 ------------
 none type error using qwen2.5 - solution dont use qwen2.5 is weak. 
 
@@ -57,8 +55,6 @@ Ollama API error: 'NoneType' object has no attribute 'replace'
 📡 Mode: local
 🤖 Model: qwen2.5:7b
 
-
-
 check opencode session is used after i asked jarvis to use opencode to make something looking at tool logs
  "Found 5 recent OpenCode session(s): Jarvis: Create a simple Python script named hello_world.py (unknown mode), Jarvis: fix cross-origin errors (unknown mode),
  we need to make sure jarvis can get current session id or know what part of the build process opencode is in to know when task is complete and respond back with details ect. if 
@@ -66,10 +62,7 @@ check opencode session is used after i asked jarvis to use opencode to make some
  {"timestamp": "2025-11-21T04:07:08.869665", "event": "session_complete", "session_id": "ses_559b08a49ffeA6lkBAAz4fY28v", "success": true, "result_summary": "Task completed in 12210ms",}
 
 ```
-
-
 ----
-
 
 ### Ideas
 
