@@ -43,9 +43,9 @@ if [ "$TTS_PROVIDER" = "elevenlabs" ]; then
         text: $text,
         model_id: $model_id,
         voice_settings: {
-          stability: 0.5,
+          stability: 0.7,
           similarity_boost: 0.75,
-          style: 0.0,
+          style: 0.5,
           use_speaker_boost: true
         }
       }')
