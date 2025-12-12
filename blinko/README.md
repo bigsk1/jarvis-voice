@@ -64,7 +64,6 @@ This will:
 2. ✅ Pull Docker image
 3. ✅ Create data directories
 4. ✅ Start Blinko + PostgreSQL
-5. ✅ Mount `../docs/` folder (read-only)
 
 ### Manual Setup
 
@@ -108,8 +107,6 @@ volumes:
   # Blinko data (attachments, uploads)
   - ./data:/app/.blinko
   
-  # Your Jarvis docs (read-only - browse in Blinko UI)
-  - ../docs:/app/docs:ro
 ```
 
 ---
