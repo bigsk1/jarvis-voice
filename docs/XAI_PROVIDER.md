@@ -119,7 +119,42 @@ Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic
 - Structured outputs
 - Works perfectly with Jarvis's tool registry
 
-### 5. **Image Generation**
+### 5. **Built-in Live Search** ⭐ NEW
+
+Enable Grok's native web search via `XAI_SEARCH=true`:
+
+```bash
+# In config/cloud.env
+XAI_SEARCH=true   # Enable live search (default: true)
+```
+
+**How It Works**:
+- Grok searches web + X posts **internally** via `search_parameters`
+- Auto mode: Only searches when query needs real-time data
+- Returns synthesized answers with citations
+- **No external tool calls** - cleaner context, faster responses
+
+**Benefits**:
+- Eliminates endless Brave Search tool loops
+- No JSON results cluttering context window
+- Real-time data with proper citations
+- Works transparently with existing tools
+
+**Example**:
+```
+Query: "What's the current Bitcoin price?"
+
+Before (external tools):
+  → Router → Brave Search → JSON → Parse → Answer (6+ tool calls)
+
+After (native search):
+  → Grok searches internally → Synthesized answer with citations
+  → No tool calls, instant response!
+```
+
+**Cost**: Standard token pricing (search results count as input tokens)
+
+### 6. **Image Generation**
 
 - `grok-2-image-1212`: $0.07/image (131K context)
 - Not yet integrated into Jarvis, but available
@@ -140,6 +175,11 @@ XAI_API_KEY="xai-..."
 # Model Selection
 # Recommended: grok-4-fast-reasoning-latest (reasoning + 2M context)
 XAI_MODEL="grok-4-fast-reasoning-latest"
+
+# Native Web Search (NEW!)
+# When true: Grok searches web + X posts internally (no external tool calls)
+# When false: Uses external tools (Brave Search) like before
+XAI_SEARCH=true
 
 # Alternative models:
 # XAI_MODEL="grok-4-1-fast-non-reasoning-latest"  # No reasoning
@@ -461,6 +501,7 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 ✅ **Automatic caching** (90% discount)  
 ✅ **Reasoning mode** at no extra cost  
 ✅ **Native function calling**  
+✅ **Built-in live search** (XAI_SEARCH=true) ⭐ NEW  
 ✅ **Drop-in replacement** (no code changes)  
 
 **Monthly Savings**: $60-80 vs Claude, $25-35 vs GPT (for typical usage)
@@ -471,8 +512,8 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 
 ---
 
-**Last Updated**: 2025-11-21  
-**Version**: 1.0 (Initial xAI integration)
+**Last Updated**: 2025-12-12  
+**Version**: 1.1 (Added native web search support)
 
 **See Also**:
 - [AGENTS.md](../AGENTS.md) - Coding guidelines

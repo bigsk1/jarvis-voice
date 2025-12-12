@@ -9,7 +9,7 @@
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
 - **[DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)** - 🆕 **Complete disaster recovery guide** (rebuild from scratch) ⭐ CRITICAL
 - **[../config/README.md](../config/README.md)** - Configuration guide
-- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, 10-15x cheaper!) ⭐ RECOMMENDED
+- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
@@ -261,6 +261,20 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-12-12:**
+- ✅ **Native Web Search for Cloud Providers** - Built-in real-time search ⭐ MAJOR
+  - **XAI_SEARCH=true**: Grok's live search (web + X posts) via `search_parameters`
+  - **ANTHROPIC_SEARCH=true**: Claude's web search tool with beta header
+  - Auto mode: Only searches when query needs real-time data
+  - No tool calls needed - cleaner context, faster responses
+  - Eliminates endless Brave Search loops
+  - Works transparently with existing tool orchestration
+- ✅ **Blocked Tools Startup Filter** - Hide blocked tools from startup display
+  - Shows "(🚫 N blocked tool(s) hidden)" count
+  - Cleaner startup output matching actual LLM capabilities
+- ✅ **Config Naming Cleanup** - CHAT_MODEL → OPENAI_MODEL
+  - Consistent pattern: {PROVIDER}_MODEL across all providers
 
 **2025-12-11:**
 - ✅ **Stash System** - Artifact storage for multi-step workflows ⭐ NEW
@@ -560,6 +574,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-11 (v2.10)  
-**Latest:** Stash System, PDF Create, Printer, Speaker Volume, Improved Tool Descriptions  
+**Last Updated:** 2025-12-12 (v2.11)  
+**Latest:** Native Web Search (XAI_SEARCH, ANTHROPIC_SEARCH), Stash System, PDF Create, Printer, Speaker Volume  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

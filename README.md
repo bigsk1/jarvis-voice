@@ -9,6 +9,11 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
+- **Native Web Search** - Built-in real-time search for xAI and Anthropic ⭐ NEW
+  - `XAI_SEARCH=true`: Grok searches web + X posts internally (no tool calls!)
+  - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations
+  - Auto mode: Only searches when query needs real-time data
+  - Eliminates endless search tool loops, cleaner context
 - **Stash System** - Artifact storage for multi-step workflows (URL downloads, SSRF protection) ⭐ NEW
 - **PDF Create** - Generate PDFs from stash files, images, or text ⭐ NEW
 - **Printer Tool** - Print from stash, files, or Canvas pages (CUPS integration) ⭐ NEW
@@ -983,6 +988,10 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
+- ✅ **Native Web Search** - Built-in real-time search for cloud providers ⭐ NEW
+  - `XAI_SEARCH=true`: Grok live search (web + X posts, auto mode)
+  - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations
+  - No external tool calls - cleaner context, faster responses
 - ✅ **Network Tools** - Network diagnostics (ping, DNS, port, HTTP/HTTPS, traceroute) ⭐ NEW
   - Enhanced ping with min/avg/max/loss statistics
   - HTTP/HTTPS checks with SSL verification and response times
@@ -1135,6 +1144,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.10 (December 2025)  
+**Current Version:** v2.11 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Stash System (artifact storage, SSRF protection), PDF Create, Printer Tool (CUPS), Speaker Volume Control
+**Latest Features:** Native Web Search (XAI_SEARCH, ANTHROPIC_SEARCH), Stash System, PDF Create, Printer Tool, Speaker Volume
