@@ -381,7 +381,7 @@ Assuming 90% cache hit rate after first query:
    ```bash
    # Change from:
    LLM_PROVIDER="openai"
-   CHAT_MODEL="gpt-5.1-chat-latest"
+   OPENAI_MODEL="gpt-5.1-chat-latest"
    
    # To:
    LLM_PROVIDER="xai"

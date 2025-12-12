@@ -49,7 +49,7 @@
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
       },
       "description": "The Primary web search tool. Search the web for news, local search, images and videos using Brave Search, Pro AI API key is enabled",
-      "enabled": true
+      "enabled": false
     },
     "sequentialthinking": {
       "command": "docker",

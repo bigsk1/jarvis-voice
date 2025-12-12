@@ -77,7 +77,7 @@ if [ "$MODE" = "local" ]; then
 else
     if [[ "$MODEL1" == gpt* ]]; then
         sed -i "s/^LLM_PROVIDER=.*/LLM_PROVIDER=\"openai\"/" config/cloud.env
-        sed -i "s/^CHAT_MODEL=.*/CHAT_MODEL=\"$MODEL1\"/" config/cloud.env
+        sed -i "s/^OPENAI_MODEL=.*/OPENAI_MODEL=\"$MODEL1\"/" config/cloud.env
     else
         sed -i "s/^LLM_PROVIDER=.*/LLM_PROVIDER=\"anthropic\"/" config/cloud.env
         sed -i "s/^ANTHROPIC_MODEL=.*/ANTHROPIC_MODEL=\"$MODEL1\"/" config/cloud.env
@@ -176,7 +176,7 @@ if [ "$MODE" = "local" ]; then
 else
     if [[ "$MODEL2" == gpt* ]]; then
         sed -i "s/^LLM_PROVIDER=.*/LLM_PROVIDER=\"openai\"/" config/cloud.env
-        sed -i "s/^CHAT_MODEL=.*/CHAT_MODEL=\"$MODEL2\"/" config/cloud.env
+        sed -i "s/^OPENAI_MODEL=.*/OPENAI_MODEL=\"$MODEL2\"/" config/cloud.env
     else
         sed -i "s/^LLM_PROVIDER=.*/LLM_PROVIDER=\"anthropic\"/" config/cloud.env
         sed -i "s/^ANTHROPIC_MODEL=.*/ANTHROPIC_MODEL=\"$MODEL2\"/" config/cloud.env

@@ -69,14 +69,24 @@ print("🔊 Loading openWakeWord model…")
 oww = Model(vad_threshold=VAD_THRESHOLD)
 # print("Available wakewords:", list(oww.models.keys()))
 
-# Display available tools
+# Display available tools (excluding blocked tools)
 print("\n🛠️  Available Tools:")
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "lib"))
 from tool_schema import ToolRegistry
 mcp_config = os.path.join(PROJECT_ROOT, "config", "mcp-servers.json")
 registry = ToolRegistry(os.path.join(PROJECT_ROOT, "skills"), mcp_config)
+
+# Get blocked tools list from config
+blocked_tools_str = get_config_value("BLOCKED_TOOLS", "")
+blocked_tools = set(t.strip() for t in blocked_tools_str.split(",") if t.strip())
+
 tools = sorted(registry.list_tools())
-for i, tool_name in enumerate(tools, 1):
+displayed = 0
+for tool_name in tools:
+    # Skip blocked tools
+    if tool_name in blocked_tools:
+        continue
+    displayed += 1
     tool_schema = registry.get_tool(tool_name)
     # Show tool with icon based on permissions
     if tool_schema.permissions.get("dangerous"):
@@ -87,7 +97,10 @@ for i, tool_name in enumerate(tools, 1):
         icon = "⚡"
     else:
         icon = "✅"
-    print(f"  {i:2d}. {icon} {tool_name:20s} - {tool_schema.description[:60]}...")
+    print(f"  {displayed:2d}. {icon} {tool_name:20s} - {tool_schema.description[:100]}...")
+
+if blocked_tools:
+    print(f"\n  (🚫 {len(blocked_tools)} blocked tool(s) hidden)")
 print()
 
 

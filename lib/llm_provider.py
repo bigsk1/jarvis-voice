@@ -145,7 +145,14 @@ class OpenAIProvider(LLMProvider):
 
 
 class AnthropicProvider(LLMProvider):
-    """Anthropic Claude provider using tool calling."""
+    """
+    Anthropic Claude provider using tool calling.
+    
+    Features:
+    - Prompt caching (90% cost reduction on cache hits)
+    - Extended thinking mode (Claude Sonnet 4+)
+    - Web search tool when ANTHROPIC_SEARCH=true (requires beta header)
+    """
     
     def __init__(self, api_key: str, model: str = "claude-sonnet-4-5-20250929"):
         """Initialize Anthropic provider."""
@@ -156,6 +163,14 @@ class AnthropicProvider(LLMProvider):
         
         self.client = Anthropic(api_key=api_key)
         self.model = model
+        
+        # Check if web search is enabled (ANTHROPIC_SEARCH=true in cloud.env)
+        # When enabled, Claude can search the web for real-time info
+        from config_loader import get_config_value
+        self.enable_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
+        
+        if self.enable_search and os.environ.get('JARVIS_DEBUG'):
+            print(f"DEBUG: Anthropic Web Search enabled", file=sys.stderr)
     
     def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
         """
@@ -235,6 +250,23 @@ class AnthropicProvider(LLMProvider):
                 else:
                     tools_with_cache.append(tool)
             
+            # Add web search tool if enabled (ANTHROPIC_SEARCH=true)
+            # This is a server-side tool - Claude can search the web for real-time info
+            extra_headers = {}
+            if self.enable_search:
+                # Add web search as first tool (server-side, special type)
+                web_search_tool = {
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 5  # Limit searches per request
+                }
+                tools_with_cache.insert(0, web_search_tool)
+                # Required beta header for web search
+                extra_headers["anthropic-beta"] = "web-search-2025-03-05"
+                
+                if os.environ.get('JARVIS_DEBUG'):
+                    print(f"DEBUG: Added Anthropic web search tool", file=sys.stderr)
+            
             # Add thinking parameter if enabled and supported
             # Note: max_tokens must be > thinking.budget_tokens (Anthropic requirement)
             # Base: 1024 for normal responses, 8192 for thinking mode (generous for complex tasks)
@@ -247,6 +279,10 @@ class AnthropicProvider(LLMProvider):
                 "messages": messages,
                 "tools": tools_with_cache
             }
+            
+            # Add extra headers if any (e.g., web search beta)
+            if extra_headers:
+                api_params["extra_headers"] = extra_headers
             
             # Enable extended thinking for supported models
             if enable_thinking:
@@ -360,6 +396,7 @@ class XAIProvider(LLMProvider):
     - Native function calling (OpenAI-compatible)
     - Reasoning mode support (grok-*-reasoning-* models)
     - Structured outputs
+    - Live Search: Real-time web/X data when XAI_SEARCH=true (auto mode)
     """
     
     def __init__(self, api_key: str, model: str = "grok-4-1-fast-non-reasoning-latest"):
@@ -376,9 +413,17 @@ class XAIProvider(LLMProvider):
         )
         self.model = model
         self.is_reasoning_model = "reasoning" in model.lower()
+        
+        # Check if live search is enabled (XAI_SEARCH=true in cloud.env)
+        # When enabled, Grok can search web/X in real-time for current info
+        from config_loader import get_config_value
+        self.enable_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
+        
+        if self.enable_search and os.environ.get('JARVIS_DEBUG'):
+            print(f"DEBUG: xAI Live Search enabled (mode=auto)", file=sys.stderr)
     
     def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
-        """Simple chat without tools."""
+        """Simple chat without tools. Supports live search when XAI_SEARCH=true."""
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -388,10 +433,20 @@ class XAIProvider(LLMProvider):
             params = {"model": self.model, "messages": messages}
             if max_tokens:
                 params["max_tokens"] = max_tokens
+            
+            # Add live search if enabled (Grok searches web/X in auto mode)
+            if self.enable_search:
+                params["extra_body"] = {
+                    "search_parameters": {
+                        "mode": "auto",
+                        "max_results": 8,
+                        "return_citations": True
+                    }
+                }
+            
             response = self.client.chat.completions.create(**params)
             return response.choices[0].message.content or ""
         except Exception as e:
-            import sys
             print(f"xAI API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     
@@ -431,6 +486,17 @@ class XAIProvider(LLMProvider):
             if tools:
                 request_params["tools"] = tools
                 request_params["tool_choice"] = "auto"
+            
+            # Add live search if enabled (Grok searches web/X in auto mode)
+            # This allows Grok to ground responses with real-time data
+            if self.enable_search:
+                request_params["extra_body"] = {
+                    "search_parameters": {
+                        "mode": "auto",
+                        "max_results": 8,
+                        "return_citations": True
+                    }
+                }
             
             response = self.client.chat.completions.create(**request_params)
             

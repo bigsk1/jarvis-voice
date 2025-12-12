@@ -56,7 +56,7 @@ ANSWER=$(
     -H "Authorization: Bearer $OPENAI_API_KEY" \
     -H "Content-Type: application/json" \
     -d "{
-      \"model\": \"$CHAT_MODEL\",
+      \"model\": \"$OPENAI_MODEL\",
       \"messages\": [
         {\"role\":\"system\",\"content\":\"$SYSTEM_PROMPT\"},
         {\"role\":\"user\",\"content\":\"$QUESTION\"}

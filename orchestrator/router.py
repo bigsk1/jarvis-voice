@@ -20,7 +20,7 @@ class IntentRouter:
         """Initialize router with configuration."""
         self.mode = mode
         load_config(mode)
-        self.chat_model = get_config_value("CHAT_MODEL", "gpt-4o-mini")
+        self.OPENAI_MODEL = get_config_value("OPENAI_MODEL", "gpt-4o-mini")
         self.api_key = get_config_value("OPENAI_API_KEY", "")
         
     def route(self, transcript: str) -> Dict[str, Any]:

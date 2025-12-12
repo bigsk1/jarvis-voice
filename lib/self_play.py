@@ -566,7 +566,7 @@ Generate {count} queries:"""
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),
-                model=get_config_value("CHAT_MODEL", "gpt-4o"),
+                model=get_config_value("OPENAI_MODEL", "gpt-4o"),
             )
     
     def _log_result(self, session_id: str, result: Dict[str, Any]):

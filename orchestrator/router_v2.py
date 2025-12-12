@@ -417,7 +417,7 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),
-                model=get_config_value("CHAT_MODEL", "gpt-5-mini-2025-08-07")
+                model=get_config_value("OPENAI_MODEL", "gpt-5-mini-2025-08-07")
             )
         elif provider_type == "anthropic":
             return create_provider(

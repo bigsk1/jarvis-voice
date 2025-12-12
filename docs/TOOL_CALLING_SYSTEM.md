@@ -282,7 +282,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-20250514"
 ```bash
 LLM_PROVIDER="openai"
 OPENAI_API_KEY="sk-..."
-CHAT_MODEL="gpt-4o-mini"
+OPENAI_MODEL="gpt-4o-mini"
 ```
 
 ### To Ollama (Local)

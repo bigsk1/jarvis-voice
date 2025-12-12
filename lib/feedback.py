@@ -253,7 +253,7 @@ class FeedbackCollector:
                         model=self.model_name
                     )
                 elif provider_type == "openai":
-                    self.model_name = get_config_value("CHAT_MODEL", "gpt-4o")
+                    self.model_name = get_config_value("OPENAI_MODEL", "gpt-4o")
                     self.provider = create_provider(
                         "openai",
                         api_key=get_config_value("OPENAI_API_KEY"),
