@@ -1,0 +1,46 @@
+{
+  "enabled": true,
+  "name": "spotify",
+  "description": "Control Spotify music playback. Play/pause music, skip tracks, search, control volume, switch devices, and share songs. Examples: 'play some jazz', 'what's playing', 'skip this song', 'pause music', 'play on Fire TV', 'volume 50', 'share this song'.",
+  "script": "spotify.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["play", "pause", "next", "previous", "current", "search", "volume", "devices", "transfer", "shuffle", "queue", "share"],
+        "description": "Action to perform. 'play' resumes or plays query. 'current' shows what's playing. 'transfer' switches device. 'share' gets shareable link and album art for current track."
+      },
+      "query": {
+        "type": "string",
+        "description": "For play/search/queue: what to play or search for. Can be artist, track, album, or playlist name."
+      },
+      "device": {
+        "type": "string",
+        "description": "For transfer: device name to play on (e.g., 'Fire TV', 'Living Room', 'iPhone')"
+      },
+      "level": {
+        "type": "integer",
+        "description": "For volume: volume level 0-100"
+      },
+      "type": {
+        "type": "string",
+        "enum": ["track", "artist", "album", "playlist"],
+        "description": "For search: type of content to search for"
+      },
+      "state": {
+        "type": "boolean",
+        "description": "For shuffle: true=on, false=off. Omit to toggle."
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
+

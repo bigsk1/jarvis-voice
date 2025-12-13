@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""
+Spotify OAuth Authentication Setup
+
+Run this once to authorize Jarvis to control your Spotify.
+Opens a browser for login, then saves the refresh token.
+
+Usage:
+    ./bin/spotify-auth
+    
+After auth, the token is cached and auto-refreshes.
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Add lib to path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+from config_loader import load_config, get_config_value
+
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+
+# Load config
+load_config('cloud')
+
+CLIENT_ID = get_config_value('SPOTIFY_CLIENT_ID')
+CLIENT_SECRET = get_config_value('SPOTIFY_CLIENT_SECRET')
+REDIRECT_URI = get_config_value('SPOTIFY_REDIRECT_URI', 'http://127.0.0.1:8888/callback')
+
+# Token cache location
+CACHE_PATH = Path(__file__).parent.parent / 'data' / '.spotify_cache'
+
+# Scopes needed for playback control
+SCOPES = [
+    'user-read-playback-state',      # See what's playing
+    'user-modify-playback-state',    # Control playback
+    'user-read-currently-playing',   # Current track
+    'playlist-read-private',         # Access private playlists
+    'playlist-read-collaborative',   # Access collaborative playlists
+    'user-library-read',             # Access liked songs
+]
+
+def main():
+    print("=" * 60)
+    print("Spotify OAuth Setup for Jarvis")
+    print("=" * 60)
+    
+    if not CLIENT_ID or not CLIENT_SECRET:
+        print("\n❌ Missing Spotify credentials!")
+        print("   Add to config/cloud.env:")
+        print("   SPOTIFY_CLIENT_ID=your_id")
+        print("   SPOTIFY_CLIENT_SECRET=your_secret")
+        print("   SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback")
+        sys.exit(1)
+    
+    print(f"\nClient ID: {CLIENT_ID[:8]}...{CLIENT_ID[-4:]}")
+    print(f"Redirect URI: {REDIRECT_URI}")
+    print(f"Token cache: {CACHE_PATH}")
+    print(f"Scopes: {', '.join(SCOPES)}")
+    
+    print("\n📋 Instructions:")
+    print("   1. A browser will open (or URL will be shown)")
+    print("   2. Log in to Spotify and authorize Jarvis")
+    print("   3. You'll be redirected to a localhost URL")
+    print("   4. Copy the FULL URL and paste it here if prompted")
+    print()
+    
+    # Create OAuth manager
+    sp_oauth = SpotifyOAuth(
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        redirect_uri=REDIRECT_URI,
+        scope=' '.join(SCOPES),
+        cache_path=str(CACHE_PATH),
+        open_browser=True  # Try to open browser
+    )
+    
+    # Check for existing valid token
+    token_info = sp_oauth.get_cached_token()
+    
+    if token_info and not sp_oauth.is_token_expired(token_info):
+        print("✅ Already authenticated! Token is valid.")
+        print(f"   Expires: {token_info.get('expires_at', 'unknown')}")
+    else:
+        print("\n🔐 Starting OAuth flow...")
+        print("   If browser doesn't open, visit this URL:")
+        
+        auth_url = sp_oauth.get_authorize_url()
+        print(f"\n   {auth_url}\n")
+        
+        print("After authorizing, paste the redirect URL here:")
+        response_url = input("URL: ").strip()
+        
+        if response_url:
+            try:
+                code = sp_oauth.parse_response_code(response_url)
+                token_info = sp_oauth.get_access_token(code)
+                print("\n✅ Authentication successful!")
+            except Exception as e:
+                print(f"\n❌ Failed to get token: {e}")
+                sys.exit(1)
+        else:
+            print("❌ No URL provided")
+            sys.exit(1)
+    
+    # Test the connection
+    print("\n🎵 Testing Spotify connection...")
+    try:
+        sp = spotipy.Spotify(auth_manager=sp_oauth)
+        user = sp.current_user()
+        print(f"   Logged in as: {user['display_name']} ({user['id']})")
+        
+        # List available devices
+        devices = sp.devices()
+        print(f"\n📱 Available playback devices:")
+        for dev in devices.get('devices', []):
+            active = "▶️ " if dev['is_active'] else "   "
+            print(f"   {active}{dev['name']} ({dev['type']}) - ID: {dev['id'][:8]}...")
+        
+        if not devices.get('devices'):
+            print("   ⚠️  No devices found. Open Spotify on a device first!")
+        
+        print("\n✅ Spotify is ready for Jarvis!")
+        print("   Try: 'Hey Jarvis, what's playing on Spotify?'")
+        
+    except Exception as e:
+        print(f"   ❌ Connection test failed: {e}")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
+

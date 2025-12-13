@@ -89,14 +89,32 @@ def check_rate_limit(email: str) -> bool:
         return True  # Allow on error
 
 
-def send_email_webhook(to: str, subject: str, body: str, webhook_url: str) -> dict:
-    """Send email via n8n webhook"""
+def send_email_webhook(to: str, subject: str, body: str, webhook_url: str, 
+                       image_url: str = None, link_url: str = None, link_text: str = None) -> dict:
+    """Send email via n8n webhook
+    
+    Args:
+        to: Recipient email
+        subject: Email subject
+        body: Email body text
+        webhook_url: n8n webhook URL
+        image_url: Optional image URL to embed (e.g., album art)
+        link_url: Optional link URL (e.g., Spotify link)
+        link_text: Optional link display text
+    """
     payload = {
         "to": to,
         "subject": subject,
         "body": body,
         "from_name": "Jarvis Assistant"
     }
+    
+    # Add optional rich content
+    if image_url:
+        payload["image_url"] = image_url
+    if link_url:
+        payload["link_url"] = link_url
+        payload["link_text"] = link_text or "Open Link"
     
     response = requests.post(
         webhook_url,
@@ -127,6 +145,9 @@ def main():
         to = args.get('to')
         subject = args.get('subject')
         body = args.get('body')
+        image_url = args.get('image_url')  # Optional: image to embed (e.g., album art)
+        link_url = args.get('link_url')    # Optional: clickable link
+        link_text = args.get('link_text')  # Optional: link display text
         
         # Validate required fields
         if not to:
@@ -164,7 +185,10 @@ def main():
             sys.exit(1)
         
         # Send email
-        result = send_email_webhook(email, subject, body, webhook_url)
+        result = send_email_webhook(
+            email, subject, body, webhook_url,
+            image_url=image_url, link_url=link_url, link_text=link_text
+        )
         
         if result['ok']:
             print(json.dumps({

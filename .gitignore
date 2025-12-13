@@ -93,3 +93,5 @@ blinko/postgres-data/
 blinko/.env
 
 opencodetmp/
+# Spotify OAuth cache (contains access tokens)
+data/.spotify_cache

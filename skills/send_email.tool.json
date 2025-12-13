@@ -17,6 +17,18 @@
       "body": {
         "type": "string",
         "description": "Email body content (plain text)"
+      },
+      "image_url": {
+        "type": "string",
+        "description": "Optional: URL of image to embed (e.g., album art from Spotify share)"
+      },
+      "link_url": {
+        "type": "string",
+        "description": "Optional: Clickable link URL (e.g., Spotify track URL)"
+      },
+      "link_text": {
+        "type": "string",
+        "description": "Optional: Display text for the link (default: 'Open Link')"
       }
     },
     "required": ["to", "subject", "body"]
