@@ -1,45 +1,30 @@
 # Jarvis Roadmap & Future Enhancements
 
-This document tracks completed features and planned improvements for Jarvis.
+This document tracks planned improvements for Jarvis.
 
-## ✅ Recently Completed
+Guiding principles:
+- Voice-first and headless-server friendly (no GUI assumptions)
+- Provider-agnostic by default (cloud + local), with optional provider accelerators
+- Stash-first for artifacts (avoid huge tool args; keep flows inspectable)
+- Keep the tool surface clean (avoid redundant tools and tool-choice loops)
 
-### Intelligent Memory System (v1.0)
-- ✅ SQLite database with knowledge_base and conversations tables
-- ✅ 5 memory tools (remember, recall, search, semantic_recall, forget)
-- ✅ Vector embeddings for semantic search (OpenAI + Ollama)
-- ✅ Automatic conversation logging
-- ✅ Proactive learning (LLM decides what to remember)
-- ✅ Update and correction capabilities
+---
 
-### MCP (Model Context Protocol) Integration (v1.0)
-- ✅ Docker-based MCP server support
-- ✅ DuckDuckGo web search integration
-- ✅ Fetch tool for URL content extraction
-- ✅ 3-phase startup sequence (start, wait, discover)
-- ✅ Graceful failure handling
-- ✅ Tool name normalization for provider compatibility
+## ✅ Recently Completed (High-Level)
 
-### Natural Response Formatting (v1.0)
-- ✅ `JARVIS_RESPONSE_STYLE` configuration (casual/detailed/auto)
-- ✅ LLM-powered response interpretation
-- ✅ Voice-optimized output (no URLs unless asked)
-- ✅ Conversational follow-up questions
-- ✅ Works with all tools and MCP servers
+- **Stash system**: structured, tool-accessible artifact store for multi-step workflows (`stash`)
+- **PDF creation**: `pdf_create` tool that composes PDFs from stash artifacts
+- **Printer upgrades**: compact mode + better formatting + image printing
+- **Tool blocklist**: `BLOCKED_TOOLS` support in tool sync + startup display filtering
+- **Native provider web search**: optional built-in search for xAI + Anthropic to reduce tool calls/loops
+- **TTS provider selection**: OpenAI or ElevenLabs (`TTS_PROVIDER`)
 
-### Tool System Infrastructure (v1.0)
-- ✅ Provider-agnostic tool calling (OpenAI, Anthropic, Ollama)
-- ✅ Universal tool schema
-- ✅ Permission system (dangerous, bash, network, filesystem)
-- ✅ Tool call logging with JSONL format
-- ✅ Error recovery with retry logic
-- ✅ JSON mode for shell script integration
+---
 
 ## 🔨 In Progress / Near Term
 
-### 1. Verbal Confirmation Loop
-**Priority:** High  
-**Status:** Designed, not implemented
+### 1) Verbal Confirmation Loop (Dangerous Ops)
+**Priority:** High
 
 Currently tools with `auto_approve: false` execute with a console warning.
 
@@ -63,43 +48,20 @@ Jarvis: "Okay, executing... Done."
 - `orchestrator/executor.py` - Add confirmation flow
 - `bin/confirm.sh` - Record and transcribe approval
 
-### 2. Tool Discovery Optimization -  DONE! ✅
-**Priority:** Medium  
-**Status:** Design phase
+### 2) Tool Set Hygiene (Reduce Confusion / Loops)
+**Priority:** High
 
-**Problem:** With many tools, sending all tool schemas to LLM is expensive.
+**Goal:** Keep the model from getting stuck by presenting too many overlapping ways to do the same thing.
 
-**Solution:** Embedding-based tool search
-1. Create embeddings for each tool description
-2. On user query, find most relevant 10-15 tools
-3. Only send relevant tools to LLM
-4. Fallback to full list if uncertain
+Concrete improvements:
+- Add a diagnostics summary: discovered MCP tools vs. synced/enabled tools vs. blocked tools
+- Add a “preferred tool ordering” policy when multiple tools cover the same capability (search/fetch/browser)
+- Make `BLOCKED_TOOLS` operational docs explicit (“blocked ≠ disabled at discovery time”)
 
-**Benefits:**
-- Faster responses (less context)
-- Lower API costs
-- Scales to 100+ tools
+### 3) Short-Lived Continuation Across Wake Activations
+**Priority:** Medium
 
-**Implementation:**
-```python
-# At startup
-tool_embeddings = {tool.name: embed(tool.description) for tool in tools}
-
-# Per query
-query_embedding = embed(user_query)
-relevant_tools = find_similar(query_embedding, tool_embeddings, top_k=15)
-```
-
-### 3. Multi-Session Context -  DONE! ✅
-**Priority:** Medium  
-**Status:** Concept
-
-**Goal:** Remember conversation context across wake word activations.
-
-Currently each "Hey Jarvis" starts fresh. Jarvis should:
-- Remember what you just talked about
-- Handle follow-up questions
-- Maintain context for ~5-10 minutes
+**Goal:** Remember context across wake word activations for ~5–10 minutes (without polluting long-term memory).
 
 **Example:**
 ```
@@ -118,10 +80,83 @@ Jarvis: "From the Portland restaurants, here are the Italian options..."
 - Include in LLM context
 - Expire after idle timeout
 
+---
+
+## ⭐ State-of-the-Art Assistant Upgrades (Worth Doing Early)
+
+These are the “we wish we’d designed for this up front” features that make a real difference once you have lots of tools, multiple providers, and long-running workflows.
+
+### A) Provider Capability Matrix + Auto-Detection
+**Why:** Prevent “unknown unknowns” (e.g., built-in web search) and reduce unnecessary tools.
+
+Ideas:
+- Maintain a runtime “capabilities” object (search, vision, structured output, tool calling limits, context size, etc.)
+- Auto-detect (or explicitly declare) per-provider features and expose them to routing + prompts
+- One-page doc/command to print current capability matrix (cloud/local)
+
+### B) Hybrid Retrieval: FTS5 + Semantic + Reranking
+**Why:** Memory/tool retrieval quality is everything; hybrid beats either alone.
+
+Ideas:
+- Always run **FTS5 keyword** + **semantic search** and merge results
+- Add a lightweight reranker step (LLM or local model) to order the merged candidates
+- Add “query rewrite” for recall (expand synonyms, normalize entities, strip filler)
+
+### C) Tool Routing Evals + Regression Suite
+**Why:** Prevent silent regressions as tool count grows or providers change.
+
+Ideas:
+- Curated set of routing test prompts (“should call tool X”, “should not call search”, “should answer directly”)
+- Track: tool calls count, latency, cost, success rate, loop rate, fallbacks
+- CI-friendly runner that can test cloud + local modes (even a small subset)
+
+### D) Observability: Tracing, Costs, and “Why Did You Do That?”
+**Why:** Debugging assistants without traces is pain.
+
+Ideas:
+- Per-turn trace ID; log routing decision, chosen tools, retries, and final outcome
+- Cost/latency budgets per request (“max tools”, “max time”, “max cost”)
+- A debug command that prints a short “decision summary” (for humans)
+
+### E) Background Jobs + Notifications (Headless)
+**Why:** Some workflows shouldn’t block interactive voice turns.
+
+Ideas:
+- A small job queue: run long tasks asynchronously (downloads, OCR, big summaries)
+- “Notify me when done” via existing channels (email/webhook/print)
+- Persist job artifacts in stash; keep a job status tool (`jobs.list`, `jobs.status`)
+
+---
+
 ## 🚀 Future / Nice to Have
 
-### 4. Smart Home Integration
-**Priority:** Medium  
+### 4) Remote VPS Ops (Tailscale + SSH + tmux)
+**Priority:** High
+
+**Why:** A headless VPS becomes a “remote executor” for long-running jobs, deployments, and isolated workloads.
+
+Design notes:
+- Prefer **Tailscale** networking (no public SSH ports required)
+- Use `tmux` for persistence (stateless tool calls still map to a stable session)
+- Support: run, upload/download stash artifacts, log tailing, process inspection
+
+Potential tool: `remote_shell`
+- `connect` (ensure host reachable, choose session)
+- `exec` (run command in tmux session)
+- `upload_from_stash` / `download_to_stash` (safe artifact bridge)
+- `read_file` / `write_file` (guardrails + strict size limits)
+
+### 5) Profiles / Tool Packs (Not Multi-User)
+**Priority:** Medium
+
+Instead of multi-user identity, support **named profiles** that change:
+- tool availability (`BLOCKED_TOOLS` overlays)
+- response style defaults
+- safe-mode policies (disable dangerous tools)
+- preferred search mode (native search vs MCP)
+
+### 6) Smart Home Integration (Optional)
+**Priority:** Low
 **Requires:** Home Assistant or similar
 
 ```
@@ -135,174 +170,47 @@ You: "Is the garage door open?"
 - `hass_state_check`
 - Device discovery
 
-### 5. Calendar & Reminder System -  DONE! ✅
+### 7) Memory UX (Headless-Friendly)
 **Priority:** Medium
 
-```
-You: "Remind me to call John at 3 PM"
-You: "What's on my calendar tomorrow?"
-You: "Schedule a meeting for next Tuesday"
-```
+Ideas:
+- Memory browser/editor (simple local web UI)
+- Export/import tooling (backup + restore)
+- Clear “what was remembered and why” traceability
 
-**Requirements:**
-- CalDAV integration or local calendar - gogle calander integration via n8n
-- Background reminder daemon
-- Natural language time parsing
+### 8) Reliability: “Tool Doctor”
+**Priority:** Medium
 
-### 6. Email Integration -  DONE! ✅
-**Priority:** Low
-**Complexity:** High
+A single command that checks:
+- config sanity (missing env vars)
+- tool sync status (cloud/local)
+- database integrity
+- TTS health (provider + API key)
+- MCP server health + discovered tools
 
-```
-You: "Check my email"
-You: "Send an email to John about the meeting"
-You: "Any unread messages?"
-```
-
-### 7. Multi-User Support - not intersted in this , maybe a profile which loads tools, features, ect.. 
-**Priority:** Low
-
-**Goal:** Recognize different users, separate memories.
-
-**Challenges:**
-- Voice identification
-- Per-user configuration
-- Privacy implications
-
-**Implementation:**
-- Voice fingerprinting (optional)
-- Named profiles
-- User-scoped memory tables
-
-### 8. Memory Improvements
-
-#### 8.1. Bulk Embedding Regeneration -  DONE! ✅
-```bash
-# Currently embeddings only created at remember()
-# Need tool to regenerate all embeddings after config changes
-
-./bin/sync-memory-db.py --from cloud --to local
-```
-
-#### 8.2. Memory Expiration  - Not interested in this reminders handles it fine already
-```python
-# Auto-expire old memories
-remember("I'm going to the store", importance=3, expires_in="2 hours")
-```
-
-#### 8.3. Memory Categories
-More structured categories:
-- facts (permanent)
-- preferences (updateable)
-- temporary (auto-expire)
-- instructions (how to do things)
-
-#### 8.4. Memory Visualization
-Simple web UI to:
-- Browse all memories
-- Edit/delete manually
-- See conversation history
-- Export/import
-
-### 9. Advanced MCP Features
-
-#### 9.1. More MCP Servers
-- Filesystem operations
-- Database queries
-- Cloud service integrations (AWS, GCP, etc.)
-- GitHub/Git operations
-
-#### 9.2. MCP Tool Composition
-Chain multiple MCP tools:
-```
-You: "Search for the latest AI paper and summarize it"
-# Uses: search → fetch → summarize (3 tools)
-```
-
-#### 9.3. MCP Performance Optimization  - not issues with current mcp , no reason to keep running 
-- Keep containers warm (don't restart every time)
-- Connection pooling
-- Parallel tool execution
-
-### 10. Developer Tools
-
-#### 10.1. Tool Testing Framework
-```bash
-# Unit tests for each tool
-./bin/test-tools --all
-./bin/test-tools crypto_price
-
-# Integration tests
-./bin/test-integration
-```
-
-#### 10.2. Tool Marketplace
-- Share tools with community
-- Download tools from repository
-- Automatic updates
-
-#### 10.3. Tool IDE
-Visual tool builder:
-- Drag-and-drop schema creation
-- Test interface
-- Permission configuration
-
-### 11. Performance & Reliability
-
-#### 11.1. Caching
-- Cache API responses (crypto prices, web search)
-- Cache LLM responses for repeated queries
-- Reduce external API calls
-
-#### 11.2. Offline Fallbacks
-- Detect when cloud APIs are down
-- Auto-switch to local alternatives
-- Graceful degradation
-
-#### 11.3. Health Monitoring
-```bash
-# System health dashboard
-./bin/jarvis-health
-
-# Shows:
-- LLM provider status
-- MCP server health
-- Database integrity
-- Audio device status
-```
-
-### 12. Voice Improvements
-
-#### 12.1. Custom Wake Words
-- Train your own wake word
-- Multiple wake words for different modes
-- Family member-specific wake words
-
-#### 12.2. Voice Cloning
-- Clone your voice for TTS
-- Sound like you giving commands
-
-#### 12.3. Emotion Detection
-- Detect urgency, frustration, happiness
-- Adjust responses accordingly
-- Faster response for urgent requests
+---
 
 ## 📊 Implementation Priority
 
 **High Priority (Next Sprint):**
-1. Verbal Confirmation Loop
-2. MCP Performance (keep containers warm)
-3. Memory bulk operations
+- Verbal Confirmation Loop (dangerous ops)
+- Provider capability matrix + auto-detection (avoid redundant tools)
+- Hybrid retrieval + reranking (FTS5 + semantic)
+- Routing evals + regression suite (prevent breakage as tools/providers change)
+- Remote VPS Ops (Tailscale + SSH + tmux) if you want remote execution
+- Tool set hygiene + diagnostics (reduce loops)
 
 **Medium Priority (Next Month):**
-1. Tool Discovery Optimization
-2. Multi-Session Context
-3. Smart Home Integration (if you have devices)
+- Short-lived continuation across wake activations
+- Profiles / tool packs (not multi-user)
+- Background jobs + notifications (stash-first artifacts)
+- Observability improvements (trace + budgets + “why” summaries)
 
 **Low Priority (Future):**
-1. Multi-User Support
-2. Email Integration
-3. Advanced visualizations
+- Smart home integration (optional)
+- Advanced visualizations
+
+---
 
 ## 🤝 Contributing
 
@@ -315,6 +223,8 @@ Want to implement something? Here's how:
 5. Test locally
 6. Commit with clear messages
 
+---
+
 ## 📝 Notes
 
 - Focus on voice-first experience
@@ -325,5 +235,5 @@ Want to implement something? Here's how:
 
 ---
 
-**Last Updated:** 2025-11-11
-**Version:** 1.0 (Memory + MCP + Natural Responses)
+**Last Updated:** 2025-12-12
+**Version:** 2.0 (Stash + Native Search + Tool Blocklist + TTS Providers)
