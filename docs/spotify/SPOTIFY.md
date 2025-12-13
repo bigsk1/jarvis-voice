@@ -32,6 +32,9 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 | "Play hard rock" | Genre-based playback |
 | "Play some chill music" | Mood-based playback |
 | "Resume music" / "Play" | Resumes paused playback |
+| "Play my liked songs" | Plays your saved/liked tracks |
+| "Play my favorites" | Same as liked songs |
+| "Play my saved songs" | Same as liked songs |
 
 **Tips:**
 - Include "playlist" in your request to search playlists specifically
@@ -304,7 +307,7 @@ For reference, initial setup was:
 
 ## Ideas for Future
 
-- [ ] "Play my Liked Songs" (requires different API call)
+- [x] ~~"Play my Liked Songs"~~ ✅ Done!
 - [ ] "What's in my queue?"
 - [ ] "Clear the queue"
 - [ ] "Repeat this song"

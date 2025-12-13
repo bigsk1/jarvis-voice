@@ -84,6 +84,28 @@ def action_play(args: dict) -> dict:
         query_lower = query.lower()
         
         # Determine search type based on keywords
+        
+        # Special case: Liked Songs (user's saved tracks)
+        if 'liked' in query_lower or 'saved' in query_lower or 'favorites' in query_lower:
+            # Get user's saved/liked tracks
+            saved = sp.current_user_saved_tracks(limit=50)
+            items = saved.get('items', [])
+            if items:
+                # Extract track URIs
+                uris = [item['track']['uri'] for item in items if item.get('track')]
+                if uris:
+                    sp.start_playback(uris=uris, device_id=device_id)
+                    return {
+                        "ok": True,
+                        "speech": f"Playing your liked songs ({len(uris)} tracks)",
+                        "data": {"type": "liked_songs", "count": len(uris)}
+                    }
+            return {
+                "ok": False,
+                "speech": "No liked songs found",
+                "error": "Empty library"
+            }
+        
         if 'playlist' in query_lower:
             search_query = query_lower.replace('playlist', '').strip()
             results = sp.search(q=search_query, type='playlist', limit=1)
