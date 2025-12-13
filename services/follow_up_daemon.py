@@ -88,7 +88,7 @@ def should_follow_up(alert: Dict[str, Any]) -> bool:
 
 
 def speak_follow_up(alert: Dict[str, Any], mode: str, project_root: Path):
-    """Speak follow-up alert via TTS."""
+    """Speak follow-up alert via TTS (uses caching for repeated messages)."""
     title = alert.get('title', 'Unknown alert')
     severity = alert.get('severity', 'medium')
     follow_up_count = alert.get('follow_up_count', 0)
@@ -108,11 +108,18 @@ def speak_follow_up(alert: Dict[str, Any], mode: str, project_root: Path):
     else:
         message = f"{prefix} {title}"
     
-    # Use appropriate TTS script
+    # Use say-status.sh which has caching for repeated phrases
     if mode == 'local':
-        say_script = project_root / 'bin' / 'say-local.sh'
+        say_script = project_root / 'bin' / 'say-status-local.sh'
     else:
-        say_script = project_root / 'bin' / 'say.sh'
+        say_script = project_root / 'bin' / 'say-status.sh'
+    
+    # Fallback to regular say.sh if say-status doesn't exist
+    if not say_script.exists():
+        if mode == 'local':
+            say_script = project_root / 'bin' / 'say-local.sh'
+        else:
+            say_script = project_root / 'bin' / 'say.sh'
     
     if say_script.exists():
         try:

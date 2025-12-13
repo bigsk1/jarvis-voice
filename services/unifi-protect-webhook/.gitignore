@@ -1,0 +1,3 @@
+# Ignore actual config (contains local IPs/settings)
+config.env
+

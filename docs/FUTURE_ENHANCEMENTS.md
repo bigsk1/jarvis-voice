@@ -48,7 +48,7 @@ Jarvis: "Okay, executing... Done."
 - `orchestrator/executor.py` - Add confirmation flow
 - `bin/confirm.sh` - Record and transcribe approval
 
-### 2) Tool Set Hygiene (Reduce Confusion / Loops)
+### 2) Tool Set Hygiene (Reduce Confusion / Loops) - INSIGHTS HELP THIS IN GUIDING THE LLM TO USE THE CORRECT TOOLS
 **Priority:** High
 
 **Goal:** Keep the model from getting stuck by presenting too many overlapping ways to do the same thing.
@@ -58,7 +58,7 @@ Concrete improvements:
 - Add a “preferred tool ordering” policy when multiple tools cover the same capability (search/fetch/browser)
 - Make `BLOCKED_TOOLS` operational docs explicit (“blocked ≠ disabled at discovery time”)
 
-### 3) Short-Lived Continuation Across Wake Activations
+### 3) Short-Lived Continuation Across Wake Activations - HAVE THIS ALREADY IN AUTO CONTEXT NUM AND MINUTES - IS DIFFERENT IN SESSION ID AND LOADING CONVERSATION FROM MEMORY DB
 **Priority:** Medium
 
 **Goal:** Remember context across wake word activations for ~5–10 minutes (without polluting long-term memory).

@@ -119,6 +119,12 @@ COMMANDS: List[Command] = [
     Command("Start Canvas", "./bin/jarvis-canvas", "Visual knowledge viewer", "🔧 Services", interactive=True),
     Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq || echo '❌ Canvas not running'", "Canvas status", "🔧 Services"),
     Command("Canvas Pages", "curl -s http://localhost:8890/api/pages | jq -c '.[] | {title, tags, created}' 2>/dev/null || echo '❌ Canvas not running'", "List canvas pages", "🔧 Services"),
+    Command("UniFi Webhook Status", "systemctl status unifi-protect-webhook.service 2>/dev/null | head -15 || echo 'Service not installed'", "UniFi webhook service", "🔧 Services"),
+    Command("UniFi Webhook Start", "sudo systemctl start unifi-protect-webhook.service 2>/dev/null || echo 'Service not installed or needs sudo'", "Start UniFi webhook", "🔧 Services"),
+    Command("UniFi Webhook Restart", "sudo systemctl restart unifi-protect-webhook.service 2>/dev/null || echo 'Service not installed or needs sudo'", "Restart UniFi webhook", "🔧 Services"),
+    Command("UniFi Webhook Health", "curl -sf http://localhost:5050/health | jq || echo '❌ UniFi webhook not running'", "UniFi webhook health", "🔧 Services"),
+    Command("UniFi Webhook Rules", "curl -sf http://localhost:5050/rules | jq '.rules | to_entries | .[] | select(.value.enabled) | {(.key): {severity: .value.severity, auto_ack: .value.auto_ack}}' || echo '❌ Not running'", "Enabled alert rules", "🔧 Services"),
+    Command("UniFi Webhook Logs", "journalctl -u unifi-protect-webhook -n 30 --no-pager 2>/dev/null || echo 'No logs or needs sudo'", "Recent webhook logs", "🔧 Services"),
     
     # === 🧪 TESTING ===
     Command("Test All (Cloud)", "./test-all-tools.sh", "All tool tests - cloud", "🧪 Testing"),

@@ -1,0 +1,23 @@
+[Unit]
+Description=UniFi Protect Webhook Receiver for Jarvis
+After=network.target jarvis-api.service
+Wants=jarvis-api.service
+
+[Service]
+Type=simple
+User=boss
+WorkingDirectory=/home/boss/jarvis-voice/services/unifi-protect-webhook
+EnvironmentFile=/home/boss/jarvis-voice/services/unifi-protect-webhook/config.env
+ExecStart=/home/boss/jarvis-venv/bin/python3 webhook_receiver.py
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/boss/jarvis-voice/logs
+
+[Install]
+WantedBy=multi-user.target
+

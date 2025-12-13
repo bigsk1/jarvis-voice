@@ -320,13 +320,21 @@ class AlertManager:
         conn.close()
     
     def _speak(self, message: str, priority: str = "medium"):
-        """Trigger TTS using existing say.sh script"""
+        """Trigger TTS using say-status.sh (with caching) for repeated alerts"""
         try:
-            # Use appropriate say script for mode
+            # Use say-status.sh which has caching for repeated phrases
+            # This is ideal for alerts like "Person: Front Door" spoken many times
             if self.mode == 'local':
-                say_script = self.project_root / 'bin' / 'say-local.sh'
+                say_script = self.project_root / 'bin' / 'say-status-local.sh'
             else:
-                say_script = self.project_root / 'bin' / 'say.sh'
+                say_script = self.project_root / 'bin' / 'say-status.sh'
+            
+            # Fallback to regular say.sh if say-status doesn't exist
+            if not say_script.exists():
+                if self.mode == 'local':
+                    say_script = self.project_root / 'bin' / 'say-local.sh'
+                else:
+                    say_script = self.project_root / 'bin' / 'say.sh'
             
             if say_script.exists():
                 subprocess.run(
