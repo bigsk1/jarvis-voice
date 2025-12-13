@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "send_email",
-  "description": "Send an email to a contact. Use when user says 'email', 'send email to', 'message', etc. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'work') from config/contacts.json, or use a direct email address. Rate limited to prevent duplicates. After sending, briefly confirm to the user: who received it, the subject, and key content summary.",
+  "description": "Send an email to a contact. Use when user says 'email', 'send email to', 'message', etc. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'work') from config/contacts.json, or use a direct email address. IMPORTANT: Always compose the email body with proper context - start with a brief intro explaining who is sending and why (e.g., 'Hey! Boss asked me to share this song with you.' or 'Boss wanted you to see these search results.'), then include the actual content. Never send raw data without context. Rate limited to prevent duplicates.",
   "script": "send_email.py",
   "parameters": {
     "type": "object",
@@ -12,11 +12,11 @@
       },
       "subject": {
         "type": "string",
-        "description": "Email subject line"
+        "description": "Email subject line - make it descriptive (e.g., 'Song recommendation from Boss' not just 'Spotify')"
       },
       "body": {
         "type": "string",
-        "description": "Email body content (plain text)"
+        "description": "Email body. ALWAYS start with context: 1) Brief friendly intro mentioning who sent it and why, 2) Then the actual content. Example: 'Hey Andrew!\\n\\nBoss wanted to share this song with you:\\n\\n🎵 Song Name by Artist...'"
       },
       "image_url": {
         "type": "string",
