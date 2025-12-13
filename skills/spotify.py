@@ -72,6 +72,29 @@ def get_spotify_client():
     return spotipy.Spotify(auth_manager=sp_oauth)
 
 
+def get_active_device(sp) -> tuple[str | None, str | None]:
+    """
+    Get active device ID or first available device.
+    Returns (device_id, device_name) or (None, None) if no devices.
+    """
+    try:
+        result = sp.devices()
+        devices = result.get('devices', [])
+        
+        if not devices:
+            return None, None
+        
+        # First try to find already active device
+        for dev in devices:
+            if dev.get('is_active'):
+                return dev['id'], dev['name']
+        
+        # No active device, return first available
+        return devices[0]['id'], devices[0]['name']
+    except Exception:
+        return None, None
+
+
 def action_play(args: dict) -> dict:
     """Resume playback or play specific content."""
     sp = get_spotify_client()
@@ -79,9 +102,41 @@ def action_play(args: dict) -> dict:
     query = args.get('query', '')
     device_id = args.get('device_id')
     
+    # Auto-detect device if not specified
+    if not device_id:
+        device_id, device_name = get_active_device(sp)
+        if not device_id:
+            return {
+                "ok": False,
+                "speech": "No Spotify devices found. Open Spotify on your phone, computer, or web browser first, then try again.",
+                "error": "NO_ACTIVE_DEVICE"
+            }
+    
     if query:
         # Search and play
         query_lower = query.lower()
+        
+        # Handle direct Spotify URIs first (e.g., spotify:track:xxx, spotify:episode:xxx)
+        if query.startswith('spotify:'):
+            uri_type = query.split(':')[1] if ':' in query else 'unknown'
+            try:
+                if uri_type in ['track', 'episode']:
+                    # Single item - use uris parameter
+                    sp.start_playback(uris=[query], device_id=device_id)
+                else:
+                    # Context (album, playlist, artist, show) - use context_uri
+                    sp.start_playback(context_uri=query, device_id=device_id)
+                return {
+                    "ok": True,
+                    "speech": f"Playing {uri_type}",
+                    "data": {"uri": query, "type": uri_type}
+                }
+            except Exception as e:
+                return {
+                    "ok": False,
+                    "speech": f"Failed to play: {e}",
+                    "error": str(e)
+                }
         
         # Determine search type based on keywords
         
