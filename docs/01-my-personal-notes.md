@@ -2,6 +2,18 @@
 
 ### Notes
 
+jarvis services needs to start manually
+jarvis api needs to be started manually
+jarvis canvas needs to be started manually
+
+jarvis openocde is systemd
+jarvis unify is systemd
+
+jarvis blinko is docker auto start
+jarvis grafana, promtail, promethus, loki is docker auto start
+
+
+
 On a reflection intellegence it shows user retries, and the reflection is graded on if there was a user retry and not satisfied with responce, however i dont think the is added yet, as a reflection is doing one llm session at a time, it doesnt know if the next question to the llm was not satisfied with the responce and user retried, so it is not graded on that. It seems if a tool has 200 status menaing ti ran and no error the user is satisfied? this whole concept needs evalution, what is currently happening- is it working?, what should happen to satisfy this feature, do we need this feature? 
 
 ```bash
@@ -705,3 +717,11 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
 ./bin/status-cache warm cloud   # Cloud mode
 ./bin/status-cache warm local   # Local mode
 ```2025-11-29: Fixed insight tracking - negative constraints now correctly marked as NOT helpful when contradicted by successful tool usage
+
+# Unify systemd
+```bash
+sudo systemctl status unifi-protect-webhook   # Check status
+sudo journalctl -u unifi-protect-webhook -f   # View logs
+sudo systemctl restart unifi-protect-webhook  # Restart
+sudo systemctl stop unifi-protect-webhook     # Stop
+```

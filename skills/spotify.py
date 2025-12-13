@@ -74,7 +74,8 @@ def get_spotify_client():
 
 def get_active_device(sp) -> tuple[str | None, str | None]:
     """
-    Get active device ID or first available device.
+    Get active device ID with smart fallback.
+    Priority: 1) Already active, 2) Configured default, 3) First available.
     Returns (device_id, device_name) or (None, None) if no devices.
     """
     try:
@@ -84,12 +85,18 @@ def get_active_device(sp) -> tuple[str | None, str | None]:
         if not devices:
             return None, None
         
-        # First try to find already active device
+        # 1. First try to find already active device
         for dev in devices:
             if dev.get('is_active'):
                 return dev['id'], dev['name']
         
-        # No active device, return first available
+        # 2. Try configured default device (from env or hardcoded)
+        default_device = get_config_value('SPOTIFY_DEFAULT_DEVICE', 'Office fire TV')
+        for dev in devices:
+            if default_device.lower() in dev['name'].lower():
+                return dev['id'], dev['name']
+        
+        # 3. Fallback to first available
         return devices[0]['id'], devices[0]['name']
     except Exception:
         return None, None
