@@ -78,6 +78,24 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 | "Switch to Office Echo" | Moves playback to Echo |
 | "Play on the TV" | Jarvis picks a TV device |
 
+### 🎙️ Podcasts
+
+Jarvis can play podcasts and automatically gets the **latest episode**:
+
+| What You Say | What Happens |
+|--------------|--------------|
+| "Play the latest Joe Rogan podcast" | Plays most recent JRE episode |
+| "Latest episode of This Past Weekend" | Plays newest Theo Von episode |
+| "Play latest from Tim Dillon" | Finds show, plays newest |
+| "Newest episode of Lex Fridman" | Latest Lex Fridman episode |
+| "Play Kill Tony podcast" | Plays latest Kill Tony |
+| "Search podcast Joe Rogan" | Shows podcast results |
+
+**Tips:**
+- Use "latest", "newest", or "podcast" to trigger podcast mode
+- Works with ANY podcast name - just search naturally
+- Gets the actual latest episode, not episode #1
+
 ### 🔍 Search
 
 | What You Say | What Happens |
@@ -85,6 +103,7 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 | "Search for Beatles" | Searches and shows results |
 | "Find playlist workout" | Searches playlists |
 | "Look up album Thriller" | Searches albums |
+| "Search podcast comedy" | Searches podcasts/shows |
 
 ### 📝 Queue
 
@@ -93,6 +112,21 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 | "Add this to queue" | Queues current context |
 | "Queue Bohemian Rhapsody" | Adds song to queue |
 | "Add Purple Rain to queue" | Queues specific track |
+
+### 📧 Share
+
+Share the current song via email with album art:
+
+| What You Say | What Happens |
+|--------------|--------------|
+| "Share this song with [contact]" | Emails song info + album art |
+| "Email this track to boss" | Sends song details to boss |
+| "Share what's playing with Andrew" | Rich email with Spotify link |
+
+The email includes:
+- 🎵 Song title, artist, album
+- 🖼️ Album art image
+- ▶️ "Listen on Spotify" button
 
 ---
 
@@ -154,6 +188,15 @@ Jarvis is smart about understanding intent. These all work:
 "Turn shuffle on and play some rock"
 ```
 
+### Podcasts
+```
+"Play the latest Joe Rogan podcast"
+"Latest episode of This Past Weekend"
+"Play newest Lex Fridman"
+"What's the latest Kill Tony?"
+"Play Tim Dillon podcast"
+```
+
 ---
 
 ## Troubleshooting
@@ -204,6 +247,18 @@ Then re-authorize in browser.
 | `transfer` | Switch device | `device` name |
 | `shuffle` | Toggle shuffle | `state` (optional) |
 | `queue` | Add to queue | `query` |
+| `share` | Get shareable info | - |
+
+### Search Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `track` | Songs (default) | "Bohemian Rhapsody" |
+| `artist` | Artists | "Queen" |
+| `album` | Albums | "A Night at the Opera" |
+| `playlist` | Playlists | "workout mix" |
+| `show` / `podcast` | Podcasts | "Joe Rogan" |
+| `episode` | Podcast episodes | "JRE #2425" |
 
 ### Files
 
@@ -257,6 +312,17 @@ For reference, initial setup was:
 - [ ] Playlist management (create, add songs)
 - [ ] "Play similar to this"
 - [ ] Integration with calendar (morning playlist at 7am)
+- [ ] Play specific podcast episode by number ("Play JRE #2400")
+
+---
+
+## Known Limitations
+
+### Volume Control
+Some devices (Fire TV, Chromecast, Echo) don't allow volume control via the Spotify API. Error: `VOLUME_CONTROL_DISALLOW`. Use the device's remote instead.
+
+### Device Must Be Active
+At least one device must have Spotify running for the API to control it. If you get "No active device", open Spotify on any device first.
 
 ---
 

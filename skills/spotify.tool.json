@@ -25,8 +25,8 @@
       },
       "type": {
         "type": "string",
-        "enum": ["track", "artist", "album", "playlist"],
-        "description": "For search: type of content to search for"
+        "enum": ["track", "artist", "album", "playlist", "show", "episode", "podcast"],
+        "description": "For search: type of content to search for. Use 'show' or 'podcast' for podcasts like Joe Rogan, 'episode' for specific episodes."
       },
       "state": {
         "type": "boolean",

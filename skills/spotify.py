@@ -83,7 +83,7 @@ def action_play(args: dict) -> dict:
         # Search and play
         query_lower = query.lower()
         
-        # Determine search type
+        # Determine search type based on keywords
         if 'playlist' in query_lower:
             search_query = query_lower.replace('playlist', '').strip()
             results = sp.search(q=search_query, type='playlist', limit=1)
@@ -104,13 +104,63 @@ def action_play(args: dict) -> dict:
             if items:
                 uri = items[0]['uri']
                 name = items[0]['name']
-                artist = items[0]['artists'][0]['name']
+                artists = items[0].get('artists', [])
+                artist = artists[0]['name'] if artists else 'Unknown'
                 sp.start_playback(context_uri=uri, device_id=device_id)
                 return {
                     "ok": True,
                     "speech": f"Playing album {name} by {artist}",
                     "data": {"uri": uri, "name": name, "artist": artist, "type": "album"}
                 }
+        elif 'podcast' in query_lower or 'latest episode' in query_lower or 'latest from' in query_lower or 'newest episode' in query_lower:
+            # Search for podcast/show and play LATEST episode
+            # Remove keywords to get the podcast name
+            search_query = query_lower
+            for keyword in ['podcast', 'latest episode of', 'latest episode from', 'latest from', 'newest episode of', 'newest episode from', 'play the', 'play']:
+                search_query = search_query.replace(keyword, '')
+            search_query = search_query.strip()
+            
+            if not search_query:
+                return {"ok": False, "speech": "Which podcast?", "error": "No podcast name"}
+            
+            results = sp.search(q=search_query, type='show', limit=1)
+            items = results.get('shows', {}).get('items', [])
+            if items:
+                show = items[0]
+                show_id = show['id']
+                show_name = show['name']
+                publisher = show.get('publisher', 'Unknown')
+                
+                # Get latest episodes (returns newest first by default)
+                episodes = sp.show_episodes(show_id, limit=1)
+                episode_items = episodes.get('items', [])
+                
+                if episode_items:
+                    latest_ep = episode_items[0]
+                    ep_uri = latest_ep['uri']
+                    ep_name = latest_ep['name']
+                    
+                    # Play the specific latest episode
+                    sp.start_playback(uris=[ep_uri], device_id=device_id)
+                    return {
+                        "ok": True,
+                        "speech": f"Playing latest episode of {show_name}: {ep_name}",
+                        "data": {
+                            "uri": ep_uri, 
+                            "name": ep_name, 
+                            "show": show_name,
+                            "publisher": publisher, 
+                            "type": "episode"
+                        }
+                    }
+                else:
+                    # Fallback: play the show (starts from beginning)
+                    sp.start_playback(context_uri=show['uri'], device_id=device_id)
+                    return {
+                        "ok": True,
+                        "speech": f"Playing podcast {show_name}",
+                        "data": {"uri": show['uri'], "name": show_name, "publisher": publisher, "type": "show"}
+                    }
         else:
             # Default: search for track or artist
             # First try artist
@@ -132,7 +182,8 @@ def action_play(args: dict) -> dict:
             if tracks:
                 uri = tracks[0]['uri']
                 name = tracks[0]['name']
-                artist = tracks[0]['artists'][0]['name']
+                track_artists = tracks[0].get('artists', [])
+                artist = track_artists[0]['name'] if track_artists else 'Unknown'
                 sp.start_playback(uris=[uri], device_id=device_id)
                 return {
                     "ok": True,
@@ -247,44 +298,85 @@ def action_current(args: dict) -> dict:
 
 
 def action_search(args: dict) -> dict:
-    """Search for tracks, artists, albums, or playlists."""
+    """Search for tracks, artists, albums, playlists, podcasts (shows), or episodes."""
     sp = get_spotify_client()
     
     query = args.get('query', '')
-    search_type = args.get('type', 'track')  # track, artist, album, playlist
+    search_type = args.get('type', 'track')  # track, artist, album, playlist, show, episode
     limit = args.get('limit', 5)
     
     if not query:
         return {"ok": False, "speech": "What should I search for?", "error": "No query"}
     
-    results = sp.search(q=query, type=search_type, limit=limit)
+    # Map type to Spotify API type key
+    type_key_map = {
+        'track': 'tracks',
+        'artist': 'artists', 
+        'album': 'albums',
+        'playlist': 'playlists',
+        'show': 'shows',      # Podcasts
+        'episode': 'episodes', # Podcast episodes
+        'podcast': 'shows',   # Alias for show
+    }
+    
+    # Normalize type
+    if search_type == 'podcast':
+        search_type = 'show'
+    
+    api_type = search_type
+    type_key = type_key_map.get(search_type, f"{search_type}s")
+    
+    results = sp.search(q=query, type=api_type, limit=limit)
     
     items = []
-    type_key = f"{search_type}s"  # tracks, artists, albums, playlists
     
     for item in results.get(type_key, {}).get('items', []):
+        if not item:
+            continue
+            
         if search_type == 'track':
+            artists = item.get('artists', [])
             items.append({
-                "name": item['name'],
-                "artist": item['artists'][0]['name'],
-                "uri": item['uri']
+                "name": item.get('name', 'Unknown'),
+                "artist": artists[0]['name'] if artists else 'Unknown',
+                "uri": item.get('uri')
             })
         elif search_type == 'artist':
             items.append({
-                "name": item['name'],
-                "uri": item['uri']
+                "name": item.get('name', 'Unknown'),
+                "uri": item.get('uri')
             })
         elif search_type == 'album':
+            artists = item.get('artists', [])
             items.append({
-                "name": item['name'],
-                "artist": item['artists'][0]['name'],
-                "uri": item['uri']
+                "name": item.get('name', 'Unknown'),
+                "artist": artists[0]['name'] if artists else 'Unknown',
+                "uri": item.get('uri')
             })
         elif search_type == 'playlist':
+            owner = item.get('owner', {})
             items.append({
-                "name": item['name'],
-                "owner": item['owner']['display_name'],
-                "uri": item['uri']
+                "name": item.get('name', 'Unknown'),
+                "owner": owner.get('display_name', 'Unknown') if owner else 'Unknown',
+                "uri": item.get('uri')
+            })
+        elif search_type == 'show':
+            # Podcasts
+            items.append({
+                "name": item.get('name', 'Unknown'),
+                "publisher": item.get('publisher', 'Unknown'),
+                "uri": item.get('uri'),
+                "total_episodes": item.get('total_episodes', 0)
+            })
+        elif search_type == 'episode':
+            # Podcast episodes
+            show = item.get('show', {})
+            items.append({
+                "name": item.get('name', 'Unknown'),
+                "show": show.get('name', 'Unknown') if show else 'Unknown',
+                "uri": item.get('uri'),
+                "duration_ms": item.get('duration_ms', 0),
+                "release_date": item.get('release_date', '')
             })
     
     if items:
@@ -293,6 +385,10 @@ def action_search(args: dict) -> dict:
             speech = f"Found {first['name']} by {first['artist']}"
         elif search_type == 'playlist':
             speech = f"Found playlist {first['name']}"
+        elif search_type == 'show':
+            speech = f"Found podcast {first['name']} by {first['publisher']}"
+        elif search_type == 'episode':
+            speech = f"Found episode {first['name']} from {first['show']}"
         else:
             speech = f"Found {first['name']}"
         
