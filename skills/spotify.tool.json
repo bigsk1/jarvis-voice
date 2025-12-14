@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "spotify",
-  "description": "Control Spotify music playback. Play/pause music, skip tracks, search, control volume, switch devices, and share songs. Examples: 'play some jazz', 'what's playing', 'skip this song', 'pause music', 'play on Fire TV', 'volume 50', 'share this song'.",
+  "description": "🎵 PLAY MUSIC via Spotify. You HAVE Spotify integration - use this tool when user asks to play, hear, listen to ANY music/songs/artists/playlists. Actions: play (starts music), pause, skip/next, current (now playing), search, volume, devices, shuffle, share. Examples: 'play jazz' → action=play query=jazz, 'upbeat 2010s pop' → action=play query='upbeat pop 2010s'.",
   "script": "spotify.py",
   "parameters": {
     "type": "object",

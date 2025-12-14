@@ -246,8 +246,29 @@ def action_play(args: dict) -> dict:
                         "data": {"uri": show['uri'], "name": show_name, "publisher": publisher, "type": "show"}
                     }
         else:
-            # Default: search for track or artist
-            # First try artist
+            # Detect genre/mood queries - prefer playlists for these
+            genre_mood_keywords = ['songs', 'music', 'hits', 'pop', 'rock', 'jazz', 'classical', 
+                                   'hip hop', 'rap', 'country', 'r&b', 'indie', 'electronic', 
+                                   'upbeat', 'chill', 'relaxing', 'workout', 'party', 'focus',
+                                   '80s', '90s', '2000s', '2010s', '70s', '60s']
+            is_genre_query = any(kw in query_lower for kw in genre_mood_keywords)
+            
+            # For genre/mood queries, search playlists FIRST
+            if is_genre_query:
+                results = sp.search(q=query, type='playlist', limit=1)
+                playlists = results.get('playlists', {}).get('items', [])
+                if playlists:
+                    uri = playlists[0]['uri']
+                    name = playlists[0]['name']
+                    sp.start_playback(context_uri=uri, device_id=device_id)
+                    sp.shuffle(True, device_id=device_id)  # Shuffle for variety
+                    return {
+                        "ok": True,
+                        "speech": f"Playing {name} on shuffle",
+                        "data": {"uri": uri, "name": name, "type": "playlist", "shuffle": True}
+                    }
+            
+            # Try artist if query looks like an artist name (no genre keywords)
             results = sp.search(q=query, type='artist', limit=1)
             artists = results.get('artists', {}).get('items', [])
             if artists and query_lower in artists[0]['name'].lower():
@@ -260,7 +281,7 @@ def action_play(args: dict) -> dict:
                     "data": {"uri": uri, "name": name, "type": "artist"}
                 }
             
-            # Try track
+            # Try track as last resort
             results = sp.search(q=query, type='track', limit=1)
             tracks = results.get('tracks', {}).get('items', [])
             if tracks:

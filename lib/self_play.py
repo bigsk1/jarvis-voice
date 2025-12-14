@@ -64,11 +64,11 @@ QUERY_CATEGORIES = {
             "What's on my calendar today?",
             "Do I have any meetings this week?",
             "What did I ask you about yesterday?",
-            "What projects am I working on?",
-            "Find my notes about the API project",
+            "What do you know about my projects?",
+            "Search my memories for API",
         ],
         "weight": 0.15,
-        "description": "Personal productivity and memory queries",
+        "description": "Personal productivity and memory SEARCH queries (read-only)",
     },
     "home_automation": {
         "examples": [
@@ -94,14 +94,14 @@ QUERY_CATEGORIES = {
     },
     "media": {
         "examples": [
-            "Find videos about Python tutorials",
-            "What's trending in tech news?",
-            "Search for Docker tutorials on YouTube",
-            "Latest AI research papers",
-            "Find podcasts about startups",
+            "Play some jazz music",
+            "What's trending on Netflix?",
+            "Play upbeat pop songs from the 2010s",
+            "What's a good mystery movie to watch?",
+            "Recommend a podcast about technology",
         ],
-        "weight": 0.05,
-        "description": "Media search and discovery",
+        "weight": 0.15,  # Increased - good for testing Spotify
+        "description": "Media playback and recommendations (Spotify, Netflix, etc.)",
     },
 }
 
@@ -113,12 +113,13 @@ EXCLUDED_CATEGORIES = [
     "alert",       # Don't send real alerts
 ]
 
-# Categories to SKIP (user doesn't have these capabilities)
+# Categories to SKIP during self-play
 # Edit this list based on your setup
 DISABLED_CATEGORIES = [
     "home_automation",  # No smart home devices
+    "coding",           # Risk of triggering opencode builds - use --categories to re-enable
     # "productivity",   # Uncomment if no calendar integration
-    # "media",          # Uncomment if no media tools
+    # "media",          # Uncomment if no media tools  
 ]
 
 
@@ -235,9 +236,15 @@ Example queries (generate DIFFERENT ones, not these):
 Rules:
 1. Make them sound natural, like someone talking to a voice assistant
 2. Vary the phrasing and complexity
-3. Don't include emails, reminders, webhooks, or alerts (these have side effects)
-4. Keep them reasonable - things a real person would ask
-5. Output ONLY the queries, one per line, no numbering or bullets
+3. NEVER include queries that create real artifacts or side effects:
+   - NO emails, reminders, webhooks, alerts
+   - NO "build", "create", "write code", "make an app" (triggers real code generation)
+   - NO canvas, pages, documents, notes creation
+   - NO printing or PDF generation
+   - NO saving or remembering things
+4. ONLY include READ-ONLY queries: searching, asking questions, playing media, lookups
+5. Keep them reasonable - things a real person would ask
+6. Output ONLY the queries, one per line, no numbering or bullets
 
 Generate {count} queries:"""
 
@@ -382,17 +389,67 @@ Generate {count} queries:"""
             # Get response style for context
             response_style = get_config_value("JARVIS_RESPONSE_STYLE", "casual")
             
+            # Check for native search capabilities
+            xai_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
+            anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
+            llm_provider = get_config_value("LLM_PROVIDER", "anthropic")
+            
+            native_search_info = ""
+            if llm_provider == "xai" and xai_search:
+                native_search_info = "\nNative Search: ENABLED (xAI Grok live search - can answer with real-time data without tools)"
+            elif llm_provider == "anthropic" and anthropic_search:
+                native_search_info = "\nNative Search: ENABLED (Anthropic web search - can answer with real-time data without tools)"
+            else:
+                native_search_info = "\nNative Search: DISABLED (needs tools for real-time data)"
+            
             # Build config context to help feedback understand the style
             config_context = f"""Response Style: {response_style}
 - casual: Brief voice output (~25 words), no URLs for speech
 - auto: Adapts based on query complexity
-- detailed: Full output for display/reading, markdown and URLs allowed"""
+- detailed: Full output for display/reading, markdown and URLs allowed{native_search_info}"""
+            
+            # Get tool descriptions for feedback context
+            tool_descriptions = {}
+            try:
+                # Get ALL available tools for context
+                from tool_schema import ToolRegistry
+                registry = ToolRegistry(mode=self.mode)
+                all_tools = registry.get_all_tools()
+                
+                # Include tools used AND relevant tools based on query keywords
+                relevant_tools = set(query_result.tools_used or [])
+                query_lower = query_result.query.lower()
+                
+                # Add keyword-based relevant tools
+                keyword_map = {
+                    ("time",): ["get_time"],
+                    ("weather",): ["weather"],
+                    ("bitcoin", "crypto", "price"): ["crypto_price"],
+                    ("search", "web", "google", "look up"): ["mcp_brave_search_brave_web_search"],
+                    ("music", "play", "spotify", "song"): ["spotify"],
+                    ("email", "send", "message"): ["send_email"],
+                    ("memory", "remember", "recall"): ["search_memory", "semantic_recall", "remember"],
+                }
+                
+                for keywords, tools in keyword_map.items():
+                    if any(k in query_lower for k in keywords):
+                        relevant_tools.update(tools)
+                
+                # Get descriptions for relevant tools
+                for tool in all_tools:
+                    if tool.name in relevant_tools:
+                        tool_descriptions[tool.name] = tool.description
+                        
+            except Exception as e:
+                # Fallback - still collect feedback without tool descriptions
+                pass
             
             # Run feedback collection with proper parameters
             feedback_data = collector.collect(
                 query=query_result.query,
                 result=result_dict,
                 tools_used=query_result.tools_used,
+                tool_descriptions=tool_descriptions,
                 config_context=config_context,
                 session_id=f"self_play_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             )

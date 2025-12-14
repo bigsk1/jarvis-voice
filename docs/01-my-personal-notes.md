@@ -358,6 +358,12 @@ jarvis-dashboard → 🧬 Evolution → System Prompt Suggestions
 # View results
 ./bin/jarvis-self-play results --session latest
 
+# Only information and media (safest)
+./bin/jarvis-self-play --queries 10 --categories information media research
+
+# Skip productivity if worried about memory writes
+./bin/jarvis-self-play --queries 10 --categories information research media general
+
 # Testing Commands
 
 ```bash

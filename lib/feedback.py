@@ -29,6 +29,8 @@ from config_loader import load_config, get_config_value
 
 FEEDBACK_PROMPT = """A task was just completed as a voice assistant. Now provide HONEST, SPECIFIC FEEDBACK to help improve the system.
 
+IMPORTANT: Today's date is {current_date}. Any references to dates before this are in the PAST, not future.
+
 === YOUR TASK ===
 User Query: {query}
 
@@ -63,8 +65,22 @@ Tools Used: {tools_used}
    - NOT calling get_time when asked for time is ACCEPTABLE if the LLM uses system prompt time
    - The LLM using time from system prompt instead of calling a tool is EFFICIENT, not wrong
    - Only penalize if the time in the response is INCORRECT, not if get_time wasn't called
-   
-3. **CHECK THE SYSTEM PROMPT BELOW** - it shows what context the LLM had available.
+
+4. **NATIVE LIVE SEARCH** - CHECK CONFIGURATION SECTION FOR "Native Search: ENABLED"
+   - If Configuration shows "Native Search: ENABLED", the LLM has BUILT-IN web search
+   - xAI Grok with live search or Anthropic with web_search can answer real-time queries
+     (news, stocks, unemployment rates, Netflix titles, documentaries, etc.) WITHOUT external tools
+   - When native search is ENABLED and the response contains specific details:
+     → TRUST the information - native search grounded it in real sources
+     → DO NOT penalize for "unverified claims" - the LLM verified via native search
+     → Rate 4-5 if response addresses query with specific, current details
+   - Only rate poorly if:
+     → Information is demonstrably WRONG (contradicts common knowledge)
+     → Response is vague/generic when specifics were clearly available via search
+   - If native search is DISABLED and real-time data was needed but no tool called:
+     → This IS a problem - rate accordingly
+
+5. **CHECK THE SYSTEM PROMPT BELOW** - it shows what context the LLM had available.
    If data was already in the system prompt, the LLM didn't need to call a tool for it.
 
 === SYSTEM PROMPT THE LLM WAS GIVEN ===
@@ -324,6 +340,7 @@ class FeedbackCollector:
         
         # Build the feedback prompt
         prompt = FEEDBACK_PROMPT.format(
+            current_date=datetime.now().strftime("%B %d, %Y"),  # e.g., "December 13, 2025"
             query=query,
             success="Yes" if result.get('ok') else "No",
             raw_llm_response=raw_llm_response,
