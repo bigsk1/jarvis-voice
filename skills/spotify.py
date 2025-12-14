@@ -45,6 +45,14 @@ SCOPES = [
     'user-library-read',
     'user-read-recently-played',   # For finding recently played playlists/context
     'user-top-read',               # For recommendations based on top tracks/artists
+    'user-follow-read',            # For followed playlists/artists
+]
+
+# Personalized playlist keywords (Spotify's "Made For You" playlists)
+PERSONALIZED_PLAYLIST_KEYWORDS = [
+    'discover weekly', 'release radar', 'daily mix',
+    'on repeat', 'repeat rewind', 'your top songs',
+    'time capsule', 'your summer rewind', 'your year'
 ]
 
 
@@ -102,6 +110,137 @@ def get_active_device(sp) -> tuple[str | None, str | None]:
         return devices[0]['id'], devices[0]['name']
     except Exception:
         return None, None
+
+
+def _is_personalized_spotify_playlist(playlist: dict) -> bool:
+    """Check if playlist is a Spotify-generated personalized playlist (Discover Weekly, Daily Mix, etc.).
+    
+    Note: Spotify's personalized playlists can have either:
+    - owner_id == 'spotify' (some playlists)
+    - A user-specific dynamic owner ID (Discover Weekly, Daily Mix, etc.)
+    
+    So we also check by name pattern if the name strongly matches personalized keywords.
+    """
+    if not playlist:
+        return False
+    owner = playlist.get('owner', {})
+    name = playlist.get('name', '').lower()
+    owner_id = owner.get('id') or ''
+    
+    # Check if owner is 'spotify'
+    if owner_id == 'spotify' and any(keyword in name for keyword in PERSONALIZED_PLAYLIST_KEYWORDS):
+        return True
+    
+    # Also check by name alone for known personalized playlist patterns
+    # These have dynamic per-user owner IDs
+    exact_personalized_names = [
+        'discover weekly', 'release radar', 'on repeat', 'repeat rewind',
+        'your top songs', 'time capsule'
+    ]
+    if any(name == exact_name or name.startswith(exact_name) for exact_name in exact_personalized_names):
+        return True
+    
+    # Daily Mix 1-6 pattern
+    if name.startswith('daily mix'):
+        return True
+    
+    return False
+
+
+def _get_personalized_playlists(sp) -> list:
+    """Get all personalized Spotify playlists (Discover Weekly, Daily Mix 1-6, Release Radar, etc.)."""
+    all_playlists = []
+    offset = 0
+    
+    # Paginate through all user playlists (includes followed personalized ones)
+    while True:
+        try:
+            res = sp.current_user_playlists(limit=50, offset=offset)
+            items = [p for p in res.get('items', []) if p]
+            all_playlists.extend(items)
+            if not res.get('next'):
+                break
+            offset += 50
+            if offset > 500:  # Safety limit
+                break
+        except Exception:
+            break
+    
+    # Filter to only Spotify's personalized playlists
+    personalized = [p for p in all_playlists if _is_personalized_spotify_playlist(p)]
+    return personalized
+
+
+def _find_personalized_playlist(sp, query: str) -> dict | None:
+    """Find a personalized playlist matching the query.
+    
+    First checks user's library, then falls back to search API for playlists
+    that the user hasn't followed yet (like Discover Weekly).
+    """
+    import re
+    query_lower = query.lower()
+    
+    # Remove common prefixes
+    for prefix in ['play', 'my', 'the']:
+        query_lower = query_lower.replace(prefix, '').strip()
+    
+    # First: Check user's library for followed personalized playlists
+    personalized = _get_personalized_playlists(sp)
+    
+    # Try exact match first
+    for p in personalized:
+        if query_lower == p['name'].lower():
+            return p
+    
+    # Try contains match
+    for p in personalized:
+        if query_lower in p['name'].lower() or p['name'].lower() in query_lower:
+            return p
+    
+    # Try keyword match (e.g., "daily mix 2" should match "Daily Mix 2")
+    for p in personalized:
+        p_name = p['name'].lower()
+        if 'daily mix' in query_lower and 'daily mix' in p_name:
+            query_num = re.search(r'(\d+)', query_lower)
+            p_num = re.search(r'(\d+)', p_name)
+            if query_num and p_num:
+                if query_num.group(1) == p_num.group(1):
+                    return p
+            elif not query_num:
+                return p
+    
+    # Second: Search API fallback for playlists not yet followed
+    # This finds Discover Weekly, Release Radar, etc. even if user hasn't followed them
+    search_terms = {
+        'discover weekly': 'Discover Weekly',
+        'release radar': 'Release Radar',
+        'daily mix': 'Daily Mix',
+        'on repeat': 'On Repeat',
+        'repeat rewind': 'Repeat Rewind',
+    }
+    
+    for keyword, search_term in search_terms.items():
+        if keyword in query_lower:
+            try:
+                results = sp.search(q=search_term, type='playlist', limit=10)
+                playlists = [p for p in results.get('playlists', {}).get('items', []) if p]
+                
+                for p in playlists:
+                    p_name = p['name'].lower()
+                    # For "daily mix X", match the number
+                    if 'daily mix' in query_lower:
+                        query_num = re.search(r'(\d+)', query_lower)
+                        p_num = re.search(r'(\d+)', p_name)
+                        if query_num and p_num and query_num.group(1) == p_num.group(1):
+                            return p
+                        elif not query_num and 'daily mix' in p_name:
+                            return p  # Return first daily mix
+                    elif keyword in p_name:
+                        return p
+            except Exception:
+                pass
+    
+    return None
 
 
 def _has_episode_number(query: str) -> bool:
@@ -307,6 +446,21 @@ def action_play(args: dict) -> dict:
                 }
             except Exception as e:
                 pass  # Fall through to other search methods
+        
+        # Check for Spotify's personalized playlists (Discover Weekly, Daily Mix, Release Radar, etc.)
+        # These are owned by "spotify" and have dynamic per-user IDs - can't be found via normal search
+        if any(kw in query_lower for kw in PERSONALIZED_PLAYLIST_KEYWORDS):
+            personalized = _find_personalized_playlist(sp, query_lower)
+            if personalized:
+                try:
+                    sp.start_playback(context_uri=personalized['uri'], device_id=device_id)
+                    return {
+                        "ok": True,
+                        "speech": f"Playing {personalized['name']}",
+                        "data": {"uri": personalized['uri'], "name": personalized['name'], "type": "personalized_playlist"}
+                    }
+                except Exception as e:
+                    pass  # Fall through to other search methods
         
         # Handle direct Spotify URIs (e.g., spotify:track:xxx, spotify:episode:xxx)
         if query.startswith('spotify:'):
@@ -963,9 +1117,18 @@ def action_queue(args: dict) -> dict:
     
     sp.add_to_queue(uri)
     
+    # Fix: name/artist may not be defined if uri was passed directly
+    if 'name' not in locals():
+        name = "that track"
+        artist = ""
+    
+    speech = f"Added {name} by {artist} to queue".strip()
+    if speech.endswith(" by  to queue"):
+        speech = "Added to queue"
+    
     return {
         "ok": True,
-        "speech": f"Added {name} by {artist} to queue" if 'name' in dir() else "Added to queue",
+        "speech": speech,
         "data": {"uri": uri}
     }
 
@@ -1284,6 +1447,40 @@ def action_suggest(args: dict) -> dict:
     }
 
 
+def action_made_for_you(args: dict) -> dict:
+    """List Spotify's 'Made For You' personalized playlists (Discover Weekly, Daily Mix, etc.)."""
+    sp = get_spotify_client()
+    
+    personalized = _get_personalized_playlists(sp)
+    
+    if not personalized:
+        return {
+            "ok": False,
+            "speech": "No Made For You playlists found. Try following Discover Weekly or Daily Mix in Spotify.",
+            "error": "No personalized playlists"
+        }
+    
+    # Build list with play instructions
+    playlist_info = []
+    for p in personalized:
+        playlist_info.append({
+            "name": p['name'],
+            "uri": p['uri'],
+            "description": p.get('description', '')[:50] if p.get('description') else '',
+            "tracks": p.get('tracks', {}).get('total', 0)
+        })
+    
+    # Speech: list first few
+    speech_items = [f"{p['name']}" for p in playlist_info[:5]]
+    speech = f"Your Made For You playlists: {', '.join(speech_items)}. Say 'play' followed by any name."
+    
+    return {
+        "ok": True,
+        "speech": speech,
+        "data": {"playlists": playlist_info, "count": len(playlist_info)}
+    }
+
+
 ACTIONS = {
     'play': action_play,
     'pause': action_pause,
@@ -1300,8 +1497,9 @@ ACTIONS = {
     'recent': action_recent,
     'recommend': action_recommend,
     'top': action_top,
-    'episodes': action_episodes,  # NEW: List podcast episodes
-    'suggest': action_suggest,    # NEW: Music suggestions for browsing
+    'episodes': action_episodes,
+    'suggest': action_suggest,
+    'made_for_you': action_made_for_you,  # Personalized playlists (Discover Weekly, etc.)
 }
 
 

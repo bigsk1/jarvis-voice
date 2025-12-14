@@ -44,7 +44,7 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 - Vague requests like "play something good" work via Spotify's search
 - Fuzzy matching works: "rock" finds "dad rock🤘", "grunge" finds "90's grunge🎸"
 
-### 🎯 Personalized Features (NEW!)
+### 🎯 Personalized Features
 
 | What You Say | What Happens |
 |--------------|--------------|
@@ -54,6 +54,37 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 | "Recommend something energetic" | Upbeat recommendations for workouts |
 | "Recommend chill music" | Relaxed recommendations |
 | "What playlists have I played recently?" | Shows recently played playlists |
+| **"Play my Discover Weekly"** | Plays your personalized weekly playlist |
+| **"Play Release Radar"** | Plays new releases from artists you follow |
+| **"Play Daily Mix 1"** | Plays your Daily Mix playlists |
+| **"List my Made For You playlists"** | Shows all personalized Spotify playlists |
+
+### 🎙️ Podcast Conversations (NEW!)
+
+| What You Say | What Happens |
+|--------------|--------------|
+| **"What are the latest Joe Rogan episodes?"** | Lists recent episodes with dates |
+| **"Play Joe Rogan episode 2425"** | Plays specific episode by number |
+| **"Play JRE #2424"** | Plays by episode number |
+| "Play latest Joe Rogan podcast" | Plays most recent episode |
+| "What's new on This Past Weekend?" | Lists Theo Von episodes |
+
+**Conversational Flow:**
+```
+You: "What are the latest Joe Rogan episodes?"
+Jarvis: "#2425 Ethan Hawke (Dec 11), #2424 Jelly Roll (Dec 10)..."
+
+You: "Play episode 2425"
+Jarvis: "Playing #2425 - Ethan Hawke"
+```
+
+### 🎵 Music Suggestions (NEW!)
+
+| What You Say | What Happens |
+|--------------|--------------|
+| **"What music do you recommend tonight?"** | Plays personalized recommendations |
+| **"Suggest some chill music"** | Lists suggestions (doesn't auto-play) |
+| **"Give me music suggestions"** | Browse before playing |
 
 ### ⏸️ Playback Control
 
@@ -106,11 +137,14 @@ Jarvis can play podcasts and automatically gets the **latest episode**:
 | "Newest episode of Lex Fridman" | Latest Lex Fridman episode |
 | "Play Kill Tony podcast" | Plays latest Kill Tony |
 | "Search podcast Joe Rogan" | Shows podcast results |
+| **"Play Joe Rogan #2425"** | Plays specific episode by number |
+| **"Play JRE episode 2424"** | Plays by episode number |
 
 **Tips:**
 - Use "latest", "newest", or "podcast" to trigger podcast mode
 - Works with ANY podcast name - just search naturally
 - Gets the actual latest episode, not episode #1
+- Use "#" or "episode" followed by number for specific episodes
 
 ### 🔍 Search
 
@@ -248,11 +282,11 @@ Then re-authorize in browser.
 
 ## Technical Details
 
-### Actions Available
+### Actions Available (18 total)
 
 | Action | Description | Required Params |
 |--------|-------------|-----------------|
-| `play` | Resume or play content | `query` (optional) |
+| `play` | Resume or play content (music, podcasts, Discover Weekly, etc.) | `query` (optional) |
 | `pause` | Pause playback | - |
 | `next` | Skip track | - |
 | `previous` | Previous track | - |
@@ -264,6 +298,12 @@ Then re-authorize in browser.
 | `shuffle` | Toggle shuffle | `state` (optional) |
 | `queue` | Add to queue | `query` |
 | `share` | Get shareable info | - |
+| `recent` | Recently played playlists | - |
+| `recommend` | Play personalized recommendations | `mood` (optional) |
+| `top` | Show top tracks/artists | `type` (track/artist) |
+| `episodes` | List podcast episodes | `query` (show name) |
+| `suggest` | Get music suggestions (no auto-play) | `mood` (optional) |
+| `made_for_you` | List personalized playlists (Discover Weekly, etc.) | - |
 
 ### Search Types
 
@@ -303,6 +343,9 @@ The tool requests these Spotify scopes:
 - `playlist-read-private` - Access private playlists
 - `playlist-read-collaborative` - Access collaborative playlists
 - `user-library-read` - Access Liked Songs
+- `user-read-recently-played` - Recently played tracks/playlists
+- `user-top-read` - Top tracks and artists
+- `user-follow-read` - Followed playlists/artists
 
 ---
 
@@ -321,6 +364,9 @@ For reference, initial setup was:
 ## Ideas for Future
 
 - [x] ~~"Play my Liked Songs"~~ ✅ Done!
+- [x] ~~Play specific podcast episode by number~~ ✅ Done! ("Play JRE #2425")
+- [x] ~~List podcast episodes~~ ✅ Done! ("What are latest Joe Rogan episodes?")
+- [x] ~~Made For You playlists~~ ✅ Done! (Discover Weekly, Daily Mix, Release Radar)
 - [ ] "What's in my queue?"
 - [ ] "Clear the queue"
 - [ ] "Repeat this song"
@@ -328,7 +374,6 @@ For reference, initial setup was:
 - [ ] Playlist management (create, add songs)
 - [ ] "Play similar to this"
 - [ ] Integration with calendar (morning playlist at 7am)
-- [ ] Play specific podcast episode by number ("Play JRE #2400")
 
 ---
 
@@ -342,5 +387,5 @@ At least one device must have Spotify running for the API to control it. If you 
 
 ---
 
-**Last Updated:** 2024-12-13
+**Last Updated:** 2025-12-14
 

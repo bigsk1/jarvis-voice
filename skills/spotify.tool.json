@@ -8,8 +8,8 @@
     "properties": {
       "action": {
         "type": "string",
-        "enum": ["play", "pause", "next", "previous", "current", "search", "volume", "devices", "transfer", "shuffle", "queue", "share", "recent", "recommend", "top", "episodes", "suggest"],
-        "description": "Action: 'play' plays music/podcast, 'episodes' LISTS podcast episodes (for 'what are recent X podcasts?'), 'suggest' lists music suggestions, 'recommend' plays personalized music, 'top' shows most played tracks/artists, 'current' shows now playing."
+        "enum": ["play", "pause", "next", "previous", "current", "search", "volume", "devices", "transfer", "shuffle", "queue", "share", "recent", "recommend", "top", "episodes", "suggest", "made_for_you"],
+        "description": "Action: 'play' plays music/podcast (supports Discover Weekly, Daily Mix, etc.), 'episodes' LISTS podcast episodes, 'suggest' lists music suggestions, 'recommend' plays personalized music, 'made_for_you' lists your personalized Spotify playlists, 'top' shows most played."
       },
       "query": {
         "type": "string",
