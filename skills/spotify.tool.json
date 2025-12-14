@@ -1,15 +1,15 @@
 {
   "enabled": true,
   "name": "spotify",
-  "description": "🎵 PLAY MUSIC via Spotify. You HAVE Spotify integration - use this tool when user asks to play, hear, listen to ANY music/songs/artists/playlists. Actions: play (starts music), pause, skip/next, current (now playing), search, volume, devices, shuffle, share. Examples: 'play jazz' → action=play query=jazz, 'upbeat 2010s pop' → action=play query='upbeat pop 2010s'.",
+  "description": "🎵 Spotify control. Actions: play (music/podcasts), pause, next, current, search, volume, devices, shuffle, share, recommend (personalized), top (top tracks), episodes (LIST PODCAST EPISODES - use for 'what are recent Joe Rogan episodes?'), suggest (music suggestions). For podcasts: 'list Joe Rogan episodes' → action=episodes query='Joe Rogan'. For music: 'play jazz' → action=play query=jazz.",
   "script": "spotify.py",
   "parameters": {
     "type": "object",
     "properties": {
       "action": {
         "type": "string",
-        "enum": ["play", "pause", "next", "previous", "current", "search", "volume", "devices", "transfer", "shuffle", "queue", "share"],
-        "description": "Action to perform. 'play' resumes or plays query. 'current' shows what's playing. 'transfer' switches device. 'share' gets shareable link and album art for current track."
+        "enum": ["play", "pause", "next", "previous", "current", "search", "volume", "devices", "transfer", "shuffle", "queue", "share", "recent", "recommend", "top", "episodes", "suggest"],
+        "description": "Action: 'play' plays music/podcast, 'episodes' LISTS podcast episodes (for 'what are recent X podcasts?'), 'suggest' lists music suggestions, 'recommend' plays personalized music, 'top' shows most played tracks/artists, 'current' shows now playing."
       },
       "query": {
         "type": "string",
@@ -25,12 +25,21 @@
       },
       "type": {
         "type": "string",
-        "enum": ["track", "artist", "album", "playlist", "show", "episode", "podcast"],
-        "description": "For search: type of content to search for. Use 'show' or 'podcast' for podcasts like Joe Rogan, 'episode' for specific episodes."
+        "enum": ["track", "artist", "album", "playlist", "show", "episode", "podcast", "tracks", "artists"],
+        "description": "For search: content type. For top: 'tracks' or 'artists'. Use 'show'/'podcast' for podcasts."
       },
       "state": {
         "type": "boolean",
         "description": "For shuffle: true=on, false=off. Omit to toggle."
+      },
+      "mood": {
+        "type": "string",
+        "description": "For recommend: mood like 'energetic', 'chill', 'focus', 'workout'. Adjusts recommendation parameters."
+      },
+      "time_range": {
+        "type": "string",
+        "enum": ["short_term", "medium_term", "long_term"],
+        "description": "For top: time range. short_term=last 4 weeks, medium_term=last 6 months, long_term=all time."
       }
     },
     "required": ["action"]

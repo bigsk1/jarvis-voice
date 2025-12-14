@@ -37,10 +37,23 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 | "Play my saved songs" | Same as liked songs |
 
 **Tips:**
+- **Your library is searched first** - Jarvis checks your saved playlists before public Spotify
 - Include "playlist" in your request to search playlists specifically
 - Include "album" to search albums
 - Just say an artist name to play their music
 - Vague requests like "play something good" work via Spotify's search
+- Fuzzy matching works: "rock" finds "dad rock🤘", "grunge" finds "90's grunge🎸"
+
+### 🎯 Personalized Features (NEW!)
+
+| What You Say | What Happens |
+|--------------|--------------|
+| "What are my top songs?" | Shows your most played tracks |
+| "Who are my top artists?" | Shows your most played artists |
+| "Play my recommendations" | Plays personalized mix based on your taste |
+| "Recommend something energetic" | Upbeat recommendations for workouts |
+| "Recommend chill music" | Relaxed recommendations |
+| "What playlists have I played recently?" | Shows recently played playlists |
 
 ### ⏸️ Playback Control
 

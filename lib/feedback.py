@@ -353,11 +353,33 @@ class FeedbackCollector:
         )
         
         try:
-            # Ask LLM for feedback
-            response = self.provider.chat(
-                prompt,
-                system_prompt="You are a QA analyst reviewing an AI assistant's performance. Provide honest, specific feedback in JSON format. Be constructive but thorough."
-            )
+            # Ask LLM for feedback with retry logic for transient errors (529 overload, etc.)
+            import time
+            max_retries = 3
+            response = None
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = self.provider.chat(
+                        prompt,
+                        system_prompt="You are a QA analyst reviewing an AI assistant's performance. Provide honest, specific feedback in JSON format. Be constructive but thorough."
+                    )
+                    break  # Success
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+                    # Retry on overload/rate limit errors
+                    if '529' in error_str or 'overload' in error_str or '429' in error_str or 'rate' in error_str:
+                        if attempt < max_retries - 1:
+                            wait_time = (attempt + 1) * 2  # 2s, 4s, 6s
+                            print(f"Feedback API overloaded, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(wait_time)
+                            continue
+                    raise  # Non-retryable error
+            
+            if response is None and last_error:
+                raise last_error
             
             # Parse JSON response
             feedback = self._parse_feedback(response)

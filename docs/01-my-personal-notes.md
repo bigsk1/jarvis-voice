@@ -731,3 +731,13 @@ sudo journalctl -u unifi-protect-webhook -f   # View logs
 sudo systemctl restart unifi-protect-webhook  # Restart
 sudo systemctl stop unifi-protect-webhook     # Stop
 ```
+
+# Spotify recommendations
+
+```bash
+You: "What music do you recommend for this evening?"
+Jarvis: [Plays 20 tracks based on your taste - Tad, Primus, etc.]
+
+You: "I want some chill music suggestions"  
+Jarvis: "Here are some suggestions: 1. Best Chill Songs... Say 'play number X'"
+```

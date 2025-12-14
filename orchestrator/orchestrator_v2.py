@@ -55,6 +55,24 @@ def _sanitize_error_for_speech(error: str) -> str:
     if "session" in error_lower or "transport" in error_lower:
         return "connection issue with the service"
     
+    # Handle Python-specific errors (internal bugs - should never be spoken)
+    if "nonetype" in error_lower or "'nonetype'" in error_lower:
+        return "encountered an unexpected response"
+    if "keyerror" in error_lower or "key error" in error_lower:
+        return "missing data in the response"
+    if "typeerror" in error_lower or "type error" in error_lower:
+        return "encountered an unexpected data format"
+    if "attributeerror" in error_lower or "attribute error" in error_lower:
+        return "encountered an unexpected response format"
+    if "indexerror" in error_lower or "index error" in error_lower:
+        return "no results were returned"
+    if "valueerror" in error_lower or "value error" in error_lower:
+        return "received invalid data"
+    if "not subscriptable" in error_lower:
+        return "received an empty response"
+    if "traceback" in error_lower or "line " in error_lower:
+        return "there was an internal error"
+    
     # Remove URLs, IPs, and session IDs from error if no pattern matched
     sanitized = re.sub(r'https?://[^\s]+', '', error)
     sanitized = re.sub(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?', '', sanitized)

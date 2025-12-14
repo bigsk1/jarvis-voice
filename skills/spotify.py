@@ -43,6 +43,8 @@ SCOPES = [
     'playlist-read-private',
     'playlist-read-collaborative',
     'user-library-read',
+    'user-read-recently-played',   # For finding recently played playlists/context
+    'user-top-read',               # For recommendations based on top tracks/artists
 ]
 
 
@@ -102,12 +104,179 @@ def get_active_device(sp) -> tuple[str | None, str | None]:
         return None, None
 
 
+def _has_episode_number(query: str) -> bool:
+    """Check if query contains an episode number pattern like '#2425' or 'episode 2425'."""
+    import re
+    # Match patterns like "#2425", "episode 2425", "ep 2425", "#2425"
+    patterns = [
+        r'#\d{1,5}',           # #2425
+        r'episode\s*\d{1,5}',  # episode 2425
+        r'ep\s*\d{1,5}',       # ep 2425
+        r'number\s*\d{1,5}',   # number 2425
+    ]
+    for pattern in patterns:
+        if re.search(pattern, query.lower()):
+            return True
+    return False
+
+
+def _parse_episode_request(query: str) -> tuple[str, str]:
+    """
+    Parse query like "Joe Rogan #2425" into (show_name, episode_number).
+    Returns (show_name, episode_num) or (None, None) if not parseable.
+    """
+    import re
+    
+    query_lower = query.lower()
+    
+    # Find episode number
+    episode_num = None
+    for pattern in [r'#(\d{1,5})', r'episode\s*(\d{1,5})', r'ep\s*(\d{1,5})', r'number\s*(\d{1,5})']:
+        match = re.search(pattern, query_lower)
+        if match:
+            episode_num = match.group(1)
+            break
+    
+    if not episode_num:
+        return None, None
+    
+    # Remove episode number and common words to get show name
+    show_name = query_lower
+    show_name = re.sub(r'#\d{1,5}', '', show_name)
+    show_name = re.sub(r'episode\s*\d{1,5}', '', show_name)
+    show_name = re.sub(r'ep\s*\d{1,5}', '', show_name)
+    show_name = re.sub(r'number\s*\d{1,5}', '', show_name)
+    
+    for word in ['play', 'the', 'podcast', 'from', 'of']:
+        show_name = show_name.replace(word, '')
+    
+    show_name = show_name.strip()
+    
+    return show_name if show_name else None, episode_num
+
+
+def _check_memory_for_playlist(query: str) -> str | None:
+    """
+    Check Jarvis memory for saved playlist URIs.
+    Searches for keys containing playlist names and returns Spotify URI if found.
+    """
+    try:
+        from memory_db import MemoryDB
+        db = MemoryDB()
+        
+        # Clean query - remove common words
+        clean_query = query.lower()
+        for word in ['my', 'play', 'the', 'playlist', 'saved', 'on spotify']:
+            clean_query = clean_query.replace(word, '')
+        clean_query = clean_query.strip()
+        
+        if not clean_query:
+            return None
+        
+        # Search memory for playlist URIs
+        memories = db.search_memory(clean_query, limit=5)
+        
+        for mem in memories:
+            value = mem.get('value', '')
+            key = mem.get('key', '').lower()
+            
+            # Check if this is a Spotify playlist URI
+            if 'spotify:playlist:' in value:
+                # Verify the key matches what user asked for
+                if any(word in key for word in clean_query.split() if len(word) > 2):
+                    return value
+            
+            # Also check if value contains URI in different format
+            if value.startswith('spotify:playlist:'):
+                return value
+        
+        return None
+    except Exception:
+        return None
+
+
+def _search_user_playlists(sp, query: str) -> dict | None:
+    """
+    Search user's saved playlists (library) with fuzzy matching.
+    Returns the best matching playlist or None if no match.
+    """
+    import re
+    query_lower = query.lower().strip()
+    # Extract words, ignoring emojis and special chars
+    query_words = set(re.findall(r'[a-z0-9]+', query_lower))
+    
+    try:
+        # Get all user playlists (paginate)
+        all_playlists = []
+        offset = 0
+        while True:
+            result = sp.current_user_playlists(limit=50, offset=offset)
+            items = [i for i in result.get('items', []) if i]
+            if not items:
+                break
+            all_playlists.extend(items)
+            offset += 50
+            if offset >= result.get('total', 0):
+                break
+        
+        if not all_playlists:
+            return None
+        
+        # Score each playlist by how well it matches the query
+        best_match = None
+        best_score = 0
+        
+        for playlist in all_playlists:
+            name = playlist.get('name', '').lower()
+            # Extract words, ignoring emojis
+            name_words = set(re.findall(r'[a-z0-9]+', name))
+            
+            # Exact match (case-insensitive, ignoring emojis)
+            name_clean = re.sub(r'[^\w\s]', '', name).strip()
+            if query_lower == name_clean:
+                return playlist
+            
+            # Check if query is substring of name (high confidence)
+            if query_lower in name:
+                score = 90  # High score for substring match
+                if score > best_score:
+                    best_score = score
+                    best_match = playlist
+                continue
+            
+            # Check if ALL query words appear in name
+            if query_words and query_words.issubset(name_words):
+                score = 85  # All words present
+                if score > best_score:
+                    best_score = score
+                    best_match = playlist
+                continue
+            
+            # Word overlap scoring - any match counts
+            overlap = len(query_words & name_words)
+            if overlap > 0:
+                # Score based on how many query words matched
+                score = (overlap / len(query_words)) * 70 if query_words else 0
+                if score > best_score:
+                    best_score = score
+                    best_match = playlist
+        
+        # Return if we have a reasonable match (> 40% confidence)
+        if best_match and best_score > 40:
+            return best_match
+        
+        return None
+    except Exception:
+        return None
+
+
 def action_play(args: dict) -> dict:
     """Resume playback or play specific content."""
     sp = get_spotify_client()
     
     query = args.get('query', '')
     device_id = args.get('device_id')
+    search_type = args.get('type', '').lower()  # Explicit type hint from LLM
     
     # Auto-detect device if not specified
     if not device_id:
@@ -123,7 +292,23 @@ def action_play(args: dict) -> dict:
         # Search and play
         query_lower = query.lower()
         
-        # Handle direct Spotify URIs first (e.g., spotify:track:xxx, spotify:episode:xxx)
+        # Check memory for saved playlist URIs FIRST (before any search)
+        # This allows users to save personalized playlists that can't be found via search
+        saved_uri = _check_memory_for_playlist(query_lower)
+        if saved_uri:
+            try:
+                sp.start_playback(context_uri=saved_uri, device_id=device_id)
+                # Extract name from query for speech
+                name = query_lower.replace('my ', '').replace('saved ', '').replace('playlist', '').strip()
+                return {
+                    "ok": True,
+                    "speech": f"Playing your {name} from saved playlists",
+                    "data": {"uri": saved_uri, "type": "playlist", "source": "memory"}
+                }
+            except Exception as e:
+                pass  # Fall through to other search methods
+        
+        # Handle direct Spotify URIs (e.g., spotify:track:xxx, spotify:episode:xxx)
         if query.startswith('spotify:'):
             uri_type = query.split(':')[1] if ':' in query else 'unknown'
             try:
@@ -145,7 +330,81 @@ def action_play(args: dict) -> dict:
                     "error": str(e)
                 }
         
-        # Determine search type based on keywords
+        # Determine search type based on explicit type hint OR keywords
+        
+        # If LLM passed explicit type='playlist', use that
+        if search_type == 'playlist':
+            # FIRST: Search user's saved playlists (library)
+            user_playlist = _search_user_playlists(sp, query)
+            if user_playlist:
+                uri = user_playlist['uri']
+                name = user_playlist['name']
+                sp.start_playback(context_uri=uri, device_id=device_id)
+                return {
+                    "ok": True,
+                    "speech": f"Playing your playlist {name}",
+                    "data": {"uri": uri, "name": name, "type": "playlist", "source": "library"}
+                }
+            
+            # SECOND: Fall back to public Spotify search
+            results = sp.search(q=query, type='playlist', limit=5)
+            items = [i for i in results.get('playlists', {}).get('items', []) if i]
+            if items:
+                uri = items[0]['uri']
+                name = items[0]['name']
+                sp.start_playback(context_uri=uri, device_id=device_id)
+                return {
+                    "ok": True,
+                    "speech": f"Playing playlist {name}",
+                    "data": {"uri": uri, "name": name, "type": "playlist", "source": "public"}
+                }
+            else:
+                return {
+                    "ok": False,
+                    "speech": f"No playlist found for '{query}'",
+                    "error": "NOT_FOUND"
+                }
+        
+        # If LLM passed explicit type='album', use that
+        if search_type == 'album':
+            results = sp.search(q=query, type='album', limit=5)  # Get more in case some are None
+            items = [i for i in results.get('albums', {}).get('items', []) if i]  # Filter None
+            if items:
+                uri = items[0]['uri']
+                name = items[0]['name']
+                artist = items[0]['artists'][0]['name'] if items[0].get('artists') else 'Unknown'
+                sp.start_playback(context_uri=uri, device_id=device_id)
+                return {
+                    "ok": True,
+                    "speech": f"Playing album {name} by {artist}",
+                    "data": {"uri": uri, "name": name, "artist": artist, "type": "album"}
+                }
+            else:
+                return {
+                    "ok": False,
+                    "speech": f"No album found for '{query}'",
+                    "error": "NOT_FOUND"
+                }
+        
+        # If LLM passed explicit type='artist', use that
+        if search_type == 'artist':
+            results = sp.search(q=query, type='artist', limit=5)  # Get more in case some are None
+            items = [i for i in results.get('artists', {}).get('items', []) if i]  # Filter None
+            if items:
+                uri = items[0]['uri']
+                name = items[0]['name']
+                sp.start_playback(context_uri=uri, device_id=device_id)
+                return {
+                    "ok": True,
+                    "speech": f"Playing {name}",
+                    "data": {"uri": uri, "name": name, "type": "artist"}
+                }
+            else:
+                return {
+                    "ok": False,
+                    "speech": f"No artist found for '{query}'",
+                    "error": "NOT_FOUND"
+                }
         
         # Special case: Liked Songs (user's saved tracks)
         if 'liked' in query_lower or 'saved' in query_lower or 'favorites' in query_lower:
@@ -170,8 +429,22 @@ def action_play(args: dict) -> dict:
         
         if 'playlist' in query_lower:
             search_query = query_lower.replace('playlist', '').strip()
-            results = sp.search(q=search_query, type='playlist', limit=1)
-            items = results.get('playlists', {}).get('items', [])
+            
+            # FIRST: Search user's library
+            user_playlist = _search_user_playlists(sp, search_query)
+            if user_playlist:
+                uri = user_playlist['uri']
+                name = user_playlist['name']
+                sp.start_playback(context_uri=uri, device_id=device_id)
+                return {
+                    "ok": True,
+                    "speech": f"Playing your playlist {name}",
+                    "data": {"uri": uri, "name": name, "type": "playlist", "source": "library"}
+                }
+            
+            # SECOND: Public search
+            results = sp.search(q=search_query, type='playlist', limit=5)
+            items = [i for i in results.get('playlists', {}).get('items', []) if i]
             if items:
                 uri = items[0]['uri']
                 name = items[0]['name']
@@ -179,12 +452,12 @@ def action_play(args: dict) -> dict:
                 return {
                     "ok": True,
                     "speech": f"Playing playlist {name}",
-                    "data": {"uri": uri, "name": name, "type": "playlist"}
+                    "data": {"uri": uri, "name": name, "type": "playlist", "source": "public"}
                 }
         elif 'album' in query_lower:
             search_query = query_lower.replace('album', '').strip()
-            results = sp.search(q=search_query, type='album', limit=1)
-            items = results.get('albums', {}).get('items', [])
+            results = sp.search(q=search_query, type='album', limit=5)
+            items = [i for i in results.get('albums', {}).get('items', []) if i]
             if items:
                 uri = items[0]['uri']
                 name = items[0]['name']
@@ -196,6 +469,43 @@ def action_play(args: dict) -> dict:
                     "speech": f"Playing album {name} by {artist}",
                     "data": {"uri": uri, "name": name, "artist": artist, "type": "album"}
                 }
+        # Check for specific episode number pattern (e.g., "Joe Rogan #2425", "episode 2425")
+        elif _has_episode_number(query_lower):
+            show_name, episode_num = _parse_episode_request(query_lower)
+            if show_name:
+                results = sp.search(q=show_name, type='show', limit=5)
+                shows = [s for s in results.get('shows', {}).get('items', []) if s]
+                
+                # Find best match
+                show = next((s for s in shows if show_name.lower() in s['name'].lower()), shows[0] if shows else None)
+                
+                if show:
+                    # Search episodes for the number
+                    episodes = sp.show_episodes(show['id'], limit=50)
+                    episode_items = [e for e in episodes.get('items', []) if e]
+                    
+                    # Find episode by number in name
+                    target_ep = None
+                    for ep in episode_items:
+                        ep_name = ep.get('name', '')
+                        if f"#{episode_num}" in ep_name or f"#{episode_num} " in ep_name or f"#{episode_num}:" in ep_name:
+                            target_ep = ep
+                            break
+                        # Also try without #
+                        if f" {episode_num} " in ep_name or ep_name.startswith(f"{episode_num} ") or f"#{episode_num}" in ep_name:
+                            target_ep = ep
+                            break
+                    
+                    if target_ep:
+                        sp.start_playback(uris=[target_ep['uri']], device_id=device_id)
+                        return {
+                            "ok": True,
+                            "speech": f"Playing {target_ep['name']}",
+                            "data": {"uri": target_ep['uri'], "name": target_ep['name'], "show": show['name'], "type": "episode"}
+                        }
+                    else:
+                        return {"ok": False, "speech": f"Couldn't find episode {episode_num} of {show['name']}", "error": "Episode not found"}
+        
         elif 'podcast' in query_lower or 'latest episode' in query_lower or 'latest from' in query_lower or 'newest episode' in query_lower:
             # Search for podcast/show and play LATEST episode
             # Remove keywords to get the podcast name
@@ -207,8 +517,8 @@ def action_play(args: dict) -> dict:
             if not search_query:
                 return {"ok": False, "speech": "Which podcast?", "error": "No podcast name"}
             
-            results = sp.search(q=search_query, type='show', limit=1)
-            items = results.get('shows', {}).get('items', [])
+            results = sp.search(q=search_query, type='show', limit=5)
+            items = [i for i in results.get('shows', {}).get('items', []) if i]
             if items:
                 show = items[0]
                 show_id = show['id']
@@ -216,8 +526,8 @@ def action_play(args: dict) -> dict:
                 publisher = show.get('publisher', 'Unknown')
                 
                 # Get latest episodes (returns newest first by default)
-                episodes = sp.show_episodes(show_id, limit=1)
-                episode_items = episodes.get('items', [])
+                episodes = sp.show_episodes(show_id, limit=5)
+                episode_items = [i for i in episodes.get('items', []) if i]
                 
                 if episode_items:
                     latest_ep = episode_items[0]
@@ -255,8 +565,8 @@ def action_play(args: dict) -> dict:
             
             # For genre/mood queries, search playlists FIRST
             if is_genre_query:
-                results = sp.search(q=query, type='playlist', limit=1)
-                playlists = results.get('playlists', {}).get('items', [])
+                results = sp.search(q=query, type='playlist', limit=5)
+                playlists = [i for i in results.get('playlists', {}).get('items', []) if i]
                 if playlists:
                     uri = playlists[0]['uri']
                     name = playlists[0]['name']
@@ -269,8 +579,8 @@ def action_play(args: dict) -> dict:
                     }
             
             # Try artist if query looks like an artist name (no genre keywords)
-            results = sp.search(q=query, type='artist', limit=1)
-            artists = results.get('artists', {}).get('items', [])
+            results = sp.search(q=query, type='artist', limit=5)
+            artists = [i for i in results.get('artists', {}).get('items', []) if i]
             if artists and query_lower in artists[0]['name'].lower():
                 uri = artists[0]['uri']
                 name = artists[0]['name']
@@ -282,8 +592,8 @@ def action_play(args: dict) -> dict:
                 }
             
             # Try track as last resort
-            results = sp.search(q=query, type='track', limit=1)
-            tracks = results.get('tracks', {}).get('items', [])
+            results = sp.search(q=query, type='track', limit=5)
+            tracks = [i for i in results.get('tracks', {}).get('items', []) if i]
             if tracks:
                 uri = tracks[0]['uri']
                 name = tracks[0]['name']
@@ -637,12 +947,13 @@ def action_queue(args: dict) -> dict:
     
     if query and not uri:
         # Search for track
-        results = sp.search(q=query, type='track', limit=1)
-        tracks = results.get('tracks', {}).get('items', [])
+        results = sp.search(q=query, type='track', limit=5)
+        tracks = [i for i in results.get('tracks', {}).get('items', []) if i]
         if tracks:
             uri = tracks[0]['uri']
             name = tracks[0]['name']
-            artist = tracks[0]['artists'][0]['name']
+            track_artists = tracks[0].get('artists', [])
+            artist = track_artists[0]['name'] if track_artists else 'Unknown'
         else:
             return {
                 "ok": False,
@@ -724,6 +1035,255 @@ def action_share(args: dict) -> dict:
 
 
 # Action dispatcher
+def action_recent(args: dict) -> dict:
+    """Get recently played playlists/contexts. Uses user-read-recently-played scope."""
+    sp = get_spotify_client()
+    
+    limit = args.get('limit', 10)
+    play_first = args.get('play', False)
+    
+    recent = sp.current_user_recently_played(limit=50)
+    
+    # Extract unique playlist contexts
+    seen_uris = set()
+    playlists = []
+    
+    for item in recent.get('items', []):
+        context = item.get('context')
+        if context and context.get('type') == 'playlist':
+            uri = context.get('uri', '')
+            if uri and uri not in seen_uris:
+                seen_uris.add(uri)
+                playlists.append({
+                    'uri': uri,
+                    'type': 'playlist'
+                })
+                if len(playlists) >= limit:
+                    break
+    
+    if play_first and playlists:
+        # Play the most recently played playlist
+        uri = playlists[0]['uri']
+        device_id, _ = get_active_device(sp)
+        sp.start_playback(context_uri=uri, device_id=device_id)
+        return {
+            "ok": True,
+            "speech": "Resuming your most recent playlist",
+            "data": {"uri": uri, "action": "play"}
+        }
+    
+    return {
+        "ok": True,
+        "speech": f"Found {len(playlists)} recently played playlists",
+        "data": {"playlists": playlists, "count": len(playlists)}
+    }
+
+
+def action_recommend(args: dict) -> dict:
+    """Get personalized recommendations based on listening history. Uses user-top-read scope."""
+    sp = get_spotify_client()
+    
+    limit = args.get('limit', 20)
+    play = args.get('play', True)
+    mood = args.get('mood', '')  # Optional: energetic, chill, etc.
+    
+    # Get seed tracks from user's top tracks
+    top = sp.current_user_top_tracks(limit=5, time_range='short_term')
+    seed_tracks = [t['id'] for t in top.get('items', []) if t][:5]
+    
+    if not seed_tracks:
+        # Fallback to liked songs
+        liked = sp.current_user_saved_tracks(limit=5)
+        seed_tracks = [item['track']['id'] for item in liked.get('items', []) if item.get('track')][:5]
+    
+    if not seed_tracks:
+        return {"ok": False, "speech": "Need some listening history for recommendations", "error": "No seeds"}
+    
+    # Try recommendations API, fall back to top tracks if it fails
+    try:
+        # Optional: adjust for mood
+        kwargs = {'seed_tracks': seed_tracks, 'limit': limit}
+        if mood:
+            mood_lower = mood.lower()
+            if 'energy' in mood_lower or 'upbeat' in mood_lower or 'workout' in mood_lower:
+                kwargs['target_energy'] = 0.8
+                kwargs['target_valence'] = 0.7
+            elif 'chill' in mood_lower or 'relax' in mood_lower or 'calm' in mood_lower:
+                kwargs['target_energy'] = 0.3
+                kwargs['target_valence'] = 0.5
+            elif 'focus' in mood_lower or 'work' in mood_lower:
+                kwargs['target_energy'] = 0.5
+                kwargs['target_instrumentalness'] = 0.7
+        
+        recs = sp.recommendations(**kwargs)
+        tracks = recs.get('tracks', [])
+    except Exception:
+        # Recommendations API failed - use top tracks as fallback
+        top_extended = sp.current_user_top_tracks(limit=limit, time_range='medium_term')
+        tracks = top_extended.get('items', [])
+    
+    if not tracks:
+        return {"ok": False, "speech": "Couldn't generate recommendations", "error": "Empty recs"}
+    
+    if play:
+        device_id, _ = get_active_device(sp)
+        uris = [t['uri'] for t in tracks]
+        sp.start_playback(uris=uris, device_id=device_id)
+        sp.shuffle(True, device_id=device_id)
+        
+        artists = list(set([t['artists'][0]['name'] for t in tracks[:5] if t.get('artists')]))
+        artist_sample = ', '.join(artists[:3])
+        
+        return {
+            "ok": True,
+            "speech": f"Playing {len(tracks)} recommended tracks based on your taste. Artists like {artist_sample}",
+            "data": {"count": len(tracks), "artists": artists}
+        }
+    
+    return {
+        "ok": True,
+        "speech": f"Generated {len(tracks)} recommendations",
+        "data": {"tracks": [{"name": t['name'], "artist": t['artists'][0]['name'], "uri": t['uri']} for t in tracks[:10]]}
+    }
+
+
+def action_top(args: dict) -> dict:
+    """Get user's top tracks or artists. Uses user-top-read scope."""
+    sp = get_spotify_client()
+    
+    item_type = args.get('type', 'tracks')  # tracks or artists
+    time_range = args.get('time_range', 'medium_term')  # short_term, medium_term, long_term
+    limit = args.get('limit', 10)
+    
+    if item_type == 'artists':
+        result = sp.current_user_top_artists(limit=limit, time_range=time_range)
+        items = [{'name': a['name'], 'uri': a['uri']} for a in result.get('items', []) if a]
+        speech = f"Your top artists: {', '.join([i['name'] for i in items[:5]])}"
+    else:
+        result = sp.current_user_top_tracks(limit=limit, time_range=time_range)
+        items = [{'name': t['name'], 'artist': t['artists'][0]['name'], 'uri': t['uri']} 
+                 for t in result.get('items', []) if t and t.get('artists')]
+        speech = f"Your top tracks include {items[0]['name']} by {items[0]['artist']}" if items else "No top tracks found"
+    
+    return {
+        "ok": True,
+        "speech": speech,
+        "data": {"items": items, "type": item_type, "time_range": time_range}
+    }
+
+
+def action_episodes(args: dict) -> dict:
+    """List recent episodes of a podcast/show. Great for browsing before playing."""
+    sp = get_spotify_client()
+    
+    query = args.get('query', '')
+    limit = args.get('limit', 5)
+    
+    if not query:
+        return {"ok": False, "speech": "Which podcast?", "error": "No query"}
+    
+    # Search for the show
+    results = sp.search(q=query, type='show', limit=5)
+    shows = [s for s in results.get('shows', {}).get('items', []) if s]
+    
+    if not shows:
+        return {"ok": False, "speech": f"Couldn't find podcast '{query}'", "error": "Not found"}
+    
+    # Find best match (prefer exact name match)
+    query_lower = query.lower()
+    show = next((s for s in shows if query_lower in s['name'].lower()), shows[0])
+    
+    # Get episodes
+    episodes = sp.show_episodes(show['id'], limit=limit)
+    episode_list = []
+    
+    for i, ep in enumerate(episodes.get('items', []), 1):
+        if ep:
+            episode_list.append({
+                "number": i,
+                "name": ep.get('name', 'Unknown'),
+                "date": ep.get('release_date', '?'),
+                "duration_min": round(ep.get('duration_ms', 0) / 60000),
+                "uri": ep.get('uri', ''),
+                "description": ep.get('description', '')[:100] + '...' if ep.get('description') else ''
+            })
+    
+    # Build speech output
+    speech_parts = [f"Recent episodes of {show['name']}:"]
+    for ep in episode_list[:3]:
+        speech_parts.append(f"{ep['number']}. {ep['name'][:40]}")
+    
+    return {
+        "ok": True,
+        "speech": ' '.join(speech_parts),
+        "data": {
+            "show": show['name'],
+            "show_uri": show['uri'],
+            "episodes": episode_list
+        }
+    }
+
+
+def action_suggest(args: dict) -> dict:
+    """Get music suggestions for browsing (doesn't auto-play). For conversational discovery."""
+    sp = get_spotify_client()
+    
+    mood = args.get('mood', '')
+    genre = args.get('genre', '')
+    limit = args.get('limit', 5)
+    
+    suggestions = []
+    
+    # If mood/genre specified, search for playlists
+    if mood or genre:
+        search_term = f"{mood} {genre}".strip() or "good vibes"
+        results = sp.search(q=search_term, type='playlist', limit=limit)
+        playlists = [p for p in results.get('playlists', {}).get('items', []) if p]
+        
+        for i, p in enumerate(playlists, 1):
+            suggestions.append({
+                "number": i,
+                "name": p.get('name', 'Unknown'),
+                "type": "playlist",
+                "uri": p.get('uri', ''),
+                "owner": p.get('owner', {}).get('display_name', '?')
+            })
+    else:
+        # No mood - suggest based on top artists + some discovery
+        top = sp.current_user_top_artists(limit=3, time_range='short_term')
+        top_artists = [a['name'] for a in top.get('items', []) if a]
+        
+        # Get related playlists
+        if top_artists:
+            search_term = f"{top_artists[0]} radio"
+            results = sp.search(q=search_term, type='playlist', limit=3)
+            playlists = [p for p in results.get('playlists', {}).get('items', []) if p]
+            
+            for i, p in enumerate(playlists, 1):
+                suggestions.append({
+                    "number": i,
+                    "name": p.get('name', 'Unknown'),
+                    "type": "playlist",
+                    "uri": p.get('uri', ''),
+                    "why": f"Based on {top_artists[0]}"
+                })
+    
+    if not suggestions:
+        return {"ok": False, "speech": "Couldn't generate suggestions", "error": "Empty"}
+    
+    # Build speech
+    speech_parts = ["Here are some suggestions:"]
+    for s in suggestions[:3]:
+        speech_parts.append(f"{s['number']}. {s['name'][:30]}")
+    speech_parts.append("Say 'play number X' to start one.")
+    
+    return {
+        "ok": True,
+        "speech": ' '.join(speech_parts),
+        "data": {"suggestions": suggestions}
+    }
+
+
 ACTIONS = {
     'play': action_play,
     'pause': action_pause,
@@ -737,6 +1297,11 @@ ACTIONS = {
     'shuffle': action_shuffle,
     'queue': action_queue,
     'share': action_share,
+    'recent': action_recent,
+    'recommend': action_recommend,
+    'top': action_top,
+    'episodes': action_episodes,  # NEW: List podcast episodes
+    'suggest': action_suggest,    # NEW: Music suggestions for browsing
 }
 
 

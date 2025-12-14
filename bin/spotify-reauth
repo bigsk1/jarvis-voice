@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""
+Quick Spotify re-authentication with new scopes.
+Run this interactively: ./bin/spotify-reauth
+"""
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from config_loader import load_config, get_config_value
+
+load_config('cloud')
+
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+
+client_id = get_config_value('SPOTIFY_CLIENT_ID')
+client_secret = get_config_value('SPOTIFY_CLIENT_SECRET')
+redirect_uri = 'http://127.0.0.1:8888/callback'
+cache_path = os.path.join(os.path.dirname(__file__), '..', 'data', '.spotify_cache')
+
+# Updated scopes
+SCOPES = ' '.join([
+    'user-read-playback-state',
+    'user-modify-playback-state',
+    'user-read-currently-playing',
+    'playlist-read-private',
+    'playlist-read-collaborative',
+    'user-library-read',
+    'user-read-recently-played',
+    'user-top-read',
+])
+
+print("=" * 60)
+print("Spotify Re-Authentication")
+print("=" * 60)
+print()
+
+sp_oauth = SpotifyOAuth(
+    client_id=client_id,
+    client_secret=client_secret,
+    redirect_uri=redirect_uri,
+    scope=SCOPES,
+    cache_path=cache_path,
+    open_browser=False
+)
+
+auth_url = sp_oauth.get_authorize_url()
+
+print("1. Open this URL in YOUR browser:")
+print()
+print(auth_url)
+print()
+print("2. Click 'Agree' to authorize")
+print("3. You'll be redirected to a page that won't load (that's OK!)")
+print("4. Copy the FULL URL from your browser address bar")
+print("5. Paste it below:")
+print()
+
+try:
+    url = input("Paste URL here: ").strip()
+    
+    code = sp_oauth.parse_response_code(url)
+    if code:
+        token_info = sp_oauth.get_access_token(code)
+        print()
+        print("✅ SUCCESS! Token saved.")
+        print("You can now use Spotify with Jarvis!")
+    else:
+        print("❌ Could not extract code from URL")
+        print("Make sure you copied the full URL including ?code=...")
+except KeyboardInterrupt:
+    print("\nCancelled.")
+except Exception as e:
+    print(f"❌ Error: {e}")
+
