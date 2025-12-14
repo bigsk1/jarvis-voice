@@ -140,7 +140,7 @@ Based on your setup:
 | Device | Type | Best For |
 |--------|------|----------|
 | **Office fire TV** | TV | Office listening |
-| **Wayne's Fire TV** | TV | Living room |
+| **Living Room Fire TV** | TV | Living room |
 | **SHIELD** | TV | Main TV (cameras displayed here) |
 | **Office Echo** | Speaker | Office background music |
 | **Echo Dot garage** | Speaker | Garage |
