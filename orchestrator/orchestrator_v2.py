@@ -424,8 +424,10 @@ class Orchestrator:
                 if first_thinking:
                     response["thinking"] = first_thinking
                 
-                # Record experience for self-learning (async, non-blocking)
-                self._record_learning_experience(transcript, tools_used, response, conversation_context, applied_insights)
+                # Record experience for self-learning (returns experience_id for feedback linking)
+                experience_id = self._record_learning_experience(transcript, tools_used, response, conversation_context, applied_insights)
+                if experience_id > 0:
+                    response["experience_id"] = experience_id
                 
                 # Mark status updates complete before final TTS
                 self.status_updater.mark_complete()
@@ -1034,7 +1036,7 @@ Your BEST EFFORT response:"""
         result: dict,
         conversation_context: list,
         applied_insights: list = None
-    ):
+    ) -> int:
         """
         Record interaction for self-learning intelligence.
         Non-blocking - failures are logged but don't affect response.
@@ -1045,11 +1047,14 @@ Your BEST EFFORT response:"""
             result: Final result dict
             conversation_context: Conversation history
             applied_insights: List of insights that were shown to LLM (for tracking)
+            
+        Returns:
+            Experience ID if recorded, -1 otherwise
         """
         try:
             from intelligence_hooks import record_interaction, track_insight_outcomes
             
-            record_interaction(
+            experience_id = record_interaction(
                 query=transcript,
                 tools_used=tools_used,
                 result=result,
@@ -1063,10 +1068,13 @@ Your BEST EFFORT response:"""
                     tools_used=tools_used,
                     result=result
                 )
+            
+            return experience_id
         except Exception as e:
             # Don't let learning failures affect the main flow
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"⚠️ Learning recording failed: {e}", file=sys.stderr)
+            return -1
     
     def _log_conversation(self, user_query: str, response: str, tools_used: list, success: bool = True, 
                           execution_time_ms: float = None, token_info: dict = None):
@@ -1263,6 +1271,23 @@ Mode: {mode}
         
         # Add feedback to result
         result["feedback"] = feedback
+        
+        # ============================================
+        # FEEDBACK → INTELLIGENCE BRIDGE
+        # Update experience outcome based on feedback rating
+        # ============================================
+        rating = feedback.get('rating')
+        experience_id = result.get('experience_id', -1)
+        
+        if rating is not None and experience_id > 0:
+            from intelligence_hooks import update_experience_from_feedback
+            updated = update_experience_from_feedback(
+                experience_id=experience_id,
+                feedback_rating=rating,
+                feedback_summary=feedback.get('summary')
+            )
+            if updated and rating <= 2 and not json_only:
+                print(f"🔄 Intelligence corrected: experience {experience_id} marked as FAILURE (rating {rating})")
         
         if not json_only:
             print(f"\n📊 Feedback Rating: {feedback.get('rating', 'N/A')}/5")

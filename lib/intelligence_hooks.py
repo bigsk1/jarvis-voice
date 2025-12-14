@@ -70,7 +70,7 @@ def record_interaction(
     tools_used: List[str],
     result: Dict[str, Any],
     conversation_context: Optional[List[Dict]] = None
-) -> bool:
+) -> int:
     """
     Record an interaction as an experience for learning.
     
@@ -83,11 +83,11 @@ def record_interaction(
         conversation_context: Optional list of conversation turns
     
     Returns:
-        True if recorded successfully, False otherwise
+        Experience ID if recorded successfully, -1 otherwise
     """
     intel = _get_intel()
     if not intel:
-        return False
+        return -1
     
     try:
         # Extract outcome signals
@@ -152,12 +152,76 @@ def record_interaction(
                 )
             )
             logger.debug(f"Recorded experience {exp_id} for query: {query[:50]}...")
-            return True
+            return exp_id  # Return the experience ID for feedback linking
         finally:
             loop.close()
         
     except Exception as e:
         logger.warning(f"Failed to record experience: {e}")
+        return -1
+
+
+def update_experience_from_feedback(
+    experience_id: int,
+    feedback_rating: int,
+    feedback_summary: str = None
+) -> bool:
+    """
+    Update experience outcome based on feedback rating.
+    
+    This is the FEEDBACK → INTELLIGENCE BRIDGE:
+    - Rating 4-5: Confirm success (no change needed)
+    - Rating 1-2: Mark as failure (retroactive correction)
+    - Rating 3: Leave as-is (ambiguous)
+    
+    Args:
+        experience_id: The experience to update
+        feedback_rating: Rating from feedback system (1-5)
+        feedback_summary: Optional summary from feedback
+    
+    Returns:
+        True if updated, False otherwise
+    """
+    if experience_id < 0:
+        return False
+    
+    intel = _get_intel()
+    if not intel:
+        return False
+    
+    # Only correct on clear failure (rating 1-2)
+    # Rating 3 is ambiguous, 4-5 confirms success
+    if feedback_rating >= 3:
+        logger.debug(f"Experience {experience_id}: rating {feedback_rating} confirms/leaves success")
+        return True  # No correction needed
+    
+    try:
+        # Retroactively mark as failure
+        cursor = intel.conn.cursor()
+        cursor.execute("""
+            UPDATE experiences 
+            SET outcome_success = 0, 
+                user_satisfied = 0
+            WHERE id = ?
+        """, (experience_id,))
+        intel.conn.commit()
+        
+        rows_updated = cursor.rowcount
+        if rows_updated > 0:
+            logger.info(f"Experience {experience_id}: corrected to FAILURE based on rating {feedback_rating}")
+            
+            # Increase priority in reflection queue (failures are valuable learning)
+            cursor.execute("""
+                UPDATE reflection_queue 
+                SET priority = MAX(priority, 0.8)
+                WHERE experience_id = ?
+            """, (experience_id,))
+            intel.conn.commit()
+            
+        return rows_updated > 0
+        
+    except Exception as e:
+        logger.warning(f"Failed to update experience {experience_id}: {e}")
         return False
 
 

@@ -100,6 +100,30 @@ Fields that track insight health are now **actively updated**:
 - `consecutive_failures` - Rapid decay trigger ✅ Updated automatically
 - `last_outcome` - Most recent result (`helpful`/`not_helpful`) ✅ Updated automatically
 
+### 5. Feedback → Intelligence Bridge (NEW - 2025-12-13)
+
+The feedback system now **retroactively corrects** experience outcomes based on LLM grading:
+
+```
+Flow:
+1. Experience recorded with outcome_success = True (default)
+2. Feedback LLM grades the interaction (rating 1-5)
+3. If rating ≤ 2: Experience CORRECTED to outcome_success = False
+4. Reflection queue priority bumped to 0.8 (high) for failures
+
+Rating Logic:
+- Rating 4-5 → Confirms success (no change)
+- Rating 3   → Ambiguous (left as-is)
+- Rating 1-2 → FAILURE (retroactively corrected)
+```
+
+**Why this matters**: Previously, `ok: True` was set whenever the LLM responded, even if:
+- No tools were called for an action request
+- The LLM hallucinated information
+- The task wasn't actually completed
+
+Now the feedback system (the nuanced judge with full context) makes the final call on success/failure.
+
 ---
 
 ## Phase 1.5 Features (Implemented 2025-11-28)
@@ -213,6 +237,10 @@ All logged to `logs/intelligence/intelligence-YYYY-MM-DD.jsonl`:
 
 ```
 USER QUERY → Check Insights → Route & Execute → Record Experience → Reflect (async)
+                                                      ↑
+                                            Feedback Rating ≤ 2?
+                                                      ↓
+                                            Correct to FAILURE
 ```
 
 ### Detailed Flow: Python vs LLM Calls
@@ -576,7 +604,8 @@ self._record_learning_experience(transcript, tools_used, response, conversation_
 
 ```python
 from intelligence_hooks import (
-    record_interaction,      # Record an experience
+    record_interaction,      # Record an experience, returns experience_id
+    update_experience_from_feedback,  # Correct experience based on feedback rating
     get_routing_insights,    # Get insights for a query
     format_insights_for_prompt,  # Format for LLM context
     trigger_reflection,      # Process pending reflections
@@ -584,6 +613,8 @@ from intelligence_hooks import (
     evaluate_learning        # Meta-cognition check
 )
 ```
+
+**Note**: `record_interaction()` now returns the `experience_id` (int) instead of bool. This enables linking feedback ratings back to experiences for retroactive correction.
 
 ---
 

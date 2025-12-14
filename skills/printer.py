@@ -381,6 +381,10 @@ def main():
         job_id = args.get('job_id', '')
         canvas_id = args.get('canvas_id', '')
         
+        # Fix LLM escape sequences - convert literal \n to actual newlines
+        if text:
+            text = text.replace('\\n', '\n')
+        
         # Print options
         compact = args.get('compact', False)  # Smaller text
         color = args.get('color', True)  # Color printing (default)

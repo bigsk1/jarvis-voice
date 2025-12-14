@@ -34,6 +34,7 @@ This creates a feedback loop for continuous improvement without manual debugging
 - **Catches issues humans miss** - Like the truncated insight we found ("co" cutoff)
 - **Self-documenting** - Issues are logged with timestamps for later review
 - **Actionable feedback** - Specific suggestions, not vague complaints
+- **Corrects Intelligence DB** - Low ratings (1-2) retroactively mark experiences as failures
 
 ---
 
@@ -599,11 +600,82 @@ $ ./orchestrator/orchestrator_v2.py cloud "What's the current price of Bitcoin?"
 
 ---
 
+## Feedback → Intelligence Bridge (NEW - 2025-12-13)
+
+Feedback ratings now **automatically correct** the Intelligence Layer's experience records.
+
+### The Problem (Before)
+
+```
+User: "Play podcast on Spotify"
+LLM: "No device available" (WITHOUT calling any tools)
+Orchestrator: ok = True (LLM responded!)
+Intelligence DB: outcome_success = True ← WRONG!
+```
+
+The system thought it succeeded because the LLM responded without error.
+
+### The Solution (Now)
+
+```
+User: "Play podcast on Spotify"
+LLM: "No device available" (WITHOUT calling tools)
+Orchestrator: ok = True (default)
+Feedback: Rating 2/5 ("Action requested but no tools called")
+                ↓
+Intelligence DB: outcome_success = False ← CORRECTED!
+                 user_satisfied = False
+                 reflection_priority = 0.8 (high)
+```
+
+### How It Works
+
+1. **Experience recorded** with default `outcome_success = True`
+2. **Feedback collected** with rating 1-5
+3. **If rating ≤ 2**: `update_experience_from_feedback()` corrects:
+   - `outcome_success = False`
+   - `user_satisfied = False`
+   - Bumps reflection queue priority to 0.8
+
+### Rating → Correction Logic
+
+| Rating | Action | Rationale |
+|--------|--------|-----------|
+| 5 | No change | Perfect execution |
+| 4 | No change | Minor issues, still success |
+| 3 | No change | Ambiguous - leave as-is |
+| 2 | **CORRECT** | Significant issues = failure |
+| 1 | **CORRECT** | Major problems = failure |
+
+### Why Default to Success?
+
+**False negatives are worse than false positives** for learning:
+- Legitimate "no tools" scenarios: LLM used internal knowledge, auto-context, system prompt time
+- Rigid rules would incorrectly penalize valid responses
+- The feedback LLM (with full context) is the best judge
+
+### Console Output
+
+When correction happens:
+```
+🔄 Intelligence corrected: experience 338 marked as FAILURE (rating 1)
+```
+
+### Verify in Database
+
+```sql
+SELECT id, outcome_success, user_satisfied, query 
+FROM experiences 
+WHERE id = 338;
+```
+
+---
+
 ## Future Enhancements
 
 1. **Aggregate analysis** - Pattern detection across many feedback entries
 2. **Auto-fix suggestions** - Generate patches for tool descriptions
-3. **Integration with intelligence layer** - Feed insights back into learning
+3. ~~**Integration with intelligence layer**~~ ✅ DONE - Feedback now corrects experiences
 4. **Slack/Discord alerts** - Notify on low ratings
 
 ---

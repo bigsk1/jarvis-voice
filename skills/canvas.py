@@ -126,6 +126,10 @@ def create_page(title: str, content: str, tags: List[str] = None,
             "speech": "Canvas isn't running right now. Start it with jarvis-canvas command."
         }
     
+    # Fix LLM escape sequences - convert literal \n to actual newlines
+    if content:
+        content = content.replace('\\n', '\n')
+    
     data = {
         "title": title,
         "content": content,
