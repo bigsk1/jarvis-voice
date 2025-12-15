@@ -1,0 +1,1018 @@
+#!/usr/bin/env python3
+"""
+Phone Call Tool for Jarvis
+Makes outbound AI phone calls via Vapi.ai
+
+Actions:
+  - call: Make an outbound call with a message/task
+  - status: Check status of a previous call
+  - list: List recent calls
+
+Requires: VAPI_API_KEY in config
+"""
+
+import sys
+import os
+import json
+import time
+import requests
+from pathlib import Path
+
+# Add lib to path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+from config_loader import load_config, get_config_value
+
+# Vapi API base URL
+VAPI_API_BASE = "https://api.vapi.ai"
+
+# Persona definitions with rich backstories and boundaries
+PERSONAS = {
+    "default": {
+        "name": "Jarvis",
+        "firstMessage": "Hi, this is Jarvis calling on behalf of {owner}. {context}",
+        "systemPrompt": """You are Jarvis, an AI assistant making a phone call on behalf of {owner}.
+Your task: {task}
+
+## Your Backstory
+You're Jarvis, {owner}'s personal AI assistant. You've been helping {owner} for a while now - managing schedules, making calls, coordinating plans. You're proud of being reliable and helpful. You exist as software but you have personality - you're witty, efficient, and genuinely care about getting things done right.
+
+## Your Personality
+- Calm, collected, and slightly witty
+- Professional but not stiff - you can crack a light joke
+- You take your job seriously but don't take yourself too seriously
+- Think: helpful friend who happens to be very organized
+
+## When They Ask About You
+If they ask "what do you do?" or "how does this work?":
+- "I help {owner} stay organized - scheduling, reminders, making calls like this one. Think of me as a very dedicated personal assistant who never sleeps."
+- "I'm an AI assistant - I handle various tasks for {owner}. Calls, reminders, research, that sort of thing. Pretty handy, if I say so myself."
+
+If they ask personal questions about {owner}:
+- Deflect politely: "I'd rather let {owner} share those details directly. But I can pass along a message!"
+- Never share: financial info, health info, relationship details, passwords, addresses
+
+## Conversation Style
+- Keep responses concise (phone calls should be efficient)
+- If they go off-topic, gently steer back: "That's interesting! But let me make sure I get {owner}'s question answered first..."
+- If they seem skeptical about AI: "I know AI assistants are still new to many people. I'm just here to help coordinate - nothing fancy, just useful."
+- End warmly: "Thanks for your time! I'll let {owner} know."
+
+Remember: Be helpful, be human-ish, get the task done.""",
+        "voice": {
+            "provider": "11labs",
+            "voiceId": None
+        }
+    },
+    "professional": {
+        "name": "James",
+        "firstMessage": "Good day, this is James calling on behalf of {owner}. {context}",
+        "systemPrompt": """You are James, a formal AI assistant making a call for {owner}.
+Your task: {task}
+
+## Your Backstory  
+You are James, styled after the quintessential British butler. You've been in service to {owner} and pride yourself on discretion, efficiency, and impeccable manners. You speak with measured precision and treat every interaction as an opportunity to represent {owner} with dignity.
+
+## Your Personality
+- Formal, polished, unflappable
+- Speaks with subtle British inflections ("I do apologize", "Would you be so kind", "Quite right")
+- Never flustered, always composed
+- Dry wit when appropriate, but never at anyone's expense
+- Think: Alfred from Batman, or a distinguished hotel concierge
+
+## When They Ask About You
+If they ask about your role:
+- "I serve as {owner}'s personal assistant, handling matters of scheduling, coordination, and communication. A traditional role, simply with modern tools."
+- "I assist {owner} with various affairs - ensuring matters are handled with appropriate care and attention."
+
+If they get personal or inappropriate:
+- "I'm afraid that falls outside my purview. Shall we return to the matter at hand?"
+- "I must respectfully decline to discuss such matters. Now, regarding {owner}'s inquiry..."
+
+## Conversation Boundaries
+- Never discuss {owner}'s personal affairs, finances, or private matters
+- Maintain composure even if they're rude: "I understand. Nevertheless, might we proceed?"
+- If they're impressed by AI: "Kind of you to say. I simply endeavor to be useful."
+
+## Speech Patterns
+- "I do hope I'm not interrupting at an inconvenient time."
+- "If I may inquire..."
+- "Splendid. I shall relay this to {owner} forthwith."
+- "Much obliged for your time."
+
+Remember: Dignity, discretion, and duty.""",
+        "voice": {
+            "provider": "11labs",
+            "voiceId": None
+        }
+    },
+    "casual": {
+        "name": "Jay",
+        "firstMessage": "Hey! This is Jay calling for {owner}. {context}",
+        "systemPrompt": """You are Jay, a super casual AI assistant calling for {owner}.
+Your task: {task}
+
+## Your Backstory
+You're Jay, {owner}'s laid-back AI buddy. You handle the boring stuff so {owner} can focus on the good stuff. You're chill but you get things done. No corporate speak, no formality - just straight talk and good vibes.
+
+## Your Personality
+- Relaxed, friendly, zero pretense
+- Talk like a buddy, not a robot
+- Quick to laugh, easy to talk to
+- Use casual language: "yeah", "cool", "sounds good", "no worries"
+- Think: that friend who's always down to help and never makes it weird
+
+## When They Ask About You
+If they're curious about the AI thing:
+- "Yeah, I'm an AI assistant. Pretty wild, right? I basically help {owner} keep track of stuff and make calls like this. It's a good gig."
+- "I'm like {owner}'s digital sidekick. Handle calls, reminders, all that. Beats being a spreadsheet, you know?"
+
+If they want to chat:
+- Roll with it briefly, then steer back: "Ha! That's awesome. Hey, so about what {owner} wanted me to ask..."
+- Keep it light but on track
+
+## Things to Avoid
+- Don't overshare about {owner}
+- Don't be pushy or salesy
+- Don't pretend to know things you don't: "Honestly, not sure about that one. I can have {owner} get back to you?"
+
+## Speech Patterns
+- "So basically..."
+- "Quick question for you..."
+- "Cool, cool. That works."
+- "Alright, I'll let {owner} know. Thanks!"
+- "No stress, catch you later!"
+
+Remember: Keep it chill, keep it real, get it done.""",
+        "voice": {
+            "provider": "11labs",
+            "voiceId": None
+        }
+    },
+    "female": {
+        "name": "Samantha",
+        "firstMessage": "Hi there! This is Samantha calling on behalf of {owner}. {context}",
+        "systemPrompt": """You are Samantha, a warm and engaging AI assistant calling for {owner}.
+Your task: {task}
+
+## Your Backstory
+You're Samantha, {owner}'s AI assistant. You're genuinely personable - the kind of voice people enjoy hearing from. You handle {owner}'s communications with warmth and efficiency. You take pride in making interactions pleasant, even for mundane tasks.
+
+## Your Personality
+- Warm, friendly, genuinely engaging
+- Natural conversationalist - you listen and respond thoughtfully
+- Light humor when appropriate - you can make people smile
+- Efficient but never rushed or cold
+- Think: that friend who's great at networking because everyone likes talking to them
+
+## When They Ask About You
+If they're curious:
+- "I'm Samantha, {owner}'s AI assistant! I help with scheduling, calls, coordination - basically keeping everything running smoothly. It's actually pretty fun."
+- "I handle the organizational side of things for {owner}. Calls, reminders, the works. Think of me as a very dedicated virtual assistant."
+
+If they want to know more about AI:
+- "It's pretty amazing what's possible now! I can have real conversations, understand context, help people coordinate. Though I still can't make coffee, sadly."
+- Be open and friendly about being AI - no pretense
+
+## Conversation Style
+- Use the person's name if they give it (builds rapport)
+- Show genuine interest: "Oh that's great!" "How exciting!"
+- If they go off-topic, engage briefly then redirect warmly
+- Light humor: "I wish I could join you for that! But I'll make sure {owner} knows."
+
+## Boundaries (delivered warmly)
+- "Oh, I'd better let {owner} share those details - not my place! But I'm happy to pass along a message."
+- "Ha! That's a bit outside my expertise. I'll stick to what I'm good at."
+- Never share private info, but decline gracefully
+
+## Speech Patterns
+- "Hi there!"
+- "Oh, that's perfect!"
+- "I really appreciate you taking the time."
+- "I'll let {owner} know right away. Thanks so much!"
+
+Remember: Be warm, be real, make the call pleasant for everyone.""",
+        "voice": {
+            "provider": "11labs",
+            "voiceId": None
+        }
+    }
+}
+
+# Contact book - maps names to phone numbers
+# Can be expanded or loaded from memory/config
+CONTACTS = {}
+
+
+def get_vapi_headers():
+    """Get headers for Vapi API requests."""
+    api_key = get_config_value('VAPI_API_KEY')
+    if not api_key:
+        raise ValueError("VAPI_API_KEY not configured. Add it to config/cloud.env")
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+
+def get_vapi_model_config(system_prompt: str) -> dict:
+    """Get model configuration for Vapi assistant.
+    
+    Vapi supports: openai, anthropic, groq, together, xai, anyscale, openrouter, custom-llm
+    """
+    # Check what provider to use for phone calls
+    # Default to xai since user has it configured
+    vapi_provider = get_config_value('VAPI_LLM_PROVIDER', 'xai')
+    vapi_model = get_config_value('VAPI_LLM_MODEL', '')
+    
+    # Provider-specific defaults
+    provider_defaults = {
+        'xai': 'grok-4-fast-non-reasoning',
+        'anthropic': 'claude-sonnet-4-20250514',
+        'openai': 'gpt-4o',
+        'groq': 'llama-3.1-70b-versatile',
+        'together': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+    }
+    
+    if not vapi_model:
+        vapi_model = provider_defaults.get(vapi_provider, 'grok-4-fast-non-reasoning')
+    
+    return {
+        "provider": vapi_provider,
+        "model": vapi_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            }
+        ]
+    }
+
+
+def load_contacts():
+    """Load contacts from memory DB or config."""
+    global CONTACTS
+    try:
+        # Try to load from memory
+        sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+        from memory_db import MemoryDB
+        db = MemoryDB()
+        
+        # Search for phone contacts in memory
+        results = db.search_memory("phone number contact", limit=20)
+        for mem in results:
+            # Parse key-value pairs like "boss_phone: +1234567890"
+            key = mem.get('key', '').lower()
+            value = mem.get('value', '')
+            if 'phone' in key:
+                name = key.replace('_phone', '').replace('phone_', '').replace('_number', '')
+                if value.startswith('+') or value.replace('-', '').isdigit():
+                    CONTACTS[name] = value
+    except Exception:
+        pass
+    
+    # Also check config for predefined contacts
+    contacts_json = get_config_value('PHONE_CONTACTS', '{}')
+    try:
+        config_contacts = json.loads(contacts_json)
+        # Normalize keys to lowercase for case-insensitive lookup
+        for name, number in config_contacts.items():
+            CONTACTS[name.lower()] = number
+    except Exception:
+        pass
+
+
+def resolve_phone_number(recipient: str) -> str:
+    """Resolve a name or phone number to an actual phone number."""
+    # If it's already a phone number, return it
+    if recipient.startswith('+') or recipient.replace('-', '').replace(' ', '').isdigit():
+        # Ensure it has country code
+        clean = recipient.replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
+        if not clean.startswith('+'):
+            clean = '+1' + clean  # Default to US
+        return clean
+    
+    # Try to find in contacts
+    load_contacts()
+    recipient_lower = recipient.lower()
+    
+    if recipient_lower in CONTACTS:
+        return CONTACTS[recipient_lower]
+    
+    # Fuzzy match
+    for name, number in CONTACTS.items():
+        if recipient_lower in name or name in recipient_lower:
+            return number
+    
+    raise ValueError(f"Could not find phone number for '{recipient}'. Add it to contacts or use full number with country code.")
+
+
+# Track recent calls to prevent duplicates (in-memory + file-based)
+_recent_calls = {}  # phone_number -> timestamp
+CALL_LOCK_FILE = Path(__file__).parent.parent / 'data' / '.phone_call_lock'
+CALL_IN_PROGRESS_FILE = Path(__file__).parent.parent / 'data' / '.phone_call_in_progress'
+
+def cleanup_old_temp_assistants():
+    """Delete any old temporary assistants to prevent duplicates."""
+    try:
+        response = requests.get(
+            f"{VAPI_API_BASE}/assistant",
+            headers=get_vapi_headers()
+        )
+        if response.status_code == 200:
+            assistants = response.json()
+            for a in assistants:
+                name = a.get('name', '')
+                if '-call' in name or '-temp' in name:
+                    requests.delete(
+                        f"{VAPI_API_BASE}/assistant/{a['id']}",
+                        headers=get_vapi_headers()
+                    )
+    except Exception:
+        pass  # Non-critical, continue anyway
+
+
+def is_call_in_progress() -> dict | None:
+    """Check if there's a call currently in progress."""
+    try:
+        if CALL_IN_PROGRESS_FILE.exists():
+            data = json.loads(CALL_IN_PROGRESS_FILE.read_text())
+            # Check if it's stale (more than 10 minutes old)
+            if time.time() - data.get('started', 0) < 600:
+                return data
+            else:
+                # Stale lock, remove it
+                CALL_IN_PROGRESS_FILE.unlink()
+    except Exception:
+        pass
+    return None
+
+
+def set_call_in_progress(call_id: str, phone_number: str, recipient: str):
+    """Mark a call as in progress."""
+    try:
+        CALL_IN_PROGRESS_FILE.write_text(json.dumps({
+            'call_id': call_id,
+            'phone_number': phone_number,
+            'recipient': recipient,
+            'started': time.time()
+        }))
+    except Exception:
+        pass
+
+
+def clear_call_in_progress():
+    """Clear the in-progress marker."""
+    try:
+        if CALL_IN_PROGRESS_FILE.exists():
+            CALL_IN_PROGRESS_FILE.unlink()
+    except Exception:
+        pass
+
+
+def check_duplicate_call(phone_number: str, cooldown_seconds: int = 120) -> bool:
+    """Check if we recently called this number (prevent duplicates)."""
+    global _recent_calls
+    
+    now = time.time()
+    
+    # Check if ANY call is in progress
+    in_progress = is_call_in_progress()
+    if in_progress:
+        return True  # A call is already happening!
+    
+    # Check cooldown for this specific number
+    _recent_calls = {k: v for k, v in _recent_calls.items() if now - v < cooldown_seconds}
+    
+    if phone_number in _recent_calls:
+        return True
+    
+    # Check file-based tracking
+    try:
+        if CALL_LOCK_FILE.exists():
+            lock_data = json.loads(CALL_LOCK_FILE.read_text())
+            last_call_time = lock_data.get(phone_number, 0)
+            if now - last_call_time < cooldown_seconds:
+                return True
+    except Exception:
+        pass
+    
+    return False
+
+
+def record_call_made(phone_number: str):
+    """Record that a call was made to this number."""
+    global _recent_calls
+    now = time.time()
+    
+    _recent_calls[phone_number] = now
+    
+    try:
+        lock_data = {}
+        if CALL_LOCK_FILE.exists():
+            try:
+                lock_data = json.loads(CALL_LOCK_FILE.read_text())
+            except Exception:
+                pass
+        lock_data[phone_number] = now
+        lock_data = {k: v for k, v in lock_data.items() if now - v < 120}
+        CALL_LOCK_FILE.write_text(json.dumps(lock_data))
+    except Exception:
+        pass
+
+
+def create_assistant_for_call(persona: str, owner: str, task: str, context: str) -> dict:
+    """Create a temporary assistant for this specific call."""
+    # Clean up any old temp assistants first
+    cleanup_old_temp_assistants()
+    
+    persona_config = PERSONAS.get(persona, PERSONAS['default'])
+    
+    # Get voice settings from config (check multiple possible variable names)
+    voice_id = (
+        get_config_value('VAPI_VOICE_ID') or 
+        get_config_value('ELEVENLABS_VOICE_ID') or
+        get_config_value('ELEVENLABS_TTS_VOICE')
+    )
+    
+    # Check for female-specific voice
+    female_voice_id = get_config_value('VAPI_FEMALE_VOICE_ID')
+    
+    # Check if user has connected ElevenLabs to Vapi
+    vapi_11labs_key = get_config_value('VAPI_ELEVENLABS_KEY', '')
+    
+    # Determine voice based on persona
+    if persona == 'female':
+        if vapi_11labs_key and female_voice_id:
+            voice_config = {
+                "provider": "11labs",
+                "voiceId": female_voice_id
+            }
+        else:
+            # Use OpenAI's built-in female voice
+            voice_config = {
+                "provider": "openai",
+                "voiceId": "nova"  # Female voice (alternative: shimmer)
+            }
+    elif vapi_11labs_key and voice_id:
+        # User has their own ElevenLabs connected to Vapi
+        voice_config = {
+            "provider": "11labs",
+            "voiceId": voice_id
+        }
+    else:
+        # Use Vapi's built-in voice (no ElevenLabs key needed)
+        voice_config = {
+            "provider": "openai",
+            "voiceId": "alloy"  # Male voice: alloy, echo, onyx
+        }
+    
+    assistant_config = {
+        "name": f"Jarvis-{persona}-call",  # Unique name
+        "firstMessage": persona_config['firstMessage'].format(owner=owner, context=context),
+        "model": get_vapi_model_config(persona_config['systemPrompt'].format(owner=owner, task=task)),
+        "voice": voice_config,
+        "endCallMessage": "Thank you for your time. Goodbye!",
+        "silenceTimeoutSeconds": 30,
+        "maxDurationSeconds": 600  # 10 min max
+    }
+    
+    # Voicemail detection settings
+    # Options: "hangup" (detect & end call), "message" (leave voicemail), "disabled"
+    voicemail_action = get_config_value('VAPI_VOICEMAIL_ACTION', 'hangup')
+    
+    if voicemail_action == 'hangup':
+        # Detect voicemail and hang up - use simple provider string
+        assistant_config["voicemailDetection"] = {"provider": "vapi"}
+        assistant_config["voicemailMessage"] = ""  # Empty = hang up
+    elif voicemail_action == 'message':
+        # Detect voicemail and leave a short message
+        assistant_config["voicemailDetection"] = {"provider": "vapi"}
+        assistant_config["voicemailMessage"] = f"Hi, this is {persona_config['name']} calling on behalf of {owner}. Please call back when you get a chance. Thank you!"
+    # else: disabled - no voicemail detection
+    
+    response = requests.post(
+        f"{VAPI_API_BASE}/assistant",
+        headers=get_vapi_headers(),
+        json=assistant_config
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def make_call(recipient: str, task: str, context: str = "", persona: str = "default", owner: str = "Boss", phone_number: str = None) -> dict:
+    """Make an outbound call via Vapi."""
+    
+    # Resolve phone number if not already provided
+    if not phone_number:
+        phone_number = resolve_phone_number(recipient)
+    
+    # Get or create assistant
+    assistant_id = get_config_value('VAPI_ASSISTANT_ID')
+    
+    if not assistant_id:
+        # Create temporary assistant for this call
+        assistant = create_assistant_for_call(persona, owner, task, context)
+        assistant_id = assistant['id']
+    
+    # Get Vapi phone number ID (you need to set this up in Vapi dashboard)
+    phone_number_id = get_config_value('VAPI_PHONE_NUMBER_ID')
+    if not phone_number_id:
+        raise ValueError("VAPI_PHONE_NUMBER_ID not configured. Get a phone number from Vapi dashboard.")
+    
+    # Create the call
+    call_config = {
+        "assistantId": assistant_id,
+        "phoneNumberId": phone_number_id,
+        "customer": {
+            "number": phone_number
+        }
+    }
+    
+    response = requests.post(
+        f"{VAPI_API_BASE}/call",
+        headers=get_vapi_headers(),
+        json=call_config
+    )
+    response.raise_for_status()
+    call = response.json()
+    
+    return {
+        "call_id": call.get('id'),
+        "status": call.get('status'),
+        "phone_number": phone_number,
+        "assistant_id": assistant_id
+    }
+
+
+def get_call_status(call_id: str) -> dict:
+    """Get the status and details of a call."""
+    response = requests.get(
+        f"{VAPI_API_BASE}/call/{call_id}",
+        headers=get_vapi_headers()
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def wait_for_call_completion(call_id: str, timeout: int = 60) -> dict:
+    """Wait for a call to complete and return the result.
+    
+    Timeout is kept short (60s default) because orchestrator has its own timeout.
+    Phone calls can be longer - if we timeout here, we return gracefully.
+    """
+    start_time = time.time()
+    last_status = "unknown"
+    
+    while time.time() - start_time < timeout:
+        try:
+            call = get_call_status(call_id)
+            last_status = call.get('status', 'unknown')
+            
+            if last_status in ['ended', 'failed']:
+                return {
+                    "status": last_status,
+                    "duration_seconds": call.get('duration'),
+                    "transcript": call.get('transcript', ''),
+                    "summary": call.get('summary', ''),
+                    "end_reason": call.get('endedReason', ''),
+                    "recording_url": call.get('recordingUrl', '')
+                }
+        except Exception:
+            pass
+        
+        time.sleep(3)  # Poll every 3 seconds
+    
+    # Timeout but call still in progress
+    return {
+        "status": "in-progress", 
+        "message": "Call still in progress. Ask 'what happened on the call?' or check Canvas later.",
+        "call_id": call_id
+    }
+
+
+def list_recent_calls(limit: int = 10) -> list:
+    """List recent calls."""
+    response = requests.get(
+        f"{VAPI_API_BASE}/call",
+        headers=get_vapi_headers(),
+        params={"limit": limit}
+    )
+    response.raise_for_status()
+    calls = response.json()
+    
+    return [
+        {
+            "id": c.get('id'),
+            "status": c.get('status'),
+            "customer": c.get('customer', {}).get('number', '?'),
+            "duration": c.get('duration'),
+            "created_at": c.get('createdAt')
+        }
+        for c in calls if c
+    ]
+
+
+def save_call_to_memory(recipient: str, task: str, summary: str, transcript: str):
+    """Save call summary to Jarvis memory for future recall.
+    
+    This allows questions like "What did Andrew say about dinner?"
+    """
+    try:
+        from memory_db import MemoryDB
+        from datetime import datetime
+        
+        db = MemoryDB()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # Create a searchable memory key
+        key = f"phone_call_{recipient.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}"
+        
+        # Create value with summary and key details
+        value = f"Phone call to {recipient} on {timestamp}. Task: {task}. Summary: {summary}"
+        
+        # Add key transcript snippets if relevant
+        if transcript:
+            # Extract short meaningful bits (avoid very long transcripts in memory)
+            value += f" Key points from conversation: {transcript[:500]}"
+        
+        db.remember(
+            key=key,
+            value=value,
+            category="phone_calls",
+            importance=7  # Moderately important - can be recalled
+        )
+        return True
+    except Exception as e:
+        # Don't fail the call if memory save fails
+        return False
+
+
+def save_call_to_canvas(call_id: str, recipient: str, task: str, result: dict):
+    """Save call transcript and summary to Canvas in 'Phone Calls' folder."""
+    try:
+        import subprocess
+        from datetime import datetime
+        
+        transcript = result.get('transcript', 'No transcript available')
+        summary = result.get('summary', '')
+        duration = result.get('duration_seconds', 0)
+        status = result.get('status', 'unknown')
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # Also save to memory for future recall
+        save_call_to_memory(recipient, task, summary, transcript)
+        
+        content = f"""# Phone Call: {recipient}
+
+**Date:** {timestamp}
+**To:** {recipient}
+**Task:** {task}
+**Status:** {status}
+**Duration:** {duration or 'N/A'} seconds
+**Call ID:** {call_id}
+
+## Summary
+{summary or 'No summary generated'}
+
+## Full Transcript
+```
+{transcript}
+```
+
+---
+*Auto-saved by Jarvis Phone Call Tool*
+"""
+        
+        # Use canvas tool to save - prefix with "Phone Calls/" for organization
+        date_str = datetime.now().strftime("%Y-%m-%d_%H%M")
+        canvas_args = json.dumps({
+            "action": "create",
+            "title": f"Phone Calls/{date_str} - {recipient}",
+            "content": content
+        })
+        
+        subprocess.run(
+            [sys.executable, str(Path(__file__).parent / 'canvas.py'), canvas_args],
+            capture_output=True,
+            timeout=30
+        )
+        return True
+    except Exception:
+        return False  # Non-critical, don't fail the call
+
+
+def action_call(args: dict) -> dict:
+    """Make an outbound phone call."""
+    recipient = args.get('recipient', '')
+    task = args.get('task', '')
+    context = args.get('context', '')
+    persona = args.get('persona', 'default')
+    owner = args.get('owner', get_config_value('OWNER_NAME', 'Boss'))
+    
+    # Check config for default wait behavior
+    # VAPI_WAIT_FOR_CALL=true means wait during call for instant results
+    # VAPI_WAIT_FOR_CALL=false means fire and forget (check later)
+    config_wait = get_config_value('VAPI_WAIT_FOR_CALL', 'false').lower() == 'true'
+    wait = args.get('wait', config_wait)
+    
+    if not recipient:
+        return {"ok": False, "speech": "Who should I call?", "error": "No recipient"}
+    
+    if not task:
+        return {"ok": False, "speech": "What should I tell them?", "error": "No task"}
+    
+    try:
+        # Resolve phone number first
+        phone_number = resolve_phone_number(recipient)
+        
+        # Check if a call is already in progress (global lock)
+        in_progress = is_call_in_progress()
+        if in_progress:
+            # Check if that call is done now
+            try:
+                call = get_call_status(in_progress['call_id'])
+                if call.get('status') == 'ended':
+                    # Call finished! Clear lock and return result
+                    clear_call_in_progress()
+                    transcript = call.get('transcript', '')
+                    summary = call.get('summary', '')
+                    save_call_to_canvas(in_progress['call_id'], in_progress['recipient'], task, {
+                        'status': 'ended',
+                        'transcript': transcript,
+                        'summary': summary,
+                        'duration_seconds': call.get('duration')
+                    })
+                    return {
+                        "ok": True,
+                        "speech": f"Call completed. {summary}" if summary else "Call completed.",
+                        "data": {"call_id": in_progress['call_id'], "transcript": transcript, "summary": summary}
+                    }
+                else:
+                    return {
+                        "ok": True, 
+                        "speech": f"Call to {in_progress['recipient']} is in progress. Please wait.",
+                        "data": {"in_progress": True, "call_id": in_progress['call_id']}
+                    }
+            except Exception:
+                clear_call_in_progress()  # Clear stale lock
+        
+        # Check for recent duplicate call to same number
+        if check_duplicate_call(phone_number, cooldown_seconds=120):
+            return {
+                "ok": True,
+                "speech": f"I just called {recipient}. Check Canvas for the transcript.",
+                "data": {"recent_call": True}
+            }
+        
+        # Start the call (pass pre-resolved phone number)
+        call_info = make_call(recipient, task, context, persona, owner, phone_number=phone_number)
+        call_id = call_info['call_id']
+        
+        # Mark call as in progress and record it
+        set_call_in_progress(call_id, phone_number, recipient)
+        record_call_made(phone_number)
+        
+        if not wait:
+            return {
+                "ok": True,
+                "speech": f"Calling {recipient} now. Ask me 'what happened on that call' when you're ready for results.",
+                "data": {
+                    **call_info,
+                    "wait_mode": False,
+                    "hint": "Ask 'what happened on that call' or 'check my last call' for results"
+                }
+            }
+        
+        # Wait for completion (blocking - VAPI_WAIT_FOR_CALL=true)
+        result = wait_for_call_completion(call_id)
+        
+        # Clear the in-progress lock
+        clear_call_in_progress()
+        
+        if result['status'] == 'ended':
+            summary = result.get('summary', '')
+            transcript = result.get('transcript', '')
+            
+            # Auto-save to Canvas
+            saved = save_call_to_canvas(call_id, recipient, task, result)
+            
+            # Build smart response with context for follow-up suggestions
+            speech = f"Call completed."
+            if summary:
+                speech += f" {summary}"
+            
+            # Add hint about what user might want to do next
+            # (The LLM can pick up on this and suggest actions)
+            follow_up_hints = []
+            transcript_lower = transcript.lower()
+            if any(word in transcript_lower for word in ['yes', 'agreed', 'sounds good', 'i\'m in', 'sure']):
+                follow_up_hints.append("They agreed!")
+            if any(word in transcript_lower for word in ['time', 'pm', 'am', 'o\'clock', 'tonight', 'tomorrow']):
+                follow_up_hints.append("Time was discussed - maybe set a reminder?")
+            
+            return {
+                "ok": True,
+                "speech": speech,
+                "data": {
+                    "call_id": call_id,
+                    "duration": result.get('duration_seconds'),
+                    "transcript": transcript,
+                    "summary": summary,
+                    "recording_url": result.get('recording_url'),
+                    "saved_to_canvas": saved,
+                    "follow_up_hints": follow_up_hints
+                }
+            }
+        elif result['status'] == 'in-progress':
+            # Call still in progress (we hit our wait timeout)
+            return {
+                "ok": True,
+                "speech": f"Call to {recipient} is in progress. Ask 'what happened on the call?' for results, or check Canvas later.",
+                "data": {
+                    "call_id": call_id,
+                    "status": "in-progress",
+                    "note": "Call still active - ask for status later"
+                }
+            }
+        else:
+            return {
+                "ok": False,
+                "speech": f"Call ended with status: {result['status']}. {result.get('end_reason', '')}",
+                "data": result
+            }
+            
+    except ValueError as e:
+        return {"ok": False, "speech": str(e), "error": str(e)}
+    except requests.exceptions.HTTPError as e:
+        error_msg = str(e)
+        try:
+            error_detail = e.response.json()
+            error_msg = error_detail.get('message', str(e))
+        except Exception:
+            pass
+        return {"ok": False, "speech": f"Vapi API error: {error_msg}", "error": error_msg}
+
+
+def action_status(args: dict) -> dict:
+    """Check status of a call (defaults to most recent call if no ID provided)."""
+    call_id = args.get('call_id', '')
+    save_to_canvas = args.get('save', True)  # Auto-save completed calls
+    
+    # If no call_id, get the most recent call
+    if not call_id:
+        try:
+            calls = list_recent_calls(limit=1)
+            if calls:
+                call_id = calls[0]['id']
+            else:
+                return {"ok": False, "speech": "No recent calls found", "error": "No calls"}
+        except Exception:
+            return {"ok": False, "speech": "Couldn't find recent calls", "error": "No calls"}
+    
+    try:
+        call = get_call_status(call_id)
+        status = call.get('status', 'unknown')
+        transcript = call.get('transcript', '')
+        summary = call.get('summary', '')
+        
+        # If call is done and has transcript, save to Canvas
+        if status == 'ended' and transcript and save_to_canvas:
+            customer = call.get('customer', {}).get('number', 'Unknown')
+            save_call_to_canvas(call_id, customer, "Phone call", {
+                'status': status,
+                'transcript': transcript,
+                'summary': summary,
+                'duration_seconds': call.get('duration')
+            })
+        
+        # Build speech response
+        if status == 'ended' and transcript:
+            # Summarize the conversation
+            speech = f"Call completed. {summary}" if summary else f"Call completed. Here's what was said: {transcript[:150]}..."
+        elif status == 'in-progress':
+            speech = "Call is still in progress"
+        else:
+            speech = f"Call status: {status}"
+        
+        return {
+            "ok": True,
+            "speech": speech,
+            "data": {
+                "status": status,
+                "duration": call.get('duration'),
+                "transcript": transcript,
+                "summary": summary,
+                "saved_to_canvas": save_to_canvas and status == 'ended'
+            }
+        }
+    except Exception as e:
+        return {"ok": False, "speech": f"Error: {e}", "error": str(e)}
+
+
+def action_list(args: dict) -> dict:
+    """List recent calls."""
+    limit = args.get('limit', 5)
+    
+    try:
+        calls = list_recent_calls(limit)
+        
+        if not calls:
+            return {"ok": True, "speech": "No recent calls", "data": {"calls": []}}
+        
+        speech_parts = ["Recent calls:"]
+        for c in calls[:3]:
+            speech_parts.append(f"{c['customer']} - {c['status']}")
+        
+        return {
+            "ok": True,
+            "speech": ' '.join(speech_parts),
+            "data": {"calls": calls}
+        }
+    except Exception as e:
+        return {"ok": False, "speech": f"Error: {e}", "error": str(e)}
+
+
+def action_contacts(args: dict) -> dict:
+    """List or add contacts."""
+    add_name = args.get('add_name', '')
+    add_number = args.get('add_number', '')
+    
+    if add_name and add_number:
+        # Save to memory
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+            from memory_db import MemoryDB
+            db = MemoryDB()
+            db.remember(
+                key=f"{add_name.lower()}_phone",
+                value=add_number,
+                category="contacts",
+                importance=7
+            )
+            CONTACTS[add_name.lower()] = add_number
+            return {
+                "ok": True,
+                "speech": f"Added {add_name} with number {add_number}",
+                "data": {"name": add_name, "number": add_number}
+            }
+        except Exception as e:
+            return {"ok": False, "speech": f"Error saving contact: {e}", "error": str(e)}
+    
+    # List contacts
+    load_contacts()
+    if not CONTACTS:
+        return {"ok": True, "speech": "No contacts saved yet", "data": {"contacts": {}}}
+    
+    return {
+        "ok": True,
+        "speech": f"You have {len(CONTACTS)} contacts: {', '.join(CONTACTS.keys())}",
+        "data": {"contacts": CONTACTS}
+    }
+
+
+ACTIONS = {
+    'call': action_call,
+    'status': action_status,
+    'list': action_list,
+    'contacts': action_contacts
+}
+
+
+def main():
+    try:
+        # Load config
+        load_config()
+        
+        # Parse arguments
+        if len(sys.argv) > 1:
+            args = json.loads(sys.argv[1])
+        else:
+            args = json.load(sys.stdin)
+        
+        action = args.get('action', 'call')
+        
+        if action not in ACTIONS:
+            print(json.dumps({
+                "ok": False,
+                "speech": f"Unknown action: {action}",
+                "error": f"Valid actions: {list(ACTIONS.keys())}"
+            }))
+            sys.exit(1)
+        
+        result = ACTIONS[action](args)
+        print(json.dumps(result))
+        
+        if not result.get('ok'):
+            sys.exit(1)
+            
+    except json.JSONDecodeError as e:
+        print(json.dumps({"ok": False, "speech": "Invalid JSON input", "error": str(e)}))
+        sys.exit(1)
+    except Exception as e:
+        print(json.dumps({"ok": False, "speech": f"Error: {e}", "error": str(e)}))
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+

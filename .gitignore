@@ -95,3 +95,7 @@ blinko/.env
 opencodetmp/
 # Spotify OAuth cache (contains access tokens)
 data/.spotify_cache
+data/.phone_call_lock
+data/.phone_call_in_progress
+
+characters/

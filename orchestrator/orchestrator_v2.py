@@ -19,7 +19,12 @@ from router_v2 import LLMRouter
 from executor import ToolExecutor
 
 
-def _sanitize_error_for_speech(error: str) -> str:
+def _sanitize_error_for_speech(error) -> str:
+    """Convert error to speech-friendly format."""
+    # Handle list input
+    if isinstance(error, list):
+        error = str(error[0]) if error else "Unknown error"
+    error = str(error)
     """
     Sanitize technical error messages for voice output.
     Removes URLs, IPs, session IDs, and simplifies to user-friendly messages.

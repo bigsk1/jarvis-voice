@@ -272,8 +272,11 @@ class StatusUpdater:
     
     def _normalize_error(self, error_message: str) -> str:
         """Normalize error message for deduplication."""
+        # Handle list input
+        if isinstance(error_message, list):
+            error_message = str(error_message[0]) if error_message else ""
         # Remove specific details, keep error type
-        msg = error_message.lower()
+        msg = str(error_message).lower()
         # Remove numbers, URLs, IDs
         import re
         msg = re.sub(r'\d+', 'N', msg)

@@ -1,0 +1,58 @@
+{
+  "enabled": true,
+  "name": "phone_call",
+  "description": "📞 Make AI phone calls via Vapi.ai. Jarvis calls on your behalf, has a conversation, and saves transcript to Canvas. Actions: 'call' (start a call - returns immediately), 'status' (check result of last call - 'what happened on that call?'), 'contacts' (manage contacts). Call starts in background; ask 'what happened on that call' after a few minutes for results. Transcripts auto-saved to Canvas.",
+  "script": "phone_call.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["call", "status", "list", "contacts"],
+        "description": "Action: 'call' to make a phone call, 'status' to check a call's result, 'list' to see recent calls, 'contacts' to manage contacts"
+      },
+      "recipient": {
+        "type": "string",
+        "description": "Who to call - can be a name from contacts (e.g., 'Boss', 'Andrew') or a phone number with country code (e.g., '+15551234567')"
+      },
+      "task": {
+        "type": "string",
+        "description": "What should Jarvis accomplish on the call? Be specific about the objective. E.g., 'Ask if he wants to see Gladiator II at the 9pm showing tonight and confirm'"
+      },
+      "context": {
+        "type": "string",
+        "description": "Additional context to help Jarvis on the call. E.g., movie details, previous conversation summary, etc."
+      },
+      "persona": {
+        "type": "string",
+        "enum": ["default", "professional", "casual", "female"],
+        "description": "Persona/style for the call. 'default' is Jarvis (male), 'professional' is formal James (butler-style), 'casual' is relaxed Jay, 'female' is friendly Samantha"
+      },
+      "wait": {
+        "type": "boolean",
+        "description": "Whether to wait for call completion (default true). Set false for background calls"
+      },
+      "call_id": {
+        "type": "string",
+        "description": "Call ID for 'status' action"
+      },
+      "add_name": {
+        "type": "string",
+        "description": "Name for adding a new contact (with 'contacts' action)"
+      },
+      "add_number": {
+        "type": "string",
+        "description": "Phone number for adding a new contact (with 'contacts' action)"
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": true,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": false
+  }
+}
+
