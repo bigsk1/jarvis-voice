@@ -13,7 +13,9 @@
 
 ### Main Features
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
-- **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, SSRF protection) ⭐ NEW
+- **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
+- **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
+- **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
 - **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results) ⭐ NEW
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) ⭐ NEW
@@ -261,6 +263,24 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-12-15:**
+- ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls on your behalf ⭐ NEW
+  - Multiple personas (Jarvis, James/professional, Jay/casual, Samantha/female)
+  - Custom Vapi dashboard assistants with variable injection (`{{owner}}`, `{{task}}`)
+  - Voicemail detection (hangup, leave message, or disabled)
+  - Sync mode (wait for result) or async mode (check later)
+  - Auto-save transcripts to Canvas and memory
+  - Contact management (save phone numbers by name)
+  - See: `docs/phone/PHONE_CALLS.md`
+- ✅ **Spotify Integration** - Full music playback control ⭐ NEW
+  - Play playlists, albums, artists, songs by voice
+  - Searches your library first, then public Spotify
+  - Multi-device support (Fire TV, Echo, phone, desktop)
+  - Queue management, shuffle, repeat, volume
+  - Share what's playing via email with album art
+  - OAuth setup: `./bin/spotify-auth`
+  - See: `docs/spotify/SPOTIFY.md`
 
 **2025-12-12:**
 - ✅ **Native Web Search for Cloud Providers** - Built-in real-time search ⭐ MAJOR
@@ -574,6 +594,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-12 (v2.11)  
-**Latest:** Native Web Search (XAI_SEARCH, ANTHROPIC_SEARCH), Stash System, PDF Create, Printer, Speaker Volume  
+**Last Updated:** 2025-12-15 (v2.12)  
+**Latest:** AI Phone Calls (Vapi.ai), Spotify Integration, Native Web Search, Stash System, PDF Create, Printer  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

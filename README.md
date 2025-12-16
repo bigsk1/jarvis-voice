@@ -9,6 +9,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
+- **AI Phone Calls** - Outbound AI calls via Vapi.ai with personas and transcripts ⭐ NEW
 - **Native Web Search** - Built-in real-time search for xAI and Anthropic ⭐ NEW
   - `XAI_SEARCH=true`: Grok searches web + X posts internally (no tool calls!)
   - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations
@@ -28,7 +29,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 42+ working skills (memory, bash, OpenCode, stash, printer, pdf, reminders, canvas, etc.)
+- 44+ working skills (memory, bash, OpenCode, stash, printer, pdf, phone calls, spotify, reminders, canvas, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -82,6 +83,21 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Voice Notifications**: Jarvis speaks alerts and reminders via TTS
 
 ### Integrations & Automation ⭐ NEW
+- **AI Phone Calls via Vapi.ai**: Outbound AI phone calls on your behalf ⭐ NEW
+  - "Call Boss and ask if he wants to see Gladiator II tonight"
+  - Multiple personas: Jarvis (default), James (professional), Jay (casual), Samantha (female)
+  - Custom Vapi dashboard characters with dynamic variables (`{{owner}}`, `{{task}}`)
+  - Voicemail detection and handling
+  - Auto-save transcripts to Canvas and memory for later recall
+  - Contact management: save numbers by name
+  - See [`docs/phone/PHONE_CALLS.md`](docs/phone/PHONE_CALLS.md)
+- **Spotify Integration**: Full music control via Spotify API ⭐ NEW
+  - "Play Chill Vibes playlist", "Skip this song", "What's playing?"
+  - Search your library first, then public Spotify
+  - Multi-device support (Fire TV, Echo, phone, desktop)
+  - Queue management, shuffle, repeat, volume control
+  - Share what's playing via email with album art
+  - See [`docs/spotify/SPOTIFY.md`](docs/spotify/SPOTIFY.md)
 - **Modular Webhook System**: Named webhook registry for triggering external services
   - `send_email` - Send emails via SMTP with beautiful HTML templates
   - `send_webhook` - Trigger any webhook (Slack, Discord, APIs, custom endpoints)
@@ -475,6 +491,8 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 - `calculator` - **Advanced math**: arithmetic, percentages, statistics, unit conversions, trig
 - `canvas` - **Visual viewer**: save rich content (research, code, comparisons) to web UI
 - `weather` - Weather forecasts with OpenWeatherMap
+- `phone_call` - **AI Phone Calls**: outbound calls via Vapi.ai with personas, voicemail detection, transcripts
+- `spotify` - **Music control**: play, pause, skip, queue, search, device switching, share via email
 - `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute
 - `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
@@ -763,7 +781,9 @@ LIMIT 7;"
 - **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** - Docker agent for remote health checks
 
 **Core System:**
-- `docs/STASH_SYSTEM.md` - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection) ⭐ NEW
+- `docs/phone/PHONE_CALLS.md` - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts) ⭐ NEW
+- `docs/spotify/SPOTIFY.md` - **Spotify Integration** (playback control, search, multi-device) ⭐ NEW
+- `docs/STASH_SYSTEM.md` - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
 - `docs/INTELLIGENCE_LAYER.md` - **Self-learning system** (Phase 1: positive/negative constraints)
 - `docs/AUTO_CONTEXT_SYSTEM.md` - Short-term conversation memory
 - `docs/JARVIS_WORKFLOW.md` - Complete request flow with examples
@@ -988,6 +1008,23 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
+- ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls ⭐ NEW
+  - "Call Boss and ask about dinner plans" → Jarvis calls, has conversation, reports back
+  - Multiple personas: Jarvis (default), James (professional), Jay (casual), Samantha (female)
+  - Custom Vapi dashboard assistants with `{{owner}}`, `{{task}}`, `{{reason}}` variables
+  - Voicemail detection: hangup, leave message, or disabled
+  - Sync mode (wait 60s for result) or async mode (check later)
+  - Auto-save transcripts to Canvas (`Phone Calls/` folder) and memory
+  - Contact book: "Save Andrew's number as +15551234567"
+  - See: `docs/phone/PHONE_CALLS.md`
+- ✅ **Spotify Integration** - Full music playback control ⭐ NEW
+  - "Play my Chill Vibes playlist", "Skip", "What's playing?", "Pause"
+  - Searches your saved playlists/library first, then public Spotify
+  - Multi-device support (Fire TV, Echo, phone, desktop, etc.)
+  - Queue songs, shuffle, repeat, volume control
+  - Share currently playing via email with album art and Spotify link
+  - OAuth setup via `./bin/spotify-auth`
+  - See: `docs/spotify/SPOTIFY.md`
 - ✅ **Native Web Search** - Built-in real-time search for cloud providers ⭐ NEW
   - `XAI_SEARCH=true`: Grok live search (web + X posts, auto mode)
   - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations
@@ -1144,6 +1181,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.11 (December 2025)  
+**Current Version:** v2.12 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Native Web Search (XAI_SEARCH, ANTHROPIC_SEARCH), Stash System, PDF Create, Printer Tool, Speaker Volume
+**Latest Features:** AI Phone Calls (Vapi.ai), Spotify Integration, Native Web Search, Stash System, PDF Create, Printer
