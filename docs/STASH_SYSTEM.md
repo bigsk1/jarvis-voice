@@ -1,8 +1,8 @@
 # Stash System Design
 
-> **Status**: Design Phase (v2 - refined)  
+> **Status**: ✅ Implemented (v2.13)  
 > **Purpose**: Generic artifact storage layer for the Jarvis ecosystem  
-> **Author**: Design discussion 2025-12-11
+> **Updated**: 2025-12-16 - Added Memory+Stash architecture pattern
 
 ---
 
@@ -819,6 +819,87 @@ Stash is not just a tool API—it's Jarvis's **internal artifact system**.
 **Implementation note:**
 > Internal services can write to stash directly using the same directory convention 
 > and `meta.json` schema. The tool API is a public façade over that.
+
+### 5.6 Memory + Stash Architecture ⭐ NEW
+
+**Key Insight**: Stash is the **workshop**, Memory is the **index**.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    STASH + MEMORY ARCHITECTURE                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   TOOLS                    STASH                    MEMORY           │
+│ ┌──────────────┐       ┌──────────────┐        ┌──────────────┐     │
+│ │generate_image│──────▶│ 📦 Workspace │───────▶│ 🧠 Index     │     │
+│ │ pdf_create   │──────▶│  (7-day TTL) │───────▶│ (permanent)  │     │
+│ │ printer ◀────│───────│              │        │              │     │
+│ │ send_email ◀─│───────│              │        │              │     │
+│ └──────────────┘       └──────────────┘        └──────────────┘     │
+│                                                                      │
+│   Artifacts in stash:       Memory entries:                          │
+│   - generated_image.jpg     - stash_image_xxx: "STASH: stash://..."  │
+│   - report.pdf              - stash_pdf_xxx: "STASH: stash://..."    │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Pattern: Save to Both**
+
+Every tool that creates artifacts should:
+1. **Save artifact to stash** (temporary storage, `stash://` reference)
+2. **Create memory entry** (permanent index pointing to stash)
+
+```python
+# Example from generate_image.py
+def save_image(image_data, prompt, space):
+    # 1. Save to stash
+    stash_ref = save_to_stash(image_data, space)
+    
+    # 2. Create memory entry (survives stash TTL)
+    memory_key = f"stash_image_{space.space_id}"
+    memory_value = f"Generated image: {prompt}. STASH: {stash_ref}. File: {filename}"
+    db.remember(key=memory_key, value=memory_value, category="stash_artifact")
+```
+
+**Cross-Session Recall**
+
+User asks later: *"Where is that bitcoin image I generated?"*
+
+1. Memory search finds: `"stash_image_xxx: Generated image: bitcoin... STASH: stash://..."`
+2. LLM extracts stash reference from memory
+3. Tool resolves `stash://` to actual file path
+
+**Graceful Degradation**
+
+Stash has a 7-day TTL, but memory entries persist forever. Handle expired stash:
+
+```python
+from stash_helper import safe_resolve_file
+
+# Try stash first, fallback to other known paths
+result = safe_resolve_file(
+    stash_ref="stash://space_xxx/file_id",
+    file_path="/path/to/known/file.jpg",
+    fallback_paths=["/home/user/images/"]
+)
+
+if result['found']:
+    use_file(result['path'])
+else:
+    # Stash expired, no fallback - inform user
+    speech = "That file has expired from the stash."
+```
+
+**Tools Using This Pattern**
+
+| Tool | Stash | Memory | Graceful TTL |
+|------|-------|--------|--------------|
+| `generate_image` | ✅ Saves | ✅ Saves | ✅ |
+| `pdf_create` | ✅ Saves | ✅ Saves | ✅ |
+| `printer` | ✅ Resolves | N/A | ✅ |
+| `send_email` | ✅ Resolves | N/A | ✅ |
+| `canvas` | N/A | ✅ Already | N/A |
 
 ---
 

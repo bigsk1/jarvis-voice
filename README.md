@@ -9,6 +9,10 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
+- **AI Image Generation** - Google Gemini 3 Pro with Search Grounding ⭐ NEW
+  - "Generate a bitcoin infographic" → creates image with real-time price data
+  - Supports aspect ratios, styles, negative prompts
+  - Auto-saves to stash + memory for cross-session recall
 - **AI Phone Calls** - Outbound AI calls via Vapi.ai with personas and transcripts ⭐ NEW
 - **Native Web Search** - Built-in real-time search for xAI and Anthropic ⭐ NEW
   - `XAI_SEARCH=true`: Grok searches web + X posts internally (no tool calls!)
@@ -29,7 +33,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 44+ working skills (memory, bash, OpenCode, stash, printer, pdf, phone calls, spotify, reminders, canvas, etc.)
+- 45+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, phone calls, spotify, reminders, canvas, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -497,10 +501,19 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 - `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
 
-**Artifact & Output Tools:** ⭐ NEW
+**Artifact & Output Tools:** ⭐ ENHANCED
+- `generate_image` - **AI image generation**: Google Gemini 3 Pro with Search Grounding ⭐ NEW
+  - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
+  - **Google Search Grounding** - Real-time data in images (weather, crypto prices, news)
+  - Auto-saves to stash + memory for cross-session recall
+  - Multi-tool ready: generate → email, generate → print, generate → canvas
 - `stash` - **Artifact storage**: download URLs, store files/images/JSON for multi-step workflows
+  - Central workshop for temporary files (7-day TTL)
+  - `stash://` references work across tools (printer, email, pdf_create)
 - `pdf_create` - **PDF generation**: create PDFs from stash files, images, or text
-- `printer` - **Print output**: print from stash, file paths, or Canvas pages (CUPS)
+  - Now auto-saves to memory with stash reference for recall
+- `printer` - **Print output**: print from stash refs, file paths, or Canvas pages (CUPS)
+  - Accepts `stash://space_xxx/file_id` references directly
 - `speaker_volume` - **Audio control**: get/set/adjust system speaker volume
 
 **Development:**
@@ -1008,6 +1021,18 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
+- ✅ **AI Image Generation (Gemini 3 Pro)** - High-quality image generation ⭐ NEW
+  - "Generate a bitcoin infographic with current price" → Gemini creates with real data
+  - Aspect ratios (1:1, 16:9, 9:16, 3:4, etc.), styles, negative prompts
+  - **Google Search Grounding** - Images can include real-time data (weather, prices, news)
+  - Auto-saves to stash + memory for cross-session recall
+  - Multi-tool workflows: generate → email, generate → print, generate → canvas
+  - See: `skills/generate_image.py`
+- ✅ **Stash + Memory Architecture** - Unified artifact workflow ⭐ ENHANCED
+  - **Stash** = Workshop (temporary files, 7-day TTL, `stash://` references)
+  - **Memory** = Index (permanent entries pointing to stash locations)
+  - `safe_resolve_file()` gracefully handles expired stash with fallbacks
+  - All artifact tools now: save to stash → create memory entry → enable multi-tool
 - ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls ⭐ NEW
   - "Call Boss and ask about dinner plans" → Jarvis calls, has conversation, reports back
   - Multiple personas: Jarvis (default), James (professional), Jay (casual), Samantha (female)
@@ -1181,6 +1206,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.12 (December 2025)  
+**Current Version:** v2.13 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** AI Phone Calls (Vapi.ai), Spotify Integration, Native Web Search, Stash System, PDF Create, Printer
+**Latest Features:** AI Image Generation (Gemini 3 Pro + Search Grounding), Stash+Memory Architecture, AI Phone Calls, Spotify

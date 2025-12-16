@@ -15,7 +15,7 @@
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
-- **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
+- **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture** ⭐ ENHANCED)
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
 - **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results) ⭐ NEW
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) ⭐ NEW
@@ -263,6 +263,31 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-12-16:**
+- ✅ **Google Gemini Image Generation** - AI image generation with Gemini 3 Pro ⭐ NEW
+  - "Generate an infographic about bitcoin history"
+  - "Create a cute robot dog" → saves to stash + memory
+  - Supports: aspect ratios, styles, negative prompts
+  - **Google Search Grounding** - Real-time data in images (weather, prices, etc.)
+  - Multi-tool workflows: generate → email, generate → print, generate → canvas
+  - Auto-saves to stash with memory index for cross-session recall
+  - See: `skills/generate_image.py`
+- ✅ **Stash + Memory Architecture** - Unified artifact workflow ⭐ ENHANCED
+  - **Stash** = Workshop (temporary files, 7-day TTL)
+  - **Memory** = Index (permanent references to stash locations)
+  - Tools now save artifacts to stash AND create memory entries
+  - Cross-session recall: "Where is that bitcoin image?" → memory finds stash ref
+  - Graceful degradation: `safe_resolve_file()` handles expired stash items
+- ✅ **PDF Create Memory Persistence** - PDFs now indexed in memory
+  - Created PDFs auto-save to memory with stash reference
+  - "What PDFs have I created?" → finds via memory search
+- ✅ **Printer Stash Resolution** - Print directly from stash refs
+  - `file_path` now accepts `stash://space_xxx/file_id` references
+  - "Print the image I generated" → resolves stash ref automatically
+- ✅ **Send Email Attachments** - Attach images/files to emails
+  - Supports stash refs and direct file paths
+  - Multi-tool: "Generate an image and email it to Andrew"
 
 **2025-12-15:**
 - ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls on your behalf ⭐ NEW
@@ -594,6 +619,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-15 (v2.12)  
-**Latest:** AI Phone Calls (Vapi.ai), Spotify Integration, Native Web Search, Stash System, PDF Create, Printer  
+**Last Updated:** 2025-12-16 (v2.13)  
+**Latest:** AI Image Generation (Gemini 3 Pro), Stash+Memory Architecture, AI Phone Calls, Spotify  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
