@@ -741,3 +741,23 @@ Jarvis: [Plays 20 tracks based on your taste - Tad, Primus, etc.]
 You: "I want some chill music suggestions"  
 Jarvis: "Here are some suggestions: 1. Best Chill Songs... Say 'play number X'"
 ```
+
+# Test tool similarityu without actually running a tool
+
+```bash
+# Run all default test queries (full analysis)
+./tests/test_tool_similarity.py
+
+# Test a single query
+./tests/test_tool_similarity.py "call my mom"
+./tests/test_tool_similarity.py "play some jazz"
+
+# Test with a specific threshold
+./tests/test_tool_similarity.py --threshold 0.30
+
+# Show ALL tools (not just top 10)
+./tests/test_tool_similarity.py "build an api" --all
+
+# Test local mode
+./tests/test_tool_similarity.py --mode local
+```

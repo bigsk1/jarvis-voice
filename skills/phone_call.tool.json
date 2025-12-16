@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "phone_call",
-  "description": "📞 Make AI phone calls via Vapi.ai. Jarvis calls on your behalf, has a conversation, and saves transcript to Canvas. Actions: 'call' (start a call - returns immediately), 'status' (check result of last call - 'what happened on that call?'), 'contacts' (manage contacts). Call starts in background; ask 'what happened on that call' after a few minutes for results. Transcripts auto-saved to Canvas.",
+  "description": "📞 Make phone calls, call someone, ring, dial a number. Use when user says 'call my mom', 'call boss', 'phone Andrew', 'dial +1555...', 'ring my friend'. Jarvis calls on your behalf via Vapi.ai, has a conversation, and saves transcript. Actions: 'call' (make a phone call), 'status' (check result - 'what happened on that call?'), 'contacts' (save/list phone numbers). Call runs in background; ask 'what happened on the call' for results. Transcripts are auto saved to Canvas",
   "script": "phone_call.py",
   "parameters": {
     "type": "object",
