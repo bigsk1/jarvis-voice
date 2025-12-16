@@ -239,6 +239,23 @@ def action_create(args: Dict) -> Dict:
     
     ref = f"stash://{space.space_id}/{file_id}"
     
+    # Save to memory for cross-session discovery
+    try:
+        from memory_db import MemoryDB
+        db = MemoryDB()
+        
+        memory_key = f"stash_pdf_{space.space_id}"
+        memory_value = f"Created PDF: {title}. FILE: {output_name}. STASH: {ref}. Size: {file_size // 1024}KB"
+        
+        db.remember(
+            key=memory_key,
+            value=memory_value,
+            category="stash_artifact",
+            importance=6
+        )
+    except Exception:
+        pass  # Don't fail if memory save fails
+    
     return {
         "ok": True,
         "speech": f"Created {output_name} ({file_size // 1024}KB)",

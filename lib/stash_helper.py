@@ -818,3 +818,96 @@ def resolve_file_path(space_id: str = None, file_id: str = None,
     
     raise ValueError("Provide file_path, stash_ref, or space_id+file_id")
 
+
+def safe_resolve_file(stash_ref: str = None, file_path: str = None, 
+                      fallback_paths: List[str] = None) -> Dict[str, Any]:
+    """
+    Safely resolve a file from stash or path, handling expired/missing stash gracefully.
+    
+    This is the preferred way for tools to access stash files - it handles:
+    - Expired stash spaces (TTL)
+    - Deleted files
+    - Fallback to alternative paths (e.g., generated_images/)
+    
+    Args:
+        stash_ref: Stash URI like "stash://space_xxx/file_id"
+        file_path: Direct file path
+        fallback_paths: List of paths to try if stash is unavailable
+    
+    Returns:
+        {
+            "found": bool,
+            "path": str or None,
+            "source": "stash" | "path" | "fallback" | None,
+            "error": str or None (why it failed),
+            "stash_expired": bool
+        }
+    """
+    result = {
+        "found": False,
+        "path": None,
+        "source": None,
+        "error": None,
+        "stash_expired": False
+    }
+    
+    # 1. Try direct file path first
+    if file_path:
+        if os.path.exists(file_path):
+            result["found"] = True
+            result["path"] = file_path
+            result["source"] = "path"
+            return result
+        else:
+            result["error"] = f"File not found: {file_path}"
+    
+    # 2. Try stash reference
+    if stash_ref:
+        try:
+            resolved = resolve_file_path(stash_ref=stash_ref)
+            if os.path.exists(resolved):
+                result["found"] = True
+                result["path"] = resolved
+                result["source"] = "stash"
+                return result
+            else:
+                result["error"] = f"Stash file missing (may have been deleted)"
+                result["stash_expired"] = True
+        except ValueError as e:
+            error_str = str(e)
+            if "does not exist" in error_str:
+                result["stash_expired"] = True
+                result["error"] = f"Stash space expired (TTL): {stash_ref}"
+            else:
+                result["error"] = f"Stash error: {error_str}"
+    
+    # 3. Try fallback paths
+    if fallback_paths:
+        for fallback in fallback_paths:
+            if os.path.exists(fallback):
+                result["found"] = True
+                result["path"] = fallback
+                result["source"] = "fallback"
+                result["error"] = None  # Clear error since we found it
+                return result
+    
+    # Nothing found
+    if not result["error"]:
+        result["error"] = "No valid file reference provided"
+    
+    return result
+
+
+def extract_filename_from_stash_ref(stash_ref: str) -> Optional[str]:
+    """Extract filename from a stash reference for fallback lookups."""
+    if not stash_ref:
+        return None
+    try:
+        # stash://space_xxx/file_id or stash://space_xxx/filename.ext
+        parts = stash_ref.replace("stash://", "").split("/")
+        if len(parts) >= 2:
+            return parts[-1]
+    except:
+        pass
+    return None
+

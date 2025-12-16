@@ -1,34 +1,42 @@
 {
   "enabled": true,
   "name": "send_email",
-  "description": "Send an email to a contact. Use when user says 'email', 'send email to', 'message', etc. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'work') from config/contacts.json, or use a direct email address. IMPORTANT: Always compose the email body with proper context - start with a brief intro explaining who is sending and why (e.g., 'Hey! Boss asked me to share this song with you.' or 'Boss wanted you to see these search results.'), then include the actual content. Never send raw data without context. Rate limited to prevent duplicates.",
+  "description": "Send an email to a contact, optionally with file attachments from stash. Use when user says 'email', 'send email to', 'email me that image', etc. Contacts looked up by name (e.g., 'Andrew', 'Mom', 'Boss') from contacts.json. SUPPORTS ATTACHMENTS: Use 'attachment' parameter with stash ref (stash://space_xxx/file) or file path to attach images, PDFs, etc. Gracefully handles expired stash (7-day TTL) with fallback to generated_images/. IMPORTANT: Always compose email body with context - who is sending and why.",
   "script": "send_email.py",
   "parameters": {
     "type": "object",
     "properties": {
       "to": {
         "type": "string",
-        "description": "Recipient name (from contacts list) or email address. Examples: 'Andrew', 'mom', 'john@example.com'"
+        "description": "Recipient name (from contacts) or email address. Examples: 'Andrew', 'mom', 'Boss', 'john@example.com'"
       },
       "subject": {
         "type": "string",
-        "description": "Email subject line - make it descriptive (e.g., 'Song recommendation from Boss' not just 'Spotify')"
+        "description": "Email subject line - make it descriptive"
       },
       "body": {
         "type": "string",
-        "description": "Email body. ALWAYS start with context: 1) Brief friendly intro mentioning who sent it and why, 2) Then the actual content. Example: 'Hey Andrew!\\n\\nBoss wanted to share this song with you:\\n\\n🎵 Song Name by Artist...'"
+        "description": "Email body. Start with context: who sent it and why, then content."
+      },
+      "attachment": {
+        "type": "string",
+        "description": "File to attach: stash ref (stash://space_xxx/file) OR file path (/path/to/file.jpg). For generated images, use the stash_ref from generate_image output. Handles expired stash gracefully with fallback."
+      },
+      "attachment_path": {
+        "type": "string",
+        "description": "Alternative: direct file path if you have it instead of stash ref"
       },
       "image_url": {
         "type": "string",
-        "description": "Optional: URL of image to embed (e.g., album art from Spotify share)"
+        "description": "Optional: URL of image to embed inline (not as attachment)"
       },
       "link_url": {
         "type": "string",
-        "description": "Optional: Clickable link URL (e.g., Spotify track URL)"
+        "description": "Optional: Clickable link URL"
       },
       "link_text": {
         "type": "string",
-        "description": "Optional: Display text for the link (default: 'Open Link')"
+        "description": "Optional: Display text for the link"
       }
     },
     "required": ["to", "subject", "body"]
@@ -37,7 +45,7 @@
     "dangerous": false,
     "bash": false,
     "network": true,
-    "filesystem": false,
+    "filesystem": true,
     "auto_approve": false
   }
 }

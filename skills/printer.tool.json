@@ -21,7 +21,7 @@
       },
       "file_path": {
         "type": "string",
-        "description": "Path to file (text, PDF, or image: jpg/png/gif)"
+        "description": "Path to file OR stash reference (stash://space_xxx/file_id). Supports text, PDF, images (jpg/png/gif). Use stash refs for generated images/PDFs."
       },
       "canvas_id": {
         "type": "string",

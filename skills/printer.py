@@ -19,6 +19,7 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from stash_helper import safe_resolve_file
 
 
 def get_printer_name() -> str:
@@ -432,8 +433,21 @@ def main():
                 sys.exit(1)
             
         elif action == 'print':
+            # Resolve stash:// references to actual file paths
+            resolved_path = None
             if file_path:
-                result = print_file(printer, file_path, color=color, quality=quality)
+                if file_path.startswith('stash://'):
+                    # Resolve stash reference with graceful fallback
+                    resolve_result = safe_resolve_file(stash_ref=file_path)
+                    if resolve_result['found']:
+                        resolved_path = resolve_result['path']
+                    else:
+                        raise ValueError(f"Could not resolve stash reference: {resolve_result['error']}")
+                else:
+                    resolved_path = file_path
+            
+            if resolved_path:
+                result = print_file(printer, resolved_path, color=color, quality=quality)
             elif text:
                 result = print_text(printer, text, title, compact=compact, color=color)
             else:
