@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "name": "evolution_test",
   "description": "A test tool for validating evolutionary algorithm implementations and genetic programming systems. Use this tool when you need to verify mutation operations, test fitness functions, validate selection mechanisms, or debug population dynamics in evolutionary computing scenarios.",
   "script": "evolution_test.py",

@@ -590,13 +590,21 @@ def make_call(recipient: str, task: str, context: str = "", persona: str = "defa
         # Create temporary assistant for this call
         assistant = create_assistant_for_call(persona, owner, task, context)
         assistant_id = assistant['id']
+        use_variable_overrides = False
+    else:
+        # Using pre-configured assistant from Vapi dashboard
+        # We'll pass dynamic variables via assistantOverrides
+        use_variable_overrides = True
     
     # Get Vapi phone number ID (you need to set this up in Vapi dashboard)
     phone_number_id = get_config_value('VAPI_PHONE_NUMBER_ID')
     if not phone_number_id:
         raise ValueError("VAPI_PHONE_NUMBER_ID not configured. Get a phone number from Vapi dashboard.")
     
-    # Create the call
+    # Generate natural opening reason for the call
+    reason = generate_call_reason(task, context, owner)
+    
+    # Create the call config
     call_config = {
         "assistantId": assistant_id,
         "phoneNumberId": phone_number_id,
@@ -604,6 +612,19 @@ def make_call(recipient: str, task: str, context: str = "", persona: str = "defa
             "number": phone_number
         }
     }
+    
+    # If using pre-configured assistant, pass dynamic variables via overrides
+    # These replace {{owner}}, {{task}}, {{reason}} in the Vapi dashboard prompt
+    if use_variable_overrides:
+        call_config["assistantOverrides"] = {
+            "variableValues": {
+                "owner": owner,
+                "task": task,
+                "reason": reason,
+                "context": context,
+                "recipient": recipient
+            }
+        }
     
     response = requests.post(
         f"{VAPI_API_BASE}/call",
