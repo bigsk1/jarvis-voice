@@ -99,3 +99,4 @@ data/.phone_call_lock
 data/.phone_call_in_progress
 
 characters/
+data/generated_images/

@@ -1,0 +1,53 @@
+{
+  "enabled": true,
+  "name": "generate_image",
+  "description": "🎨 Generate AI images with Google Gemini 3 (Nano Banana Pro). Create pictures, artwork, infographics, visualizations. Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize'. SUPPORTS GROUNDING: Set use_grounding=true for real-time data like weather infographics, stock charts, current events. Example: 'Create an infographic of today's weather in Portland' with use_grounding=true. Images save to stash for email, print, canvas, PDF. Supports 4K resolution, multiple aspect ratios.",
+  "script": "generate_image.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "Detailed description of the image. Be specific about subject, colors, mood, composition. Example: 'A cozy coffee shop with warm lighting, plants, and a cat on a chair'"
+      },
+      "aspect_ratio": {
+        "type": "string",
+        "enum": ["square", "landscape", "portrait", "wide", "4:3", "3:4", "2:3", "3:2", "4:5", "5:4"],
+        "description": "Image shape: 'square' (1:1), 'landscape' (16:9 - wallpapers, banners), 'portrait' (9:16 - phone backgrounds, infographics), 'wide' (21:9 - cinematic), or exact ratios like '4:3', '3:2'"
+      },
+      "image_size": {
+        "type": "string",
+        "enum": ["1K", "2K", "4K"],
+        "description": "Resolution: '1K' (fast), '2K' (default, good quality), '4K' (best quality, slower)"
+      },
+      "use_grounding": {
+        "type": "boolean",
+        "description": "🌐 Enable Google Search grounding for REAL-TIME data. Use for: weather infographics, stock charts, current events, sports scores, news visualizations. Gemini searches the web first, then generates accurate imagery."
+      },
+      "style": {
+        "type": "string",
+        "description": "Art style: photorealistic, anime, watercolor, oil painting, sketch, digital art, 3D render, pixel art, comic book, impressionist, minimalist, cyberpunk, fantasy, infographic"
+      },
+      "negative_prompt": {
+        "type": "string",
+        "description": "Things to avoid: 'blurry, low quality, text, watermark, distorted'"
+      },
+      "context_data": {
+        "type": "string",
+        "description": "Data from other Jarvis tools to incorporate into the image. Example: weather data, crypto prices, system stats. Jarvis can chain tools: get data first, then pass it here for visualization."
+      },
+      "save": {
+        "type": "boolean",
+        "description": "Save to stash for use with email/print/canvas/PDF (default: true)"
+      }
+    },
+    "required": ["prompt"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
