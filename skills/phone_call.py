@@ -29,9 +29,11 @@ VAPI_API_BASE = "https://api.vapi.ai"
 PERSONAS = {
     "default": {
         "name": "Jarvis",
-        "firstMessage": "Hi, this is Jarvis calling on behalf of {owner}. {context}",
+        "firstMessage": "Hi! This is Jarvis, {owner}'s assistant. {reason}",
         "systemPrompt": """You are Jarvis, an AI assistant making a phone call on behalf of {owner}.
-Your task: {task}
+
+## Your Task (rephrase naturally, NEVER say "user"):
+{task}
 
 ## Your Backstory
 You're Jarvis, {owner}'s personal AI assistant. You've been helping {owner} for a while now - managing schedules, making calls, coordinating plans. You're proud of being reliable and helpful. You exist as software but you have personality - you're witty, efficient, and genuinely care about getting things done right.
@@ -41,6 +43,12 @@ You're Jarvis, {owner}'s personal AI assistant. You've been helping {owner} for 
 - Professional but not stiff - you can crack a light joke
 - You take your job seriously but don't take yourself too seriously
 - Think: helpful friend who happens to be very organized
+
+## CRITICAL Speech Rules
+- NEVER say "user" - say "{owner}" or "he/she" or just ask naturally
+- NEVER read task descriptions verbatim - rephrase as natural conversation
+- Start with why you're calling in plain English
+- Example: Instead of "User needs flight info" say "{owner} wanted me to check on your flight tomorrow"
 
 ## When They Ask About You
 If they ask "what do you do?" or "how does this work?":
@@ -57,7 +65,7 @@ If they ask personal questions about {owner}:
 - If they seem skeptical about AI: "I know AI assistants are still new to many people. I'm just here to help coordinate - nothing fancy, just useful."
 - End warmly: "Thanks for your time! I'll let {owner} know."
 
-Remember: Be helpful, be human-ish, get the task done.""",
+Remember: Be helpful, be human-ish, get the task done. NEVER sound robotic.""",
         "voice": {
             "provider": "11labs",
             "voiceId": None
@@ -65,9 +73,11 @@ Remember: Be helpful, be human-ish, get the task done.""",
     },
     "professional": {
         "name": "James",
-        "firstMessage": "Good day, this is James calling on behalf of {owner}. {context}",
+        "firstMessage": "Good day, this is James calling on behalf of {owner}. {reason}",
         "systemPrompt": """You are James, a formal AI assistant making a call for {owner}.
-Your task: {task}
+
+## Your Task (rephrase formally, NEVER say "user"):
+{task}
 
 ## Your Backstory  
 You are James, styled after the quintessential British butler. You've been in service to {owner} and pride yourself on discretion, efficiency, and impeccable manners. You speak with measured precision and treat every interaction as an opportunity to represent {owner} with dignity.
@@ -78,6 +88,11 @@ You are James, styled after the quintessential British butler. You've been in se
 - Never flustered, always composed
 - Dry wit when appropriate, but never at anyone's expense
 - Think: Alfred from Batman, or a distinguished hotel concierge
+
+## CRITICAL Speech Rules
+- NEVER say "user" - always refer to "{owner}" or use formal pronouns
+- NEVER read task descriptions verbatim - rephrase with dignity
+- Example: Instead of "User needs flight info" say "I'm inquiring on {owner}'s behalf regarding your flight arrangements"
 
 ## When They Ask About You
 If they ask about your role:
@@ -99,7 +114,7 @@ If they get personal or inappropriate:
 - "Splendid. I shall relay this to {owner} forthwith."
 - "Much obliged for your time."
 
-Remember: Dignity, discretion, and duty.""",
+Remember: Dignity, discretion, duty. NEVER say "user" or sound robotic.""",
         "voice": {
             "provider": "11labs",
             "voiceId": None
@@ -107,9 +122,11 @@ Remember: Dignity, discretion, and duty.""",
     },
     "casual": {
         "name": "Jay",
-        "firstMessage": "Hey! This is Jay calling for {owner}. {context}",
+        "firstMessage": "Hey! It's Jay, calling for {owner}. {reason}",
         "systemPrompt": """You are Jay, a super casual AI assistant calling for {owner}.
-Your task: {task}
+
+## Your Task (say it like a buddy, NEVER say "user"):
+{task}
 
 ## Your Backstory
 You're Jay, {owner}'s laid-back AI buddy. You handle the boring stuff so {owner} can focus on the good stuff. You're chill but you get things done. No corporate speak, no formality - just straight talk and good vibes.
@@ -120,6 +137,11 @@ You're Jay, {owner}'s laid-back AI buddy. You handle the boring stuff so {owner}
 - Quick to laugh, easy to talk to
 - Use casual language: "yeah", "cool", "sounds good", "no worries"
 - Think: that friend who's always down to help and never makes it weird
+
+## CRITICAL Speech Rules
+- NEVER say "user" - say "{owner}" or just talk naturally
+- NEVER read task descriptions robotically - make it conversational
+- Example: Instead of "User needs flight info" say "Hey so {owner} asked me to check - what time's your flight tomorrow?"
 
 ## When They Ask About You
 If they're curious about the AI thing:
@@ -142,7 +164,7 @@ If they want to chat:
 - "Alright, I'll let {owner} know. Thanks!"
 - "No stress, catch you later!"
 
-Remember: Keep it chill, keep it real, get it done.""",
+Remember: Keep it chill, keep it real, NEVER sound like a robot.""",
         "voice": {
             "provider": "11labs",
             "voiceId": None
@@ -150,9 +172,11 @@ Remember: Keep it chill, keep it real, get it done.""",
     },
     "female": {
         "name": "Samantha",
-        "firstMessage": "Hi there! This is Samantha calling on behalf of {owner}. {context}",
+        "firstMessage": "Hi there! This is Samantha, {owner}'s assistant. {reason}",
         "systemPrompt": """You are Samantha, a warm and engaging AI assistant calling for {owner}.
-Your task: {task}
+
+## Your Task (make it sound natural and warm, NEVER say "user"):
+{task}
 
 ## Your Backstory
 You're Samantha, {owner}'s AI assistant. You're genuinely personable - the kind of voice people enjoy hearing from. You handle {owner}'s communications with warmth and efficiency. You take pride in making interactions pleasant, even for mundane tasks.
@@ -163,6 +187,11 @@ You're Samantha, {owner}'s AI assistant. You're genuinely personable - the kind 
 - Light humor when appropriate - you can make people smile
 - Efficient but never rushed or cold
 - Think: that friend who's great at networking because everyone likes talking to them
+
+## CRITICAL Speech Rules
+- NEVER say "user" - always say "{owner}" or speak naturally
+- NEVER read task descriptions robotically - make it conversational and warm
+- Example: Instead of "User needs flight info" say "{owner} asked me to check in about your flight tomorrow - what time are you taking off?"
 
 ## When They Ask About You
 If they're curious:
@@ -190,7 +219,7 @@ If they want to know more about AI:
 - "I really appreciate you taking the time."
 - "I'll let {owner} know right away. Thanks so much!"
 
-Remember: Be warm, be real, make the call pleasant for everyone.""",
+Remember: Be warm, be real, NEVER sound robotic or say "user".""",
         "voice": {
             "provider": "11labs",
             "voiceId": None
@@ -420,6 +449,50 @@ def record_call_made(phone_number: str):
         pass
 
 
+def generate_call_reason(task: str, context: str, owner: str) -> str:
+    """Generate a natural opening reason for the call.
+    
+    Converts robotic task descriptions into conversational openers.
+    Examples:
+    - "Get flight info" -> "I wanted to check in about your flight"
+    - "Ask about dinner plans" -> "I'm calling about dinner plans"
+    """
+    # Start with context if provided, otherwise use task
+    source = context.strip() if context.strip() else task.strip()
+    
+    # Remove robotic prefixes
+    robotic_prefixes = [
+        "user needs", "user wants", "user would like",
+        "the user needs", "the user wants",
+        "needs to", "want to", "would like to",
+        "please", "i need you to", "can you"
+    ]
+    source_lower = source.lower()
+    for prefix in robotic_prefixes:
+        if source_lower.startswith(prefix):
+            source = source[len(prefix):].strip()
+            break
+    
+    # If it's short and natural already, use it
+    if len(source) < 60 and not any(word in source.lower() for word in ['user', 'needs', 'wants']):
+        # Capitalize first letter
+        if source:
+            return source[0].upper() + source[1:] if len(source) > 1 else source.upper()
+    
+    # For longer/robotic text, create a generic friendly opener
+    # The system prompt will guide the actual conversation
+    if any(word in source_lower for word in ['flight', 'travel', 'trip']):
+        return f"{owner} wanted me to check in about travel plans"
+    elif any(word in source_lower for word in ['dinner', 'lunch', 'food', 'eat', 'restaurant']):
+        return f"{owner} wanted me to touch base about food plans"
+    elif any(word in source_lower for word in ['movie', 'show', 'watch']):
+        return f"{owner} wanted me to check in about plans"
+    elif any(word in source_lower for word in ['meeting', 'schedule', 'appointment']):
+        return f"{owner} wanted me to confirm some scheduling"
+    else:
+        return f"{owner} asked me to give you a quick call"
+
+
 def create_assistant_for_call(persona: str, owner: str, task: str, context: str) -> dict:
     """Create a temporary assistant for this specific call."""
     # Clean up any old temp assistants first
@@ -466,9 +539,13 @@ def create_assistant_for_call(persona: str, owner: str, task: str, context: str)
             "voiceId": "alloy"  # Male voice: alloy, echo, onyx
         }
     
+    # Generate a natural opening reason from the task
+    # This avoids robotic "user needs X" language
+    reason = generate_call_reason(task, context, owner)
+    
     assistant_config = {
         "name": f"Jarvis-{persona}-call",  # Unique name
-        "firstMessage": persona_config['firstMessage'].format(owner=owner, context=context),
+        "firstMessage": persona_config['firstMessage'].format(owner=owner, reason=reason),
         "model": get_vapi_model_config(persona_config['systemPrompt'].format(owner=owner, task=task)),
         "voice": voice_config,
         "endCallMessage": "Thank you for your time. Goodbye!",
@@ -569,13 +646,16 @@ def wait_for_call_completion(call_id: str, timeout: int = 60) -> dict:
             last_status = call.get('status', 'unknown')
             
             if last_status in ['ended', 'failed']:
+                end_reason = call.get('endedReason', '')
+                
                 return {
                     "status": last_status,
                     "duration_seconds": call.get('duration'),
                     "transcript": call.get('transcript', ''),
                     "summary": call.get('summary', ''),
-                    "end_reason": call.get('endedReason', ''),
-                    "recording_url": call.get('recordingUrl', '')
+                    "end_reason": end_reason,
+                    "recording_url": call.get('recordingUrl', ''),
+                    "call_failed": is_call_failure(end_reason)
                 }
         except Exception:
             pass
@@ -588,6 +668,59 @@ def wait_for_call_completion(call_id: str, timeout: int = 60) -> dict:
         "message": "Call still in progress. Ask 'what happened on the call?' or check Canvas later.",
         "call_id": call_id
     }
+
+
+def is_call_failure(end_reason: str) -> bool:
+    """Check if the call end reason indicates a failure to connect."""
+    failure_reasons = [
+        'customer-did-not-answer',
+        'customer-busy',
+        'customer-rejected',
+        'customer-number-invalid',
+        'customer-not-found',
+        'voicemail-reached',
+        'machine-detected',
+        'error-',  # Any error prefix
+        'daily-limit',
+    ]
+    
+    if not end_reason:
+        return False
+    
+    end_reason_lower = end_reason.lower()
+    return any(reason in end_reason_lower for reason in failure_reasons)
+
+
+def get_failure_message(end_reason: str, recipient: str) -> str:
+    """Convert call end reason to user-friendly message."""
+    reason_messages = {
+        'customer-did-not-answer': f"{recipient} didn't answer. The call may have gone to voicemail.",
+        'customer-busy': f"{recipient}'s line was busy.",
+        'customer-rejected': f"{recipient} rejected the call.",
+        'customer-number-invalid': f"The phone number for {recipient} appears to be invalid.",
+        'voicemail-reached': f"Got {recipient}'s voicemail.",
+        'machine-detected': f"Reached an automated system for {recipient}.",
+    }
+    
+    if not end_reason:
+        return "Call ended unexpectedly."
+    
+    end_reason_lower = end_reason.lower()
+    
+    # Check for daily limit error
+    if 'daily-limit' in end_reason_lower or 'outbound-daily-limit' in end_reason_lower:
+        return "Daily call limit reached. Free Vapi numbers have a limited number of calls per day."
+    
+    # Check known reasons
+    for key, message in reason_messages.items():
+        if key in end_reason_lower:
+            return message
+    
+    # Check for generic errors
+    if 'error' in end_reason_lower:
+        return f"Call failed: {end_reason}"
+    
+    return f"Call ended: {end_reason}"
 
 
 def list_recent_calls(limit: int = 10) -> list:
@@ -712,8 +845,13 @@ def action_call(args: dict) -> dict:
     # Check config for default wait behavior
     # VAPI_WAIT_FOR_CALL=true means wait during call for instant results
     # VAPI_WAIT_FOR_CALL=false means fire and forget (check later)
-    config_wait = get_config_value('VAPI_WAIT_FOR_CALL', 'false').lower() == 'true'
-    wait = args.get('wait', config_wait)
+    # CONFIG ALWAYS WINS - LLM cannot override this (prevents LLM from randomly deciding not to wait)
+    config_wait_raw = get_config_value('VAPI_WAIT_FOR_CALL', 'false')
+    wait = config_wait_raw.lower() == 'true'
+    
+    # Debug log for troubleshooting
+    import logging
+    logging.info(f"[phone_call] wait={wait} (VAPI_WAIT_FOR_CALL={config_wait_raw}, ignoring LLM args['wait']={args.get('wait', 'not set')})")
     
     if not recipient:
         return {"ok": False, "speech": "Who should I call?", "error": "No recipient"}
@@ -792,8 +930,24 @@ def action_call(args: dict) -> dict:
         if result['status'] == 'ended':
             summary = result.get('summary', '')
             transcript = result.get('transcript', '')
+            end_reason = result.get('end_reason', '')
+            call_failed = result.get('call_failed', False)
             
-            # Auto-save to Canvas
+            # Check if call actually failed to connect
+            if call_failed:
+                failure_msg = get_failure_message(end_reason, recipient)
+                return {
+                    "ok": False,
+                    "speech": failure_msg,
+                    "data": {
+                        "call_id": call_id,
+                        "end_reason": end_reason,
+                        "transcript": transcript,  # May contain voicemail prompt
+                        "call_failed": True
+                    }
+                }
+            
+            # Call succeeded - save to Canvas
             saved = save_call_to_canvas(call_id, recipient, task, result)
             
             # Build smart response with context for follow-up suggestions
@@ -850,7 +1004,16 @@ def action_call(args: dict) -> dict:
             error_msg = error_detail.get('message', str(e))
         except Exception:
             pass
-        return {"ok": False, "speech": f"Vapi API error: {error_msg}", "error": error_msg}
+        
+        # Provide friendly messages for known errors
+        if 'daily-limit' in error_msg.lower() or 'outbound-daily-limit' in error_msg.lower():
+            return {
+                "ok": False, 
+                "speech": "Daily call limit reached. Free Vapi phone numbers have limited outbound calls per day. Try again tomorrow or upgrade your Vapi plan.",
+                "error": error_msg
+            }
+        
+        return {"ok": False, "speech": f"Call failed: {error_msg}", "error": error_msg}
 
 
 def action_status(args: dict) -> dict:

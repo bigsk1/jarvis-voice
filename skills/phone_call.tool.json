@@ -30,7 +30,7 @@
       },
       "wait": {
         "type": "boolean",
-        "description": "Whether to wait for call completion (default true). Set false for background calls"
+        "description": "DEPRECATED - DO NOT USE. Wait behavior is controlled by server config. This parameter is ignored."
       },
       "call_id": {
         "type": "string",
