@@ -761,3 +761,9 @@ Jarvis: "Here are some suggestions: 1. Best Chill Songs... Say 'play number X'"
 # Test local mode
 ./tests/test_tool_similarity.py --mode local
 ```
+
+# Image gen tool
+
+```bash
+ ./orchestrator/orchestrator_v2.py cloud "Generate a black ford truck image"
+```

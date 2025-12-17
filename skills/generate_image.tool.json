@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "generate_image",
-  "description": "🎨 Generate AI images with Google Gemini 3 (Nano Banana Pro). Create pictures, artwork, infographics, visualizations. Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize'. SUPPORTS GROUNDING: Set use_grounding=true for real-time data like weather infographics, stock charts, current events. Example: 'Create an infographic of today's weather in Portland' with use_grounding=true. Images save to stash for email, print, canvas, PDF. Supports 4K resolution, multiple aspect ratios.",
+  "description": "🎨 Generate AI images with Google Gemini or OpenAI GPT Image. Create pictures, artwork, infographics, visualizations. Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize'. PROVIDERS: Gemini (default) has Google Search grounding for real-time data; OpenAI has superior text rendering and transparent backgrounds. Example: 'Create an infographic of today's weather' with use_grounding=true (Gemini). Images save to stash for email, print, canvas, PDF.",
   "script": "generate_image.py",
   "parameters": {
     "type": "object",
@@ -10,19 +10,24 @@
         "type": "string",
         "description": "Detailed description of the image. Be specific about subject, colors, mood, composition. Example: 'A cozy coffee shop with warm lighting, plants, and a cat on a chair'"
       },
+      "provider": {
+        "type": "string",
+        "enum": ["gemini", "openai"],
+        "description": "Image provider: 'gemini' (default, has grounding for real-time data), 'openai' (gpt-image-1, best text rendering, transparent backgrounds). If not specified, uses IMAGE_TOOL_PROVIDER from config."
+      },
       "aspect_ratio": {
         "type": "string",
         "enum": ["square", "landscape", "portrait", "wide", "4:3", "3:4", "2:3", "3:2", "4:5", "5:4"],
-        "description": "Image shape: 'square' (1:1), 'landscape' (16:9 - wallpapers, banners), 'portrait' (9:16 - phone backgrounds, infographics), 'wide' (21:9 - cinematic), or exact ratios like '4:3', '3:2'"
+        "description": "Image shape: 'square' (1:1), 'landscape' (16:9), 'portrait' (9:16), 'wide' (21:9/cinematic), or exact ratios. OpenAI maps to closest size."
       },
       "image_size": {
         "type": "string",
         "enum": ["1K", "2K", "4K"],
-        "description": "Resolution: '1K' (fast), '2K' (default, good quality), '4K' (best quality, slower)"
+        "description": "Resolution/Quality: '1K' (fast/low), '2K' (default/medium), '4K' (best/high). For OpenAI, maps to quality setting."
       },
       "use_grounding": {
         "type": "boolean",
-        "description": "🌐 Enable Google Search grounding for REAL-TIME data. Use for: weather infographics, stock charts, current events, sports scores, news visualizations. Gemini searches the web first, then generates accurate imagery."
+        "description": "🌐 GEMINI ONLY: Enable Google Search grounding for REAL-TIME data. Use for: weather infographics, stock charts, current events, sports scores. Gemini searches web first, then generates accurate imagery."
       },
       "style": {
         "type": "string",
@@ -34,7 +39,16 @@
       },
       "context_data": {
         "type": "string",
-        "description": "Data from other Jarvis tools to incorporate into the image. Example: weather data, crypto prices, system stats. Jarvis can chain tools: get data first, then pass it here for visualization."
+        "description": "GEMINI ONLY: Data from other Jarvis tools to incorporate. Example: weather data, crypto prices. Chain tools: get data first, pass here."
+      },
+      "transparent": {
+        "type": "boolean",
+        "description": "OPENAI ONLY: Enable transparent background. Works with png/webp output. Great for logos, sprites, overlays."
+      },
+      "output_format": {
+        "type": "string",
+        "enum": ["png", "jpeg", "webp"],
+        "description": "OPENAI ONLY: Output format. 'png' (default, lossless), 'jpeg' (faster, smaller), 'webp' (modern, good compression). Transparent requires png/webp."
       },
       "save": {
         "type": "boolean",

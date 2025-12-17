@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
 Image Generation Tool for Jarvis
-Generates images using Google Gemini 3 Pro Image Preview (Nano Banana Pro)
+Supports multiple providers: Google Gemini and OpenAI GPT Image
 
 Features:
-  - Google Search grounding for real-time data (weather, stocks, current events)
-  - 4K resolution support
-  - Multiple aspect ratios
+  - Google Gemini: Search grounding for real-time data (weather, stocks, current events)
+  - OpenAI GPT Image: Superior instruction following, text rendering, real-world knowledge
+  - Multiple aspect ratios and quality settings
+  - Transparent background support (OpenAI)
   - Saves to stash for use with email, printer, canvas, pdf_create, etc.
 
-Models:
-  - gemini-3-pro-image-preview: Best quality with grounding support (Dec 2025)
+Providers:
+  - gemini: Google Gemini 3 Pro Image Preview (grounding support)
+  - openai: OpenAI gpt-image-1 (best text rendering, highest quality)
 
-Output: Saves to stash for multi-tool workflows
+Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
 """
 
 import sys
@@ -27,20 +29,19 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 
-# Gemini API endpoint
+# =============================================================================
+# Provider: Google Gemini
+# =============================================================================
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-preview-image-generation"
 
-# Default model (override via GEMINI_IMAGE_MODEL env var)
-DEFAULT_MODEL = "gemini-2.0-flash-preview-image-generation"
-
-# Aspect ratios supported by Gemini 3 Pro Image
-# Valid: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9
-ASPECT_RATIOS = {
+# Gemini aspect ratios
+GEMINI_ASPECT_RATIOS = {
     "square": "1:1",
     "landscape": "16:9",
     "portrait": "9:16",
     "wide": "21:9",
-    "tall": "9:16",      # Use portrait for tall (no 9:21)
+    "tall": "9:16",
     "4:3": "4:3",
     "3:4": "3:4",
     "2:3": "2:3",
@@ -49,15 +50,45 @@ ASPECT_RATIOS = {
     "5:4": "5:4"
 }
 
-# Image sizes
+# =============================================================================
+# Provider: OpenAI
+# =============================================================================
+OPENAI_API_BASE = "https://api.openai.com/v1/images/generations"
+DEFAULT_OPENAI_MODEL = "gpt-image-1.5"  # State of the art (Dec 2025)
+
+# OpenAI size mappings (aspect ratio -> pixel dimensions)
+OPENAI_SIZES = {
+    "square": "1024x1024",
+    "landscape": "1536x1024",
+    "portrait": "1024x1536",
+    "wide": "1536x1024",      # No ultra-wide, use landscape
+    "tall": "1024x1536",
+    "4:3": "1536x1024",       # Approximate
+    "3:4": "1024x1536",       # Approximate
+    "16:9": "1536x1024",
+    "9:16": "1024x1536",
+    "1:1": "1024x1024"
+}
+
+# OpenAI quality mappings
+OPENAI_QUALITY_MAP = {
+    "1K": "low",
+    "2K": "medium", 
+    "4K": "high",
+    "low": "low",
+    "medium": "medium",
+    "high": "high"
+}
+
+# Shared image sizes
 IMAGE_SIZES = ["1K", "2K", "4K"]
 
 
-def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = "2K",
-                   use_grounding: bool = False, style: str = None, 
-                   negative_prompt: str = None, context_data: str = None) -> dict:
+def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size: str = "2K",
+                          use_grounding: bool = False, style: str = None, 
+                          negative_prompt: str = None, context_data: str = None) -> dict:
     """
-    Generate an image using Gemini 3 API.
+    Generate an image using Google Gemini API.
     
     Args:
         prompt: What to generate
@@ -74,7 +105,7 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
         raise ValueError("GEMINI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = get_config_value('GEMINI_IMAGE_MODEL', DEFAULT_MODEL)
+    model_name = get_config_value('GEMINI_IMAGE_MODEL', DEFAULT_GEMINI_MODEL)
     
     # Build the prompt
     full_prompt = prompt
@@ -86,7 +117,7 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
         full_prompt += f"\n\nUse this real-time data for accuracy:\n{context_data}"
     
     # Get aspect ratio
-    ar = ASPECT_RATIOS.get(aspect_ratio, ASPECT_RATIOS.get(aspect_ratio, "1:1"))
+    ar = GEMINI_ASPECT_RATIOS.get(aspect_ratio, GEMINI_ASPECT_RATIOS.get(aspect_ratio, "1:1"))
     
     # Validate image size
     size = image_size.upper() if image_size.upper() in IMAGE_SIZES else "2K"
@@ -183,12 +214,171 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
         "prompt": prompt,
         "full_prompt": full_prompt,
         "model": model_name,
+        "provider": "gemini",
         "aspect_ratio": ar,
         "image_size": size,
         "text_response": text_response,
         "grounding": grounding_metadata,
         "used_grounding": use_grounding
     }
+
+
+def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: str = "medium",
+                          style: str = None, negative_prompt: str = None,
+                          transparent: bool = False, output_format: str = "png") -> dict:
+    """
+    Generate an image using OpenAI gpt-image-1 API.
+    
+    Args:
+        prompt: What to generate
+        aspect_ratio: square, landscape, portrait
+        quality: low, medium, high (or 1K, 2K, 4K mapped to quality)
+        style: Optional art style to prepend
+        negative_prompt: Things to avoid (appended to prompt)
+        transparent: Enable transparent background (png/webp only)
+        output_format: png, jpeg, or webp
+    """
+    
+    api_key = get_config_value('OPENAI_API_KEY')
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY not configured. Add it to config/cloud.env")
+    
+    # Get model from env or use default
+    model_name = get_config_value('OPENAI_IMAGE_MODEL', DEFAULT_OPENAI_MODEL)
+    
+    # Build the prompt
+    full_prompt = prompt
+    if style:
+        full_prompt = f"{style} style: {prompt}"
+    if negative_prompt:
+        full_prompt += f". Do not include: {negative_prompt}"
+    
+    # Map aspect ratio to OpenAI size
+    size = OPENAI_SIZES.get(aspect_ratio, OPENAI_SIZES.get(aspect_ratio, "1024x1024"))
+    
+    # Map quality (handle both 1K/2K/4K and low/medium/high)
+    quality_setting = OPENAI_QUALITY_MAP.get(quality.upper() if quality else "2K", 
+                                              OPENAI_QUALITY_MAP.get(quality.lower() if quality else "medium", "medium"))
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": model_name,
+        "prompt": full_prompt,
+        "size": size,
+        "quality": quality_setting,
+        "n": 1
+    }
+    
+    # Handle transparent background
+    if transparent and output_format in ("png", "webp"):
+        payload["background"] = "transparent"
+    
+    # Set output format (default png)
+    if output_format in ("jpeg", "webp"):
+        payload["output_format"] = output_format
+    
+    # Make request
+    timeout = 180  # OpenAI can take up to 2 minutes for complex prompts
+    response = requests.post(
+        OPENAI_API_BASE,
+        headers=headers,
+        json=payload,
+        timeout=timeout
+    )
+    
+    if response.status_code != 200:
+        error_msg = response.text
+        try:
+            error_data = response.json()
+            error_msg = error_data.get('error', {}).get('message', response.text)
+        except:
+            pass
+        raise Exception(f"OpenAI API error ({response.status_code}): {error_msg}")
+    
+    result = response.json()
+    
+    # Extract image from response
+    data = result.get('data', [])
+    if not data:
+        raise Exception("No image generated - empty response from OpenAI")
+    
+    image_b64 = data[0].get('b64_json')
+    if not image_b64:
+        raise Exception("No image data in response")
+    
+    # Determine mime type
+    mime_map = {"png": "image/png", "jpeg": "image/jpeg", "webp": "image/webp"}
+    mime_type = mime_map.get(output_format, "image/png")
+    
+    # Get revised prompt if available
+    revised_prompt = data[0].get('revised_prompt')
+    
+    return {
+        "image_base64": image_b64,
+        "mime_type": mime_type,
+        "prompt": prompt,
+        "full_prompt": full_prompt,
+        "revised_prompt": revised_prompt,
+        "model": model_name,
+        "provider": "openai",
+        "aspect_ratio": aspect_ratio,
+        "size": size,
+        "quality": quality_setting,
+        "transparent": transparent,
+        "used_grounding": False  # OpenAI doesn't have grounding
+    }
+
+
+def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = "2K",
+                   use_grounding: bool = False, style: str = None, 
+                   negative_prompt: str = None, context_data: str = None,
+                   transparent: bool = False, output_format: str = "png",
+                   provider: str = None) -> dict:
+    """
+    Generate an image using configured provider (Gemini or OpenAI).
+    
+    Args:
+        prompt: What to generate
+        aspect_ratio: square, landscape, portrait, wide, tall, 4:3, 3:4
+        image_size: 1K, 2K, or 4K (maps to quality for OpenAI)
+        use_grounding: Enable Google Search for real-time data (Gemini only)
+        style: Optional art style
+        negative_prompt: Things to avoid
+        context_data: Additional data from other Jarvis tools (Gemini only)
+        transparent: Enable transparent background (OpenAI only, png/webp)
+        output_format: png, jpeg, or webp (OpenAI only)
+        provider: Override provider (gemini or openai)
+    """
+    
+    # Determine provider
+    if provider is None:
+        provider = get_config_value('IMAGE_TOOL_PROVIDER', 'gemini').lower()
+    
+    if provider == 'openai':
+        return generate_image_openai(
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            quality=image_size,  # Map 1K/2K/4K to quality
+            style=style,
+            negative_prompt=negative_prompt,
+            transparent=transparent,
+            output_format=output_format
+        )
+    else:
+        # Default to Gemini
+        return generate_image_gemini(
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            image_size=image_size,
+            use_grounding=use_grounding,
+            style=style,
+            negative_prompt=negative_prompt,
+            context_data=context_data
+        )
 
 
 def save_to_stash(image_data: dict, prompt: str) -> dict:
@@ -202,7 +392,7 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
     
     # Determine extension from mime type
     mime = image_data.get('mime_type', 'image/png')
-    ext = 'png' if 'png' in mime else 'jpg' if 'jpeg' in mime or 'jpg' in mime else 'png'
+    ext = 'png' if 'png' in mime else 'jpg' if 'jpeg' in mime or 'jpg' in mime else 'webp' if 'webp' in mime else 'png'
     filename = f"generated_{safe_prompt}_{timestamp}.{ext}"
     
     # Decode image
@@ -224,13 +414,16 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
         space, _ = open_space(scope='session', labels=['generated_images'])
         stash_file = StashFile(space)
         
+        # Get provider tag
+        provider = image_data.get('provider', 'gemini')
+        
         # Save as binary to stash
         result = stash_file.save_binary(
             data=image_bytes,
             name=filename,
             mime_type=mime,
             on_conflict='overwrite',
-            tags=['ai_generated', 'gemini', image_data.get('aspect_ratio', 'square')],
+            tags=['ai_generated', provider, image_data.get('aspect_ratio', 'square')],
             tool_origin='generate_image'
         )
         
@@ -277,6 +470,11 @@ def main():
         context_data = args.get('context_data')  # Data from other Jarvis tools
         save = args.get('save', True)
         
+        # OpenAI-specific parameters
+        transparent = args.get('transparent', False)
+        output_format = args.get('output_format', 'png')
+        provider = args.get('provider')  # Override provider if specified
+        
         # Generate the image
         result = generate_image(
             prompt=prompt,
@@ -285,7 +483,10 @@ def main():
             use_grounding=use_grounding,
             style=style,
             negative_prompt=negative_prompt,
-            context_data=context_data
+            context_data=context_data,
+            transparent=transparent,
+            output_format=output_format,
+            provider=provider
         )
         
         # Save to stash if requested
@@ -316,20 +517,32 @@ def main():
                 pass  # Don't fail the tool if memory save fails
         
         # Build response
-        speech = f"Generated image: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+        provider_used = result.get('provider', 'gemini')
+        speech = f"Generated image with {provider_used}: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
         
         response = {
             "ok": True,
             "speech": speech,
             "data": {
                 "prompt": prompt,
+                "provider": provider_used,
                 "model": result['model'],
-                "aspect_ratio": result['aspect_ratio'],
-                "image_size": result['image_size'],
+                "aspect_ratio": result.get('aspect_ratio'),
                 "mime_type": result['mime_type'],
-                "used_grounding": result['used_grounding']
+                "used_grounding": result.get('used_grounding', False)
             }
         }
+        
+        # Add provider-specific fields
+        if provider_used == 'gemini':
+            response["data"]["image_size"] = result.get('image_size')
+        elif provider_used == 'openai':
+            response["data"]["size"] = result.get('size')
+            response["data"]["quality"] = result.get('quality')
+            if result.get('transparent'):
+                response["data"]["transparent"] = True
+            if result.get('revised_prompt'):
+                response["data"]["revised_prompt"] = result['revised_prompt']
         
         # Add save info
         if save_info:
@@ -338,7 +551,7 @@ def main():
                 response["speech"] += f". Saved to: {save_info['filename']}"
                 response["data"]["file_path"] = save_info['path']
         
-        # Add grounding sources if used
+        # Add grounding sources if used (Gemini only)
         if result.get('grounding'):
             response["data"]["grounding_sources"] = result['grounding']
         
