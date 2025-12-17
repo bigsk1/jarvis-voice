@@ -176,7 +176,10 @@ class SettingsManager:
             
             # Available models reference
             'provider_models': PROVIDER_MODELS,
-            'image_providers': IMAGE_PROVIDERS
+            'image_providers': IMAGE_PROVIDERS,
+            
+            # Blocked tools
+            'blocked_tools': web_config.get('tools', {}).get('blocked', [])
         }
     
     def _get_default_model(self, provider: str) -> str:
@@ -289,6 +292,19 @@ class SettingsManager:
         config['llm'] = {'provider': None, 'model': None}
         config['image'] = {'provider': None}
         config['thresholds'] = {'tool_similarity': None, 'memory_similarity': None}
+        return save_web_config(config)
+    
+    def get_blocked_tools(self) -> list:
+        """Get list of tools blocked for web mode"""
+        config = load_web_config()
+        return config.get('tools', {}).get('blocked', [])
+    
+    def update_blocked_tools(self, blocked: list) -> bool:
+        """Update the list of blocked tools"""
+        config = load_web_config()
+        if 'tools' not in config:
+            config['tools'] = {}
+        config['tools']['blocked'] = blocked
         return save_web_config(config)
     
     def set_mode(self, mode: str) -> bool:

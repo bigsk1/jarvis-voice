@@ -774,3 +774,12 @@ Jarvis: "Here are some suggestions: 1. Best Chill Songs... Say 'play number X'"
 ```bash
  ./orchestrator/orchestrator_v2.py cloud "Generate a black ford truck image"
 ```
+
+# web
+
+# add block tools
+```bash
+curl -X PUT http://localhost:5001/api/settings/blocked-tools \
+  -H "Content-Type: application/json" \
+  -d '{"blocked": ["get_recent_conversations", "some_other_tool"]}'
+```

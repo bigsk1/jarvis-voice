@@ -440,12 +440,13 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
         else:
             raise ValueError(f"Unknown LLM provider: {provider_type}")
     
-    def route(self, transcript: str) -> Dict[str, Any]:
+    def route(self, transcript: str, excluded_tools: list = None) -> Dict[str, Any]:
         """
         Use LLM to determine intent and route appropriately.
         
         Args:
             transcript: User's transcribed speech
+            excluded_tools: Optional list of tool names to exclude from selection
             
         Returns:
             dict: Routing decision
@@ -457,6 +458,8 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
                 "confidence": float
             }
         """
+        self._excluded_tools = excluded_tools or []
+        
         # Only print if in interactive mode
         if sys.stdout.isatty():
             print(f"🧠 Routing with LLM: '{transcript}'")
@@ -492,6 +495,15 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
         # 3. Find relevant tools using vector search
         # This returns ToolSchema objects for the top matches + ghost tools
         relevant_tools = self.registry.find_tools(tool_search_query, limit=retrieval_limit)
+        
+        # Filter out excluded tools (e.g., tools blocked for web mode)
+        if self._excluded_tools:
+            original_count = len(relevant_tools)
+            relevant_tools = [t for t in relevant_tools if t.name not in self._excluded_tools]
+            if len(relevant_tools) < original_count:
+                excluded = set(self._excluded_tools) & set(t.name for t in self.registry.find_tools(tool_search_query, limit=retrieval_limit))
+                if sys.stdout.isatty():
+                    print(f"   🚫 Excluded tools: {', '.join(excluded)}")
         
         # Separate ghost tools from retrieved tools for visibility
         from config_loader import get_config_value

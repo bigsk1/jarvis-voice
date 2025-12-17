@@ -34,15 +34,19 @@ class StatusUpdater:
     - Error deduplication
     """
     
-    def __init__(self, mode: str = 'cloud'):
+    def __init__(self, mode: str = 'cloud', speech_callback: Optional[Callable[[str], None]] = None):
         """
         Initialize status updater.
         
         Args:
             mode: 'cloud' or 'local' - determines TTS script
+            speech_callback: Optional callback for status messages. If provided,
+                             messages are sent to callback instead of local TTS.
+                             Useful for web UI to emit via WebSocket.
         """
         self.mode = mode
         self.project_root = Path(__file__).parent.parent.resolve()
+        self.speech_callback = speech_callback
         
         # Config
         self.enabled = get_config_value('STATUS_UPDATES_ENABLED', 'false').lower() == 'true'
@@ -367,8 +371,16 @@ class StatusUpdater:
         thread.start()
     
     def _speak(self, message: str, blocking: bool = False):
-        """Speak via TTS script."""
-        # Select script based on mode
+        """Speak via TTS script or callback."""
+        # If callback is set, use it instead of local TTS
+        if self.speech_callback:
+            try:
+                self.speech_callback(message)
+            except Exception as e:
+                print(f"[StatusUpdater] Callback error: {e}", file=sys.stderr)
+            return
+        
+        # Local TTS via script
         script_name = 'say-status-local.sh' if self.mode == 'local' else 'say-status.sh'
         script = self.project_root / 'bin' / script_name
         
@@ -390,6 +402,10 @@ class StatusUpdater:
         except Exception as e:
             # Log but don't crash
             print(f"[StatusUpdater] TTS error: {e}", file=sys.stderr)
+    
+    def set_speech_callback(self, callback: Optional[Callable[[str], None]]):
+        """Set or clear the speech callback for web/external TTS."""
+        self.speech_callback = callback
     
     def start_background_updates(
         self,

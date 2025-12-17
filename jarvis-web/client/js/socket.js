@@ -96,6 +96,10 @@ class JarvisSocket {
       this._emit('cancelled', data);
     });
 
+    this.socket.on('chat:status', (data) => {
+      this._emit('status', data);
+    });
+
     this.socket.on('mode:changed', (data) => {
       this.mode = data.mode;
       Utils.storage.set('mode', data.mode);

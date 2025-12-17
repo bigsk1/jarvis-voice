@@ -32,5 +32,11 @@
   "thresholds": {
     "tool_similarity": null,
     "memory_similarity": null
+  },
+  "tools": {
+    "blocked": [
+      "get_recent_conversations"
+    ],
+    "notes": "Tools listed here won't be available to LLM in web mode. Terminal/TUI unaffected."
   }
 }

@@ -41,15 +41,17 @@ def list_tools():
     """List all available tools"""
     tool_service = get_tool_service()
     summary_only = request.args.get('summary', 'false').lower() == 'true'
+    include_blocked = request.args.get('include_blocked', 'true').lower() == 'true'
     
     if summary_only:
         tools = tool_service.get_tools_summary()
     else:
-        tools = tool_service.get_tools()
+        tools = tool_service.get_tools(include_blocked=include_blocked)
     
     return jsonify({
         'ok': True,
         'count': len(tools),
+        'stats': tool_service.get_stats(),
         'tools': tools
     })
 
@@ -161,6 +163,38 @@ def get_provider_models(provider):
         'ok': True,
         'provider': provider,
         'models': models
+    })
+
+
+@api_bp.route('/settings/blocked-tools', methods=['GET'])
+def get_blocked_tools():
+    """Get list of tools blocked for web mode"""
+    settings = get_settings_manager()
+    return jsonify({
+        'ok': True,
+        'blocked': settings.get_blocked_tools()
+    })
+
+
+@api_bp.route('/settings/blocked-tools', methods=['PUT'])
+def update_blocked_tools():
+    """Update list of blocked tools"""
+    settings = get_settings_manager()
+    data = request.get_json() or {}
+    blocked = data.get('blocked', [])
+    
+    if not isinstance(blocked, list):
+        return jsonify({'ok': False, 'error': 'blocked must be a list'}), 400
+    
+    success = settings.update_blocked_tools(blocked)
+    
+    # Refresh tool discovery to reflect new blocked list
+    tool_service = get_tool_service()
+    tool_service.refresh()
+    
+    return jsonify({
+        'ok': success,
+        'blocked': settings.get_blocked_tools()
     })
 
 
@@ -288,7 +322,7 @@ def update_conversation_title(conv_id):
 
 @api_bp.route('/tts', methods=['POST'])
 def text_to_speech():
-    """Generate TTS audio from text"""
+    """Generate TTS audio from text using ElevenLabs or OpenAI"""
     data = request.get_json() or {}
     text = data.get('text', '')
     
@@ -296,39 +330,122 @@ def text_to_speech():
         return jsonify({'ok': False, 'error': 'No text provided'}), 400
     
     try:
-        # Import TTS from Jarvis
-        import sys
-        jarvis_lib = JARVIS_ROOT / 'lib'
-        if str(jarvis_lib) not in sys.path:
-            sys.path.insert(0, str(jarvis_lib))
+        import subprocess
+        import tempfile
+        from datetime import datetime
         
-        from tts_engine import get_tts_engine
-        from config_loader import load_config
-        
-        # Load config for mode
+        # Load config
+        from ..config import load_jarvis_config, get_jarvis_setting
         settings = get_settings_manager()
-        config = load_config(settings.mode)
+        load_jarvis_config(settings.mode)
         
-        # Get TTS engine
-        tts = get_tts_engine(config)
+        provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs')
         
-        # Generate audio
-        audio_path = tts.speak(text, play=False)
+        # Create output directory
+        tts_dir = JARVIS_ROOT / 'audio' / 'cloud' / 'tts'
+        tts_dir.mkdir(parents=True, exist_ok=True)
         
-        if audio_path and Path(audio_path).exists():
-            # Return the audio file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        if provider == 'elevenlabs':
+            audio_path = _generate_elevenlabs_tts(text, tts_dir, timestamp)
+        else:
+            audio_path = _generate_openai_tts(text, tts_dir, timestamp)
+        
+        if audio_path and audio_path.exists():
             return send_from_directory(
-                Path(audio_path).parent,
-                Path(audio_path).name,
+                str(audio_path.parent),
+                audio_path.name,
                 mimetype='audio/mpeg'
             )
         else:
             return jsonify({'ok': False, 'error': 'TTS generation failed'}), 500
             
-    except ImportError as ie:
-        return jsonify({'ok': False, 'error': f'TTS not available: {str(ie)}'}), 503
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+def _generate_elevenlabs_tts(text: str, output_dir: Path, timestamp: str) -> Path:
+    """Generate TTS using ElevenLabs API"""
+    import requests
+    from ..config import get_jarvis_setting
+    
+    api_key = get_jarvis_setting('ELEVENLABS_API_KEY', '')
+    voice_id = get_jarvis_setting('ELEVENLABS_TTS_VOICE', 'pgCnBQgKPGkIP8fJuita')
+    model_id = get_jarvis_setting('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2')
+    
+    if not api_key:
+        raise ValueError('ELEVENLABS_API_KEY not configured')
+    
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    
+    headers = {
+        "xi-api-key": api_key,
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "text": text,
+        "model_id": model_id,
+        "voice_settings": {
+            "stability": 0.7,
+            "similarity_boost": 0.75,
+            "style": 0.5,
+            "use_speaker_boost": True
+        }
+    }
+    
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code != 200:
+        raise ValueError(f"ElevenLabs API error: {response.status_code} - {response.text}")
+    
+    # Save audio (ElevenLabs returns mp3)
+    output_path = output_dir / f"tts_{timestamp}.mp3"
+    with open(output_path, 'wb') as f:
+        f.write(response.content)
+    
+    return output_path
+
+
+def _generate_openai_tts(text: str, output_dir: Path, timestamp: str) -> Path:
+    """Generate TTS using OpenAI API"""
+    import requests
+    from ..config import get_jarvis_setting
+    
+    api_key = get_jarvis_setting('OPENAI_API_KEY', '')
+    model = get_jarvis_setting('TTS_MODEL', 'gpt-4o-mini-tts')
+    voice = get_jarvis_setting('VOICE', 'onyx')
+    
+    if not api_key:
+        raise ValueError('OPENAI_API_KEY not configured')
+    
+    url = "https://api.openai.com/v1/audio/speech"
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": model,
+        "voice": voice,
+        "input": text
+    }
+    
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code != 200:
+        raise ValueError(f"OpenAI TTS API error: {response.status_code} - {response.text}")
+    
+    # Save audio (OpenAI returns mp3)
+    output_path = output_dir / f"tts_{timestamp}.mp3"
+    with open(output_path, 'wb') as f:
+        f.write(response.content)
+    
+    return output_path
 
 
 @api_bp.route('/audio/<filename>', methods=['GET'])
@@ -344,11 +461,22 @@ def serve_audio(filename):
     if ext not in allowed_extensions:
         abort(404)
     
-    audio_path = JARVIS_ROOT / 'data' / 'audio'
-    if not audio_path.exists():
-        abort(404)
+    # Check TTS directory first (cloud/tts)
+    tts_path = JARVIS_ROOT / 'audio' / 'cloud' / 'tts'
+    if tts_path.exists() and (tts_path / filename).exists():
+        return send_from_directory(str(tts_path), filename)
     
-    return send_from_directory(str(audio_path), filename)
+    # Check recordings directory 
+    recordings_path = JARVIS_ROOT / 'audio' / 'cloud' / 'recordings'
+    if recordings_path.exists() and (recordings_path / filename).exists():
+        return send_from_directory(str(recordings_path), filename)
+    
+    # Fallback to data/audio
+    audio_path = JARVIS_ROOT / 'data' / 'audio'
+    if audio_path.exists() and (audio_path / filename).exists():
+        return send_from_directory(str(audio_path), filename)
+    
+    abort(404)
 
 
 @api_bp.route('/images/<filename>', methods=['GET'])

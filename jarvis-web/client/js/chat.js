@@ -67,6 +67,7 @@ class ChatUI {
     
     socket.on('response', (data) => {
       this.hideThinking();
+      this.clearStatus();  // Clear any status messages
       this.addAssistantMessage(data.text, data.tools_used, data);
       this.isProcessing = false;
       this.updateSendButton();
@@ -123,6 +124,16 @@ class ChatUI {
    * Add assistant message to chat
    */
   addAssistantMessage(text, toolsUsed = [], data = {}) {
+    // Safety: ensure text is a string
+    if (typeof text === 'object' && text !== null) {
+      // Handle case where object was passed instead of string
+      const obj = text;
+      text = obj.text || obj.content || obj.speech || '';
+      toolsUsed = obj.tools_used || obj.toolsUsed || toolsUsed || [];
+      data = obj.data || data || {};
+    }
+    text = text || '';
+    
     const messageEl = document.createElement('div');
     messageEl.className = 'message assistant';
     
@@ -255,6 +266,62 @@ class ChatUI {
     const thinkingEl = this.messagesContainer.querySelector('.thinking-message');
     if (thinkingEl) {
       thinkingEl.remove();
+    }
+  }
+  
+  /**
+   * Show an ephemeral status message (progress update)
+   * Delayed by 1 second to sync with TTS audio playback
+   */
+  showStatus(statusText) {
+    // Clear any pending status timeout
+    if (this._statusTimeout) {
+      clearTimeout(this._statusTimeout);
+    }
+    
+    // Delay showing status to sync with TTS playback
+    this._statusTimeout = setTimeout(() => {
+      // Remove existing status
+      const existingStatus = this.messagesContainer.querySelector('.status-message');
+      if (existingStatus) {
+        existingStatus.remove();
+      }
+      
+      const statusEl = document.createElement('div');
+      statusEl.className = 'message status-message';
+      statusEl.innerHTML = `
+        <div class="status-content">
+          <span class="status-icon">💬</span>
+          <span class="status-text">${Utils.escapeHtml(statusText)}</span>
+        </div>
+      `;
+      
+      this.messagesContainer.appendChild(statusEl);
+      Utils.scrollToBottom(this.messagesContainer);
+      
+      // Auto-remove after 10 seconds (will be replaced by next status or final response)
+      setTimeout(() => {
+        if (statusEl.parentNode) {
+          statusEl.classList.add('fade-out');
+          setTimeout(() => statusEl.remove(), 300);
+        }
+      }, 10000);
+    }, 1000);  // 1 second delay to sync with TTS
+  }
+  
+  /**
+   * Clear status message
+   */
+  clearStatus() {
+    // Clear pending status timeout
+    if (this._statusTimeout) {
+      clearTimeout(this._statusTimeout);
+      this._statusTimeout = null;
+    }
+    
+    const statusEl = this.messagesContainer.querySelector('.status-message');
+    if (statusEl) {
+      statusEl.remove();
     }
   }
 

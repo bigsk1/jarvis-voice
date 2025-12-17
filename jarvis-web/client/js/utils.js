@@ -54,6 +54,19 @@ const Utils = {
    * Parse markdown to HTML (simple version)
    */
   parseMarkdown(text) {
+    // Safety check: ensure text is a string
+    if (text === null || text === undefined) {
+      return '';
+    }
+    if (typeof text !== 'string') {
+      // If object, try to stringify or extract content
+      if (typeof text === 'object') {
+        text = text.text || text.content || text.speech || JSON.stringify(text);
+      } else {
+        text = String(text);
+      }
+    }
+    
     if (typeof marked !== 'undefined') {
       return marked.parse(text);
     }

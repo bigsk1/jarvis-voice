@@ -80,6 +80,18 @@ class JarvisApp {
       this._loadConversationHistory();
     });
     
+    // Handle status updates (progress during long tasks)
+    this.socket.on('status', (data) => {
+      console.log('[App] Status update:', data.status);
+      // Show status in chat as ephemeral message
+      this.chat.showStatus(data.status);
+      
+      // Play TTS for status if audio enabled
+      if (this.audioEnabled && data.status) {
+        this._generateAndPlayTTS(data.status);
+      }
+    });
+    
     // Handle new conversation created
     this.socket.on('conversationCreated', (data) => {
       console.log('[App] New conversation created:', data);
@@ -141,6 +153,11 @@ class JarvisApp {
         // Update active panel
         document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
         document.getElementById(`settings-${tabName}`)?.classList.add('active');
+        
+        // Load tools tab content
+        if (tabName === 'tools') {
+          this._loadBlockedTools();
+        }
       });
     });
     
@@ -163,6 +180,11 @@ class JarvisApp {
     // Reset to defaults button
     document.getElementById('resetDefaultsBtn')?.addEventListener('click', () => {
       this._resetToDefaults();
+    });
+    
+    // Add blocked tool button
+    document.getElementById('addBlockedToolBtn')?.addEventListener('click', () => {
+      this._addBlockedTool();
     });
     
     // Close modal on outside click
@@ -304,20 +326,45 @@ class JarvisApp {
       const data = await response.json();
       
       if (data.ok && data.tools) {
-        const tools = data.tools.sort((a, b) => a.name.localeCompare(b.name));
+        const tools = data.tools;
+        const stats = data.stats || {};
         
-        let html = '';
-        for (const tool of tools) {
-          // Get emoji based on tool name
-          const emoji = this._getToolEmoji(tool.name);
-          const desc = tool.description.replace(/[📞🎵🖼️⚡🔧💾📄✉️🖨️🔔⏰💡🌐🔍💬📝🧠💰🎤]/g, '').trim();
-          
-          html += `
-            <div class="tool-item" title="${Utils.escapeHtml(tool.description)}">
-              <div class="tool-item-name">${emoji} ${Utils.escapeHtml(tool.name)}</div>
-              <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 50))}</div>
-            </div>
-          `;
+        // Show stats header
+        let html = `
+          <div class="tools-stats">
+            <span title="Local tools">📁 ${stats.local || 0}</span>
+            <span title="MCP tools">🔌 ${stats.mcp || 0}</span>
+            <span title="Blocked for web">🚫 ${stats.blocked || 0}</span>
+          </div>
+        `;
+        
+        // Group tools
+        const localTools = tools.filter(t => t.source === 'local' && !t.blocked);
+        const mcpTools = tools.filter(t => t.source === 'mcp' && !t.blocked);
+        const blockedTools = tools.filter(t => t.blocked);
+        
+        // Local tools section
+        if (localTools.length > 0) {
+          html += '<div class="tools-section-header">📁 Local Tools</div>';
+          for (const tool of localTools) {
+            html += this._renderToolItem(tool);
+          }
+        }
+        
+        // MCP tools section
+        if (mcpTools.length > 0) {
+          html += '<div class="tools-section-header">🔌 MCP Tools</div>';
+          for (const tool of mcpTools) {
+            html += this._renderToolItem(tool);
+          }
+        }
+        
+        // Blocked tools section
+        if (blockedTools.length > 0) {
+          html += '<div class="tools-section-header">🚫 Blocked (Web Only)</div>';
+          for (const tool of blockedTools) {
+            html += this._renderToolItem(tool);
+          }
         }
         
         container.innerHTML = html || '<p style="color: var(--text-muted); padding: var(--space-md);">No tools loaded</p>';
@@ -327,6 +374,30 @@ class JarvisApp {
     } catch (err) {
       container.innerHTML = `<p style="color: var(--error); padding: var(--space-md);">Error: ${err.message}</p>`;
     }
+  }
+  
+  /**
+   * Render a single tool item
+   */
+  _renderToolItem(tool) {
+    const emoji = this._getToolEmoji(tool.name);
+    const desc = (tool.description || '').replace(/[📞🎵🖼️⚡🔧💾📄✉️🖨️🔔⏰💡🌐🔍💬📝🧠💰🎤]/g, '').trim();
+    const isBlocked = tool.blocked;
+    const isMcp = tool.source === 'mcp';
+    
+    const classes = ['tool-item'];
+    if (isBlocked) classes.push('tool-blocked');
+    if (isMcp) classes.push('tool-mcp');
+    
+    const badge = isBlocked ? '<span class="tool-badge blocked">blocked</span>' : 
+                  isMcp ? '<span class="tool-badge mcp">mcp</span>' : '';
+    
+    return `
+      <div class="${classes.join(' ')}" title="${Utils.escapeHtml(tool.description || tool.name)}">
+        <div class="tool-item-name">${emoji} ${Utils.escapeHtml(tool.name)} ${badge}</div>
+        <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 50))}</div>
+      </div>
+    `;
   }
   
   /**
@@ -574,12 +645,12 @@ class JarvisApp {
       if (msg.role === 'user') {
         this.chat.addUserMessage(msg.content);
       } else if (msg.role === 'assistant') {
-        this.chat.addAssistantMessage({
-          text: msg.content,
-          speech: msg.content,
-          data: msg.data || {},
-          tools_used: msg.tools_used || []
-        });
+        // Pass as separate parameters: text, toolsUsed, data
+        this.chat.addAssistantMessage(
+          msg.content || '',
+          msg.tools_used || [],
+          msg.data || {}
+        );
       }
     }
     
@@ -684,6 +755,112 @@ class JarvisApp {
       } else {
         Utils.toast('Failed to reset', 'error');
       }
+    } catch (err) {
+      Utils.toast(`Error: ${err.message}`, 'error');
+    }
+  }
+  
+  /**
+   * Load blocked tools into settings panel
+   */
+  async _loadBlockedTools() {
+    try {
+      // Get current blocked tools
+      const blockedResponse = await fetch('/api/settings/blocked-tools');
+      const blockedData = await blockedResponse.json();
+      const blocked = blockedData.blocked || [];
+      
+      // Get all tools for dropdown
+      const toolsResponse = await fetch('/api/tools?summary=true');
+      const toolsData = await toolsResponse.json();
+      const allTools = toolsData.tools || [];
+      
+      // Render blocked tools chips
+      const listContainer = document.getElementById('blocked-tools-list');
+      if (blocked.length === 0) {
+        listContainer.innerHTML = '<span class="blocked-tools-empty">No tools blocked</span>';
+      } else {
+        listContainer.innerHTML = blocked.map(tool => `
+          <span class="blocked-tool-chip">
+            ${Utils.escapeHtml(tool)}
+            <button class="remove-btn" data-tool="${Utils.escapeHtml(tool)}" title="Unblock">×</button>
+          </span>
+        `).join('');
+        
+        // Add click handlers to remove buttons
+        listContainer.querySelectorAll('.remove-btn').forEach(btn => {
+          btn.addEventListener('click', () => this._removeBlockedTool(btn.dataset.tool));
+        });
+      }
+      
+      // Populate dropdown with non-blocked tools
+      const select = document.getElementById('block-tool-select');
+      const availableTools = allTools.filter(t => !blocked.includes(t.name));
+      select.innerHTML = '<option value="">Select a tool...</option>' + 
+        availableTools.map(t => `<option value="${Utils.escapeHtml(t.name)}">${Utils.escapeHtml(t.name)}</option>`).join('');
+        
+    } catch (err) {
+      console.error('[App] Failed to load blocked tools:', err);
+    }
+  }
+  
+  /**
+   * Add a tool to blocked list
+   */
+  async _addBlockedTool() {
+    const select = document.getElementById('block-tool-select');
+    const toolName = select.value;
+    
+    if (!toolName) {
+      Utils.toast('Select a tool first', 'warning');
+      return;
+    }
+    
+    try {
+      // Get current blocked
+      const response = await fetch('/api/settings/blocked-tools');
+      const data = await response.json();
+      const blocked = data.blocked || [];
+      
+      if (!blocked.includes(toolName)) {
+        blocked.push(toolName);
+        
+        // Save
+        await fetch('/api/settings/blocked-tools', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ blocked })
+        });
+        
+        Utils.toast(`Blocked: ${toolName}`, 'success');
+        this._loadBlockedTools();
+        this._loadToolsList();  // Refresh tools list
+      }
+    } catch (err) {
+      Utils.toast(`Error: ${err.message}`, 'error');
+    }
+  }
+  
+  /**
+   * Remove a tool from blocked list
+   */
+  async _removeBlockedTool(toolName) {
+    try {
+      const response = await fetch('/api/settings/blocked-tools');
+      const data = await response.json();
+      let blocked = data.blocked || [];
+      
+      blocked = blocked.filter(t => t !== toolName);
+      
+      await fetch('/api/settings/blocked-tools', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blocked })
+      });
+      
+      Utils.toast(`Unblocked: ${toolName}`, 'success');
+      this._loadBlockedTools();
+      this._loadToolsList();  // Refresh tools list
     } catch (err) {
       Utils.toast(`Error: ${err.message}`, 'error');
     }

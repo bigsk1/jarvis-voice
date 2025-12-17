@@ -170,6 +170,31 @@ class ChatHandler:
                 'tools': tool_service.get_tools_summary()
             })
     
+    def _get_conversation_context(self, conversation_id: str) -> list:
+        """Get recent conversation history for LLM context"""
+        try:
+            from ..services.conversation_store import get_conversation_store
+            store = get_conversation_store()
+            
+            conversation = store.get_conversation(conversation_id)
+            if not conversation:
+                return []
+            
+            messages = conversation.get('messages', [])
+            
+            # Format for orchestrator: [{role: str, content: str}, ...]
+            history = []
+            for msg in messages[-20:]:  # Last 20 messages max
+                role = msg.get('role', 'user')
+                content = msg.get('content', '')
+                if content:
+                    history.append({'role': role, 'content': content})
+            
+            return history
+        except Exception as e:
+            print(f"[CHAT] Error getting conversation context: {e}")
+            return []
+    
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str):
         """Process a chat message through the orchestrator"""
@@ -185,9 +210,33 @@ class ChatHandler:
             print(f"[CHAT] Creating orchestrator (mode={mode})...")
             orchestrator = Orchestrator(mode=mode)
             
-            # Process the query
-            print("[CHAT] Calling orchestrator.process()...")
-            result = orchestrator.process(message)
+            # Set up status callback to emit via WebSocket instead of local TTS
+            def status_callback(status_message: str):
+                """Send status updates to browser via WebSocket"""
+                print(f"[CHAT] Status update: {status_message}")
+                self.socketio.emit('chat:status', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'status': status_message,
+                    'timestamp': time.time()
+                }, room=session_id)
+            
+            orchestrator.set_status_callback(status_callback)
+            
+            # Get conversation history for context
+            conversation_history = self._get_conversation_context(conversation_id)
+            
+            # Get blocked tools for web mode
+            from ..config import get_web_setting
+            blocked_tools = get_web_setting('tools.blocked', [])
+            
+            # Process the query with conversation context and excluded tools
+            print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools...")
+            result = orchestrator.process(
+                message, 
+                conversation_history=conversation_history,
+                excluded_tools=blocked_tools
+            )
             print(f"[CHAT] Got result: ok={result.get('ok')}, tools={result.get('tools_used', [])}")
             
             duration_ms = int((time.time() - start_time) * 1000)
@@ -262,27 +311,116 @@ class ChatHandler:
     def _generate_tts(self, text: str) -> str:
         """Generate TTS audio and return URL"""
         try:
-            from tts_engine import get_tts_engine
-            from config_loader import load_config
-            
-            # Get settings
+            import requests
+            from datetime import datetime
+            from ..config import load_jarvis_config, get_jarvis_setting
             from ..services.settings_manager import get_settings_manager
+            
             settings = get_settings_manager()
-            config = load_config(settings.mode)
+            load_jarvis_config(settings.mode)
             
-            # Get TTS engine
-            tts = get_tts_engine(config)
+            provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs')
             
-            # Generate audio (don't play it, just save)
-            audio_path = tts.speak(text, play=False)
+            # Create output directory
+            project_root = Path(__file__).parent.parent.parent.parent
+            tts_dir = project_root / 'audio' / 'cloud' / 'tts'
+            tts_dir.mkdir(parents=True, exist_ok=True)
             
-            if audio_path and Path(audio_path).exists():
-                # Return URL to audio file
-                filename = Path(audio_path).name
-                return f'/api/audio/{filename}'
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            if provider == 'elevenlabs':
+                audio_path = self._elevenlabs_tts(text, tts_dir, timestamp)
+            else:
+                audio_path = self._openai_tts(text, tts_dir, timestamp)
+            
+            if audio_path and audio_path.exists():
+                return f'/api/audio/{audio_path.name}'
             
             return None
         except Exception as e:
             print(f"[CHAT] TTS error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
+    
+    def _elevenlabs_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
+        """Generate TTS using ElevenLabs API"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        api_key = get_jarvis_setting('ELEVENLABS_API_KEY', '')
+        voice_id = get_jarvis_setting('ELEVENLABS_TTS_VOICE', 'pgCnBQgKPGkIP8fJuita')
+        model_id = get_jarvis_setting('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2')
+        
+        if not api_key:
+            print("[CHAT] ELEVENLABS_API_KEY not configured")
+            return None
+        
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        
+        headers = {
+            "xi-api-key": api_key,
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "text": text,
+            "model_id": model_id,
+            "voice_settings": {
+                "stability": 0.7,
+                "similarity_boost": 0.75,
+                "style": 0.5,
+                "use_speaker_boost": True
+            }
+        }
+        
+        response = requests.post(url, json=payload, headers=headers)
+        
+        if response.status_code != 200:
+            print(f"[CHAT] ElevenLabs error: {response.status_code} - {response.text}")
+            return None
+        
+        output_path = output_dir / f"tts_{timestamp}.mp3"
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
+        
+        return output_path
+    
+    def _openai_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
+        """Generate TTS using OpenAI API"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        api_key = get_jarvis_setting('OPENAI_API_KEY', '')
+        model = get_jarvis_setting('TTS_MODEL', 'gpt-4o-mini-tts')
+        voice = get_jarvis_setting('VOICE', 'onyx')
+        
+        if not api_key:
+            print("[CHAT] OPENAI_API_KEY not configured")
+            return None
+        
+        url = "https://api.openai.com/v1/audio/speech"
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": model,
+            "voice": voice,
+            "input": text
+        }
+        
+        response = requests.post(url, json=payload, headers=headers)
+        
+        if response.status_code != 200:
+            print(f"[CHAT] OpenAI TTS error: {response.status_code} - {response.text}")
+            return None
+        
+        output_path = output_dir / f"tts_{timestamp}.mp3"
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
+        
+        return output_path
 

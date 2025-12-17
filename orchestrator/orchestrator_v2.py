@@ -131,7 +131,12 @@ class Orchestrator:
         # Status updates for voice progress feedback
         self.status_updater = StatusUpdater(mode)
     
-    def process(self, transcript: str, retry_count: int = 0, error_context: str = None) -> Dict[str, Any]:
+    def set_status_callback(self, callback):
+        """Set callback for status updates (for web UI to emit via WebSocket)."""
+        self.status_updater.set_speech_callback(callback)
+    
+    def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
+                conversation_history: list = None, excluded_tools: list = None) -> Dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
         Supports multi-turn tool execution until task is complete.
@@ -140,6 +145,11 @@ class Orchestrator:
             transcript: User's spoken input (from STT)
             retry_count: Current retry attempt (for error recovery)
             error_context: Previous error information (for retry)
+            conversation_history: Optional list of previous messages for context
+                                  [{role: 'user'|'assistant', content: str}, ...]
+                                  If provided, used instead of auto_context from memory_db.
+            excluded_tools: Optional list of tool names to exclude from this request.
+                           Used by web app to block tools that don't make sense in web context.
             
         Returns:
             dict: Response for TTS
@@ -153,19 +163,23 @@ class Orchestrator:
         # Reset status updater for new task
         self.status_updater.reset()
         
-        # Auto-inject recent conversation context (if enabled)
-        if self.auto_context_enabled:
+        # Auto-inject recent conversation context
+        if conversation_history:
+            # Use provided conversation history (from web app)
+            enhanced_transcript = self._format_conversation_context(transcript, conversation_history)
+        elif self.auto_context_enabled:
+            # Fall back to memory_db auto_context (terminal/TUI mode)
             enhanced_transcript = self._build_conversation_context(transcript)
-            
-            # Debug: Show what's being sent to LLM
-            if os.environ.get('JARVIS_DEBUG'):
-                print("\n" + "="*80, file=sys.stderr)
-                print("DEBUG: Enhanced Transcript Being Sent to LLM:", file=sys.stderr)
-                print("="*80, file=sys.stderr)
-                print(enhanced_transcript, file=sys.stderr)
-                print("="*80 + "\n", file=sys.stderr)
         else:
             enhanced_transcript = transcript
+        
+        # Debug: Show what's being sent to LLM
+        if os.environ.get('JARVIS_DEBUG') and enhanced_transcript != transcript:
+            print("\n" + "="*80, file=sys.stderr)
+            print("DEBUG: Enhanced Transcript Being Sent to LLM:", file=sys.stderr)
+            print("="*80, file=sys.stderr)
+            print(enhanced_transcript, file=sys.stderr)
+            print("="*80 + "\n", file=sys.stderr)
         
         # Pre-fetch available tool names for insight filtering
         # This ensures insights about blocked/unavailable tools aren't shown
@@ -221,7 +235,7 @@ class Orchestrator:
             # Route using LLM
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: About to route turn {turn_num}", file=sys.stderr)
-            route = self.router.route(turn_input)
+            route = self.router.route(turn_input, excluded_tools=excluded_tools)
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)
             
@@ -849,6 +863,43 @@ Your BEST EFFORT response:"""
         # Join and limit total size
         result = "\n".join(extracted_parts)
         return result[:10000]  # 10k chars should be enough for summary
+    
+    def _format_conversation_context(self, current_query: str, history: list) -> str:
+        """
+        Format provided conversation history as context for the LLM.
+        Used by web app to pass its own conversation history.
+        
+        Args:
+            current_query: User's current question/request
+            history: List of previous messages [{role: str, content: str}, ...]
+            
+        Returns:
+            Enhanced query with conversation context
+        """
+        if not history:
+            return current_query
+        
+        # Limit to recent messages (last 10 exchanges)
+        recent = history[-20:]  # 10 user + 10 assistant max
+        
+        context_lines = ["=== RECENT CONVERSATION CONTEXT ==="]
+        
+        for msg in recent:
+            role = msg.get('role', 'user')
+            content = msg.get('content', '')
+            
+            # Truncate long messages
+            if len(content) > 500:
+                content = content[:500] + "..."
+            
+            prefix = "User" if role == 'user' else "Jarvis"
+            context_lines.append(f"{prefix}: {content}")
+        
+        context_lines.append("=== END CONTEXT ===")
+        context_lines.append("")
+        context_lines.append(f"Current request: {current_query}")
+        
+        return "\n".join(context_lines)
     
     def _build_conversation_context(self, current_query: str) -> str:
         """

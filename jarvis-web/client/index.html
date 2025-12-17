@@ -149,6 +149,7 @@
           <div class="settings-tabs">
             <button class="settings-tab active" data-settings-tab="general">General</button>
             <button class="settings-tab" data-settings-tab="ai">AI Config</button>
+            <button class="settings-tab" data-settings-tab="tools">Tools</button>
             <button class="settings-tab" data-settings-tab="api">API Keys</button>
           </div>
           
@@ -232,6 +233,36 @@
             <button class="btn-secondary" id="resetDefaultsBtn" style="margin-top: var(--space-lg);">
               ↺ Reset to cloud.env Defaults
             </button>
+          </div>
+          
+          <!-- Tools Settings -->
+          <div class="settings-panel" id="settings-tools">
+            <p class="setting-note">
+              🚫 <strong>Blocked tools</strong> are hidden from the LLM in web mode only.<br>
+              Terminal/TUI/Wake Word still have access to all tools.
+            </p>
+            
+            <div class="setting-group">
+              <label class="setting-label">Blocked Tools for Web</label>
+              <div id="blocked-tools-list" class="blocked-tools-list">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+            
+            <div class="setting-group">
+              <label class="setting-label">Add Tool to Block</label>
+              <div class="blocked-tools-add">
+                <select id="block-tool-select" class="setting-input">
+                  <option value="">Select a tool...</option>
+                </select>
+                <button class="btn-secondary" id="addBlockedToolBtn">Block</button>
+              </div>
+            </div>
+            
+            <p class="setting-note" style="margin-top: var(--space-lg);">
+              💡 Some tools like <code>get_recent_conversations</code> are blocked because 
+              the web app has its own conversation system.
+            </p>
           </div>
           
           <!-- API Keys Status -->
