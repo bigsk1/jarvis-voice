@@ -63,9 +63,17 @@ class JarvisApp {
       Utils.toast(`Connection error: ${data.error}`, 'error');
     });
     
-    this.socket.on('modeChanged', (data) => {
+    this.socket.on('modeChanged', async (data) => {
       this.modeSelect.value = data.mode;
       Utils.toast(`Mode changed to ${data.mode}`, 'info');
+      
+      // Reload settings to reflect new mode's defaults
+      if (this.settingsModal.classList.contains('active')) {
+        await this._loadSettings();
+      }
+      
+      // Reload tools list
+      await this._loadToolsList();
     });
     
     this.socket.on('response', (data) => {
@@ -500,7 +508,7 @@ class JarvisApp {
   }
   
   /**
-   * Load system config (read-only values from cloud.env)
+   * Load system config (read-only values from current mode's env)
    */
   async _loadSystemConfig() {
     try {
@@ -510,13 +518,19 @@ class JarvisApp {
       if (data.ok && data.config) {
         const container = document.getElementById('system-config');
         const c = data.config;
+        const isLocal = data.mode === 'local';
         
-        container.innerHTML = `
-          <div class="config-section-title">🧠 LLM Settings</div>
+        // Mode-specific model display
+        const modelHtml = isLocal ? `
           <div class="config-item">
-            <span class="config-label">LLM_PROVIDER</span>
-            <span class="config-value">${c.LLM_PROVIDER}</span>
+            <span class="config-label">OLLAMA_MODEL</span>
+            <span class="config-value">${c.OLLAMA_MODEL || '(not set)'}</span>
           </div>
+          <div class="config-item">
+            <span class="config-label">OLLAMA_BASE_URL</span>
+            <span class="config-value">${c.OLLAMA_BASE_URL || '(not set)'}</span>
+          </div>
+        ` : `
           <div class="config-item">
             <span class="config-label">XAI_MODEL</span>
             <span class="config-value">${c.XAI_MODEL || '(not set)'}</span>
@@ -529,6 +543,15 @@ class JarvisApp {
             <span class="config-label">OPENAI_MODEL</span>
             <span class="config-value">${c.OPENAI_MODEL || '(not set)'}</span>
           </div>
+        `;
+        
+        container.innerHTML = `
+          <div class="config-section-title">🧠 LLM Settings (${isLocal ? 'local.env' : 'cloud.env'})</div>
+          <div class="config-item">
+            <span class="config-label">LLM_PROVIDER</span>
+            <span class="config-value">${c.LLM_PROVIDER}</span>
+          </div>
+          ${modelHtml}
           
           <div class="config-section">
             <div class="config-section-title">🎯 Thresholds</div>

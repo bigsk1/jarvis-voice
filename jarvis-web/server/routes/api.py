@@ -20,7 +20,8 @@ IMAGES_PATH = JARVIS_ROOT / 'data' / 'generated_images'
 def get_status():
     """Health check and basic status info"""
     tool_service = get_tool_service()
-    settings = get_settings_manager()
+    current_mode = get_web_setting('defaults.mode', 'cloud')
+    settings = get_settings_manager(current_mode)
     
     return jsonify({
         'ok': True,
@@ -90,7 +91,9 @@ def refresh_tools():
 @api_bp.route('/settings', methods=['GET'])
 def get_settings():
     """Get current settings for UI"""
-    settings = get_settings_manager()
+    # Ensure settings manager has correct mode
+    current_mode = get_web_setting('defaults.mode', 'cloud')
+    settings = get_settings_manager(current_mode)
     
     return jsonify({
         'ok': True,
@@ -114,7 +117,7 @@ def get_settings_schema():
 
 @api_bp.route('/settings/system', methods=['GET'])
 def get_system_config():
-    """Get read-only system config values from cloud.env"""
+    """Get read-only system config values from current mode's env file"""
     from ..config import load_jarvis_config, get_jarvis_setting
     
     # Load the current mode's config
@@ -122,27 +125,37 @@ def get_system_config():
     load_jarvis_config(mode)
     
     # Return key system settings (read-only, informational)
+    config = {
+        # LLM Settings
+        'LLM_PROVIDER': get_jarvis_setting('LLM_PROVIDER', 'ollama' if mode == 'local' else 'xai'),
+        
+        # Thresholds (important!)
+        'TOOL_SIMILARITY_THRESHOLD': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0'),
+        'SEMANTIC_SIMILARITY_THRESHOLD': get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'),
+        
+        # TTS/Audio
+        'TTS_PROVIDER': get_jarvis_setting('TTS_PROVIDER', 'elevenlabs'),
+        'ELEVENLABS_TTS_VOICE': get_jarvis_setting('ELEVENLABS_TTS_VOICE', ''),
+        'STATUS_UPDATES_ENABLED': get_jarvis_setting('STATUS_UPDATES_ENABLED', 'true'),
+        
+        # Features
+        'JARVIS_INTELLIGENCE': get_jarvis_setting('JARVIS_INTELLIGENCE', 'false'),
+    }
+    
+    # Add mode-specific model info
+    if mode == 'local':
+        config['OLLAMA_MODEL'] = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
+        config['OLLAMA_BASE_URL'] = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+    else:
+        config['XAI_MODEL'] = get_jarvis_setting('XAI_MODEL', '')
+        config['ANTHROPIC_MODEL'] = get_jarvis_setting('ANTHROPIC_MODEL', '')
+        config['OPENAI_MODEL'] = get_jarvis_setting('OPENAI_MODEL', '')
+    
     return jsonify({
         'ok': True,
         'mode': mode,
         'config': {
-            # LLM Settings
-            'LLM_PROVIDER': get_jarvis_setting('LLM_PROVIDER', 'xai'),
-            'XAI_MODEL': get_jarvis_setting('XAI_MODEL', ''),
-            'ANTHROPIC_MODEL': get_jarvis_setting('ANTHROPIC_MODEL', ''),
-            'OPENAI_MODEL': get_jarvis_setting('OPENAI_MODEL', ''),
-            
-            # Thresholds (important!)
-            'TOOL_SIMILARITY_THRESHOLD': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0'),
-            'SEMANTIC_SIMILARITY_THRESHOLD': get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'),
-            
-            # TTS/Audio
-            'TTS_PROVIDER': get_jarvis_setting('TTS_PROVIDER', 'elevenlabs'),
-            'ELEVENLABS_TTS_VOICE': get_jarvis_setting('ELEVENLABS_TTS_VOICE', ''),
-            'STATUS_UPDATES_ENABLED': get_jarvis_setting('STATUS_UPDATES_ENABLED', 'true'),
-            
-            # Features
-            'JARVIS_INTELLIGENCE': get_jarvis_setting('JARVIS_INTELLIGENCE', 'false'),
+            **config,
             
             # Image
             'IMAGE_TOOL_PROVIDER': get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),

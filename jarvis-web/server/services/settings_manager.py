@@ -25,18 +25,50 @@ PROVIDER_MODELS = {
         {'id': 'claude-3-opus-20240229', 'name': 'Claude 3 Opus', 'context': '200K'},
     ],
     'openai': [
+        {'id': 'gpt-5.1', 'name': 'GPT-5.1', 'context': '128K'},
         {'id': 'gpt-4o', 'name': 'GPT-4o (Default)', 'context': '128K'},
-        {'id': 'gpt-4o-mini', 'name': 'GPT-4o Mini', 'context': '128K'},
-        {'id': 'gpt-4-turbo', 'name': 'GPT-4 Turbo', 'context': '128K'},
-        {'id': 'o1', 'name': 'o1 (Reasoning)', 'context': '200K'},
+        {'id': 'gpt-4.1', 'name': 'GPT-4.1', 'context': '128K'},
+        {'id': 'gpt-5.1-codex-mini', 'name': 'GPT-5.1 Codex Mini', 'context': '128K'},
+        {'id': 'gpt-5.1-codex', 'name': 'GPT-5.1 Codex', 'context': '128K'},
+        {'id': 'gpt-5-mini', 'name': 'GPT-5 Mini', 'context': '128K'},
+        {'id': 'gpt-5-codex', 'name': 'GPT-5 Codex', 'context': '128K'},
+        {'id': 'gpt-5.1-chat-latest', 'name': 'GPT-5.1 Chat Latest', 'context': '128K'},
+        {'id': 'gpt-5-nano-2025-08-07', 'name': 'GPT-5 Nano (Aug 2025)', 'context': '128K'},
+        {'id': 'gpt-5.2-2025-12-11', 'name': 'GPT-5.2 (Dec 2025)', 'context': '128K'},
     ],
-    'ollama': [
-        {'id': 'llama3.1:70b', 'name': 'Llama 3.1 70B', 'context': '128K'},
-        {'id': 'llama3.1:8b', 'name': 'Llama 3.1 8B', 'context': '128K'},
-        {'id': 'mistral', 'name': 'Mistral 7B', 'context': '32K'},
-        {'id': 'codellama', 'name': 'Code Llama', 'context': '16K'},
-    ]
+    'ollama': []  # Populated dynamically from Ollama server
 }
+
+
+def fetch_ollama_models(base_url: str = None) -> list:
+    """Fetch available models from Ollama server"""
+    import requests
+    
+    if not base_url:
+        base_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+    
+    try:
+        response = requests.get(f"{base_url}/api/tags", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            models = []
+            for model in data.get('models', []):
+                name = model.get('name', '')
+                # Get size info if available
+                size_gb = model.get('size', 0) / (1024**3)
+                size_str = f"{size_gb:.1f}GB" if size_gb > 0 else ''
+                models.append({
+                    'id': name,
+                    'name': name,
+                    'context': size_str or 'local'
+                })
+            return models
+    except Exception as e:
+        print(f"[Settings] Failed to fetch Ollama models: {e}")
+    
+    # Fallback to default from config
+    default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
+    return [{'id': default_model, 'name': f'{default_model} (default)', 'context': 'local'}]
 
 IMAGE_PROVIDERS = {
     'gemini': {'name': 'Google Gemini', 'model': 'gemini-3-pro-image-preview'},
@@ -105,21 +137,20 @@ class SettingsManager:
         self._ensure_jarvis_config()
         web_config = load_web_config()
         
-        # Get cloud.env defaults
-        cloud_provider = get_jarvis_setting('LLM_PROVIDER', 'xai')
-        cloud_image_provider = get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
-        cloud_tool_threshold = get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0')
-        cloud_memory_threshold = get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.28')
+        # Get env defaults for current mode
+        env_provider = get_jarvis_setting('LLM_PROVIDER', 'xai' if self.mode == 'cloud' else 'ollama')
+        env_image_provider = get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
         
-        # Get web overrides (null = use default)
-        web_llm = web_config.get('llm', {})
-        web_image = web_config.get('image', {})
-        web_thresholds = web_config.get('thresholds', {})
+        # Get per-mode web overrides (null = use env default)
+        mode_overrides = web_config.get(self.mode, {})
+        web_provider = mode_overrides.get('llm_provider')
+        web_model = mode_overrides.get('llm_model')
+        web_image = mode_overrides.get('image_provider')
         
         # Calculate effective values
-        effective_provider = web_llm.get('provider') or cloud_provider
-        effective_model = web_llm.get('model') or self._get_default_model(effective_provider)
-        effective_image = web_image.get('provider') or cloud_image_provider
+        effective_provider = web_provider or env_provider
+        effective_model = web_model or self._get_default_model(effective_provider)
+        effective_image = web_image or env_image_provider
         
         return {
             'mode': self.mode,
@@ -128,14 +159,14 @@ class SettingsManager:
             'llm': {
                 'provider': {
                     'value': effective_provider,
-                    'default': cloud_provider,
-                    'is_override': web_llm.get('provider') is not None,
+                    'default': env_provider,
+                    'is_override': web_provider is not None,
                     'options': list(PROVIDER_MODELS.keys())
                 },
                 'model': {
                     'value': effective_model,
-                    'default': self._get_default_model(cloud_provider),
-                    'is_override': web_llm.get('model') is not None,
+                    'default': self._get_default_model(env_provider),
+                    'is_override': web_model is not None,
                     'options': PROVIDER_MODELS.get(effective_provider, [])
                 }
             },
@@ -144,8 +175,8 @@ class SettingsManager:
             'image': {
                 'provider': {
                     'value': effective_image,
-                    'default': cloud_image_provider,
-                    'is_override': web_image.get('provider') is not None,
+                    'default': env_image_provider,
+                    'is_override': web_image is not None,
                     'options': list(IMAGE_PROVIDERS.keys())
                 }
             },
@@ -179,16 +210,35 @@ class SettingsManager:
             'owner_name': get_jarvis_setting('OWNER_NAME', 'Boss'),
             'tts_provider': get_jarvis_setting('TTS_PROVIDER', 'elevenlabs'),
             
-            # Available models reference
-            'provider_models': PROVIDER_MODELS,
+            # Available models reference (with dynamic Ollama)
+            'provider_models': self._get_provider_models(),
             'image_providers': IMAGE_PROVIDERS,
             
             # Blocked tools
             'blocked_tools': web_config.get('tools', {}).get('blocked', [])
         }
     
+    def _get_provider_models(self) -> dict:
+        """Get provider models with dynamic Ollama fetching"""
+        models = PROVIDER_MODELS.copy()
+        
+        # Dynamically fetch Ollama models if in local mode or Ollama selected
+        if self.mode == 'local' or get_web_setting('llm.provider') == 'ollama':
+            ollama_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+            models['ollama'] = fetch_ollama_models(ollama_url)
+        else:
+            # Fallback for cloud mode
+            default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
+            models['ollama'] = [{'id': default_model, 'name': f'{default_model}', 'context': 'local'}]
+        
+        return models
+    
     def _get_default_model(self, provider: str) -> str:
         """Get the default model for a provider"""
+        if provider == 'ollama':
+            # For Ollama, use the configured model from env
+            return get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
+        
         models = PROVIDER_MODELS.get(provider, [])
         if models:
             return models[0]['id']
@@ -235,46 +285,32 @@ class SettingsManager:
         return load_web_config()
     
     def save_web_overrides(self, overrides: Dict[str, Any]) -> bool:
-        """Save web UI overrides"""
+        """Save web UI overrides (per-mode for LLM/image)"""
         config = load_web_config()
         
-        # Handle LLM overrides
+        # Ensure mode section exists
+        if self.mode not in config:
+            config[self.mode] = {}
+        mode_config = config[self.mode]
+        
+        # Handle LLM overrides (per-mode)
         if 'llm_provider' in overrides:
-            if 'llm' not in config:
-                config['llm'] = {}
-            config['llm']['provider'] = overrides['llm_provider'] or None
+            mode_config['llm_provider'] = overrides['llm_provider'] or None
         
         if 'llm_model' in overrides:
-            if 'llm' not in config:
-                config['llm'] = {}
-            config['llm']['model'] = overrides['llm_model'] or None
+            mode_config['llm_model'] = overrides['llm_model'] or None
         
-        # Handle image overrides
+        # Handle image overrides (per-mode)
         if 'image_provider' in overrides:
-            if 'image' not in config:
-                config['image'] = {}
-            config['image']['provider'] = overrides['image_provider'] or None
+            mode_config['image_provider'] = overrides['image_provider'] or None
         
-        # Handle threshold overrides
-        if 'tool_similarity' in overrides:
-            if 'thresholds' not in config:
-                config['thresholds'] = {}
-            val = overrides['tool_similarity']
-            config['thresholds']['tool_similarity'] = float(val) if val else None
-        
-        if 'memory_similarity' in overrides:
-            if 'thresholds' not in config:
-                config['thresholds'] = {}
-            val = overrides['memory_similarity']
-            config['thresholds']['memory_similarity'] = float(val) if val else None
-        
-        # Handle audio overrides
+        # Handle audio overrides (global, not per-mode)
         if 'tts_enabled' in overrides:
             if 'audio' not in config:
                 config['audio'] = {}
             config['audio']['tts_enabled'] = overrides['tts_enabled']
         
-        # Handle conversation overrides
+        # Handle conversation overrides (global)
         if 'history_limit' in overrides:
             if 'conversation' not in config:
                 config['conversation'] = {}
@@ -298,11 +334,14 @@ class SettingsManager:
         return save_web_config(config)
     
     def reset_to_defaults(self) -> bool:
-        """Reset all web overrides to use cloud.env defaults"""
+        """Reset current mode's web overrides to use env defaults"""
         config = load_web_config()
-        config['llm'] = {'provider': None, 'model': None}
-        config['image'] = {'provider': None}
-        config['thresholds'] = {'tool_similarity': None, 'memory_similarity': None}
+        # Reset current mode's overrides
+        config[self.mode] = {
+            'llm_provider': None,
+            'llm_model': None,
+            'image_provider': None
+        }
         return save_web_config(config)
     
     def get_blocked_tools(self) -> list:

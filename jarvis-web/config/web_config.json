@@ -20,22 +20,21 @@
     "stt_enabled": false
   },
   "defaults": {
-    "mode": "cloud"
+    "mode": "local"
   },
-  "llm": {
-    "provider": "xai",
-    "model": "grok-4-1-fast-non-reasoning-latest"
+  "cloud": {
+    "llm_provider": "xai",
+    "llm_model": "grok-4-1-fast-non-reasoning-latest",
+    "image_provider": null
   },
-  "image": {
-    "provider": null
+  "local": {
+    "llm_provider": null,
+    "llm_model": null,
+    "image_provider": null
   },
   "conversation": {
     "history_limit": 21,
     "notes": "Number of messages (user+assistant) to include as LLM context"
-  },
-  "thresholds": {
-    "tool_similarity": null,
-    "memory_similarity": null
   },
   "tools": {
     "blocked": [

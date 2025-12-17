@@ -149,13 +149,21 @@ class ChatHandler:
         
         @self.socketio.on('mode:set')
         def handle_mode_set(data):
-            """Set the mode for this session"""
+            """Set the mode for this session and reload settings"""
             session_id = request.sid
             mode = data.get('mode', 'cloud')
             
             if mode in ['cloud', 'local']:
                 if session_id in self.sessions:
                     self.sessions[session_id]['mode'] = mode
+                
+                # Update settings manager and reload config for new mode
+                from ..services.settings_manager import get_settings_manager
+                from ..config import reload_web_config
+                settings = get_settings_manager()
+                settings.set_mode(mode)
+                reload_web_config()
+                
                 emit('mode:changed', {'mode': mode})
         
         @self.socketio.on('tools:refresh')
@@ -210,13 +218,15 @@ class ChatHandler:
             print("[CHAT] Importing orchestrator...")
             from orchestrator_v2 import Orchestrator
             
-            # Get LLM overrides from web config
-            from ..config import get_web_setting
-            provider_override = get_web_setting('llm.provider')
-            model_override = get_web_setting('llm.model')
+            # Get LLM overrides from web config (per-mode)
+            from ..config import get_web_setting, load_web_config
+            web_config = load_web_config()
+            mode_overrides = web_config.get(mode, {})
+            provider_override = mode_overrides.get('llm_provider')
+            model_override = mode_overrides.get('llm_model')
             
             if provider_override:
-                print(f"[CHAT] Using web override: provider={provider_override}, model={model_override}")
+                print(f"[CHAT] Using {mode} override: provider={provider_override}, model={model_override}")
             
             # Create orchestrator instance with overrides
             print(f"[CHAT] Creating orchestrator (mode={mode})...")
