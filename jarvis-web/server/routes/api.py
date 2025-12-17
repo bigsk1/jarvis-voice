@@ -120,8 +120,8 @@ def get_system_config():
     """Get read-only system config values from current mode's env file"""
     from ..config import load_jarvis_config, get_jarvis_setting
     
-    # Load the current mode's config
-    mode = get_web_setting('defaults.mode', 'cloud')
+    # Use mode from query param or fall back to default
+    mode = request.args.get('mode') or get_web_setting('defaults.mode', 'cloud')
     load_jarvis_config(mode)
     
     # Return key system settings (read-only, informational)
@@ -133,9 +133,8 @@ def get_system_config():
         'TOOL_SIMILARITY_THRESHOLD': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0'),
         'SEMANTIC_SIMILARITY_THRESHOLD': get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'),
         
-        # TTS/Audio
-        'TTS_PROVIDER': get_jarvis_setting('TTS_PROVIDER', 'elevenlabs'),
-        'ELEVENLABS_TTS_VOICE': get_jarvis_setting('ELEVENLABS_TTS_VOICE', ''),
+        # TTS/Audio (mode-specific)
+        'TTS_PROVIDER': get_jarvis_setting('TTS_PROVIDER', 'kokoro' if mode == 'local' else 'elevenlabs'),
         'STATUS_UPDATES_ENABLED': get_jarvis_setting('STATUS_UPDATES_ENABLED', 'true'),
         
         # Features
@@ -146,10 +145,13 @@ def get_system_config():
     if mode == 'local':
         config['OLLAMA_MODEL'] = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
         config['OLLAMA_BASE_URL'] = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+        config['TTS_URL'] = get_jarvis_setting('TTS_URL', '')
+        config['TTS_VOICE'] = get_jarvis_setting('TTS_VOICE', '')
     else:
         config['XAI_MODEL'] = get_jarvis_setting('XAI_MODEL', '')
         config['ANTHROPIC_MODEL'] = get_jarvis_setting('ANTHROPIC_MODEL', '')
         config['OPENAI_MODEL'] = get_jarvis_setting('OPENAI_MODEL', '')
+        config['ELEVENLABS_TTS_VOICE'] = get_jarvis_setting('ELEVENLABS_TTS_VOICE', '')
     
     return jsonify({
         'ok': True,
@@ -378,29 +380,61 @@ def update_conversation_title(conv_id):
 
 @api_bp.route('/tts', methods=['POST'])
 def text_to_speech():
-    """Generate TTS audio from text using ElevenLabs or OpenAI"""
+    """Generate TTS audio from text - uses mode-specific provider"""
     data = request.get_json() or {}
     text = data.get('text', '')
+    mode = data.get('mode')  # Accept mode from client to ensure sync
     
     if not text:
         return jsonify({'ok': False, 'error': 'No text provided'}), 400
     
     try:
-        import subprocess
-        import tempfile
+        import requests
         from datetime import datetime
         
-        # Load config
+        # Load config for specified mode (from client) or fall back to settings
         from ..config import load_jarvis_config, get_jarvis_setting
-        settings = get_settings_manager()
-        load_jarvis_config(settings.mode)
+        if not mode:
+            settings = get_settings_manager()
+            mode = settings.mode
+        
+        # Force reload config for the correct mode
+        load_jarvis_config(mode)
         
         provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs')
+        print(f"[TTS] Mode: {mode}, Provider: {provider}", flush=True)
         
-        # Create output directory
+        # Local mode: use Kokoro via TTS_URL
+        if provider == 'kokoro':
+            tts_url = get_jarvis_setting('TTS_URL', '')
+            if not tts_url:
+                return jsonify({'ok': False, 'error': 'TTS_URL not configured for local mode'}), 500
+            
+            tts_voice = get_jarvis_setting('TTS_VOICE', 'af_nicole')
+            tts_speed = get_jarvis_setting('TTS_SPEED', '1.0')
+            
+            print(f"[TTS] Calling Kokoro at {tts_url} with voice={tts_voice}", flush=True)
+            
+            # Kokoro uses OpenAI-compatible API
+            payload = {
+                "model": "kokoro",
+                "input": text,
+                "voice": tts_voice,
+                "speed": float(tts_speed)
+            }
+            
+            response = requests.post(tts_url, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            # Return audio directly (Kokoro returns raw audio)
+            return response.content, 200, {
+                'Content-Type': 'audio/mpeg',
+                'Content-Disposition': 'inline'
+            }
+        
+        # Cloud mode: ElevenLabs or OpenAI
         tts_dir = JARVIS_ROOT / 'audio' / 'cloud' / 'tts'
         tts_dir.mkdir(parents=True, exist_ok=True)
-        
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
         if provider == 'elevenlabs':

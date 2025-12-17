@@ -159,10 +159,22 @@ class ChatHandler:
                 
                 # Update settings manager and reload config for new mode
                 from ..services.settings_manager import get_settings_manager
-                from ..config import reload_web_config
+                from ..config import reload_web_config, load_jarvis_config
+                
                 settings = get_settings_manager()
                 settings.set_mode(mode)
                 reload_web_config()
+                
+                # Force reload Jarvis config for new mode
+                load_jarvis_config(mode)
+                
+                # Reset singletons that cache mode-specific data
+                try:
+                    from intelligence import reset_intelligence_layer
+                    reset_intelligence_layer()
+                    print(f"[MODE] Reset intelligence layer for {mode} mode")
+                except Exception as e:
+                    print(f"[MODE] Warning: Could not reset intelligence: {e}")
                 
                 emit('mode:changed', {'mode': mode})
         

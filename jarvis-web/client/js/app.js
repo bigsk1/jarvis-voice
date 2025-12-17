@@ -120,7 +120,10 @@ class JarvisApp {
   _setupUIListeners() {
     // Mode selector
     this.modeSelect.addEventListener('change', (e) => {
-      this.socket.setMode(e.target.value);
+      const newMode = e.target.value;
+      this.socket.setMode(newMode);
+      // Suggest refresh for clean state (embeddings, caches, etc. are mode-specific)
+      Utils.toast(`Switched to ${newMode} mode. Refresh page for cleanest state.`, 'info', 5000);
     });
     
     // Audio toggle
@@ -295,20 +298,28 @@ class JarvisApp {
     }
     
     try {
-      console.log('[App] Generating TTS for:', text.substring(0, 50) + '...');
+      console.log('[App] Generating TTS for:', text.substring(0, 50) + '...', 'mode:', this.socket.mode);
       
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text, mode: this.socket.mode })
       });
       
       if (response.ok) {
+        const contentType = response.headers.get('Content-Type');
+        console.log('[App] TTS response Content-Type:', contentType);
         const blob = await response.blob();
-        const audioUrl = URL.createObjectURL(blob);
-        this._playAudio(audioUrl);
+        console.log('[App] TTS blob size:', blob.size, 'type:', blob.type);
+        if (blob.size > 0) {
+          const audioUrl = URL.createObjectURL(blob);
+          this._playAudio(audioUrl);
+        } else {
+          console.warn('[App] TTS returned empty audio');
+        }
       } else {
-        console.warn('[App] TTS generation failed:', response.status);
+        const errorText = await response.text();
+        console.warn('[App] TTS generation failed:', response.status, errorText);
       }
     } catch (err) {
       console.error('[App] TTS error:', err);
@@ -513,7 +524,7 @@ class JarvisApp {
    */
   async _loadSystemConfig() {
     try {
-      const response = await fetch('/api/settings/system');
+      const response = await fetch(`/api/settings/system?mode=${this.socket.mode}`);
       const data = await response.json();
       
       if (data.ok && data.config) {
@@ -567,15 +578,26 @@ class JarvisApp {
           </div>
           
           <div class="config-section">
-            <div class="config-section-title">🔊 Audio</div>
+            <div class="config-section-title">🔊 Audio (${isLocal ? 'Kokoro' : 'ElevenLabs'})</div>
             <div class="config-item">
               <span class="config-label">TTS_PROVIDER</span>
               <span class="config-value">${c.TTS_PROVIDER}</span>
             </div>
+            ${isLocal ? `
+            <div class="config-item">
+              <span class="config-label">TTS_URL</span>
+              <span class="config-value">${c.TTS_URL || '(not set)'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">TTS_VOICE</span>
+              <span class="config-value">${c.TTS_VOICE || '(default)'}</span>
+            </div>
+            ` : `
             <div class="config-item">
               <span class="config-label">ELEVENLABS_TTS_VOICE</span>
               <span class="config-value">${c.ELEVENLABS_TTS_VOICE || '(default)'}</span>
             </div>
+            `}
             <div class="config-item">
               <span class="config-label">STATUS_UPDATES_ENABLED</span>
               <span class="config-value ${c.STATUS_UPDATES_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.STATUS_UPDATES_ENABLED}</span>

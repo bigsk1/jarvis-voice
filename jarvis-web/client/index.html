@@ -170,11 +170,12 @@
                 <input type="checkbox" id="setting-tts">
                 <span class="toggle-slider"></span>
               </label>
-              <span class="setting-desc">Play audio responses in browser (uses cloud.env TTS settings)</span>
+              <span class="setting-desc">Play audio responses in browser (uses current mode's TTS)</span>
             </div>
             <p class="setting-note" style="margin-top: var(--space-lg);">
-              💡 <strong>cloud.env</strong> = defaults for Terminal/TUI<br>
-              💡 <strong>Web overrides</strong> = saved in browser, only affects web UI
+              💡 <strong>Cloud</strong> = uses cloud.env (ElevenLabs TTS)<br>
+              💡 <strong>Local</strong> = uses local.env (Kokoro TTS)<br>
+              💡 <strong>Web overrides</strong> = saved per-mode, only affects web UI
             </p>
           </div>
           

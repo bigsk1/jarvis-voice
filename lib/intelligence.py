@@ -1902,13 +1902,34 @@ Example for FACTUAL (should NOT be stored here):
 
 # Singleton instance
 _intelligence_layer = None
+_intelligence_mode = None
 
-def get_intelligence_layer() -> IntelligenceLayer:
-    """Get singleton intelligence layer instance."""
-    global _intelligence_layer
-    if _intelligence_layer is None:
+def get_intelligence_layer(mode: str = None) -> IntelligenceLayer:
+    """Get intelligence layer instance for the current mode."""
+    global _intelligence_layer, _intelligence_mode
+    
+    # Determine current mode from env if not provided
+    if mode is None:
+        llm_provider = os.environ.get('LLM_PROVIDER', 'anthropic').lower()
+        mode = 'local' if llm_provider == 'ollama' else 'cloud'
+    
+    # Recreate if mode changed or not initialized
+    if _intelligence_layer is None or _intelligence_mode != mode:
+        if _intelligence_layer is not None:
+            _intelligence_layer.close()
         _intelligence_layer = IntelligenceLayer()
+        _intelligence_mode = mode
+    
     return _intelligence_layer
+
+
+def reset_intelligence_layer():
+    """Reset the intelligence layer singleton (call when mode changes)."""
+    global _intelligence_layer, _intelligence_mode
+    if _intelligence_layer is not None:
+        _intelligence_layer.close()
+    _intelligence_layer = None
+    _intelligence_mode = None
 
 
 # ============================================
