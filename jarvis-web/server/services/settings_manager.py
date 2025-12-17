@@ -108,7 +108,7 @@ class SettingsManager:
         # Get cloud.env defaults
         cloud_provider = get_jarvis_setting('LLM_PROVIDER', 'xai')
         cloud_image_provider = get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
-        cloud_tool_threshold = get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.26')
+        cloud_tool_threshold = get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0')
         cloud_memory_threshold = get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.28')
         
         # Get web overrides (null = use default)
@@ -166,6 +166,11 @@ class SettingsManager:
             
             # Audio (web-only)
             'audio': web_config.get('audio', {}),
+            
+            # Conversation settings (web-only)
+            'conversation': {
+                'history_limit': web_config.get('conversation', {}).get('history_limit', 20)
+            },
             
             # API Key status
             'api_keys': self._get_api_key_status(),
@@ -268,6 +273,12 @@ class SettingsManager:
             if 'audio' not in config:
                 config['audio'] = {}
             config['audio']['tts_enabled'] = overrides['tts_enabled']
+        
+        # Handle conversation overrides
+        if 'history_limit' in overrides:
+            if 'conversation' not in config:
+                config['conversation'] = {}
+            config['conversation']['history_limit'] = int(overrides['history_limit'])
         
         return save_web_config(config)
     

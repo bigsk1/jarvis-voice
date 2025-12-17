@@ -161,14 +161,6 @@ class JarvisApp {
       });
     });
     
-    // Range input value display
-    document.getElementById('setting-tool-threshold')?.addEventListener('input', (e) => {
-      document.getElementById('setting-tool-threshold-value').textContent = e.target.value;
-    });
-    
-    document.getElementById('setting-memory-threshold')?.addEventListener('input', (e) => {
-      document.getElementById('setting-memory-threshold-value').textContent = e.target.value;
-    });
     
     // LLM Provider change → update model dropdown
     document.getElementById('setting-llm-provider')?.addEventListener('change', (e) => {
@@ -476,20 +468,9 @@ class JarvisApp {
           imageDefault.textContent = s.image.provider.value;
         }
         
-        // Populate Thresholds
-        const toolThreshold = s.thresholds?.tool_similarity?.value || 0.26;
-        document.getElementById('setting-tool-threshold').value = toolThreshold;
-        document.getElementById('setting-tool-threshold-value').textContent = toolThreshold;
-        const toolDefault = document.getElementById('tool-threshold-default');
-        toolDefault.textContent = s.thresholds?.tool_similarity?.default || '0.26';
-        toolDefault.className = s.thresholds?.tool_similarity?.is_override ? 'setting-default setting-override' : 'setting-default';
-        
-        const memoryThreshold = s.thresholds?.memory_similarity?.value || 0.28;
-        document.getElementById('setting-memory-threshold').value = memoryThreshold;
-        document.getElementById('setting-memory-threshold-value').textContent = memoryThreshold;
-        const memoryDefault = document.getElementById('memory-threshold-default');
-        memoryDefault.textContent = s.thresholds?.memory_similarity?.default || '0.28';
-        memoryDefault.className = s.thresholds?.memory_similarity?.is_override ? 'setting-default setting-override' : 'setting-default';
+        // Populate Conversation History Limit
+        const historyLimit = s.conversation?.history_limit || 20;
+        document.getElementById('setting-history-limit').value = historyLimit;
         
         // Populate API Keys status
         const apiKeysContainer = document.getElementById('api-keys-status');
@@ -508,9 +489,102 @@ class JarvisApp {
         }
         apiKeysContainer.innerHTML = apiHtml;
       }
+      
+      // Load system config (read-only values from cloud.env)
+      await this._loadSystemConfig();
+      
     } catch (err) {
       console.error('[App] Failed to load settings:', err);
       Utils.toast(`Failed to load settings: ${err.message}`, 'error');
+    }
+  }
+  
+  /**
+   * Load system config (read-only values from cloud.env)
+   */
+  async _loadSystemConfig() {
+    try {
+      const response = await fetch('/api/settings/system');
+      const data = await response.json();
+      
+      if (data.ok && data.config) {
+        const container = document.getElementById('system-config');
+        const c = data.config;
+        
+        container.innerHTML = `
+          <div class="config-section-title">🧠 LLM Settings</div>
+          <div class="config-item">
+            <span class="config-label">LLM_PROVIDER</span>
+            <span class="config-value">${c.LLM_PROVIDER}</span>
+          </div>
+          <div class="config-item">
+            <span class="config-label">XAI_MODEL</span>
+            <span class="config-value">${c.XAI_MODEL || '(not set)'}</span>
+          </div>
+          <div class="config-item">
+            <span class="config-label">ANTHROPIC_MODEL</span>
+            <span class="config-value">${c.ANTHROPIC_MODEL || '(not set)'}</span>
+          </div>
+          <div class="config-item">
+            <span class="config-label">OPENAI_MODEL</span>
+            <span class="config-value">${c.OPENAI_MODEL || '(not set)'}</span>
+          </div>
+          
+          <div class="config-section">
+            <div class="config-section-title">🎯 Thresholds</div>
+            <div class="config-item">
+              <span class="config-label">TOOL_SIMILARITY_THRESHOLD</span>
+              <span class="config-value">${c.TOOL_SIMILARITY_THRESHOLD}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">SEMANTIC_SIMILARITY_THRESHOLD</span>
+              <span class="config-value">${c.SEMANTIC_SIMILARITY_THRESHOLD}</span>
+            </div>
+          </div>
+          
+          <div class="config-section">
+            <div class="config-section-title">🔊 Audio</div>
+            <div class="config-item">
+              <span class="config-label">TTS_PROVIDER</span>
+              <span class="config-value">${c.TTS_PROVIDER}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">ELEVENLABS_TTS_VOICE</span>
+              <span class="config-value">${c.ELEVENLABS_TTS_VOICE || '(default)'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">STATUS_UPDATES_ENABLED</span>
+              <span class="config-value ${c.STATUS_UPDATES_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.STATUS_UPDATES_ENABLED}</span>
+            </div>
+          </div>
+          
+          <div class="config-section">
+            <div class="config-section-title">⚡ Features</div>
+            <div class="config-item">
+              <span class="config-label">JARVIS_INTELLIGENCE</span>
+              <span class="config-value ${c.JARVIS_INTELLIGENCE === 'true' ? 'enabled' : 'disabled'}">${c.JARVIS_INTELLIGENCE}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">IMAGE_TOOL_PROVIDER</span>
+              <span class="config-value">${c.IMAGE_TOOL_PROVIDER}</span>
+            </div>
+          </div>
+          
+          <div class="config-section">
+            <div class="config-section-title">🌍 System</div>
+            <div class="config-item">
+              <span class="config-label">JARVIS_TIMEZONE</span>
+              <span class="config-value">${c.JARVIS_TIMEZONE}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">Mode</span>
+              <span class="config-value">${data.mode}</span>
+            </div>
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error('[App] Failed to load system config:', err);
     }
   }
   
@@ -703,8 +777,7 @@ class JarvisApp {
         llm_provider: document.getElementById('setting-llm-provider').value || null,
         llm_model: document.getElementById('setting-llm-model').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
-        tool_similarity: parseFloat(document.getElementById('setting-tool-threshold').value),
-        memory_similarity: parseFloat(document.getElementById('setting-memory-threshold').value)
+        history_limit: parseInt(document.getElementById('setting-history-limit').value) || 20
       };
       
       // Save to server

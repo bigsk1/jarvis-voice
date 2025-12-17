@@ -20,15 +20,19 @@ from llm_provider import create_provider
 class LLMRouter:
     """Intelligent router using LLM tool calling."""
     
-    def __init__(self, mode='cloud', registry=None):
+    def __init__(self, mode='cloud', registry=None, provider_override=None, model_override=None):
         """
         Initialize router with LLM provider.
         
         Args:
             mode: 'cloud' or 'local'
             registry: Optional shared ToolRegistry (prevents duplicate MCP servers)
+            provider_override: Optional provider override (for web UI)
+            model_override: Optional model override (for web UI)
         """
         self.mode = mode
+        self._provider_override = provider_override
+        self._model_override = model_override
         load_config(mode)
         
         # Use provided registry or create new one
@@ -44,7 +48,7 @@ class LLMRouter:
         self.provider = self._create_provider()
         
         # Store provider info for metadata tracking
-        self.provider_type = get_config_value("LLM_PROVIDER", "unknown")
+        self.provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "unknown")
         self.model_name = self.provider.model if hasattr(self.provider, 'model') else "unknown"
         
         # Timezone for timestamps (configurable via env)
@@ -410,32 +414,37 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
         return time_prefix + self._system_prompt_base
     
     def _create_provider(self):
-        """Create appropriate LLM provider based on config."""
-        provider_type = get_config_value("LLM_PROVIDER", "openai" if self.mode == "cloud" else "ollama")
+        """Create appropriate LLM provider based on config or overrides."""
+        # Use override if provided, otherwise fall back to config
+        provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "openai" if self.mode == "cloud" else "ollama")
         
         if provider_type == "openai":
+            model = self._model_override or get_config_value("OPENAI_MODEL", "gpt-5-mini-2025-08-07")
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),
-                model=get_config_value("OPENAI_MODEL", "gpt-5-mini-2025-08-07")
+                model=model
             )
         elif provider_type == "anthropic":
+            model = self._model_override or get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
             return create_provider(
                 "anthropic",
                 api_key=get_config_value("ANTHROPIC_API_KEY"),
-                model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+                model=model
             )
         elif provider_type == "xai":
+            model = self._model_override or get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
             return create_provider(
                 "xai",
                 api_key=get_config_value("XAI_API_KEY"),
-                model=get_config_value("XAI_MODEL", "grok-4-fast-reasoning-latest")
+                model=model
             )
         elif provider_type == "ollama":
+            model = self._model_override or get_config_value("OLLAMA_MODEL", "qwen3")
             return create_provider(
                 "ollama",
                 base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                model=get_config_value("OLLAMA_MODEL", "qwen3")
+                model=model
             )
         else:
             raise ValueError(f"Unknown LLM provider: {provider_type}")

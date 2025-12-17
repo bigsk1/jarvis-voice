@@ -94,9 +94,18 @@ def _sanitize_error_for_speech(error) -> str:
 class Orchestrator:
     """Main orchestration with LLM-based routing, error recovery, and retry logic."""
     
-    def __init__(self, mode='cloud'):
-        """Initialize orchestrator."""
+    def __init__(self, mode='cloud', provider_override=None, model_override=None):
+        """
+        Initialize orchestrator.
+        
+        Args:
+            mode: 'cloud' or 'local'
+            provider_override: Optional LLM provider override (for web UI)
+            model_override: Optional model override (for web UI)
+        """
         self.mode = mode
+        self._provider_override = provider_override
+        self._model_override = model_override
         load_config(mode)
         
         # Auto-sync memory database from other mode if needed
@@ -117,7 +126,12 @@ class Orchestrator:
         self.registry = ToolRegistry(skills_dir, mcp_config)
         
         # Pass shared registry to router and executor
-        self.router = LLMRouter(mode, registry=self.registry)
+        self.router = LLMRouter(
+            mode, 
+            registry=self.registry,
+            provider_override=self._provider_override,
+            model_override=self._model_override
+        )
         self.executor = ToolExecutor(mode, registry=self.registry)
         self.max_retries = 1  # Maximum retry attempts
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # Unique session ID

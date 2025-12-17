@@ -46,6 +46,13 @@ DEFAULT_CONFIG = {
 _web_config = None
 
 
+def reload_web_config():
+    """Force reload of web configuration (call after settings change)"""
+    global _web_config
+    _web_config = None
+    return load_web_config()
+
+
 def load_web_config() -> dict:
     """Load web configuration from JSON file"""
     global _web_config

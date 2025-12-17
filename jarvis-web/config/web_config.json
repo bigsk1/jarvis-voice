@@ -23,11 +23,15 @@
     "mode": "cloud"
   },
   "llm": {
-    "provider": null,
-    "model": null
+    "provider": "xai",
+    "model": "grok-4-1-fast-non-reasoning-latest"
   },
   "image": {
     "provider": null
+  },
+  "conversation": {
+    "history_limit": 21,
+    "notes": "Number of messages (user+assistant) to include as LLM context"
   },
   "thresholds": {
     "tool_similarity": null,

@@ -7,7 +7,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory, abort
 from ..services.tool_discovery import get_tool_service
 from ..services.settings_manager import get_settings_manager
-from ..config import get_web_setting, JARVIS_ROOT
+from ..config import get_web_setting, JARVIS_ROOT, reload_web_config
 import sys
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -112,6 +112,47 @@ def get_settings_schema():
     })
 
 
+@api_bp.route('/settings/system', methods=['GET'])
+def get_system_config():
+    """Get read-only system config values from cloud.env"""
+    from ..config import load_jarvis_config, get_jarvis_setting
+    
+    # Load the current mode's config
+    mode = get_web_setting('defaults.mode', 'cloud')
+    load_jarvis_config(mode)
+    
+    # Return key system settings (read-only, informational)
+    return jsonify({
+        'ok': True,
+        'mode': mode,
+        'config': {
+            # LLM Settings
+            'LLM_PROVIDER': get_jarvis_setting('LLM_PROVIDER', 'xai'),
+            'XAI_MODEL': get_jarvis_setting('XAI_MODEL', ''),
+            'ANTHROPIC_MODEL': get_jarvis_setting('ANTHROPIC_MODEL', ''),
+            'OPENAI_MODEL': get_jarvis_setting('OPENAI_MODEL', ''),
+            
+            # Thresholds (important!)
+            'TOOL_SIMILARITY_THRESHOLD': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0'),
+            'SEMANTIC_SIMILARITY_THRESHOLD': get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'),
+            
+            # TTS/Audio
+            'TTS_PROVIDER': get_jarvis_setting('TTS_PROVIDER', 'elevenlabs'),
+            'ELEVENLABS_TTS_VOICE': get_jarvis_setting('ELEVENLABS_TTS_VOICE', ''),
+            'STATUS_UPDATES_ENABLED': get_jarvis_setting('STATUS_UPDATES_ENABLED', 'true'),
+            
+            # Features
+            'JARVIS_INTELLIGENCE': get_jarvis_setting('JARVIS_INTELLIGENCE', 'false'),
+            
+            # Image
+            'IMAGE_TOOL_PROVIDER': get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),
+            
+            # System
+            'JARVIS_TIMEZONE': get_jarvis_setting('JARVIS_TIMEZONE', 'America/Los_Angeles'),
+        }
+    })
+
+
 @api_bp.route('/settings/web', methods=['PUT'])
 def update_web_settings():
     """Update web UI settings/overrides"""
@@ -124,6 +165,8 @@ def update_web_settings():
     # Use new override system if structured data provided
     if any(k in data for k in ['llm_provider', 'llm_model', 'image_provider', 'tool_similarity', 'memory_similarity', 'tts_enabled']):
         success = settings.save_web_overrides(data)
+        # Force reload config cache so changes take effect immediately
+        reload_web_config()
         return jsonify({
             'ok': success,
             'message': 'Settings saved' if success else 'Failed to save'

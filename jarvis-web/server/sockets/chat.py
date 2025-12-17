@@ -174,6 +174,7 @@ class ChatHandler:
         """Get recent conversation history for LLM context"""
         try:
             from ..services.conversation_store import get_conversation_store
+            from ..config import get_web_setting
             store = get_conversation_store()
             
             conversation = store.get_conversation(conversation_id)
@@ -182,9 +183,12 @@ class ChatHandler:
             
             messages = conversation.get('messages', [])
             
+            # Get configurable history limit (default 20)
+            history_limit = get_web_setting('conversation.history_limit', 20)
+            
             # Format for orchestrator: [{role: str, content: str}, ...]
             history = []
-            for msg in messages[-20:]:  # Last 20 messages max
+            for msg in messages[-history_limit:]:
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
                 if content:
@@ -206,9 +210,21 @@ class ChatHandler:
             print("[CHAT] Importing orchestrator...")
             from orchestrator_v2 import Orchestrator
             
-            # Create orchestrator instance for this mode
+            # Get LLM overrides from web config
+            from ..config import get_web_setting
+            provider_override = get_web_setting('llm.provider')
+            model_override = get_web_setting('llm.model')
+            
+            if provider_override:
+                print(f"[CHAT] Using web override: provider={provider_override}, model={model_override}")
+            
+            # Create orchestrator instance with overrides
             print(f"[CHAT] Creating orchestrator (mode={mode})...")
-            orchestrator = Orchestrator(mode=mode)
+            orchestrator = Orchestrator(
+                mode=mode,
+                provider_override=provider_override,
+                model_override=model_override
+            )
             
             # Set up status callback to emit via WebSocket instead of local TTS
             def status_callback(status_message: str):

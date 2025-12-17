@@ -1,6 +1,6 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.0)  
+> **Status**: MVP Complete (v1.1)  
 > **Last Updated**: December 17, 2025
 
 ---
@@ -9,12 +9,13 @@
 
 A **standalone web application** (`jarvis-web`) providing the full Jarvis experience through a modern chat interface.
 
-- 🔌 **Pluggable**: Auto-discovers tools from `skills/*.tool.json`
+- 🔌 **Pluggable**: Auto-discovers tools from `skills/*.tool.json` + MCP tools from `memory_db`
 - 🔄 **Real-time**: WebSocket-first architecture with status streaming
-- ⚙️ **Configurable**: Settings UI with provider/model dropdowns
+- ⚙️ **Configurable**: Settings UI with provider/model dropdowns, on-the-fly switching
 - 🎨 **Beautiful**: Modern dark theme with tool cards and image lightbox
 - 📦 **Modular**: Separate from core - doesn't break terminal/TUI
 - 🔮 **Future-proof**: Web overrides don't affect cloud.env
+- 🧠 **Full Intelligence**: Uses same orchestrator → insights/feedback/self-learning works
 
 **This is NOT a replacement** - it's a new interface alongside:
 - Terminal (`orchestrator_v2.py`) - Dev/testing
@@ -60,16 +61,19 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Mic input | ⏳ | Planned - push-to-talk |
 | Wake word | ⏳ | Planned - browser-based VAD |
 
-### Phase 4: Advanced - IN PROGRESS
+### Phase 4: Advanced - COMPLETE ✅
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Web blocked tools | ✅ | `tools.blocked` in web_config.json |
-| Conversation context | ✅ | Last 20 messages passed to LLM |
+| Web blocked tools | ✅ | `tools.blocked` in web_config.json, UI to manage |
+| Blocked tools UI | ✅ | Settings → Tools tab to add/remove |
+| Conversation context | ✅ | Configurable limit (default 20) passed to LLM |
 | Settings persistence | ✅ | `web_config.json` overrides |
 | Reset to defaults | ✅ | Button to clear web overrides |
-| MCP discovery | ⏳ | Planned |
-| Tool enable/disable | ⏳ | Planned (per-tool in UI) |
+| Dynamic LLM switching | ✅ | Change provider/model on-the-fly, takes effect immediately |
+| MCP tool discovery | ✅ | Reads from memory_db, shows in Tools tab |
+| System config view | ✅ | Read-only cloud.env values in Settings → System |
+| Tool enable/disable | ⏳ | Planned (per-tool granular control) |
 
 ---
 
@@ -266,14 +270,13 @@ socket.on('chat:response', {
   },
   "llm": {
     "provider": null,    // null = use cloud.env default
-    "model": null
+    "model": null        // Override: "xai", "anthropic", "openai", "ollama"
   },
   "image": {
-    "provider": null
+    "provider": null     // Override: "gemini", "openai"
   },
-  "thresholds": {
-    "tool_similarity": null,
-    "memory_similarity": null
+  "conversation": {
+    "history_limit": 20  // Messages to include as LLM context (editable)
   },
   "tools": {
     "blocked": ["get_recent_conversations"],
@@ -281,6 +284,8 @@ socket.on('chat:response', {
   }
 }
 ```
+
+> **Note**: Thresholds are read-only (displayed in System tab). They're read directly from cloud.env by the tool schema and can't be overridden on-the-fly.
 
 ### Blocked Tools
 
@@ -311,9 +316,11 @@ curl -X PUT http://localhost:5001/api/settings/blocked-tools \
 - Show: tool name, status, duration
 - Expanded: arguments, full result, images
 
-### Settings Panel
-- **General Tab**: Mode, TTS toggle
-- **AI Config Tab**: Provider/model dropdowns, thresholds, reset button
+### Settings Panel (5 Tabs)
+- **General Tab**: Mode (cloud/local), TTS toggle
+- **AI Config Tab**: LLM provider/model dropdowns, Image provider, Conversation history limit, Reset button
+- **Tools Tab**: Blocked tools list, add/remove UI
+- **System Tab**: Read-only cloud.env values (thresholds, TTS settings, features, timezone)
 - **API Keys Tab**: Status indicators (configured/missing)
 
 ---
@@ -384,20 +391,28 @@ def text_to_speech():
 
 ### High Priority
 - [ ] Browser STT (mic input with push-to-talk)
-- [ ] MCP server discovery and display
-- [ ] Settings UI for blocked tools management
+- [ ] Full cloud.env settings display (read-only with editable subset)
 
 ### Medium Priority
 - [ ] Conversation search
 - [ ] Export/import conversations
 - [ ] Tool enable/disable per-tool in UI
 - [ ] Mobile responsive improvements
+- [ ] MCP server status indicator (running/stopped)
 
 ### Low Priority
 - [ ] Authentication (password/PIN)
 - [ ] Multi-user support
 - [ ] PWA manifest
 - [ ] Themes (light mode)
+
+### ✅ Recently Completed
+- [x] MCP tool discovery (reads from memory_db)
+- [x] Settings UI for blocked tools
+- [x] Dynamic LLM provider/model switching
+- [x] System config tab (read-only cloud.env values)
+- [x] Conversation history limit setting
+- [x] Config cache reload on settings save
 
 ---
 
@@ -422,5 +437,36 @@ def text_to_speech():
 
 ---
 
+## ⚖️ Web vs Terminal: Key Differences
+
+| Aspect | Terminal/TUI/Jarvis | Web UI |
+|--------|---------------------|--------|
+| **Conversation History** | `memory_db` + `AUTO_CONTEXT_*` | JSON files + `conversation.history_limit` |
+| **LLM Provider** | `cloud.env` (restart to change) | `web_config.json` (on-the-fly) |
+| **Blocked Tools** | None (all tools available) | `tools.blocked` array |
+| **Status Updates** | Local speaker | Browser WebSocket + optional TTS |
+| **TTS** | Local playback via shell scripts | Browser playback via direct API |
+| **Intelligence/Insights** | ✅ Full (same orchestrator) | ✅ Full (same orchestrator) |
+| **Tool RAG** | ✅ Full | ✅ Full |
+| **Memory System** | ✅ Full | ✅ Full |
+| **MCP Tools** | Started on demand | Pre-registered in memory_db |
+
+### What's Shared (Same Code Path)
+- `orchestrator/orchestrator_v2.py` - Core processing
+- `orchestrator/router_v2.py` - LLM routing  
+- `lib/tool_schema.py` - Tool RAG
+- `lib/memory_db.py` - Memory/semantic search
+- `lib/intelligence.py` - Self-learning insights
+- All tools in `skills/`
+
+### What's Web-Specific
+- `jarvis-web/server/` - Flask+SocketIO backend
+- `jarvis-web/client/` - Vanilla JS frontend
+- `jarvis-web/config/web_config.json` - Web overrides
+- `jarvis-web/data/conversations/` - Chat history as JSON
+
+---
+
 *Created: December 2025*  
-*MVP Complete: December 17, 2025*
+*MVP Complete: December 17, 2025*  
+*v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*
