@@ -151,6 +151,18 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Audio caching for instant playback of repeated phrases
   - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
 
+### Web Interface ⭐ NEW
+- **Jarvis Web UI** - Full-featured chat interface at localhost:5001
+  - Real-time WebSocket communication with tool streaming
+  - Mode switching (cloud/local) with per-mode settings
+  - **Mode-aware TTS**: Cloud=ElevenLabs, Local=Kokoro
+  - Dynamic LLM/model switching on-the-fly
+  - Conversation history with save/load/delete
+  - Settings panel with System config view
+  - Tool blocking for web-only restrictions
+  - Launch: `./bin/jarvis-web`
+  - See [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
+
 ### Developer Experience ⭐ ENHANCED
 - **Command Dashboard TUI**: Interactive terminal UI with 70+ commands
   - Browse, search, and run any Jarvis command from one place
@@ -1021,6 +1033,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
+- ✅ **Jarvis Web UI v1.2** - Full-featured web interface ⭐ NEW
+  - Real-time WebSocket chat with tool streaming
+  - **Mode-aware TTS**: Cloud=ElevenLabs, Local=Kokoro (via TTS_URL)
+  - Per-mode settings in web_config.json (cloud/local sections)
+  - Dynamic Ollama model fetching in local mode
+  - Clean mode switching (resets Intelligence singleton)
+  - STT_PROVIDER config ready for push-to-talk
+  - See: `docs/JARVIS_WEB_UI.md`
 - ✅ **AI Image Generation (Gemini 3 Pro)** - High-quality image generation ⭐ NEW
   - "Generate a bitcoin infographic with current price" → Gemini creates with real data
   - Aspect ratios (1:1, 16:9, 9:16, 3:4, etc.), styles, negative prompts
@@ -1206,6 +1226,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.13 (December 2025)  
+**Current Version:** v2.14 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** AI Image Generation (Gemini 3 Pro + Search Grounding), Stash+Memory Architecture, AI Phone Calls, Spotify
+**Latest Features:** Jarvis Web UI v1.2, AI Image Generation, AI Phone Calls, Spotify

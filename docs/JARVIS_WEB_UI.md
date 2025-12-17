@@ -1,6 +1,6 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.1)  
+> **Status**: MVP Complete (v1.2)  
 > **Last Updated**: December 17, 2025
 
 ---
@@ -57,8 +57,9 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Feature | Status | Details |
 |---------|--------|---------|
 | TTS playback | ✅ | Toggle audio, plays responses in browser |
+| Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro (via TTS_URL) ⭐ NEW |
 | Status TTS | ✅ | Status updates play as TTS when audio enabled |
-| Mic input | ⏳ | Planned - push-to-talk |
+| Mic input | ⏳ | Planned - push-to-talk (STT_PROVIDER ready) |
 | Wake word | ⏳ | Planned - browser-based VAD |
 
 ### Phase 4: Advanced - COMPLETE ✅
@@ -68,11 +69,14 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Web blocked tools | ✅ | `tools.blocked` in web_config.json, UI to manage |
 | Blocked tools UI | ✅ | Settings → Tools tab to add/remove |
 | Conversation context | ✅ | Configurable limit (default 20) passed to LLM |
-| Settings persistence | ✅ | `web_config.json` overrides |
-| Reset to defaults | ✅ | Button to clear web overrides |
+| Settings persistence | ✅ | `web_config.json` with per-mode overrides |
+| Reset to defaults | ✅ | Button to clear web overrides for current mode |
 | Dynamic LLM switching | ✅ | Change provider/model on-the-fly, takes effect immediately |
 | MCP tool discovery | ✅ | Reads from memory_db, shows in Tools tab |
-| System config view | ✅ | Read-only cloud.env values in Settings → System |
+| System config view | ✅ | Mode-specific .env values in Settings → System ⭐ NEW |
+| Per-mode settings | ✅ | `cloud`/`local` sections in web_config.json ⭐ NEW |
+| Dynamic Ollama models | ✅ | Fetches available models from Ollama server ⭐ NEW |
+| Clean mode switching | ✅ | Resets Intelligence singleton on mode change ⭐ NEW |
 | Tool enable/disable | ⏳ | Planned (per-tool granular control) |
 
 ---
@@ -264,19 +268,25 @@ socket.on('chat:response', {
     "host": "0.0.0.0",
     "port": 5001
   },
+  "defaults": {
+    "mode": "cloud"      // Default mode on startup
+  },
   "audio": {
     "tts_enabled": true,
     "tts_autoplay": true
   },
-  "llm": {
-    "provider": null,    // null = use cloud.env default
-    "model": null        // Override: "xai", "anthropic", "openai", "ollama"
+  "cloud": {
+    "llm_provider": null,    // null = use cloud.env default (xai)
+    "llm_model": null,       // null = use cloud.env model
+    "image_provider": null   // null = use cloud.env (gemini)
   },
-  "image": {
-    "provider": null     // Override: "gemini", "openai"
+  "local": {
+    "llm_provider": null,    // null = use local.env default (ollama)
+    "llm_model": null,       // null = use local.env model
+    "image_provider": null   // null = use local.env (gemini)
   },
   "conversation": {
-    "history_limit": 20  // Messages to include as LLM context (editable)
+    "history_limit": 20      // Messages to include as LLM context
   },
   "tools": {
     "blocked": ["get_recent_conversations"],
@@ -285,7 +295,7 @@ socket.on('chat:response', {
 }
 ```
 
-> **Note**: Thresholds are read-only (displayed in System tab). They're read directly from cloud.env by the tool schema and can't be overridden on-the-fly.
+> **Note**: Settings are per-mode! Cloud and local have separate overrides. Thresholds are read-only from the active .env file.
 
 ### Blocked Tools
 
@@ -317,10 +327,10 @@ curl -X PUT http://localhost:5001/api/settings/blocked-tools \
 - Expanded: arguments, full result, images
 
 ### Settings Panel (5 Tabs)
-- **General Tab**: Mode (cloud/local), TTS toggle
-- **AI Config Tab**: LLM provider/model dropdowns, Image provider, Conversation history limit, Reset button
-- **Tools Tab**: Blocked tools list, add/remove UI
-- **System Tab**: Read-only cloud.env values (thresholds, TTS settings, features, timezone)
+- **General Tab**: Mode (cloud/local), TTS toggle, mode-aware help text
+- **AI Config Tab**: LLM provider/model dropdowns (per-mode), Image provider, History limit, Reset button
+- **Tools Tab**: Blocked tools list, add/remove UI, blocked/MCP visual indicators
+- **System Tab**: Mode-specific .env values (thresholds, TTS settings, features) - shows cloud.env OR local.env
 - **API Keys Tab**: Status indicators (configured/missing)
 
 ---
@@ -373,16 +383,29 @@ result = orchestrator.process(
 )
 ```
 
-### TTS Generation
+### TTS Generation (Mode-Aware)
 
-Direct API calls (ElevenLabs/OpenAI) without local shell scripts:
+TTS provider is determined by the current mode's `.env` file:
+
+| Mode | Provider | Config |
+|------|----------|--------|
+| **Cloud** | ElevenLabs | `TTS_PROVIDER=elevenlabs` in cloud.env |
+| **Local** | Kokoro | `TTS_PROVIDER=kokoro` + `TTS_URL` in local.env |
 
 ```python
-# In api.py
+# In api.py - mode-aware TTS
 @api_bp.route('/tts', methods=['POST'])
 def text_to_speech():
-    # Calls ElevenLabs or OpenAI directly
-    # Returns audio file for browser playback
+    mode = request.json.get('mode')  # Client sends current mode
+    load_jarvis_config(mode)
+    
+    provider = get_jarvis_setting('TTS_PROVIDER')
+    if provider == 'kokoro':
+        # Local: call TTS_URL directly (OpenAI-compatible)
+        return call_kokoro_tts(text)
+    else:
+        # Cloud: ElevenLabs or OpenAI API
+        return call_cloud_tts(text)
 ```
 
 ---
@@ -410,9 +433,14 @@ def text_to_speech():
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
-- [x] System config tab (read-only cloud.env values)
+- [x] System config tab (mode-specific .env values)
 - [x] Conversation history limit setting
 - [x] Config cache reload on settings save
+- [x] **Mode-aware TTS** - Cloud=ElevenLabs, Local=Kokoro ⭐ NEW
+- [x] **Per-mode settings** - cloud/local sections in web_config.json ⭐ NEW
+- [x] **Dynamic Ollama models** - fetches from server in local mode ⭐ NEW
+- [x] **Clean mode switching** - resets Intelligence singleton ⭐ NEW
+- [x] **STT_PROVIDER config** - ready for push-to-talk (faster-whisper/openai) ⭐ NEW
 
 ---
 
@@ -442,13 +470,13 @@ def text_to_speech():
 | Aspect | Terminal/TUI/Jarvis | Web UI |
 |--------|---------------------|--------|
 | **Conversation History** | `memory_db` + `AUTO_CONTEXT_*` | JSON files + `conversation.history_limit` |
-| **LLM Provider** | `cloud.env` (restart to change) | `web_config.json` (on-the-fly) |
+| **LLM Provider** | `.env` file (restart to change) | `web_config.json` per-mode (on-the-fly) |
 | **Blocked Tools** | None (all tools available) | `tools.blocked` array |
 | **Status Updates** | Local speaker | Browser WebSocket + optional TTS |
-| **TTS** | Local playback via shell scripts | Browser playback via direct API |
-| **Intelligence/Insights** | ✅ Full (same orchestrator) | ✅ Full (same orchestrator) |
+| **TTS** | Shell scripts (mode-specific) | Direct API (ElevenLabs/Kokoro based on mode) |
+| **Intelligence/Insights** | ✅ Full (same orchestrator) | ✅ Full (singleton resets on mode switch) |
 | **Tool RAG** | ✅ Full | ✅ Full |
-| **Memory System** | ✅ Full | ✅ Full |
+| **Memory System** | ✅ Full (mode-specific DB) | ✅ Full (mode-specific DB) |
 | **MCP Tools** | Started on demand | Pre-registered in memory_db |
 
 ### What's Shared (Same Code Path)
@@ -469,4 +497,5 @@ def text_to_speech():
 
 *Created: December 2025*  
 *MVP Complete: December 17, 2025*  
-*v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*
+*v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*  
+*v1.2: Mode-aware TTS/STT, per-mode settings, clean mode switching - December 17, 2025*

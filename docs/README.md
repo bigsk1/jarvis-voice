@@ -12,6 +12,7 @@
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface** (chat UI, mode switching, TTS, settings) ⭐ ENHANCED
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
@@ -263,6 +264,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-12-17:**
+- ✅ **Jarvis Web UI v1.2** - Mode-aware web interface ⭐ ENHANCED
+  - **Mode-aware TTS**: Cloud=ElevenLabs, Local=Kokoro (via TTS_URL)
+  - **Per-mode settings**: `cloud`/`local` sections in web_config.json
+  - **Dynamic Ollama models**: Fetches available models from Ollama server
+  - **Clean mode switching**: Intelligence singleton resets on mode change
+  - **STT_PROVIDER config**: Ready for push-to-talk (faster-whisper/openai)
+  - System tab shows mode-specific .env values
+  - See: `docs/JARVIS_WEB_UI.md`
 
 **2025-12-16:**
 - ✅ **Google Gemini Image Generation** - AI image generation with Gemini 3 Pro ⭐ NEW
@@ -619,6 +630,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-16 (v2.13)  
-**Latest:** AI Image Generation (Gemini 3 Pro), Stash+Memory Architecture, AI Phone Calls, Spotify  
+**Last Updated:** 2025-12-17 (v2.14)  
+**Latest:** Jarvis Web UI v1.2, AI Image Generation (Gemini 3 Pro), AI Phone Calls, Spotify  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
