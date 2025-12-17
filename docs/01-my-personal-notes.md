@@ -118,6 +118,9 @@ You already have Grafana/Loki. You should add an Intelligence Panel.
 ./bin/jarvis-services     # Follow-up daemon (re-alerts if not acknowledged)
                           # Self-healing daemon (checks auto_resolve_url)
                           # Reminder scheduler (triggers time-based reminders)
+
+#  Jarvis web
+./bin/jarvis-web    
                           
 - Originally was going to have intel api route and there is all ready intel related  columns in db, under reminders, some idea to be able to update modify or add , delete intel files in which jarvis has tools to injest into db for direct access. 
 ```

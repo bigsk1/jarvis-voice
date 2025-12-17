@@ -410,58 +410,236 @@ def text_to_speech():
 
 ---
 
+## 🔍 Gaps: Web vs Terminal/TUI
+
+### What Web CAN'T Do (Yet)
+
+| Gap | Why | Priority |
+|-----|-----|----------|
+| **Wake word detection** | Needs browser VAD (voice activity detection) | Medium |
+| **Push-to-talk STT** | STT_PROVIDER ready, need UI + browser mic access | High |
+| **Continuous voice loop** | listen → respond → listen cycle | Medium |
+| **Local speaker volume** | Hardware control is local-only | N/A (by design) |
+| **Audio device selection** | Browser uses system default | Low |
+| **Memory sync on startup** | Terminal does auto-sync, web doesn't | Low |
+| **Proactive notifications** | Alerts/reminders don't push to web UI | High |
+| **Canvas viewer integration** | Canvas runs separately on :8890 | Medium |
+
+### What Terminal/TUI CAN'T Do
+
+| Gap | Web Advantage |
+|-----|---------------|
+| **Visual tool cards** | See tool args, results, timing inline |
+| **Image preview** | Lightbox with download, no file manager needed |
+| **Conversation management** | Save/load/delete/search history |
+| **On-the-fly settings** | Change LLM/model without restart |
+| **Remote access** | Access from any device on network |
+| **No TTS cutoff** | Browser audio cleaner than speaker wake-up |
+| **Visual status updates** | See progress without audio |
+| **Tool blocking** | Restrict tools for web without affecting terminal |
+
+---
+
+## 🚀 Web-Unique Features to Leverage
+
+### Already Implemented
+- ✅ Visual tool execution cards with timing
+- ✅ Image generation inline display + lightbox
+- ✅ Conversation persistence (save/load/delete)
+- ✅ Per-mode settings without touching .env
+- ✅ Dynamic model discovery (Ollama)
+- ✅ System config visibility (read-only .env view)
+- ✅ Tool blocking for web-only restrictions
+- ✅ Real-time status streaming (WebSocket)
+
+### Planned / Ideas
+- 🔮 **Proactive notifications** - Alerts/reminders popup in browser
+- 🔮 **Memory management UI** - View/edit/delete memories visually
+- 🔮 **Intelligence dashboard** - See insights, confidence, decay
+- 🔮 **Canvas embed** - Show canvas pages inline in chat
+- 🔮 **Multi-conversation tabs** - Multiple chats open
+- 🔮 **Export conversations** - JSON/Markdown download
+- 🔮 **Voice recording indicator** - Visual feedback during STT
+- 🔮 **Tool execution history** - View past tool calls across sessions
+- 🔮 **Cost tracking display** - Show token usage and $ spent
+- 🔮 **Mobile PWA** - Install as app on phone
+
+---
+
 ## 📋 TODO / Gaps
 
-### High Priority
-- [ ] Browser STT (mic input with push-to-talk)
-- [ ] Full cloud.env settings display (read-only with editable subset)
+### High Priority (Do First)
+- [ ] **Browser STT** - Push-to-talk with mic button
+  - STT_PROVIDER config is ready (faster-whisper/openai)
+  - Need: mic permission, audio recording, send to backend
+  - Backend: call local STT server or OpenAI Whisper API
+- [ ] **Proactive integration** - Show alerts/reminders in UI
+  - Connect to jarvis-api WebSocket or poll endpoint
+  - Desktop notifications when alert triggers
+- [ ] **Test mode switching thoroughly**
+  - Cloud→Local: TTS should use Kokoro
+  - Local→Cloud: TTS should use ElevenLabs
+  - Intelligence insights should work in both modes
 
 ### Medium Priority
-- [ ] Conversation search
-- [ ] Export/import conversations
+- [ ] Conversation search (filter by keyword/date)
+- [ ] Export conversations (JSON/Markdown)
 - [ ] Tool enable/disable per-tool in UI
+- [ ] MCP server status indicator (running/stopped/error)
 - [ ] Mobile responsive improvements
-- [ ] MCP server status indicator (running/stopped)
+- [ ] Canvas integration (embed pages or link)
 
 ### Low Priority
-- [ ] Authentication (password/PIN)
-- [ ] Multi-user support
-- [ ] PWA manifest
-- [ ] Themes (light mode)
+- [ ] Authentication (password/PIN for remote access)
+- [ ] Multi-user support (separate conversation namespaces)
+- [ ] PWA manifest (installable app)
+- [ ] Light theme option
+- [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
 
-### ✅ Recently Completed
+### ✅ Recently Completed (v1.2)
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
 - [x] System config tab (mode-specific .env values)
 - [x] Conversation history limit setting
 - [x] Config cache reload on settings save
-- [x] **Mode-aware TTS** - Cloud=ElevenLabs, Local=Kokoro ⭐ NEW
-- [x] **Per-mode settings** - cloud/local sections in web_config.json ⭐ NEW
-- [x] **Dynamic Ollama models** - fetches from server in local mode ⭐ NEW
-- [x] **Clean mode switching** - resets Intelligence singleton ⭐ NEW
-- [x] **STT_PROVIDER config** - ready for push-to-talk (faster-whisper/openai) ⭐ NEW
+- [x] **Mode-aware TTS** - Cloud=ElevenLabs, Local=Kokoro
+- [x] **Per-mode settings** - cloud/local sections in web_config.json
+- [x] **Dynamic Ollama models** - fetches from server in local mode
+- [x] **Clean mode switching** - resets Intelligence singleton
+- [x] **STT_PROVIDER config** - ready for push-to-talk
+
+---
+
+## ⚠️ Known Issues & Gotchas
+
+### Mode Switching
+| Issue | Workaround |
+|-------|------------|
+| Embedding dimension mismatch after switch | Page refresh resets all singletons cleanly |
+| Intelligence insights from wrong mode | Fixed in v1.2 (singleton reset), but refresh is safer |
+| Settings show stale values | Click Settings tab again to reload |
+
+### TTS
+| Issue | Workaround |
+|-------|------------|
+| Local TTS fails silently | Check Kokoro server is running at TTS_URL |
+| Audio doesn't play | Check browser autoplay policy, click somewhere first |
+| TTS too slow | Status updates have 1s delay by design |
+
+### Tools
+| Issue | Workaround |
+|-------|------------|
+| Tool not found | Refresh tools list, check if blocked |
+| MCP tool missing | Ensure MCP server ran at least once (registers to memory_db) |
+| `generate_image` timeout | Increased to 5 min, but grounding can be slow |
+
+### Conversations
+| Issue | Workaround |
+|-------|------------|
+| Old conversation shows wrong images | Image URLs may expire, re-generate |
+| Context too short | Increase `conversation.history_limit` in settings |
+| Terminal doesn't see web conversations | By design - separate history systems |
+
+### Performance
+| Issue | Workaround |
+|-------|------------|
+| Slow in local mode | Ollama model loading takes time on first query |
+| WebSocket disconnects | Auto-reconnects, but may lose in-flight message |
+| Memory usage grows | Refresh page periodically for long sessions |
 
 ---
 
 ## 🧪 Testing Checklist
 
-### Web UI
-- [ ] Chat send/receive works
-- [ ] Tool cards display correctly
-- [ ] Images display with lightbox
-- [ ] TTS plays when enabled
-- [ ] Status updates show (not on local speaker)
-- [ ] Settings save/load correctly
-- [ ] Conversations save/load/delete
-- [ ] Blocked tools not available to LLM
+### Basic Functionality
+- [ ] Send message, receive response
+- [ ] Tool execution shows card with args/result
+- [ ] Multi-tool response chains correctly
+- [ ] Q&A responses (no tool call) work
+- [ ] Long responses render with markdown
 
-### Terminal Regression
-- [ ] `./jarvis` voice loop works
-- [ ] Terminal orchestrator works
-- [ ] Status updates play on local speaker
-- [ ] All tools available (including blocked-for-web)
-- [ ] Memory/context works as before
+### Mode Switching
+- [ ] Start in cloud mode, switch to local
+- [ ] Start in local mode, switch to cloud
+- [ ] TTS uses correct provider per mode
+- [ ] Settings → System shows correct .env values
+- [ ] No embedding dimension errors in console
+
+### TTS (Audio)
+- [ ] Enable TTS, send message, hear response
+- [ ] Disable TTS, no audio plays
+- [ ] Status updates play TTS (when enabled)
+- [ ] Cloud mode: ElevenLabs voice
+- [ ] Local mode: Kokoro voice
+
+### Images
+- [ ] `generate_image` shows thumbnail inline
+- [ ] Click thumbnail opens lightbox
+- [ ] Download button works
+- [ ] Image in tool card expandable section
+
+### Conversations
+- [ ] New chat clears messages
+- [ ] Send message creates conversation in sidebar
+- [ ] Click conversation loads it
+- [ ] Delete conversation removes it
+- [ ] Conversation context sent to LLM (check server logs)
+
+### Settings
+- [ ] Change LLM provider, new message uses it
+- [ ] Change LLM model, new message uses it
+- [ ] Reset to defaults clears overrides
+- [ ] Block a tool, verify it's not called
+- [ ] Unblock a tool, verify it works again
+
+### Tools Tab
+- [ ] Shows all local tools
+- [ ] Shows MCP tools (if any registered)
+- [ ] Shows blocked tools with indicator
+- [ ] Refresh button reloads list
+
+### Terminal Regression (Non-Web)
+- [ ] `./jarvis` voice loop works normally
+- [ ] `./orchestrator/orchestrator_v2.py cloud "test"` works
+- [ ] Status updates play on LOCAL speaker (not browser)
+- [ ] All tools available (web-blocked tools work)
+- [ ] Memory search/recall works
+
+---
+
+## 🔮 Future Feature Ideas
+
+### Voice (Phase 3 completion)
+- **Push-to-talk**: Hold button → record → release → transcribe → send
+- **Continuous mode**: Optional always-listening with VAD
+- **Wake word**: "Hey Jarvis" in browser (privacy implications)
+- **Voice activity indicator**: Visual feedback while recording
+
+### Proactive Integration
+- **Alert notifications**: Browser notification when alert triggers
+- **Reminder popup**: Modal when reminder fires
+- **Follow-up prompts**: "Your task is ready, want to review?"
+- **Health status**: Show API/services health in header
+
+### Memory & Intelligence
+- **Memory browser**: View/search/edit/delete memories
+- **Intelligence dashboard**: Insights, confidence scores, decay status
+- **Learning history**: See what Jarvis learned from interactions
+- **Manual insight creation**: Teach Jarvis directly via UI
+
+### Developer Features
+- **Tool logs viewer**: See recent tool executions
+- **LLM call inspector**: View full prompts/responses
+- **Cost tracker**: Daily/weekly/monthly spend
+- **A/B test viewer**: See prompt evolution experiments
+
+### UX Improvements
+- **Keyboard shortcuts**: Ctrl+Enter send, Ctrl+N new chat, etc.
+- **Drag-drop files**: Upload images/files directly
+- **Paste images**: Paste from clipboard
+- **Message reactions**: Thumbs up/down for feedback
+- **Message editing**: Edit sent messages
 
 ---
 
