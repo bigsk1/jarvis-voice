@@ -345,16 +345,21 @@ class ChatHandler:
             settings = get_settings_manager()
             load_jarvis_config(settings.mode)
             
+            # Check for local TTS_URL first (Kokoro/OpenAI-compatible)
+            tts_url = get_jarvis_setting('TTS_URL', '')
             provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs')
             
             # Create output directory
             project_root = Path(__file__).parent.parent.parent.parent
-            tts_dir = project_root / 'audio' / 'cloud' / 'tts'
+            tts_dir = project_root / 'audio' / settings.mode / 'tts'
             tts_dir.mkdir(parents=True, exist_ok=True)
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             
-            if provider == 'elevenlabs':
+            if tts_url:
+                # Use local TTS (Kokoro or other OpenAI-compatible)
+                audio_path = self._local_tts(text, tts_dir, timestamp, tts_url)
+            elif provider == 'elevenlabs':
                 audio_path = self._elevenlabs_tts(text, tts_dir, timestamp)
             else:
                 audio_path = self._openai_tts(text, tts_dir, timestamp)
@@ -367,6 +372,36 @@ class ChatHandler:
             print(f"[CHAT] TTS error: {e}")
             import traceback
             traceback.print_exc()
+            return None
+    
+    def _local_tts(self, text: str, output_dir: Path, timestamp: str, tts_url: str) -> Path:
+        """Generate TTS using local/Kokoro API (OpenAI-compatible)"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        voice = get_jarvis_setting('TTS_VOICE', 'af_nicole')
+        speed = float(get_jarvis_setting('TTS_SPEED', '1.0'))
+        
+        payload = {
+            "model": "kokoro",
+            "input": text,
+            "voice": voice,
+            "speed": speed,
+            "response_format": "mp3"
+        }
+        
+        try:
+            response = requests.post(tts_url, json=payload, timeout=30)
+            if response.status_code == 200:
+                output_path = output_dir / f"tts_{timestamp}.mp3"
+                with open(output_path, 'wb') as f:
+                    f.write(response.content)
+                return output_path
+            else:
+                print(f"[CHAT] Local TTS error: {response.status_code} - {response.text[:100]}")
+                return None
+        except Exception as e:
+            print(f"[CHAT] Local TTS failed: {e}")
             return None
     
     def _elevenlabs_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
