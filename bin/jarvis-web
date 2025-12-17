@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""
+Jarvis Web UI Launcher
+Run the web interface for Jarvis
+"""
+import os
+import sys
+from pathlib import Path
+
+# Add paths
+SCRIPT_DIR = Path(__file__).parent.resolve()
+JARVIS_ROOT = SCRIPT_DIR.parent
+WEB_ROOT = JARVIS_ROOT / 'jarvis-web'
+
+# Add to path
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+sys.path.insert(0, str(WEB_ROOT))
+
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Jarvis Web UI - Chat interface for Jarvis',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  jarvis-web                    # Start in cloud mode on port 5001
+  jarvis-web local              # Start in local mode
+  jarvis-web --port 8080        # Use custom port
+  jarvis-web --debug            # Enable debug mode
+        """
+    )
+    parser.add_argument('mode', nargs='?', default='cloud', choices=['cloud', 'local'],
+                        help='Run mode: cloud (default) or local')
+    parser.add_argument('--host', default='0.0.0.0',
+                        help='Host to bind to (default: 0.0.0.0)')
+    parser.add_argument('--port', type=int, default=5001,
+                        help='Port to bind to (default: 5001)')
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable debug mode')
+    
+    args = parser.parse_args()
+    
+    # Check if eventlet is available
+    try:
+        import eventlet
+        eventlet.monkey_patch()
+    except ImportError:
+        print("Warning: eventlet not installed. Installing...")
+        os.system(f'{sys.executable} -m pip install eventlet')
+        import eventlet
+        eventlet.monkey_patch()
+    
+    # Import and run the app
+    try:
+        from server.app import run_server
+        run_server(
+            host=args.host,
+            port=args.port,
+            mode=args.mode,
+            debug=args.debug
+        )
+    except ImportError as e:
+        print(f"Error importing jarvis-web: {e}")
+        print("\nMake sure dependencies are installed:")
+        print(f"  pip install -r {WEB_ROOT}/requirements.txt")
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
+

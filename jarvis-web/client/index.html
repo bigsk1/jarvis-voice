@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis Web UI</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/main.css">
+  
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  
+  <!-- Markdown parser (optional, for rich responses) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <span class="logo-icon">🤖</span>
+          <span>JARVIS</span>
+        </div>
+        <div class="connection-status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Connecting...</span>
+          <span id="toolsCount" style="margin-left: 8px; color: var(--text-muted); font-size: var(--text-xs);"></span>
+        </div>
+      </div>
+      
+      <div class="header-right">
+        <div class="mode-selector">
+          <select id="modeSelect">
+            <option value="cloud">☁️ Cloud</option>
+            <option value="local">💻 Local</option>
+          </select>
+        </div>
+        
+        <button class="icon-btn" id="audioToggle" title="Toggle Audio">
+          🔇
+        </button>
+        
+        <button class="icon-btn" id="settingsBtn" title="Settings">
+          ⚙️
+        </button>
+      </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-tabs">
+            <button class="sidebar-tab active" data-tab="conversations">💬 Chats</button>
+            <button class="sidebar-tab" data-tab="tools">🔧 Tools</button>
+          </div>
+        </div>
+        <div class="sidebar-content">
+          <!-- Conversations Tab (History) -->
+          <div class="tab-content active" id="tab-conversations">
+            <div class="history-list" id="historyList">
+              <div class="history-loading">
+                <span style="color: var(--text-muted); font-size: var(--text-sm);">Loading conversations...</span>
+              </div>
+            </div>
+          </div>
+          <!-- Tools Tab -->
+          <div class="tab-content" id="tab-tools">
+            <div id="toolsList" style="padding: var(--space-sm);">
+              <p style="color: var(--text-muted); font-size: var(--text-sm);">Loading tools...</p>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
+        </div>
+      </aside>
+      
+      <!-- Chat Area -->
+      <div class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+          <!-- Welcome message -->
+          <div class="message assistant">
+            <div class="message-bubble">
+              <p>👋 Hello! I'm <strong>Jarvis</strong>, your AI assistant.</p>
+              <p style="margin-top: var(--space-sm); color: var(--text-secondary);">
+                Ask me anything or give me a task. I can search the web, generate images, 
+                make phone calls, control Spotify, and much more.
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Input Area -->
+        <div class="chat-input-container">
+          <div class="chat-input-wrapper">
+            <textarea 
+              class="chat-input" 
+              id="chatInput" 
+              placeholder="Ask Jarvis anything..."
+              rows="1"
+            ></textarea>
+            <div class="input-actions">
+              <button class="icon-btn" id="micBtn" title="Voice Input (Coming Soon)" disabled>
+                🎤
+              </button>
+              <button class="send-btn" id="sendBtn" title="Send Message">
+                ➤
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <!-- Image Lightbox -->
+    <div class="lightbox-overlay" id="imageLightbox" onclick="window.closeLightbox(event)">
+      <div class="lightbox-content">
+        <button class="lightbox-close" onclick="window.closeLightbox()">&times;</button>
+        <img id="lightboxImage" src="" alt="Full size image">
+        <div class="lightbox-actions">
+          <a id="lightboxDownload" href="" download class="lightbox-btn">⬇️ Download</a>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+      <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+          <h2 class="modal-title">⚙️ Settings</h2>
+          <button class="icon-btn" id="closeSettings">✕</button>
+        </div>
+        <div class="modal-body" id="settingsContent">
+          <!-- Settings tabs -->
+          <div class="settings-tabs">
+            <button class="settings-tab active" data-settings-tab="general">General</button>
+            <button class="settings-tab" data-settings-tab="ai">AI Config</button>
+            <button class="settings-tab" data-settings-tab="api">API Keys</button>
+          </div>
+          
+          <!-- General Settings -->
+          <div class="settings-panel active" id="settings-general">
+            <div class="setting-group">
+              <label class="setting-label">Mode</label>
+              <select class="setting-input" id="setting-mode">
+                <option value="cloud">☁️ Cloud</option>
+                <option value="local">💻 Local</option>
+              </select>
+              <span class="setting-desc">Cloud uses remote APIs, Local uses Ollama</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">TTS Enabled</label>
+              <label class="toggle">
+                <input type="checkbox" id="setting-tts">
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="setting-desc">Play audio responses in browser (uses cloud.env TTS settings)</span>
+            </div>
+            <p class="setting-note" style="margin-top: var(--space-lg);">
+              💡 <strong>cloud.env</strong> = defaults for Terminal/TUI<br>
+              💡 <strong>Web overrides</strong> = saved in browser, only affects web UI
+            </p>
+          </div>
+          
+          <!-- AI Config -->
+          <div class="settings-panel" id="settings-ai">
+            <div class="setting-group">
+              <label class="setting-label">
+                LLM Provider
+                <span class="setting-default" id="llm-provider-default"></span>
+              </label>
+              <select class="setting-input" id="setting-llm-provider">
+                <option value="">Use cloud.env default</option>
+                <option value="xai">xAI (Grok)</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI (GPT)</option>
+                <option value="ollama">Ollama (Local)</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                LLM Model
+                <span class="setting-default" id="llm-model-default"></span>
+              </label>
+              <select class="setting-input" id="setting-llm-model">
+                <!-- Populated dynamically based on provider -->
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Image Provider
+                <span class="setting-default" id="image-provider-default"></span>
+              </label>
+              <select class="setting-input" id="setting-image-provider">
+                <option value="">Use cloud.env default</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="openai">OpenAI DALL-E</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Tool Similarity Threshold
+                <span class="setting-default" id="tool-threshold-default"></span>
+              </label>
+              <input type="range" class="setting-range" id="setting-tool-threshold" min="0.1" max="0.5" step="0.02" value="0.26">
+              <span class="setting-value" id="setting-tool-threshold-value">0.26</span>
+              <span class="setting-desc">Lower = more tools retrieved (0.1-0.5)</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Memory Similarity Threshold
+                <span class="setting-default" id="memory-threshold-default"></span>
+              </label>
+              <input type="range" class="setting-range" id="setting-memory-threshold" min="0.1" max="0.5" step="0.02" value="0.28">
+              <span class="setting-value" id="setting-memory-threshold-value">0.28</span>
+              <span class="setting-desc">Lower = more memories recalled (0.1-0.5)</span>
+            </div>
+            <button class="btn-secondary" id="resetDefaultsBtn" style="margin-top: var(--space-lg);">
+              ↺ Reset to cloud.env Defaults
+            </button>
+          </div>
+          
+          <!-- API Keys Status -->
+          <div class="settings-panel" id="settings-api">
+            <p class="setting-note">API keys are configured in <code>cloud.env</code> and cannot be edited here for security.</p>
+            <div id="api-keys-status">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="closeSettingsBtn">Cancel</button>
+          <button class="btn-primary" id="saveSettingsBtn">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Application Scripts -->
+  <script src="/js/utils.js"></script>
+  <script src="/js/socket.js"></script>
+  <script src="/js/chat.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,698 @@
+/**
+ * Jarvis Web UI - Main Application
+ */
+
+class JarvisApp {
+  constructor() {
+    this.socket = window.jarvisSocket;
+    this.chat = window.chatUI;
+    
+    // UI Elements
+    this.statusDot = document.getElementById('statusDot');
+    this.statusText = document.getElementById('statusText');
+    this.modeSelect = document.getElementById('modeSelect');
+    this.audioToggle = document.getElementById('audioToggle');
+    this.settingsBtn = document.getElementById('settingsBtn');
+    this.settingsModal = document.getElementById('settingsModal');
+    this.closeSettings = document.getElementById('closeSettings');
+    this.closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    this.newChatBtn = document.getElementById('newChatBtn');
+    
+    // State
+    this.audioEnabled = Utils.storage.get('audioEnabled', false);
+    
+    this._initialize();
+  }
+
+  /**
+   * Initialize the application
+   */
+  _initialize() {
+    this._setupSocketListeners();
+    this._setupUIListeners();
+    this._restoreState();
+    
+    // Connect to server
+    this.socket.connect();
+    
+    // Load conversation history
+    this._loadConversationHistory();
+    
+    console.log('[App] Jarvis Web UI initialized');
+  }
+
+  /**
+   * Setup socket event listeners
+   */
+  _setupSocketListeners() {
+    this.socket.on('connectionChange', (data) => {
+      this._updateConnectionStatus(data.connected);
+    });
+    
+    this.socket.on('sessionReady', (data) => {
+      console.log('[App] Session ready:', data);
+      this._updateConnectionStatus(true);
+      this.statusText.textContent = 'Connected';
+      const toolsCount = document.getElementById('toolsCount');
+      if (toolsCount) {
+        toolsCount.textContent = `${data.tools_count} tools`;
+      }
+    });
+    
+    this.socket.on('connectionError', (data) => {
+      Utils.toast(`Connection error: ${data.error}`, 'error');
+    });
+    
+    this.socket.on('modeChanged', (data) => {
+      this.modeSelect.value = data.mode;
+      Utils.toast(`Mode changed to ${data.mode}`, 'info');
+    });
+    
+    this.socket.on('response', (data) => {
+      // Play audio if enabled and available
+      if (this.audioEnabled && data.audio_url) {
+        this._playAudio(data.audio_url);
+      } else if (this.audioEnabled && data.speech) {
+        // Generate TTS if no audio_url provided but audio enabled
+        this._generateAndPlayTTS(data.speech);
+      }
+      // Refresh history on new response
+      this._loadConversationHistory();
+    });
+    
+    // Handle new conversation created
+    this.socket.on('conversationCreated', (data) => {
+      console.log('[App] New conversation created:', data);
+      this.socket.conversationId = data.conversation_id;
+      this._loadConversationHistory();
+    });
+    
+    // Handle conversation loaded
+    this.socket.on('conversationLoaded', (data) => {
+      console.log('[App] Conversation loaded:', data);
+      this._displayLoadedConversation(data.conversation);
+    });
+  }
+
+  /**
+   * Setup UI event listeners
+   */
+  _setupUIListeners() {
+    // Mode selector
+    this.modeSelect.addEventListener('change', (e) => {
+      this.socket.setMode(e.target.value);
+    });
+    
+    // Audio toggle
+    this.audioToggle.addEventListener('click', () => {
+      this.audioEnabled = !this.audioEnabled;
+      Utils.storage.set('audioEnabled', this.audioEnabled);
+      this._updateAudioButton();
+    });
+    
+    // Settings modal
+    this.settingsBtn.addEventListener('click', () => {
+      this.settingsModal.classList.add('active');
+      this._loadSettings();
+    });
+    
+    this.closeSettings.addEventListener('click', () => {
+      this.settingsModal.classList.remove('active');
+    });
+    
+    this.closeSettingsBtn.addEventListener('click', () => {
+      this.settingsModal.classList.remove('active');
+    });
+    
+    // Save settings button
+    document.getElementById('saveSettingsBtn')?.addEventListener('click', () => {
+      this._saveSettings();
+    });
+    
+    // Settings tabs
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.settingsTab;
+        
+        // Update active tab
+        document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update active panel
+        document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(`settings-${tabName}`)?.classList.add('active');
+      });
+    });
+    
+    // Range input value display
+    document.getElementById('setting-tool-threshold')?.addEventListener('input', (e) => {
+      document.getElementById('setting-tool-threshold-value').textContent = e.target.value;
+    });
+    
+    document.getElementById('setting-memory-threshold')?.addEventListener('input', (e) => {
+      document.getElementById('setting-memory-threshold-value').textContent = e.target.value;
+    });
+    
+    // LLM Provider change → update model dropdown
+    document.getElementById('setting-llm-provider')?.addEventListener('change', (e) => {
+      const provider = e.target.value || this._settingsData?.llm?.provider?.default || 'xai';
+      this._populateModelDropdown(provider);
+      document.getElementById('setting-llm-model').value = '';  // Reset model selection
+    });
+    
+    // Reset to defaults button
+    document.getElementById('resetDefaultsBtn')?.addEventListener('click', () => {
+      this._resetToDefaults();
+    });
+    
+    // Close modal on outside click
+    this.settingsModal.addEventListener('click', (e) => {
+      if (e.target === this.settingsModal) {
+        this.settingsModal.classList.remove('active');
+      }
+    });
+    
+    // New chat button
+    this.newChatBtn.addEventListener('click', () => {
+      this._startNewChat();
+    });
+    
+    // Sidebar tabs
+    document.querySelectorAll('.sidebar-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        
+        // Update active tab
+        document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update active content
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+        
+        // Load tools if switching to tools tab
+        if (tabName === 'tools') {
+          this._loadToolsList();
+        }
+        // Load history if switching to conversations tab
+        if (tabName === 'conversations') {
+          this._loadConversationHistory();
+        }
+      });
+    });
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      // Escape to close modal
+      if (e.key === 'Escape' && this.settingsModal.classList.contains('active')) {
+        this.settingsModal.classList.remove('active');
+      }
+      
+      // Ctrl/Cmd + / to focus input
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        document.getElementById('chatInput').focus();
+      }
+    });
+  }
+
+  /**
+   * Restore saved state
+   */
+  _restoreState() {
+    // Restore mode
+    const savedMode = Utils.storage.get('mode', 'cloud');
+    this.modeSelect.value = savedMode;
+    this.socket.mode = savedMode;
+    
+    // Update audio button
+    this._updateAudioButton();
+  }
+
+  /**
+   * Update connection status UI
+   */
+  _updateConnectionStatus(connected) {
+    if (connected) {
+      this.statusDot.classList.add('connected');
+      this.statusText.textContent = 'Connected';
+    } else {
+      this.statusDot.classList.remove('connected');
+      this.statusText.textContent = 'Disconnected';
+    }
+  }
+
+  /**
+   * Update audio toggle button
+   */
+  _updateAudioButton() {
+    this.audioToggle.textContent = this.audioEnabled ? '🔊' : '🔇';
+    this.audioToggle.classList.toggle('active', this.audioEnabled);
+  }
+
+  /**
+   * Play audio response
+   */
+  _playAudio(url) {
+    console.log('[App] Playing audio:', url);
+    const audio = new Audio(url);
+    audio.play().catch(err => {
+      console.warn('[App] Audio playback failed:', err);
+      Utils.toast('Audio playback failed', 'error');
+    });
+  }
+  
+  /**
+   * Generate TTS and play audio
+   */
+  async _generateAndPlayTTS(text) {
+    if (!text || text.length > 1000) {
+      // Skip very long text
+      console.log('[App] Skipping TTS for text length:', text?.length);
+      return;
+    }
+    
+    try {
+      console.log('[App] Generating TTS for:', text.substring(0, 50) + '...');
+      
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        this._playAudio(audioUrl);
+      } else {
+        console.warn('[App] TTS generation failed:', response.status);
+      }
+    } catch (err) {
+      console.error('[App] TTS error:', err);
+    }
+  }
+
+  /**
+   * Load and display tools list
+   */
+  async _loadToolsList() {
+    const container = document.getElementById('toolsList');
+    
+    try {
+      const response = await fetch('/api/tools?summary=true');
+      const data = await response.json();
+      
+      if (data.ok && data.tools) {
+        const tools = data.tools.sort((a, b) => a.name.localeCompare(b.name));
+        
+        let html = '';
+        for (const tool of tools) {
+          // Get emoji based on tool name
+          const emoji = this._getToolEmoji(tool.name);
+          const desc = tool.description.replace(/[📞🎵🖼️⚡🔧💾📄✉️🖨️🔔⏰💡🌐🔍💬📝🧠💰🎤]/g, '').trim();
+          
+          html += `
+            <div class="tool-item" title="${Utils.escapeHtml(tool.description)}">
+              <div class="tool-item-name">${emoji} ${Utils.escapeHtml(tool.name)}</div>
+              <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 50))}</div>
+            </div>
+          `;
+        }
+        
+        container.innerHTML = html || '<p style="color: var(--text-muted); padding: var(--space-md);">No tools loaded</p>';
+      } else {
+        container.innerHTML = '<p style="color: var(--error); padding: var(--space-md);">Failed to load tools</p>';
+      }
+    } catch (err) {
+      container.innerHTML = `<p style="color: var(--error); padding: var(--space-md);">Error: ${err.message}</p>`;
+    }
+  }
+  
+  /**
+   * Get emoji for tool based on name
+   */
+  _getToolEmoji(name) {
+    const emojiMap = {
+      'phone_call': '📞',
+      'spotify': '🎵',
+      'generate_image': '🖼️',
+      'send_email': '✉️',
+      'printer': '🖨️',
+      'weather': '🌤️',
+      'remember': '💾',
+      'recall': '🧠',
+      'search_memory': '🔍',
+      'semantic_recall': '🔍',
+      'canvas': '📝',
+      'stash': '📦',
+      'pdf_create': '📄',
+      'crypto_price': '💰',
+      'opencode': '💻',
+      'list_reminders': '⏰',
+      'set_reminder': '⏰',
+      'system_monitor': '📊',
+      'network_tools': '🌐',
+      'speaker_volume': '🔊',
+    };
+    return emojiMap[name] || '🔧';
+  }
+
+  /**
+   * Load and display settings
+   */
+  async _loadSettings() {
+    try {
+      const response = await fetch('/api/settings');
+      const data = await response.json();
+      
+      if (data.ok && data.settings) {
+        const s = data.settings;
+        this._settingsData = s;  // Cache for later use
+        
+        // Populate General settings
+        document.getElementById('setting-mode').value = s.mode || 'cloud';
+        document.getElementById('setting-tts').checked = s.audio?.tts_enabled || false;
+        
+        // Populate LLM Provider
+        const providerSelect = document.getElementById('setting-llm-provider');
+        providerSelect.value = s.llm?.provider?.is_override ? s.llm.provider.value : '';
+        const providerDefault = document.getElementById('llm-provider-default');
+        providerDefault.textContent = s.llm?.provider?.default || 'xai';
+        providerDefault.className = s.llm?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.llm?.provider?.is_override) {
+          providerDefault.textContent = s.llm.provider.value;
+        }
+        
+        // Populate LLM Model dropdown based on provider
+        this._populateModelDropdown(s.llm?.provider?.value || s.llm?.provider?.default || 'xai');
+        const modelSelect = document.getElementById('setting-llm-model');
+        modelSelect.value = s.llm?.model?.is_override ? s.llm.model.value : '';
+        const modelDefault = document.getElementById('llm-model-default');
+        modelDefault.textContent = s.llm?.model?.default || '';
+        modelDefault.className = s.llm?.model?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.llm?.model?.is_override) {
+          modelDefault.textContent = s.llm.model.value;
+        }
+        
+        // Populate Image Provider
+        const imageSelect = document.getElementById('setting-image-provider');
+        imageSelect.value = s.image?.provider?.is_override ? s.image.provider.value : '';
+        const imageDefault = document.getElementById('image-provider-default');
+        imageDefault.textContent = s.image?.provider?.default || 'gemini';
+        imageDefault.className = s.image?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.image?.provider?.is_override) {
+          imageDefault.textContent = s.image.provider.value;
+        }
+        
+        // Populate Thresholds
+        const toolThreshold = s.thresholds?.tool_similarity?.value || 0.26;
+        document.getElementById('setting-tool-threshold').value = toolThreshold;
+        document.getElementById('setting-tool-threshold-value').textContent = toolThreshold;
+        const toolDefault = document.getElementById('tool-threshold-default');
+        toolDefault.textContent = s.thresholds?.tool_similarity?.default || '0.26';
+        toolDefault.className = s.thresholds?.tool_similarity?.is_override ? 'setting-default setting-override' : 'setting-default';
+        
+        const memoryThreshold = s.thresholds?.memory_similarity?.value || 0.28;
+        document.getElementById('setting-memory-threshold').value = memoryThreshold;
+        document.getElementById('setting-memory-threshold-value').textContent = memoryThreshold;
+        const memoryDefault = document.getElementById('memory-threshold-default');
+        memoryDefault.textContent = s.thresholds?.memory_similarity?.default || '0.28';
+        memoryDefault.className = s.thresholds?.memory_similarity?.is_override ? 'setting-default setting-override' : 'setting-default';
+        
+        // Populate API Keys status
+        const apiKeysContainer = document.getElementById('api-keys-status');
+        const apiKeys = s.api_keys || {};
+        
+        let apiHtml = '';
+        for (const [key, configured] of Object.entries(apiKeys)) {
+          apiHtml += `
+            <div class="api-key-item">
+              <span class="api-key-name">${key}</span>
+              <span class="api-key-status ${configured ? 'configured' : 'missing'}">
+                ${configured ? '✓ Configured' : '✗ Not set'}
+              </span>
+            </div>
+          `;
+        }
+        apiKeysContainer.innerHTML = apiHtml;
+      }
+    } catch (err) {
+      console.error('[App] Failed to load settings:', err);
+      Utils.toast(`Failed to load settings: ${err.message}`, 'error');
+    }
+  }
+  
+  /**
+   * Populate model dropdown based on selected provider
+   */
+  _populateModelDropdown(provider) {
+    const modelSelect = document.getElementById('setting-llm-model');
+    const models = this._settingsData?.provider_models?.[provider] || [];
+    
+    let html = '<option value="">Use default for provider</option>';
+    for (const model of models) {
+      html += `<option value="${model.id}">${model.name} (${model.context})</option>`;
+    }
+    modelSelect.innerHTML = html;
+  }
+  
+  /**
+   * Start a new chat
+   */
+  _startNewChat() {
+    this.socket.conversationId = null;
+    this.chat.clearChat();
+    this._updateActiveConversation(null);
+    Utils.toast('Started new chat', 'info');
+  }
+  
+  /**
+   * Load conversation history
+   */
+  async _loadConversationHistory() {
+    const container = document.getElementById('historyList');
+    
+    try {
+      const response = await fetch('/api/conversations?limit=30');
+      const data = await response.json();
+      
+      if (data.ok && data.conversations) {
+        const convs = data.conversations;
+        
+        if (convs.length === 0) {
+          container.innerHTML = `
+            <div class="history-empty">
+              <div class="history-empty-icon">💬</div>
+              <div>No conversations yet</div>
+              <div style="margin-top: var(--space-sm); font-size: var(--text-xs);">Start chatting to save history</div>
+            </div>
+          `;
+          return;
+        }
+        
+        let html = '';
+        for (const conv of convs) {
+          const isActive = this.socket.conversationId === conv.id;
+          const date = this._formatRelativeDate(conv.updated_at);
+          
+          html += `
+            <div class="history-item ${isActive ? 'active' : ''}" 
+                 data-conv-id="${conv.id}"
+                 onclick="window.jarvisApp.loadConversation('${conv.id}')">
+              <div class="history-item-content">
+                <div class="history-title">${Utils.escapeHtml(conv.title || 'Untitled')}</div>
+                <div class="history-date">${date} · ${conv.message_count || 0} messages</div>
+              </div>
+              <button class="history-delete" 
+                      onclick="event.stopPropagation(); window.jarvisApp.deleteConversation('${conv.id}')"
+                      title="Delete conversation">🗑️</button>
+            </div>
+          `;
+        }
+        
+        container.innerHTML = html;
+      } else {
+        container.innerHTML = '<div class="history-empty">Failed to load history</div>';
+      }
+    } catch (err) {
+      console.error('[App] Failed to load history:', err);
+      container.innerHTML = `<div class="history-empty">Error: ${err.message}</div>`;
+    }
+  }
+  
+  /**
+   * Load a specific conversation
+   */
+  loadConversation(convId) {
+    console.log('[App] Loading conversation:', convId);
+    this.socket.emit('conversation:load', { conversation_id: convId });
+  }
+  
+  /**
+   * Delete a conversation
+   */
+  async deleteConversation(convId) {
+    if (!confirm('Delete this conversation?')) return;
+    
+    try {
+      const response = await fetch(`/api/conversations/${convId}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+      
+      if (data.ok) {
+        // If we deleted the current conversation, clear the chat
+        if (this.socket.conversationId === convId) {
+          this._startNewChat();
+        }
+        this._loadConversationHistory();
+        Utils.toast('Conversation deleted', 'info');
+      } else {
+        Utils.toast('Failed to delete conversation', 'error');
+      }
+    } catch (err) {
+      Utils.toast(`Error: ${err.message}`, 'error');
+    }
+  }
+  
+  /**
+   * Display a loaded conversation in the chat
+   */
+  _displayLoadedConversation(conversation) {
+    if (!conversation) return;
+    
+    // Update socket's conversation ID
+    this.socket.conversationId = conversation.id;
+    this._updateActiveConversation(conversation.id);
+    
+    // Clear and rebuild chat
+    this.chat.clearChat();
+    
+    // Add each message
+    for (const msg of conversation.messages || []) {
+      if (msg.role === 'user') {
+        this.chat.addUserMessage(msg.content);
+      } else if (msg.role === 'assistant') {
+        this.chat.addAssistantMessage({
+          text: msg.content,
+          speech: msg.content,
+          data: msg.data || {},
+          tools_used: msg.tools_used || []
+        });
+      }
+    }
+    
+    // Update history UI
+    this._loadConversationHistory();
+  }
+  
+  /**
+   * Update active conversation in sidebar
+   */
+  _updateActiveConversation(convId) {
+    document.querySelectorAll('.history-item').forEach(item => {
+      if (item.dataset.convId === convId) {
+        item.classList.add('active');
+      } else {
+        item.classList.remove('active');
+      }
+    });
+  }
+  
+  /**
+   * Format relative date
+   */
+  _formatRelativeDate(isoDate) {
+    if (!isoDate) return '';
+    
+    const date = new Date(isoDate);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  
+  /**
+   * Save settings
+   */
+  async _saveSettings() {
+    try {
+      // Collect all settings
+      const settings = {
+        tts_enabled: document.getElementById('setting-tts').checked,
+        llm_provider: document.getElementById('setting-llm-provider').value || null,
+        llm_model: document.getElementById('setting-llm-model').value || null,
+        image_provider: document.getElementById('setting-image-provider').value || null,
+        tool_similarity: parseFloat(document.getElementById('setting-tool-threshold').value),
+        memory_similarity: parseFloat(document.getElementById('setting-memory-threshold').value)
+      };
+      
+      // Save to server
+      const response = await fetch('/api/settings/web', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      
+      const result = await response.json();
+      
+      if (result.ok) {
+        // Update mode if changed
+        const newMode = document.getElementById('setting-mode').value;
+        if (newMode !== this.socket.mode) {
+          this.socket.setMode(newMode);
+          this.modeSelect.value = newMode;
+        }
+        
+        // Update audio setting
+        this.audioEnabled = document.getElementById('setting-tts').checked;
+        Utils.storage.set('audioEnabled', this.audioEnabled);
+        this._updateAudioButton();
+        
+        Utils.toast('Settings saved!', 'success');
+        this.settingsModal.classList.remove('active');
+      } else {
+        Utils.toast('Failed to save settings', 'error');
+      }
+    } catch (err) {
+      Utils.toast(`Error: ${err.message}`, 'error');
+    }
+  }
+  
+  /**
+   * Reset settings to cloud.env defaults
+   */
+  async _resetToDefaults() {
+    if (!confirm('Reset all web overrides to cloud.env defaults?')) return;
+    
+    try {
+      const response = await fetch('/api/settings/reset', { method: 'POST' });
+      const result = await response.json();
+      
+      if (result.ok) {
+        Utils.toast('Reset to defaults!', 'success');
+        this._loadSettings();  // Reload to show defaults
+      } else {
+        Utils.toast('Failed to reset', 'error');
+      }
+    } catch (err) {
+      Utils.toast(`Error: ${err.message}`, 'error');
+    }
+  }
+}
+
+
+// Initialize app when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  window.jarvisApp = new JarvisApp();
+});
+

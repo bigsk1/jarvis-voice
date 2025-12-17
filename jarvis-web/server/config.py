@@ -1,0 +1,129 @@
+"""
+Configuration loader for Jarvis Web UI
+Loads web-specific config and integrates with main Jarvis config
+"""
+import os
+import sys
+import json
+from pathlib import Path
+
+# Add parent lib to path for shared utilities
+JARVIS_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+
+# Web app paths
+WEB_ROOT = Path(__file__).parent.parent
+CONFIG_PATH = WEB_ROOT / 'config' / 'web_config.json'
+SKILLS_PATH = JARVIS_ROOT / 'skills'
+
+# Default configuration
+DEFAULT_CONFIG = {
+    "server": {
+        "host": "0.0.0.0",
+        "port": 5001,
+        "debug": False
+    },
+    "auth": {
+        "enabled": False,
+        "password_hash": None
+    },
+    "ui": {
+        "theme": "dark",
+        "show_tool_details": True,
+        "auto_scroll": True,
+        "sound_effects": True
+    },
+    "audio": {
+        "tts_enabled": False,
+        "tts_autoplay": True,
+        "stt_enabled": False
+    },
+    "defaults": {
+        "mode": "cloud"
+    }
+}
+
+_web_config = None
+
+
+def load_web_config() -> dict:
+    """Load web configuration from JSON file"""
+    global _web_config
+    
+    if _web_config is not None:
+        return _web_config
+    
+    config = DEFAULT_CONFIG.copy()
+    
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, 'r') as f:
+                file_config = json.load(f)
+                # Deep merge
+                for key, value in file_config.items():
+                    if isinstance(value, dict) and key in config:
+                        config[key].update(value)
+                    else:
+                        config[key] = value
+        except Exception as e:
+            print(f"Warning: Could not load web config: {e}")
+    
+    _web_config = config
+    return config
+
+
+def save_web_config(config: dict) -> bool:
+    """Save web configuration to JSON file"""
+    global _web_config
+    
+    try:
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(CONFIG_PATH, 'w') as f:
+            json.dump(config, f, indent=2)
+        _web_config = config
+        return True
+    except Exception as e:
+        print(f"Error saving web config: {e}")
+        return False
+
+
+def get_web_setting(path: str, default=None):
+    """
+    Get a web config setting by dot-notation path
+    Example: get_web_setting('server.port', 5001)
+    """
+    config = load_web_config()
+    keys = path.split('.')
+    value = config
+    
+    for key in keys:
+        if isinstance(value, dict) and key in value:
+            value = value[key]
+        else:
+            return default
+    
+    return value
+
+
+def load_jarvis_config(mode: str = 'cloud'):
+    """
+    Load the main Jarvis configuration
+    This allows web app to use the same settings as terminal mode
+    """
+    try:
+        from config_loader import load_config, get_config_value
+        load_config(mode)
+        return True
+    except Exception as e:
+        print(f"Warning: Could not load Jarvis config: {e}")
+        return False
+
+
+def get_jarvis_setting(key: str, default=None):
+    """Get a setting from the main Jarvis config"""
+    try:
+        from config_loader import get_config_value
+        return get_config_value(key, default)
+    except Exception:
+        return default
+

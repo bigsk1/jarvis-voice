@@ -1,5 +1,10 @@
 ## My Notes, Ideas, Concerns
 
+
+add print button to canvas pages
+expand canvas more to send commands to jarvis? start and end wake word? 
+
+
 ### Notes
 
 jarvis services needs to start manually
@@ -187,6 +192,8 @@ source ~/jarvis-venv/bin/activate
 ./bin/jarvis-services --local
 ./bin/jarvis-canvas
 ./bin/jarvis-dashboard
+./bin/jarvis-web
+
 
 cloud or local  both to get all tables made and to create embedding for tools and mcp tools
  ./bin/sync_tools.py cloud

@@ -1,0 +1,288 @@
+"""
+WebSocket handlers for chat functionality
+Real-time message handling and tool execution streaming
+"""
+import sys
+import uuid
+import time
+import traceback
+from pathlib import Path
+from flask_socketio import emit, join_room, leave_room
+from flask import request
+
+# Add Jarvis libs to path
+JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
+
+
+class ChatHandler:
+    """Handles WebSocket chat events"""
+    
+    def __init__(self, socketio):
+        self.socketio = socketio
+        self.sessions = {}  # session_id -> {mode, conversation_id, ...}
+        self._register_handlers()
+    
+    def _register_handlers(self):
+        """Register all socket event handlers"""
+        
+        @self.socketio.on('connect')
+        def handle_connect():
+            session_id = request.sid
+            self.sessions[session_id] = {
+                'mode': 'cloud',
+                'conversation_id': None,
+                'connected_at': time.time()
+            }
+            
+            # Join personal room
+            join_room(session_id)
+            
+            # Send connection confirmation
+            from ..services.tool_discovery import get_tool_service
+            tool_service = get_tool_service()
+            
+            emit('connected', {
+                'session_id': session_id,
+                'mode': 'cloud',
+                'tools_count': tool_service.get_tool_count()
+            })
+            print(f"[WS] Client connected: {session_id}")
+        
+        @self.socketio.on('disconnect')
+        def handle_disconnect():
+            session_id = request.sid
+            if session_id in self.sessions:
+                del self.sessions[session_id]
+            leave_room(session_id)
+            print(f"[WS] Client disconnected: {session_id}")
+        
+        @self.socketio.on('chat:send')
+        def handle_chat_send(data):
+            """Handle incoming chat message"""
+            session_id = request.sid
+            message = data.get('message', '').strip()
+            mode = data.get('mode', self.sessions.get(session_id, {}).get('mode', 'cloud'))
+            conversation_id = data.get('conversation_id')
+            
+            if not message:
+                emit('chat:error', {
+                    'error': 'Empty message',
+                    'conversation_id': conversation_id
+                })
+                return
+            
+            # Create or get conversation
+            from ..services.conversation_store import get_conversation_store
+            store = get_conversation_store()
+            
+            if not conversation_id:
+                # Create new conversation
+                conv = store.create_conversation()
+                conversation_id = conv['id']
+                # Notify client of new conversation
+                emit('conversation:created', {
+                    'conversation_id': conversation_id,
+                    'title': conv['title']
+                })
+            
+            # Save user message
+            store.add_message(conversation_id, 'user', message)
+            
+            # Update session
+            if session_id in self.sessions:
+                self.sessions[session_id]['mode'] = mode
+                self.sessions[session_id]['conversation_id'] = conversation_id
+            
+            # Generate message ID
+            message_id = str(uuid.uuid4())
+            
+            # Emit thinking state
+            emit('chat:thinking', {
+                'message_id': message_id,
+                'conversation_id': conversation_id
+            })
+            
+            # Process in background to not block
+            self.socketio.start_background_task(
+                self._process_message,
+                session_id,
+                message,
+                mode,
+                message_id,
+                conversation_id
+            )
+        
+        @self.socketio.on('conversation:load')
+        def handle_load_conversation(data):
+            """Load a conversation history"""
+            session_id = request.sid
+            conv_id = data.get('conversation_id')
+            
+            if not conv_id:
+                emit('chat:error', {'error': 'No conversation_id provided'})
+                return
+            
+            from ..services.conversation_store import get_conversation_store
+            store = get_conversation_store()
+            
+            conversation = store.get_conversation(conv_id)
+            if conversation:
+                # Update session
+                if session_id in self.sessions:
+                    self.sessions[session_id]['conversation_id'] = conv_id
+                
+                emit('conversation:loaded', {
+                    'conversation': conversation
+                })
+            else:
+                emit('chat:error', {'error': 'Conversation not found'})
+        
+        @self.socketio.on('chat:cancel')
+        def handle_chat_cancel(data):
+            """Cancel current processing (placeholder)"""
+            session_id = request.sid
+            emit('chat:cancelled', {
+                'conversation_id': data.get('conversation_id')
+            })
+        
+        @self.socketio.on('mode:set')
+        def handle_mode_set(data):
+            """Set the mode for this session"""
+            session_id = request.sid
+            mode = data.get('mode', 'cloud')
+            
+            if mode in ['cloud', 'local']:
+                if session_id in self.sessions:
+                    self.sessions[session_id]['mode'] = mode
+                emit('mode:changed', {'mode': mode})
+        
+        @self.socketio.on('tools:refresh')
+        def handle_tools_refresh():
+            """Refresh tools list"""
+            from ..services.tool_discovery import get_tool_service
+            tool_service = get_tool_service()
+            tool_service.refresh()
+            
+            emit('tools:updated', {
+                'count': tool_service.get_tool_count(),
+                'tools': tool_service.get_tools_summary()
+            })
+    
+    def _process_message(self, session_id: str, message: str, mode: str,
+                         message_id: str, conversation_id: str):
+        """Process a chat message through the orchestrator"""
+        start_time = time.time()
+        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]})")
+        
+        try:
+            # Import and create orchestrator
+            print("[CHAT] Importing orchestrator...")
+            from orchestrator_v2 import Orchestrator
+            
+            # Create orchestrator instance for this mode
+            print(f"[CHAT] Creating orchestrator (mode={mode})...")
+            orchestrator = Orchestrator(mode=mode)
+            
+            # Process the query
+            print("[CHAT] Calling orchestrator.process()...")
+            result = orchestrator.process(message)
+            print(f"[CHAT] Got result: ok={result.get('ok')}, tools={result.get('tools_used', [])}")
+            
+            duration_ms = int((time.time() - start_time) * 1000)
+            
+            # Extract tools used from result
+            tools_used = result.get('tools_used', [])
+            
+            # Emit tool completion events for each tool
+            data = result.get('data', {})
+            for tool in tools_used:
+                tool_result = data.get(tool, {})
+                self.socketio.emit('tool:complete', {
+                    'tool': tool,
+                    'result': tool_result,
+                    'duration_ms': duration_ms // max(len(tools_used), 1),
+                    'success': True,
+                    'message_id': message_id
+                }, room=session_id)
+            
+            # Save assistant response to conversation
+            try:
+                from ..services.conversation_store import get_conversation_store
+                store = get_conversation_store()
+                response_text = result.get('speech', result.get('raw_llm_response', ''))
+                store.add_message(
+                    conversation_id, 
+                    'assistant', 
+                    response_text,
+                    data=data,
+                    tools_used=tools_used
+                )
+            except Exception as save_err:
+                print(f"[CHAT] Failed to save response: {save_err}")
+            
+            # Generate TTS if enabled
+            audio_url = None
+            try:
+                from ..config import get_web_setting
+                if get_web_setting('audio.tts_enabled', False):
+                    speech_text = result.get('speech', '')
+                    if speech_text:
+                        audio_url = self._generate_tts(speech_text)
+            except Exception as tts_err:
+                print(f"[CHAT] TTS generation failed: {tts_err}")
+            
+            # Emit final response
+            self.socketio.emit('chat:response', {
+                'message_id': message_id,
+                'conversation_id': conversation_id,
+                'text': result.get('raw_llm_response', result.get('speech', '')),
+                'speech': result.get('speech', ''),
+                'data': data,
+                'tools_used': tools_used,
+                'ok': result.get('ok', True),
+                'duration_ms': duration_ms,
+                'usage': result.get('usage', {}),
+                'audio_url': audio_url
+            }, room=session_id)
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[CHAT] ERROR: {error_msg}")
+            traceback.print_exc()
+            
+            self.socketio.emit('chat:error', {
+                'message_id': message_id,
+                'conversation_id': conversation_id,
+                'error': error_msg,
+                'traceback': traceback.format_exc()
+            }, room=session_id)
+    
+    def _generate_tts(self, text: str) -> str:
+        """Generate TTS audio and return URL"""
+        try:
+            from tts_engine import get_tts_engine
+            from config_loader import load_config
+            
+            # Get settings
+            from ..services.settings_manager import get_settings_manager
+            settings = get_settings_manager()
+            config = load_config(settings.mode)
+            
+            # Get TTS engine
+            tts = get_tts_engine(config)
+            
+            # Generate audio (don't play it, just save)
+            audio_path = tts.speak(text, play=False)
+            
+            if audio_path and Path(audio_path).exists():
+                # Return URL to audio file
+                filename = Path(audio_path).name
+                return f'/api/audio/{filename}'
+            
+            return None
+        except Exception as e:
+            print(f"[CHAT] TTS error: {e}")
+            return None
+

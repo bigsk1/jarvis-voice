@@ -1,0 +1,36 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5001,
+    "debug": false
+  },
+  "auth": {
+    "enabled": false,
+    "password_hash": null
+  },
+  "ui": {
+    "theme": "dark",
+    "show_tool_details": true,
+    "auto_scroll": true,
+    "sound_effects": true
+  },
+  "audio": {
+    "tts_enabled": true,
+    "tts_autoplay": true,
+    "stt_enabled": false
+  },
+  "defaults": {
+    "mode": "cloud"
+  },
+  "llm": {
+    "provider": null,
+    "model": null
+  },
+  "image": {
+    "provider": null
+  },
+  "thresholds": {
+    "tool_similarity": null,
+    "memory_similarity": null
+  }
+}
