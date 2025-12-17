@@ -181,18 +181,10 @@ class SettingsManager:
                 }
             },
             
-            # Thresholds
+            # Thresholds (read-only from env)
             'thresholds': {
-                'tool_similarity': {
-                    'value': float(web_thresholds.get('tool_similarity') or cloud_tool_threshold),
-                    'default': float(cloud_tool_threshold),
-                    'is_override': web_thresholds.get('tool_similarity') is not None
-                },
-                'memory_similarity': {
-                    'value': float(web_thresholds.get('memory_similarity') or cloud_memory_threshold),
-                    'default': float(cloud_memory_threshold),
-                    'is_override': web_thresholds.get('memory_similarity') is not None
-                }
+                'tool_similarity': float(get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0')),
+                'memory_similarity': float(get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'))
             },
             
             # Audio (web-only)

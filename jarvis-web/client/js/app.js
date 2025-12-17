@@ -449,10 +449,11 @@ class JarvisApp {
         const providerSelect = document.getElementById('setting-llm-provider');
         providerSelect.value = s.llm?.provider?.is_override ? s.llm.provider.value : '';
         const providerDefault = document.getElementById('llm-provider-default');
-        providerDefault.textContent = s.llm?.provider?.default || 'xai';
+        const envFile = s.mode === 'local' ? 'local.env' : 'cloud.env';
+        providerDefault.textContent = `(${envFile}: ${s.llm?.provider?.default || 'xai'})`;
         providerDefault.className = s.llm?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
         if (s.llm?.provider?.is_override) {
-          providerDefault.textContent = s.llm.provider.value;
+          providerDefault.textContent = `⚡ override: ${s.llm.provider.value}`;
         }
         
         // Populate LLM Model dropdown based on provider
@@ -460,20 +461,20 @@ class JarvisApp {
         const modelSelect = document.getElementById('setting-llm-model');
         modelSelect.value = s.llm?.model?.is_override ? s.llm.model.value : '';
         const modelDefault = document.getElementById('llm-model-default');
-        modelDefault.textContent = s.llm?.model?.default || '';
+        modelDefault.textContent = `(${envFile}: ${s.llm?.model?.default || 'default'})`;
         modelDefault.className = s.llm?.model?.is_override ? 'setting-default setting-override' : 'setting-default';
         if (s.llm?.model?.is_override) {
-          modelDefault.textContent = s.llm.model.value;
+          modelDefault.textContent = `⚡ override: ${s.llm.model.value}`;
         }
         
         // Populate Image Provider
         const imageSelect = document.getElementById('setting-image-provider');
         imageSelect.value = s.image?.provider?.is_override ? s.image.provider.value : '';
         const imageDefault = document.getElementById('image-provider-default');
-        imageDefault.textContent = s.image?.provider?.default || 'gemini';
+        imageDefault.textContent = `(${envFile}: ${s.image?.provider?.default || 'gemini'})`;
         imageDefault.className = s.image?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
         if (s.image?.provider?.is_override) {
-          imageDefault.textContent = s.image.provider.value;
+          imageDefault.textContent = `⚡ override: ${s.image.provider.value}`;
         }
         
         // Populate Conversation History Limit

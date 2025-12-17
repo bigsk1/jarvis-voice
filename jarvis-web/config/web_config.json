@@ -28,8 +28,8 @@
     "image_provider": null
   },
   "local": {
-    "llm_provider": null,
-    "llm_model": null,
+    "llm_provider": "ollama",
+    "llm_model": "ministral-3:14b",
     "image_provider": null
   },
   "conversation": {
