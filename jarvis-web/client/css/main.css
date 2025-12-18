@@ -1702,3 +1702,91 @@ body {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+
+/* ============================================
+   IMAGE UPLOAD & PREVIEW
+   ============================================ */
+
+.image-preview-container {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.image-preview {
+  position: relative;
+  display: inline-block;
+  max-width: 200px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 2px solid var(--primary);
+}
+
+.image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.remove-image-btn:hover {
+  background: var(--error);
+}
+
+.upload-btn {
+  font-size: 1.1rem;
+}
+
+.upload-btn:hover {
+  color: var(--primary);
+}
+
+/* Drag and drop zone */
+.chat-input-container.drag-over {
+  background: var(--bg-hover);
+  border: 2px dashed var(--primary);
+}
+
+.chat-input-container.drag-over::after {
+  content: 'Drop image here';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--primary);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* User message with image */
+.message-image {
+  max-width: 300px;
+  max-height: 200px;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-sm);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.message-image:hover {
+  transform: scale(1.02);
+}

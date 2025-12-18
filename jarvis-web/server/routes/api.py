@@ -761,3 +761,99 @@ def serve_image(filename):
     
     return send_from_directory(str(IMAGES_PATH), filename)
 
+
+# =============================================================================
+# Image Upload for Vision
+# =============================================================================
+
+UPLOADS_PATH = JARVIS_ROOT / 'jarvis-web' / 'data' / 'uploads'
+
+@api_bp.route('/upload-image', methods=['POST'])
+def upload_image():
+    """
+    Upload an image for vision analysis.
+    Resizes large images and stores for conversation history.
+    Returns URL and base64 for immediate use.
+    """
+    import base64
+    from datetime import datetime
+    from PIL import Image
+    import io
+    
+    if 'image' not in request.files:
+        return jsonify({'ok': False, 'error': 'No image file provided'}), 400
+    
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'ok': False, 'error': 'No file selected'}), 400
+    
+    # Check file type
+    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in allowed_extensions:
+        return jsonify({'ok': False, 'error': f'Invalid file type. Allowed: {", ".join(allowed_extensions)}'}), 400
+    
+    try:
+        # Read and process image
+        img = Image.open(file.stream)
+        
+        # Convert to RGB if necessary (for JPEG output)
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        
+        # Smart resize - max 2048px on longest side
+        max_size = 2048
+        if max(img.size) > max_size:
+            ratio = max_size / max(img.size)
+            new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+            print(f"[Upload] Resized image from {file.filename} to {new_size}")
+        
+        # Save to uploads directory
+        UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"upload_{timestamp}.jpg"
+        filepath = UPLOADS_PATH / filename
+        
+        # Save with quality optimization
+        img.save(filepath, 'JPEG', quality=85, optimize=True)
+        
+        # Generate base64 for immediate use
+        buffer = io.BytesIO()
+        img.save(buffer, 'JPEG', quality=85)
+        base64_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        file_size_kb = filepath.stat().st_size / 1024
+        print(f"[Upload] Saved {filename} ({img.size[0]}x{img.size[1]}, {file_size_kb:.1f}KB)")
+        
+        return jsonify({
+            'ok': True,
+            'filename': filename,
+            'url': f'/api/uploads/{filename}',
+            'base64': base64_data,
+            'width': img.size[0],
+            'height': img.size[1],
+            'size_kb': round(file_size_kb, 1)
+        })
+        
+    except Exception as e:
+        print(f"[Upload] Error processing image: {e}")
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/uploads/<filename>', methods=['GET'])
+def serve_upload(filename):
+    """Serve uploaded images"""
+    if '..' in filename or '/' in filename:
+        abort(404)
+    
+    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in allowed_extensions:
+        abort(404)
+    
+    if not UPLOADS_PATH.exists():
+        abort(404)
+    
+    return send_from_directory(str(UPLOADS_PATH), filename)
+

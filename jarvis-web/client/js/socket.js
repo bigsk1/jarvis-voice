@@ -125,19 +125,26 @@ class JarvisSocket {
   }
 
   /**
-   * Send a chat message
+   * Send a chat message (with optional image)
    */
-  sendMessage(message, conversationId = null) {
+  sendMessage(message, imageData = null, conversationId = null) {
     if (!this.connected) {
       console.error('[Socket] Not connected');
       return false;
     }
 
-    this.socket.emit('chat:send', {
+    const payload = {
       message,
       mode: this.mode,
       conversation_id: conversationId || this.conversationId
-    });
+    };
+    
+    // Include image data if provided
+    if (imageData) {
+      payload.image = imageData;
+    }
+
+    this.socket.emit('chat:send', payload);
 
     return true;
   }

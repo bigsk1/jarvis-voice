@@ -9,6 +9,13 @@ class ChatUI {
     this.sendBtn = document.getElementById('sendBtn');
     this.micBtn = document.getElementById('micBtn');
     
+    // Image upload elements
+    this.uploadBtn = document.getElementById('uploadBtn');
+    this.imageInput = document.getElementById('imageInput');
+    this.imagePreviewContainer = document.getElementById('imagePreviewContainer');
+    this.imagePreview = document.getElementById('imagePreview');
+    this.removeImageBtn = document.getElementById('removeImageBtn');
+    
     this.currentMessageId = null;
     this.pendingTools = {};
     this.isProcessing = false;
@@ -19,9 +26,13 @@ class ChatUI {
     this.isRecording = false;
     this.recordingIndicator = null;
     
+    // Image upload state
+    this.attachedImage = null;  // {base64, url, filename}
+    
     this._setupEventListeners();
     this._setupSocketListeners();
     this._setupVoiceRecording();
+    this._setupImageUpload();
   }
 
   /**
@@ -386,37 +397,199 @@ class ChatUI {
   }
 
   /**
-   * Send a message
+   * Setup image upload functionality
+   */
+  _setupImageUpload() {
+    if (!this.uploadBtn || !this.imageInput) {
+      console.warn('[Chat] Image upload elements not found');
+      return;
+    }
+    
+    // Click upload button -> trigger file input
+    this.uploadBtn.addEventListener('click', () => {
+      this.imageInput.click();
+    });
+    
+    // Handle file selection
+    this.imageInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        await this.attachImage(file);
+      }
+      // Reset input so same file can be selected again
+      this.imageInput.value = '';
+    });
+    
+    // Remove image button
+    if (this.removeImageBtn) {
+      this.removeImageBtn.addEventListener('click', () => {
+        this.clearAttachedImage();
+      });
+    }
+    
+    // Drag and drop support
+    const container = document.querySelector('.chat-input-container');
+    if (container) {
+      container.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        container.classList.add('drag-over');
+      });
+      
+      container.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        container.classList.remove('drag-over');
+      });
+      
+      container.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        container.classList.remove('drag-over');
+        
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) {
+          await this.attachImage(file);
+        }
+      });
+    }
+    
+    // Paste image from clipboard
+    document.addEventListener('paste', async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            await this.attachImage(file);
+          }
+          break;
+        }
+      }
+    });
+    
+    console.log('[Chat] Image upload ready');
+  }
+  
+  /**
+   * Attach an image file (upload to server)
+   */
+  async attachImage(file) {
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      Utils.toast('Please select an image file', 'error');
+      return;
+    }
+    
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      Utils.toast('Image too large (max 10MB)', 'error');
+      return;
+    }
+    
+    try {
+      Utils.toast('Uploading image...', 'info', 1500);
+      
+      const formData = new FormData();
+      formData.append('image', file);
+      
+      const response = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (data.ok) {
+        this.attachedImage = {
+          base64: data.base64,
+          url: data.url,
+          filename: data.filename
+        };
+        
+        // Show preview
+        this.showImagePreview(data.url);
+        Utils.toast(`Image attached (${data.size_kb}KB)`, 'success', 1500);
+        
+        // Focus input for typing question
+        this.inputField.focus();
+      } else {
+        Utils.toast(data.error || 'Failed to upload image', 'error');
+      }
+    } catch (err) {
+      console.error('[Chat] Image upload error:', err);
+      Utils.toast('Failed to upload image', 'error');
+    }
+  }
+  
+  /**
+   * Show image preview in input area
+   */
+  showImagePreview(url) {
+    if (this.imagePreview && this.imagePreviewContainer) {
+      this.imagePreview.src = url;
+      this.imagePreviewContainer.style.display = 'block';
+    }
+  }
+  
+  /**
+   * Clear attached image
+   */
+  clearAttachedImage() {
+    this.attachedImage = null;
+    if (this.imagePreviewContainer) {
+      this.imagePreviewContainer.style.display = 'none';
+    }
+    if (this.imagePreview) {
+      this.imagePreview.src = '';
+    }
+  }
+
+  /**
+   * Send a message (with optional attached image)
    */
   sendMessage() {
     const message = this.inputField.value.trim();
+    const hasImage = this.attachedImage !== null;
     
-    if (!message || this.isProcessing) return;
+    // Need either message or image
+    if (!message && !hasImage) return;
+    if (this.isProcessing) return;
     
-    // Add user message to UI
-    this.addUserMessage(message);
+    // Add user message to UI (with image if attached)
+    this.addUserMessage(message, this.attachedImage);
     
     // Clear input
     this.inputField.value = '';
     Utils.autoResize(this.inputField);
     
-    // Send via socket
+    // Send via socket (include image data)
     this.isProcessing = true;
     this.updateSendButton();
     this.pendingTools = {};
     
-    window.jarvisSocket.sendMessage(message);
+    window.jarvisSocket.sendMessage(message, this.attachedImage);
+    
+    // Clear attached image after sending
+    this.clearAttachedImage();
   }
 
   /**
-   * Add user message to chat
+   * Add user message to chat (with optional image)
    */
-  addUserMessage(text) {
+  addUserMessage(text, imageData = null) {
     const messageEl = document.createElement('div');
     messageEl.className = 'message user';
+    
+    let imageHtml = '';
+    if (imageData && imageData.url) {
+      imageHtml = `<img src="${imageData.url}" alt="Attached image" class="message-image" onclick="Utils.openLightbox('${imageData.url}')">`;
+    }
+    
     messageEl.innerHTML = `
       <div class="message-bubble">
-        ${Utils.escapeHtml(text)}
+        ${imageHtml}
+        ${text ? Utils.escapeHtml(text) : '<em>What\'s in this image?</em>'}
       </div>
     `;
     

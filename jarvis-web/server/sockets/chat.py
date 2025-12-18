@@ -65,18 +65,25 @@ class ChatHandler:
         
         @self.socketio.on('chat:send')
         def handle_chat_send(data):
-            """Handle incoming chat message"""
+            """Handle incoming chat message (with optional image)"""
             session_id = request.sid
             message = data.get('message', '').strip()
             mode = data.get('mode', self.sessions.get(session_id, {}).get('mode', 'cloud'))
             conversation_id = data.get('conversation_id')
             
-            if not message:
+            # Image data for vision requests
+            image_data = data.get('image')  # {base64, url, filename}
+            
+            if not message and not image_data:
                 emit('chat:error', {
                     'error': 'Empty message',
                     'conversation_id': conversation_id
                 })
                 return
+            
+            # Default message for image-only
+            if not message and image_data:
+                message = "What's in this image?"
             
             # Create or get conversation
             from ..services.conversation_store import get_conversation_store
@@ -92,8 +99,9 @@ class ChatHandler:
                     'title': conv['title']
                 })
             
-            # Save user message
-            store.add_message(conversation_id, 'user', message)
+            # Save user message (include image URL if present)
+            user_msg_data = {'image_url': image_data.get('url')} if image_data else None
+            store.add_message(conversation_id, 'user', message, data=user_msg_data)
             
             # Update session
             if session_id in self.sessions:
@@ -116,7 +124,8 @@ class ChatHandler:
                 message,
                 mode,
                 message_id,
-                conversation_id
+                conversation_id,
+                image_data
             )
         
         @self.socketio.on('conversation:load')
@@ -200,7 +209,7 @@ class ChatHandler:
         # =====================================================================
         
         @self.socketio.on('proactive:subscribe')
-        def handle_proactive_subscribe():
+        def handle_proactive_subscribe(data=None):
             """Client wants to receive proactive notifications"""
             session_id = request.sid
             print(f"[Proactive] Client {session_id[:8]} subscribed to notifications")
@@ -213,7 +222,7 @@ class ChatHandler:
             emit('proactive:counts', counts)
         
         @self.socketio.on('proactive:check')
-        def handle_proactive_check():
+        def handle_proactive_check(data=None):
             """Manual check for new notifications"""
             from ..services.proactive_service import get_proactive_service
             service = get_proactive_service()
@@ -313,10 +322,10 @@ class ChatHandler:
             return []
     
     def _process_message(self, session_id: str, message: str, mode: str,
-                         message_id: str, conversation_id: str):
-        """Process a chat message through the orchestrator"""
+                         message_id: str, conversation_id: str, image_data: dict = None):
+        """Process a chat message through the orchestrator (with optional vision)"""
         start_time = time.time()
-        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]})")
+        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None})")
         
         try:
             # Import and create orchestrator
@@ -332,6 +341,27 @@ class ChatHandler:
             
             if provider_override:
                 print(f"[CHAT] Using {mode} override: provider={provider_override}, model={model_override}")
+            
+            # Handle vision if image is provided
+            if image_data and image_data.get('base64'):
+                print(f"[CHAT] Processing image with vision model...")
+                self.socketio.emit('chat:status', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'status': 'Analyzing image...',
+                    'timestamp': time.time()
+                }, room=session_id)
+                
+                vision_result = self._process_vision(
+                    image_data['base64'], 
+                    message, 
+                    mode
+                )
+                
+                if vision_result:
+                    # Prepend vision analysis to the message
+                    message = f"[Image Analysis: {vision_result}]\n\nUser's question: {message}"
+                    print(f"[CHAT] Vision analysis complete, enhanced message ready")
             
             # Create orchestrator instance with overrides
             print(f"[CHAT] Creating orchestrator (mode={mode})...")
@@ -599,3 +629,234 @@ class ChatHandler:
         
         return output_path
 
+
+    def _process_vision(self, image_base64: str, prompt: str, mode: str) -> str:
+        """
+        Process an image with a vision model.
+        Returns the vision model's description/analysis.
+        """
+        import requests
+        from ..config import get_jarvis_setting, load_jarvis_config
+        
+        # Load mode-specific config
+        load_jarvis_config(mode)
+        
+        try:
+            if mode == 'local':
+                return self._vision_ollama(image_base64, prompt)
+            else:
+                return self._vision_cloud(image_base64, prompt, mode)
+        except Exception as e:
+            print(f"[VISION] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _vision_ollama(self, image_base64: str, prompt: str) -> str:
+        """Use Ollama vision model (llava, llama3.2-vision, etc.)"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        base_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+        vision_model = get_jarvis_setting('OLLAMA_VISION_MODEL', 'llava:latest')
+        
+        print(f"[VISION] Using Ollama: {vision_model} at {base_url}")
+        
+        payload = {
+            "model": vision_model,
+            "prompt": prompt,
+            "images": [image_base64],
+            "stream": False
+        }
+        
+        response = requests.post(
+            f"{base_url}/api/generate",
+            json=payload,
+            timeout=120  # Vision can be slow
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result.get('response', '')
+        else:
+            print(f"[VISION] Ollama error: {response.status_code} - {response.text[:200]}")
+            return None
+    
+    def _vision_cloud(self, image_base64: str, prompt: str, mode: str) -> str:
+        """Use cloud provider's vision model (Anthropic, xAI, OpenAI)"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        provider = get_jarvis_setting('LLM_PROVIDER', 'xai')
+        vision_model = get_jarvis_setting('VISION_MODEL', '')  # Empty = use main model
+        
+        print(f"[VISION] Using cloud provider: {provider}")
+        
+        if provider == 'anthropic':
+            return self._vision_anthropic(image_base64, prompt, vision_model)
+        elif provider == 'xai':
+            return self._vision_xai(image_base64, prompt, vision_model)
+        elif provider == 'openai':
+            return self._vision_openai(image_base64, prompt, vision_model)
+        else:
+            print(f"[VISION] Unknown provider: {provider}, trying xAI format")
+            return self._vision_xai(image_base64, prompt, vision_model)
+    
+    def _vision_anthropic(self, image_base64: str, prompt: str, model: str = None) -> str:
+        """Use Anthropic Claude for vision"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        api_key = get_jarvis_setting('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            print("[VISION] ANTHROPIC_API_KEY not configured")
+            return None
+        
+        model = model or get_jarvis_setting('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514')
+        print(f"[VISION] Anthropic model: {model}")
+        
+        payload = {
+            "model": model,
+            "max_tokens": 1024,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": image_base64
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }]
+        }
+        
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            json=payload,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json"
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            content = result.get('content', [])
+            if content and content[0].get('type') == 'text':
+                return content[0].get('text', '')
+        else:
+            print(f"[VISION] Anthropic error: {response.status_code} - {response.text[:200]}")
+        return None
+    
+    def _vision_xai(self, image_base64: str, prompt: str, model: str = None) -> str:
+        """Use xAI Grok for vision"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        api_key = get_jarvis_setting('XAI_API_KEY', '')
+        if not api_key:
+            print("[VISION] XAI_API_KEY not configured")
+            return None
+        
+        model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', 'grok-2-vision')
+        print(f"[VISION] xAI model: {model}")
+        
+        payload = {
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }],
+            "max_tokens": 1024
+        }
+        
+        response = requests.post(
+            "https://api.x.ai/v1/chat/completions",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            choices = result.get('choices', [])
+            if choices:
+                return choices[0].get('message', {}).get('content', '')
+        else:
+            print(f"[VISION] xAI error: {response.status_code} - {response.text[:200]}")
+        return None
+    
+    def _vision_openai(self, image_base64: str, prompt: str, model: str = None) -> str:
+        """Use OpenAI GPT-4V for vision"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        api_key = get_jarvis_setting('OPENAI_API_KEY', '')
+        if not api_key:
+            print("[VISION] OPENAI_API_KEY not configured")
+            return None
+        
+        model = model or 'gpt-4o'
+        print(f"[VISION] OpenAI model: {model}")
+        
+        payload = {
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }],
+            "max_tokens": 1024
+        }
+        
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            choices = result.get('choices', [])
+            if choices:
+                return choices[0].get('message', {}).get('content', '')
+        else:
+            print(f"[VISION] OpenAI error: {response.status_code} - {response.text[:200]}")
+        return None

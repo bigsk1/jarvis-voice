@@ -103,6 +103,14 @@
         
         <!-- Input Area -->
         <div class="chat-input-container">
+          <!-- Image Preview (shown when image attached) -->
+          <div class="image-preview-container" id="imagePreviewContainer" style="display: none;">
+            <div class="image-preview">
+              <img id="imagePreview" src="" alt="Preview">
+              <button class="remove-image-btn" id="removeImageBtn" title="Remove image">&times;</button>
+            </div>
+          </div>
+          
           <div class="chat-input-wrapper">
             <textarea 
               class="chat-input" 
@@ -111,6 +119,10 @@
               rows="1"
             ></textarea>
             <div class="input-actions">
+              <button class="icon-btn upload-btn" id="uploadBtn" title="Attach image">
+                📎
+              </button>
+              <input type="file" id="imageInput" accept="image/*" style="display: none;">
               <button class="icon-btn mic-btn" id="micBtn" title="Click to record">
                 🎤
               </button>
