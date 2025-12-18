@@ -328,6 +328,10 @@ class ChatHandler:
         print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None})")
         
         try:
+            # Debug image data
+            if image_data:
+                print(f"[CHAT] Image data keys: {image_data.keys() if isinstance(image_data, dict) else 'not a dict'}")
+                print(f"[CHAT] Image base64 length: {len(image_data.get('base64', '')) if isinstance(image_data, dict) else 'N/A'}")
             # Import and create orchestrator
             print("[CHAT] Importing orchestrator...")
             from orchestrator_v2 import Orchestrator
@@ -361,37 +365,49 @@ class ChatHandler:
                 if vision_result:
                     # Check if this is a simple image question (no action requested)
                     simple_question = self._is_simple_image_question(message)
+                    print(f"[CHAT] Is simple question: {simple_question}")
                     
                     if simple_question:
-                        # For simple image questions, return vision result directly
-                        # without going through orchestrator tool loop
-                        print(f"[CHAT] Simple image question - returning vision result directly")
-                        
-                        # Create a short spoken response from the vision analysis
-                        short_response = self._summarize_vision_for_speech(vision_result, message, mode)
-                        
-                        # Save to conversation
-                        from ..services.conversation_store import get_conversation_store
-                        store = get_conversation_store()
-                        store.add_message(
-                            conversation_id, 'assistant', short_response,
-                            tools_used=[], 
-                            data={'vision_analysis': vision_result}
-                        )
-                        
-                        # Send response
-                        self.socketio.emit('chat:response', {
-                            'text': short_response,
-                            'message_id': message_id,
-                            'conversation_id': conversation_id,
-                            'tools_used': [],
-                            'data': {'vision_analysis': vision_result},
-                            'duration_ms': int((time.time() - start_time) * 1000)
-                        }, room=session_id)
-                        
-                        # Generate TTS
-                        self._generate_tts(short_response, mode, session_id)
-                        return
+                        try:
+                            # For simple image questions, return vision result directly
+                            # without going through orchestrator tool loop
+                            print(f"[CHAT] Simple image question - returning vision result directly")
+                            
+                            # Create a short spoken response from the vision analysis
+                            print(f"[CHAT] Summarizing vision for speech...")
+                            short_response = self._summarize_vision_for_speech(vision_result, message, mode)
+                            print(f"[CHAT] Short response: {short_response[:100]}...")
+                            
+                            # Save to conversation
+                            from ..services.conversation_store import get_conversation_store
+                            store = get_conversation_store()
+                            store.add_message(
+                                conversation_id, 'assistant', short_response,
+                                tools_used=[], 
+                                data={'vision_analysis': vision_result}
+                            )
+                            print(f"[CHAT] Saved to conversation")
+                            
+                            # Send response
+                            self.socketio.emit('chat:response', {
+                                'text': short_response,
+                                'message_id': message_id,
+                                'conversation_id': conversation_id,
+                                'tools_used': [],
+                                'data': {'vision_analysis': vision_result},
+                                'duration_ms': int((time.time() - start_time) * 1000)
+                            }, room=session_id)
+                            print(f"[CHAT] Emitted response")
+                            
+                            # Generate TTS
+                            self._generate_tts(short_response, mode, session_id)
+                            print(f"[CHAT] TTS done")
+                            return
+                        except Exception as e:
+                            print(f"[CHAT] Error in simple image handling: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            # Fall through to orchestrator
                     else:
                         # Complex request - pass to orchestrator with vision context
                         message = f"[Image Analysis: {vision_result}]\n\nUser's request: {message}\n\nNote: The image has already been analyzed above. Use this analysis to complete the user's request."
@@ -843,29 +859,40 @@ Short spoken response:""",
         import requests
         from ..config import get_jarvis_setting
         
-        base_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
-        vision_model = get_jarvis_setting('OLLAMA_VISION_MODEL', 'llava:latest')
-        
-        print(f"[VISION] Using Ollama: {vision_model} at {base_url}")
-        
-        payload = {
-            "model": vision_model,
-            "prompt": prompt,
-            "images": [image_base64],
-            "stream": False
-        }
-        
-        response = requests.post(
-            f"{base_url}/api/generate",
-            json=payload,
-            timeout=120  # Vision can be slow
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            return result.get('response', '')
-        else:
-            print(f"[VISION] Ollama error: {response.status_code} - {response.text[:200]}")
+        try:
+            base_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+            vision_model = get_jarvis_setting('OLLAMA_VISION_MODEL', 'llava:latest')
+            
+            print(f"[VISION] Using Ollama: {vision_model} at {base_url}")
+            print(f"[VISION] Image base64 length: {len(image_base64)}")
+            
+            payload = {
+                "model": vision_model,
+                "prompt": prompt,
+                "images": [image_base64],
+                "stream": False
+            }
+            
+            print(f"[VISION] Sending request to Ollama...")
+            response = requests.post(
+                f"{base_url}/api/generate",
+                json=payload,
+                timeout=120  # Vision can be slow
+            )
+            print(f"[VISION] Got response: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                resp_text = result.get('response', '')
+                print(f"[VISION] Ollama response length: {len(resp_text)}")
+                return resp_text
+            else:
+                print(f"[VISION] Ollama error: {response.status_code} - {response.text[:200]}")
+                return None
+        except Exception as e:
+            print(f"[VISION] Ollama exception: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def _vision_cloud(self, image_base64: str, prompt: str, mode: str) -> str:

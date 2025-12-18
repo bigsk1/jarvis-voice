@@ -801,8 +801,8 @@ def upload_image():
         if img.mode in ('RGBA', 'P'):
             img = img.convert('RGB')
         
-        # Smart resize - max 2048px on longest side
-        max_size = 2048
+        # Smart resize - max 1024px on longest side (reduces base64 size for socket)
+        max_size = 1024
         if max(img.size) > max_size:
             ratio = max_size / max(img.size)
             new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
