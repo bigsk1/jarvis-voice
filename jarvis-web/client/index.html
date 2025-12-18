@@ -12,6 +12,7 @@
   <!-- Styles -->
   <link rel="stylesheet" href="/css/variables.css">
   <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/glow-refinements.css">
   
   <!-- Socket.IO -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -183,6 +184,16 @@
                 <span class="toggle-slider"></span>
               </label>
               <span class="setting-desc">Play audio responses in browser (uses current mode's TTS)</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">Holographic Glow Intensity</label>
+              <select class="setting-input" id="setting-glow-intensity">
+                <option value="off">Off (clean, minimal)</option>
+                <option value="low" selected>Low (subtle, recommended)</option>
+                <option value="medium">Medium (balanced)</option>
+                <option value="high">High (full cyberpunk)</option>
+              </select>
+              <span class="setting-desc">Controls the intensity of holographic glow effects</span>
             </div>
             <p class="setting-note" style="margin-top: var(--space-lg);">
               💡 <strong>Cloud</strong> = uses cloud.env (ElevenLabs TTS)<br>

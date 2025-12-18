@@ -612,7 +612,12 @@ class ChatUI {
     text = text || '';
     
     const messageEl = document.createElement('div');
-    messageEl.className = 'message assistant';
+    messageEl.className = 'message assistant new-message';
+    
+    // Remove new-message class after animation completes (2.5s)
+    setTimeout(() => {
+      messageEl.classList.remove('new-message');
+    }, 2500);
     
     // Build tool cards HTML
     let toolCardsHtml = '';
@@ -687,7 +692,8 @@ class ChatUI {
       detailsHtml = `
         <div class="message-details collapsed">
           <button class="details-toggle" title="Show full LLM response">
-            <span class="toggle-icon">▶</span> Show details
+            <span class="toggle-icon">▶</span>
+            <span class="toggle-text">Show details</span>
           </button>
           <div class="details-content">
             <pre>${detailsContent}</pre>
@@ -713,9 +719,10 @@ class ChatUI {
         const details = detailsToggle.closest('.message-details');
         details.classList.toggle('collapsed');
         const icon = detailsToggle.querySelector('.toggle-icon');
+        const text = detailsToggle.querySelector('.toggle-text');
         const isCollapsed = details.classList.contains('collapsed');
         icon.textContent = isCollapsed ? '▶' : '▼';
-        detailsToggle.childNodes[1].textContent = isCollapsed ? ' Show details' : ' Hide details';
+        text.textContent = isCollapsed ? 'Show details' : 'Hide details';
       });
     }
     

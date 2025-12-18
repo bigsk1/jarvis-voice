@@ -20,6 +20,7 @@ class JarvisApp {
     
     // State
     this.audioEnabled = Utils.storage.get('audioEnabled', false);
+    this.glowIntensity = Utils.storage.get('glowIntensity', 'low');
     
     this._initialize();
   }
@@ -31,6 +32,7 @@ class JarvisApp {
     this._setupSocketListeners();
     this._setupUIListeners();
     this._restoreState();
+    this._applyGlowIntensity();  // Apply saved glow intensity
     
     // Connect to server
     this.socket.connect();
@@ -289,6 +291,13 @@ class JarvisApp {
   }
 
   /**
+   * Apply glow intensity setting to body
+   */
+  _applyGlowIntensity() {
+    document.body.setAttribute('data-glow-intensity', this.glowIntensity);
+  }
+  
+  /**
    * Play audio response
    */
   _playAudio(url) {
@@ -468,6 +477,7 @@ class JarvisApp {
         // Populate General settings
         document.getElementById('setting-mode').value = s.mode || 'cloud';
         document.getElementById('setting-tts').checked = s.audio?.tts_enabled || false;
+        document.getElementById('setting-glow-intensity').value = this.glowIntensity;
         
         // Populate LLM Provider
         const providerSelect = document.getElementById('setting-llm-provider');
@@ -864,6 +874,11 @@ class JarvisApp {
         this.audioEnabled = document.getElementById('setting-tts').checked;
         Utils.storage.set('audioEnabled', this.audioEnabled);
         this._updateAudioButton();
+        
+        // Update glow intensity (client-side only)
+        this.glowIntensity = document.getElementById('setting-glow-intensity').value;
+        Utils.storage.set('glowIntensity', this.glowIntensity);
+        this._applyGlowIntensity();
         
         Utils.toast('Settings saved!', 'success');
         this.settingsModal.classList.remove('active');

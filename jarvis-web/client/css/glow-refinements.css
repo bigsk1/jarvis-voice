@@ -1,0 +1,325 @@
+/**
+ * Jarvis Web UI - Refined Holographic Glow Effects
+ * 
+ * This stylesheet provides more subtle, context-aware glow effects
+ * that reduce eye strain while maintaining the cyberpunk aesthetic.
+ * 
+ * To enable: Add this to index.html:
+ * <link rel="stylesheet" href="css/glow-refinements.css">
+ */
+
+/* ============================================
+   REFINED COLOR PALETTE
+   ============================================ */
+
+:root {
+  /* Toned-down cyan variants */
+  --cyber-cyan-bright: #00FFFF;          /* Only for key accents */
+  --cyber-cyan: #00D9FF;                 /* Primary cyber color */
+  --cyber-cyan-muted: #00B8D4;           /* UI elements */
+  --cyber-cyan-dark: #008B9E;            /* Darker variant */
+  
+  /* Glow intensity levels */
+  --glow-subtle: rgba(0, 217, 255, 0.08);
+  --glow-light: rgba(0, 217, 255, 0.15);
+  --glow-medium: rgba(0, 217, 255, 0.25);
+  --glow-strong: rgba(0, 217, 255, 0.4);
+  
+  /* Shadow for depth (not glow) */
+  --shadow-depth-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-depth-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-depth-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+
+/* ============================================
+   ASSISTANT MESSAGE BUBBLES - SUBTLE GLOW
+   ============================================ */
+
+/* Override default - resting state has minimal glow */
+.message.assistant .message-bubble {
+  background: var(--bg-card);
+  border: 1px solid rgba(0, 217, 255, 0.12);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),  /* Subtle inner highlight */
+    0 0 1px var(--glow-subtle),                /* Tiny ambient glow */
+    var(--shadow-depth-sm);                    /* Depth shadow */
+  transition: 
+    box-shadow 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.2s ease;
+}
+
+/* Hover - glow intensifies */
+.message.assistant .message-bubble:hover {
+  border-color: rgba(0, 217, 255, 0.25);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 0 8px var(--glow-light),                 /* Soft glow on hover */
+    var(--shadow-depth-md);
+  transform: translateY(-1px);                 /* Subtle lift */
+}
+
+/* New message arrival - brief bright glow that fades */
+.message.assistant.new-message .message-bubble {
+  animation: message-arrival 2.5s ease-out forwards;
+}
+
+@keyframes message-arrival {
+  0% {
+    box-shadow: 
+      0 0 24px var(--glow-strong),
+      0 0 48px var(--glow-medium),
+      var(--shadow-depth-lg);
+    border-color: rgba(0, 217, 255, 0.5);
+  }
+  100% {
+    box-shadow: 
+      0 0 1px var(--glow-subtle),
+      var(--shadow-depth-sm);
+    border-color: rgba(0, 217, 255, 0.12);
+  }
+}
+
+
+/* ============================================
+   USER MESSAGE BUBBLES - NO GLOW
+   ============================================ */
+
+/* User messages get depth, not glow */
+.message.user .message-bubble {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  box-shadow: 
+    var(--shadow-depth-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);  /* Inner highlight only */
+}
+
+.message.user .message-bubble:hover {
+  box-shadow: 
+    var(--shadow-depth-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+
+/* ============================================
+   GRID BACKGROUND - TONED DOWN
+   ============================================ */
+
+/* Reduce grid visibility so it doesn't compete with content */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: 
+    linear-gradient(var(--glow-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--glow-subtle) 1px, transparent 1px);
+  background-size: 24px 24px;  /* Slightly larger spacing */
+  pointer-events: none;
+  opacity: 0.3;  /* Much more subtle */
+  z-index: -1;
+}
+
+/* Add vignette to focus attention on center content */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(10, 10, 15, 0.5) 100%
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+
+
+/* ============================================
+   STATUS INDICATORS - REFINED GLOW
+   ============================================ */
+
+/* Connected status dot - subtle pulse */
+.status-dot.connected {
+  background: var(--success);
+  box-shadow: 
+    0 0 4px rgba(16, 185, 129, 0.3),
+    0 0 8px rgba(16, 185, 129, 0.15);
+  animation: pulse-dot 3s ease-in-out infinite;  /* Slower pulse */
+}
+
+@keyframes pulse-dot {
+  0%, 100% { 
+    opacity: 1;
+    box-shadow: 
+      0 0 4px rgba(16, 185, 129, 0.3),
+      0 0 8px rgba(16, 185, 129, 0.15);
+  }
+  50% { 
+    opacity: 0.85;
+    box-shadow: 
+      0 0 6px rgba(16, 185, 129, 0.4),
+      0 0 12px rgba(16, 185, 129, 0.2);
+  }
+}
+
+
+/* ============================================
+   TOOL CARDS - MINIMAL GLOW
+   ============================================ */
+
+/* Default tool cards - no glow, just borders */
+.tool-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-depth-sm);
+  transition: all 0.2s ease;
+}
+
+.tool-card:hover {
+  border-color: var(--border-secondary);
+  box-shadow: var(--shadow-depth-md);
+}
+
+/* Success tool cards - subtle green accent */
+.tool-card.success {
+  border-left: 3px solid rgba(16, 185, 129, 0.5);
+}
+
+.tool-card.success:hover {
+  border-left-color: rgba(16, 185, 129, 0.7);
+  box-shadow: 
+    -2px 0 8px rgba(16, 185, 129, 0.1),  /* Slight left glow */
+    var(--shadow-depth-md);
+}
+
+/* Error tool cards - subtle red accent */
+.tool-card.error {
+  border-left: 3px solid rgba(239, 68, 68, 0.5);
+}
+
+
+/* ============================================
+   INPUT FIELD - SUBTLE FOCUS GLOW
+   ============================================ */
+
+.chat-input:focus {
+  outline: none;
+  border-color: rgba(0, 217, 255, 0.3);
+  box-shadow: 
+    0 0 0 3px rgba(0, 217, 255, 0.08),  /* Focus ring */
+    var(--shadow-depth-sm);
+}
+
+
+/* ============================================
+   IMAGE PREVIEWS - HOVER GLOW
+   ============================================ */
+
+.message-image:hover {
+  border-color: rgba(0, 217, 255, 0.4);
+  box-shadow: 
+    0 0 12px var(--glow-light),
+    var(--shadow-depth-md);
+}
+
+
+/* ============================================
+   ACCESSIBILITY - REDUCED MOTION
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  .message.assistant.new-message .message-bubble {
+    animation: none;
+  }
+  
+  .status-dot.connected {
+    animation: none;
+  }
+}
+
+
+/* ============================================
+   GLOW INTENSITY CONTROL (User Preference)
+   ============================================ */
+
+/* Off - No glow at all */
+[data-glow-intensity="off"] .message.assistant .message-bubble {
+  box-shadow: var(--shadow-depth-sm);
+  border-color: var(--border-primary);
+}
+
+[data-glow-intensity="off"] .message.assistant .message-bubble:hover {
+  box-shadow: var(--shadow-depth-md);
+  border-color: var(--border-secondary);
+}
+
+/* Low - Very subtle (default in this stylesheet) */
+[data-glow-intensity="low"] .message.assistant .message-bubble {
+  box-shadow: 
+    0 0 1px var(--glow-subtle),
+    var(--shadow-depth-sm);
+}
+
+[data-glow-intensity="low"] .message.assistant .message-bubble:hover {
+  box-shadow: 
+    0 0 6px var(--glow-light),
+    var(--shadow-depth-md);
+}
+
+/* Medium - Moderate glow */
+[data-glow-intensity="medium"] .message.assistant .message-bubble {
+  box-shadow: 
+    0 0 4px var(--glow-light),
+    var(--shadow-depth-sm);
+}
+
+[data-glow-intensity="medium"] .message.assistant .message-bubble:hover {
+  box-shadow: 
+    0 0 12px var(--glow-medium),
+    var(--shadow-depth-md);
+}
+
+/* High - Original bright glow */
+[data-glow-intensity="high"] .message.assistant .message-bubble {
+  box-shadow: 
+    0 0 12px var(--glow-medium),
+    0 0 24px var(--glow-light),
+    var(--shadow-depth-md);
+}
+
+[data-glow-intensity="high"] .message.assistant .message-bubble:hover {
+  box-shadow: 
+    0 0 20px var(--glow-strong),
+    0 0 40px var(--glow-medium),
+    var(--shadow-depth-lg);
+}
+
+
+/* ============================================
+   PERFORMANCE OPTIMIZATION
+   ============================================ */
+
+/* Use CSS containment for better performance */
+.message {
+  contain: layout style paint;
+}
+
+.message-bubble {
+  will-change: transform, box-shadow;  /* Hint for GPU acceleration */
+}
+
+/* Remove will-change after animation completes */
+.message.assistant:not(.new-message) .message-bubble {
+  will-change: auto;
+}
+
