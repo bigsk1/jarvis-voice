@@ -378,6 +378,178 @@ def update_conversation_title(conv_id):
         }), 404
 
 
+@api_bp.route('/stt', methods=['POST'])
+def speech_to_text():
+    """Transcribe audio to text - uses mode-specific provider
+    
+    Cloud mode: OpenAI Whisper API
+    Local mode: faster-whisper (local)
+    
+    Accepts: multipart/form-data with 'audio' file
+    Returns: { ok: true, text: "transcribed text" }
+    """
+    print(f"[STT] /api/stt endpoint hit", flush=True)
+    
+    if 'audio' not in request.files:
+        return jsonify({'ok': False, 'error': 'No audio file provided'}), 400
+    
+    audio_file = request.files['audio']
+    mode = request.form.get('mode')
+    print(f"[STT] Received audio, mode from form: {mode}", flush=True)
+    
+    try:
+        from ..config import load_jarvis_config, get_jarvis_setting
+        import tempfile
+        import subprocess
+        
+        # Get mode from form data or settings
+        if not mode:
+            settings = get_settings_manager()
+            mode = settings.mode
+        
+        # Force reload config for correct mode
+        load_jarvis_config(mode)
+        
+        provider = get_jarvis_setting('STT_PROVIDER', 'openai' if mode == 'cloud' else 'faster-whisper')
+        stt_model = get_jarvis_setting('STT_MODEL', 'whisper-1')
+        print(f"[STT] ========================================", flush=True)
+        print(f"[STT] Mode: {mode}, Provider: {provider}, Model: {stt_model}", flush=True)
+        
+        # Save uploaded audio to temp file
+        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
+            audio_file.save(tmp.name)
+            tmp_path = tmp.name
+        
+        print(f"[STT] Audio saved to: {tmp_path}", flush=True)
+        
+        try:
+            if provider == 'faster-whisper':
+                # Local: use faster-whisper via stt_local.py
+                print(f"[STT] Using LOCAL faster-whisper...", flush=True)
+                transcript = _transcribe_local(tmp_path)
+            else:
+                # Cloud: use OpenAI Whisper API
+                print(f"[STT] Using CLOUD OpenAI Whisper API...", flush=True)
+                transcript = _transcribe_openai(tmp_path)
+            
+            if not transcript:
+                return jsonify({'ok': False, 'error': 'No speech detected'}), 400
+            
+            print(f"[STT] ✓ Transcript: {transcript}", flush=True)
+            print(f"[STT] ========================================", flush=True)
+            return jsonify({'ok': True, 'text': transcript})
+            
+        finally:
+            # Clean up temp file
+            import os
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+                
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+def _transcribe_openai(audio_path: str) -> str:
+    """Transcribe audio using OpenAI Whisper API"""
+    import os
+    import requests
+    from ..config import get_jarvis_setting
+    
+    api_key = get_jarvis_setting('OPENAI_API_KEY', '')
+    model = get_jarvis_setting('STT_MODEL', 'whisper-1')
+    
+    if not api_key:
+        raise ValueError('OPENAI_API_KEY not configured')
+    
+    # Convert webm to wav if needed (OpenAI prefers wav/mp3)
+    wav_path = _convert_to_wav(audio_path)
+    
+    try:
+        url = "https://api.openai.com/v1/audio/transcriptions"
+        
+        with open(wav_path, 'rb') as f:
+            response = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                files={"file": (os.path.basename(wav_path), f, "audio/wav")},
+                data={"model": model},
+                timeout=30
+            )
+        
+        if response.status_code != 200:
+            raise ValueError(f"OpenAI STT error: {response.status_code} - {response.text}")
+        
+        result = response.json()
+        return result.get('text', '').strip()
+    finally:
+        # Clean up converted file
+        if wav_path != audio_path and os.path.exists(wav_path):
+            os.unlink(wav_path)
+
+
+def _transcribe_local(audio_path: str) -> str:
+    """Transcribe audio using local faster-whisper"""
+    import os
+    import subprocess
+    
+    # Convert webm to wav for faster-whisper
+    wav_path = _convert_to_wav(audio_path)
+    
+    try:
+        # Use the existing stt_local.py script
+        stt_script = JARVIS_ROOT / 'bin' / 'stt_local.py'
+        
+        result = subprocess.run(
+            ['python3', str(stt_script), wav_path],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            print(f"[STT] Local STT error: {result.stderr}", flush=True)
+            raise ValueError(f"Local STT failed: {result.stderr}")
+        
+        return result.stdout.strip()
+    finally:
+        # Clean up converted file
+        if wav_path != audio_path and os.path.exists(wav_path):
+            os.unlink(wav_path)
+
+
+def _convert_to_wav(input_path: str) -> str:
+    """Convert audio file to WAV format using ffmpeg"""
+    import subprocess
+    import tempfile
+    
+    # If already wav, return as-is
+    if input_path.lower().endswith('.wav'):
+        return input_path
+    
+    # Create output path
+    wav_path = input_path.rsplit('.', 1)[0] + '.wav'
+    
+    try:
+        subprocess.run([
+            'ffmpeg', '-y', '-i', input_path,
+            '-ar', '16000',  # 16kHz sample rate
+            '-ac', '1',      # Mono
+            '-f', 'wav',
+            wav_path
+        ], capture_output=True, check=True, timeout=30)
+        
+        return wav_path
+    except subprocess.CalledProcessError as e:
+        print(f"[STT] ffmpeg conversion failed: {e.stderr}", flush=True)
+        # Fall back to original file
+        return input_path
+    except FileNotFoundError:
+        print("[STT] ffmpeg not found, using original file", flush=True)
+        return input_path
+
+
 @api_bp.route('/tts', methods=['POST'])
 def text_to_speech():
     """Generate TTS audio from text - uses mode-specific provider"""

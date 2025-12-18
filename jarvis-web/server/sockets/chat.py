@@ -316,7 +316,7 @@ class ChatHandler:
                 if get_web_setting('audio.tts_enabled', False):
                     speech_text = result.get('speech', '')
                     if speech_text:
-                        audio_url = self._generate_tts(speech_text)
+                        audio_url = self._generate_tts(speech_text, mode=mode)
             except Exception as tts_err:
                 print(f"[CHAT] TTS generation failed: {tts_err}")
             
@@ -346,8 +346,8 @@ class ChatHandler:
                 'traceback': traceback.format_exc()
             }, room=session_id)
     
-    def _generate_tts(self, text: str) -> str:
-        """Generate TTS audio and return URL"""
+    def _generate_tts(self, text: str, mode: str = None) -> str:
+        """Generate TTS audio and return URL - mode-aware"""
         try:
             import requests
             from datetime import datetime
@@ -355,25 +355,34 @@ class ChatHandler:
             from ..services.settings_manager import get_settings_manager
             
             settings = get_settings_manager()
-            load_jarvis_config(settings.mode)
+            current_mode = mode or settings.mode
             
-            # Check for local TTS_URL first (Kokoro/OpenAI-compatible)
-            tts_url = get_jarvis_setting('TTS_URL', '')
-            provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs')
+            # Force reload config for correct mode
+            load_jarvis_config(current_mode)
+            
+            # Get provider FIRST - this determines which TTS to use
+            provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs' if current_mode == 'cloud' else 'kokoro')
+            print(f"[CHAT TTS] Mode: {current_mode}, Provider: {provider}")
             
             # Create output directory
             project_root = Path(__file__).parent.parent.parent.parent
-            tts_dir = project_root / 'audio' / settings.mode / 'tts'
+            tts_dir = project_root / 'audio' / current_mode / 'tts'
             tts_dir.mkdir(parents=True, exist_ok=True)
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             
-            if tts_url:
-                # Use local TTS (Kokoro or other OpenAI-compatible)
+            # Route based on provider (not TTS_URL existence)
+            if provider == 'kokoro':
+                # Local TTS via TTS_URL
+                tts_url = get_jarvis_setting('TTS_URL', '')
+                if not tts_url:
+                    print("[CHAT TTS] Kokoro provider but TTS_URL not set!")
+                    return None
                 audio_path = self._local_tts(text, tts_dir, timestamp, tts_url)
             elif provider == 'elevenlabs':
                 audio_path = self._elevenlabs_tts(text, tts_dir, timestamp)
             else:
+                # Default to OpenAI
                 audio_path = self._openai_tts(text, tts_dir, timestamp)
             
             if audio_path and audio_path.exists():

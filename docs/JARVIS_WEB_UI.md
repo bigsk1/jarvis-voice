@@ -1,6 +1,6 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.2)  
+> **Status**: MVP Complete (v1.3)  
 > **Last Updated**: December 17, 2025
 
 ---
@@ -52,14 +52,15 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Error handling | ✅ | Toast notifications, error messages |
 | Status updates | ✅ | Stream to browser, not local speaker |
 
-### Phase 3: Voice - PARTIAL ✅
+### Phase 3: Voice - COMPLETE ✅
 
 | Feature | Status | Details |
 |---------|--------|---------|
 | TTS playback | ✅ | Toggle audio, plays responses in browser |
-| Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro (via TTS_URL) ⭐ NEW |
+| Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro (via TTS_URL) |
 | Status TTS | ✅ | Status updates play as TTS when audio enabled |
-| Mic input | ⏳ | Planned - push-to-talk (STT_PROVIDER ready) |
+| **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send ⭐ NEW |
+| **Mode-aware STT** | ✅ | Cloud=OpenAI Whisper, Local=faster-whisper ⭐ NEW |
 | Wake word | ⏳ | Planned - browser-based VAD |
 
 ### Phase 4: Advanced - COMPLETE ✅
@@ -408,6 +409,40 @@ def text_to_speech():
         return call_cloud_tts(text)
 ```
 
+### STT (Push-to-Talk) - Mode-Aware
+
+STT provider is determined by the current mode's `.env` file:
+
+| Mode | Provider | Config |
+|------|----------|--------|
+| **Cloud** | OpenAI Whisper | `STT_PROVIDER=openai` + `STT_MODEL` in cloud.env |
+| **Local** | faster-whisper | `STT_PROVIDER=faster-whisper` in local.env |
+
+**User Flow:**
+1. Click mic button 🎤 → Blue "preparing" state
+2. Grant mic permission (first time only)
+3. Green "recording" state → Speak your message
+4. Click mic again → Yellow "processing" state
+5. Audio sent to `/api/stt` → Transcribed → Auto-sent as chat
+
+**Keyboard:** Press `Esc` to cancel recording
+
+```python
+# In api.py - mode-aware STT
+@api_bp.route('/stt', methods=['POST'])
+def speech_to_text():
+    mode = request.form.get('mode')
+    load_jarvis_config(mode)
+    
+    provider = get_jarvis_setting('STT_PROVIDER')
+    if provider == 'faster-whisper':
+        # Local: use stt_local.py script
+        return transcribe_local(audio_path)
+    else:
+        # Cloud: OpenAI Whisper API
+        return transcribe_openai(audio_path)
+```
+
 ---
 
 ## 🔍 Gaps: Web vs Terminal/TUI
@@ -417,7 +452,6 @@ def text_to_speech():
 | Gap | Why | Priority |
 |-----|-----|----------|
 | **Wake word detection** | Needs browser VAD (voice activity detection) | Medium |
-| **Push-to-talk STT** | STT_PROVIDER ready, need UI + browser mic access | High |
 | **Continuous voice loop** | listen → respond → listen cycle | Medium |
 | **Local speaker volume** | Hardware control is local-only | N/A (by design) |
 | **Audio device selection** | Browser uses system default | Low |
@@ -469,10 +503,11 @@ def text_to_speech():
 ## 📋 TODO / Gaps
 
 ### High Priority (Do First)
-- [ ] **Browser STT** - Push-to-talk with mic button
-  - STT_PROVIDER config is ready (faster-whisper/openai)
-  - Need: mic permission, audio recording, send to backend
-  - Backend: call local STT server or OpenAI Whisper API
+- [x] **Browser STT** - Push-to-talk with mic button ✅ DONE
+  - Click-to-toggle: click to start, click again to stop
+  - Mode-aware: Cloud=OpenAI Whisper, Local=faster-whisper
+  - Visual states: preparing (blue), recording (green), processing (yellow)
+  - Auto-sends transcript as chat message
 - [ ] **Proactive integration** - Show alerts/reminders in UI
   - Connect to jarvis-api WebSocket or poll endpoint
   - Desktop notifications when alert triggers
@@ -496,7 +531,7 @@ def text_to_speech():
 - [ ] Light theme option
 - [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
 
-### ✅ Recently Completed (v1.2)
+### ✅ Recently Completed (v1.3)
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
@@ -507,7 +542,9 @@ def text_to_speech():
 - [x] **Per-mode settings** - cloud/local sections in web_config.json
 - [x] **Dynamic Ollama models** - fetches from server in local mode
 - [x] **Clean mode switching** - resets Intelligence singleton
-- [x] **STT_PROVIDER config** - ready for push-to-talk
+- [x] **Push-to-talk STT** - Click-to-toggle voice input ⭐ NEW
+- [x] **Mode-aware STT** - Cloud=OpenAI Whisper, Local=faster-whisper ⭐ NEW
+- [x] **Recording visual states** - Blue/green/yellow feedback ⭐ NEW
 
 ---
 
@@ -566,12 +603,21 @@ def text_to_speech():
 - [ ] Settings → System shows correct .env values
 - [ ] No embedding dimension errors in console
 
-### TTS (Audio)
+### TTS (Audio Output)
 - [ ] Enable TTS, send message, hear response
 - [ ] Disable TTS, no audio plays
 - [ ] Status updates play TTS (when enabled)
 - [ ] Cloud mode: ElevenLabs voice
 - [ ] Local mode: Kokoro voice
+
+### STT (Voice Input)
+- [ ] Click mic, see blue "preparing" state
+- [ ] Grant permission, see green "recording" state
+- [ ] Speak, click mic again, see yellow "processing"
+- [ ] Transcript appears in input and auto-sends
+- [ ] Cloud mode: OpenAI Whisper (check server logs)
+- [ ] Local mode: faster-whisper (check server logs)
+- [ ] Press Esc to cancel recording
 
 ### Images
 - [ ] `generate_image` shows thumbnail inline
@@ -611,10 +657,10 @@ def text_to_speech():
 ## 🔮 Future Feature Ideas
 
 ### Voice (Phase 3 completion)
-- **Push-to-talk**: Hold button → record → release → transcribe → send
+- ✅ **Push-to-talk**: Click to record → speak → click to send (DONE)
 - **Continuous mode**: Optional always-listening with VAD
 - **Wake word**: "Hey Jarvis" in browser (privacy implications)
-- **Voice activity indicator**: Visual feedback while recording
+- **Auto-listen after response**: Automatically start recording after TTS finishes
 
 ### Proactive Integration
 - **Alert notifications**: Browser notification when alert triggers
@@ -676,4 +722,5 @@ def text_to_speech():
 *Created: December 2025*  
 *MVP Complete: December 17, 2025*  
 *v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*  
-*v1.2: Mode-aware TTS/STT, per-mode settings, clean mode switching - December 17, 2025*
+*v1.2: Mode-aware TTS, per-mode settings, clean mode switching - December 17, 2025*  
+*v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*

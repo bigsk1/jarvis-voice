@@ -13,8 +13,15 @@ class ChatUI {
     this.pendingTools = {};
     this.isProcessing = false;
     
+    // Voice recording state
+    this.mediaRecorder = null;
+    this.audioChunks = [];
+    this.isRecording = false;
+    this.recordingIndicator = null;
+    
     this._setupEventListeners();
     this._setupSocketListeners();
+    this._setupVoiceRecording();
   }
 
   /**
@@ -36,6 +43,303 @@ class ChatUI {
     this.inputField.addEventListener('input', () => {
       Utils.autoResize(this.inputField);
     });
+  }
+
+  /**
+   * Setup voice recording (click-to-toggle mode)
+   * Click once to start recording, click again to stop and send
+   */
+  _setupVoiceRecording() {
+    if (!this.micBtn) return;
+    
+    // Check for basic mediaDevices support (actual permission checked on first use)
+    const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    
+    if (!hasMediaDevices) {
+      console.warn('[Chat] MediaDevices API not available - likely private browsing or unsecured context');
+      this.micBtn.title = 'Voice input requires HTTPS or localhost (try a regular browser window)';
+      this.micBtn.style.opacity = '0.5';
+      this.micBtn.style.cursor = 'not-allowed';
+      
+      // Still add click handler to show helpful message
+      this.micBtn.addEventListener('click', () => {
+        Utils.toast('🎤 Voice input requires a secure context (HTTPS) or try a non-private browser window', 'warning', 5000);
+      });
+      return;
+    }
+    
+    // Click-to-toggle: click starts, click again stops
+    this.micBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (this.isRecording) {
+        this._stopRecording();
+      } else {
+        this._startRecording();
+      }
+    });
+    
+    // Keyboard support: Space to toggle recording
+    this.micBtn.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (this.isRecording) {
+          this._stopRecording();
+        } else {
+          this._startRecording();
+        }
+      }
+    });
+    
+    // Escape to cancel
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' && this.isRecording) {
+        this._cancelRecording();
+      }
+    });
+  }
+  
+  /**
+   * Start voice recording with ready indicator
+   */
+  async _startRecording() {
+    if (this.isRecording || this.isProcessing) return;
+    
+    // Show "preparing" state
+    this.micBtn.classList.add('preparing');
+    this.micBtn.title = 'Preparing...';
+    
+    try {
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000
+        }
+      });
+      
+      // Create MediaRecorder
+      const mimeType = this._getSupportedMimeType();
+      this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+      this.audioChunks = [];
+      this._recordingStream = stream; // Store for cleanup
+      
+      this.mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          this.audioChunks.push(e.data);
+        }
+      };
+      
+      this.mediaRecorder.onstop = () => {
+        // Stop all tracks
+        if (this._recordingStream) {
+          this._recordingStream.getTracks().forEach(track => track.stop());
+          this._recordingStream = null;
+        }
+        
+        // Process the recording
+        this._processRecording();
+      };
+      
+      // Brief delay to let user see "ready" state before recording
+      this.micBtn.classList.remove('preparing');
+      this.micBtn.classList.add('ready');
+      this.micBtn.title = 'Listening... Click again when done';
+      
+      // Show toast with instruction
+      Utils.toast('🎤 Listening... Click mic again when done', 'info', 3000);
+      
+      // Small delay so user knows to start speaking
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Start recording
+      this.mediaRecorder.start(100); // Collect data every 100ms
+      this.isRecording = true;
+      
+      // Update UI to recording state
+      this.micBtn.classList.remove('ready');
+      this.micBtn.classList.add('recording');
+      this._showRecordingIndicator();
+      
+      console.log('[Chat] Recording started');
+      
+    } catch (err) {
+      console.error('[Chat] Failed to start recording:', err);
+      this.micBtn.classList.remove('preparing', 'ready');
+      
+      if (err.name === 'NotAllowedError') {
+        Utils.toast('Microphone access denied. Click the lock icon in your browser address bar to allow.', 'error', 5000);
+      } else if (err.name === 'NotFoundError') {
+        Utils.toast('No microphone found', 'error');
+      } else {
+        Utils.toast('Failed to start recording: ' + err.message, 'error');
+      }
+      
+      this.micBtn.title = 'Click to record';
+    }
+  }
+  
+  /**
+   * Stop voice recording
+   */
+  _stopRecording() {
+    if (!this.isRecording || !this.mediaRecorder) return;
+    
+    console.log('[Chat] Stopping recording...');
+    this.isRecording = false;
+    this.mediaRecorder.stop();
+    
+    // Update UI
+    this.micBtn.classList.remove('recording', 'ready');
+    this.micBtn.classList.add('processing');
+    this.micBtn.title = 'Transcribing...';
+    this._hideRecordingIndicator();
+  }
+  
+  /**
+   * Cancel recording without sending
+   */
+  _cancelRecording() {
+    if (!this.isRecording) return;
+    
+    console.log('[Chat] Recording cancelled');
+    this.isRecording = false;
+    this.audioChunks = [];
+    
+    // Stop stream directly
+    if (this._recordingStream) {
+      this._recordingStream.getTracks().forEach(track => track.stop());
+      this._recordingStream = null;
+    }
+    
+    // Stop recorder without processing
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.onstop = () => {}; // Clear handler
+      this.mediaRecorder.stop();
+    }
+    
+    // Update UI
+    this.micBtn.classList.remove('recording', 'ready', 'preparing');
+    this.micBtn.title = 'Click to record';
+    this._hideRecordingIndicator();
+    
+    Utils.toast('Recording cancelled (Esc)', 'info');
+  }
+  
+  /**
+   * Process recorded audio - send to STT API
+   */
+  async _processRecording() {
+    this._hideRecordingIndicator();
+    
+    if (this.audioChunks.length === 0) {
+      console.log('[Chat] No audio recorded');
+      this._resetMicButton();
+      return;
+    }
+    
+    const audioBlob = new Blob(this.audioChunks, { type: this._getSupportedMimeType() });
+    console.log('[Chat] Audio blob size:', audioBlob.size, 'type:', audioBlob.type);
+    
+    // Check minimum size (very short recordings won't have speech)
+    if (audioBlob.size < 5000) {
+      console.log('[Chat] Recording too short');
+      Utils.toast('Recording too short - speak longer before clicking again', 'warning');
+      this._resetMicButton();
+      return;
+    }
+    
+    try {
+      // Send to STT API
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
+      formData.append('mode', window.jarvisSocket?.mode || 'cloud');
+      
+      console.log('[Chat] Sending audio for transcription...');
+      
+      const response = await fetch('/api/stt', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (data.ok && data.text) {
+        console.log('[Chat] Transcribed:', data.text);
+        
+        // Put text in input field
+        this.inputField.value = data.text;
+        Utils.autoResize(this.inputField);
+        
+        // Auto-send the message
+        this.sendMessage();
+        
+        Utils.toast('🎤 ' + Utils.truncate(data.text, 30), 'success', 2000);
+      } else {
+        console.warn('[Chat] STT failed:', data.error);
+        Utils.toast(data.error || 'Speech recognition failed', 'error');
+      }
+      
+    } catch (err) {
+      console.error('[Chat] STT error:', err);
+      Utils.toast('Failed to process audio: ' + err.message, 'error');
+    } finally {
+      this._resetMicButton();
+    }
+  }
+  
+  /**
+   * Reset mic button to default state
+   */
+  _resetMicButton() {
+    this.micBtn.classList.remove('recording', 'processing', 'ready', 'preparing');
+    this.micBtn.title = 'Click to record';
+    this.audioChunks = [];
+    this.mediaRecorder = null;
+    this._recordingStream = null;
+  }
+  
+  /**
+   * Show recording indicator bar at top of page
+   */
+  _showRecordingIndicator() {
+    if (this.recordingIndicator) return;
+    
+    this.recordingIndicator = document.createElement('div');
+    this.recordingIndicator.className = 'recording-indicator';
+    document.body.appendChild(this.recordingIndicator);
+  }
+  
+  /**
+   * Hide recording indicator
+   */
+  _hideRecordingIndicator() {
+    if (this.recordingIndicator) {
+      this.recordingIndicator.remove();
+      this.recordingIndicator = null;
+    }
+  }
+  
+  /**
+   * Get supported MIME type for MediaRecorder
+   */
+  _getSupportedMimeType() {
+    const types = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+      'audio/wav'
+    ];
+    
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        return type;
+      }
+    }
+    
+    return 'audio/webm'; // Default fallback
   }
 
   /**
