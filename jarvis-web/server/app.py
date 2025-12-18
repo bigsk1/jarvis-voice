@@ -21,6 +21,13 @@ from .config import load_web_config, get_web_setting, load_jarvis_config
 from .routes.api import api_bp
 from .sockets.chat import ChatHandler
 
+# Global to track startup mode (set in run_server)
+_startup_mode = 'cloud'
+
+def get_startup_mode():
+    """Get the mode the server was started with"""
+    return _startup_mode
+
 # Create Flask app
 app = Flask(__name__,
             static_folder=str(CLIENT_PATH),
@@ -67,7 +74,11 @@ def serve_static(path):
 
 @app.errorhandler(404)
 def not_found(e):
-    """Handle 404 - return index for SPA-like behavior"""
+    """Handle 404 - return index for SPA-like behavior, but not for API routes"""
+    from flask import request
+    # Don't return HTML for API routes - they should get proper 404
+    if request.path.startswith('/api/'):
+        return {'ok': False, 'error': 'Not found'}, 404
     return send_from_directory(CLIENT_PATH, 'index.html')
 
 
@@ -92,6 +103,9 @@ def create_app(mode: str = 'cloud'):
 
 def run_server(host: str = None, port: int = None, mode: str = 'cloud', debug: bool = False):
     """Run the web server"""
+    global _startup_mode
+    _startup_mode = mode  # Store for session defaults
+    
     config = load_web_config()
     
     host = host or get_web_setting('server.host', '0.0.0.0')

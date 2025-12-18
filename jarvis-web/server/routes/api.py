@@ -723,15 +723,17 @@ def serve_audio(filename):
     if ext not in allowed_extensions:
         abort(404)
     
-    # Check TTS directory first (cloud/tts)
-    tts_path = JARVIS_ROOT / 'audio' / 'cloud' / 'tts'
-    if tts_path.exists() and (tts_path / filename).exists():
-        return send_from_directory(str(tts_path), filename)
+    # Check TTS directories (both cloud and local)
+    for mode_dir in ['cloud', 'local']:
+        tts_path = JARVIS_ROOT / 'audio' / mode_dir / 'tts'
+        if tts_path.exists() and (tts_path / filename).exists():
+            return send_from_directory(str(tts_path), filename)
     
-    # Check recordings directory 
-    recordings_path = JARVIS_ROOT / 'audio' / 'cloud' / 'recordings'
-    if recordings_path.exists() and (recordings_path / filename).exists():
-        return send_from_directory(str(recordings_path), filename)
+    # Check recordings directories (both cloud and local)
+    for mode_dir in ['cloud', 'local']:
+        recordings_path = JARVIS_ROOT / 'audio' / mode_dir / 'recordings'
+        if recordings_path.exists() and (recordings_path / filename).exists():
+            return send_from_directory(str(recordings_path), filename)
     
     # Fallback to data/audio
     audio_path = JARVIS_ROOT / 'data' / 'audio'

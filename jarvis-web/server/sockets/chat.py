@@ -30,8 +30,13 @@ class ChatHandler:
         @self.socketio.on('connect')
         def handle_connect():
             session_id = request.sid
+            
+            # Use startup mode as default for new sessions
+            from ..app import get_startup_mode
+            default_mode = get_startup_mode()
+            
             self.sessions[session_id] = {
-                'mode': 'cloud',
+                'mode': default_mode,
                 'conversation_id': None,
                 'connected_at': time.time()
             }
@@ -45,10 +50,10 @@ class ChatHandler:
             
             emit('connected', {
                 'session_id': session_id,
-                'mode': 'cloud',
+                'mode': default_mode,
                 'tools_count': tool_service.get_tool_count()
             })
-            print(f"[WS] Client connected: {session_id}")
+            print(f"[WS] Client connected: {session_id} (default mode: {default_mode})")
         
         @self.socketio.on('disconnect')
         def handle_disconnect():

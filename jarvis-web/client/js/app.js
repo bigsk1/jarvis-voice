@@ -57,6 +57,13 @@ class JarvisApp {
       if (toolsCount) {
         toolsCount.textContent = `${data.tools_count} tools`;
       }
+      
+      // Sync saved mode with server if different
+      const savedMode = Utils.storage.get('mode', data.mode);
+      if (savedMode !== data.mode) {
+        console.log(`[App] Syncing saved mode (${savedMode}) with server`);
+        this.socket.setMode(savedMode);
+      }
     });
     
     this.socket.on('connectionError', (data) => {
