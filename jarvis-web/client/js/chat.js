@@ -618,9 +618,11 @@ class ChatUI {
     let toolCardsHtml = '';
     if (toolsUsed.length > 0) {
       toolCardsHtml = '<div class="tool-cards">';
+      // Tool results are in data.data (nested), not data directly
+      const toolResultsData = data.data || data || {};
       for (const tool of toolsUsed) {
         const toolData = this.pendingTools[tool] || {};
-        const toolResult = data[tool] || toolData.result || {};
+        const toolResult = toolResultsData[tool] || toolData.result || {};
         toolCardsHtml += this._createToolCardHtml(
           tool,
           toolData.status || 'success',

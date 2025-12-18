@@ -776,7 +776,11 @@ class JarvisApp {
     // Add each message
     for (const msg of conversation.messages || []) {
       if (msg.role === 'user') {
-        this.chat.addUserMessage(msg.content);
+        // Check if user message had an attached image
+        const imageData = msg.data && msg.data.image_url 
+          ? { url: msg.data.image_url } 
+          : null;
+        this.chat.addUserMessage(msg.content, imageData);
       } else if (msg.role === 'assistant') {
         // Pass as separate parameters: text, toolsUsed, data
         this.chat.addAssistantMessage(
