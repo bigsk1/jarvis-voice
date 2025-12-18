@@ -1,6 +1,6 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.3)  
+> **Status**: MVP Complete (v1.4)  
 > **Last Updated**: December 17, 2025
 
 ---
@@ -74,10 +74,12 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Reset to defaults | ✅ | Button to clear web overrides for current mode |
 | Dynamic LLM switching | ✅ | Change provider/model on-the-fly, takes effect immediately |
 | MCP tool discovery | ✅ | Reads from memory_db, shows in Tools tab |
-| System config view | ✅ | Mode-specific .env values in Settings → System ⭐ NEW |
-| Per-mode settings | ✅ | `cloud`/`local` sections in web_config.json ⭐ NEW |
-| Dynamic Ollama models | ✅ | Fetches available models from Ollama server ⭐ NEW |
-| Clean mode switching | ✅ | Resets Intelligence singleton on mode change ⭐ NEW |
+| System config view | ✅ | Mode-specific .env values in Settings → System |
+| Per-mode settings | ✅ | `cloud`/`local` sections in web_config.json |
+| Dynamic Ollama models | ✅ | Fetches available models from Ollama server |
+| Clean mode switching | ✅ | Resets Intelligence singleton on mode change |
+| **Proactive alerts** | ✅ | Polls jarvis-api for alerts/reminders ⭐ NEW |
+| **Browser notifications** | ✅ | Notifications API for new alerts/reminders ⭐ NEW |
 | Tool enable/disable | ⏳ | Planned (per-tool granular control) |
 
 ---
@@ -443,6 +445,33 @@ def speech_to_text():
         return transcribe_openai(audio_path)
 ```
 
+### Proactive Notifications
+
+The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered reminders:
+
+**What Gets Notified:**
+- **Alerts**: From Uptime Kuma, Coolify, cron scripts, UniFi Protect, etc.
+- **Reminders**: Scheduled reminders, Google Calendar synced events
+
+**How It Works:**
+1. Web UI polls every 10 seconds:
+   - `GET /api/alerts?status=pending`
+   - `GET /api/reminders?status=triggered`
+2. New items broadcast to all connected clients
+3. Browser notification shown (if permission granted)
+4. TTS plays the alert/reminder (if audio enabled)
+
+**Notification Panel:**
+- 🔔 Badge in header shows pending count
+- Click badge to open notification panel
+- Click ✓ to acknowledge items
+- Items are removed from both jarvis-api and UI
+
+**Requirements:**
+- `jarvis-api` must be running for notifications to work
+- Grant browser notification permission when prompted
+- Works with both cloud and local modes (same DB per mode)
+
 ---
 
 ## 🔍 Gaps: Web vs Terminal/TUI
@@ -456,7 +485,6 @@ def speech_to_text():
 | **Local speaker volume** | Hardware control is local-only | N/A (by design) |
 | **Audio device selection** | Browser uses system default | Low |
 | **Memory sync on startup** | Terminal does auto-sync, web doesn't | Low |
-| **Proactive notifications** | Alerts/reminders don't push to web UI | High |
 | **Canvas viewer integration** | Canvas runs separately on :8890 | Medium |
 
 ### What Terminal/TUI CAN'T Do
@@ -508,9 +536,11 @@ def speech_to_text():
   - Mode-aware: Cloud=OpenAI Whisper, Local=faster-whisper
   - Visual states: preparing (blue), recording (green), processing (yellow)
   - Auto-sends transcript as chat message
-- [ ] **Proactive integration** - Show alerts/reminders in UI
-  - Connect to jarvis-api WebSocket or poll endpoint
-  - Desktop notifications when alert triggers
+- [x] **Proactive integration** - Show alerts/reminders in UI ✅ DONE
+  - Polls jarvis-api every 10 seconds for pending alerts/triggered reminders
+  - Browser notifications (Notifications API) for new items
+  - TTS playback when audio is enabled
+  - Notification panel with acknowledge buttons
 - [ ] **Test mode switching thoroughly**
   - Cloud→Local: TTS should use Kokoro
   - Local→Cloud: TTS should use ElevenLabs
@@ -531,7 +561,7 @@ def speech_to_text():
 - [ ] Light theme option
 - [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
 
-### ✅ Recently Completed (v1.3)
+### ✅ Recently Completed (v1.4)
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
@@ -542,9 +572,13 @@ def speech_to_text():
 - [x] **Per-mode settings** - cloud/local sections in web_config.json
 - [x] **Dynamic Ollama models** - fetches from server in local mode
 - [x] **Clean mode switching** - resets Intelligence singleton
-- [x] **Push-to-talk STT** - Click-to-toggle voice input ⭐ NEW
-- [x] **Mode-aware STT** - Cloud=OpenAI Whisper, Local=faster-whisper ⭐ NEW
-- [x] **Recording visual states** - Blue/green/yellow feedback ⭐ NEW
+- [x] **Push-to-talk STT** - Click-to-toggle voice input
+- [x] **Mode-aware STT** - Cloud=OpenAI Whisper, Local=faster-whisper
+- [x] **Recording visual states** - Blue/green/yellow feedback
+- [x] **Proactive notifications** - Polls jarvis-api for alerts/reminders ⭐ NEW
+- [x] **Browser notifications** - Notifications API integration ⭐ NEW
+- [x] **Notification panel** - View/acknowledge alerts & reminders ⭐ NEW
+- [x] **Local audio fix** - Now serves from audio/local/tts too ⭐ NEW
 
 ---
 
@@ -663,8 +697,8 @@ def speech_to_text():
 - **Auto-listen after response**: Automatically start recording after TTS finishes
 
 ### Proactive Integration
-- **Alert notifications**: Browser notification when alert triggers
-- **Reminder popup**: Modal when reminder fires
+- ✅ **Alert notifications**: Browser notification when alert triggers (DONE)
+- ✅ **Reminder popup**: Browser notification when reminder fires (DONE)
 - **Follow-up prompts**: "Your task is ready, want to review?"
 - **Health status**: Show API/services health in header
 
@@ -723,4 +757,5 @@ def speech_to_text():
 *MVP Complete: December 17, 2025*  
 *v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*  
 *v1.2: Mode-aware TTS, per-mode settings, clean mode switching - December 17, 2025*  
-*v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*
+*v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*  
+*v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*
