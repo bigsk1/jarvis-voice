@@ -359,9 +359,43 @@ class ChatHandler:
                 )
                 
                 if vision_result:
-                    # Prepend vision analysis to the message
-                    message = f"[Image Analysis: {vision_result}]\n\nUser's question: {message}"
-                    print(f"[CHAT] Vision analysis complete, enhanced message ready")
+                    # Check if this is a simple image question (no action requested)
+                    simple_question = self._is_simple_image_question(message)
+                    
+                    if simple_question:
+                        # For simple image questions, return vision result directly
+                        # without going through orchestrator tool loop
+                        print(f"[CHAT] Simple image question - returning vision result directly")
+                        
+                        # Create a short spoken response from the vision analysis
+                        short_response = self._summarize_vision_for_speech(vision_result, message, mode)
+                        
+                        # Save to conversation
+                        from ..services.conversation_store import get_conversation_store
+                        store = get_conversation_store()
+                        store.add_message(
+                            conversation_id, 'assistant', short_response,
+                            tools_used=[], 
+                            data={'vision_analysis': vision_result}
+                        )
+                        
+                        # Send response
+                        self.socketio.emit('chat:response', {
+                            'text': short_response,
+                            'message_id': message_id,
+                            'conversation_id': conversation_id,
+                            'tools_used': [],
+                            'data': {'vision_analysis': vision_result},
+                            'duration_ms': int((time.time() - start_time) * 1000)
+                        }, room=session_id)
+                        
+                        # Generate TTS
+                        self._generate_tts(short_response, mode, session_id)
+                        return
+                    else:
+                        # Complex request - pass to orchestrator with vision context
+                        message = f"[Image Analysis: {vision_result}]\n\nUser's request: {message}\n\nNote: The image has already been analyzed above. Use this analysis to complete the user's request."
+                        print(f"[CHAT] Complex image request - passing to orchestrator with vision context")
             
             # Create orchestrator instance with overrides
             print(f"[CHAT] Creating orchestrator (mode={mode})...")
@@ -628,6 +662,158 @@ class ChatHandler:
             f.write(response.content)
         
         return output_path
+
+    def _is_simple_image_question(self, message: str) -> bool:
+        """
+        Check if the user's message is a simple image identification question
+        that doesn't require tools (just vision analysis + response).
+        """
+        message_lower = message.lower().strip()
+        
+        # Simple question patterns - just asking about the image
+        simple_patterns = [
+            'what is this',
+            'what\'s this',
+            'what am i looking at',
+            'what do you see',
+            'describe this',
+            'describe the image',
+            'what is in this',
+            'what\'s in this',
+            'tell me about this',
+            'analyze this',
+            'what does this show',
+            'identify this',
+            'what kind of',
+            'what type of',
+            'who is this',
+            'where is this',
+            'when was this',
+            'explain this',
+            'what happened here',
+        ]
+        
+        # Action keywords that require orchestrator
+        action_keywords = [
+            'create', 'make', 'generate', 'draw', 'save', 'store', 
+            'remember', 'canvas', 'email', 'send', 'search for',
+            'find similar', 'look up', 'research', 'schedule',
+            'remind', 'add to', 'put in', 'write', 'similar',
+            'like this', 'based on this', 'using this'
+        ]
+        
+        # If any action keyword is present, it's not simple
+        for keyword in action_keywords:
+            if keyword in message_lower:
+                return False
+        
+        # If it matches a simple pattern, it's simple
+        for pattern in simple_patterns:
+            if pattern in message_lower:
+                return True
+        
+        # Short messages about images are usually simple
+        if len(message.split()) <= 8:
+            return True
+        
+        return False
+
+    def _summarize_vision_for_speech(self, vision_result: str, question: str, mode: str) -> str:
+        """
+        Create a short, spoken-friendly response from the vision analysis.
+        Uses LLM to summarize if needed.
+        """
+        from ..config import get_jarvis_setting, load_jarvis_config
+        import requests
+        
+        load_jarvis_config(mode)
+        
+        # If vision result is already short, use it directly
+        if len(vision_result.split()) <= 50:
+            return vision_result
+        
+        # Use LLM to create a short spoken summary
+        try:
+            if mode == 'local':
+                base_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+                model = get_jarvis_setting('OLLAMA_MODEL', 'mistral')
+                
+                response = requests.post(
+                    f"{base_url}/api/generate",
+                    json={
+                        "model": model,
+                        "prompt": f"""Summarize this image description in 1-2 sentences for voice output (max 30 words).
+Be direct and conversational.
+
+Image analysis: {vision_result}
+User asked: {question}
+
+Short spoken response:""",
+                        "stream": False
+                    },
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    return response.json().get('response', vision_result[:200])
+            else:
+                # Cloud mode - use configured LLM
+                provider = get_jarvis_setting('LLM_PROVIDER', 'xai')
+                
+                if provider == 'xai':
+                    api_key = get_jarvis_setting('XAI_API_KEY', '')
+                    model = get_jarvis_setting('XAI_MODEL', 'grok-3-mini-fast-latest')
+                    url = "https://api.x.ai/v1/chat/completions"
+                elif provider == 'anthropic':
+                    api_key = get_jarvis_setting('ANTHROPIC_API_KEY', '')
+                    model = get_jarvis_setting('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514')
+                    url = "https://api.anthropic.com/v1/messages"
+                else:
+                    api_key = get_jarvis_setting('OPENAI_API_KEY', '')
+                    model = get_jarvis_setting('OPENAI_MODEL', 'gpt-4o-mini')
+                    url = "https://api.openai.com/v1/chat/completions"
+                
+                if not api_key:
+                    return vision_result[:200]
+                
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                
+                if provider == 'anthropic':
+                    headers["x-api-key"] = api_key
+                    headers["anthropic-version"] = "2023-06-01"
+                    del headers["Authorization"]
+                    
+                    payload = {
+                        "model": model,
+                        "max_tokens": 100,
+                        "messages": [{
+                            "role": "user",
+                            "content": f"Summarize this image description in 1-2 sentences for voice output (max 30 words). Be direct.\n\nImage: {vision_result}\nQuestion: {question}"
+                        }]
+                    }
+                else:
+                    payload = {
+                        "model": model,
+                        "messages": [{
+                            "role": "user",
+                            "content": f"Summarize this image description in 1-2 sentences for voice output (max 30 words). Be direct.\n\nImage: {vision_result}\nQuestion: {question}"
+                        }],
+                        "max_tokens": 100
+                    }
+                
+                response = requests.post(url, json=payload, headers=headers, timeout=30)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if provider == 'anthropic':
+                        return result.get('content', [{}])[0].get('text', vision_result[:200])
+                    else:
+                        return result.get('choices', [{}])[0].get('message', {}).get('content', vision_result[:200])
+        except Exception as e:
+            print(f"[CHAT] Error summarizing vision: {e}")
+        
+        # Fallback - truncate
+        return vision_result[:200] + "..." if len(vision_result) > 200 else vision_result
 
 
     def _process_vision(self, image_base64: str, prompt: str, mode: str) -> str:

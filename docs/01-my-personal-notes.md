@@ -5,6 +5,10 @@ add print button to canvas pages
 expand canvas more to send commands to jarvis? start and end wake word? 
 audio on web isnt saved for mic like it is for terminal/tui/jarvis it seems in audio/cloud/mic
 
+Side Quests noted for later:
+Expand full response - Click to expand the full detailed LLM analysis (currently only shows shortened speech version)
+Canvas folder structure - Left sidebar needs folder/file explorer drill-down instead of flat list
+
 ### Notes
 
 jarvis services needs to start manually
