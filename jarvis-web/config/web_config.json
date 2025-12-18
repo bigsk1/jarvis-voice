@@ -20,7 +20,7 @@
     "stt_enabled": false
   },
   "defaults": {
-    "mode": "local"
+    "mode": "cloud"
   },
   "cloud": {
     "llm_provider": "xai",

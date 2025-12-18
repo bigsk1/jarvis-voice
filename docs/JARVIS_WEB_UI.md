@@ -1,6 +1,6 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.4)  
+> **Status**: MVP Complete (v1.5)  
 > **Last Updated**: December 17, 2025
 
 ---
@@ -78,8 +78,11 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Per-mode settings | ✅ | `cloud`/`local` sections in web_config.json |
 | Dynamic Ollama models | ✅ | Fetches available models from Ollama server |
 | Clean mode switching | ✅ | Resets Intelligence singleton on mode change |
-| **Proactive alerts** | ✅ | Polls jarvis-api for alerts/reminders ⭐ NEW |
-| **Browser notifications** | ✅ | Notifications API for new alerts/reminders ⭐ NEW |
+| Proactive alerts | ✅ | Polls jarvis-api for alerts/reminders |
+| Browser notifications | ✅ | Notifications API for new alerts/reminders |
+| **Image upload** | ✅ | Drag-drop/paste/click to attach images ⭐ NEW |
+| **Vision analysis** | ✅ | Mode-aware: Cloud=Grok/Claude, Local=llava ⭐ NEW |
+| **Expand details button** | ✅ | Show full LLM response before voice shortening ⭐ NEW |
 | Tool enable/disable | ⏳ | Planned (per-tool granular control) |
 
 ---
@@ -445,6 +448,71 @@ def speech_to_text():
         return transcribe_openai(audio_path)
 ```
 
+### Image Upload & Vision Analysis (Built-in, NOT a tool)
+
+The web UI has **native image upload** - this is NOT a tool call, it's built directly into the chat:
+
+**How to Upload:**
+1. **Click** the 📎 button next to input
+2. **Drag-drop** an image onto the chat
+3. **Paste** from clipboard (Ctrl+V)
+
+**What Happens:**
+1. Image is resized to max 1024px (keeps base64 small for socket)
+2. Image is saved to `jarvis-web/data/uploads/`
+3. Vision model analyzes the image (mode-aware)
+4. For simple questions ("what is this?") → returns analysis directly
+5. For complex requests ("save to canvas") → passes analysis to orchestrator
+
+**Vision Models (Mode-Aware):**
+
+| Mode | Provider | Model | Config |
+|------|----------|-------|--------|
+| **Cloud** | xAI Grok | `VISION_MODEL` | cloud.env |
+| **Cloud** | Anthropic | Claude with vision | cloud.env |
+| **Cloud** | OpenAI | GPT-4o | cloud.env |
+| **Local** | Ollama | `OLLAMA_VISION_MODEL` | local.env (default: llava:latest) |
+
+**Simple vs Complex Questions:**
+
+The system detects if you're asking a simple question or want actions:
+
+| Question Type | Example | Behavior |
+|---------------|---------|----------|
+| **Simple** | "What is this?" "Describe this" | Vision → Summary → Direct response (no tools) |
+| **Complex** | "Save this to canvas" "Create similar" | Vision → Orchestrator → Tool calls |
+
+Simple patterns: "what is this", "describe", "identify", "who/where/when is this"
+Action keywords: "create", "save", "canvas", "generate", "similar", "search"
+
+**Uploaded Images Persist:**
+- Saved in conversation history with `image_url`
+- Thumbnails display when you reload the conversation
+- Vision analysis stored in `data.vision_analysis` for expand details
+
+---
+
+### Expand Details Button
+
+Each assistant message may have a **"▶ Show details"** button to reveal the full LLM response:
+
+**When it appears:**
+- Response was shortened for voice output (casual/auto mode)
+- Image was analyzed (full vision analysis vs short summary)
+- Multi-tool complex results condensed for speech
+
+**When it won't appear:**
+- Simple Q&A where full response = speech
+- Detailed mode (no shortening needed)
+- Response is already short
+
+**What it shows:**
+- `raw_llm_response`: Original LLM output before voice formatting
+- `vision_analysis`: Full image description before summarization
+- Tool results and reasoning that didn't make it to speech
+
+---
+
 ### Proactive Notifications
 
 The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered reminders:
@@ -561,28 +629,88 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - [ ] Light theme option
 - [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
 
-### ✅ Recently Completed (v1.4)
+### ✅ Recently Completed (v1.5)
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
 - [x] System config tab (mode-specific .env values)
 - [x] Conversation history limit setting
 - [x] Config cache reload on settings save
-- [x] **Mode-aware TTS** - Cloud=ElevenLabs, Local=Kokoro
-- [x] **Per-mode settings** - cloud/local sections in web_config.json
-- [x] **Dynamic Ollama models** - fetches from server in local mode
-- [x] **Clean mode switching** - resets Intelligence singleton
-- [x] **Push-to-talk STT** - Click-to-toggle voice input
-- [x] **Mode-aware STT** - Cloud=OpenAI Whisper, Local=faster-whisper
-- [x] **Recording visual states** - Blue/green/yellow feedback
-- [x] **Proactive notifications** - Polls jarvis-api for alerts/reminders ⭐ NEW
-- [x] **Browser notifications** - Notifications API integration ⭐ NEW
-- [x] **Notification panel** - View/acknowledge alerts & reminders ⭐ NEW
-- [x] **Local audio fix** - Now serves from audio/local/tts too ⭐ NEW
+- [x] Mode-aware TTS - Cloud=ElevenLabs, Local=Kokoro
+- [x] Per-mode settings - cloud/local sections in web_config.json
+- [x] Dynamic Ollama models - fetches from server in local mode
+- [x] Clean mode switching - resets Intelligence singleton
+- [x] Push-to-talk STT - Click-to-toggle voice input
+- [x] Mode-aware STT - Cloud=OpenAI Whisper, Local=faster-whisper
+- [x] Recording visual states - Blue/green/yellow feedback
+- [x] Proactive notifications - Polls jarvis-api for alerts/reminders
+- [x] Browser notifications - Notifications API integration
+- [x] Notification panel - View/acknowledge alerts & reminders
+- [x] Local audio fix - Now serves from audio/local/tts too
+- [x] **Image upload** - Drag-drop/paste/click, auto-resize to 1024px ⭐ NEW
+- [x] **Mode-aware vision** - Cloud=Grok/Claude, Local=llava ⭐ NEW
+- [x] **Smart image questions** - Simple questions bypass orchestrator ⭐ NEW
+- [x] **Expand details button** - Show full LLM response, tool results ⭐ NEW
+- [x] **Tool cards show results** - Fixed data.data nesting bug ⭐ NEW
+- [x] **Native search prompt** - Tells LLM to prefer built-in search ⭐ NEW
+- [x] **Config loading fix** - load_jarvis_config before Orchestrator ⭐ NEW
 
 ---
 
 ## ⚠️ Known Issues & Gotchas
+
+### 🔥 CRITICAL: Config Loading Order
+
+**The #1 source of "it works in terminal but not web" bugs!**
+
+**How Terminal Works:**
+```python
+# jarvis command loads config FIRST, before any imports
+load_config('cloud')  # Line 25 - BEFORE orchestrator import
+# Then imports happen
+from orchestrator_v2 import Orchestrator
+```
+
+**How Web Works:**
+```python
+# jarvis-web imports modules, THEN loads config per-request
+from orchestrator_v2 import Orchestrator  # Imports happen at startup
+# Later, in _process_message:
+load_jarvis_config(mode)  # Must be called BEFORE creating Orchestrator
+orchestrator = Orchestrator(mode=mode)
+```
+
+**The Gotcha:**
+If `load_jarvis_config(mode)` is NOT called before the Orchestrator is created, settings like `XAI_SEARCH`, `LLM_PROVIDER`, `TTS_PROVIDER` etc. will have WRONG values (stale from previous mode or missing).
+
+**Always ensure this order in web handlers:**
+1. `load_jarvis_config(mode)` - Load .env for current mode
+2. Import/create Orchestrator
+3. Process message
+
+**Debug tip:** Add logging to verify config loaded correctly:
+```python
+xai_search = get_jarvis_setting('XAI_SEARCH', 'false')
+print(f"[CHAT] Config loaded: XAI_SEARCH={xai_search}")
+```
+
+---
+
+### Native Search (XAI_SEARCH / ANTHROPIC_SEARCH)
+
+**Gotcha:** Even when `XAI_SEARCH=true`, Grok might use `mcp_fetch` instead of native search!
+
+**Why:** Grok in "auto" mode sees both options and might prefer tools.
+
+**Fix:** The router now adds system prompt instruction when native search is enabled:
+```
+NATIVE SEARCH ENABLED:
+Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
+```
+
+**Verify it's working:** Check for `tools=[]` in response (no tool calls = native search used).
+
+---
 
 ### Mode Switching
 | Issue | Workaround |
@@ -590,6 +718,7 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 | Embedding dimension mismatch after switch | Page refresh resets all singletons cleanly |
 | Intelligence insights from wrong mode | Fixed in v1.2 (singleton reset), but refresh is safer |
 | Settings show stale values | Click Settings tab again to reload |
+| Config not loaded for new mode | Fixed - `load_jarvis_config(mode)` now called before Orchestrator |
 
 ### TTS
 | Issue | Workaround |
@@ -653,11 +782,23 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - [ ] Local mode: faster-whisper (check server logs)
 - [ ] Press Esc to cancel recording
 
-### Images
+### Images (Generated)
 - [ ] `generate_image` shows thumbnail inline
 - [ ] Click thumbnail opens lightbox
 - [ ] Download button works
 - [ ] Image in tool card expandable section
+
+### Images (Uploaded)
+- [ ] Click 📎 button opens file picker
+- [ ] Drag-drop image onto chat area works
+- [ ] Paste image (Ctrl+V) works
+- [ ] Preview appears before sending
+- [ ] "What is this?" uses vision model, no tools
+- [ ] "Save to canvas" uses vision + canvas tool
+- [ ] Cloud mode: Grok/Claude vision works
+- [ ] Local mode: llava vision works
+- [ ] Large images auto-resize to 1024px
+- [ ] Uploaded images persist in conversation history
 
 ### Conversations
 - [ ] New chat clears messages
@@ -672,6 +813,14 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - [ ] Reset to defaults clears overrides
 - [ ] Block a tool, verify it's not called
 - [ ] Unblock a tool, verify it works again
+
+### Expand Details
+- [ ] Tool-using response shows "▶ Show details" button
+- [ ] Click expands to show full LLM response
+- [ ] Click again collapses
+- [ ] Simple Q&A (no tools) may not show button (response = speech)
+- [ ] Vision analysis shows full description in details
+- [ ] Details persist when reloading conversation
 
 ### Tools Tab
 - [ ] Shows all local tools
@@ -709,10 +858,29 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - **Manual insight creation**: Teach Jarvis directly via UI
 
 ### Developer Features
+- **Live terminal panel**: Stream server stdout/stderr to collapsible panel in UI
 - **Tool logs viewer**: See recent tool executions
-- **LLM call inspector**: View full prompts/responses
+- **LLM call inspector**: View full prompts/responses (tail llm-calls log)
 - **Cost tracker**: Daily/weekly/monthly spend
 - **A/B test viewer**: See prompt evolution experiments
+
+### Terminal/Log Viewer Concept
+```
+┌─────────────────────────────────────┐
+│  Chat Area                          │
+│                                     │
+├─────────────────────────────────────┤
+│ ▼ Server Logs  [LLM Calls] [Tools]  │ ← Collapsible panel
+│ [CHAT] Processing message...        │
+│ [VISION] Using Ollama: llava        │
+│ [TTS] Mode: cloud, Provider: 11labs │
+│ INFO:httpx:POST https://api.x.ai... │
+└─────────────────────────────────────┘
+```
+- Stream via WebSocket or tail log files
+- Tabs: Server output, LLM calls, Tool execution
+- Searchable, filterable
+- Hidden by default, power user feature
 
 ### UX Improvements
 - **Keyboard shortcuts**: Ctrl+Enter send, Ctrl+N new chat, etc.
@@ -758,4 +926,5 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 *v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*  
 *v1.2: Mode-aware TTS, per-mode settings, clean mode switching - December 17, 2025*  
 *v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*  
-*v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*
+*v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*  
+*v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*

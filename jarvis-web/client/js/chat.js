@@ -676,8 +676,10 @@ class ChatUI {
     const parsedText = Utils.parseMarkdown(text);
     
     // Build expandable details section
+    // raw_llm_response is inside data.data (nested), also check top level for loaded conversations
     let detailsHtml = '';
-    const rawResponse = data.raw_llm_response || data.vision_analysis || '';
+    const innerData = data.data || data || {};
+    const rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
     const hasDetails = rawResponse && rawResponse !== text && rawResponse.length > text.length;
     
     if (hasDetails) {

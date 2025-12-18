@@ -406,11 +406,33 @@ RESPONSE STYLE: {response_style.upper()}
 
 """
         
+        # Check for native search capabilities
+        native_search_note = ""
+        xai_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
+        anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
+        provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "")
+        
+        if xai_search and provider_type == "xai":
+            native_search_note = """
+NATIVE SEARCH ENABLED:
+You have built-in real-time web/X search. For current info, news, prices, events:
+- Use your NATIVE SEARCH (automatic) - DO NOT use mcp_fetch, brave_search, or other external search tools
+- Your search results are grounded and cited automatically
+- Only use external tools when native search is insufficient or for non-search tasks
+"""
+        elif anthropic_search and provider_type == "anthropic":
+            native_search_note = """
+NATIVE SEARCH ENABLED:
+You have built-in web search capability. For current info, news, prices, events:
+- Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search, or other external search tools
+- Only use external tools when native search is insufficient or for non-search tasks
+"""
+        
         time_prefix = f"""CURRENT DATE AND TIME:
 Today is {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p %Z')}.
 Use this for any time-sensitive queries, web searches, or temporal references.
 When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
-{style_note}"""
+{native_search_note}{style_note}"""
         return time_prefix + self._system_prompt_base
     
     def _create_provider(self):
