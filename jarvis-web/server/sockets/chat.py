@@ -363,6 +363,15 @@ class ChatHandler:
                 )
                 
                 if vision_result:
+                    # Auto-stash the uploaded image for future tool access
+                    stash_info = self._auto_stash_image(
+                        image_data, 
+                        vision_result, 
+                        mode
+                    )
+                    if stash_info:
+                        print(f"[CHAT] Auto-stashed image: {stash_info.get('stash_ref')}")
+                    
                     # Check if this is a simple image question (no action requested)
                     simple_question = self._is_simple_image_question(message)
                     print(f"[CHAT] Is simple question: {simple_question}")
@@ -378,13 +387,18 @@ class ChatHandler:
                             short_response = self._summarize_vision_for_speech(vision_result, message, mode)
                             print(f"[CHAT] Short response: {short_response[:100]}...")
                             
+                            # Build response data with stash info
+                            response_data = {'vision_analysis': vision_result}
+                            if stash_info:
+                                response_data['stash'] = stash_info
+                            
                             # Save to conversation
                             from ..services.conversation_store import get_conversation_store
                             store = get_conversation_store()
                             store.add_message(
                                 conversation_id, 'assistant', short_response,
                                 tools_used=[], 
-                                data={'vision_analysis': vision_result}
+                                data=response_data
                             )
                             print(f"[CHAT] Saved to conversation")
                             
@@ -394,7 +408,7 @@ class ChatHandler:
                                 'message_id': message_id,
                                 'conversation_id': conversation_id,
                                 'tools_used': [],
-                                'data': {'vision_analysis': vision_result},
+                                'data': response_data,
                                 'duration_ms': int((time.time() - start_time) * 1000)
                             }, room=session_id)
                             print(f"[CHAT] Emitted response")
@@ -410,7 +424,12 @@ class ChatHandler:
                             # Fall through to orchestrator
                     else:
                         # Complex request - pass to orchestrator with vision context
-                        message = f"[Image Analysis: {vision_result}]\n\nUser's request: {message}\n\nNote: The image has already been analyzed above. Use this analysis to complete the user's request."
+                        # Include stash reference so LLM knows where the image is
+                        stash_note = ""
+                        if stash_info:
+                            stash_note = f"\n\nThe image has been auto-stashed at: {stash_info.get('stash_ref')} (space_id={stash_info.get('space_id')}, file_id={stash_info.get('file_id')}). You can use this reference with the stash tool if needed."
+                        
+                        message = f"[Image Analysis: {vision_result}]{stash_note}\n\nUser's request: {message}\n\nNote: The image has already been analyzed above. Use this analysis to complete the user's request."
                         print(f"[CHAT] Complex image request - passing to orchestrator with vision context")
             
             # Create orchestrator instance with overrides
@@ -689,6 +708,114 @@ class ChatHandler:
             f.write(response.content)
         
         return output_path
+
+    def _auto_stash_image(self, image_data: dict, vision_analysis: str, mode: str) -> dict:
+        """
+        Auto-stash uploaded image for future tool access.
+        Also adds to memory_db as stash_artifact for cross-session recall.
+        
+        Returns stash info dict or None on failure.
+        """
+        from datetime import datetime
+        from pathlib import Path
+        import base64
+        import shutil
+        
+        try:
+            # Get the uploaded image path
+            image_url = image_data.get('url', '')
+            image_filename = image_data.get('filename', '')
+            
+            if not image_url or not image_filename:
+                print("[STASH] No image URL/filename to stash")
+                return None
+            
+            # Find the uploaded image file
+            from ..config import get_jarvis_setting
+            web_root = Path(__file__).parent.parent.parent
+            uploads_path = web_root / 'data' / 'uploads' / image_filename
+            
+            if not uploads_path.exists():
+                print(f"[STASH] Upload file not found: {uploads_path}")
+                return None
+            
+            # Import stash helper
+            from stash_helper import open_space
+            
+            # Create stash space for web uploads
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            space, is_new = open_space(
+                labels=['web_upload', 'image', 'vision_analyzed'],
+                scope='session',
+                ttl_days=7
+            )
+            
+            # Copy image to stash space
+            dest_filename = f"upload_{timestamp}.jpg"
+            dest_path = space.space_path / dest_filename
+            shutil.copy2(uploads_path, dest_path)
+            
+            # Get file stats
+            file_size = dest_path.stat().st_size
+            
+            # Add file to space metadata
+            import hashlib
+            with open(dest_path, 'rb') as f:
+                file_hash = hashlib.sha256(f.read()).hexdigest()
+            
+            file_id = f"f_{file_hash[:12]}"
+            file_meta = {
+                'file_id': file_id,
+                'name': dest_filename,
+                'stored_name': dest_filename,
+                'mime_type': 'image/jpeg',
+                'size_bytes': file_size,
+                'hash_sha256': file_hash,
+                'tags': ['user_upload', 'vision_analyzed'],
+                'tool_origin': 'web_upload',
+                'created_at': datetime.utcnow().isoformat() + 'Z',
+                'vision_analysis': vision_analysis[:500]  # Store truncated analysis
+            }
+            
+            # Update space meta
+            space.meta.setdefault('files', []).append(file_meta)
+            space._save_meta()
+            
+            stash_ref = f"stash://{space.space_id}/{file_id}"
+            
+            # Add to memory_db for cross-session recall (mode-aware)
+            try:
+                from memory_db import get_memory_db
+                db = get_memory_db(mode=mode)
+                
+                memory_key = f"stash_image_{space.space_id}"
+                # Truncate vision analysis for memory
+                short_analysis = vision_analysis[:200] + "..." if len(vision_analysis) > 200 else vision_analysis
+                memory_value = f"Uploaded image: {short_analysis}. STASH: {stash_ref}. FILE: {dest_filename}"
+                
+                db.remember(
+                    key=memory_key,
+                    value=memory_value,
+                    category="stash_artifact",
+                    importance=6  # Same as generate_image
+                )
+                print(f"[STASH] Added to memory_db: {memory_key}")
+            except Exception as mem_err:
+                print(f"[STASH] Memory save failed (non-fatal): {mem_err}")
+            
+            return {
+                'space_id': space.space_id,
+                'file_id': file_id,
+                'stash_ref': stash_ref,
+                'path': str(dest_path),
+                'filename': dest_filename
+            }
+            
+        except Exception as e:
+            print(f"[STASH] Auto-stash failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def _is_simple_image_question(self, message: str) -> bool:
         """
