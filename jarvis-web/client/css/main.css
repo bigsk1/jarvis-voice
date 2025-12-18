@@ -1416,3 +1416,289 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+
+/* ============================================
+   PROACTIVE NOTIFICATIONS
+   ============================================ */
+
+/* Notification Badge in Header */
+.notification-badge-container {
+  position: relative;
+  margin-right: var(--space-sm);
+}
+
+.notification-badge-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-xs);
+  border-radius: var(--radius-md);
+  transition: background 0.2s;
+  font-size: 1.25rem;
+}
+
+.notification-badge-btn:hover {
+  background: var(--bg-hover);
+}
+
+.notification-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  background: var(--error);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 9px;
+  animation: none;
+}
+
+.notification-count.flash {
+  animation: badge-flash 0.5s ease-out 2;
+}
+
+@keyframes badge-flash {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+}
+
+.notification-badge-container.has-notifications .notification-icon {
+  animation: bell-ring 0.5s ease-out;
+}
+
+@keyframes bell-ring {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(15deg); }
+  50% { transform: rotate(-15deg); }
+  75% { transform: rotate(10deg); }
+}
+
+/* Notification Panel */
+.notification-panel {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  width: 380px;
+  max-height: 500px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notification-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+}
+
+.notification-panel-header h3 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.close-panel-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.close-panel-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.notification-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-sm);
+}
+
+.notification-section {
+  margin-bottom: var(--space-md);
+}
+
+.notification-section h4 {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-xs);
+  padding: 0 var(--space-xs);
+}
+
+.alerts-list:empty::after,
+.reminders-list:empty::after {
+  content: 'None';
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-sm);
+  text-align: center;
+  opacity: 0.6;
+}
+
+/* Notification Item */
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-xs);
+  border: 1px solid var(--border-primary);
+  animation: slide-in 0.2s ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.notification-item-content {
+  flex: 1;
+  min-width: 0;
+  border-left: 3px solid var(--text-muted);
+  padding-left: var(--space-sm);
+}
+
+.notification-item-content.severity-critical {
+  border-left-color: #ff4444;
+}
+
+.notification-item-content.severity-high {
+  border-left-color: #ff8844;
+}
+
+.notification-item-content.severity-medium {
+  border-left-color: #ffaa00;
+}
+
+.notification-item-content.severity-low {
+  border-left-color: var(--info);
+}
+
+.notification-item-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.notification-item-desc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-item-meta {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.notification-item-meta span {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.notification-item-meta .severity {
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.notification-item-meta .severity.critical {
+  background: rgba(255, 68, 68, 0.2);
+  color: #ff4444;
+}
+
+.notification-item-meta .severity.high {
+  background: rgba(255, 136, 68, 0.2);
+  color: #ff8844;
+}
+
+.notification-item-meta .severity.medium {
+  background: rgba(255, 170, 0, 0.2);
+  color: #ffaa00;
+}
+
+.notification-item-meta .severity.low {
+  background: rgba(100, 181, 246, 0.2);
+  color: var(--info);
+}
+
+.notification-item .ack-btn {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--success);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.notification-item .ack-btn:hover {
+  opacity: 0.9;
+  transform: scale(1.05);
+}
+
+.notification-panel-footer {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+}
+
+.notification-panel-footer button {
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  transition: all 0.2s;
+}
+
+.notification-panel-footer button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

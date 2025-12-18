@@ -194,6 +194,94 @@ class ChatHandler:
                 'count': tool_service.get_tool_count(),
                 'tools': tool_service.get_tools_summary()
             })
+        
+        # =====================================================================
+        # Proactive Notification Handlers
+        # =====================================================================
+        
+        @self.socketio.on('proactive:subscribe')
+        def handle_proactive_subscribe():
+            """Client wants to receive proactive notifications"""
+            session_id = request.sid
+            print(f"[Proactive] Client {session_id[:8]} subscribed to notifications")
+            
+            # Get current counts immediately
+            from ..services.proactive_service import get_proactive_service
+            service = get_proactive_service()
+            counts = service.get_pending_counts()
+            
+            emit('proactive:counts', counts)
+        
+        @self.socketio.on('proactive:check')
+        def handle_proactive_check():
+            """Manual check for new notifications"""
+            from ..services.proactive_service import get_proactive_service
+            service = get_proactive_service()
+            
+            # Poll and get results
+            result = service.poll_and_notify()
+            
+            # Send counts to this client
+            emit('proactive:counts', result['counts'])
+            
+            # Send any new items
+            for alert in result['new_alerts']:
+                emit('proactive:alert', {
+                    'type': 'alert',
+                    'alert': alert,
+                    'timestamp': time.time()
+                })
+            
+            for reminder in result['new_reminders']:
+                emit('proactive:reminder', {
+                    'type': 'reminder',
+                    'reminder': reminder,
+                    'timestamp': time.time()
+                })
+        
+        @self.socketio.on('proactive:ack_alert')
+        def handle_ack_alert(data):
+            """Acknowledge an alert"""
+            alert_id = data.get('alert_id')
+            if not alert_id:
+                emit('proactive:error', {'error': 'Missing alert_id'})
+                return
+            
+            from ..services.proactive_service import get_proactive_service
+            service = get_proactive_service()
+            
+            success = service.acknowledge_alert(alert_id)
+            if success:
+                emit('proactive:ack_success', {
+                    'type': 'alert',
+                    'id': alert_id
+                })
+                # Broadcast updated counts
+                self.socketio.emit('proactive:counts', service.get_pending_counts())
+            else:
+                emit('proactive:error', {'error': f'Failed to acknowledge alert {alert_id}'})
+        
+        @self.socketio.on('proactive:ack_reminder')
+        def handle_ack_reminder(data):
+            """Acknowledge a reminder"""
+            reminder_id = data.get('reminder_id')
+            if not reminder_id:
+                emit('proactive:error', {'error': 'Missing reminder_id'})
+                return
+            
+            from ..services.proactive_service import get_proactive_service
+            service = get_proactive_service()
+            
+            success = service.acknowledge_reminder(reminder_id)
+            if success:
+                emit('proactive:ack_success', {
+                    'type': 'reminder',
+                    'id': reminder_id
+                })
+                # Broadcast updated counts
+                self.socketio.emit('proactive:counts', service.get_pending_counts())
+            else:
+                emit('proactive:error', {'error': f'Failed to acknowledge reminder {reminder_id}'})
     
     def _get_conversation_context(self, conversation_id: str) -> list:
         """Get recent conversation history for LLM context"""

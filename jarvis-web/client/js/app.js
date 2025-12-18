@@ -64,6 +64,12 @@ class JarvisApp {
         console.log(`[App] Syncing saved mode (${savedMode}) with server`);
         this.socket.setMode(savedMode);
       }
+      
+      // Initialize proactive notifications
+      if (!this.proactive && window.ProactiveManager) {
+        this.proactive = new ProactiveManager(this.socket, this);
+        console.log('[App] Proactive notifications enabled');
+      }
     });
     
     this.socket.on('connectionError', (data) => {
