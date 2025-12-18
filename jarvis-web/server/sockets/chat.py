@@ -758,7 +758,7 @@ class ChatHandler:
         return None
     
     def _vision_xai(self, image_base64: str, prompt: str, model: str = None) -> str:
-        """Use xAI Grok for vision"""
+        """Use xAI Grok for vision (grok-4 or newer)"""
         import requests
         from ..config import get_jarvis_setting
         
@@ -767,9 +767,11 @@ class ChatHandler:
             print("[VISION] XAI_API_KEY not configured")
             return None
         
-        model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', 'grok-2-vision')
+        # Use VISION_MODEL if set, otherwise fall back to XAI_MODEL or grok-4
+        model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', 'grok-4')
         print(f"[VISION] xAI model: {model}")
         
+        # xAI uses OpenAI-compatible format with detail parameter
         payload = {
             "model": model,
             "messages": [{
@@ -778,7 +780,8 @@ class ChatHandler:
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
+                            "url": f"data:image/jpeg;base64,{image_base64}",
+                            "detail": "high"
                         }
                     },
                     {
@@ -787,7 +790,7 @@ class ChatHandler:
                     }
                 ]
             }],
-            "max_tokens": 1024
+            "max_tokens": 2048
         }
         
         response = requests.post(
@@ -797,7 +800,7 @@ class ChatHandler:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json"
             },
-            timeout=60
+            timeout=120  # Vision can be slower
         )
         
         if response.status_code == 200:
@@ -806,7 +809,7 @@ class ChatHandler:
             if choices:
                 return choices[0].get('message', {}).get('content', '')
         else:
-            print(f"[VISION] xAI error: {response.status_code} - {response.text[:200]}")
+            print(f"[VISION] xAI error: {response.status_code} - {response.text[:500]}")
         return None
     
     def _vision_openai(self, image_base64: str, prompt: str, model: str = None) -> str:
