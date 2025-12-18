@@ -12,7 +12,7 @@
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
-- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface** (chat UI, mode switching, TTS, settings) ⭐ ENHANCED
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v1.6** (chat UI, image upload, vision, analyze_image tool) ⭐ ENHANCED
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
@@ -264,6 +264,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-12-18:**
+- ✅ **Jarvis Web UI v1.6** - Image upload, vision, analyze_image tool ⭐ ENHANCED
+  - **Image upload**: Drag-drop/paste/click to attach images
+  - **Mode-aware vision**: Cloud=Grok/Claude, Local=llava
+  - **Auto-stash uploads**: Images saved to stash + memory_db for cross-tool use
+  - **analyze_image tool**: Analyze URLs, files, stash refs with SSRF protection
+  - **Expand details button**: Show full LLM response before voice shortening
+  - **generate_image fix**: Now saves source + metadata for semantic recall
+  - See: `docs/JARVIS_WEB_UI.md`
 
 **2025-12-17:**
 - ✅ **Jarvis Web UI v1.2** - Mode-aware web interface ⭐ ENHANCED
@@ -630,6 +640,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-17 (v2.14)  
-**Latest:** Jarvis Web UI v1.2, AI Image Generation (Gemini 3 Pro), AI Phone Calls, Spotify  
+**Last Updated:** 2025-12-18 (v2.15)  
+**Latest:** Jarvis Web UI v1.6, Image Upload & Vision, analyze_image tool  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

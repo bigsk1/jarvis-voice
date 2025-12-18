@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.5)  
-> **Last Updated**: December 17, 2025
+> **Status**: MVP Complete (v1.6)  
+> **Last Updated**: December 18, 2025
 
 ---
 
@@ -80,9 +80,11 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Clean mode switching | ✅ | Resets Intelligence singleton on mode change |
 | Proactive alerts | ✅ | Polls jarvis-api for alerts/reminders |
 | Browser notifications | ✅ | Notifications API for new alerts/reminders |
-| **Image upload** | ✅ | Drag-drop/paste/click to attach images ⭐ NEW |
-| **Vision analysis** | ✅ | Mode-aware: Cloud=Grok/Claude, Local=llava ⭐ NEW |
-| **Expand details button** | ✅ | Show full LLM response before voice shortening ⭐ NEW |
+| **Image upload** | ✅ | Drag-drop/paste/click to attach images |
+| **Vision analysis** | ✅ | Mode-aware: Cloud=Grok/Claude, Local=llava |
+| **Expand details button** | ✅ | Show full LLM response before voice shortening |
+| **Auto-stash uploads** | ✅ | Uploaded images auto-stash + memory_db entry ⭐ NEW |
+| **analyze_image tool** | ✅ | Analyze URLs, files, stash refs with vision ⭐ NEW |
 | Tool enable/disable | ⏳ | Planned (per-tool granular control) |
 
 ---
@@ -490,6 +492,49 @@ Action keywords: "create", "save", "canvas", "generate", "similar", "search"
 - Thumbnails display when you reload the conversation
 - Vision analysis stored in `data.vision_analysis` for expand details
 
+**Auto-Stash (NEW):**
+- After vision analysis, images are automatically stashed to `data/stash/`
+- A `stash_artifact` entry is created in `memory_db` with:
+  - `source="web_upload"`
+  - `metadata` (stash_ref, file_id, tags, vision_analysis snippet)
+- This enables cross-tool workflows: "Email the image I uploaded earlier"
+- Stash has 7-day TTL, but memory entry persists for recall
+
+---
+
+### analyze_image Tool (NEW)
+
+A dedicated tool for analyzing images from various sources:
+
+**Supported Sources:**
+| Source Type | Example | Description |
+|-------------|---------|-------------|
+| **URL** | `https://example.com/image.jpg` | Downloads with SSRF protection |
+| **Local file** | `/home/user/photo.jpg` | Reads from filesystem |
+| **Stash reference** | `stash://space_xxx/file_id` | Loads from stash system |
+
+**Parameters:**
+- `image` (required): URL, file path, or stash reference
+- `question` (optional): Specific question about the image (default: "Describe this image")
+- `stash_after` (optional): Save to stash after analysis (default: true)
+
+**Security:**
+- Uses `safe_download()` from stash_helper for URL downloads
+- SSRF protection (blocks private IPs: localhost, 192.168.x.x, 10.x.x.x)
+- `sanitize_filename()` prevents path traversal attacks
+- 20MB max download size
+
+**Example Usage:**
+```
+"Analyze this image https://example.com/chart.png"
+"What's in stash://space_20251218_094432/f_abc123?"
+"Analyze /home/boss/photos/vacation.jpg and tell me where it was taken"
+```
+
+**When to Use:**
+- Web UI image upload: Built-in vision (NOT this tool)
+- Analyze URL/file/stash via voice/CLI: Use this tool
+
 ---
 
 ### Expand Details Button
@@ -583,16 +628,16 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - ✅ Real-time status streaming (WebSocket)
 
 ### Planned / Ideas
-- 🔮 **Proactive notifications** - Alerts/reminders popup in browser
+- 🔮 **Terminal log viewer** - Stream server stdout/stderr to collapsible panel in UI ⭐ PINNED
 - 🔮 **Memory management UI** - View/edit/delete memories visually
 - 🔮 **Intelligence dashboard** - See insights, confidence, decay
 - 🔮 **Canvas embed** - Show canvas pages inline in chat
 - 🔮 **Multi-conversation tabs** - Multiple chats open
 - 🔮 **Export conversations** - JSON/Markdown download
-- 🔮 **Voice recording indicator** - Visual feedback during STT
 - 🔮 **Tool execution history** - View past tool calls across sessions
 - 🔮 **Cost tracking display** - Show token usage and $ spent
 - 🔮 **Mobile PWA** - Install as app on phone
+- 🔮 **Cross-tool stash flows** - "Email the image I uploaded" (needs send_email stash support)
 
 ---
 
@@ -647,13 +692,16 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - [x] Browser notifications - Notifications API integration
 - [x] Notification panel - View/acknowledge alerts & reminders
 - [x] Local audio fix - Now serves from audio/local/tts too
-- [x] **Image upload** - Drag-drop/paste/click, auto-resize to 1024px ⭐ NEW
-- [x] **Mode-aware vision** - Cloud=Grok/Claude, Local=llava ⭐ NEW
-- [x] **Smart image questions** - Simple questions bypass orchestrator ⭐ NEW
-- [x] **Expand details button** - Show full LLM response, tool results ⭐ NEW
-- [x] **Tool cards show results** - Fixed data.data nesting bug ⭐ NEW
-- [x] **Native search prompt** - Tells LLM to prefer built-in search ⭐ NEW
-- [x] **Config loading fix** - load_jarvis_config before Orchestrator ⭐ NEW
+- [x] **Image upload** - Drag-drop/paste/click, auto-resize to 1024px
+- [x] **Mode-aware vision** - Cloud=Grok/Claude, Local=llava
+- [x] **Expand details button** - Show full LLM response, tool results
+- [x] **Tool cards show results** - Fixed data.data nesting bug
+- [x] **Native search prompt** - Tells LLM to prefer built-in search
+- [x] **Config loading fix** - load_jarvis_config before Orchestrator
+- [x] **Auto-stash uploaded images** - Images saved to stash + memory_db ⭐ NEW
+- [x] **analyze_image tool** - Analyze URLs, files, stash refs with SSRF protection ⭐ NEW
+- [x] **generate_image memory fix** - Now saves source + metadata for semantic recall ⭐ NEW
+- [x] **Safe URL downloads** - Uses stash_helper's safe_download + sanitize_filename ⭐ NEW
 
 ---
 
@@ -927,4 +975,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v1.2: Mode-aware TTS, per-mode settings, clean mode switching - December 17, 2025*  
 *v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*  
 *v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*  
-*v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*
+*v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*  
+*v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*

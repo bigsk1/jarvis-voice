@@ -100,6 +100,7 @@ data/.phone_call_in_progress
 
 characters/
 data/generated_images/
+jarvis-web/data/uploads/
 
 # web ui
 data/web_conversations/

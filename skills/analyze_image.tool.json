@@ -1,0 +1,32 @@
+{
+  "enabled": true,
+  "name": "analyze_image",
+  "description": "👁️ Analyze images using AI vision. Understands photos, screenshots, documents, artwork. Accepts: URLs (https://...), local files (/path/to/image.jpg), stash references (stash://space_id/file_id). Use for: identifying objects, reading text in images, describing scenes, answering questions about visual content. Can optionally save web images to stash for future tool access.",
+  "script": "analyze_image.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "image": {
+        "type": "string",
+        "description": "Image source - URL (https://example.com/pic.jpg), local path (/home/user/photo.png, ~/images/pic.jpg), or stash reference (stash://space_id/file_id)"
+      },
+      "question": {
+        "type": "string",
+        "description": "What to analyze or ask about the image. Examples: 'What objects are in this image?', 'Read the text', 'Describe the mood', 'Is there a cat?'. Default: general description."
+      },
+      "stash_after": {
+        "type": "boolean",
+        "description": "If true and image is from URL, download and save to stash for future access by other tools (email, print, canvas). Default: false"
+      }
+    },
+    "required": ["image"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+

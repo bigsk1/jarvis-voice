@@ -347,6 +347,9 @@ class ChatHandler:
                 print(f"[CHAT] Using {mode} override: provider={provider_override}, model={model_override}")
             
             # Handle vision if image is provided
+            vision_result = None
+            stash_info = None
+            
             if image_data and image_data.get('base64'):
                 print(f"[CHAT] Processing image with vision model...")
                 self.socketio.emit('chat:status', {
@@ -372,65 +375,14 @@ class ChatHandler:
                     if stash_info:
                         print(f"[CHAT] Auto-stashed image: {stash_info.get('stash_ref')}")
                     
-                    # Check if this is a simple image question (no action requested)
-                    simple_question = self._is_simple_image_question(message)
-                    print(f"[CHAT] Is simple question: {simple_question}")
+                    # Prepend vision analysis to message for orchestrator
+                    # This way the LLM has context about the image
+                    stash_note = ""
+                    if stash_info:
+                        stash_note = f" Image stashed at: {stash_info.get('stash_ref')}"
                     
-                    if simple_question:
-                        try:
-                            # For simple image questions, return vision result directly
-                            # without going through orchestrator tool loop
-                            print(f"[CHAT] Simple image question - returning vision result directly")
-                            
-                            # Create a short spoken response from the vision analysis
-                            print(f"[CHAT] Summarizing vision for speech...")
-                            short_response = self._summarize_vision_for_speech(vision_result, message, mode)
-                            print(f"[CHAT] Short response: {short_response[:100]}...")
-                            
-                            # Build response data with stash info
-                            response_data = {'vision_analysis': vision_result}
-                            if stash_info:
-                                response_data['stash'] = stash_info
-                            
-                            # Save to conversation
-                            from ..services.conversation_store import get_conversation_store
-                            store = get_conversation_store()
-                            store.add_message(
-                                conversation_id, 'assistant', short_response,
-                                tools_used=[], 
-                                data=response_data
-                            )
-                            print(f"[CHAT] Saved to conversation")
-                            
-                            # Send response
-                            self.socketio.emit('chat:response', {
-                                'text': short_response,
-                                'message_id': message_id,
-                                'conversation_id': conversation_id,
-                                'tools_used': [],
-                                'data': response_data,
-                                'duration_ms': int((time.time() - start_time) * 1000)
-                            }, room=session_id)
-                            print(f"[CHAT] Emitted response")
-                            
-                            # Generate TTS
-                            self._generate_tts(short_response, mode, session_id)
-                            print(f"[CHAT] TTS done")
-                            return
-                        except Exception as e:
-                            print(f"[CHAT] Error in simple image handling: {e}")
-                            import traceback
-                            traceback.print_exc()
-                            # Fall through to orchestrator
-                    else:
-                        # Complex request - pass to orchestrator with vision context
-                        # Include stash reference so LLM knows where the image is
-                        stash_note = ""
-                        if stash_info:
-                            stash_note = f"\n\nThe image has been auto-stashed at: {stash_info.get('stash_ref')} (space_id={stash_info.get('space_id')}, file_id={stash_info.get('file_id')}). You can use this reference with the stash tool if needed."
-                        
-                        message = f"[Image Analysis: {vision_result}]{stash_note}\n\nUser's request: {message}\n\nNote: The image has already been analyzed above. Use this analysis to complete the user's request."
-                        print(f"[CHAT] Complex image request - passing to orchestrator with vision context")
+                    message = f"[User uploaded an image. Vision analysis: {vision_result}]{stash_note}\n\nUser's message: {message}"
+                    print(f"[CHAT] Image analyzed - passing to orchestrator with vision context")
             
             # Create orchestrator instance with overrides
             print(f"[CHAT] Creating orchestrator (mode={mode})...")
@@ -491,11 +443,16 @@ class ChatHandler:
                 from ..services.conversation_store import get_conversation_store
                 store = get_conversation_store()
                 response_text = result.get('speech', result.get('raw_llm_response', ''))
-                # Include raw_llm_response in saved data for "expand details" on reload
+                # Include raw_llm_response and vision_analysis in saved data for "expand details"
                 save_data = data.copy() if data else {}
                 raw_response = result.get('raw_llm_response', '')
                 if raw_response:
                     save_data['raw_llm_response'] = raw_response
+                # Include vision analysis if we processed an image
+                if vision_result:
+                    save_data['vision_analysis'] = vision_result
+                if stash_info:
+                    save_data['stash'] = stash_info
                 store.add_message(
                     conversation_id, 
                     'assistant', 
@@ -518,11 +475,16 @@ class ChatHandler:
                 print(f"[CHAT] TTS generation failed: {tts_err}")
             
             # Emit final response
-            # Include raw_llm_response in data for "expand details" feature
+            # Include raw_llm_response and vision_analysis in data for "expand details" feature
             response_data = data.copy() if data else {}
             raw_response = result.get('raw_llm_response', '')
             if raw_response:
                 response_data['raw_llm_response'] = raw_response
+            # Include vision analysis if we processed an image
+            if vision_result:
+                response_data['vision_analysis'] = vision_result
+            if stash_info:
+                response_data['stash'] = stash_info
             
             self.socketio.emit('chat:response', {
                 'message_id': message_id,
@@ -783,10 +745,11 @@ class ChatHandler:
             
             stash_ref = f"stash://{space.space_id}/{file_id}"
             
-            # Add to memory_db for cross-session recall (mode-aware)
+            # Add to memory_db for cross-session recall
+            # MemoryDB() uses the already-loaded config (load_jarvis_config was called earlier)
             try:
-                from memory_db import get_memory_db
-                db = get_memory_db(mode=mode)
+                from memory_db import MemoryDB
+                db = MemoryDB()
                 
                 memory_key = f"stash_image_{space.space_id}"
                 # Truncate vision analysis for memory
@@ -797,7 +760,16 @@ class ChatHandler:
                     key=memory_key,
                     value=memory_value,
                     category="stash_artifact",
-                    importance=6  # Same as generate_image
+                    importance=6,  # Same as generate_image
+                    source="web_upload",
+                    metadata={
+                        "stash_ref": stash_ref,
+                        "space_id": space.space_id,
+                        "file_id": file_id,
+                        "filename": dest_filename,
+                        "tags": ["image", "user_upload", "vision_analyzed"],
+                        "type": "image"
+                    }
                 )
                 print(f"[STASH] Added to memory_db: {memory_key}")
             except Exception as mem_err:
@@ -816,159 +788,6 @@ class ChatHandler:
             import traceback
             traceback.print_exc()
             return None
-
-    def _is_simple_image_question(self, message: str) -> bool:
-        """
-        Check if the user's message is a simple image identification question
-        that doesn't require tools (just vision analysis + response).
-        """
-        message_lower = message.lower().strip()
-        
-        # Simple question patterns - just asking about the image
-        simple_patterns = [
-            'what is this',
-            'what\'s this',
-            'what am i looking at',
-            'what do you see',
-            'describe this',
-            'describe the image',
-            'what is in this',
-            'what\'s in this',
-            'tell me about this',
-            'analyze this',
-            'what does this show',
-            'identify this',
-            'what kind of',
-            'what type of',
-            'who is this',
-            'where is this',
-            'when was this',
-            'explain this',
-            'what happened here',
-        ]
-        
-        # Action keywords that require orchestrator
-        action_keywords = [
-            'create', 'make', 'generate', 'draw', 'save', 'store', 
-            'remember', 'canvas', 'email', 'send', 'search for',
-            'find similar', 'look up', 'research', 'schedule',
-            'remind', 'add to', 'put in', 'write', 'similar',
-            'like this', 'based on this', 'using this'
-        ]
-        
-        # If any action keyword is present, it's not simple
-        for keyword in action_keywords:
-            if keyword in message_lower:
-                return False
-        
-        # If it matches a simple pattern, it's simple
-        for pattern in simple_patterns:
-            if pattern in message_lower:
-                return True
-        
-        # Short messages about images are usually simple
-        if len(message.split()) <= 8:
-            return True
-        
-        return False
-
-    def _summarize_vision_for_speech(self, vision_result: str, question: str, mode: str) -> str:
-        """
-        Create a short, spoken-friendly response from the vision analysis.
-        Uses LLM to summarize if needed.
-        """
-        from ..config import get_jarvis_setting, load_jarvis_config
-        import requests
-        
-        load_jarvis_config(mode)
-        
-        # If vision result is already short, use it directly
-        if len(vision_result.split()) <= 50:
-            return vision_result
-        
-        # Use LLM to create a short spoken summary
-        try:
-            if mode == 'local':
-                base_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
-                model = get_jarvis_setting('OLLAMA_MODEL', 'mistral')
-                
-                response = requests.post(
-                    f"{base_url}/api/generate",
-                    json={
-                        "model": model,
-                        "prompt": f"""Summarize this image description in 1-2 sentences for voice output (max 30 words).
-Be direct and conversational.
-
-Image analysis: {vision_result}
-User asked: {question}
-
-Short spoken response:""",
-                        "stream": False
-                    },
-                    timeout=30
-                )
-                
-                if response.status_code == 200:
-                    return response.json().get('response', vision_result[:200])
-            else:
-                # Cloud mode - use configured LLM
-                provider = get_jarvis_setting('LLM_PROVIDER', 'xai')
-                
-                if provider == 'xai':
-                    api_key = get_jarvis_setting('XAI_API_KEY', '')
-                    model = get_jarvis_setting('XAI_MODEL', 'grok-3-mini-fast-latest')
-                    url = "https://api.x.ai/v1/chat/completions"
-                elif provider == 'anthropic':
-                    api_key = get_jarvis_setting('ANTHROPIC_API_KEY', '')
-                    model = get_jarvis_setting('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514')
-                    url = "https://api.anthropic.com/v1/messages"
-                else:
-                    api_key = get_jarvis_setting('OPENAI_API_KEY', '')
-                    model = get_jarvis_setting('OPENAI_MODEL', 'gpt-4o-mini')
-                    url = "https://api.openai.com/v1/chat/completions"
-                
-                if not api_key:
-                    return vision_result[:200]
-                
-                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-                
-                if provider == 'anthropic':
-                    headers["x-api-key"] = api_key
-                    headers["anthropic-version"] = "2023-06-01"
-                    del headers["Authorization"]
-                    
-                    payload = {
-                        "model": model,
-                        "max_tokens": 100,
-                        "messages": [{
-                            "role": "user",
-                            "content": f"Summarize this image description in 1-2 sentences for voice output (max 30 words). Be direct.\n\nImage: {vision_result}\nQuestion: {question}"
-                        }]
-                    }
-                else:
-                    payload = {
-                        "model": model,
-                        "messages": [{
-                            "role": "user",
-                            "content": f"Summarize this image description in 1-2 sentences for voice output (max 30 words). Be direct.\n\nImage: {vision_result}\nQuestion: {question}"
-                        }],
-                        "max_tokens": 100
-                    }
-                
-                response = requests.post(url, json=payload, headers=headers, timeout=30)
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    if provider == 'anthropic':
-                        return result.get('content', [{}])[0].get('text', vision_result[:200])
-                    else:
-                        return result.get('choices', [{}])[0].get('message', {}).get('content', vision_result[:200])
-        except Exception as e:
-            print(f"[CHAT] Error summarizing vision: {e}")
-        
-        # Fallback - truncate
-        return vision_result[:200] + "..." if len(vision_result) > 200 else vision_result
-
 
     def _process_vision(self, image_base64: str, prompt: str, mode: str) -> str:
         """

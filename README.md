@@ -33,7 +33,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 45+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, phone calls, spotify, reminders, canvas, etc.)
+- 46+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, phone calls, spotify, reminders, canvas, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -151,11 +151,15 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Audio caching for instant playback of repeated phrases
   - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
 
-### Web Interface ⭐ NEW
-- **Jarvis Web UI** - Full-featured chat interface at localhost:5001
+### Web Interface ⭐ ENHANCED
+- **Jarvis Web UI v1.6** - Full-featured chat interface at localhost:5001
   - Real-time WebSocket communication with tool streaming
   - Mode switching (cloud/local) with per-mode settings
   - **Mode-aware TTS**: Cloud=ElevenLabs, Local=Kokoro
+  - **Image upload**: Drag-drop/paste/click with auto-resize ⭐ NEW
+  - **Vision analysis**: Cloud=Grok/Claude, Local=llava ⭐ NEW
+  - **Auto-stash uploads**: Images saved to stash + memory for cross-tool use ⭐ NEW
+  - **Expand details**: Show full LLM response before voice shortening ⭐ NEW
   - Dynamic LLM/model switching on-the-fly
   - Conversation history with save/load/delete
   - Settings panel with System config view
@@ -485,7 +489,7 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 
 ## 🛠️ Tool System
 
-### Available Skills (35+)
+### Available Skills (46+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -514,14 +518,19 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
 
 **Artifact & Output Tools:** ⭐ ENHANCED
-- `generate_image` - **AI image generation**: Google Gemini 3 Pro with Search Grounding ⭐ NEW
+- `generate_image` - **AI image generation**: Google Gemini 3 Pro with Search Grounding
   - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
   - **Google Search Grounding** - Real-time data in images (weather, crypto prices, news)
   - Auto-saves to stash + memory for cross-session recall
   - Multi-tool ready: generate → email, generate → print, generate → canvas
+- `analyze_image` - **Vision analysis**: Analyze images from URLs, files, or stash refs ⭐ NEW
+  - Cloud=Grok/Claude/GPT-4o, Local=llava
+  - SSRF protection (blocks private IPs), path traversal protection
+  - Auto-stashes analyzed images + creates memory_db entry
+  - Example: "Analyze this image https://example.com/chart.png"
 - `stash` - **Artifact storage**: download URLs, store files/images/JSON for multi-step workflows
   - Central workshop for temporary files (7-day TTL)
-  - `stash://` references work across tools (printer, email, pdf_create)
+  - `stash://` references work across tools (printer, email, pdf_create, analyze_image)
 - `pdf_create` - **PDF generation**: create PDFs from stash files, images, or text
   - Now auto-saves to memory with stash reference for recall
 - `printer` - **Print output**: print from stash refs, file paths, or Canvas pages (CUPS)
@@ -1033,13 +1042,18 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
-- ✅ **Jarvis Web UI v1.2** - Full-featured web interface ⭐ NEW
+- ✅ **Jarvis Web UI v1.6** - Full-featured web interface ⭐ ENHANCED
   - Real-time WebSocket chat with tool streaming
   - **Mode-aware TTS**: Cloud=ElevenLabs, Local=Kokoro (via TTS_URL)
+  - **Image upload**: Drag-drop/paste/click with auto-resize to 1024px ⭐ NEW
+  - **Vision analysis**: Cloud=Grok/Claude, Local=llava ⭐ NEW
+  - **Auto-stash uploads**: Images saved to stash + memory_db for cross-tool use ⭐ NEW
+  - **Expand details**: Show full LLM response before voice shortening ⭐ NEW
+  - **analyze_image tool**: Analyze URLs, files, stash refs with SSRF protection ⭐ NEW
   - Per-mode settings in web_config.json (cloud/local sections)
   - Dynamic Ollama model fetching in local mode
   - Clean mode switching (resets Intelligence singleton)
-  - STT_PROVIDER config ready for push-to-talk
+  - Push-to-talk STT (Cloud=OpenAI Whisper, Local=faster-whisper)
   - See: `docs/JARVIS_WEB_UI.md`
 - ✅ **AI Image Generation (Gemini 3 Pro)** - High-quality image generation ⭐ NEW
   - "Generate a bitcoin infographic with current price" → Gemini creates with real data
@@ -1226,6 +1240,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.14 (December 2025)  
+**Current Version:** v2.15 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Jarvis Web UI v1.2, AI Image Generation, AI Phone Calls, Spotify
+**Latest Features:** Jarvis Web UI v1.6, Image Upload & Vision, analyze_image tool

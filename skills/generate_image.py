@@ -511,7 +511,17 @@ def main():
                     key=memory_key,
                     value=memory_value,
                     category="stash_artifact",
-                    importance=6  # Higher importance for stash items
+                    importance=6,  # Higher importance for stash items
+                    source="generate_image",
+                    metadata={
+                        "stash_ref": stash_ref,
+                        "space_id": space_id,
+                        "filename": save_info.get('filename', ''),
+                        "prompt": prompt[:200],
+                        "provider": result.get('provider', 'gemini'),
+                        "tags": ["image", "generated", "ai_created"],
+                        "type": "image"
+                    }
                 )
             except Exception as mem_err:
                 pass  # Don't fail the tool if memory save fails
