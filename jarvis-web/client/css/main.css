@@ -384,6 +384,60 @@ body {
   border-bottom-left-radius: var(--radius-sm);
 }
 
+/* Expandable details section */
+.message-details {
+  margin-top: var(--space-md);
+  border-top: 1px solid var(--border-secondary);
+  padding-top: var(--space-sm);
+}
+
+.details-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  transition: all 0.2s;
+}
+
+.details-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.toggle-icon {
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+
+.details-content {
+  margin-top: var(--space-sm);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.details-content pre {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-md);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.message-details.collapsed .details-content {
+  display: none;
+}
+
 /* Tool execution cards */
 .tool-cards {
   display: flex;

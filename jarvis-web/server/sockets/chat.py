@@ -472,11 +472,16 @@ class ChatHandler:
                 from ..services.conversation_store import get_conversation_store
                 store = get_conversation_store()
                 response_text = result.get('speech', result.get('raw_llm_response', ''))
+                # Include raw_llm_response in saved data for "expand details" on reload
+                save_data = data.copy() if data else {}
+                raw_response = result.get('raw_llm_response', '')
+                if raw_response:
+                    save_data['raw_llm_response'] = raw_response
                 store.add_message(
                     conversation_id, 
                     'assistant', 
                     response_text,
-                    data=data,
+                    data=save_data,
                     tools_used=tools_used
                 )
             except Exception as save_err:
@@ -494,12 +499,18 @@ class ChatHandler:
                 print(f"[CHAT] TTS generation failed: {tts_err}")
             
             # Emit final response
+            # Include raw_llm_response in data for "expand details" feature
+            response_data = data.copy() if data else {}
+            raw_response = result.get('raw_llm_response', '')
+            if raw_response:
+                response_data['raw_llm_response'] = raw_response
+            
             self.socketio.emit('chat:response', {
                 'message_id': message_id,
                 'conversation_id': conversation_id,
-                'text': result.get('raw_llm_response', result.get('speech', '')),
+                'text': result.get('speech', raw_response),  # Show speech (shorter) as main text
                 'speech': result.get('speech', ''),
-                'data': data,
+                'data': response_data,
                 'tools_used': tools_used,
                 'ok': result.get('ok', True),
                 'duration_ms': duration_ms,

@@ -675,13 +675,47 @@ class ChatUI {
     
     const parsedText = Utils.parseMarkdown(text);
     
+    // Build expandable details section
+    let detailsHtml = '';
+    const rawResponse = data.raw_llm_response || data.vision_analysis || '';
+    const hasDetails = rawResponse && rawResponse !== text && rawResponse.length > text.length;
+    
+    if (hasDetails) {
+      const detailsContent = Utils.escapeHtml(rawResponse);
+      detailsHtml = `
+        <div class="message-details collapsed">
+          <button class="details-toggle" title="Show full LLM response">
+            <span class="toggle-icon">▶</span> Show details
+          </button>
+          <div class="details-content">
+            <pre>${detailsContent}</pre>
+          </div>
+        </div>
+      `;
+    }
+    
     messageEl.innerHTML = `
       ${toolCardsHtml}
       ${imageHtml}
       <div class="message-bubble">
         ${parsedText}
+        ${detailsHtml}
       </div>
     `;
+    
+    // Add click handler for details toggle
+    const detailsToggle = messageEl.querySelector('.details-toggle');
+    if (detailsToggle) {
+      detailsToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const details = detailsToggle.closest('.message-details');
+        details.classList.toggle('collapsed');
+        const icon = detailsToggle.querySelector('.toggle-icon');
+        const isCollapsed = details.classList.contains('collapsed');
+        icon.textContent = isCollapsed ? '▶' : '▼';
+        detailsToggle.childNodes[1].textContent = isCollapsed ? ' Show details' : ' Hide details';
+      });
+    }
     
     // Add click handlers for tool cards
     messageEl.querySelectorAll('.tool-card-header').forEach(header => {
