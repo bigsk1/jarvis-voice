@@ -106,10 +106,13 @@ COMMANDS: List[Command] = [
     # === 🔧 SERVICES ===
     Command("Start API (Cloud)", "./bin/jarvis-api", "API server - cloud mode", "🔧 Services", interactive=True),
     Command("Start API (Local)", "./bin/jarvis-api --local", "API server - local mode", "🔧 Services", interactive=True),
+    Command("Start Web UI (Cloud)", "./bin/jarvis-web cloud", "Web UI - cloud mode :5001", "🔧 Services", interactive=True),
+    Command("Start Web UI (Local)", "./bin/jarvis-web local", "Web UI - local mode :5001", "🔧 Services", interactive=True),
     Command("Start Background Svcs", "./bin/jarvis-services", "Background daemons", "🔧 Services", interactive=True),
     Command("Restart API", "./bin/restart-api", "Restart API server", "🔧 Services"),
     Command("Restart Services", "./bin/restart-services", "Restart background services", "🔧 Services"),
     Command("API Health", "curl -s http://localhost:8880/api/health | jq", "Check API health", "🔧 Services"),
+    Command("Web UI Health", "curl -sf http://localhost:5001/api/status | jq || echo '❌ Web UI not running'", "Web UI status", "🔧 Services"),
     Command("OpenCode Status", "systemctl status opencode-jarvis.service 2>/dev/null || echo 'Service not installed'", "OpenCode service status", "🔧 Services"),
     Command("OpenCode Start", "systemctl start opencode-jarvis.service 2>/dev/null || echo 'Service not installed'", "Start OpenCode service", "🔧 Services"),
     Command("OpenCode Health", "curl -sf http://localhost:4096/config >/dev/null && echo '✅ OpenCode is running on port 4096' || echo '❌ OpenCode not running'", "OpenCode API status", "🔧 Services"),
@@ -513,6 +516,8 @@ class CommandRunner(App):
                 session_name = "jarvis-voice"  # Wake word loop
             elif "jarvis-api" in cmd.command:
                 session_name = "jarvis-api-local" if "--local" in cmd.command else "jarvis-api"
+            elif "jarvis-web" in cmd.command:
+                session_name = "jarvis-web"  # Web UI (port 5001)
             elif "jarvis-services" in cmd.command:
                 session_name = "jarvis-services"  # Background services
             elif "jarvis-canvas" in cmd.command:

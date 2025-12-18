@@ -3,7 +3,7 @@
 
 add print button to canvas pages
 expand canvas more to send commands to jarvis? start and end wake word? 
-
+audio on web isnt saved for mic like it is for terminal/tui/jarvis it seems in audio/cloud/mic
 
 ### Notes
 
