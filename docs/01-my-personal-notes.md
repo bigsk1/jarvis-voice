@@ -790,3 +790,11 @@ curl -X PUT http://localhost:5001/api/settings/blocked-tools \
   -H "Content-Type: application/json" \
   -d '{"blocked": ["get_recent_conversations", "some_other_tool"]}'
 ```
+
+# Clean up intellegence db after testing and back or many pending reflections
+
+```bash
+cd /home/boss/jarvis-voice && python3 bin/cleanup-intelligence.py --dry-run
+
+cd /home/boss/jarvis-voice && python3 bin/cleanup-intelligence.py --execute
+```
