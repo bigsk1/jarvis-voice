@@ -1069,7 +1069,7 @@ body {
   }
   
   /* Keep the log panel usable on mobile */
-  .log-panel-container {
+  .log-panel {
     max-height: 60vh;
   }
 }
@@ -1090,6 +1090,29 @@ body {
   
   #toolsCount {
     display: none; /* Hide tools count on tiny screens */
+  }
+  
+  /* Hide log panel on small phones - too cramped */
+  .log-panel {
+    display: none !important;
+  }
+  
+  /* Add bottom padding to clear Safari's address bar */
+  .main-content {
+    padding-bottom: 0 !important;
+  }
+  
+  body.log-panel-open .main-content {
+    padding-bottom: 0 !important;
+  }
+  
+  .chat-input-container {
+    padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 20px));
+    margin-bottom: 20px;
+  }
+  
+  .chat-area {
+    padding-bottom: 40px;
   }
 }
 
