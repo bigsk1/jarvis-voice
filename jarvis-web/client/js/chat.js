@@ -1021,7 +1021,13 @@ class ChatUI {
     
     let imageHtml = '';
     if (imageData && imageData.url) {
-      imageHtml = `<img src="${imageData.url}" alt="Attached image" class="message-image" onclick="Utils.openLightbox('${imageData.url}')">`;
+      imageHtml = `
+        <div class="message-image" onclick="window.showImageLightbox('${imageData.url}')">
+          <img src="${imageData.url}" alt="Attached image" loading="lazy">
+          <div class="image-overlay">
+            <span>🔍 Click to expand</span>
+          </div>
+        </div>`;
     }
     
     let badgeHtml = '';
