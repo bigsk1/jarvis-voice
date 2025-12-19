@@ -894,8 +894,8 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - **Auto-listen after response**: Automatically start recording after TTS finishes
 
 ### Proactive Integration
-- ✅ **Alert notifications**: Browser notification when alert triggers (DONE)
-- ✅ **Reminder popup**: Browser notification when reminder fires (DONE)
+- ✅ **Alert notifications**: Browser notification when alert triggers (DONE) -doesnt work! 
+- ✅ **Reminder popup**: Browser notification when reminder fires (DONE) - doesnt work! 
 - **Follow-up prompts**: "Your task is ready, want to review?"
 - **Health status**: Show API/services health in header
 

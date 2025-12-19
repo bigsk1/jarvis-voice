@@ -555,15 +555,31 @@ def create_assistant_for_call(persona: str, owner: str, task: str, context: str)
     
     # Voicemail detection settings
     # Options: "hangup" (detect & end call), "message" (leave voicemail), "disabled"
+    # See: https://docs.vapi.ai/api-reference/assistants/create#request.body.voicemailDetection
     voicemail_action = get_config_value('VAPI_VOICEMAIL_ACTION', 'hangup')
     
+    # Aggressive voicemail detection config to avoid talking to voicemail recordings
+    # - startAtSeconds: 1.5 (start checking early)
+    # - frequencySeconds: 2.5 (minimum allowed value)
+    # - maxRetries: 8 (more chances to detect)
+    # - beepMaxAwaitSeconds: 12 (wait up to 12s for beep after detection)
+    voicemail_detection_config = {
+        "provider": "vapi",
+        "backoffPlan": {
+            "startAtSeconds": 1.5,
+            "frequencySeconds": 2.5,
+            "maxRetries": 8
+        },
+        "beepMaxAwaitSeconds": 12
+    }
+    
     if voicemail_action == 'hangup':
-        # Detect voicemail and hang up - use simple provider string
-        assistant_config["voicemailDetection"] = {"provider": "vapi"}
+        # Detect voicemail and hang up
+        assistant_config["voicemailDetection"] = voicemail_detection_config
         assistant_config["voicemailMessage"] = ""  # Empty = hang up
     elif voicemail_action == 'message':
         # Detect voicemail and leave a short message
-        assistant_config["voicemailDetection"] = {"provider": "vapi"}
+        assistant_config["voicemailDetection"] = voicemail_detection_config
         assistant_config["voicemailMessage"] = f"Hi, this is {persona_config['name']} calling on behalf of {owner}. Please call back when you get a chance. Thank you!"
     # else: disabled - no voicemail detection
     
@@ -652,6 +668,60 @@ def get_call_status(call_id: str) -> dict:
     return response.json()
 
 
+def extract_transcript(call: dict) -> str:
+    """Extract the full transcript from VAPI call response.
+    
+    VAPI can return transcript in multiple formats:
+    1. call['transcript'] - plain text string (dynamically created assistants)
+    2. call['messages'] - array of message objects (pre-configured assistants)
+    3. call['artifact']['transcript'] - from artifact plan
+    
+    This function checks all sources and returns the best available transcript.
+    """
+    # First try the simple transcript field
+    transcript = call.get('transcript', '')
+    if transcript and len(transcript) > 50:  # Has meaningful content
+        return transcript
+    
+    # Check artifact for transcript (VAPI stores analysis here)
+    artifact = call.get('artifact', {})
+    if artifact:
+        artifact_transcript = artifact.get('transcript', '')
+        if artifact_transcript and len(artifact_transcript) > len(transcript):
+            transcript = artifact_transcript
+    
+    # Check messages array (pre-configured assistants often use this)
+    messages = call.get('messages', [])
+    if messages and isinstance(messages, list):
+        # Format messages into readable transcript
+        formatted_lines = []
+        for msg in messages:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '') or msg.get('message', '')
+            
+            # Skip empty messages or system messages
+            if not content or role == 'system':
+                continue
+            
+            # Map roles to friendly names
+            if role in ['assistant', 'bot']:
+                speaker = 'AI'
+            elif role in ['user', 'customer']:
+                speaker = 'User'
+            else:
+                speaker = role.capitalize()
+            
+            formatted_lines.append(f"{speaker}: {content}")
+        
+        if formatted_lines:
+            messages_transcript = '\n'.join(formatted_lines)
+            # Use messages transcript if it's longer/more complete
+            if len(messages_transcript) > len(transcript):
+                transcript = messages_transcript
+    
+    return transcript
+
+
 def wait_for_call_completion(call_id: str, timeout: int = 60) -> dict:
     """Wait for a call to complete and return the result.
     
@@ -672,7 +742,7 @@ def wait_for_call_completion(call_id: str, timeout: int = 60) -> dict:
                 return {
                     "status": last_status,
                     "duration_seconds": call.get('duration'),
-                    "transcript": call.get('transcript', ''),
+                    "transcript": extract_transcript(call),  # Use full transcript extractor
                     "summary": call.get('summary', ''),
                     "end_reason": end_reason,
                     "recording_url": call.get('recordingUrl', ''),
@@ -893,18 +963,21 @@ def action_call(args: dict) -> dict:
                 if call.get('status') == 'ended':
                     # Call finished! Clear lock and return result
                     clear_call_in_progress()
-                    transcript = call.get('transcript', '')
+                    transcript = extract_transcript(call)  # Use full transcript extractor
                     summary = call.get('summary', '')
-                    save_call_to_canvas(in_progress['call_id'], in_progress['recipient'], task, {
+                    saved = save_call_to_canvas(in_progress['call_id'], in_progress['recipient'], task, {
                         'status': 'ended',
                         'transcript': transcript,
                         'summary': summary,
                         'duration_seconds': call.get('duration')
                     })
+                    speech = f"Call completed. {summary}" if summary else "Call completed."
+                    if saved:
+                        speech += " Full transcript saved to Canvas in Phone Calls folder."
                     return {
                         "ok": True,
-                        "speech": f"Call completed. {summary}" if summary else "Call completed.",
-                        "data": {"call_id": in_progress['call_id'], "transcript": transcript, "summary": summary}
+                        "speech": speech,
+                        "data": {"call_id": in_progress['call_id'], "transcript": transcript, "summary": summary, "saved_to_canvas": saved}
                     }
                 else:
                     return {
@@ -976,6 +1049,10 @@ def action_call(args: dict) -> dict:
             if summary:
                 speech += f" {summary}"
             
+            # Tell LLM transcript is already saved - don't create another canvas page!
+            if saved:
+                speech += " Full transcript saved to Canvas in Phone Calls folder."
+            
             # Add hint about what user might want to do next
             # (The LLM can pick up on this and suggest actions)
             follow_up_hints = []
@@ -995,6 +1072,7 @@ def action_call(args: dict) -> dict:
                     "summary": summary,
                     "recording_url": result.get('recording_url'),
                     "saved_to_canvas": saved,
+                    "canvas_location": "Phone Calls/ folder" if saved else None,
                     "follow_up_hints": follow_up_hints
                 }
             }
@@ -1056,7 +1134,7 @@ def action_status(args: dict) -> dict:
     try:
         call = get_call_status(call_id)
         status = call.get('status', 'unknown')
-        transcript = call.get('transcript', '')
+        transcript = extract_transcript(call)  # Use full transcript extractor
         summary = call.get('summary', '')
         
         # If call is done and has transcript, save to Canvas
@@ -1071,8 +1149,12 @@ def action_status(args: dict) -> dict:
         
         # Build speech response
         if status == 'ended' and transcript:
-            # Summarize the conversation
-            speech = f"Call completed. {summary}" if summary else f"Call completed. Here's what was said: {transcript[:150]}..."
+            # Tell LLM the transcript was saved - DON'T create another canvas page!
+            if save_to_canvas:
+                speech = f"Call completed. {summary}" if summary else "Call completed."
+                speech += " Full transcript already saved to Canvas in Phone Calls folder - no need to create another canvas page."
+            else:
+                speech = f"Call completed. {summary}" if summary else f"Call completed. Here's what was said: {transcript[:150]}..."
         elif status == 'in-progress':
             speech = "Call is still in progress"
         else:
@@ -1086,7 +1168,8 @@ def action_status(args: dict) -> dict:
                 "duration": call.get('duration'),
                 "transcript": transcript,
                 "summary": summary,
-                "saved_to_canvas": save_to_canvas and status == 'ended'
+                "saved_to_canvas": save_to_canvas and status == 'ended',
+                "canvas_location": "Phone Calls/ folder" if save_to_canvas and status == 'ended' else None
             }
         }
     except Exception as e:

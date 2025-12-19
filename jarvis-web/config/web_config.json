@@ -33,7 +33,7 @@
     "image_provider": null
   },
   "conversation": {
-    "history_limit": 21,
+    "history_limit": 20,
     "notes": "Number of messages (user+assistant) to include as LLM context"
   },
   "tools": {
