@@ -3,6 +3,8 @@ API Routes for Jarvis Web UI
 REST endpoints for status, tools, settings, and more
 """
 import os
+import json
+from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory, abort
 from ..services.tool_discovery import get_tool_service
@@ -381,6 +383,230 @@ def update_conversation_title(conv_id):
             'ok': False,
             'error': 'Conversation not found'
         }), 404
+
+
+@api_bp.route('/conversations/search', methods=['GET'])
+def search_conversations():
+    """Search across all conversations for keywords
+    
+    Query params:
+      - q: search query (required)
+      - limit: max results per conversation (default 3)
+    
+    Returns matching messages with context snippets
+    """
+    from ..services.conversation_store import get_conversation_store
+    store = get_conversation_store()
+    
+    query = request.args.get('q', '').strip().lower()
+    limit_per_conv = request.args.get('limit', 3, type=int)
+    
+    if not query:
+        return jsonify({'ok': False, 'error': 'Search query required'}), 400
+    
+    results = []
+    conversations = store.list_conversations(limit=100)  # Search up to 100 conversations
+    
+    for conv_summary in conversations:
+        conv = store.get_conversation(conv_summary['id'])
+        if not conv:
+            continue
+        
+        matches = []
+        for msg in conv.get('messages', []):
+            content = msg.get('content', '').lower()
+            if query in content:
+                # Extract snippet around match
+                idx = content.find(query)
+                start = max(0, idx - 50)
+                end = min(len(content), idx + len(query) + 50)
+                snippet = msg.get('content', '')[start:end]
+                if start > 0:
+                    snippet = '...' + snippet
+                if end < len(content):
+                    snippet = snippet + '...'
+                
+                matches.append({
+                    'message_id': msg.get('id'),
+                    'role': msg.get('role'),
+                    'snippet': snippet,
+                    'timestamp': msg.get('timestamp')
+                })
+                
+                if len(matches) >= limit_per_conv:
+                    break
+        
+        if matches:
+            results.append({
+                'conversation_id': conv['id'],
+                'title': conv.get('title', 'Untitled'),
+                'updated_at': conv.get('updated_at'),
+                'matches': matches,
+                'total_matches': len([m for m in conv.get('messages', []) 
+                                      if query in m.get('content', '').lower()])
+            })
+    
+    return jsonify({
+        'ok': True,
+        'query': query,
+        'results': results,
+        'total_conversations': len(results)
+    })
+
+
+@api_bp.route('/conversations/<conv_id>/export', methods=['GET'])
+def export_conversation(conv_id):
+    """Export a conversation as JSON or Markdown
+    
+    Query params:
+      - format: 'json' (default) or 'markdown'
+    """
+    from ..services.conversation_store import get_conversation_store
+    store = get_conversation_store()
+    
+    conversation = store.get_conversation(conv_id)
+    if not conversation:
+        return jsonify({'ok': False, 'error': 'Conversation not found'}), 404
+    
+    export_format = request.args.get('format', 'json').lower()
+    
+    if export_format == 'markdown':
+        # Generate Markdown
+        lines = [
+            f"# {conversation.get('title', 'Untitled Conversation')}",
+            f"",
+            f"**Created:** {conversation.get('created_at', 'Unknown')}",
+            f"**Updated:** {conversation.get('updated_at', 'Unknown')}",
+            f"",
+            "---",
+            ""
+        ]
+        
+        for msg in conversation.get('messages', []):
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            timestamp = msg.get('timestamp', '')
+            
+            if role == 'user':
+                lines.append(f"### 👤 User ({timestamp})")
+            else:
+                lines.append(f"### 🤖 Jarvis ({timestamp})")
+            
+            lines.append("")
+            lines.append(content)
+            lines.append("")
+            
+            # Include tool info if present
+            tools = msg.get('tools_used', [])
+            if tools:
+                lines.append(f"*Tools used: {', '.join(tools)}*")
+                lines.append("")
+            
+            lines.append("---")
+            lines.append("")
+        
+        markdown_content = '\n'.join(lines)
+        
+        from flask import Response
+        return Response(
+            markdown_content,
+            mimetype='text/markdown',
+            headers={
+                'Content-Disposition': f'attachment; filename="{conv_id}.md"'
+            }
+        )
+    else:
+        # JSON export (default)
+        from flask import Response
+        return Response(
+            json.dumps(conversation, indent=2),
+            mimetype='application/json',
+            headers={
+                'Content-Disposition': f'attachment; filename="{conv_id}.json"'
+            }
+        )
+
+
+@api_bp.route('/conversations/import', methods=['POST'])
+def import_conversation():
+    """Import a conversation from JSON
+    
+    Accepts: JSON body with conversation data or file upload
+    Returns: The imported conversation
+    """
+    from ..services.conversation_store import get_conversation_store
+    store = get_conversation_store()
+    
+    try:
+        # Check for file upload
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename.endswith('.json'):
+                conversation_data = json.load(file)
+            else:
+                return jsonify({'ok': False, 'error': 'Only JSON files supported'}), 400
+        else:
+            # JSON body
+            conversation_data = request.get_json()
+        
+        if not conversation_data:
+            return jsonify({'ok': False, 'error': 'No conversation data provided'}), 400
+        
+        # Validate required fields
+        if 'messages' not in conversation_data:
+            return jsonify({'ok': False, 'error': 'Invalid conversation format: missing messages'}), 400
+        
+        # Create new conversation with imported data
+        # Generate new ID to avoid conflicts
+        new_conv = store.create_conversation(
+            title=conversation_data.get('title', 'Imported Conversation')
+        )
+        
+        # Get the full conversation to update
+        conv = store.get_conversation(new_conv['id'])
+        
+        # Copy messages (but with new IDs)
+        import uuid
+        for msg in conversation_data.get('messages', []):
+            conv['messages'].append({
+                'id': str(uuid.uuid4())[:8],
+                'role': msg.get('role', 'user'),
+                'content': msg.get('content', ''),
+                'timestamp': msg.get('timestamp', datetime.now().isoformat()),
+                'data': msg.get('data'),
+                'tools_used': msg.get('tools_used', [])
+            })
+        
+        # Preserve original timestamps if available
+        if 'created_at' in conversation_data:
+            conv['created_at'] = conversation_data['created_at']
+        if 'updated_at' in conversation_data:
+            conv['updated_at'] = conversation_data['updated_at']
+        
+        # Save updated conversation
+        conv_file = store.conversations_dir / f"{new_conv['id']}.json"
+        with open(conv_file, 'w') as f:
+            json.dump(conv, f, indent=2)
+        
+        # Update index
+        for idx_conv in store._index['conversations']:
+            if idx_conv['id'] == new_conv['id']:
+                idx_conv['title'] = conv['title']
+                idx_conv['message_count'] = len(conv['messages'])
+                idx_conv['updated_at'] = conv.get('updated_at', datetime.now().isoformat())
+                break
+        store._save_index()
+        
+        return jsonify({
+            'ok': True,
+            'conversation': conv,
+            'message': f"Imported {len(conv['messages'])} messages"
+        })
+        
+    except json.JSONDecodeError:
+        return jsonify({'ok': False, 'error': 'Invalid JSON format'}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @api_bp.route('/stt', methods=['POST'])

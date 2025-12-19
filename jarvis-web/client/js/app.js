@@ -217,6 +217,111 @@ class JarvisApp {
       this._startNewChat();
     });
     
+    // Conversation filter (quick filter by title)
+    const filterInput = document.getElementById('conversationFilter');
+    if (filterInput) {
+      filterInput.addEventListener('input', (e) => {
+        this._filterConversations(e.target.value);
+      });
+    }
+    
+    // Deep search button
+    const deepSearchBtn = document.getElementById('deepSearchBtn');
+    if (deepSearchBtn) {
+      deepSearchBtn.addEventListener('click', () => {
+        this._openSearchModal();
+      });
+    }
+    
+    // Search modal
+    const searchModal = document.getElementById('searchModal');
+    const closeSearch = document.getElementById('closeSearch');
+    const deepSearchInput = document.getElementById('deepSearchInput');
+    const doDeepSearch = document.getElementById('doDeepSearch');
+    
+    if (closeSearch) {
+      closeSearch.addEventListener('click', () => {
+        searchModal.classList.remove('active');
+      });
+    }
+    
+    if (searchModal) {
+      searchModal.addEventListener('click', (e) => {
+        if (e.target === searchModal) {
+          searchModal.classList.remove('active');
+        }
+      });
+    }
+    
+    if (doDeepSearch) {
+      doDeepSearch.addEventListener('click', () => {
+        this._doDeepSearch();
+      });
+    }
+    
+    if (deepSearchInput) {
+      deepSearchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this._doDeepSearch();
+        }
+      });
+    }
+    
+    // Export/Import modal
+    const exportModal = document.getElementById('exportModal');
+    const closeExport = document.getElementById('closeExport');
+    const exportImportBtn = document.getElementById('exportImportBtn');
+    const exportJson = document.getElementById('exportJson');
+    const exportMarkdown = document.getElementById('exportMarkdown');
+    const importBtn = document.getElementById('importBtn');
+    const importFile = document.getElementById('importFile');
+    
+    if (exportImportBtn) {
+      exportImportBtn.addEventListener('click', () => {
+        exportModal.classList.add('active');
+      });
+    }
+    
+    if (closeExport) {
+      closeExport.addEventListener('click', () => {
+        exportModal.classList.remove('active');
+      });
+    }
+    
+    if (exportModal) {
+      exportModal.addEventListener('click', (e) => {
+        if (e.target === exportModal) {
+          exportModal.classList.remove('active');
+        }
+      });
+    }
+    
+    if (exportJson) {
+      exportJson.addEventListener('click', () => {
+        this._exportConversation('json');
+      });
+    }
+    
+    if (exportMarkdown) {
+      exportMarkdown.addEventListener('click', () => {
+        this._exportConversation('markdown');
+      });
+    }
+    
+    if (importBtn) {
+      importBtn.addEventListener('click', () => {
+        importFile.click();
+      });
+    }
+    
+    if (importFile) {
+      importFile.addEventListener('change', (e) => {
+        if (e.target.files[0]) {
+          this._importConversation(e.target.files[0]);
+        }
+      });
+    }
+    
     // Sidebar tabs
     document.querySelectorAll('.sidebar-tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -726,6 +831,9 @@ class JarvisApp {
         }
         
         container.innerHTML = html;
+        
+        // Store conversations for filtering
+        this._conversations = data.conversations;
       } else {
         container.innerHTML = '<div class="history-empty">Failed to load history</div>';
       }
@@ -733,6 +841,174 @@ class JarvisApp {
       console.error('[App] Failed to load history:', err);
       container.innerHTML = `<div class="history-empty">Error: ${err.message}</div>`;
     }
+  }
+  
+  /**
+   * Filter conversations by title (client-side)
+   */
+  _filterConversations(query) {
+    const container = document.getElementById('historyList');
+    const items = container.querySelectorAll('.history-item');
+    const lowerQuery = query.toLowerCase();
+    
+    items.forEach(item => {
+      const title = item.querySelector('.history-title')?.textContent?.toLowerCase() || '';
+      if (lowerQuery === '' || title.includes(lowerQuery)) {
+        item.style.display = '';
+      } else {
+        item.style.display = 'none';
+      }
+    });
+  }
+  
+  /**
+   * Open deep search modal
+   */
+  _openSearchModal() {
+    const modal = document.getElementById('searchModal');
+    const input = document.getElementById('deepSearchInput');
+    const results = document.getElementById('searchResults');
+    
+    modal.classList.add('active');
+    input.value = '';
+    results.innerHTML = '<p class="search-hint">Enter keywords to search across all conversation messages</p>';
+    input.focus();
+  }
+  
+  /**
+   * Perform deep search across all conversations
+   */
+  async _doDeepSearch() {
+    const input = document.getElementById('deepSearchInput');
+    const results = document.getElementById('searchResults');
+    const query = input.value.trim();
+    
+    if (!query) {
+      results.innerHTML = '<p class="search-hint">Please enter a search term</p>';
+      return;
+    }
+    
+    results.innerHTML = '<p class="search-hint">Searching...</p>';
+    
+    try {
+      const response = await fetch(`/api/conversations/search?q=${encodeURIComponent(query)}`);
+      const data = await response.json();
+      
+      if (data.ok && data.results.length > 0) {
+        let html = '';
+        
+        for (const result of data.results) {
+          html += `
+            <div class="search-result-item">
+              <div class="search-result-header">
+                <span class="search-result-title">${Utils.escapeHtml(result.title)}</span>
+                <span class="search-result-meta">${result.total_matches} match${result.total_matches > 1 ? 'es' : ''}</span>
+              </div>
+              <div class="search-result-matches">
+          `;
+          
+          for (const match of result.matches) {
+            const roleIcon = match.role === 'user' ? '👤' : '🤖';
+            const snippet = Utils.escapeHtml(match.snippet).replace(
+              new RegExp(`(${Utils.escapeHtml(query)})`, 'gi'),
+              '<mark>$1</mark>'
+            );
+            
+            html += `
+              <div class="search-match">
+                <div class="search-match-role">${roleIcon} ${match.role}</div>
+                <div class="search-match-snippet">${snippet}</div>
+              </div>
+            `;
+          }
+          
+          html += `
+              </div>
+              <div class="search-result-actions">
+                <button class="btn btn-secondary" onclick="window.jarvisApp.loadConversation('${result.conversation_id}'); document.getElementById('searchModal').classList.remove('active');">
+                  Open Conversation
+                </button>
+              </div>
+            </div>
+          `;
+        }
+        
+        results.innerHTML = html;
+      } else {
+        results.innerHTML = `<p class="search-hint">No results found for "${Utils.escapeHtml(query)}"</p>`;
+      }
+    } catch (err) {
+      console.error('[App] Search error:', err);
+      results.innerHTML = `<p class="search-hint" style="color: var(--error);">Error: ${err.message}</p>`;
+    }
+  }
+  
+  /**
+   * Export current conversation
+   */
+  _exportConversation(format) {
+    const convId = this.socket.conversationId;
+    
+    if (!convId) {
+      Utils.toast('No conversation to export', 'error');
+      return;
+    }
+    
+    // Create download link
+    const url = `/api/conversations/${convId}/export?format=${format}`;
+    const filename = format === 'json' ? `${convId}.json` : `${convId}.md`;
+    
+    // Trigger download
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    Utils.toast(`Exporting as ${format.toUpperCase()}...`, 'info');
+    document.getElementById('exportModal').classList.remove('active');
+  }
+  
+  /**
+   * Import conversation from JSON file
+   */
+  async _importConversation(file) {
+    if (!file.name.endsWith('.json')) {
+      Utils.toast('Only JSON files can be imported', 'error');
+      return;
+    }
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/conversations/import', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (data.ok) {
+        Utils.toast(data.message || 'Conversation imported!', 'success');
+        document.getElementById('exportModal').classList.remove('active');
+        
+        // Reload history and open the imported conversation
+        await this._loadConversationHistory();
+        if (data.conversation?.id) {
+          this.loadConversation(data.conversation.id);
+        }
+      } else {
+        Utils.toast(data.error || 'Import failed', 'error');
+      }
+    } catch (err) {
+      console.error('[App] Import error:', err);
+      Utils.toast(`Error: ${err.message}`, 'error');
+    }
+    
+    // Reset file input
+    document.getElementById('importFile').value = '';
   }
   
   /**

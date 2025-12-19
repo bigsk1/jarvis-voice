@@ -73,6 +73,11 @@
         <div class="sidebar-content">
           <!-- Conversations Tab (History) -->
           <div class="tab-content active" id="tab-conversations">
+            <!-- Quick Filter -->
+            <div class="conversation-filter">
+              <input type="text" id="conversationFilter" placeholder="Filter by title..." class="filter-input">
+              <button class="search-btn" id="deepSearchBtn" title="Deep search messages">🔍</button>
+            </div>
             <div class="history-list" id="historyList">
               <div class="history-loading">
                 <span style="color: var(--text-muted); font-size: var(--text-sm);">Loading conversations...</span>
@@ -87,6 +92,9 @@
           </div>
         </div>
         <div class="sidebar-footer">
+          <div class="sidebar-footer-actions">
+            <button class="footer-action-btn" id="exportImportBtn" title="Export/Import">📤</button>
+          </div>
           <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
         </div>
       </aside>
@@ -153,6 +161,53 @@
         <img id="lightboxImage" src="" alt="Full size image">
         <div class="lightbox-actions">
           <a id="lightboxDownload" href="" download class="lightbox-btn">⬇️ Download</a>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Search Modal -->
+    <div class="modal-overlay" id="searchModal">
+      <div class="modal" style="max-width: 650px;">
+        <div class="modal-header">
+          <h2 class="modal-title">🔍 Search Conversations</h2>
+          <button class="icon-btn" id="closeSearch">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="search-input-group">
+            <input type="text" id="deepSearchInput" placeholder="Search all messages..." class="search-modal-input">
+            <button class="btn btn-primary" id="doDeepSearch">Search</button>
+          </div>
+          <div class="search-results" id="searchResults">
+            <p class="search-hint">Enter keywords to search across all conversation messages</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Export Modal -->
+    <div class="modal-overlay" id="exportModal">
+      <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+          <h2 class="modal-title">📤 Export / Import</h2>
+          <button class="icon-btn" id="closeExport">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="export-section">
+            <h3>Export Current Conversation</h3>
+            <div class="export-buttons">
+              <button class="btn btn-secondary" id="exportJson">📄 Export JSON</button>
+              <button class="btn btn-secondary" id="exportMarkdown">📝 Export Markdown</button>
+            </div>
+          </div>
+          <hr style="border-color: var(--border); margin: var(--space-md) 0;">
+          <div class="import-section">
+            <h3>Import Conversation</h3>
+            <p style="font-size: var(--text-sm); color: var(--text-muted); margin-bottom: var(--space-sm);">
+              Import a previously exported JSON conversation
+            </p>
+            <input type="file" id="importFile" accept=".json" style="display: none;">
+            <button class="btn btn-secondary" id="importBtn">📥 Import JSON</button>
+          </div>
         </div>
       </div>
     </div>
