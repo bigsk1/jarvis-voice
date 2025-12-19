@@ -12,7 +12,7 @@
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
-- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v1.6** (chat UI, image upload, vision, analyze_image tool) ⭐ ENHANCED
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v1.8** (slash commands, @prompts, ✨ enhance, search/export) ⭐ ENHANCED
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
@@ -265,8 +265,17 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2025-12-19:**
+- ✅ **Jarvis Web UI v1.8** - Input enhancement & conversation management ⭐ ENHANCED
+  - **Slash commands**: `/canvas`, `/search`, `/recall`, `/detailed` - modify behavior
+  - **@prompts**: `@research`, `@quick`, `@compare` - inject methodologies
+  - **✨ Enhance with AI**: Magic wand transforms rough input into optimal prompts
+  - **Conversation search**: Quick filter + deep search across all messages
+  - **Export/Import**: Download as JSON/Markdown, restore from JSON
+  - See: `docs/JARVIS_WEB_UI.md`
+
 **2025-12-18:**
-- ✅ **Jarvis Web UI v1.6** - Image upload, vision, analyze_image tool ⭐ ENHANCED
+- ✅ **Jarvis Web UI v1.6** - Image upload, vision, analyze_image tool
   - **Image upload**: Drag-drop/paste/click to attach images
   - **Mode-aware vision**: Cloud=Grok/Claude, Local=llava
   - **Auto-stash uploads**: Images saved to stash + memory_db for cross-tool use
@@ -640,6 +649,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-18 (v2.15)  
-**Latest:** Jarvis Web UI v1.6, Image Upload & Vision, analyze_image tool  
+**Last Updated:** 2025-12-19 (v2.16)  
+**Latest:** Jarvis Web UI v1.8, Slash Commands, @Prompts, ✨ Enhance, Search/Export  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

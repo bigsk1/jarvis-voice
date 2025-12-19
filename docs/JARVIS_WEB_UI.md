@@ -1,6 +1,6 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.7)  
+> **Status**: MVP Complete (v1.8)  
 > **Last Updated**: December 19, 2025
 
 ---
@@ -91,11 +91,21 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| **Slash commands** | ✅ | `/canvas`, `/search`, `/recall`, etc. - modify behavior ⭐ NEW |
-| **@prompts** | ✅ | `@research`, `@quick`, `@compare` - inject methodologies ⭐ NEW |
-| **Command autocomplete** | ✅ | Type `/` or `@` to see suggestions ⭐ NEW |
-| **✨ Enhance with AI** | ✅ | Magic button transforms rough input into optimal prompt ⭐ NEW |
-| **Tool exclusion** | ✅ | Commands can exclude tools (force native search) ⭐ NEW |
+| **Slash commands** | ✅ | `/canvas`, `/search`, `/recall`, etc. - modify behavior |
+| **@prompts** | ✅ | `@research`, `@quick`, `@compare` - inject methodologies |
+| **Command autocomplete** | ✅ | Type `/` or `@` to see suggestions |
+| **✨ Enhance with AI** | ✅ | Magic button transforms rough input into optimal prompt |
+| **Tool exclusion** | ✅ | Commands can exclude tools (force native search) |
+
+### Phase 6: Conversation Management - COMPLETE ✅
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Quick filter** | ✅ | Filter conversations by title in sidebar ⭐ NEW |
+| **Deep search** | ✅ | Search across all message content with snippets ⭐ NEW |
+| **Export JSON** | ✅ | Download conversation as JSON file ⭐ NEW |
+| **Export Markdown** | ✅ | Download conversation as formatted Markdown ⭐ NEW |
+| **Import JSON** | ✅ | Upload JSON to restore conversation ⭐ NEW |
 
 ---
 
@@ -196,6 +206,9 @@ jarvis-web/
 | GET | `/api/prompts` | List all @prompts |
 | GET | `/api/prompts/<name>` | Get specific prompt |
 | POST | `/api/enhance-prompt` | ✨ AI-powered prompt enhancement |
+| GET | `/api/conversations/search?q=` | Search message content across all conversations |
+| GET | `/api/conversations/<id>/export?format=` | Export conversation (json/markdown) |
+| POST | `/api/conversations/import` | Import conversation from JSON file |
 
 ### WebSocket Events
 
@@ -857,8 +870,9 @@ Web UI → Upload image → Stash (temp) → /canvas → Canvas (permanent)
   - Intelligence insights should work in both modes
 
 ### Medium Priority
-- [ ] Conversation search (filter by keyword/date)
-- [ ] Export conversations (JSON/Markdown)
+- [x] Conversation search (filter by keyword/date) ✅ DONE
+- [x] Export conversations (JSON/Markdown) ✅ DONE
+- [x] Import conversations (JSON) ✅ DONE
 - [ ] Tool enable/disable per-tool in UI
 - [ ] MCP server status indicator (running/stopped/error)
 - [ ] Mobile responsive improvements
@@ -871,7 +885,7 @@ Web UI → Upload image → Stash (temp) → /canvas → Canvas (permanent)
 - [ ] Light theme option
 - [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
 
-### ✅ Recently Completed (v1.7)
+### ✅ Recently Completed (v1.8)
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
@@ -904,7 +918,11 @@ Web UI → Upload image → Stash (temp) → /canvas → Canvas (permanent)
 - [x] **Command autocomplete** - Type `/` or `@` for suggestions ⭐ NEW
 - [x] **✨ Enhance with AI** - Transform rough input into optimal prompts ⭐ NEW
 - [x] **Tool exclusion** - Commands can exclude tools to force native search ⭐ NEW
-- [x] **Canvas command** - `/canvas` researches + saves to Canvas viewer ⭐ NEW
+- [x] **Canvas command** - `/canvas` researches + saves to Canvas viewer
+- [x] **Conversation quick filter** - Filter by title in sidebar ⭐ NEW
+- [x] **Deep search modal** - Search all message content with highlighted snippets ⭐ NEW
+- [x] **Export conversations** - JSON and Markdown formats ⭐ NEW
+- [x] **Import conversations** - Restore from JSON files ⭐ NEW
 
 ---
 
@@ -1180,4 +1198,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*  
 *v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*  
 *v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*  
-*v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*
+*v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*  
+*v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*
