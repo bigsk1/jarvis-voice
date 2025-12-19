@@ -308,6 +308,97 @@ class ChatHandler:
                 self.socketio.emit('proactive:counts', service.get_pending_counts())
             else:
                 emit('proactive:error', {'error': f'Failed to acknowledge reminder {reminder_id}'})
+        
+        # =====================
+        # Log Streaming Events
+        # =====================
+        
+        @self.socketio.on('logs:subscribe')
+        def handle_logs_subscribe(data):
+            """Subscribe to log streaming"""
+            session_id = request.sid
+            sources = data.get('sources', ['llm', 'tool'])  # Default sources
+            
+            print(f"[LOGS] Client {session_id[:8]} subscribing to logs: {sources}")
+            
+            # Join logs room
+            join_room('logs_subscribers')
+            
+            # Start log streamer if not running
+            self._ensure_log_streamer_running()
+            
+            emit('logs:subscribed', {
+                'sources': sources,
+                'available': list(self._get_log_sources().keys())
+            })
+        
+        @self.socketio.on('logs:unsubscribe')
+        def handle_logs_unsubscribe():
+            """Unsubscribe from log streaming"""
+            session_id = request.sid
+            leave_room('logs_subscribers')
+            print(f"[LOGS] Client {session_id[:8]} unsubscribed from logs")
+            emit('logs:unsubscribed', {})
+        
+        @self.socketio.on('logs:set_sources')
+        def handle_logs_set_sources(data):
+            """Enable/disable specific log sources"""
+            sources = data.get('sources', {})  # {source: enabled}
+            
+            from ..services.log_streamer import get_log_streamer
+            
+            # Get or create streamer
+            streamer = self._get_log_streamer()
+            if streamer:
+                for source, enabled in sources.items():
+                    streamer.set_source_enabled(source, enabled)
+                
+                emit('logs:sources_updated', streamer.get_enabled_sources())
+        
+        @self.socketio.on('logs:get_sources')
+        def handle_logs_get_sources():
+            """Get available log sources and their enabled state"""
+            emit('logs:sources', self._get_log_sources())
+    
+    def _get_log_sources(self) -> dict:
+        """Get available log sources with enabled state"""
+        from ..services.log_streamer import LogStreamer
+        return {
+            source: {
+                'enabled': config['enabled'],
+                'name': source.upper(),
+                'description': self._get_source_description(source)
+            }
+            for source, config in LogStreamer.LOG_SOURCES.items()
+        }
+    
+    def _get_source_description(self, source: str) -> str:
+        """Get human-readable description for a log source"""
+        descriptions = {
+            'llm': 'LLM API calls (tokens, cost, latency)',
+            'tool': 'Tool executions (success, timing)',
+            'opencode': 'OpenCode sessions',
+            'thinking': 'Reasoning decisions (if enabled)',
+            'feedback': 'Feedback ratings'
+        }
+        return descriptions.get(source, source)
+    
+    def _ensure_log_streamer_running(self):
+        """Ensure the log streamer is running and broadcasting"""
+        if not hasattr(self, '_log_streamer') or self._log_streamer is None:
+            from ..services.log_streamer import LogStreamer
+            
+            def broadcast_log(entry):
+                """Broadcast log entry to all subscribed clients"""
+                self.socketio.emit('logs:entry', entry.to_dict(), room='logs_subscribers')
+            
+            self._log_streamer = LogStreamer(broadcast_log)
+            self._log_streamer.start()
+            print("[LOGS] Log streamer started")
+    
+    def _get_log_streamer(self):
+        """Get the log streamer instance"""
+        return getattr(self, '_log_streamer', None)
     
     def _get_conversation_context(self, conversation_id: str) -> list:
         """Get recent conversation history for LLM context"""

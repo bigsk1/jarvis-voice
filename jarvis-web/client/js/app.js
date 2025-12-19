@@ -72,6 +72,12 @@ class JarvisApp {
         this.proactive = new ProactiveManager(this.socket, this);
         console.log('[App] Proactive notifications enabled');
       }
+      
+      // Initialize log panel
+      if (!this.logPanel && window.LogPanelManager) {
+        this.logPanel = new LogPanelManager(this.socket.socket);
+        console.log('[App] Log panel enabled');
+      }
     });
     
     this.socket.on('connectionError', (data) => {

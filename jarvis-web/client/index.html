@@ -151,6 +151,36 @@
       </div>
     </main>
     
+    <!-- Log Panel (Collapsible) -->
+    <div class="log-panel" id="logPanel">
+      <div class="log-panel-header" id="logPanelHeader">
+        <div class="log-panel-title">
+          <span class="log-panel-toggle" id="logPanelToggle">▼</span>
+          <span>Server Logs</span>
+        </div>
+        <div class="log-panel-controls">
+          <div class="log-source-toggles" id="logSourceToggles">
+            <button class="log-source-btn active" data-source="llm" title="LLM API Calls">🤖 LLM</button>
+            <button class="log-source-btn active" data-source="tool" title="Tool Executions">🔧 Tools</button>
+            <button class="log-source-btn" data-source="opencode" title="OpenCode Sessions">💻 Code</button>
+            <button class="log-source-btn" data-source="feedback" title="Feedback Ratings">⭐ FB</button>
+          </div>
+          <button class="icon-btn log-clear-btn" id="logClearBtn" title="Clear logs">🗑️</button>
+          <button class="icon-btn log-scroll-btn" id="logScrollBtn" title="Auto-scroll" data-enabled="true">⬇️</button>
+        </div>
+      </div>
+      <div class="log-panel-content" id="logPanelContent">
+        <div class="log-entries" id="logEntries">
+          <div class="log-entry log-entry-info">
+            <span class="log-time">--:--:--</span>
+            <span class="log-source">SYS</span>
+            <span class="log-message">Click header to expand • Logs stream in real-time</span>
+          </div>
+        </div>
+      </div>
+      <div class="log-panel-resize" id="logPanelResize"></div>
+    </div>
+    
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
     
@@ -373,6 +403,7 @@
   <script src="/js/socket.js"></script>
   <script src="/js/chat.js"></script>
   <script src="/js/proactive.js"></script>
+  <script src="/js/logs.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>
