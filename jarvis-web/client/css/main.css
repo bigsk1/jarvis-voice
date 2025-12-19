@@ -508,8 +508,10 @@ body {
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   display: none;
-  max-height: 200px;
+  max-height: 400px;  /* Taller for better scrolling */
   overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .tool-card.expanded .tool-card-body {

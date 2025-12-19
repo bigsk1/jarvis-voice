@@ -1353,21 +1353,12 @@ class ChatUI {
         ? `✅ ${duration ? Utils.formatDuration(duration) : 'Complete'}`
         : '❌ Failed';
     
-    // Create a summary of the data instead of full JSON
+    // Show full JSON - user can scroll in expanded view
     let summary = '';
     if (data && typeof data === 'object') {
-      // Extract key info based on tool type
-      if (toolName === 'generate_image') {
-        summary = data.prompt ? `Prompt: "${Utils.truncate(data.prompt, 60)}"` : '';
-        if (data.provider) summary += `\nProvider: ${data.provider}`;
-      } else if (data.speech) {
-        summary = Utils.truncate(data.speech, 100);
-      } else if (data.ok !== undefined) {
-        summary = data.ok ? 'Success' : 'Failed';
-      } else {
-        // Show truncated JSON for other tools
-        summary = Utils.truncate(Utils.formatJson(data), 200);
-      }
+      summary = Utils.formatJson(data);
+    } else if (data) {
+      summary = String(data);
     }
     
     return `
