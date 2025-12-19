@@ -82,7 +82,9 @@ HTML_TEMPLATE = '''
             --danger: #f85149;
             --purple: #a371f7;
             --cyan: #39c5cf;
-            --sidebar-width: 280px;
+            --sidebar-width: 350px;
+            --sidebar-min-width: 250px;
+            --sidebar-max-width: 500px;
             --header-height: 60px;
             --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -202,10 +204,39 @@ HTML_TEMPLATE = '''
             left: 0;
             bottom: 0;
             width: var(--sidebar-width);
+            min-width: var(--sidebar-min-width);
+            max-width: var(--sidebar-max-width);
             background: var(--bg-secondary);
             border-right: 1px solid var(--border-color);
             overflow-y: auto;
             padding: 16px 0;
+            resize: horizontal;
+            overflow-x: hidden;
+        }
+
+        /* Resize handle styling */
+        .sidebar::-webkit-resizer {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        .sidebar::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 40px;
+            background: var(--border-color);
+            border-radius: 2px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .sidebar:hover::after {
+            opacity: 0.5;
         }
 
         .sidebar-section {
@@ -234,6 +265,7 @@ HTML_TEMPLATE = '''
             gap: 12px;
             transition: all 0.15s;
             border-left: 3px solid transparent;
+            position: relative;
         }
 
         .page-item:hover {
@@ -264,6 +296,43 @@ HTML_TEMPLATE = '''
             color: var(--text-primary);
         }
 
+        /* Tooltip for full title on hover */
+        .page-item:hover .tooltip {
+            display: block;
+        }
+
+        .tooltip {
+            display: none;
+            pointer-events: none;
+            position: absolute;
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            margin-left: 8px;
+            padding: 8px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            white-space: nowrap;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        .tooltip::before {
+            content: '';
+            position: absolute;
+            right: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            border: 6px solid transparent;
+            border-right-color: var(--border-color);
+        }
+
         .page-meta {
             font-size: 0.75rem;
             color: var(--text-muted);
@@ -272,6 +341,95 @@ HTML_TEMPLATE = '''
 
         .page-item.pinned .page-title::before {
             content: "📌 ";
+        }
+
+        /* Folder styles */
+        .folder-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.15s;
+            border-left: 3px solid transparent;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .folder-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .folder-item.active {
+            background: var(--bg-tertiary);
+            border-left-color: var(--purple);
+        }
+
+        .folder-item .folder-icon {
+            transition: transform 0.2s;
+        }
+
+        .folder-item.expanded .folder-icon {
+            transform: rotate(90deg);
+        }
+
+        .folder-name {
+            flex: 1;
+        }
+
+        .folder-count {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: var(--bg-tertiary);
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        .folder-pages {
+            display: none;
+            padding-left: 12px;
+            border-left: 1px solid var(--border-color);
+            margin-left: 24px;
+        }
+
+        .folder-pages.expanded {
+            display: block;
+        }
+
+        .folder-pages .page-item {
+            padding: 8px 12px;
+        }
+
+        .folder-pages .page-title {
+            font-size: 0.85rem;
+        }
+
+        /* Print button styles */
+        @media print {
+            .header, .sidebar, .page-header-actions, .source-query {
+                display: none !important;
+            }
+            .main {
+                margin: 0 !important;
+                padding: 20px !important;
+            }
+            .page-view {
+                max-width: none !important;
+            }
+            body {
+                background: white !important;
+                color: black !important;
+            }
+            .page-content {
+                color: black !important;
+            }
+            .page-content pre {
+                border: 1px solid #ccc !important;
+                background: #f5f5f5 !important;
+            }
+            .page-view-title {
+                color: black !important;
+            }
         }
 
         /* Main Content */
@@ -519,6 +677,78 @@ HTML_TEMPLATE = '''
             max-width: 100%;
             border-radius: 8px;
             margin: 1.5em 0;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .page-content img:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Hero image at top of page */
+        .page-hero-image {
+            width: 100%;
+            max-height: 400px;
+            object-fit: cover;
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        /* Image gallery grid */
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 1.5em 0;
+        }
+
+        .image-gallery img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin: 0;
+        }
+
+        /* Image lightbox */
+        .image-lightbox {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 300;
+            cursor: zoom-out;
+        }
+
+        .image-lightbox.active {
+            display: flex;
+        }
+
+        .image-lightbox img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .image-lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            border: none;
+            color: var(--text-primary);
+            font-size: 2rem;
+            cursor: pointer;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .page-content hr {
@@ -736,12 +966,16 @@ HTML_TEMPLATE = '''
     </header>
 
     <aside class="sidebar">
-        <div class="sidebar-section">
+        <div class="sidebar-section" id="pinnedSection" style="display: none;">
             <div class="sidebar-title">📌 Pinned</div>
             <ul class="page-list" id="pinnedList"></ul>
         </div>
+        <div class="sidebar-section" id="foldersSection">
+            <div class="sidebar-title">📁 Folders</div>
+            <ul class="page-list" id="folderList"></ul>
+        </div>
         <div class="sidebar-section">
-            <div class="sidebar-title">📄 All Pages</div>
+            <div class="sidebar-title">📄 Pages</div>
             <ul class="page-list" id="pageList"></ul>
         </div>
     </aside>
@@ -789,6 +1023,12 @@ HTML_TEMPLATE = '''
     </div>
 
     <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Image Lightbox -->
+    <div class="image-lightbox" id="imageLightbox" onclick="closeLightbox()">
+        <button class="image-lightbox-close" onclick="closeLightbox()">&times;</button>
+        <img id="lightboxImage" src="" alt="Full size">
+    </div>
 
     <script>
         // State
@@ -881,37 +1121,137 @@ HTML_TEMPLATE = '''
             }
         }
 
+        // Print function
+        function printPage() {
+            window.print();
+        }
+
+        // Extract folder from title (e.g., "Phone Calls/2025-12-14" → "Phone Calls")
+        function getFolder(title) {
+            if (title && title.includes('/')) {
+                return title.split('/')[0].trim();
+            }
+            return null;
+        }
+
+        // Get display title (without folder prefix)
+        function getDisplayTitle(title) {
+            if (title && title.includes('/')) {
+                return title.split('/').slice(1).join('/').trim();
+            }
+            return title;
+        }
+
+        // Track expanded folders
+        let expandedFolders = new Set();
+
+        function toggleFolder(folderName) {
+            if (expandedFolders.has(folderName)) {
+                expandedFolders.delete(folderName);
+            } else {
+                expandedFolders.add(folderName);
+            }
+            renderSidebar();
+        }
+
         // Render Functions
         function renderSidebar() {
             const pinnedList = document.getElementById('pinnedList');
+            const pinnedSection = document.getElementById('pinnedSection');
+            const folderList = document.getElementById('folderList');
+            const foldersSection = document.getElementById('foldersSection');
             const pageList = document.getElementById('pageList');
             
             const pinned = pages.filter(p => p.pinned);
             const unpinned = pages.filter(p => !p.pinned);
             
+            // Show/hide pinned section
+            pinnedSection.style.display = pinned.length > 0 ? 'block' : 'none';
             pinnedList.innerHTML = pinned.map(p => renderPageItem(p, true)).join('');
-            pageList.innerHTML = unpinned.map(p => renderPageItem(p, false)).join('');
+            
+            // Group unpinned pages by folder
+            const folders = {};
+            const noFolder = [];
+            
+            unpinned.forEach(page => {
+                const folder = getFolder(page.title);
+                if (folder) {
+                    if (!folders[folder]) {
+                        folders[folder] = [];
+                    }
+                    folders[folder].push(page);
+                } else {
+                    noFolder.push(page);
+                }
+            });
+            
+            // Sort folders alphabetically
+            const sortedFolders = Object.keys(folders).sort();
+            
+            // Show/hide folders section
+            foldersSection.style.display = sortedFolders.length > 0 ? 'block' : 'none';
+            
+            // Render folders
+            folderList.innerHTML = sortedFolders.map(folderName => {
+                const folderPages = folders[folderName];
+                const isExpanded = expandedFolders.has(folderName);
+                const hasActivePage = folderPages.some(p => p.id === currentPage);
+                
+                // Auto-expand folder if it contains the active page
+                if (hasActivePage && !isExpanded) {
+                    expandedFolders.add(folderName);
+                }
+                const expanded = expandedFolders.has(folderName);
+                
+                return `
+                    <li class="folder-item ${expanded ? 'expanded' : ''} ${hasActivePage ? 'active' : ''}" 
+                        onclick="toggleFolder('${escapeHtml(folderName)}')">
+                        <span class="folder-icon">▶</span>
+                        <span class="folder-name">${escapeHtml(folderName)}</span>
+                        <span class="folder-count">${folderPages.length}</span>
+                    </li>
+                    <ul class="folder-pages ${expanded ? 'expanded' : ''}">
+                        ${folderPages.map(p => renderPageItem(p, false, true)).join('')}
+                    </ul>
+                `;
+            }).join('');
+            
+            // Render pages without folders
+            pageList.innerHTML = noFolder.map(p => renderPageItem(p, false)).join('');
         }
 
-        function renderPageItem(page, isPinned) {
+        function renderPageItem(page, isPinned, inFolder = false) {
             const icon = getPageIcon(page);
             const date = new Date(page.updated || page.created).toLocaleDateString();
             const activeClass = currentPage === page.id ? 'active' : '';
             const pinnedClass = isPinned ? 'pinned' : '';
             
+            // Show shortened title if in folder
+            const displayTitle = inFolder ? getDisplayTitle(page.title) : page.title;
+            const fullTitle = page.title;
+            
             return `
-                <li class="page-item ${activeClass} ${pinnedClass}" onclick="selectPage('${page.id}')">
+                <li class="page-item ${activeClass} ${pinnedClass}" onclick="event.stopPropagation(); selectPage('${page.id}')">
                     <span class="page-icon">${icon}</span>
                     <div class="page-info">
-                        <div class="page-title">${escapeHtml(page.title)}</div>
+                        <div class="page-title">${escapeHtml(displayTitle)}</div>
                         <div class="page-meta">${date}</div>
                     </div>
+                    <div class="tooltip">${escapeHtml(fullTitle)}</div>
                 </li>
             `;
         }
 
         function getPageIcon(page) {
             const tags = page.tags || [];
+            const title = (page.title || '').toLowerCase();
+            
+            // Check title-based icons first
+            if (title.startsWith('phone calls/')) return '📞';
+            if (title.startsWith('system prompt')) return '🧠';
+            
+            // Tag-based icons
+            if (tags.includes('phone_call') || tags.includes('transcript')) return '📞';
             if (tags.includes('code') || tags.includes('script')) return '💻';
             if (tags.includes('research')) return '🔬';
             if (tags.includes('movies') || tags.includes('entertainment')) return '🎬';
@@ -919,6 +1259,7 @@ HTML_TEMPLATE = '''
             if (tags.includes('api')) return '🔌';
             if (tags.includes('note')) return '📝';
             if (tags.includes('reference')) return '📚';
+            if (tags.includes('evolution')) return '🧬';
             return '📄';
         }
 
@@ -953,6 +1294,9 @@ HTML_TEMPLATE = '''
                             <button class="btn btn-secondary btn-icon" onclick="togglePin('${page.id}')" title="${page.pinned ? 'Unpin' : 'Pin'}">
                                 ${page.pinned ? '📌' : '📍'}
                             </button>
+                            <button class="btn btn-secondary btn-icon" onclick="printPage()" title="Print">
+                                🖨️
+                            </button>
                             <button class="btn btn-secondary" onclick="openEditModal('${page.id}')">
                                 ✏️ Edit
                             </button>
@@ -975,6 +1319,9 @@ HTML_TEMPLATE = '''
             pageView.querySelectorAll('pre code').forEach(block => {
                 hljs.highlightElement(block);
             });
+
+            // Setup image click handlers for lightbox
+            setupImageHandlers();
         }
 
         function showEmptyState() {
@@ -1016,6 +1363,28 @@ HTML_TEMPLATE = '''
             } else {
                 renderSidebar();
             }
+        }
+
+        // Image Lightbox Functions
+        function openLightbox(src) {
+            const lightbox = document.getElementById('imageLightbox');
+            const img = document.getElementById('lightboxImage');
+            img.src = src;
+            lightbox.classList.add('active');
+        }
+
+        function closeLightbox() {
+            document.getElementById('imageLightbox').classList.remove('active');
+        }
+
+        // Setup click handlers for images in content
+        function setupImageHandlers() {
+            document.querySelectorAll('.page-content img').forEach(img => {
+                img.onclick = (e) => {
+                    e.preventDefault();
+                    openLightbox(img.src);
+                };
+            });
         }
 
         // Utilities

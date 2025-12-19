@@ -1,0 +1,14 @@
+{
+  "name": "email",
+  "description": "Compose and send an email",
+  "icon": "📧",
+  "instruction": "EMAIL MODE: Help the user compose and send an email. First clarify who to send to, subject, and body if not provided. Use the send_email tool to send. Confirm details before sending.",
+  "force_tool": null,
+  "exclude_tools": [],
+  "response_style": "detailed",
+  "examples": [
+    "/email send a meeting reminder to john@example.com",
+    "/email compose a follow-up to the client about the proposal"
+  ]
+}
+

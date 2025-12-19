@@ -1,0 +1,15 @@
+{
+  "name": "recall",
+  "description": "Search memories and past conversations",
+  "icon": "🧠",
+  "instruction": "MEMORY RECALL MODE: Search through stored memories and past conversations. Use semantic_recall for natural language questions and search_memory for keyword lookups. Also check search_conversations for relevant past discussions.",
+  "force_tool": null,
+  "exclude_tools": [],
+  "response_style": "detailed",
+  "examples": [
+    "/recall what's my server IP address",
+    "/recall what projects have I worked on recently",
+    "/recall mom's birthday"
+  ]
+}
+

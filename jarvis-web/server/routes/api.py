@@ -15,6 +15,11 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 # Path to generated images
 IMAGES_PATH = JARVIS_ROOT / 'data' / 'generated_images'
 
+# Paths for commands and prompts
+WEB_DATA_PATH = JARVIS_ROOT / 'jarvis-web' / 'data'
+COMMANDS_PATH = WEB_DATA_PATH / 'commands'
+PROMPTS_PATH = WEB_DATA_PATH / 'prompts'
+
 
 @api_bp.route('/status', methods=['GET'])
 def get_status():
@@ -857,3 +862,255 @@ def serve_upload(filename):
     
     return send_from_directory(str(UPLOADS_PATH), filename)
 
+
+# =============================================================================
+# Commands and Prompts System (Slash Commands / At-Prompts)
+# =============================================================================
+
+@api_bp.route('/commands', methods=['GET'])
+def list_commands():
+    """List all available /commands (auto-discovered from data/commands/*.json)"""
+    import json
+    
+    commands = {}
+    
+    if COMMANDS_PATH.exists():
+        for cmd_file in COMMANDS_PATH.glob('*.json'):
+            try:
+                with open(cmd_file, 'r') as f:
+                    cmd_data = json.load(f)
+                    name = cmd_data.get('name') or cmd_file.stem
+                    commands[name] = {
+                        'name': name,
+                        'description': cmd_data.get('description', ''),
+                        'icon': cmd_data.get('icon', '⚡'),
+                        'instruction': cmd_data.get('instruction', ''),
+                        'force_tool': cmd_data.get('force_tool'),
+                        'exclude_tools': cmd_data.get('exclude_tools', []),
+                        'response_style': cmd_data.get('response_style'),
+                        'examples': cmd_data.get('examples', [])
+                    }
+            except Exception as e:
+                print(f"[Commands] Error loading {cmd_file}: {e}")
+    
+    return jsonify({
+        'ok': True,
+        'count': len(commands),
+        'commands': commands
+    })
+
+
+@api_bp.route('/commands/<name>', methods=['GET'])
+def get_command(name):
+    """Get a specific command by name"""
+    import json
+    
+    cmd_file = COMMANDS_PATH / f"{name}.json"
+    
+    if cmd_file.exists():
+        try:
+            with open(cmd_file, 'r') as f:
+                cmd_data = json.load(f)
+                return jsonify({
+                    'ok': True,
+                    'command': cmd_data
+                })
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+    
+    return jsonify({'ok': False, 'error': f'Command not found: {name}'}), 404
+
+
+@api_bp.route('/prompts', methods=['GET'])
+def list_prompts():
+    """List all available @prompts (auto-discovered from data/prompts/*.md)"""
+    prompts = {}
+    
+    if PROMPTS_PATH.exists():
+        for prompt_file in PROMPTS_PATH.glob('*.md'):
+            try:
+                with open(prompt_file, 'r') as f:
+                    content = f.read()
+                    name = prompt_file.stem
+                    
+                    # Extract description from first line (# Title)
+                    lines = content.strip().split('\n')
+                    description = ''
+                    if lines and lines[0].startswith('#'):
+                        description = lines[0].lstrip('#').strip()
+                    
+                    prompts[name] = {
+                        'name': name,
+                        'description': description,
+                        'content': content
+                    }
+            except Exception as e:
+                print(f"[Prompts] Error loading {prompt_file}: {e}")
+    
+    return jsonify({
+        'ok': True,
+        'count': len(prompts),
+        'prompts': prompts
+    })
+
+
+@api_bp.route('/prompts/<name>', methods=['GET'])
+def get_prompt(name):
+    """Get a specific prompt by name"""
+    prompt_file = PROMPTS_PATH / f"{name}.md"
+    
+    if prompt_file.exists():
+        try:
+            with open(prompt_file, 'r') as f:
+                content = f.read()
+                lines = content.strip().split('\n')
+                description = ''
+                if lines and lines[0].startswith('#'):
+                    description = lines[0].lstrip('#').strip()
+                
+                return jsonify({
+                    'ok': True,
+                    'prompt': {
+                        'name': name,
+                        'description': description,
+                        'content': content
+                    }
+                })
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+    
+    return jsonify({'ok': False, 'error': f'Prompt not found: {name}'}), 404
+
+
+@api_bp.route('/enhance-prompt', methods=['POST'])
+def enhance_prompt():
+    """
+    ✨ AI-powered prompt enhancement
+    Takes a rough user query and transforms it into an optimal prompt
+    using full knowledge of Jarvis capabilities, tools, and best practices.
+    """
+    import json
+    
+    data = request.get_json() or {}
+    user_input = data.get('input', '').strip()
+    
+    if not user_input:
+        return jsonify({'ok': False, 'error': 'No input provided'}), 400
+    
+    # Get current mode
+    current_mode = get_web_setting('defaults.mode', 'cloud')
+    
+    try:
+        # Load LLM provider
+        sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+        from config_loader import load_config, get_config_value
+        from llm_provider import create_provider
+        
+        load_config(mode=current_mode)
+        
+        # Get tool summaries for context (only enabled, non-blocked tools)
+        tool_service = get_tool_service()
+        tools = tool_service.get_tools_summary()
+        # Filter to only available tools
+        available_tools = [
+            t for t in tools 
+            if t.get('enabled', True) and not t.get('blocked', False)
+        ]
+        tool_descriptions = "\n".join([
+            f"- {t['name']}: {t.get('description', 'No description')[:100]}"
+            for t in available_tools[:30]  # Limit to top 30 tools
+        ])
+        
+        # Build the enhancement system prompt
+        system_prompt = f"""You are a prompt enhancement assistant for Jarvis, an AI voice assistant.
+
+Your job is to take a rough, casual user input and transform it into an optimal, detailed prompt that will get the best results from Jarvis.
+
+## Jarvis Capabilities
+- **Native Web Search**: Jarvis has built-in web search that provides comprehensive, real-time information. This is BETTER than external search tools.
+- **Tools Available**:
+{tool_descriptions}
+
+## Enhancement Guidelines
+1. **Be Specific**: Add details about what information is wanted
+2. **Request Format**: Suggest how results should be structured (bullet points, sections, comparisons)
+3. **Time Context**: Add "current", "latest", "December 2025" when asking for news/data
+4. **Scope**: Define scope (e.g., "past 24 hours", "top 5", "major sources")
+5. **DON'T add commands** like /canvas or @prompts - just enhance the natural language
+6. **Keep it conversational** - this is for a voice assistant
+7. **If user wants to save/view results**, mention Canvas but naturally
+
+## Examples
+Input: "bitcoin news"
+Enhanced: "What's the latest Bitcoin news and price action? Include the current price, significant price movements in the last 24 hours, and the top 3-5 major news headlines affecting the market. Summarize key analyst predictions if available."
+
+Input: "weather"
+Enhanced: "What's the current weather and forecast for my location? Include today's conditions, temperature range, and the outlook for the next few days."
+
+Input: "email john about meeting"
+Enhanced: "Send an email to John about scheduling a meeting. Keep it professional and brief, asking about his availability this week."
+
+Now enhance the following input. Return ONLY the enhanced prompt text, nothing else."""
+
+        # Create provider based on mode
+        provider_type = get_config_value('LLM_PROVIDER', 'xai')
+        
+        if provider_type == 'ollama':
+            provider = create_provider(
+                'ollama',
+                model=get_config_value('OLLAMA_MODEL', 'qwen3:14b'),
+                base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
+            )
+        elif provider_type == 'xai':
+            provider = create_provider(
+                'xai',
+                api_key=get_config_value('XAI_API_KEY'),
+                model=get_config_value('XAI_MODEL', 'grok-3-fast-beta')
+            )
+        elif provider_type == 'anthropic':
+            provider = create_provider(
+                'anthropic',
+                api_key=get_config_value('ANTHROPIC_API_KEY'),
+                model=get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+            )
+        else:
+            provider = create_provider(
+                'openai',
+                api_key=get_config_value('OPENAI_API_KEY'),
+                model=get_config_value('OPENAI_MODEL', 'gpt-4o')
+            )
+        
+        # Call LLM to enhance
+        # chat() signature: chat(message: str, system_prompt: str = None, max_tokens: int = None) -> str
+        enhanced = provider.chat(
+            message=user_input,
+            system_prompt=system_prompt,
+            max_tokens=500
+        )
+        
+        # Clean up response
+        if enhanced:
+            enhanced = enhanced.strip()
+            # Remove quotes if LLM wrapped the response
+            if enhanced.startswith('"') and enhanced.endswith('"'):
+                enhanced = enhanced[1:-1]
+            if enhanced.startswith("Enhanced:"):
+                enhanced = enhanced[9:].strip()
+        else:
+            enhanced = user_input  # Fallback to original if empty
+        
+        return jsonify({
+            'ok': True,
+            'original': user_input,
+            'enhanced': enhanced,
+            'mode': current_mode
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'ok': False,
+            'error': str(e),
+            'original': user_input
+        }), 500

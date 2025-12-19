@@ -1,0 +1,15 @@
+{
+  "name": "search",
+  "description": "Force comprehensive web search using native grounding",
+  "icon": "🌐",
+  "instruction": "WEB SEARCH MODE: Use YOUR NATIVE WEB SEARCH capability (grounding search) to find comprehensive, real-time information. DO NOT use external tools - your built-in search provides better results with multiple sources synthesized together. Include: current data, news headlines, analysis, and source citations. Format the response with clear sections and bullet points.",
+  "force_tool": null,
+  "exclude_tools": ["mcp_brave_search_brave_web_search", "mcp_fetch_fetch", "crypto_price"],
+  "response_style": "detailed",
+  "examples": [
+    "/search latest news about AI regulations",
+    "/search current bitcoin price and market analysis",
+    "/search weather forecast for Portland this week"
+  ]
+}
+

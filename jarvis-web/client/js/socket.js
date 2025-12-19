@@ -125,9 +125,12 @@ class JarvisSocket {
   }
 
   /**
-   * Send a chat message (with optional image)
+   * Send a chat message (with optional image and command metadata)
+   * @param {string} message - The message text
+   * @param {Object} imageData - Optional image data {base64, url, filename}
+   * @param {Object} commandMeta - Optional command/prompt metadata from CommandSystem
    */
-  sendMessage(message, imageData = null, conversationId = null) {
+  sendMessage(message, imageData = null, commandMeta = null) {
     if (!this.connected) {
       console.error('[Socket] Not connected');
       return false;
@@ -136,12 +139,34 @@ class JarvisSocket {
     const payload = {
       message,
       mode: this.mode,
-      conversation_id: conversationId || this.conversationId
+      conversation_id: this.conversationId
     };
     
     // Include image data if provided
     if (imageData) {
       payload.image = imageData;
+    }
+    
+    // Include command/prompt metadata if provided
+    if (commandMeta) {
+      if (commandMeta.instruction) {
+        payload.system_instruction = commandMeta.instruction;
+      }
+      if (commandMeta.force_tool) {
+        payload.force_tool = commandMeta.force_tool;
+      }
+      if (commandMeta.exclude_tools && commandMeta.exclude_tools.length > 0) {
+        payload.exclude_tools = commandMeta.exclude_tools;
+      }
+      if (commandMeta.response_style) {
+        payload.response_style = commandMeta.response_style;
+      }
+      if (commandMeta.command) {
+        payload.command = commandMeta.command;
+      }
+      if (commandMeta.prompt) {
+        payload.prompt_name = commandMeta.prompt;
+      }
     }
 
     this.socket.emit('chat:send', payload);

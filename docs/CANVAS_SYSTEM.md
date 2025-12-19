@@ -193,9 +193,21 @@ Professional dark UI with:
 - GitHub Dark syntax highlighting
 
 ### Sidebar
-- **Pinned section** - Important pages at top
-- **All pages** - Chronological list
+- **Pinned section** - Important pages at top (shows when pinned pages exist)
+- **Folders section** - Auto-grouped by title prefix (e.g., "Phone Calls/", "System Prompt Suggestion")
+- **Pages section** - Ungrouped pages
 - **Search** - Full-text search (Ctrl+K)
+
+### Folder Organization
+Pages are automatically grouped into folders based on their title prefix:
+- `Phone Calls/2025-12-14...` → 📁 **Phone Calls** folder
+- `System Prompt Suggestion...` → 📁 **System Prompt Suggestion** folder
+
+**Folder features:**
+- Click folder to expand/collapse
+- Shows page count badge
+- Auto-expands when active page is inside
+- Folders sorted alphabetically, always at top
 
 ### Page View
 - **Markdown rendering** - Headers, lists, tables, blockquotes
@@ -203,6 +215,14 @@ Professional dark UI with:
 - **Source query** - Shows what user asked
 - **Edit/Delete** - Modify or remove pages
 - **Pin toggle** - Keep important pages accessible
+- **Print button** - Print current page using browser print dialog (🖨️)
+
+### Print Support
+Click the 🖨️ button to print a page:
+- Uses browser's native print dialog
+- Hides sidebar, header, and action buttons
+- Clean black-on-white output
+- Code blocks formatted with borders
 
 ### Live Reload
 Pages auto-refresh every 2 seconds when new content is added.
@@ -285,6 +305,93 @@ Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq", "Canv
 
 ## Future Enhancements
 
+### Recently Added (Dec 2025)
+
+- [x] **Folder organization** - Auto-group pages by title prefix
+- [x] **Print support** - Browser print dialog with clean output
+- [x] **Image lightbox** - Click images to view full size
+- [x] **Wider sidebar** - 350px width, resizable
+- [x] **Hover tooltips** - See full page title on hover
+- [x] **Web UI integration** - Canvas icon in jarvis-web header
+
+---
+
+## Web UI + Canvas + Stash Integration
+
+### Current Integration (Dec 2025)
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Canvas icon in header** | ✅ Done | Click 📄 in web UI header to open Canvas |
+| **Image support** | ✅ Done | Markdown images render with lightbox |
+
+### Planned Features
+
+#### `/canvas` Command (Web UI)
+Type `/canvas` in the web UI chat to send content directly to Canvas:
+```
+/canvas Research the best Node.js frameworks
+/canvas [with attached image] Create a blog post about this
+```
+
+#### Save to Canvas Button
+Add button on assistant messages to save response to Canvas:
+- Preserves markdown formatting
+- Includes images from stash
+- Auto-names based on query
+
+#### Canvas + Stash Flow
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Web UI    │────▶│    Stash    │────▶│   Canvas    │
+│  (upload)   │     │  (staging)  │     │  (publish)  │
+└─────────────┘     └─────────────┘     └─────────────┘
+```
+
+**Workflow:**
+1. User uploads image → goes to Stash (temp storage)
+2. User says "save this to canvas" → Stash ref copied to Canvas
+3. Canvas renders from stash:// URL or copies to permanent storage
+
+#### Image in Canvas Pages
+Canvas pages can include images via:
+```markdown
+## Blog Post Title
+
+![Hero Image](http://localhost:8890/images/hero.jpg)
+
+Content goes here...
+```
+
+Or with stash references:
+```markdown
+![Uploaded Image](stash://space_xxx/file_id)
+```
+
+### Implementation Notes
+
+**Canvas Page with Image (JSON):**
+```json
+{
+  "id": "page_20251218_xxx",
+  "title": "Blog Post Title",
+  "content": "![Hero](http://localhost:8890/images/hero.jpg)\n\n## Content...",
+  "images": ["stash://space_xxx/file_id"],  // Optional: track stash refs
+  "hero_image": "/images/hero.jpg"           // Optional: dedicated hero
+}
+```
+
+**Canvas API for Images:**
+```bash
+# Create page with image
+POST /api/pages
+{
+  "title": "My Blog Post",
+  "content": "...",
+  "hero_image": "stash://space_xxx/file_id"  # Resolved to URL
+}
+```
+
 ### Planned Features
 
 - [ ] **Command Center** - System status dashboard
@@ -347,6 +454,6 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 
 ---
 
-**Version:** 1.0  
-**Last Updated:** 2024-12-01
+**Version:** 1.1  
+**Last Updated:** 2025-12-18
 

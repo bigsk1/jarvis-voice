@@ -1,0 +1,15 @@
+{
+  "name": "image",
+  "description": "Generate an image with AI",
+  "icon": "🎨",
+  "instruction": "IMAGE GENERATION: Use the generate_image tool to create this image. Be creative with the prompt - add style details, lighting, composition hints. After generation, the image will be displayed inline.",
+  "force_tool": "generate_image",
+  "exclude_tools": [],
+  "response_style": "casual",
+  "examples": [
+    "/image a cyberpunk cityscape at night",
+    "/image professional headshot portrait style",
+    "/image diagram of microservices architecture"
+  ]
+}
+

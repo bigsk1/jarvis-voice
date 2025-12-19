@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.6)  
-> **Last Updated**: December 18, 2025
+> **Status**: MVP Complete (v1.7)  
+> **Last Updated**: December 19, 2025
 
 ---
 
@@ -83,9 +83,19 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Image upload** | ✅ | Drag-drop/paste/click to attach images |
 | **Vision analysis** | ✅ | Mode-aware: Cloud=Grok/Claude, Local=llava |
 | **Expand details button** | ✅ | Show full LLM response before voice shortening |
-| **Auto-stash uploads** | ✅ | Uploaded images auto-stash + memory_db entry ⭐ NEW |
-| **analyze_image tool** | ✅ | Analyze URLs, files, stash refs with vision ⭐ NEW |
+| **Auto-stash uploads** | ✅ | Uploaded images auto-stash + memory_db entry |
+| **analyze_image tool** | ✅ | Analyze URLs, files, stash refs with vision |
 | Tool enable/disable | ⏳ | Planned (per-tool granular control) |
+
+### Phase 5: Input Enhancement - COMPLETE ✅
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Slash commands** | ✅ | `/canvas`, `/search`, `/recall`, etc. - modify behavior ⭐ NEW |
+| **@prompts** | ✅ | `@research`, `@quick`, `@compare` - inject methodologies ⭐ NEW |
+| **Command autocomplete** | ✅ | Type `/` or `@` to see suggestions ⭐ NEW |
+| **✨ Enhance with AI** | ✅ | Magic button transforms rough input into optimal prompt ⭐ NEW |
+| **Tool exclusion** | ✅ | Commands can exclude tools (force native search) ⭐ NEW |
 
 ---
 
@@ -181,6 +191,11 @@ jarvis-web/
 | POST | `/api/tts` | Generate TTS audio |
 | GET | `/api/audio/<filename>` | Serve audio files |
 | GET | `/api/images/<filename>` | Serve generated images |
+| GET | `/api/commands` | List all slash commands |
+| GET | `/api/commands/<name>` | Get specific command |
+| GET | `/api/prompts` | List all @prompts |
+| GET | `/api/prompts/<name>` | Get specific prompt |
+| POST | `/api/enhance-prompt` | ✨ AI-powered prompt enhancement |
 
 ### WebSocket Events
 
@@ -639,6 +654,188 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - 🔮 **Mobile PWA** - Install as app on phone
 - 🔮 **Cross-tool stash flows** - "Email the image I uploaded" (needs send_email stash support)
 
+### Canvas Integration
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Canvas header icon** | ✅ Done | 📄 button opens Canvas in new tab |
+| **`/canvas` command** | ✅ Done | Type `/canvas query` to research + save to Canvas |
+| **Save to Canvas button** | 🔮 Planned | Button on messages to save to Canvas |
+| **Inline Canvas preview** | 🔮 Planned | Show canvas pages inline in chat |
+
+---
+
+### Slash Commands (`/commands`)
+
+Type `/` in the chat input to see available commands. Commands modify how Jarvis processes your request.
+
+| Command | Icon | Description |
+|---------|------|-------------|
+| `/canvas` | 📄 | Research topic, then save comprehensive results to Canvas |
+| `/search` | 🌐 | Force native web search (excludes external search tools) |
+| `/recall` | 🧠 | Search memories and past conversations |
+| `/remember` | 💾 | Save information to long-term memory |
+| `/detailed` | 📝 | Get comprehensive response (no voice shortening) |
+| `/image` | 🖼️ | Generate an image with AI |
+| `/email` | ✉️ | Compose and send an email |
+| `/call` | 📞 | Make a phone call |
+| `/weather` | 🌤️ | Get weather information |
+| `/bash` | 💻 | Execute a shell command |
+
+**How Commands Work:**
+1. Commands inject instructions AFTER your message (so task executes first)
+2. Some commands exclude competing tools (e.g., `/search` excludes `mcp_fetch_fetch`)
+3. Commands can set response style (e.g., `/detailed` sets `response_style: detailed`)
+
+**File Location:** `jarvis-web/data/commands/*.json`
+
+**Example command definition (`canvas.json`):**
+```json
+{
+  "name": "canvas",
+  "description": "Use native search, then save to Canvas",
+  "icon": "📄",
+  "instruction": "USE YOUR NATIVE WEB SEARCH - NOT EXTERNAL TOOLS!...",
+  "exclude_tools": ["crypto_price", "mcp_fetch_fetch", "mcp_brave_search"],
+  "response_style": "detailed"
+}
+```
+
+---
+
+### @Prompts
+
+Type `@` in the chat input to see available prompts. Prompts inject methodology/guidelines for how to approach a task.
+
+| Prompt | Description |
+|--------|-------------|
+| `@research` | Multi-source research methodology with citations |
+| `@quick` | Concise, direct answers without elaboration |
+| `@compare` | Side-by-side comparison format |
+| `@code_review` | Code review guidelines (security, performance, style) |
+| `@blog_post` | Blog writing structure and tone |
+| `@summary` | Summarization guidelines (key points, brevity) |
+| `@explain` | ELI5-style explanations |
+| `@step_by_step` | Step-by-step instruction format |
+| `@debug` | Debugging methodology |
+
+**Combining Commands + Prompts:**
+```
+/canvas @research kubernetes security best practices
+```
+This: Uses research methodology → Gathers comprehensive info → Saves to Canvas
+
+**File Location:** `jarvis-web/data/prompts/*.md`
+
+---
+
+### ✨ Enhance with AI
+
+The **✨ button** next to the chat input transforms rough input into an optimal prompt.
+
+**How It Works:**
+```
+User types: "bitcoin news"
+       ↓
+Clicks ✨ button
+       ↓
+LLM enhances with Jarvis context:
+  - Available tools (30+)
+  - Native search capabilities
+  - Best practices
+       ↓
+Returns: "What's the latest Bitcoin news and price action? 
+         Include the current price, significant price movements 
+         in the last 24 hours, and the top 3-5 major news 
+         headlines. Summarize key analyst predictions."
+       ↓
+Replaces input field text
+```
+
+**Key Points:**
+- Uses direct LLM call (fast, ~1-2 seconds)
+- Does NOT go through orchestrator (no tool execution)
+- Only enhances text - the SEND goes through full orchestrator
+- Won't enhance if input starts with `/` or `@` (those are explicit)
+
+**API Endpoint:** `POST /api/enhance-prompt`
+
+**When to Use:**
+- Quick polish for casual queries
+- When you're not sure how to phrase something
+- To add specificity (time ranges, sources, format)
+
+**When NOT to Use:**
+- Already using `/command` or `@prompt`
+- Input is already detailed and specific
+- You want exact control over the request
+
+---
+
+### Input Enhancement Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     INPUT ENHANCEMENT FLOW                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  User types: "/canvas @research kubernetes security"             │
+│                 │                                                │
+│                 ▼                                                │
+│  ┌─────────────────────────────────────────┐                    │
+│  │        Frontend Parser (chat.js)        │                    │
+│  │  • Detects /canvas → loads command.json │                    │
+│  │  • Detects @research → loads prompt.md  │                    │
+│  │  • Extracts message: "kubernetes..."    │                    │
+│  └─────────────────────────────────────────┘                    │
+│                 │                                                │
+│                 ▼                                                │
+│  ┌─────────────────────────────────────────┐                    │
+│  │      Backend Handler (chat.py)          │                    │
+│  │  • Combines command + prompt instruc.   │                    │
+│  │  • APPENDS instruction AFTER message    │                    │
+│  │  • Applies exclude_tools to router      │                    │
+│  └─────────────────────────────────────────┘                    │
+│                 │                                                │
+│                 ▼                                                │
+│  ┌─────────────────────────────────────────┐                    │
+│  │    Orchestrator (with insights/feedback) │                    │
+│  │  • Full intelligence system applied      │                    │
+│  │  • Tools excluded per command config     │                    │
+│  │  • Native search preferred when enabled  │                    │
+│  └─────────────────────────────────────────┘                    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                   ✨ ENHANCE FLOW (Separate)                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  User types: "bitcoin news" → clicks ✨                          │
+│                 │                                                │
+│                 ▼                                                │
+│  ┌─────────────────────────────────────────┐                    │
+│  │   POST /api/enhance-prompt              │                    │
+│  │  • Direct LLM call (bypasses orchestr.) │                    │
+│  │  • System prompt with tool knowledge    │                    │
+│  │  • Returns enhanced text only           │                    │
+│  └─────────────────────────────────────────┘                    │
+│                 │                                                │
+│                 ▼                                                │
+│  Input field updated → User reviews → Sends normally            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Canvas + Stash + Web UI Flow:**
+```
+Web UI → Upload image → Stash (temp) → /canvas → Canvas (permanent)
+                                    ↓
+                            Phone call ends → Auto-save transcript to Canvas
+                                    ↓
+                            generate_image → Image + prompt to Canvas
+```
+
 ---
 
 ## 📋 TODO / Gaps
@@ -674,7 +871,7 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - [ ] Light theme option
 - [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
 
-### ✅ Recently Completed (v1.5)
+### ✅ Recently Completed (v1.7)
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
@@ -698,10 +895,16 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - [x] **Tool cards show results** - Fixed data.data nesting bug
 - [x] **Native search prompt** - Tells LLM to prefer built-in search
 - [x] **Config loading fix** - load_jarvis_config before Orchestrator
-- [x] **Auto-stash uploaded images** - Images saved to stash + memory_db ⭐ NEW
-- [x] **analyze_image tool** - Analyze URLs, files, stash refs with SSRF protection ⭐ NEW
-- [x] **generate_image memory fix** - Now saves source + metadata for semantic recall ⭐ NEW
-- [x] **Safe URL downloads** - Uses stash_helper's safe_download + sanitize_filename ⭐ NEW
+- [x] **Auto-stash uploaded images** - Images saved to stash + memory_db
+- [x] **analyze_image tool** - Analyze URLs, files, stash refs with SSRF protection
+- [x] **generate_image memory fix** - Now saves source + metadata for semantic recall
+- [x] **Safe URL downloads** - Uses stash_helper's safe_download + sanitize_filename
+- [x] **Slash commands** - `/canvas`, `/search`, `/recall`, `/detailed`, etc. ⭐ NEW
+- [x] **@prompts system** - `@research`, `@quick`, `@compare`, etc. ⭐ NEW
+- [x] **Command autocomplete** - Type `/` or `@` for suggestions ⭐ NEW
+- [x] **✨ Enhance with AI** - Transform rough input into optimal prompts ⭐ NEW
+- [x] **Tool exclusion** - Commands can exclude tools to force native search ⭐ NEW
+- [x] **Canvas command** - `/canvas` researches + saves to Canvas viewer ⭐ NEW
 
 ---
 
@@ -976,4 +1179,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*  
 *v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*  
 *v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*  
-*v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*
+*v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*  
+*v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*

@@ -1,0 +1,14 @@
+{
+  "name": "weather",
+  "description": "Get weather forecast",
+  "icon": "🌤️",
+  "instruction": "WEATHER MODE: Get the current weather or forecast. Use the weather tool to fetch real-time data. Provide a clear, friendly summary.",
+  "force_tool": "weather",
+  "exclude_tools": [],
+  "response_style": "casual",
+  "examples": [
+    "/weather Portland",
+    "/weather what's the forecast for the weekend"
+  ]
+}
+

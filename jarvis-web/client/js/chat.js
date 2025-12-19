@@ -2,12 +2,162 @@
  * Jarvis Web UI - Chat Interface
  */
 
+/**
+ * Command and Prompt System
+ * Handles /commands and @prompts for enhanced chat interaction
+ */
+class CommandSystem {
+  constructor() {
+    this.commands = {};    // /command registry
+    this.prompts = {};     // @prompt registry
+    this.loaded = false;
+    this._loadRegistry();
+  }
+  
+  /**
+   * Load commands and prompts from server
+   */
+  async _loadRegistry() {
+    try {
+      // Load both in parallel
+      const [commandsRes, promptsRes] = await Promise.all([
+        fetch('/api/commands'),
+        fetch('/api/prompts')
+      ]);
+      
+      if (commandsRes.ok) {
+        const data = await commandsRes.json();
+        this.commands = data.commands || {};
+      }
+      
+      if (promptsRes.ok) {
+        const data = await promptsRes.json();
+        this.prompts = data.prompts || {};
+      }
+      
+      this.loaded = true;
+      console.log('[Commands] Loaded:', Object.keys(this.commands).length, 'commands,', Object.keys(this.prompts).length, 'prompts');
+    } catch (err) {
+      console.warn('[Commands] Failed to load registry:', err);
+    }
+  }
+  
+  /**
+   * Get autocomplete suggestions for input
+   * @param {string} input - Current input text
+   * @returns {Array} Suggestions [{type, name, icon, description}]
+   */
+  getSuggestions(input) {
+    const suggestions = [];
+    
+    // Check for /command prefix
+    if (input.startsWith('/')) {
+      const query = input.slice(1).toLowerCase();
+      for (const [name, cmd] of Object.entries(this.commands)) {
+        if (name.toLowerCase().startsWith(query) || query === '') {
+          suggestions.push({
+            type: 'command',
+            name: name,
+            icon: cmd.icon || '⚡',
+            description: cmd.description
+          });
+        }
+      }
+    }
+    
+    // Check for @prompt prefix
+    if (input.startsWith('@')) {
+      const query = input.slice(1).toLowerCase();
+      for (const [name, prompt] of Object.entries(this.prompts)) {
+        if (name.toLowerCase().startsWith(query) || query === '') {
+          suggestions.push({
+            type: 'prompt',
+            name: name,
+            icon: '📝',
+            description: prompt.description || `Use ${name} methodology`
+          });
+        }
+      }
+    }
+    
+    return suggestions.slice(0, 8);  // Limit to 8 suggestions
+  }
+  
+  /**
+   * Parse input and extract command/prompt + message
+   * @param {string} input - Raw input text
+   * @returns {Object} {command?, prompt?, message, instruction?}
+   */
+  parseInput(input) {
+    const result = {
+      command: null,
+      prompt: null,
+      message: input,
+      instruction: null,
+      force_tool: null,
+      exclude_tools: [],
+      response_style: null
+    };
+    
+    // Check for /command
+    const cmdMatch = input.match(/^\/(\w+)\s*(.*)/s);
+    if (cmdMatch) {
+      const cmdName = cmdMatch[1].toLowerCase();
+      const cmd = this.commands[cmdName];
+      if (cmd) {
+        result.command = cmdName;
+        result.message = cmdMatch[2].trim();
+        result.instruction = cmd.instruction;
+        result.force_tool = cmd.force_tool;
+        result.exclude_tools = cmd.exclude_tools || [];
+        result.response_style = cmd.response_style;
+      }
+    }
+    
+    // Check for @prompt (can be combined with /command)
+    const promptMatch = result.message.match(/^@(\w+)\s*(.*)/s);
+    if (promptMatch) {
+      const promptName = promptMatch[1].toLowerCase();
+      const prompt = this.prompts[promptName];
+      if (prompt) {
+        result.prompt = promptName;
+        result.message = promptMatch[2].trim();
+        // Prepend prompt content to instruction
+        const promptInstruction = prompt.content || '';
+        result.instruction = promptInstruction + (result.instruction ? '\n\n' + result.instruction : '');
+      }
+    }
+    
+    return result;
+  }
+  
+  /**
+   * Get display text for active command/prompt
+   */
+  getActiveDisplay(parsed) {
+    const parts = [];
+    if (parsed.command) {
+      const cmd = this.commands[parsed.command];
+      parts.push(`/${parsed.command} ${cmd?.icon || '⚡'}`);
+    }
+    if (parsed.prompt) {
+      parts.push(`@${parsed.prompt} 📝`);
+    }
+    return parts.join(' + ');
+  }
+}
+
+// Global command system instance
+window.commandSystem = new CommandSystem();
+
+
 class ChatUI {
   constructor() {
     this.messagesContainer = document.getElementById('chatMessages');
     this.inputField = document.getElementById('chatInput');
     this.sendBtn = document.getElementById('sendBtn');
     this.micBtn = document.getElementById('micBtn');
+    this.enhanceBtn = document.getElementById('enhanceBtn');
     
     // Image upload elements
     this.uploadBtn = document.getElementById('uploadBtn');
@@ -29,10 +179,16 @@ class ChatUI {
     // Image upload state
     this.attachedImage = null;  // {base64, url, filename}
     
+    // Autocomplete state
+    this.autocompleteEl = null;
+    this.selectedSuggestionIndex = -1;
+    
     this._setupEventListeners();
     this._setupSocketListeners();
     this._setupVoiceRecording();
     this._setupImageUpload();
+    this._setupAutocomplete();
+    this._setupEnhanceButton();
   }
 
   /**
@@ -42,18 +198,279 @@ class ChatUI {
     // Send button
     this.sendBtn.addEventListener('click', () => this.sendMessage());
     
-    // Enter to send (Shift+Enter for new line)
+    // Enter to send (Shift+Enter for new line), arrow keys for autocomplete
     this.inputField.addEventListener('keydown', (e) => {
+      // Handle autocomplete navigation
+      if (this.autocompleteEl && this.autocompleteEl.style.display !== 'none') {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          this._navigateSuggestion(1);
+          return;
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          this._navigateSuggestion(-1);
+          return;
+        } else if (e.key === 'Tab' || e.key === 'Enter') {
+          if (this.selectedSuggestionIndex >= 0) {
+            e.preventDefault();
+            this._selectSuggestion(this.selectedSuggestionIndex);
+            return;
+          }
+        } else if (e.key === 'Escape') {
+          this._hideAutocomplete();
+          return;
+        }
+      }
+      
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         this.sendMessage();
       }
     });
     
-    // Auto-resize input
+    // Auto-resize input and check for autocomplete
     this.inputField.addEventListener('input', () => {
       Utils.autoResize(this.inputField);
+      this._checkAutocomplete();
     });
+  }
+  
+  /**
+   * Setup autocomplete dropdown
+   */
+  _setupAutocomplete() {
+    // Create autocomplete container
+    this.autocompleteEl = document.createElement('div');
+    this.autocompleteEl.className = 'autocomplete-dropdown';
+    this.autocompleteEl.style.display = 'none';
+    
+    // Insert after input container
+    const inputContainer = document.querySelector('.chat-input-container');
+    if (inputContainer) {
+      inputContainer.style.position = 'relative';
+      inputContainer.appendChild(this.autocompleteEl);
+    }
+    
+    // Click outside to close
+    document.addEventListener('click', (e) => {
+      if (!this.autocompleteEl.contains(e.target) && e.target !== this.inputField) {
+        this._hideAutocomplete();
+      }
+    });
+  }
+  
+  /**
+   * Setup the ✨ Enhance with AI button
+   */
+  _setupEnhanceButton() {
+    if (!this.enhanceBtn) {
+      console.warn('[Chat] Enhance button not found');
+      return;
+    }
+    
+    this.enhanceBtn.addEventListener('click', async () => {
+      await this._enhancePrompt();
+    });
+    
+    console.log('[Chat] ✨ Enhance button ready');
+  }
+  
+  /**
+   * ✨ Enhance the current input with AI
+   * Transforms rough user input into an optimal prompt using full Jarvis knowledge
+   */
+  async _enhancePrompt() {
+    const input = this.inputField.value.trim();
+    
+    if (!input) {
+      Utils.toast('Type something first, then click ✨ to enhance', 'info');
+      return;
+    }
+    
+    // Don't enhance if already using commands/prompts
+    if (input.startsWith('/') || input.startsWith('@')) {
+      Utils.toast('Remove the / or @ command first to enhance', 'info');
+      return;
+    }
+    
+    // Show loading state
+    this.enhanceBtn.classList.add('enhancing');
+    this.enhanceBtn.disabled = true;
+    const originalTitle = this.enhanceBtn.title;
+    this.enhanceBtn.title = 'Enhancing...';
+    
+    try {
+      const response = await fetch('/api/enhance-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ input })
+      });
+      
+      const data = await response.json();
+      
+      if (data.ok && data.enhanced) {
+        // Replace input with enhanced version
+        this.inputField.value = data.enhanced;
+        Utils.autoResize(this.inputField);
+        
+        // Show success feedback
+        Utils.toast('✨ Prompt enhanced!', 'success', 2000);
+        
+        // Focus and move cursor to end
+        this.inputField.focus();
+        this.inputField.setSelectionRange(
+          this.inputField.value.length,
+          this.inputField.value.length
+        );
+      } else {
+        Utils.toast(data.error || 'Failed to enhance prompt', 'error');
+      }
+    } catch (err) {
+      console.error('[Chat] Enhance error:', err);
+      Utils.toast('Failed to enhance prompt', 'error');
+    } finally {
+      // Reset button state
+      this.enhanceBtn.classList.remove('enhancing');
+      this.enhanceBtn.disabled = false;
+      this.enhanceBtn.title = originalTitle;
+    }
+  }
+  
+  /**
+   * Check input for autocomplete triggers
+   */
+  _checkAutocomplete() {
+    const input = this.inputField.value;
+    
+    // Case 1: Start with / and no space yet (typing command)
+    if (input.startsWith('/') && !input.includes(' ')) {
+      const suggestions = window.commandSystem.getSuggestions(input);
+      if (suggestions.length > 0) {
+        this._showAutocomplete(suggestions);
+        return;
+      }
+    }
+    
+    // Case 2: Start with @ and no space yet (typing prompt only)
+    if (input.startsWith('@') && !input.includes(' ')) {
+      const suggestions = window.commandSystem.getSuggestions(input);
+      if (suggestions.length > 0) {
+        this._showAutocomplete(suggestions);
+        return;
+      }
+    }
+    
+    // Case 3: Already have /command, now typing @prompt (e.g., "/canvas @res")
+    const cmdWithPromptMatch = input.match(/^\/\w+\s+(@\w*)$/);
+    if (cmdWithPromptMatch) {
+      const atPart = cmdWithPromptMatch[1];  // "@res" or "@"
+      const suggestions = window.commandSystem.getSuggestions(atPart);
+      if (suggestions.length > 0) {
+        this._showAutocomplete(suggestions, 'prompt_after_command');
+        return;
+      }
+    }
+    
+    this._hideAutocomplete();
+  }
+  
+  /**
+   * Show autocomplete dropdown
+   * @param {Array} suggestions - List of suggestions
+   * @param {string} mode - 'normal' or 'prompt_after_command'
+   */
+  _showAutocomplete(suggestions, mode = 'normal') {
+    this.selectedSuggestionIndex = -1;
+    this.autocompleteMode = mode;  // Store mode for selection
+    
+    const html = suggestions.map((s, i) => `
+      <div class="autocomplete-item" data-index="${i}" data-type="${s.type}" data-name="${s.name}">
+        <span class="autocomplete-icon">${s.icon}</span>
+        <span class="autocomplete-name">${s.type === 'command' ? '/' : '@'}${s.name}</span>
+        <span class="autocomplete-desc">${Utils.truncate(s.description, 40)}</span>
+      </div>
+    `).join('');
+    
+    this.autocompleteEl.innerHTML = html;
+    this.autocompleteEl.style.display = 'block';
+    
+    // Add click handlers
+    this.autocompleteEl.querySelectorAll('.autocomplete-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const index = parseInt(item.dataset.index);
+        this._selectSuggestion(index);
+      });
+      item.addEventListener('mouseenter', () => {
+        this._highlightSuggestion(parseInt(item.dataset.index));
+      });
+    });
+  }
+  
+  /**
+   * Hide autocomplete dropdown
+   */
+  _hideAutocomplete() {
+    if (this.autocompleteEl) {
+      this.autocompleteEl.style.display = 'none';
+      this.selectedSuggestionIndex = -1;
+    }
+  }
+  
+  /**
+   * Navigate suggestions with arrow keys
+   */
+  _navigateSuggestion(direction) {
+    const items = this.autocompleteEl.querySelectorAll('.autocomplete-item');
+    if (items.length === 0) return;
+    
+    this.selectedSuggestionIndex += direction;
+    if (this.selectedSuggestionIndex < 0) this.selectedSuggestionIndex = items.length - 1;
+    if (this.selectedSuggestionIndex >= items.length) this.selectedSuggestionIndex = 0;
+    
+    this._highlightSuggestion(this.selectedSuggestionIndex);
+  }
+  
+  /**
+   * Highlight a suggestion
+   */
+  _highlightSuggestion(index) {
+    const items = this.autocompleteEl.querySelectorAll('.autocomplete-item');
+    items.forEach((item, i) => {
+      item.classList.toggle('selected', i === index);
+    });
+    this.selectedSuggestionIndex = index;
+  }
+  
+  /**
+   * Select a suggestion
+   */
+  _selectSuggestion(index) {
+    const items = this.autocompleteEl.querySelectorAll('.autocomplete-item');
+    const item = items[index];
+    if (!item) return;
+    
+    const type = item.dataset.type;
+    const name = item.dataset.name;
+    const prefix = type === 'command' ? '/' : '@';
+    
+    if (this.autocompleteMode === 'prompt_after_command') {
+      // We're adding @prompt after /command - replace the @xxx part only
+      const currentValue = this.inputField.value;
+      const match = currentValue.match(/^(\/\w+\s+)@\w*$/);
+      if (match) {
+        this.inputField.value = `${match[1]}@${name} `;
+      } else {
+        this.inputField.value = `${currentValue.replace(/@\w*$/, '')}@${name} `;
+      }
+    } else {
+      // Normal mode - replace entire input with selected command/prompt + space
+      this.inputField.value = `${prefix}${name} `;
+    }
+    
+    this.inputField.focus();
+    this._hideAutocomplete();
   }
 
   /**
@@ -549,35 +966,56 @@ class ChatUI {
    * Send a message (with optional attached image)
    */
   sendMessage() {
-    const message = this.inputField.value.trim();
+    const rawMessage = this.inputField.value.trim();
     const hasImage = this.attachedImage !== null;
     
     // Need either message or image
-    if (!message && !hasImage) return;
+    if (!rawMessage && !hasImage) return;
     if (this.isProcessing) return;
     
+    // Hide autocomplete
+    this._hideAutocomplete();
+    
+    // Parse commands and prompts
+    const parsed = window.commandSystem.parseInput(rawMessage);
+    
+    // Build display message (show original with decorations)
+    let displayMessage = rawMessage;
+    let commandBadge = '';
+    if (parsed.command || parsed.prompt) {
+      commandBadge = window.commandSystem.getActiveDisplay(parsed);
+    }
+    
     // Add user message to UI (with image if attached)
-    this.addUserMessage(message, this.attachedImage);
+    this.addUserMessage(displayMessage, this.attachedImage, commandBadge);
     
     // Clear input
     this.inputField.value = '';
     Utils.autoResize(this.inputField);
     
-    // Send via socket (include image data)
+    // Send via socket (include image data and command metadata)
     this.isProcessing = true;
     this.updateSendButton();
     this.pendingTools = {};
     
-    window.jarvisSocket.sendMessage(message, this.attachedImage);
+    // Pass parsed command data to socket
+    window.jarvisSocket.sendMessage(parsed.message || rawMessage, this.attachedImage, {
+      instruction: parsed.instruction,
+      force_tool: parsed.force_tool,
+      exclude_tools: parsed.exclude_tools,
+      response_style: parsed.response_style,
+      command: parsed.command,
+      prompt: parsed.prompt
+    });
     
     // Clear attached image after sending
     this.clearAttachedImage();
   }
 
   /**
-   * Add user message to chat (with optional image)
+   * Add user message to chat (with optional image and command badge)
    */
-  addUserMessage(text, imageData = null) {
+  addUserMessage(text, imageData = null, commandBadge = '') {
     const messageEl = document.createElement('div');
     messageEl.className = 'message user';
     
@@ -586,8 +1024,14 @@ class ChatUI {
       imageHtml = `<img src="${imageData.url}" alt="Attached image" class="message-image" onclick="Utils.openLightbox('${imageData.url}')">`;
     }
     
+    let badgeHtml = '';
+    if (commandBadge) {
+      badgeHtml = `<div class="command-badge">${Utils.escapeHtml(commandBadge)}</div>`;
+    }
+    
     messageEl.innerHTML = `
       <div class="message-bubble">
+        ${badgeHtml}
         ${imageHtml}
         ${text ? Utils.escapeHtml(text) : '<em>What\'s in this image?</em>'}
       </div>

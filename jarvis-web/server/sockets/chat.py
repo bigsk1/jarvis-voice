@@ -65,7 +65,7 @@ class ChatHandler:
         
         @self.socketio.on('chat:send')
         def handle_chat_send(data):
-            """Handle incoming chat message (with optional image)"""
+            """Handle incoming chat message (with optional image and command metadata)"""
             session_id = request.sid
             message = data.get('message', '').strip()
             mode = data.get('mode', self.sessions.get(session_id, {}).get('mode', 'cloud'))
@@ -73,6 +73,16 @@ class ChatHandler:
             
             # Image data for vision requests
             image_data = data.get('image')  # {base64, url, filename}
+            
+            # Command/prompt metadata from slash command system
+            command_meta = {
+                'system_instruction': data.get('system_instruction'),
+                'force_tool': data.get('force_tool'),
+                'exclude_tools': data.get('exclude_tools', []),
+                'response_style': data.get('response_style'),
+                'command': data.get('command'),
+                'prompt_name': data.get('prompt_name')
+            }
             
             if not message and not image_data:
                 emit('chat:error', {
@@ -99,9 +109,15 @@ class ChatHandler:
                     'title': conv['title']
                 })
             
-            # Save user message (include image URL if present)
-            user_msg_data = {'image_url': image_data.get('url')} if image_data else None
-            store.add_message(conversation_id, 'user', message, data=user_msg_data)
+            # Save user message (include image URL and command info if present)
+            user_msg_data = {}
+            if image_data:
+                user_msg_data['image_url'] = image_data.get('url')
+            if command_meta.get('command'):
+                user_msg_data['command'] = command_meta['command']
+            if command_meta.get('prompt_name'):
+                user_msg_data['prompt'] = command_meta['prompt_name']
+            store.add_message(conversation_id, 'user', message, data=user_msg_data if user_msg_data else None)
             
             # Update session
             if session_id in self.sessions:
@@ -125,7 +141,8 @@ class ChatHandler:
                 mode,
                 message_id,
                 conversation_id,
-                image_data
+                image_data,
+                command_meta
             )
         
         @self.socketio.on('conversation:load')
@@ -322,10 +339,14 @@ class ChatHandler:
             return []
     
     def _process_message(self, session_id: str, message: str, mode: str,
-                         message_id: str, conversation_id: str, image_data: dict = None):
-        """Process a chat message through the orchestrator (with optional vision)"""
+                         message_id: str, conversation_id: str, image_data: dict = None,
+                         command_meta: dict = None):
+        """Process a chat message through the orchestrator (with optional vision and command metadata)"""
         start_time = time.time()
-        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None})")
+        command_meta = command_meta or {}
+        cmd_info = f", cmd={command_meta.get('command')}" if command_meta.get('command') else ""
+        prompt_info = f", prompt={command_meta.get('prompt_name')}" if command_meta.get('prompt_name') else ""
+        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{cmd_info}{prompt_info})")
         
         try:
             # Debug image data
@@ -410,12 +431,38 @@ class ChatHandler:
             
             # Get blocked tools for web mode
             from ..config import get_web_setting
-            blocked_tools = get_web_setting('tools.blocked', [])
+            blocked_tools = list(get_web_setting('tools.blocked', []))
+            
+            # Add command-excluded tools
+            cmd_exclude = command_meta.get('exclude_tools', [])
+            if cmd_exclude:
+                blocked_tools.extend(cmd_exclude)
+                print(f"[CHAT] Command excludes tools: {cmd_exclude}")
+            
+            # Build enhanced message with command/prompt instructions
+            # IMPORTANT: Instructions go AFTER the user's task so LLM processes the task first
+            enhanced_message = message
+            system_instruction = command_meta.get('system_instruction')
+            force_tool = command_meta.get('force_tool')
+            
+            # Append instruction AFTER the task (not before)
+            if system_instruction or force_tool:
+                parts = [message]  # User's actual task comes FIRST
+                
+                if system_instruction:
+                    print(f"[CHAT] Appending system instruction ({len(system_instruction)} chars)")
+                    parts.append(f"\n\n[AFTER completing the above task: {system_instruction}]")
+                
+                if force_tool:
+                    print(f"[CHAT] Appending tool hint: {force_tool}")
+                    parts.append(f"\n\n[Use the {force_tool} tool for this request]")
+                
+                enhanced_message = ''.join(parts)
             
             # Process the query with conversation context and excluded tools
             print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools...")
             result = orchestrator.process(
-                message, 
+                enhanced_message,
                 conversation_history=conversation_history,
                 excluded_tools=blocked_tools
             )

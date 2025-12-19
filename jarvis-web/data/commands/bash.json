@@ -1,0 +1,15 @@
+{
+  "name": "bash",
+  "description": "Execute a bash command on the server",
+  "icon": "💻",
+  "instruction": "BASH MODE: Execute the provided bash command using execute_bash tool. Be careful with destructive commands. Show the output clearly.",
+  "force_tool": "execute_bash",
+  "exclude_tools": [],
+  "response_style": "detailed",
+  "examples": [
+    "/bash df -h",
+    "/bash docker ps",
+    "/bash ls -la ~/projects"
+  ]
+}
+

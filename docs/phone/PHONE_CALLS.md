@@ -283,6 +283,54 @@ Either:
 - Check Vapi dashboard for call logs and errors
 - Ensure your Vapi account has credit
 
+### AI talks to voicemail greeting (Dec 2025 fix)
+**Symptom:** AI starts conversation with the voicemail greeting message instead of detecting it.
+
+**Root cause:** Default voicemail detection wasn't aggressive enough.
+
+**Fix applied in `phone_call.py`:**
+```python
+voicemail_detection_config = {
+    "provider": "vapi",
+    "backoffPlan": {
+        "startAtSeconds": 1.5,    # Start checking early (was 2)
+        "frequencySeconds": 2.5,  # Minimum interval
+        "maxRetries": 8           # More attempts (was 5)
+    },
+    "beepMaxAwaitSeconds": 12
+}
+```
+
+See: [VAPI voicemail detection docs](https://docs.vapi.ai/api-reference/assistants/create#request.body.voicemailDetection)
+
+### Transcript truncated or missing (Dec 2025 fix)
+**Symptom:** Canvas transcript page is truncated or LLM creates a separate canvas page with incomplete transcript.
+
+**Root causes:**
+1. **VAPI returns transcript in different formats** - Pre-configured assistants (via `VAPI_ASSISTANT_ID`) return `messages` array instead of `transcript` string
+2. **LLM creates duplicate canvas** - Doesn't know phone_call tool already auto-saves to Canvas
+
+**Fixes applied:**
+
+1. **`extract_transcript()` function** - Checks 3 sources for best transcript:
+   - `call['transcript']` - plain text (dynamic assistants)
+   - `call['messages']` - array format (pre-configured assistants)
+   - `call['artifact']['transcript']` - from artifact plan
+
+2. **Clear messaging** - Tool now says "Full transcript already saved to Canvas in Phone Calls folder" so LLM doesn't create duplicates
+
+**If transcript seems missing:**
+- Check Canvas `Phone Calls/` folder - it's likely there
+- Browser refresh may be needed
+- Async mode (`VAPI_WAIT_FOR_CALL=false`) creates canvas after call ends, not immediately
+
+### Canvas shows two transcript pages
+**Symptom:** One complete transcript in `Phone Calls/2025-...` and one truncated in custom-named page.
+
+**Cause:** LLM called `canvas` tool with truncated data instead of using phone_call's auto-saved page.
+
+**Fix:** Phone_call tool now explicitly tells LLM the transcript is already saved. The correct page is always in `Phone Calls/` folder with timestamp naming.
+
 ---
 
 ## Future Ideas
@@ -305,5 +353,5 @@ Either:
 
 ---
 
-**Last Updated:** 2025-12-14
+**Last Updated:** 2025-12-18
 

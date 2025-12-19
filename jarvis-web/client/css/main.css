@@ -678,6 +678,43 @@ body {
   }
 }
 
+/* ✨ Enhance button */
+.enhance-btn {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.enhance-btn:hover {
+  background: var(--bg-hover);
+  transform: scale(1.1);
+  filter: brightness(1.2);
+}
+
+.enhance-btn.enhancing {
+  animation: sparkle 0.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1);
+  }
+  25% {
+    transform: scale(1.2) rotate(-10deg);
+    filter: brightness(1.4);
+  }
+  50% {
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1);
+  }
+  75% {
+    transform: scale(1.2) rotate(10deg);
+    filter: brightness(1.4);
+  }
+}
+
 /* Recording indicator overlay */
 .recording-indicator {
   position: fixed;
@@ -1843,4 +1880,105 @@ body {
 
 .message-image:hover {
   transform: scale(1.02);
+}
+
+/* =============================================================================
+   Slash Commands & Prompts Autocomplete
+   ============================================================================= */
+
+.autocomplete-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: var(--space-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+  background: var(--bg-hover);
+}
+
+.autocomplete-item.selected {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.autocomplete-item.selected .autocomplete-desc {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.autocomplete-icon {
+  font-size: 1.25rem;
+  width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.autocomplete-name {
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--accent-secondary);
+  min-width: 100px;
+}
+
+.autocomplete-item.selected .autocomplete-name {
+  color: white;
+}
+
+.autocomplete-desc {
+  flex: 1;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Command badge in user messages */
+.command-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px 8px;
+  margin-bottom: var(--space-xs);
+  background: var(--accent-primary);
+  color: white;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  opacity: 0.9;
+}
+
+/* Keyboard hint */
+.autocomplete-dropdown::after {
+  content: '↑↓ navigate • Tab/Enter select • Esc close';
+  display: block;
+  padding: var(--space-xs) var(--space-md);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-subtle);
 }

@@ -1,0 +1,14 @@
+{
+  "name": "call",
+  "description": "Make an AI phone call",
+  "icon": "📞",
+  "instruction": "PHONE CALL MODE: Use the phone_call tool to make an AI-assisted call. Clarify the phone number and purpose of the call. The AI assistant (Jarvis or Bud) will handle the conversation. Transcript will be saved to Canvas.",
+  "force_tool": "phone_call",
+  "exclude_tools": [],
+  "response_style": "casual",
+  "examples": [
+    "/call my dentist to reschedule my appointment",
+    "/call 555-123-4567 and ask about their business hours"
+  ]
+}
+
