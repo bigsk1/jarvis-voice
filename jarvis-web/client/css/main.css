@@ -981,14 +981,71 @@ body {
   background: var(--text-muted);
 }
 
+/* Mobile hamburger menu */
+.hamburger-btn {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.hamburger-btn:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
+  .hamburger-btn {
+    display: block;
+  }
+  
   .sidebar {
-    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  
+  body.sidebar-open .sidebar-overlay {
+    display: block;
   }
   
   .header {
     padding: var(--space-sm) var(--space-md);
+  }
+  
+  .header-left .logo span:not(.logo-icon) {
+    display: none; /* Hide "JARVIS" text, keep robot icon */
+  }
+  
+  .mode-selector select {
+    font-size: var(--text-xs);
+    padding: var(--space-xs);
   }
   
   .chat-messages {
@@ -997,6 +1054,42 @@ body {
   
   .message {
     max-width: 95%;
+  }
+  
+  .chat-input-container {
+    padding: var(--space-sm);
+  }
+  
+  .input-row {
+    flex-wrap: nowrap;
+  }
+  
+  .input-row .icon-btn:not(.send-btn):not(.enhance-btn) {
+    display: none; /* Hide extra buttons on mobile, keep send and enhance */
+  }
+  
+  /* Keep the log panel usable on mobile */
+  .log-panel-container {
+    max-height: 60vh;
+  }
+}
+
+/* Extra small screens (phones) */
+@media (max-width: 480px) {
+  .header-left .logo {
+    display: none; /* Hide entire logo including robot head */
+  }
+  
+  .header-left {
+    gap: var(--space-sm);
+  }
+  
+  .connection-status {
+    font-size: var(--text-xs);
+  }
+  
+  #toolsCount {
+    display: none; /* Hide tools count on tiny screens */
   }
 }
 

@@ -139,6 +139,34 @@ class JarvisApp {
    * Setup UI event listeners
    */
   _setupUIListeners() {
+    // Hamburger menu (mobile sidebar toggle)
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    
+    if (hamburgerBtn && sidebar) {
+      hamburgerBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('mobile-open');
+        document.body.classList.toggle('sidebar-open');
+      });
+      
+      // Close sidebar when clicking overlay
+      if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', () => {
+          sidebar.classList.remove('mobile-open');
+          document.body.classList.remove('sidebar-open');
+        });
+      }
+      
+      // Close sidebar when clicking a conversation (mobile UX)
+      sidebar.addEventListener('click', (e) => {
+        if (e.target.closest('.conversation-item') && window.innerWidth <= 768) {
+          sidebar.classList.remove('mobile-open');
+          document.body.classList.remove('sidebar-open');
+        }
+      });
+    }
+    
     // Mode selector
     this.modeSelect.addEventListener('change', (e) => {
       const newMode = e.target.value;
