@@ -12,7 +12,7 @@
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
-- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v1.8** (slash commands, @prompts, ✨ enhance, search/export) ⭐ ENHANCED
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v1.9** (server logs panel, search/export, ✨ enhance) ⭐ ENHANCED
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
@@ -266,10 +266,15 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2025-12-19:**
-- ✅ **Jarvis Web UI v1.8** - Input enhancement & conversation management ⭐ ENHANCED
-  - **Slash commands**: `/canvas`, `/search`, `/recall`, `/detailed` - modify behavior
+- ✅ **Jarvis Web UI v1.9** - Server Logs Panel & Developer Tools ⭐ ENHANCED
+  - **Server Logs Panel**: Real-time LLM + Tool log streaming at bottom of UI
+  - **LLM logs**: Model, tokens, cost, duration, tool called - color-coded
+  - **Tool logs**: Name, duration, success/error, expandable result details
+  - **Source toggles**: Enable/disable LLM, Tools, OpenCode, Feedback
+  - **Resizable panel**: Drag to resize, state persisted in localStorage
+  - **Slash commands**: `/canvas`, `/search`, `/recall`, `/detailed`
   - **@prompts**: `@research`, `@quick`, `@compare` - inject methodologies
-  - **✨ Enhance with AI**: Magic wand transforms rough input into optimal prompts
+  - **✨ Enhance with AI**: Transform rough input into optimal prompts
   - **Conversation search**: Quick filter + deep search across all messages
   - **Export/Import**: Download as JSON/Markdown, restore from JSON
   - See: `docs/JARVIS_WEB_UI.md`
@@ -649,6 +654,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-19 (v2.16)  
-**Latest:** Jarvis Web UI v1.8, Slash Commands, @Prompts, ✨ Enhance, Search/Export  
+**Last Updated:** 2025-12-19 (v2.17)  
+**Latest:** Jarvis Web UI v1.9, Server Logs Panel, Real-time LLM + Tool Streaming  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

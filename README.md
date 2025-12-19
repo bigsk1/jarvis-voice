@@ -152,18 +152,17 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
 
 ### Web Interface ⭐ ENHANCED
-- **Jarvis Web UI v1.8** - Full-featured chat interface at localhost:5001
+- **Jarvis Web UI v1.9** - Full-featured chat interface at localhost:5001
   - Real-time WebSocket communication with tool streaming
   - Mode switching (cloud/local) with per-mode settings
-  - **Slash commands**: `/canvas`, `/search`, `/detailed` - modify behavior ⭐ NEW
-  - **@prompts**: `@research`, `@quick`, `@compare` - inject methodologies ⭐ NEW
-  - **✨ Enhance with AI**: Magic button transforms input into optimal prompts ⭐ NEW
-  - **Conversation search/export**: Filter, deep search, JSON/Markdown export ⭐ NEW
+  - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!) ⭐ NEW
+  - **Slash commands**: `/canvas`, `/search`, `/detailed` - modify behavior
+  - **@prompts**: `@research`, `@quick`, `@compare` - inject methodologies
+  - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
+  - **Conversation search/export**: Filter, deep search, JSON/Markdown export
   - **Image upload**: Drag-drop/paste/click with vision analysis
   - **Mode-aware TTS/STT**: Cloud vs Local providers
   - Dynamic LLM/model switching on-the-fly
-  - Conversation history with save/load/delete
-  - Settings panel with System config view
   - Launch: `./bin/jarvis-web`
   - See [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
 
@@ -1042,17 +1041,17 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
-- ✅ **Jarvis Web UI v1.8** - Full-featured web interface ⭐ ENHANCED
-  - **Slash commands**: `/canvas`, `/search`, `/recall`, `/detailed` - modify behavior ⭐ NEW
-  - **@prompts**: `@research`, `@quick`, `@compare` - inject methodologies ⭐ NEW
-  - **✨ Enhance with AI**: Magic button transforms rough input into optimal prompts ⭐ NEW
-  - **Conversation search**: Quick filter + deep search across all messages ⭐ NEW
-  - **Export/Import**: Download as JSON/Markdown, restore from JSON ⭐ NEW
-  - **Image upload**: Drag-drop/paste/click with vision analysis (Grok/Claude/llava)
-  - **Mode-aware TTS/STT**: Cloud=ElevenLabs/Whisper, Local=Kokoro/faster-whisper
+- ✅ **Jarvis Web UI v1.9** - Full-featured web interface ⭐ ENHANCED
+  - **Server Logs Panel**: Real-time LLM + Tool streaming at bottom of UI ⭐ NEW
+  - **Color-coded logs**: LLM (purple), Tools (green), with success/error status ⭐ NEW
+  - **Expandable details**: Click log entry to see full parsed JSON ⭐ NEW
+  - **Slash commands**: `/canvas`, `/search`, `/recall`, `/detailed` - modify behavior
+  - **@prompts**: `@research`, `@quick`, `@compare` - inject methodologies
+  - **✨ Enhance with AI**: Magic button transforms rough input into optimal prompts
+  - **Conversation search**: Quick filter + deep search across all messages
+  - **Export/Import**: Download as JSON/Markdown, restore from JSON
+  - **Image upload**: Drag-drop/paste/click with vision analysis
   - Real-time WebSocket chat with tool streaming
-  - Dynamic LLM/model switching on-the-fly
-  - Push-to-talk voice input
   - See: `docs/JARVIS_WEB_UI.md`
 - ✅ **AI Image Generation (Gemini 3 Pro)** - High-quality image generation ⭐ NEW
   - "Generate a bitcoin infographic with current price" → Gemini creates with real data
@@ -1239,6 +1238,6 @@ Private project - Not licensed for public use.
 
 ---
 
-**Current Version:** v2.16 (December 2025)  
+**Current Version:** v2.17 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Jarvis Web UI v1.8, Slash Commands, @Prompts, ✨ Enhance, Search/Export
+**Latest Features:** Jarvis Web UI v1.9, Server Logs Panel, Real-time LLM + Tool Streaming

@@ -1,6 +1,6 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.8)  
+> **Status**: MVP Complete (v1.9)  
 > **Last Updated**: December 19, 2025
 
 ---
@@ -101,11 +101,22 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| **Quick filter** | ✅ | Filter conversations by title in sidebar ⭐ NEW |
-| **Deep search** | ✅ | Search across all message content with snippets ⭐ NEW |
-| **Export JSON** | ✅ | Download conversation as JSON file ⭐ NEW |
-| **Export Markdown** | ✅ | Download conversation as formatted Markdown ⭐ NEW |
-| **Import JSON** | ✅ | Upload JSON to restore conversation ⭐ NEW |
+| **Quick filter** | ✅ | Filter conversations by title in sidebar |
+| **Deep search** | ✅ | Search across all message content with snippets |
+| **Export JSON** | ✅ | Download conversation as JSON file |
+| **Export Markdown** | ✅ | Download conversation as formatted Markdown |
+| **Import JSON** | ✅ | Upload JSON to restore conversation |
+
+### Phase 7: Developer Tools - COMPLETE ✅
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Server Logs Panel** | ✅ | Real-time log streaming at bottom of UI ⭐ NEW |
+| **LLM call logs** | ✅ | Model, tokens, cost, duration, tool called ⭐ NEW |
+| **Tool call logs** | ✅ | Tool name, duration, success/error, result preview ⭐ NEW |
+| **Source toggles** | ✅ | Enable/disable LLM, Tools, OpenCode, Feedback ⭐ NEW |
+| **Expandable details** | ✅ | Click entry to see full parsed JSON ⭐ NEW |
+| **Resizable panel** | ✅ | Drag to resize, state persisted ⭐ NEW |
 
 ---
 
@@ -656,7 +667,6 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 - ✅ Real-time status streaming (WebSocket)
 
 ### Planned / Ideas
-- 🔮 **Terminal log viewer** - Stream server stdout/stderr to collapsible panel in UI ⭐ PINNED
 - 🔮 **Memory management UI** - View/edit/delete memories visually
 - 🔮 **Intelligence dashboard** - See insights, confidence, decay
 - 🔮 **Canvas embed** - Show canvas pages inline in chat
@@ -851,6 +861,58 @@ Web UI → Upload image → Stash (temp) → /canvas → Canvas (permanent)
 
 ---
 
+### Server Logs Panel (NEW)
+
+A collapsible panel at the bottom of the UI that streams server logs in real-time. Simpler than Grafana for quick debugging!
+
+**UI Layout:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Chat Area (main content)                                        │
+│                                                                  │
+├──────────────────────────────────────────────────────────────────┤
+│ ▼ Server Logs         [🤖 LLM] [🔧 Tools] [💻 Code] [⭐ FB]  🗑️ ⬇️ │
+│ 03:21:09 LLM  xai/grok-4... → 18505 tokens ($0.0021) [3.5s]      │
+│ 03:23:02 LLM  xai/grok-4... → 11589 tokens ($0.0023) [2.5s] 🔧gen│
+│ 03:23:25 TOOL generate_image → 22.1s ✓                           │
+│ 03:23:28 LLM  xai/grok-4... → 11882 tokens ($0.0024) [2.5s]      │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- **Real-time streaming** - Tails log files, shows only NEW entries after subscribing
+- **Source toggles** - Enable/disable: LLM, Tools, OpenCode, Feedback
+- **Color-coded** - Purple=LLM, Green=Tools, Blue=OpenCode, Pink=Feedback
+- **Status colors** - Green=success, Red=error, Yellow=warning
+- **Expandable details** - Click any entry to see full parsed JSON
+- **Resizable** - Drag top edge to resize (100-600px)
+- **Auto-scroll** - Toggle on/off with ⬇️ button
+- **Clear** - Clears UI only (disk logs preserved)
+- **Persisted state** - Height, collapsed state, enabled sources saved to localStorage
+
+**Log Sources:**
+
+| Source | File | Content |
+|--------|------|---------|
+| **LLM** | `logs/llm-calls-{date}.jsonl` | Model, tokens, cost, duration, tool called |
+| **Tools** | `logs/tools/tool-calls-{date}.jsonl` | Tool name, args, result, duration, success |
+| **OpenCode** | `logs/opencode/opencode-{date}.jsonl` | Session events, status |
+| **Feedback** | `logs/feedback/feedback-{date}.jsonl` | Ratings, feedback text |
+
+**WebSocket Events:**
+- `logs:subscribe` - Start streaming (joins `logs_subscribers` room)
+- `logs:unsubscribe` - Stop streaming
+- `logs:entry` - Receives parsed log entry
+- `logs:set_sources` - Enable/disable specific sources
+
+**When to Use:**
+- Quick debugging during development
+- Watch LLM decisions and tool calls in real-time
+- Track costs per conversation
+- Simpler than opening Grafana for quick checks
+
+---
+
 ## 📋 TODO / Gaps
 
 ### High Priority (Do First)
@@ -885,7 +947,7 @@ Web UI → Upload image → Stash (temp) → /canvas → Canvas (permanent)
 - [ ] Light theme option
 - [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
 
-### ✅ Recently Completed (v1.8)
+### ✅ Recently Completed (v1.9)
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
@@ -922,7 +984,11 @@ Web UI → Upload image → Stash (temp) → /canvas → Canvas (permanent)
 - [x] **Conversation quick filter** - Filter by title in sidebar ⭐ NEW
 - [x] **Deep search modal** - Search all message content with highlighted snippets ⭐ NEW
 - [x] **Export conversations** - JSON and Markdown formats ⭐ NEW
-- [x] **Import conversations** - Restore from JSON files ⭐ NEW
+- [x] **Import conversations** - Restore from JSON files
+- [x] **Server Logs Panel** - Real-time streaming at bottom of UI ⭐ NEW
+- [x] **LLM + Tool logs** - Parsed, color-coded, expandable details ⭐ NEW
+- [x] **Log source toggles** - Enable/disable LLM, Tools, OpenCode, Feedback ⭐ NEW
+- [x] **Resizable log panel** - Drag to resize, state persisted in localStorage ⭐ NEW
 
 ---
 
@@ -1127,29 +1193,11 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - **Manual insight creation**: Teach Jarvis directly via UI
 
 ### Developer Features
-- **Live terminal panel**: Stream server stdout/stderr to collapsible panel in UI
-- **Tool logs viewer**: See recent tool executions
-- **LLM call inspector**: View full prompts/responses (tail llm-calls log)
-- **Cost tracker**: Daily/weekly/monthly spend
-- **A/B test viewer**: See prompt evolution experiments
-
-### Terminal/Log Viewer Concept
-```
-┌─────────────────────────────────────┐
-│  Chat Area                          │
-│                                     │
-├─────────────────────────────────────┤
-│ ▼ Server Logs  [LLM Calls] [Tools]  │ ← Collapsible panel
-│ [CHAT] Processing message...        │
-│ [VISION] Using Ollama: llava        │
-│ [TTS] Mode: cloud, Provider: 11labs │
-│ INFO:httpx:POST https://api.x.ai... │
-└─────────────────────────────────────┘
-```
-- Stream via WebSocket or tail log files
-- Tabs: Server output, LLM calls, Tool execution
-- Searchable, filterable
-- Hidden by default, power user feature
+- ✅ **Server Logs Panel**: Real-time LLM + Tool logs at bottom of UI (DONE!)
+- ✅ **LLM call inspector**: Model, tokens, cost, duration, tool called (DONE!)
+- ✅ **Tool logs viewer**: See tool executions with expandable details (DONE!)
+- 🔮 **Cost tracker**: Daily/weekly/monthly spend summary
+- 🔮 **A/B test viewer**: See prompt evolution experiments
 
 ### UX Improvements
 - **Keyboard shortcuts**: Ctrl+Enter send, Ctrl+N new chat, etc.
@@ -1199,4 +1247,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*  
 *v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*  
 *v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*  
-*v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*
+*v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*  
+*v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*
