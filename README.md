@@ -151,6 +151,8 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Audio caching for instant playback of repeated phrases
   - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
 
+![jarvis-web](docs/images/jarvis-web.png)
+
 ### Web Interface ⭐ ENHANCED
 - **Jarvis Web UI v1.9** - Full-featured chat interface at localhost:5001
   - Real-time WebSocket communication with tool streaming
@@ -166,6 +168,8 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Launch: `./bin/jarvis-web`
   - See [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
 
+![jarvis-tui](docs/images/jarvis-tui.png)
+
 ### Developer Experience ⭐ ENHANCED
 - **Command Dashboard TUI**: Interactive terminal UI with 70+ commands
   - Browse, search, and run any Jarvis command from one place
@@ -177,6 +181,9 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Beautiful dark UI with Markdown rendering
   - Search, pin, edit, delete pages
   - Launch: `./bin/jarvis-canvas`
+
+![jarvis-canvas](docs/images/jarvis-canvas.png)
+
 - **Feedback System**: LLM self-critique for continuous improvement
   - Per-query feedback: `--feedback` flag on orchestrator
   - Batch testing: `./bin/jarvis-feedback batch tests/queries.txt`
@@ -954,26 +961,6 @@ The tool will be auto-discovered!
 
 **Note**: The model comparison script backs up your database before testing. Results are saved to `tests/integration/logs/` with AI-generated analysis.
 
-### Git Workflow
-
-```bash
-# Create feature branch
-git checkout -b feature/new-tool
-
-# Make changes and test
-./jarvis  # Test thoroughly
-
-# Commit
-git add skills/new_tool.py skills/new_tool.tool.json
-git commit -m "Add new_tool for X"
-
-# Merge to main
-git checkout master
-git merge feature/new-tool
-
-# Rollback if needed
-git reset --hard HEAD~1
-```
 
 ---
 
@@ -1226,17 +1213,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 Private project - Not licensed for public use.
 
----
-
-## 🙏 Acknowledgments
-
-- **OpenAI** - GPT, Whisper, TTS
-- **Anthropic** - Claude (primary LLM)
-- **Ollama** - Local LLM inference
-- **OpenWakeWord** - Wake word detection
-- **OpenCode** - Autonomous coding agent
-
----
 
 **Current Version:** v2.17 (December 2025)  
 **Status:** Production Ready ✅  

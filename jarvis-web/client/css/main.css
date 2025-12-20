@@ -153,7 +153,7 @@ body {
 
 /* Sidebar */
 .sidebar {
-  width: 260px;
+  width: 335px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-primary);
   display: flex;

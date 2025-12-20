@@ -23,6 +23,8 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 - TUI (`bin/tui`) - Terminal UI
 - **Web UI (`jarvis-web`)** - Full-featured chat interface ✅
 
+![jarvis-web](images/jarvis-web.png)
+
 ---
 
 ## ✅ Implemented Features

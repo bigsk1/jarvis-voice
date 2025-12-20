@@ -567,7 +567,7 @@ class JarvisApp {
     return `
       <div class="${classes.join(' ')}" title="${Utils.escapeHtml(tool.description || tool.name)}">
         <div class="tool-item-name">${emoji} ${Utils.escapeHtml(tool.name)} ${badge}</div>
-        <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 50))}</div>
+        <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 70))}</div>
       </div>
     `;
   }
