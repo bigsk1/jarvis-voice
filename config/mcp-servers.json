@@ -30,7 +30,7 @@
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
       },
       "description": "The Primary web search tool. Search the web for news, local search, images and videos using Brave Search, Pro AI API key is enabled",
-      "enabled": false
+      "enabled": true
     },
     "sequentialthinking": {
       "command": "docker",
@@ -62,7 +62,7 @@
         "--viewport-size", "1280x720"
       ],
       "description": "Browser automation for JS-heavy sites: navigate, click, fill forms, screenshots, PDFs. Use when fetch fails on dynamic content.",
-      "enabled": true
+      "enabled": false
     }
   }
 }

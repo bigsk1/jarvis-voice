@@ -1,18 +1,16 @@
 ## My Notes, Ideas, Concerns
 
 
-add print button to canvas pages
-expand canvas more to send commands to jarvis? start and end wake word? 
 audio on web isnt saved for mic like it is for terminal/tui/jarvis it seems in audio/cloud/mic
 
 Side Quests noted for later:
 
-Canvas folder structure - Left sidebar needs folder/file explorer drill-down instead of flat list
-
 when using openai image1.5 need to seperate the usd cost in token count as it costs more, this goes for any other than noraml tool or features involing higher token costs
 
-screenshot of webui in readme to display UI
 
+Memory browser UI	🧠 View/search/edit/delete memories visually in settings
+D. Intelligence dashboard	📊 See insights, confidence scores, what Jarvis learned
+E. Tool enable/disable in UI	🔧 Toggle tools on/off from Settings → Tools tab
 
 ### Notes
 
