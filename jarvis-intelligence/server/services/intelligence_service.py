@@ -528,8 +528,10 @@ class IntelligenceService:
     def get_tool_performance(self) -> List[Dict]:
         """Get performance metrics per tool from insights.
         
-        Note: preferred_tools and avoided_tools are JSON fields (e.g., {"tool": 0.8})
-        We parse them to extract tool names and aggregate.
+        Note: preferred_tools and avoided_tools are JSON fields that can be:
+        - Dict format: {"tool_name": score} (older format)
+        - List format: ["tool_name"] (newer format)
+        We parse both to extract tool names and aggregate.
         """
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -545,33 +547,39 @@ class IntelligenceService:
             # Build tool performance map
             tools = {}
             
+            def extract_tool_names(json_str):
+                """Extract tool names from either dict or list JSON format"""
+                if not json_str:
+                    return []
+                try:
+                    parsed = json.loads(json_str)
+                    if isinstance(parsed, dict):
+                        # Dict format: {"tool_name": score}
+                        return list(parsed.keys())
+                    elif isinstance(parsed, list):
+                        # List format: ["tool_name"]
+                        return [t for t in parsed if isinstance(t, str) and t]
+                    return []
+                except (json.JSONDecodeError, TypeError):
+                    return []
+            
             for row in rows:
                 confidence = row['confidence'] or 0.5
                 
-                # Parse preferred_tools (JSON like {"mcp_fetch": 0.8})
-                if row['preferred_tools']:
-                    try:
-                        prefs = json.loads(row['preferred_tools'])
-                        if isinstance(prefs, dict):
-                            for tool_name in prefs.keys():
-                                if tool_name not in tools:
-                                    tools[tool_name] = {'name': tool_name, 'prefer_count': 0, 'avoid_count': 0, 'conf_sum': 0}
-                                tools[tool_name]['prefer_count'] += 1
-                                tools[tool_name]['conf_sum'] += confidence
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                # Parse preferred_tools (can be dict or list)
+                pref_tools = extract_tool_names(row['preferred_tools'])
+                for tool_name in pref_tools:
+                    if tool_name not in tools:
+                        tools[tool_name] = {'name': tool_name, 'prefer_count': 0, 'avoid_count': 0, 'conf_sum': 0}
+                    tools[tool_name]['prefer_count'] += 1
+                    tools[tool_name]['conf_sum'] += confidence
                 
-                # Parse avoided_tools (JSON like {"search_memory": 0.5})
-                if row['avoided_tools']:
-                    try:
-                        avoids = json.loads(row['avoided_tools'])
-                        if isinstance(avoids, dict):
-                            for tool_name in avoids.keys():
-                                if tool_name not in tools:
-                                    tools[tool_name] = {'name': tool_name, 'prefer_count': 0, 'avoid_count': 0, 'conf_sum': 0}
-                                tools[tool_name]['avoid_count'] += 1
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                # Parse avoided_tools (can be dict or list)
+                avoid_tools = extract_tool_names(row['avoided_tools'])
+                for tool_name in avoid_tools:
+                    if tool_name not in tools:
+                        tools[tool_name] = {'name': tool_name, 'prefer_count': 0, 'avoid_count': 0, 'conf_sum': 0}
+                    tools[tool_name]['avoid_count'] += 1
             
             # Calculate net score and avg confidence
             result = []
