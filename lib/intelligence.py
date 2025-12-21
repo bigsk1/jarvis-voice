@@ -502,7 +502,7 @@ class IntelligenceLayer:
         outcome_embedding = self._get_embedding(outcome_description)
         
         # Context embedding
-        context_summary = json.dumps(context)[:500] if context else ""
+        context_summary = json.dumps(context)[:750] if context else ""
         context_embedding = self._get_embedding(context_summary) if context_summary else None
         
         # Infer satisfaction

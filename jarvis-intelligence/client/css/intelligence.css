@@ -901,9 +901,26 @@ body {
 }
 
 .detail-block.scrollable {
-  overflow-y: auto;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  max-height: 300px !important;
   scrollbar-width: thin;
   scrollbar-color: var(--accent) var(--bg-tertiary);
+}
+
+/* Context summary box - must scroll */
+.detail-block.context-box {
+  height: 200px !important;
+  max-height: 200px !important;
+  overflow: scroll !important;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-word;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  display: block;
+  resize: vertical;
 }
 
 .detail-block.scrollable::-webkit-scrollbar {

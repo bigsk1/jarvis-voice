@@ -991,9 +991,8 @@ async function viewExperience(id) {
         
         ${exp.context_summary ? `
           <div style="margin-bottom: var(--space-md);">
-            <div class="form-label">Context Summary <span style="font-weight: normal; color: var(--text-muted);">(full context - scroll to see all)</span></div>
-            <div class="detail-block scrollable" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-xs);">
-${escapeHtml(exp.context_summary)}</div>
+            <div class="form-label">Context Summary <span style="font-weight: normal; color: var(--text-muted);">(scroll to see all)</span></div>
+            <div class="detail-block context-box">${escapeHtml(exp.context_summary)}</div>
           </div>
         ` : ''}
         
@@ -1071,24 +1070,64 @@ ${escapeHtml(exp.context_summary)}</div>
   }
 }
 
-function copyExperienceJSON() {
-  if (!currentExperienceData) return;
+// Copy to clipboard helper (works on HTTP and HTTPS)
+function copyToClipboard(text) {
+  // Try modern API first (HTTPS only)
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  
+  // Fallback for HTTP - use textarea trick
+  return new Promise((resolve, reject) => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    
+    try {
+      const success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (success) {
+        resolve();
+      } else {
+        reject(new Error('execCommand copy failed'));
+      }
+    } catch (err) {
+      document.body.removeChild(textarea);
+      reject(err);
+    }
+  });
+}
+
+// Make copy functions globally accessible
+window.copyExperienceJSON = function() {
+  if (!currentExperienceData) {
+    showToast('No experience data loaded', 'error');
+    return;
+  }
   const json = JSON.stringify(currentExperienceData, null, 2);
-  navigator.clipboard.writeText(json).then(() => {
+  copyToClipboard(json).then(() => {
     showToast('Copied experience JSON to clipboard', 'success');
   }).catch(err => {
     showToast('Failed to copy: ' + err.message, 'error');
   });
-}
+};
 
-function copyContextSummary() {
-  if (!currentExperienceData?.context_summary) return;
-  navigator.clipboard.writeText(currentExperienceData.context_summary).then(() => {
+window.copyContextSummary = function() {
+  if (!currentExperienceData?.context_summary) {
+    showToast('No context summary available', 'error');
+    return;
+  }
+  copyToClipboard(currentExperienceData.context_summary).then(() => {
     showToast('Copied context summary to clipboard', 'success');
   }).catch(err => {
     showToast('Failed to copy: ' + err.message, 'error');
   });
-}
+};
 
 async function viewInsight(id) {
   selectedInsightId = id;
