@@ -602,7 +602,13 @@ function renderInsightCard(insight) {
   const confTier = getConfidenceTier(confidence);
   const confLabel = getConfidenceLabel(confidence);
   const hasEmbedding = insight.has_embedding ? '🔗' : '⚠️';
-  const timestamp = formatDate(insight.created_at);
+  const createdDate = formatDate(insight.created_at);
+  const updatedDate = insight.updated_at ? formatDate(insight.updated_at) : null;
+  
+  // Show updated date if different from created date, otherwise show created
+  const displayDate = updatedDate && updatedDate !== createdDate 
+    ? `Updated: ${updatedDate}` 
+    : `Created: ${createdDate}`;
   
   // Parse preferred/avoided tools
   const preferredTools = parseToolsField(insight.preferred_tools);
@@ -613,6 +619,9 @@ function renderInsightCard(insight) {
       <div class="card-header">
         <div class="insight-description">${escapeHtml(truncate(insight.description, 200))}</div>
         <span class="constraint-badge ${constraint}">${constraintLabel}</span>
+      </div>
+      <div class="insight-timestamp" title="Created: ${createdDate}${updatedDate ? ', Updated: ' + updatedDate : ''}">
+        📅 ${displayDate}
       </div>
       ${insight.applies_to_pattern ? `
         <div class="insight-pattern">📎 ${escapeHtml(truncate(insight.applies_to_pattern, 100))}</div>

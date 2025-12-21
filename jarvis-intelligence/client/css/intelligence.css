@@ -610,6 +610,14 @@ body {
   color: var(--negative);
 }
 
+.insight-timestamp {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-xs);
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--border);
+}
+
 .insight-pattern {
   font-size: var(--text-xs);
   color: var(--text-muted);
