@@ -13,6 +13,7 @@
 
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v1.9** (server logs panel, search/export, ✨ enhance) ⭐ ENHANCED
+- **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) ⭐ NEW
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
@@ -173,7 +174,8 @@
 | Document | Purpose |
 |----------|---------|
 | **Command Dashboard** | TUI for all Jarvis commands - `./bin/jarvis-dashboard` ⭐ NEW |
-| **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8890) ⭐ NEW |
+| **Memory Browser** | Web UI for memories/intel/conversations - `./bin/jarvis-memory` (localhost:5002) ⭐ NEW |
+| **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8090) ⭐ NEW |
 | **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag ⭐ NEW |
 | **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check cloud` ⭐ NEW |
 | **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."` ⭐ NEW |
@@ -264,6 +266,22 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2025-12-21:**
+- ✅ **Memory Browser UI** - Web interface for memory management ⭐ NEW
+  - **View/search/edit/delete** memories from `knowledge_base`
+  - **FTS5 search** for fast keyword lookups (no LLM required)
+  - **Intel file manager**: create, edit, upload, delete, ingest `.md`/`.txt` files
+  - **Conversation browser** with full detail popup
+  - **Statistics dashboard** with category breakdown and embedding health
+  - **Dual database support**: switch between cloud/local modes
+  - **Memory health indicators**: size badges (S/M/L/XL), missing embedding warnings
+  - **Re-embed button**: regenerate embeddings after manual text edits
+  - **Mobile responsive** at ≤730px: hamburger menu, slide-out sidebar
+  - Launch: `./bin/jarvis-memory` (localhost:5002)
+  - See: `jarvis-memory/README.md`
+- ✅ **Canvas Mobile Responsive** - Hamburger menu and slide-out sidebar at ≤730px
+- ✅ **Cross-UI Navigation** - 🧠 Memory link in jarvis-web and jarvis-canvas headers
 
 **2025-12-19:**
 - ✅ **Jarvis Web UI v1.9** - Server Logs Panel & Developer Tools ⭐ ENHANCED
@@ -654,6 +672,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-19 (v2.17)  
-**Latest:** Jarvis Web UI v1.9, Server Logs Panel, Real-time LLM + Tool Streaming  
+**Last Updated:** 2025-12-21 (v2.18)  
+**Latest:** Memory Browser UI, Canvas Mobile Responsive, Cross-UI Navigation  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

@@ -198,12 +198,25 @@ source ~/jarvis-venv/bin/activate
 ./bin/sync-memory-db.py --from cloud --to local
 
 # Or start API/services and sync happens automatically
-./bin/jarvis-api --local
-./bin/jarvis-services --local
+./bin/jarvis-api   ( does sync from cloud to local) takes time before ready and cant just run services right after
+./bin/jarvis-services  ( does sync from cloud to local )  takes time before ready
 ./bin/jarvis-canvas
-./bin/jarvis-dashboard
 ./bin/jarvis-web
+./bin/jarvis-memory
 
+# this covers all apis and services and ui's and memory browser
+./bin/start              # Start ALL services (API first, wait for sync, then others)
+./bin/start --ui-only    # Start only UIs (web, canvas, memory) - no sync
+./bin/start --no-api     # Start services+UIs without API (skip sync wait)
+./bin/start --list       # Show all session status with health checks
+./bin/start --stop       # Stop all Jarvis tmux sessions
+
+tmux attach -t jarvis-web
+tmux attach -t jarvis-memory
+# etc.
+
+start and use as needed
+./bin/jarvis-dashboard ( jarvis-d shortcut in cli)
 
 cloud or local  both to get all tables made and to create embedding for tools and mcp tools
  ./bin/sync_tools.py cloud
@@ -800,4 +813,11 @@ curl -X PUT http://localhost:5001/api/settings/blocked-tools \
 cd /home/boss/jarvis-voice && python3 bin/cleanup-intelligence.py --dry-run
 
 cd /home/boss/jarvis-voice && python3 bin/cleanup-intelligence.py --execute
+```
+
+# Memory Browser
+
+```bash
+./bin/jarvis-memory            # Runs on port 5002
+./bin/jarvis-memory --port 5003 --debug  # Custom options
 ```

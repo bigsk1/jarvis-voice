@@ -9,6 +9,11 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
+- **Memory Browser UI** - Web interface for memory management ⭐ NEW
+  - View/search/edit memories, intel files, conversations
+  - FTS5 search, dual database, re-embed after edits
+  - Mobile responsive with hamburger menu
+  - Launch: `./bin/jarvis-memory` (localhost:5002)
 - **AI Image Generation** - Google Gemini 3 Pro with Search Grounding ⭐ NEW
   - "Generate a bitcoin infographic" → creates image with real-time price data
   - Supports aspect ratios, styles, negative prompts
@@ -176,10 +181,18 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
   - Live system status (CPU, RAM, API health)
   - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
-- **Canvas Viewer**: Visual knowledge display at localhost:8890
+- **Memory Browser UI**: Web interface for memory management at localhost:5002 ⭐ NEW
+  - View, search, add, edit, delete memories from `knowledge_base`
+  - Intel file manager (create, upload, edit, ingest `.md`/`.txt` files)
+  - Conversation browser with full detail popup
+  - FTS5 search, dual database (cloud/local), re-embed after edits
+  - Mobile responsive: hamburger menu at ≤730px
+  - Launch: `./bin/jarvis-memory`
+- **Canvas Viewer**: Visual knowledge display at localhost:8090
   - Jarvis saves research results, code snippets, comparisons
   - Beautiful dark UI with Markdown rendering
   - Search, pin, edit, delete pages
+  - Mobile responsive: hamburger menu at ≤730px ⭐ ENHANCED
   - Launch: `./bin/jarvis-canvas`
 
 ![jarvis-canvas](docs/images/jarvis-canvas.png)
@@ -345,6 +358,9 @@ jarvis-voice/
 │   ├── JARVIS_WORKFLOW.md    # Complete request workflow
 │   └── *.md                  # Core system documentation
 ├── jarvis-intel/             # Private knowledge base (gitignored)
+├── jarvis-memory/            # Memory Browser UI (Flask server)
+│   ├── client/               # Frontend (HTML/CSS/JS)
+│   └── server/               # Backend (Flask routes/services)
 ├── jarvis                    # Launcher (cloud mode)
 ├── jarvis-local              # Launcher (local mode)
 ├── test-all-tools.sh         # Run all tool tests (cloud)
@@ -1028,6 +1044,18 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
+- ✅ **Memory Browser UI** - Web interface for memory management ⭐ NEW
+  - View, search, add, edit, delete memories from `knowledge_base`
+  - Intel file manager: create, upload, edit, delete, ingest `.md`/`.txt` files
+  - Conversation browser with full detail popup
+  - Statistics dashboard with category breakdown and embedding health
+  - FTS5 search (no LLM required), dual database (cloud/local) switching
+  - Memory health indicators: size badges (S/M/L/XL), missing embedding warnings
+  - Re-embed button: regenerate embeddings after manual text edits
+  - Mobile responsive at ≤730px: hamburger menu, slide-out sidebar
+  - Cross-UI navigation: 🧠 icon in jarvis-web and jarvis-canvas headers
+  - Launch: `./bin/jarvis-memory` (localhost:5002)
+- ✅ **Canvas Mobile Responsive** - Hamburger menu and slide-out sidebar at ≤730px
 - ✅ **Jarvis Web UI v1.9** - Full-featured web interface ⭐ ENHANCED
   - **Server Logs Panel**: Real-time LLM + Tool streaming at bottom of UI ⭐ NEW
   - **Color-coded logs**: LLM (purple), Tools (green), with success/error status ⭐ NEW
@@ -1197,7 +1225,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 **Other Planned:**
 - **Intelligence Layer Phase 2** - Implicit failure detection, tool trashing detection, conflict resolution
 - **Intelligence Layer Phase 3** - User profile learning (communication style, shortcuts, preferences)
-- Web UI for memory management and system health
+- ✅ ~~Web UI for memory management and system health~~ - **DONE! Memory Browser UI**
 - Home automation integrations (Home Assistant, MQTT)
 - Multi-user support with isolated memory contexts
 - Tool profiles for local vs cloud modes
@@ -1214,6 +1242,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.17 (December 2025)  
+**Current Version:** v2.18 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Jarvis Web UI v1.9, Server Logs Panel, Real-time LLM + Tool Streaming
+**Latest Features:** Memory Browser UI, Canvas Mobile Responsive, Cross-UI Navigation

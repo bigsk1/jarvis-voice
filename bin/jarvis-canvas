@@ -937,19 +937,233 @@ HTML_TEMPLATE = '''
         }
 
         /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-                transition: transform 0.3s;
+        /* Hamburger button - hidden on desktop */
+        .hamburger-btn {
+            display: none;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-primary);
+            font-size: 1.25rem;
+        }
+
+        .hamburger-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--text-muted);
+        }
+
+        /* Sidebar close button - hidden on desktop */
+        .sidebar-close {
+            display: none;
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            z-index: 10;
+        }
+
+        .sidebar-close:hover {
+            color: var(--text-primary);
+        }
+
+        /* Sidebar overlay - hidden by default */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 98;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .sidebar-overlay.active {
+            opacity: 1;
+        }
+
+        /* Header links */
+        .header-links {
+            display: flex;
+            gap: 12px;
+        }
+
+        .header-link {
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .header-link:hover {
+            background: var(--bg-hover);
+            border-color: var(--text-muted);
+        }
+
+        /* Mobile responsive - 730px breakpoint */
+        @media (max-width: 730px) {
+            /* Show hamburger button */
+            .hamburger-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
+
+            /* Sidebar transforms to slide-out */
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                bottom: 0;
+                width: 280px;
+                min-width: 280px;
+                max-width: 280px;
+                z-index: 99;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+                resize: none;
+                padding-top: calc(var(--header-height) + 16px);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            /* Show sidebar overlay when sidebar is open */
+            .sidebar-overlay {
+                display: block;
+                pointer-events: none;
+                top: var(--header-height);
+            }
+
+            .sidebar-overlay.active {
+                pointer-events: auto;
+            }
+
+            /* Show close button */
+            .sidebar-close {
+                display: block;
+                top: calc(var(--header-height) + 16px);
+            }
+
+            /* Main content full width */
             .main {
                 margin-left: 0;
+                padding: 16px;
+            }
+
+            /* Header adjustments */
+            .header {
+                padding: 0 16px;
+                gap: 12px;
+            }
+
+            .logo span {
+                display: none;
+            }
+
+            .header-search {
+                flex: 1;
+                max-width: none;
+            }
+
+            .header-search input {
+                padding: 8px 12px;
+                font-size: 0.85rem;
+            }
+
+            .header-status {
+                display: none;
+            }
+
+            /* Page view adjustments */
+            .page-view {
+                max-width: 100%;
+            }
+
+            .page-view-title {
+                font-size: 1.5rem;
+            }
+
+            .page-header-meta {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            /* Modal full width on mobile */
+            .modal {
+                width: 95%;
+                max-height: 90vh;
+            }
+
+            .form-textarea {
+                min-height: 200px;
+            }
+
+            /* Header links compact */
+            .header-links {
+                gap: 8px;
+            }
+
+            .header-link {
+                padding: 6px 8px;
+                font-size: 0.8rem;
+            }
+
+            .header-link span {
+                display: none;
+            }
+        }
+
+        /* Extra small screens */
+        @media (max-width: 480px) {
+            .header {
+                padding: 0 12px;
+                gap: 8px;
+            }
+
+            .header-search input {
+                padding: 6px 10px;
+            }
+
+            .page-header-actions {
+                flex-wrap: wrap;
+            }
+
+            .btn {
+                padding: 6px 10px;
+                font-size: 0.8rem;
+            }
+
+            .page-tags {
+                gap: 4px;
+            }
+
+            .tag {
+                font-size: 0.7rem;
+                padding: 3px 8px;
             }
         }
     </style>
 </head>
 <body>
     <header class="header">
+        <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()" title="Toggle Menu">☰</button>
         <div class="logo">
             <div class="logo-icon"><img src="/favicon.ico" alt="Jarvis" style="width:24px;height:24px;"></div>
             <span>Jarvis Canvas</span>
@@ -962,10 +1176,22 @@ HTML_TEMPLATE = '''
                 <div class="status-dot"></div>
                 <span id="pageCount">0 pages</span>
             </div>
+            <div class="header-links">
+                <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;" title="Jarvis Web">
+                    🤖 <span>Jarvis</span>
+                </a>
+                <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5002', '_blank'); return false;" title="Memory Browser">
+                    🧠 <span>Memory</span>
+                </a>
+            </div>
         </div>
     </header>
 
-    <aside class="sidebar">
+    <!-- Sidebar overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+    <aside class="sidebar" id="sidebar">
+        <button class="sidebar-close" id="sidebarClose" onclick="closeSidebar()">&times;</button>
         <div class="sidebar-section" id="pinnedSection" style="display: none;">
             <div class="sidebar-title">📌 Pinned</div>
             <ul class="page-list" id="pinnedList"></ul>
@@ -1035,6 +1261,30 @@ HTML_TEMPLATE = '''
         let pages = [];
         let currentPage = null;
         let editingPage = null;
+
+        // =========================================================================
+        // Sidebar Toggle (Mobile)
+        // =========================================================================
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            
+            // Prevent body scroll when sidebar is open
+            document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+        }
+
+        function closeSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            sidebar.classList.remove('open');
+            overlay.classList.remove('active');
+            document.body.style.overflow = '';
+        }
 
         // Configure marked
         marked.setOptions({
@@ -1268,6 +1518,7 @@ HTML_TEMPLATE = '''
             const page = pages.find(p => p.id === id);
             if (!page) return;
             
+            closeSidebar(); // Close sidebar on mobile
             renderSidebar(); // Update active state
             document.getElementById('emptyState').style.display = 'none';
             

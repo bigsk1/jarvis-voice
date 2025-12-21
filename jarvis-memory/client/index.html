@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis Memory Browser</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/memory.css">
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <!-- Hamburger Menu (mobile only) -->
+        <button class="hamburger-btn" id="hamburgerBtn" title="Toggle Menu">
+          <span class="hamburger-icon">☰</span>
+        </button>
+        
+        <div class="logo">
+          <span class="logo-icon">🧠</span>
+          <span class="logo-text">JARVIS MEMORY</span>
+        </div>
+        
+        <!-- Desktop Navigation Tabs -->
+        <nav class="nav-tabs nav-tabs-desktop">
+          <button class="nav-tab active" data-tab="memories">📚 Memories</button>
+          <button class="nav-tab" data-tab="intel">📁 Intel</button>
+          <button class="nav-tab" data-tab="conversations">💬 Conversations</button>
+          <button class="nav-tab" data-tab="stats">📊 Stats</button>
+        </nav>
+        
+        <div class="header-right">
+          <div class="mode-selector">
+            <select id="modeSelect">
+              <option value="cloud">☁️ Cloud</option>
+              <option value="local">💻 Local</option>
+            </select>
+          </div>
+          
+          <a href="#" class="btn btn-secondary btn-jarvis" title="Back to Jarvis Web" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;">
+            🤖 Jarvis
+          </a>
+        </div>
+      </div>
+      
+      <!-- Mobile Navigation Tabs (second row) -->
+      <nav class="nav-tabs nav-tabs-mobile">
+        <button class="nav-tab active" data-tab="memories">📚 Memories</button>
+        <button class="nav-tab" data-tab="intel">📁 Intel</button>
+        <button class="nav-tab" data-tab="conversations">💬 Conversations</button>
+        <button class="nav-tab" data-tab="stats">📊 Stats</button>
+      </nav>
+    </header>
+    
+    <!-- Mobile Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Sidebar (Categories) -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title">📂 Categories</div>
+          <button class="sidebar-close" id="sidebarClose">&times;</button>
+        </div>
+        <div class="sidebar-content" id="categoryList">
+          <!-- Categories loaded dynamically -->
+        </div>
+      </aside>
+      
+      <!-- Content Area -->
+      <div class="content-area">
+        <!-- Toolbar -->
+        <div class="toolbar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="Search memories (FTS5)...">
+          </div>
+          
+          <div class="toolbar-actions">
+            <button class="btn btn-icon" id="refreshBtn" title="Refresh">🔄</button>
+            <button class="btn btn-primary" id="addMemoryBtn">+ Add Memory</button>
+            <button class="btn btn-primary" id="addIntelBtn" style="display: none;">+ Create File</button>
+            <button class="btn btn-secondary" id="uploadIntelBtn" style="display: none;">📤 Upload</button>
+            <button class="btn btn-secondary" id="ingestIntelBtn" style="display: none;">⚡ Ingest All</button>
+            <input type="file" id="intelFileInput" accept=".md,.txt" style="display: none;" multiple>
+          </div>
+        </div>
+        
+        <!-- Memories Panel -->
+        <div class="tab-panel active" id="memoriesPanel">
+          <div class="memory-list" id="memoryList">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+        
+        <!-- Intel Panel -->
+        <div class="tab-panel" id="intelPanel">
+          <div class="memory-list" id="intelList">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+        
+        <!-- Conversations Panel -->
+        <div class="tab-panel" id="conversationsPanel">
+          <div class="memory-list" id="conversationList">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+        
+        <!-- Stats Panel -->
+        <div class="tab-panel" id="statsPanel">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </main>
+    
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <!-- Memory Modal -->
+    <div class="modal-overlay" id="memoryModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title" id="memoryModalTitle">Add Memory</h2>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="memoryForm">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label" for="memoryCategory">Category *</label>
+              <input type="text" class="form-input" id="memoryCategory" placeholder="e.g., technical, personal, preference" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="memoryKey">Key *</label>
+              <input type="text" class="form-input" id="memoryKey" placeholder="What this memory is about" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="memoryValue">Value *</label>
+              <textarea class="form-input" id="memoryValue" placeholder="The information to remember" rows="4" required></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="memoryImportance">Importance (1-10)</label>
+              <input type="number" class="form-input" id="memoryImportance" value="5" min="1" max="10" style="width: 100px;">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Memory</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <!-- Intel File Modal -->
+    <div class="modal-overlay" id="intelModal">
+      <div class="modal" style="max-width: 800px;">
+        <div class="modal-header">
+          <h2 class="modal-title" id="intelModalTitle">Create Intel File</h2>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="intelForm">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label" for="intelFilename">Filename *</label>
+              <input type="text" class="form-input" id="intelFilename" placeholder="e.g., network-config.md" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="intelContent">Content</label>
+              <textarea class="form-input" id="intelContent" placeholder="# Your Intel File&#10;&#10;Add your information here..." rows="15" style="font-family: var(--font-mono);"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save File</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <!-- View Modal (for viewing details) -->
+    <div class="modal-overlay" id="viewModal">
+      <div class="modal" style="max-width: 700px;">
+        <div class="modal-header">
+          <h2 class="modal-title">Details</h2>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="viewContent">
+          <!-- Content loaded dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Scripts -->
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

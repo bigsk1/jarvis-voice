@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""
+Jarvis Memory Browser Launcher
+Run the memory management web interface
+"""
+import os
+import sys
+from pathlib import Path
+
+# Add paths
+SCRIPT_DIR = Path(__file__).parent.resolve()
+JARVIS_ROOT = SCRIPT_DIR.parent
+MEMORY_ROOT = JARVIS_ROOT / 'jarvis-memory'
+
+# Add to path
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+sys.path.insert(0, str(MEMORY_ROOT))
+
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Jarvis Memory Browser - View and manage Jarvis memories',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  jarvis-memory                   # Start on port 5002
+  jarvis-memory --port 8080       # Use custom port
+  jarvis-memory --debug           # Enable debug mode
+        """
+    )
+    parser.add_argument('--host', default='0.0.0.0',
+                        help='Host to bind to (default: 0.0.0.0)')
+    parser.add_argument('--port', type=int, default=5002,
+                        help='Port to bind to (default: 5002)')
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable debug mode')
+    
+    args = parser.parse_args()
+    
+    # Import and run the app
+    try:
+        from server.app import run_server
+        run_server(
+            host=args.host,
+            port=args.port,
+            debug=args.debug
+        )
+    except ImportError as e:
+        print(f"Error importing jarvis-memory: {e}")
+        print("\nMake sure dependencies are installed:")
+        print(f"  pip install flask flask-cors")
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
+

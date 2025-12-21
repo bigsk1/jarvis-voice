@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""
+Re-embed a memory by ID after manual text edits.
+
+Usage: ./bin/re-embed-memory <id> [mode]
+  
+Examples:
+  ./bin/re-embed-memory 5           # Re-embed memory ID 5 (cloud mode)
+  ./bin/re-embed-memory 10 local    # Re-embed memory ID 10 (local mode)
+
+This regenerates the vector embedding for semantic search after you've
+edited the key/value text manually (e.g., via Memory Browser UI).
+"""
+
+import sys
+import os
+import json
+import pickle
+import sqlite3
+from pathlib import Path
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from config_loader import load_config, get_config_value
+
+def get_db_path(mode: str) -> Path:
+    """Get database path for mode"""
+    project_root = Path(__file__).parent.parent
+    data_dir = project_root / 'data'
+    if mode == 'local':
+        return data_dir / 'jarvis_memory_local.db'
+    return data_dir / 'jarvis_memory.db'
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+    
+    try:
+        memory_id = int(sys.argv[1])
+    except ValueError:
+        print(f"❌ Invalid memory ID: {sys.argv[1]}")
+        sys.exit(1)
+    
+    mode = sys.argv[2] if len(sys.argv) > 2 else 'cloud'
+    
+    if mode not in ('cloud', 'local'):
+        print(f"❌ Invalid mode: {mode}. Use 'cloud' or 'local'")
+        sys.exit(1)
+    
+    # Load config for the mode
+    load_config(mode)
+    
+    # Get database path
+    db_path = get_db_path(mode)
+    
+    if not db_path.exists():
+        print(f"❌ Database not found: {db_path}")
+        sys.exit(1)
+    
+    # Connect to database
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    # Get the memory
+    cursor.execute("""
+        SELECT id, category, key, value, importance, source 
+        FROM knowledge_base WHERE id = ?
+    """, (memory_id,))
+    row = cursor.fetchone()
+    
+    if not row:
+        print(f"❌ Memory ID {memory_id} not found in {mode} database")
+        conn.close()
+        sys.exit(1)
+    
+    print(f"📝 Re-embedding memory {memory_id} ({mode} mode):")
+    print(f"   Category: {row['category']}")
+    print(f"   Key: {row['key'][:60]}{'...' if len(row['key']) > 60 else ''}")
+    print(f"   Value: {row['value'][:60]}{'...' if len(row['value']) > 60 else ''}")
+    
+    # Generate new embedding
+    try:
+        from embeddings import get_embedding
+        
+        # Combine key and value for richer semantic context (same as remember())
+        text = f"{row['key']}: {row['value']}"
+        
+        print(f"   Generating embedding ({len(text)} chars)...")
+        embedding_vector = get_embedding(text)
+        
+        # Serialize as pickle blob (consistent with memory_db.py)
+        embedding_blob = pickle.dumps(embedding_vector)
+        
+        # Update database
+        cursor.execute("""
+            UPDATE knowledge_base 
+            SET embedding = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        """, (embedding_blob, memory_id))
+        conn.commit()
+        
+        print(f"✅ Memory {memory_id} re-embedded successfully!")
+        print(f"   Embedding size: {len(embedding_vector)} dimensions")
+        
+        # Output JSON for API use
+        result = {
+            "ok": True,
+            "message": f"Memory {memory_id} re-embedded successfully",
+            "id": memory_id,
+            "mode": mode,
+            "embedding_dims": len(embedding_vector)
+        }
+        print(json.dumps(result))
+        
+    except ImportError as e:
+        print(f"❌ Failed to import embeddings module: {e}")
+        print("   Make sure the jarvis-venv is activated")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Failed to generate embedding: {e}")
+        sys.exit(1)
+    finally:
+        conn.close()
+
+if __name__ == "__main__":
+    main()
+

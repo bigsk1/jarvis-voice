@@ -104,6 +104,10 @@ COMMANDS: List[Command] = [
     Command("CLI Query (Local)", './orchestrator/orchestrator_v2.py local "What time is it?"', "Single query - local", "🎙️ Core"),
     
     # === 🔧 SERVICES ===
+    Command("🚀 Start All Services", "./bin/start", "API→wait→services+UIs", "🔧 Services", interactive=True),
+    Command("🚀 Start UI Only", "./bin/start --ui-only", "Web+Canvas+Memory only", "🔧 Services", interactive=True),
+    Command("📊 Service Status", "./bin/start --list", "Show all session status", "🔧 Services"),
+    Command("🛑 Stop All Services", "./bin/start --stop", "Stop all tmux sessions", "🔧 Services"),
     Command("Start API (Cloud)", "./bin/jarvis-api", "API server - cloud mode", "🔧 Services", interactive=True),
     Command("Start API (Local)", "./bin/jarvis-api --local", "API server - local mode", "🔧 Services", interactive=True),
     Command("Start Web UI (Cloud)", "./bin/jarvis-web cloud", "Web UI - cloud mode :5001", "🔧 Services", interactive=True),
@@ -122,6 +126,9 @@ COMMANDS: List[Command] = [
     Command("Start Canvas", "./bin/jarvis-canvas", "Visual knowledge viewer", "🔧 Services", interactive=True),
     Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq || echo '❌ Canvas not running'", "Canvas status", "🔧 Services"),
     Command("Canvas Pages", "curl -s http://localhost:8890/api/pages | jq -c '.[] | {title, tags, created}' 2>/dev/null || echo '❌ Canvas not running'", "List canvas pages", "🔧 Services"),
+    Command("Start Memory UI", "./bin/jarvis-memory", "Memory Browser UI :5002", "🔧 Services", interactive=True),
+    Command("Memory UI Health", "curl -sf http://localhost:5002/api/status | jq || echo '❌ Memory UI not running'", "Memory UI status", "🔧 Services"),
+    Command("Memory UI Stats", "curl -sf http://localhost:5002/api/stats?mode=cloud | jq '.stats' || echo '❌ Memory UI not running'", "Memory statistics", "🔧 Services"),
     Command("UniFi Webhook Status", "systemctl status unifi-protect-webhook.service 2>/dev/null | head -15 || echo 'Service not installed'", "UniFi webhook service", "🔧 Services"),
     Command("UniFi Webhook Start", "sudo systemctl start unifi-protect-webhook.service 2>/dev/null || echo 'Service not installed or needs sudo'", "Start UniFi webhook", "🔧 Services"),
     Command("UniFi Webhook Restart", "sudo systemctl restart unifi-protect-webhook.service 2>/dev/null || echo 'Service not installed or needs sudo'", "Restart UniFi webhook", "🔧 Services"),
@@ -146,6 +153,8 @@ COMMANDS: List[Command] = [
     Command("Sync Local→Cloud", "./bin/sync-memory-db.py cloud", "Sync to cloud DB", "💾 Memory"),
     Command("Rebuild FTS Index", "./bin/rebuild-fts-index", "Rebuild search index", "💾 Memory"),
     Command("Memory Stats", "sqlite3 data/jarvis_memory.db \"SELECT category, COUNT(*) as count FROM knowledge_base GROUP BY category ORDER BY count DESC;\"", "Memory by category", "💾 Memory"),
+    Command("Re-embed Memory", "echo '📝 To re-embed a memory after editing:' && echo '   ./bin/re-embed-memory <id>' && echo '   ./bin/re-embed-memory <id> local' && echo '' && echo 'Example: ./bin/re-embed-memory 42'", "Re-embed after edit", "💾 Memory"),
+    Command("Open Memory Browser", "echo '🌐 Open http://192.168.70.228:5002 in browser' && echo 'Or from Jarvis Web UI, click the 🧠 icon'", "Memory Browser URL", "💾 Memory"),
     
     # === 🧠 INTELLIGENCE ===
     Command("Intel Health", "./bin/check-intelligence-health.py", "Check intelligence health", "🧠 Intelligence"),
@@ -522,6 +531,8 @@ class CommandRunner(App):
                 session_name = "jarvis-services"  # Background services
             elif "jarvis-canvas" in cmd.command:
                 session_name = "jarvis-canvas"  # Canvas viewer
+            elif "jarvis-memory" in cmd.command:
+                session_name = "jarvis-memory"  # Memory Browser UI
             else:
                 session_name = window_name  # Use window name as session name
             
