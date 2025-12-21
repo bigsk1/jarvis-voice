@@ -66,6 +66,9 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - **Meta-cognition**: Analyzes learning health ⭐ NEW
   - Separate databases for cloud/local (1536 vs 768 dimensions)
   - See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
+
+![jarvis-intellegince](docs/images/jarvis-intellegince.png)
+
 - **Intelligence Dashboard** at localhost:5003 ⭐ NEW
   - Sort experiences by date, turns, tool count
   - Filter by success/fail, tool count, specific tool
