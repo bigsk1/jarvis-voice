@@ -11,11 +11,12 @@
 #   ./bin/start --stop       # Stop all Jarvis sessions
 #
 # Session names (same as jarvis-dashboard):
-#   jarvis-api       - API server (port 8880) - does DB/evolution/tool-rag sync
-#   jarvis-services  - Background services - does DB/evolution/tool-rag sync  
-#   jarvis-web       - Web UI (port 5001)
-#   jarvis-canvas    - Canvas viewer (port 8090)
-#   jarvis-memory    - Memory Browser UI (port 5002)
+#   jarvis-api          - API server (port 8880) - does DB/evolution/tool-rag sync
+#   jarvis-services     - Background services - does DB/evolution/tool-rag sync  
+#   jarvis-web          - Web UI (port 5001)
+#   jarvis-canvas       - Canvas viewer (port 8090)
+#   jarvis-memory       - Memory Browser UI (port 5002)
+#   jarvis-intelligence - Intelligence Dashboard (port 5003)
 #
 # Notes:
 #   - API and Services both perform sync operations on startup
@@ -42,6 +43,7 @@ declare -A SESSIONS=(
     ["web"]="jarvis-web"
     ["canvas"]="jarvis-canvas"
     ["memory"]="jarvis-memory"
+    ["intelligence"]="jarvis-intelligence"
 )
 
 # Commands for each service
@@ -51,6 +53,7 @@ declare -A COMMANDS=(
     ["web"]="./bin/jarvis-web"
     ["canvas"]="./bin/jarvis-canvas"
     ["memory"]="./bin/jarvis-memory"
+    ["intelligence"]="./bin/jarvis-intelligence"
 )
 
 # Ports for health checks
@@ -60,6 +63,7 @@ declare -A PORTS=(
     ["web"]="5001"
     ["canvas"]="8090"
     ["memory"]="5002"
+    ["intelligence"]="5003"
 )
 
 # Health check endpoints
@@ -68,6 +72,7 @@ declare -A HEALTH_ENDPOINTS=(
     ["web"]="/api/health"
     ["canvas"]="/api/health"
     ["memory"]="/api/status"
+    ["intelligence"]="/api/status"
 )
 
 log() {
@@ -157,7 +162,7 @@ list_sessions() {
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    for name in api services web canvas memory; do
+    for name in api services web canvas memory intelligence; do
         local session=${SESSIONS[$name]}
         local port=${PORTS[$name]}
         local status=""
@@ -206,6 +211,7 @@ start_ui_only() {
     start_service "web"
     start_service "canvas"
     start_service "memory"
+    start_service "intelligence"
     
     echo ""
     success "UI services started!"
@@ -213,6 +219,7 @@ start_ui_only() {
     echo "  Web UI:        http://localhost:5001"
     echo "  Canvas:        http://localhost:8090"
     echo "  Memory:        http://localhost:5002"
+    echo "  Intelligence:  http://localhost:5003"
     echo ""
 }
 
@@ -227,6 +234,7 @@ start_no_api() {
     start_service "web"
     start_service "canvas"
     start_service "memory"
+    start_service "intelligence"
     
     echo ""
     success "Services started (no API sync)!"
@@ -258,6 +266,7 @@ start_all() {
     start_service "web"
     start_service "canvas"
     start_service "memory"
+    start_service "intelligence"
     
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
@@ -268,6 +277,7 @@ start_all() {
     echo "  Web UI:        http://localhost:5001"
     echo "  Canvas:        http://localhost:8090"
     echo "  Memory:        http://localhost:5002"
+    echo "  Intelligence:  http://localhost:5003"
     echo ""
     echo "  Attach to any session:  tmux attach -t <session-name>"
     echo "  Check status:           ./bin/start --list"
@@ -288,11 +298,12 @@ show_help() {
     echo "  ./bin/start --help       Show this help"
     echo ""
     echo "Sessions:"
-    echo "  jarvis-api       API server (port 8880) - does DB/evolution/tool-rag sync"
-    echo "  jarvis-services  Background services - does DB/evolution/tool-rag sync"
-    echo "  jarvis-web       Web UI (port 5001)"
-    echo "  jarvis-canvas    Canvas viewer (port 8090)"
-    echo "  jarvis-memory    Memory Browser UI (port 5002)"
+    echo "  jarvis-api          API server (port 8880) - does DB/evolution/tool-rag sync"
+    echo "  jarvis-services     Background services - does DB/evolution/tool-rag sync"
+    echo "  jarvis-web          Web UI (port 5001)"
+    echo "  jarvis-canvas       Canvas viewer (port 8090)"
+    echo "  jarvis-memory       Memory Browser UI (port 5002)"
+    echo "  jarvis-intelligence Intelligence Dashboard (port 5003)"
     echo ""
 }
 

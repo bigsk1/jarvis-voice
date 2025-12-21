@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""
+Jarvis Intelligence Dashboard Launcher
+Run the intelligence layer management web interface
+"""
+import os
+import sys
+from pathlib import Path
+
+# Add paths
+SCRIPT_DIR = Path(__file__).parent.resolve()
+JARVIS_ROOT = SCRIPT_DIR.parent
+INTELLIGENCE_ROOT = JARVIS_ROOT / 'jarvis-intelligence'
+
+# Add to path
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+sys.path.insert(0, str(INTELLIGENCE_ROOT))
+
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Jarvis Intelligence Dashboard - View and manage Jarvis learning',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  jarvis-intelligence                # Start on port 5003
+  jarvis-intelligence --port 8080    # Use custom port
+  jarvis-intelligence --debug        # Enable debug mode
+        """
+    )
+    parser.add_argument('--host', default='0.0.0.0',
+                        help='Host to bind to (default: 0.0.0.0)')
+    parser.add_argument('--port', type=int, default=5003,
+                        help='Port to bind to (default: 5003)')
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable debug mode')
+    
+    args = parser.parse_args()
+    
+    # Import and run the app
+    try:
+        from server.app import run_server
+        run_server(
+            host=args.host,
+            port=args.port,
+            debug=args.debug
+        )
+    except ImportError as e:
+        print(f"Error importing jarvis-intelligence: {e}")
+        print("\nMake sure dependencies are installed:")
+        print(f"  pip install flask flask-cors")
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
+

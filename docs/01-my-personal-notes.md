@@ -8,7 +8,7 @@ Side Quests noted for later:
 when using openai image1.5 need to seperate the usd cost in token count as it costs more, this goes for any other than noraml tool or features involing higher token costs
 
 
-Memory browser UI	🧠 View/search/edit/delete memories visually in settings
+
 D. Intelligence dashboard	📊 See insights, confidence scores, what Jarvis learned
 E. Tool enable/disable in UI	🔧 Toggle tools on/off from Settings → Tools tab
 

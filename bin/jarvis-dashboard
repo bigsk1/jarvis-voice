@@ -157,6 +157,9 @@ COMMANDS: List[Command] = [
     Command("Open Memory Browser", "echo '🌐 Open http://192.168.70.228:5002 in browser' && echo 'Or from Jarvis Web UI, click the 🧠 icon'", "Memory Browser URL", "💾 Memory"),
     
     # === 🧠 INTELLIGENCE ===
+    Command("Start Intelligence UI", "./bin/jarvis-intelligence", "Intelligence Dashboard :5003", "🧠 Intelligence", interactive=True),
+    Command("Intelligence UI Health", "curl -sf http://localhost:5003/api/status | jq || echo '❌ Intelligence UI not running'", "Intelligence UI status", "🧠 Intelligence"),
+    Command("Open Intelligence UI", "echo '🌐 Open http://192.168.70.228:5003 in browser' && echo 'Or from Jarvis Web UI, click the 📊 icon'", "Intelligence Dashboard URL", "🧠 Intelligence"),
     Command("Intel Health", "./bin/check-intelligence-health.py", "Check intelligence health", "🧠 Intelligence"),
     Command("Intel Sync", "./bin/sync-intelligence-db.py", "Sync intelligence DBs", "🧠 Intelligence"),
     Command("Run All Maintenance", "./bin/run-intelligence-maintenance.py --all --watch", "All maintenance jobs", "🧠 Intelligence"),
@@ -167,6 +170,7 @@ COMMANDS: List[Command] = [
     Command("View Insights", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(applies_to_pattern,1,40), constraint_type, round(confidence,2) FROM insights ORDER BY confidence DESC LIMIT 10;\"", "Top insights", "🧠 Intelligence"),
     Command("View Experiences", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(query,1,40), tools_used, outcome_success FROM experiences ORDER BY id DESC LIMIT 10;\"", "Recent experiences", "🧠 Intelligence"),
     Command("Re-embed Insight", "echo '📝 To re-embed an insight after editing:' && echo '   ./bin/re-embed-insight <id>' && echo '   ./bin/re-embed-insight <id> local' && echo '' && echo 'Example: ./bin/re-embed-insight 42'", "Re-embed after edit", "🧠 Intelligence"),
+    Command("Re-embed Experience", "echo '📝 To re-embed an experience after editing:' && echo '   ./bin/re-embed-experience <id>' && echo '   ./bin/re-embed-experience <id> local' && echo '' && echo 'Example: ./bin/re-embed-experience 42'", "Re-embed after edit", "🧠 Intelligence"),
     
     # === 🧬 PROMPT EVOLUTION ===
     Command("Evolution Check", "./bin/evolve-prompts check", "Check prompts needing evolution", "🧬 Evolution"),

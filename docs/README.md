@@ -30,7 +30,12 @@
 
 ### Monitoring & Observability ⭐ ENHANCED
 - **[../monitoring/README.md](../monitoring/README.md)** - Grafana + Prometheus + Loki stack
-- **Intelligence Dashboard** - Self-learning metrics (experiences, insights, confidence, decay)
+- **[../jarvis-intelligence/README.md](../jarvis-intelligence/README.md)** - 📊 **Intelligence Dashboard** ⭐ ENHANCED
+  - Experience sorting (date, turns, tool count) & filtering (success/fail, tool count, specific tool)
+  - Insight sorting (applied, helpful, preferred/avoided tools, confidence, updated)
+  - 5-tier confidence filtering (Elite 96%+, High 85-95%, Good 75-84%, Medium 50-74%, Low 0-49%)
+  - Differentiated confidence bars (green for DO, red for DON'T)
+  - Tool performance showing ALL tools with prefer/avoid counts
 - **Conversation Audit v2** - Deep drill-down into LLM decisions and tool calls
 - **API Intelligence Endpoints** - `/api/intelligence/*` for stats, health, maintenance jobs
 - **Maintenance Jobs** - Decay, anomaly detection, meta-cognition via API or CLI
@@ -268,6 +273,18 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2025-12-21:**
+- ✅ **Intelligence Dashboard** - Visual dashboard for self-learning system ⭐ NEW
+  - **Experience sorting**: Date, Turns (complexity), Tool Count
+  - **Experience filtering**: Success/Failed, Tool Count (none/single/multi), Specific Tool dropdown
+  - **Insight sorting**: Times Applied, Times Helpful, Has Preferred/Avoided Tools, Confidence, Recently Updated
+  - **5-tier confidence**: Elite (96-100%), High (85-95%), Good (75-84%), Medium (50-74%), Low (0-49%)
+  - **Differentiated confidence bars**: Green shades for positive, red/orange for negative constraints
+  - **Tool visibility on cards**: Shows preferred (👍) and avoided (👎) tools inline
+  - **Full tool performance**: Shows ALL tools (no limit) with prefer/avoid counts and net score
+  - **Improved text contrast** for better readability
+  - **Mobile responsive** at ≤730px: hamburger menu, slide-out sidebar
+  - Launch: `./bin/jarvis-intelligence` (localhost:5003)
+  - See: `jarvis-intelligence/README.md`
 - ✅ **Memory Browser UI** - Web interface for memory management ⭐ NEW
   - **View/search/edit/delete** memories from `knowledge_base`
   - **FTS5 search** for fast keyword lookups (no LLM required)
@@ -281,7 +298,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Launch: `./bin/jarvis-memory` (localhost:5002)
   - See: `jarvis-memory/README.md`
 - ✅ **Canvas Mobile Responsive** - Hamburger menu and slide-out sidebar at ≤730px
-- ✅ **Cross-UI Navigation** - 🧠 Memory link in jarvis-web and jarvis-canvas headers
+- ✅ **Cross-UI Navigation** - 🧠 Memory and 📊 Intelligence links in all dashboard headers
 
 **2025-12-19:**
 - ✅ **Jarvis Web UI v1.9** - Server Logs Panel & Developer Tools ⭐ ENHANCED
@@ -672,6 +689,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-21 (v2.18)  
-**Latest:** Memory Browser UI, Canvas Mobile Responsive, Cross-UI Navigation  
+**Last Updated:** 2025-12-21 (v2.19)  
+**Latest:** Intelligence Dashboard (sorting, 5-tier confidence, tool performance), Memory Browser UI  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

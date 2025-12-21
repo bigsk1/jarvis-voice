@@ -66,6 +66,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - **Meta-cognition**: Analyzes learning health ⭐ NEW
   - Separate databases for cloud/local (1536 vs 768 dimensions)
   - See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
+- **Intelligence Dashboard** at localhost:5003 ⭐ NEW
+  - Sort experiences by date, turns, tool count
+  - Filter by success/fail, tool count, specific tool
+  - Sort insights by applied, helpful, preferred/avoided tools
+  - 5-tier confidence filtering (Elite/High/Good/Medium/Low)
+  - Tool performance showing all tools with prefer/avoid stats
+  - Launch: `./bin/jarvis-intelligence`
 
 ### Tool System
 - **Tool RAG System**: Dynamic tool retrieval - loads only relevant tools for each query
@@ -184,6 +191,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
   - Live system status (CPU, RAM, API health)
   - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
+- **Intelligence Dashboard**: Visual dashboard for self-learning at localhost:5003 ⭐ NEW
+  - Experience sorting (date, turns, tool count) and filtering (success/fail, tool count, specific tool)
+  - Insight sorting (applied, helpful, preferred/avoided tools, confidence)
+  - 5-tier confidence: Elite (96%+), High (85-95%), Good (75-84%), Medium (50-74%), Low (0-49%)
+  - Tool performance showing ALL tools with prefer/avoid stats
+  - Mobile responsive: hamburger menu at ≤730px
+  - Launch: `./bin/jarvis-intelligence`
 - **Memory Browser UI**: Web interface for memory management at localhost:5002 ⭐ NEW
   - View, search, add, edit, delete memories from `knowledge_base`
   - Intel file manager (create, upload, edit, ingest `.md`/`.txt` files)
@@ -361,6 +375,9 @@ jarvis-voice/
 │   ├── JARVIS_WORKFLOW.md    # Complete request workflow
 │   └── *.md                  # Core system documentation
 ├── jarvis-intel/             # Private knowledge base (gitignored)
+├── jarvis-intelligence/      # Intelligence Dashboard (Flask server)
+│   ├── client/               # Frontend (HTML/CSS/JS)
+│   └── server/               # Backend (Flask routes/services)
 ├── jarvis-memory/            # Memory Browser UI (Flask server)
 │   ├── client/               # Frontend (HTML/CSS/JS)
 │   └── server/               # Backend (Flask routes/services)
@@ -1062,6 +1079,15 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
+- ✅ **Intelligence Dashboard** - Visual dashboard for self-learning ⭐ NEW
+  - Experience sorting (date, turns, tool count) & filtering (success/fail, tool count, specific tool)
+  - Insight sorting (times applied, helpful, preferred/avoided tools, confidence, updated)
+  - 5-tier confidence filtering: Elite (96%+), High (85-95%), Good (75-84%), Medium (50-74%), Low (0-49%)
+  - Differentiated confidence bars: green shades for DO, red/orange for DON'T
+  - Tool visibility on cards: shows preferred (👍) and avoided (👎) tools inline
+  - Tool performance table showing ALL tools with prefer/avoid counts and net score
+  - Mobile responsive at ≤730px: hamburger menu, slide-out sidebar
+  - Launch: `./bin/jarvis-intelligence` (localhost:5003)
 - ✅ **Memory Browser UI** - Web interface for memory management ⭐ NEW
   - View, search, add, edit, delete memories from `knowledge_base`
   - Intel file manager: create, upload, edit, delete, ingest `.md`/`.txt` files
@@ -1071,7 +1097,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Memory health indicators: size badges (S/M/L/XL), missing embedding warnings
   - Re-embed button: regenerate embeddings after manual text edits
   - Mobile responsive at ≤730px: hamburger menu, slide-out sidebar
-  - Cross-UI navigation: 🧠 icon in jarvis-web and jarvis-canvas headers
+  - Cross-UI navigation: 🧠 Memory and 📊 Intelligence links in all dashboard headers
   - Launch: `./bin/jarvis-memory` (localhost:5002)
 - ✅ **Canvas Mobile Responsive** - Hamburger menu and slide-out sidebar at ≤730px
 - ✅ **Jarvis Web UI v1.9** - Full-featured web interface ⭐ ENHANCED
@@ -1260,6 +1286,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.18 (December 2025)  
+**Current Version:** v2.19 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Memory Browser UI, Canvas Mobile Responsive, Cross-UI Navigation
+**Latest Features:** Intelligence Dashboard (sorting, 5-tier confidence, tool performance), Memory Browser UI

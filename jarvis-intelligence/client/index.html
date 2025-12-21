@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis Intelligence Dashboard</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/intelligence.css">
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <!-- Hamburger Menu (mobile only) -->
+        <button class="hamburger-btn" id="hamburgerBtn" title="Toggle Menu">
+          <span class="hamburger-icon">☰</span>
+        </button>
+        
+        <div class="logo">
+          <span class="logo-icon">📊</span>
+          <span class="logo-text">JARVIS INTELLIGENCE</span>
+        </div>
+        
+        <!-- Desktop Navigation Tabs -->
+        <nav class="nav-tabs nav-tabs-desktop">
+          <button class="nav-tab active" data-tab="experiences">📝 Experiences</button>
+          <button class="nav-tab" data-tab="insights">💡 Insights</button>
+          <button class="nav-tab" data-tab="reflection">🔄 Reflection</button>
+          <button class="nav-tab" data-tab="stats">📈 Stats</button>
+        </nav>
+        
+        <div class="header-right">
+          <div class="mode-selector">
+            <select id="modeSelect">
+              <option value="cloud">☁️ Cloud</option>
+              <option value="local">💻 Local</option>
+            </select>
+          </div>
+          
+          <a href="#" class="btn btn-secondary" title="Memory Browser" onclick="window.open('http://' + window.location.hostname + ':5002', '_blank'); return false;">
+            🧠
+          </a>
+          <a href="#" class="btn btn-secondary btn-jarvis" title="Back to Jarvis Web" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;">
+            🤖
+          </a>
+        </div>
+      </div>
+      
+      <!-- Mobile Navigation Tabs (second row) -->
+      <nav class="nav-tabs nav-tabs-mobile">
+        <button class="nav-tab active" data-tab="experiences">📝 Exp</button>
+        <button class="nav-tab" data-tab="insights">💡 Insights</button>
+        <button class="nav-tab" data-tab="reflection">🔄 Reflect</button>
+        <button class="nav-tab" data-tab="stats">📈 Stats</button>
+      </nav>
+    </header>
+    
+    <!-- Mobile Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Sidebar (Filters) -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title">🔍 Filters</div>
+          <button class="sidebar-close" id="sidebarClose">&times;</button>
+        </div>
+        <div class="sidebar-content">
+          <!-- Experience Filters -->
+          <div class="filter-section" id="experienceFilters">
+            <span class="filter-label">Outcome</span>
+            <div class="filter-group">
+              <div class="filter-item active" data-filter="all">
+                <span class="filter-name">All</span>
+                <span class="filter-count" id="expAllCount">0</span>
+              </div>
+              <div class="filter-item" data-filter="success">
+                <span class="filter-name">✅ Success</span>
+                <span class="filter-count" id="expSuccessCount">0</span>
+              </div>
+              <div class="filter-item" data-filter="failed">
+                <span class="filter-name">❌ Failed</span>
+                <span class="filter-count" id="expFailedCount">0</span>
+              </div>
+            </div>
+            
+            <span class="filter-label" style="margin-top: var(--space-md);">Tool Count</span>
+            <div class="filter-group">
+              <div class="filter-item active" data-toolcount="all">
+                <span class="filter-name">All</span>
+                <span class="filter-count" id="expToolAllCount">-</span>
+              </div>
+              <div class="filter-item" data-toolcount="none">
+                <span class="filter-name">🚫 No Tools</span>
+                <span class="filter-count" id="expToolNoneCount">-</span>
+              </div>
+              <div class="filter-item" data-toolcount="single">
+                <span class="filter-name">1️⃣ Single Tool</span>
+                <span class="filter-count" id="expToolSingleCount">-</span>
+              </div>
+              <div class="filter-item" data-toolcount="multi">
+                <span class="filter-name">🔢 Multi-Tool</span>
+                <span class="filter-count" id="expToolMultiCount">-</span>
+              </div>
+            </div>
+            
+            <span class="filter-label" style="margin-top: var(--space-md);">Filter by Tool</span>
+            <select id="expToolFilter" class="filter-select" style="width: 100%; margin-top: var(--space-xs);">
+              <option value="">All Tools</option>
+            </select>
+          </div>
+          
+          <!-- Insight Filters -->
+          <div class="filter-section" id="insightFilters" style="display: none;">
+            <span class="filter-label">Constraint Type</span>
+            <div class="filter-group">
+              <div class="filter-item active" data-filter="all">
+                <span class="filter-name">All</span>
+                <span class="filter-count" id="insightAllCount">0</span>
+              </div>
+              <div class="filter-item" data-filter="positive">
+                <span class="filter-name">✅ Positive (DO)</span>
+                <span class="filter-count" id="insightPositiveCount">0</span>
+              </div>
+              <div class="filter-item" data-filter="negative">
+                <span class="filter-name">❌ Negative (DON'T)</span>
+                <span class="filter-count" id="insightNegativeCount">0</span>
+              </div>
+            </div>
+            
+            <span class="filter-label" style="margin-top: var(--space-md);">Confidence</span>
+            <div class="filter-group">
+              <div class="filter-item" data-confidence="elite">
+                <span class="filter-name">💎 Elite (96-100%)</span>
+                <span class="filter-count" id="confEliteCount">0</span>
+              </div>
+              <div class="filter-item" data-confidence="high">
+                <span class="filter-name">🟢 High (85-95%)</span>
+                <span class="filter-count" id="confHighCount">0</span>
+              </div>
+              <div class="filter-item" data-confidence="good">
+                <span class="filter-name">🟡 Good (75-84%)</span>
+                <span class="filter-count" id="confGoodCount">0</span>
+              </div>
+              <div class="filter-item" data-confidence="medium">
+                <span class="filter-name">🟠 Medium (50-74%)</span>
+                <span class="filter-count" id="confMediumCount">0</span>
+              </div>
+              <div class="filter-item" data-confidence="low">
+                <span class="filter-name">🔴 Low (0-49%)</span>
+                <span class="filter-count" id="confLowCount">0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Sidebar Actions -->
+        <div class="sidebar-actions">
+          <button class="action-btn" id="runHealthCheckBtn">🏥 Health Check</button>
+        </div>
+      </aside>
+      
+      <!-- Content Area -->
+      <div class="content-area">
+        <!-- Toolbar -->
+        <div class="toolbar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="Search experiences...">
+          </div>
+          
+          <div class="toolbar-actions">
+            <div class="sort-selector" id="expSortContainer">
+              <label for="expSortSelect" style="font-size: var(--text-xs); color: var(--text-muted); margin-right: var(--space-xs);">Sort:</label>
+              <select id="expSortSelect" class="filter-select">
+                <option value="date">📅 Date</option>
+                <option value="turns">🔄 Turns</option>
+                <option value="tools">🛠️ Tool Count</option>
+              </select>
+            </div>
+            <div class="sort-selector" id="insightSortContainer" style="display: none;">
+              <label for="insightSortSelect" style="font-size: var(--text-xs); color: var(--text-muted); margin-right: var(--space-xs);">Sort:</label>
+              <select id="insightSortSelect" class="filter-select">
+                <option value="applied">📊 Times Applied</option>
+                <option value="helpful">✅ Times Helpful</option>
+                <option value="preferred">👍 Has Preferred Tools</option>
+                <option value="avoided">👎 Has Avoided Tools</option>
+                <option value="confidence">📈 Confidence</option>
+                <option value="updated">🕐 Recently Updated</option>
+              </select>
+            </div>
+            <button class="btn btn-icon" id="refreshBtn" title="Refresh">🔄</button>
+          </div>
+        </div>
+        
+        <!-- Experiences Panel -->
+        <div class="tab-panel active" id="experiencesPanel">
+          <div class="content-list" id="experiencesList">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+        
+        <!-- Insights Panel -->
+        <div class="tab-panel" id="insightsPanel">
+          <div class="content-list" id="insightsList">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+        
+        <!-- Reflection Panel -->
+        <div class="tab-panel" id="reflectionPanel">
+          <div class="content-list" id="reflectionContent">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+        
+        <!-- Stats Panel -->
+        <div class="tab-panel" id="statsPanel">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </main>
+    
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <!-- Experience Modal -->
+    <div class="modal-overlay" id="experienceModal">
+      <div class="modal" style="max-width: 700px;">
+        <div class="modal-header">
+          <h2 class="modal-title">Experience Details</h2>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="experienceModalBody">
+          <!-- Content loaded dynamically -->
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="reembedExperienceBtn">🔄 Re-embed</button>
+          <button type="button" class="btn btn-danger" id="deleteExperienceBtn">🗑️ Delete</button>
+          <button type="button" class="btn btn-secondary modal-close">Close</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Insight Modal -->
+    <div class="modal-overlay" id="insightModal">
+      <div class="modal" style="max-width: 700px;">
+        <div class="modal-header">
+          <h2 class="modal-title">Insight Details</h2>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="insightForm">
+          <div class="modal-body" id="insightModalBody">
+            <div class="form-group">
+              <label class="form-label" for="insightDescription">Description</label>
+              <textarea class="form-input" id="insightDescription" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="insightPattern">Applies To Pattern</label>
+              <input type="text" class="form-input" id="insightPattern">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="insightConstraint">Constraint Type</label>
+              <select class="form-input" id="insightConstraint">
+                <option value="positive">✅ Positive (DO use)</option>
+                <option value="negative">❌ Negative (DON'T use)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="insightConfidence">Confidence (0-1)</label>
+              <input type="number" class="form-input" id="insightConfidence" min="0" max="1" step="0.05" style="width: 100px;">
+            </div>
+            <div id="insightDetails">
+              <!-- Extra details loaded dynamically -->
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="reembedInsightBtn">🔄 Re-embed</button>
+            <button type="button" class="btn btn-danger" id="deleteInsightBtn">🗑️ Delete</button>
+            <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <!-- Health Check Modal -->
+    <div class="modal-overlay" id="healthModal">
+      <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+          <h2 class="modal-title">🏥 Intelligence Health Check</h2>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="healthModalBody">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary modal-close">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Scripts -->
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
+

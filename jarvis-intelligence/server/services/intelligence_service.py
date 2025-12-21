@@ -1,0 +1,588 @@
+"""
+Intelligence Service - Database operations for intelligence layer management
+Handles both cloud and local databases
+"""
+import sqlite3
+import json
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+
+JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
+DATA_PATH = JARVIS_ROOT / 'data'
+
+# Database paths
+DB_PATHS = {
+    'cloud': DATA_PATH / 'jarvis_intelligence.db',
+    'local': DATA_PATH / 'jarvis_intelligence_local.db'
+}
+
+
+def get_db_path(mode: str) -> Path:
+    """Get database path for mode"""
+    return DB_PATHS.get(mode, DB_PATHS['cloud'])
+
+
+def get_connection(mode: str) -> sqlite3.Connection:
+    """Get database connection for mode"""
+    db_path = get_db_path(mode)
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+class IntelligenceService:
+    """Service for intelligence database operations"""
+    
+    def __init__(self, mode: str = 'cloud'):
+        self.mode = mode
+        self.db_path = get_db_path(mode)
+    
+    def _get_conn(self) -> sqlite3.Connection:
+        """Get a new connection"""
+        conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
+    # =========================================================================
+    # Experiences Operations
+    # =========================================================================
+    
+    def list_experiences(self, limit: int = 100, offset: int = 0,
+                        success_only: bool = None) -> List[Dict]:
+        """List experiences with optional filtering"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            where_clause = ""
+            params = []
+            
+            if success_only is True:
+                where_clause = "WHERE outcome_success = 1"
+            elif success_only is False:
+                where_clause = "WHERE outcome_success = 0"
+            
+            results = cursor.execute(f"""
+                SELECT id, timestamp, query, context_summary, tools_used, 
+                       tool_sequence, turns_taken, final_tool,
+                       outcome_success, user_satisfied, error_occurred,
+                       CASE WHEN query_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
+                FROM experiences
+                {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            """, (*params, limit, offset)).fetchall()
+            
+            experiences = []
+            for row in results:
+                exp = dict(row)
+                # Parse JSON fields
+                if exp.get('tools_used'):
+                    try:
+                        exp['tools_used'] = json.loads(exp['tools_used'])
+                    except:
+                        pass
+                if exp.get('tool_sequence'):
+                    try:
+                        exp['tool_sequence'] = json.loads(exp['tool_sequence'])
+                    except:
+                        pass
+                experiences.append(exp)
+            
+            return experiences
+        finally:
+            conn.close()
+    
+    def get_experience(self, experience_id: int) -> Optional[Dict]:
+        """Get a single experience by ID"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            result = cursor.execute("""
+                SELECT id, timestamp, query, context_summary, tools_used, 
+                       tool_sequence, turns_taken, final_tool,
+                       outcome_success, user_satisfied, error_occurred,
+                       had_to_retry, had_to_clarify,
+                       CASE WHEN query_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
+                FROM experiences
+                WHERE id = ?
+            """, (experience_id,)).fetchone()
+            
+            if result:
+                exp = dict(result)
+                if exp.get('tools_used'):
+                    try:
+                        exp['tools_used'] = json.loads(exp['tools_used'])
+                    except:
+                        pass
+                if exp.get('tool_sequence'):
+                    try:
+                        exp['tool_sequence'] = json.loads(exp['tool_sequence'])
+                    except:
+                        pass
+                return exp
+            return None
+        finally:
+            conn.close()
+    
+    def search_experiences(self, query: str, limit: int = 50) -> List[Dict]:
+        """Search experiences by query text"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            results = cursor.execute("""
+                SELECT id, timestamp, query, context_summary, tools_used, 
+                       tool_sequence, turns_taken, final_tool,
+                       outcome_success, user_satisfied, error_occurred,
+                       CASE WHEN query_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
+                FROM experiences
+                WHERE query LIKE ? OR context_summary LIKE ? OR tools_used LIKE ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
+            
+            experiences = []
+            for row in results:
+                exp = dict(row)
+                if exp.get('tools_used'):
+                    try:
+                        exp['tools_used'] = json.loads(exp['tools_used'])
+                    except:
+                        pass
+                if exp.get('tool_sequence'):
+                    try:
+                        exp['tool_sequence'] = json.loads(exp['tool_sequence'])
+                    except:
+                        pass
+                experiences.append(exp)
+            
+            return experiences
+        finally:
+            conn.close()
+    
+    def update_experience(self, experience_id: int, query: str = None,
+                         context_summary: str = None,
+                         outcome_success: bool = None) -> bool:
+        """Update an experience"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        updates = []
+        params = []
+        
+        if query is not None:
+            updates.append("query = ?")
+            params.append(query)
+        if context_summary is not None:
+            updates.append("context_summary = ?")
+            params.append(context_summary)
+        if outcome_success is not None:
+            updates.append("outcome_success = ?")
+            params.append(1 if outcome_success else 0)
+        
+        if not updates:
+            return False
+        
+        params.append(experience_id)
+        
+        try:
+            query_str = f"UPDATE experiences SET {', '.join(updates)} WHERE id = ?"
+            cursor.execute(query_str, params)
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+    
+    def delete_experience(self, experience_id: int) -> bool:
+        """Delete an experience"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            # Also remove from reflection queue
+            cursor.execute("DELETE FROM reflection_queue WHERE experience_id = ?", (experience_id,))
+            cursor.execute("DELETE FROM experiences WHERE id = ?", (experience_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+    
+    # =========================================================================
+    # Insights Operations
+    # =========================================================================
+    
+    def list_insights(self, limit: int = 100, offset: int = 0,
+                     constraint_type: str = None, min_confidence: float = None) -> List[Dict]:
+        """List insights with optional filtering"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            where_clauses = []
+            params = []
+            
+            if constraint_type:
+                where_clauses.append("(constraint_type = ? OR (constraint_type IS NULL AND ? = 'positive'))")
+                params.extend([constraint_type, constraint_type])
+            
+            if min_confidence is not None:
+                where_clauses.append("confidence >= ?")
+                params.append(min_confidence)
+            
+            where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+            
+            results = cursor.execute(f"""
+                SELECT id, created_at, updated_at, insight_type, description,
+                       constraint_type, applies_to_pattern, confidence, evidence_count,
+                       times_applied, times_helpful, times_failed, consecutive_failures,
+                       last_applied, last_outcome,
+                       preferred_tools, avoided_tools, generalizability,
+                       CASE WHEN insight_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
+                FROM insights
+                {where_sql}
+                ORDER BY confidence DESC, times_applied DESC
+                LIMIT ? OFFSET ?
+            """, (*params, limit, offset)).fetchall()
+            
+            return [dict(row) for row in results]
+        finally:
+            conn.close()
+    
+    def get_insight(self, insight_id: int) -> Optional[Dict]:
+        """Get a single insight by ID"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            result = cursor.execute("""
+                SELECT id, created_at, updated_at, insight_type, description,
+                       constraint_type, applies_to_pattern, confidence, evidence_count,
+                       times_applied, times_helpful, times_failed, consecutive_failures,
+                       last_applied, last_outcome, preferred_tools, avoided_tools,
+                       generalizability,
+                       CASE WHEN insight_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
+                FROM insights
+                WHERE id = ?
+            """, (insight_id,)).fetchone()
+            
+            return dict(result) if result else None
+        finally:
+            conn.close()
+    
+    def search_insights(self, query: str, limit: int = 50) -> List[Dict]:
+        """Search insights by description or pattern"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            results = cursor.execute("""
+                SELECT id, created_at, updated_at, insight_type, description,
+                       constraint_type, applies_to_pattern, confidence, evidence_count,
+                       times_applied, times_helpful, times_failed,
+                       preferred_tools, avoided_tools,
+                       CASE WHEN insight_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
+                FROM insights
+                WHERE description LIKE ? OR applies_to_pattern LIKE ? 
+                      OR preferred_tools LIKE ? OR avoided_tools LIKE ?
+                ORDER BY confidence DESC
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
+            
+            return [dict(row) for row in results]
+        finally:
+            conn.close()
+    
+    def update_insight(self, insight_id: int, description: str = None,
+                      applies_to_pattern: str = None, confidence: float = None,
+                      constraint_type: str = None) -> bool:
+        """Update an insight"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        updates = []
+        params = []
+        
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description)
+        if applies_to_pattern is not None:
+            updates.append("applies_to_pattern = ?")
+            params.append(applies_to_pattern)
+        if confidence is not None:
+            updates.append("confidence = ?")
+            params.append(confidence)
+        if constraint_type is not None:
+            updates.append("constraint_type = ?")
+            params.append(constraint_type)
+        
+        if not updates:
+            return False
+        
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(insight_id)
+        
+        try:
+            query = f"UPDATE insights SET {', '.join(updates)} WHERE id = ?"
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+    
+    def delete_insight(self, insight_id: int) -> bool:
+        """Delete an insight"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("DELETE FROM insights WHERE id = ?", (insight_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+    
+    # =========================================================================
+    # Meta Knowledge Operations
+    # =========================================================================
+    
+    def list_meta_knowledge(self, limit: int = 50, meta_type: str = None) -> List[Dict]:
+        """List meta-knowledge entries"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            if meta_type:
+                results = cursor.execute("""
+                    SELECT id, timestamp, meta_type, description, observation,
+                           conclusion, action_taken, confidence, validated
+                    FROM meta_knowledge
+                    WHERE meta_type = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (meta_type, limit)).fetchall()
+            else:
+                results = cursor.execute("""
+                    SELECT id, timestamp, meta_type, description, observation,
+                           conclusion, action_taken, confidence, validated
+                    FROM meta_knowledge
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (limit,)).fetchall()
+            
+            return [dict(row) for row in results]
+        finally:
+            conn.close()
+    
+    # =========================================================================
+    # Reflection Queue Operations
+    # =========================================================================
+    
+    def get_reflection_queue(self, limit: int = 50) -> List[Dict]:
+        """Get pending reflections"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            results = cursor.execute("""
+                SELECT rq.id, rq.experience_id, rq.priority, rq.queued_at, rq.processed,
+                       e.query, e.tools_used, e.outcome_success
+                FROM reflection_queue rq
+                LEFT JOIN experiences e ON rq.experience_id = e.id
+                WHERE rq.processed = 0
+                ORDER BY rq.priority DESC, rq.queued_at ASC
+                LIMIT ?
+            """, (limit,)).fetchall()
+            
+            queue = []
+            for row in results:
+                item = dict(row)
+                if item.get('tools_used'):
+                    try:
+                        item['tools_used'] = json.loads(item['tools_used'])
+                    except:
+                        pass
+                queue.append(item)
+            
+            return queue
+        finally:
+            conn.close()
+    
+    # =========================================================================
+    # Statistics
+    # =========================================================================
+    
+    def get_stats(self) -> Dict:
+        """Get comprehensive intelligence statistics"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            # Experiences stats
+            total_experiences = cursor.execute("SELECT COUNT(*) FROM experiences").fetchone()[0]
+            successful_experiences = cursor.execute(
+                "SELECT COUNT(*) FROM experiences WHERE outcome_success = 1"
+            ).fetchone()[0]
+            
+            # Insights stats
+            total_insights = cursor.execute("SELECT COUNT(*) FROM insights").fetchone()[0]
+            positive_constraints = cursor.execute(
+                "SELECT COUNT(*) FROM insights WHERE constraint_type = 'positive' OR constraint_type IS NULL"
+            ).fetchone()[0]
+            negative_constraints = cursor.execute(
+                "SELECT COUNT(*) FROM insights WHERE constraint_type = 'negative'"
+            ).fetchone()[0]
+            
+            # Confidence stats
+            avg_confidence = cursor.execute("SELECT AVG(confidence) FROM insights").fetchone()[0] or 0
+            high_confidence = cursor.execute(
+                "SELECT COUNT(*) FROM insights WHERE confidence >= 0.7"
+            ).fetchone()[0]
+            low_confidence = cursor.execute(
+                "SELECT COUNT(*) FROM insights WHERE confidence < 0.3"
+            ).fetchone()[0]
+            
+            # Pending reflections
+            pending_reflections = cursor.execute(
+                "SELECT COUNT(*) FROM reflection_queue WHERE processed = 0"
+            ).fetchone()[0]
+            
+            # Recent activity (24h)
+            recent_experiences = cursor.execute("""
+                SELECT COUNT(*) FROM experiences 
+                WHERE timestamp > datetime('now', '-24 hours')
+            """).fetchone()[0]
+            
+            recent_insights = cursor.execute("""
+                SELECT COUNT(*) FROM insights 
+                WHERE created_at > datetime('now', '-24 hours')
+            """).fetchone()[0]
+            
+            # Application stats
+            total_applied = cursor.execute("SELECT SUM(times_applied) FROM insights").fetchone()[0] or 0
+            total_helpful = cursor.execute("SELECT SUM(times_helpful) FROM insights").fetchone()[0] or 0
+            total_failed = cursor.execute("SELECT SUM(times_failed) FROM insights").fetchone()[0] or 0
+            
+            # Meta-knowledge
+            meta_count = cursor.execute("SELECT COUNT(*) FROM meta_knowledge").fetchone()[0]
+            blind_spots = cursor.execute(
+                "SELECT COUNT(*) FROM meta_knowledge WHERE meta_type = 'blind_spot'"
+            ).fetchone()[0]
+            
+            # Most used tools in experiences
+            tool_usage = {}
+            tool_results = cursor.execute("SELECT tools_used FROM experiences WHERE tools_used IS NOT NULL").fetchall()
+            for row in tool_results:
+                try:
+                    tools = json.loads(row['tools_used'])
+                    if isinstance(tools, list):
+                        for tool in tools:
+                            tool_usage[tool] = tool_usage.get(tool, 0) + 1
+                except:
+                    pass
+            top_tools = sorted(tool_usage.items(), key=lambda x: x[1], reverse=True)[:10]
+            
+            # Database size
+            db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
+            
+            return {
+                'experiences': {
+                    'total': total_experiences,
+                    'successful': successful_experiences,
+                    'failed': total_experiences - successful_experiences,
+                    'success_rate': round(successful_experiences / total_experiences * 100, 1) if total_experiences > 0 else 0,
+                    'recent_24h': recent_experiences
+                },
+                'insights': {
+                    'total': total_insights,
+                    'positive': positive_constraints,
+                    'negative': negative_constraints,
+                    'high_confidence': high_confidence,
+                    'low_confidence': low_confidence,
+                    'avg_confidence': round(avg_confidence, 3),
+                    'recent_24h': recent_insights
+                },
+                'application': {
+                    'total_applied': total_applied,
+                    'total_helpful': total_helpful,
+                    'total_failed': total_failed,
+                    'helpfulness_rate': round(total_helpful / total_applied * 100, 1) if total_applied > 0 else 0
+                },
+                'reflection': {
+                    'pending': pending_reflections
+                },
+                'meta_knowledge': {
+                    'total': meta_count,
+                    'blind_spots': blind_spots
+                },
+                'top_tools': [{'name': t[0], 'count': t[1]} for t in top_tools],
+                'db_size_bytes': db_size,
+                'db_size_mb': round(db_size / (1024 * 1024), 2),
+                'mode': self.mode
+            }
+        finally:
+            conn.close()
+    
+    def get_tool_performance(self) -> List[Dict]:
+        """Get performance metrics per tool from insights.
+        
+        Note: preferred_tools and avoided_tools are JSON fields (e.g., {"tool": 0.8})
+        We parse them to extract tool names and aggregate.
+        """
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            # Get all insights with tool preferences
+            rows = cursor.execute("""
+                SELECT preferred_tools, avoided_tools, confidence
+                FROM insights 
+                WHERE preferred_tools IS NOT NULL OR avoided_tools IS NOT NULL
+            """).fetchall()
+            
+            # Build tool performance map
+            tools = {}
+            
+            for row in rows:
+                confidence = row['confidence'] or 0.5
+                
+                # Parse preferred_tools (JSON like {"mcp_fetch": 0.8})
+                if row['preferred_tools']:
+                    try:
+                        prefs = json.loads(row['preferred_tools'])
+                        if isinstance(prefs, dict):
+                            for tool_name in prefs.keys():
+                                if tool_name not in tools:
+                                    tools[tool_name] = {'name': tool_name, 'prefer_count': 0, 'avoid_count': 0, 'conf_sum': 0}
+                                tools[tool_name]['prefer_count'] += 1
+                                tools[tool_name]['conf_sum'] += confidence
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                
+                # Parse avoided_tools (JSON like {"search_memory": 0.5})
+                if row['avoided_tools']:
+                    try:
+                        avoids = json.loads(row['avoided_tools'])
+                        if isinstance(avoids, dict):
+                            for tool_name in avoids.keys():
+                                if tool_name not in tools:
+                                    tools[tool_name] = {'name': tool_name, 'prefer_count': 0, 'avoid_count': 0, 'conf_sum': 0}
+                                tools[tool_name]['avoid_count'] += 1
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            
+            # Calculate net score and avg confidence
+            result = []
+            for tool in tools.values():
+                total_refs = tool['prefer_count'] + tool['avoid_count']
+                tool['net_score'] = tool['prefer_count'] - tool['avoid_count']
+                tool['avg_confidence'] = round(tool['conf_sum'] / total_refs, 2) if total_refs > 0 else 0
+                del tool['conf_sum']
+                result.append(tool)
+            
+            return sorted(result, key=lambda x: x['net_score'], reverse=True)
+        finally:
+            conn.close()
+
