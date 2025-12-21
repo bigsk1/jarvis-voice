@@ -961,6 +961,9 @@ function renderStats(stats, toolPerformance) {
 // Modal Handlers
 // ============================================================================
 
+// Store current experience for copy functionality
+let currentExperienceData = null;
+
 async function viewExperience(id) {
   selectedExperienceId = id;
   const modal = document.getElementById('experienceModal');
@@ -972,68 +975,119 @@ async function viewExperience(id) {
   try {
     const result = await api.getExperience(id);
     const exp = result.experience;
+    currentExperienceData = exp; // Store for copy functionality
     
     const tools = Array.isArray(exp.tools_used) ? exp.tools_used : [];
+    const toolSequence = Array.isArray(exp.tool_sequence) ? exp.tool_sequence : [];
     
     body.innerHTML = `
-      <div style="margin-bottom: var(--space-md);">
-        <div class="form-label">Query</div>
-        <div style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); white-space: pre-wrap;">
-          ${escapeHtml(exp.query)}
+      <div class="experience-detail-scroll">
+        <div style="margin-bottom: var(--space-md);">
+          <div class="form-label">Query</div>
+          <div class="detail-block">
+            ${escapeHtml(exp.query)}
+          </div>
         </div>
+        
+        ${exp.context_summary ? `
+          <div style="margin-bottom: var(--space-md);">
+            <div class="form-label">Context Summary <span style="font-weight: normal; color: var(--text-muted);">(full context - scroll to see all)</span></div>
+            <div class="detail-block scrollable" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-xs);">
+${escapeHtml(exp.context_summary)}</div>
+          </div>
+        ` : ''}
+        
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-md); margin-bottom: var(--space-md);">
+          <div>
+            <div class="form-label">Outcome</div>
+            <span class="status-badge ${exp.outcome_success ? 'success' : 'failed'}">
+              ${exp.outcome_success ? '✅ Success' : '❌ Failed'}
+            </span>
+          </div>
+          <div>
+            <div class="form-label">Turns</div>
+            <span>${exp.turns_taken || 1}</span>
+          </div>
+          <div>
+            <div class="form-label">Has Embedding</div>
+            <span>${exp.has_embedding ? '✅ Yes' : '⚠️ No'}</span>
+          </div>
+          <div>
+            <div class="form-label">Timestamp</div>
+            <span>${formatDate(exp.timestamp)}</span>
+          </div>
+          <div>
+            <div class="form-label">Experience ID</div>
+            <span style="font-family: var(--font-mono);">${exp.id}</span>
+          </div>
+          <div>
+            <div class="form-label">Error Occurred</div>
+            <span>${exp.error_occurred ? '❌ Yes' : '✅ No'}</span>
+          </div>
+        </div>
+        
+        ${tools.length > 0 ? `
+          <div style="margin-bottom: var(--space-md);">
+            <div class="form-label">Tools Used (${tools.length})</div>
+            <div style="display: flex; flex-wrap: wrap; gap: var(--space-xs);">
+              ${tools.map(t => `<span class="tool-tag">${escapeHtml(t)}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${toolSequence.length > 0 ? `
+          <div style="margin-bottom: var(--space-md);">
+            <div class="form-label">Tool Sequence (execution order)</div>
+            <div class="detail-block" style="font-family: var(--font-mono); font-size: var(--text-xs);">
+              ${toolSequence.map((t, i) => `${i + 1}. ${escapeHtml(t)}`).join('<br>')}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${exp.final_tool ? `
+          <div style="margin-bottom: var(--space-md);">
+            <div class="form-label">Final Tool</div>
+            <span class="tool-tag">${escapeHtml(exp.final_tool)}</span>
+          </div>
+        ` : ''}
+        
+        ${exp.had_to_retry || exp.had_to_clarify ? `
+          <div style="margin-bottom: var(--space-md);">
+            <div class="form-label">Notes</div>
+            <div class="detail-block">
+              ${exp.had_to_retry ? '⚠️ Had to retry<br>' : ''}${exp.had_to_clarify ? '💬 Had to clarify' : ''}
+            </div>
+          </div>
+        ` : ''}
       </div>
       
-      ${exp.context_summary ? `
-        <div style="margin-bottom: var(--space-md);">
-          <div class="form-label">Context Summary</div>
-          <div style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md);">
-            ${escapeHtml(exp.context_summary)}
-          </div>
-        </div>
-      ` : ''}
-      
-      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-md); margin-bottom: var(--space-md);">
-        <div>
-          <div class="form-label">Outcome</div>
-          <span class="status-badge ${exp.outcome_success ? 'success' : 'failed'}">
-            ${exp.outcome_success ? '✅ Success' : '❌ Failed'}
-          </span>
-        </div>
-        <div>
-          <div class="form-label">Turns</div>
-          <span>${exp.turns_taken || 1}</span>
-        </div>
-        <div>
-          <div class="form-label">Has Embedding</div>
-          <span>${exp.has_embedding ? '✅ Yes' : '⚠️ No'}</span>
-        </div>
-        <div>
-          <div class="form-label">Timestamp</div>
-          <span>${formatDate(exp.timestamp)}</span>
-        </div>
+      <div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border); display: flex; gap: var(--space-sm);">
+        <button type="button" class="btn btn-small btn-secondary" onclick="copyExperienceJSON()">📋 Copy JSON</button>
+        <button type="button" class="btn btn-small btn-secondary" onclick="copyContextSummary()">📄 Copy Context</button>
       </div>
-      
-      ${tools.length > 0 ? `
-        <div style="margin-bottom: var(--space-md);">
-          <div class="form-label">Tools Used</div>
-          <div style="display: flex; flex-wrap: wrap; gap: var(--space-xs);">
-            ${tools.map(t => `<span class="tool-tag">${escapeHtml(t)}</span>`).join('')}
-          </div>
-        </div>
-      ` : ''}
-      
-      ${exp.had_to_retry || exp.had_to_clarify ? `
-        <div>
-          <div class="form-label">Notes</div>
-          <div style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md);">
-            ${exp.had_to_retry ? '⚠️ Had to retry<br>' : ''}${exp.had_to_clarify ? '💬 Had to clarify' : ''}
-          </div>
-        </div>
-      ` : ''}
     `;
   } catch (error) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-title">Failed to load</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-title">Failed to load</div><div class="empty-state-desc">${escapeHtml(error.message)}</div></div>`;
   }
+}
+
+function copyExperienceJSON() {
+  if (!currentExperienceData) return;
+  const json = JSON.stringify(currentExperienceData, null, 2);
+  navigator.clipboard.writeText(json).then(() => {
+    showToast('Copied experience JSON to clipboard', 'success');
+  }).catch(err => {
+    showToast('Failed to copy: ' + err.message, 'error');
+  });
+}
+
+function copyContextSummary() {
+  if (!currentExperienceData?.context_summary) return;
+  navigator.clipboard.writeText(currentExperienceData.context_summary).then(() => {
+    showToast('Copied context summary to clipboard', 'success');
+  }).catch(err => {
+    showToast('Failed to copy: ' + err.message, 'error');
+  });
 }
 
 async function viewInsight(id) {

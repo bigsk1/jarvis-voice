@@ -887,6 +887,43 @@ body {
   max-height: calc(80vh - 140px);
 }
 
+/* Experience detail view */
+.experience-detail-scroll {
+  max-height: calc(70vh - 200px);
+  overflow-y: auto;
+}
+
+.detail-block {
+  background: var(--bg-tertiary);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.detail-block.scrollable {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg-tertiary);
+}
+
+.detail-block.scrollable::-webkit-scrollbar {
+  width: 8px;
+}
+
+.detail-block.scrollable::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.detail-block.scrollable::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.detail-block.scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-hover);
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;
