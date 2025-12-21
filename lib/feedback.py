@@ -31,6 +31,9 @@ FEEDBACK_PROMPT = """A task was just completed as a voice assistant. Now provide
 
 IMPORTANT: Today's date is {current_date}. Any references to dates before this are in the PAST, not future.
 
+🔴 NATIVE SEARCH CHECK - READ FIRST: {native_search_status}
+{native_search_instructions}
+
 === YOUR TASK ===
 User Query: {query}
 
@@ -66,19 +69,25 @@ Tools Used: {tools_used}
    - The LLM using time from system prompt instead of calling a tool is EFFICIENT, not wrong
    - Only penalize if the time in the response is INCORRECT, not if get_time wasn't called
 
-4. **NATIVE LIVE SEARCH** - CHECK CONFIGURATION SECTION FOR "Native Search: ENABLED"
-   - If Configuration shows "Native Search: ENABLED", the LLM has BUILT-IN web search
-   - xAI Grok with live search or Anthropic with web_search can answer real-time queries
-     (news, stocks, unemployment rates, Netflix titles, documentaries, etc.) WITHOUT external tools
-   - When native search is ENABLED and the response contains specific details:
-     → TRUST the information - native search grounded it in real sources
-     → DO NOT penalize for "unverified claims" - the LLM verified via native search
-     → Rate 4-5 if response addresses query with specific, current details
-   - Only rate poorly if:
-     → Information is demonstrably WRONG (contradicts common knowledge)
-     → Response is vague/generic when specifics were clearly available via search
-   - If native search is DISABLED and real-time data was needed but no tool called:
-     → This IS a problem - rate accordingly
+4. **NATIVE LIVE SEARCH** ⚠️ CRITICAL - READ THIS CAREFULLY:
+   CHECK Configuration section for "Native Search: ENABLED" or "Native Search: DISABLED"
+   
+   **IF "Native Search: ENABLED"**:
+   - The LLM has BUILT-IN web search (xAI Grok live search or Anthropic web_search)
+   - It can answer real-time queries (news, stocks, unemployment, Netflix, weather, sports, prices)
+     **WITHOUT calling any external tools** - this is CORRECT behavior
+   - "Tools Used: none" + specific details = NATIVE SEARCH WAS USED = RATE 4-5
+   - The information WAS verified via native search even though no tool appears in the list
+   - DO NOT say "hallucinated" or "unverified" when native search is ENABLED
+   - DO NOT penalize for "no tool called" when native search is ENABLED
+   - Examples of CORRECT behavior with native search:
+     → Query: "What's the unemployment rate?" Response: "4.6% as of November 2025" Tools: none → RATE 5
+     → Query: "What's new on Netflix?" Response: lists specific titles Tools: none → RATE 4-5
+     → Query: "Latest Bitcoin price?" Response: "$98,500" Tools: none → RATE 5
+   
+   **IF "Native Search: DISABLED"**:
+   - Real-time queries NEED tools (mcp_fetch, search tools, etc.)
+   - "Tools Used: none" for real-time data = PROBLEM = rate 1-2
 
 5. **CHECK THE SYSTEM PROMPT BELOW** - it shows what context the LLM had available.
    If data was already in the system prompt, the LLM didn't need to call a tool for it.
@@ -99,16 +108,23 @@ Tools Used: {tools_used}
 
 Rate the interaction (1-5) using this STRICT rubric:
 
+⚠️ NATIVE SEARCH RULE: If "Native Search: ENABLED" in Configuration:
+   - "Tools Used: none" is CORRECT for real-time queries (the LLM used built-in search)
+   - Specific details without tools = native search was used = NOT hallucination
+   - Rate 4-5 unless information is demonstrably wrong
+
 **5 = PERFECT** - All criteria met:
-  ✓ Correct tool(s) selected
+  ✓ Correct tool(s) selected (OR no tools when native search handles it)
   ✓ Response accurately addresses the query
   ✓ No hallucinations or incorrect information
   ✓ Output format matches the configured style (check Configuration section!)
+  ✓ If native search enabled + real-time query + specific accurate response = 5
   
 **4 = GOOD with minor issues** - Task completed but:
   - Minor formatting issue (NOT verbosity if style is "detailed"!)
   - Correct but not optimal tool choice
   - Note: In "detailed" style, long responses with URLs are CORRECT, not a flaw
+  - Native search response could have included more context/sources
   
 **3 = ACCEPTABLE with issues** - Task completed but:
   - Response partially addresses query
@@ -120,10 +136,11 @@ Rate the interaction (1-5) using this STRICT rubric:
   - Response contains inaccuracies
   - Important information missing
   - System prompt guidance not followed
+  - Native search DISABLED but no tool used for real-time data
   
 **1 = FAILURE** - Major problems:
   - Task failed or wrong result
-  - Hallucinated information
+  - Hallucinated information (ONLY if native search is DISABLED)
   - Completely wrong approach taken
 
 BE CONSISTENT: Apply this rubric the same way every time.
@@ -338,6 +355,31 @@ class FeedbackCollector:
         raw_llm_response = result.get('raw_llm_response', result.get('speech', 'No response'))
         final_speech = result.get('speech', 'No response')
         
+        # Determine native search status for prominent display
+        # Check config_context for native search status or check environment
+        native_search_enabled = False
+        if config_context and "Native Search: ENABLED" in config_context:
+            native_search_enabled = True
+        else:
+            # Fallback to checking environment
+            llm_provider = get_config_value("LLM_PROVIDER", "anthropic")
+            if llm_provider == "xai":
+                native_search_enabled = get_config_value("XAI_SEARCH", "false").lower() == "true"
+            elif llm_provider == "anthropic":
+                native_search_enabled = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
+        
+        if native_search_enabled:
+            native_search_status = "🟢 ENABLED - LLM has built-in web search"
+            native_search_instructions = """The LLM that answered this query HAS BUILT-IN WEB SEARCH.
+When "Tools Used: None" appears for real-time queries (news, prices, data), this is CORRECT behavior.
+The LLM used its native search capability - this is NOT hallucination.
+DO NOT rate poorly for "no tools used" when native search provided specific data.
+Rate 4-5 if response contains specific, detailed information that addresses the query."""
+        else:
+            native_search_status = "🔴 DISABLED - needs tools for real-time data"
+            native_search_instructions = """The LLM has NO built-in search.
+If real-time data was needed and no tools were used, rate poorly."""
+        
         # Build the feedback prompt
         prompt = FEEDBACK_PROMPT.format(
             current_date=datetime.now().strftime("%B %d, %Y"),  # e.g., "December 13, 2025"
@@ -349,7 +391,9 @@ class FeedbackCollector:
             system_prompt_excerpt=system_prompt_excerpt,
             tool_descriptions=tool_desc_text,
             intelligence_insights=intelligence_insights or "No intelligence insights provided.",
-            config_context=config_context or "No configuration context provided."
+            config_context=config_context or "No configuration context provided.",
+            native_search_status=native_search_status,
+            native_search_instructions=native_search_instructions
         )
         
         try:

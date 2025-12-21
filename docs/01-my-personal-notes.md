@@ -7,16 +7,15 @@ Side Quests noted for later:
 
 when using openai image1.5 need to seperate the usd cost in token count as it costs more, this goes for any other than noraml tool or features involing higher token costs
 
+basic auth or user/password for all web ui servers, web,memory,Intelligence. 
 
 
-D. Intelligence dashboard	📊 See insights, confidence scores, what Jarvis learned
 E. Tool enable/disable in UI	🔧 Toggle tools on/off from Settings → Tools tab
 
 ### Notes
 
-jarvis services needs to start manually
-jarvis api needs to be started manually
-jarvis canvas needs to be started manually
+./bin/start
+to start all services, api, web
 
 jarvis openocde is systemd
 jarvis unify is systemd
@@ -129,7 +128,7 @@ You already have Grafana/Loki. You should add an Intelligence Panel.
 #  Jarvis web
 ./bin/jarvis-web    
                           
-- Originally was going to have intel api route and there is all ready intel related  columns in db, under reminders, some idea to be able to update modify or add , delete intel files in which jarvis has tools to injest into db for direct access. 
+ 
 ```
 
 
