@@ -127,6 +127,9 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - OAuth2 handling and token refresh
   - See [`docs/n8n/docs/`](docs/n8n/docs/)
 
+
+![memory-browser](docs/images/memory-browser.png)
+
 ### Memory System
 - **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)
 - **Auto-Sync**: Bidirectional sync between modes on startup
@@ -375,6 +378,9 @@ jarvis-voice/
 
 ## 🚀 Quick Start
 
+<details>
+<summary><strong>Quick Start (click to expand)</strong></summary>
+
 ### 1. Initial Setup
 
 ```bash
@@ -506,6 +512,8 @@ docker run -d \
 ```
 
 See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for templates and configuration options.
+
+</details>
 
 ---
 
@@ -892,6 +900,9 @@ The following docs are kept for historical context but describe features that ha
 
 ## 🔧 Development
 
+<details>
+<summary><strong>Adding a New Tool (click to expand)</strong></summary>
+
 ### Adding a New Tool
 
 1. **Create the tool script:**
@@ -952,6 +963,8 @@ The following docs are kept for historical context but describe features that ha
 
 The tool will be auto-discovered!
 
+</details>
+
 ### Testing
 
 ```bash
@@ -981,6 +994,9 @@ The tool will be auto-discovered!
 ---
 
 ## 🐛 Troubleshooting
+
+<details>
+<summary><strong>Troubleshooting (click to expand)</strong></summary>
 
 ### Common Issues
 
@@ -1038,6 +1054,8 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 # View recent tool calls
 ./orchestrator/orchestrator_v2.py cloud "show recent tool logs"
 ```
+
+</details>
 
 ---
 
