@@ -1,9 +1,7 @@
 ## My Notes, Ideas, Concerns
 
 
-audio on web isnt saved for mic like it is for terminal/tui/jarvis it seems in audio/cloud/mic
-
-Side Quests noted for later:
+audio on web isnt saved for mic like it is for terminal/tui/jarvis it seems in audio/cloud/mic , is there auto cleanup of old audio files?
 
 when using openai image1.5 need to seperate the usd cost in token count as it costs more, this goes for any other than noraml tool or features involing higher token costs
 
@@ -15,7 +13,7 @@ E. Tool enable/disable in UI	🔧 Toggle tools on/off from Settings → Tools ta
 
 recap tool idea, ( "Jarvis give me a recap" ) server status, alerts reminders if any, issues, weather, big crypot price changes, certain stocks tesla, 
 
-
+create songs tool, use suno api? 
 
 youtube transcripts tool, i guess web ui is good for this, pasting youtube url, jarvis gets trasncript, uses stash, saves to memory already of using statsh. 
 
