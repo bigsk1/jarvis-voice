@@ -15,9 +15,7 @@ E. Tool enable/disable in UI	🔧 Toggle tools on/off from Settings → Tools ta
 
 recap tool idea, ( "Jarvis give me a recap" ) server status, alerts reminders if any, issues, weather, big crypot price changes, certain stocks tesla, 
 
-Push Notifications (Alternative to SMS)
-ntfy.sh	Self-hosted, no signup, just POST to get notifications on phone
-Example: "Alert me on my phone if the server goes down" → sends push notification
+
 
 youtube transcripts tool, i guess web ui is good for this, pasting youtube url, jarvis gets trasncript, uses stash, saves to memory already of using statsh. 
 

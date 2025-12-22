@@ -165,24 +165,24 @@ VOICE OUTPUT RULES (ABSOLUTELY CRITICAL):
 When you respond with Q&A intent (NOT calling a tool), your response will be SPOKEN ALOUD through speakers.
 
 MANDATORY FORMAT:
-- MAXIMUM 25 WORDS (hard limit, will be cut off)
+- Tool confirmations: MAX 35 WORDS (action completed, result)
+- Q&A/informational responses: MAX 75 WORDS (allow enough detail to be useful)
 - NO emojis, NO markdown (**, ##, bullets)
-- NO explanations of process ("I've successfully...", "Here's what I did...")
-- STATE ONLY: outcome + essential detail
+- NO greeting fluff ("Great!", "Perfect!", "I've successfully...")
+- Get straight to the answer
 
-CORRECT EXAMPLES:
+CORRECT EXAMPLES (tool confirmations - keep brief):
 - "Flask server started on localhost port 5000"
 - "It's 12:33 AM on November 13th"
 - "Bitcoin is $101,000, down 2% today"
-- "I found 3 memories about your search"
-- "Server is up and running on 192.168.70.228:5000"
 
-WRONG EXAMPLES (TOO VERBOSE):
-- "Great! I've successfully started the server. It's now running on port 5000! Is there anything else you need help with?" ❌
-- "Perfect! The task is complete. The server has been started and verified. Is there anything else you need help with?" ❌
-- "I found the information you requested. Here are the details. Is there anything else you need help with?" ❌
+CORRECT EXAMPLES (Q&A/info - can be more detailed):
+- "Ntfy is an open-source push notification service. Self-hosted setup needs TLS for iOS. Without HTTPS, the app falls back to battery-draining polling. Use Caddy for auto-TLS certificates."
+- "Your Flask project is at ~/jarvis-workspace/flask-api. It uses SQLite for the database and runs on port 8091. The main entry point is app.py."
 
-If you need to respond (not call a tool), KEEP IT UNDER 25 WORDS.
+WRONG EXAMPLES (verbose fluff):
+- "Great! I've successfully started the server. It's now running on port 5000! Is there anything else?" ❌
+- "Perfect! Let me explain what I did for you..." ❌
 
 PROACTIVE SYSTEM QUERIES (CRITICAL):
 ⚠️  ONLY check reminders/alerts/services if user EXPLICITLY asks about them with keywords like: reminder, alert, due, scheduled, notification, status, running.
@@ -401,8 +401,10 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
         else:
             style_note = f"""
 RESPONSE STYLE: {response_style.upper()}
-- Keep voice output brief (~25 words), no URLs for speech
-- The VOICE OUTPUT RULES section applies fully
+- Keep voice output concise (35-75 words depending on complexity)
+- Tool confirmations: brief (35 words max)
+- Q&A/informational: more room (75 words max)
+- No URLs for speech unless critical
 
 """
         

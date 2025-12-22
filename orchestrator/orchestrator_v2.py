@@ -556,7 +556,7 @@ Tool result: {json.dumps(data, indent=2)}
 Create a short response for voice output (spoken through speakers).
 
 CRITICAL RULES:
-1. MAX 25 WORDS (35 if complex data like search results or errors)
+1. MAX 35 WORDS for tool confirmations
 2. Answer directly, no greetings or confirmations
 3. No emojis, no markdown, no numbered lists
 4. Don't say URLs unless critical
@@ -584,7 +584,7 @@ Your response:"""
             text_response, _, _ = self.router.provider.chat_with_tools(
                 messages=[{"role": "user", "content": context}],
                 tools=[],  # No tools for response formatting
-                system_prompt="You are a voice assistant. Output ONE sentence, MAX 15 words. No greetings, no explanations."
+                system_prompt="You are a voice assistant. Output a concise response, MAX 35 words. No greetings, no explanations."
             )
             
             if text_response:
@@ -676,50 +676,54 @@ Your response:"""
     
     def _format_single_turn_casual(self, user_query: str, raw_response: str) -> str:
         """
-        Condense a verbose Q&A response for voice output (casual mode).
+        Format Q&A response for voice output (casual mode).
+        Uses JARVIS_QA_WORD_LIMIT for informational responses (default: 75 words).
         
         Args:
             user_query: Original user request
             raw_response: Verbose response from LLM
             
         Returns:
-            Concise voice-friendly version
+            Voice-friendly version
         """
         try:
-            # If already short, return as-is
+            # Get configurable word limit for Q&A (default 75)
+            qa_limit = int(os.environ.get('JARVIS_QA_WORD_LIMIT', '75'))
+            
+            # If already within limit, return as-is
             word_count = len(raw_response.split())
-            if word_count <= 20:
+            if word_count <= qa_limit:
                 return raw_response
             
             # Use LLM to condense verbose response
             context = f"""User asked: "{user_query}"
 
-Your previous verbose response: {raw_response}
+Your previous response: {raw_response}
 
-Condense this to ONE SENTENCE (MAX 25 words) for voice output.
+Condense this for voice output (MAX {qa_limit} words).
 
-CRITICAL RULES:
-1. Keep the core answer/outcome
-2. Keep critical details (numbers, URLs if essential, status)
-3. Remove: greetings, emojis, explanations, numbered lists, markdown
+RULES:
+1. Keep the core answer with key details
+2. Remove: greetings, emojis, markdown, numbered lists
+3. For informational queries, include enough context to be useful
+4. No URLs unless critical
 
 EXAMPLES:
-Verbose: "Great! I've successfully looked up the time. It's currently 11:51 PM on Wednesday, November 12th."
-Concise: "It's 11:51 PM Wednesday, November 12th"
+Verbose: "Great! I've looked up ntfy. It's an open-source push notification service that lets you..."
+Condensed: "Ntfy is an open-source push notification service. Self-hosted setup needs TLS certs for iOS APNs. Without proper HTTPS, it falls back to battery-draining polling. Use Caddy or nginx for auto-TLS."
 
-Verbose: "Perfect! The tetris server has been started successfully and is now running on port 5000!"
-Concise: "Tetris server started on port 5000"
-
-Your concise response:"""
+Your condensed response:"""
             
-            response = self.router.provider.chat(context, system_prompt="Output ONE sentence, MAX 25 words. No greetings, no emojis.")
+            response = self.router.provider.chat(context, system_prompt=f"Condense for voice output. MAX {qa_limit} words. Keep key info. No greetings/emojis.")
             return response.strip()
         except Exception as e:
-            # Fallback: use first sentence of raw response
+            # Fallback: truncate at limit
             if sys.stdout.isatty():
                 print(f"⚠️ Failed to condense response: {e}", file=sys.stderr)
-            first_sentence = raw_response.split('.')[0] + '.'
-            return first_sentence
+            words = raw_response.split()
+            if len(words) > 75:
+                return ' '.join(words[:75]) + '...'
+            return raw_response
     
     def _format_multi_turn_summary(self, user_query: str, tools_used: list, accumulated_data: dict, llm_response: str) -> str:
         """
@@ -746,11 +750,11 @@ Tools executed: {', '.join(tools_used)}
 
 Results: {json.dumps(accumulated_data, indent=2)[:max_chars]}
 
-Create a SINGLE SENTENCE response for voice output (will be spoken aloud through speakers).
+Create a concise response for voice output (will be spoken aloud through speakers).
 
 CRITICAL RULES:
-1. MAX 25 WORDS
-2. State outcome + essential detail only
+1. MAX 40 WORDS for multi-tool summaries
+2. State outcome + essential details
 3. No emojis, no markdown, no bullet points, no explanations of what you did
 
 GOOD EXAMPLES:
@@ -765,7 +769,7 @@ BAD EXAMPLES (TOO LONG):
 
 Your response:"""
             
-            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Output ONE sentence, MAX 25 words. No explanations.")
+            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Concise response, MAX 40 words. No explanations.")
             return response.strip()
         except Exception as e:
             # Fallback to LLM's original response
@@ -803,7 +807,7 @@ IMPORTANT: The task hit a complexity limit after {max_turns} tool calls.
 You MUST provide a BEST EFFORT answer using the data above.
 
 CRITICAL RULES:
-1. MAX 30 WORDS - but ACTUALLY ANSWER the question!
+1. MAX 50 WORDS - but ACTUALLY ANSWER the question!
 2. If you found ANY relevant info (movie titles, prices, names, etc.) - INCLUDE IT
 3. Don't apologize or say "couldn't find" - give the best answer you can
 4. If data is incomplete, answer what you CAN and note what's missing briefly
@@ -821,7 +825,7 @@ BAD EXAMPLES (never do this):
 
 Your BEST EFFORT response:"""
             
-            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. MAX 30 words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc.")
+            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. MAX 50 words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc.")
             return response.strip()
         except Exception as e:
             # Fallback to simple message
