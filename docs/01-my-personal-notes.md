@@ -829,3 +829,35 @@ cd /home/boss/jarvis-voice && python3 bin/cleanup-intelligence.py --execute
 ./bin/jarvis-memory            # Runs on port 5002
 ./bin/jarvis-memory --port 5003 --debug  # Custom options
 ```
+
+Standards to follow for tools ( required / action / optional )
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    TOOL JSON REQUIRED RULES                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Multi-action tool (does many things)?                       │
+│     → Add "action" enum param                                   │
+│     → required: ["action"]                                      │
+│                                                                 │
+│  2. Single-purpose tool (does one thing)?                       │
+│     → required = minimum params to function                     │
+│     → e.g., search needs "query", bash needs "command"          │
+│                                                                 │
+│  3. Tool works with sensible defaults?                          │
+│     → required: [] or omit entirely                             │
+│     → e.g., get_time defaults to local time                     │
+│                                                                 │
+│  4. The "required" array should contain ONLY what the Python    │
+│     script CANNOT work without.                                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+Action tools" = tools that DO/CHANGE something (vs tools that just READ/QUERY):
+Action Tools (modify state)	Query Tools (read-only)
+execute_bash - runs commands	search_memory - reads memories
+remember - saves data	get_time - reads time
+send_email - sends email	list_reminders - reads reminders
+spotify (play/pause)	weather - reads weather
+api_call - makes API requests	get_recent_conversations - reads logs
+printer - prints documents	query_service_logs - reads logs
