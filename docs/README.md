@@ -40,6 +40,13 @@
 - **API Intelligence Endpoints** - `/api/intelligence/*` for stats, health, maintenance jobs
 - **Maintenance Jobs** - Decay, anomaly detection, meta-cognition via API or CLI
 
+### Web Crawling & Scraping
+- **[crawl4ai/README.md](crawl4ai/README.md)** - 🕷️ **Crawl4AI Integration** ⭐ NEW
+  - `crawl_url` - Extract markdown from any webpage (stealth mode, JS wait)
+  - `screenshot_url` - Full-page capture + vision AI analysis
+  - Bypasses anti-bot measures via screenshot + vision
+  - Deep crawling, LLM extraction, PDF generation (future)
+
 ### System Architecture
 - **Tool system** - Located in `skills/` directory with JSON schemas
 - **Orchestrator** - `orchestrator/orchestrator_v2.py` - Main routing logic

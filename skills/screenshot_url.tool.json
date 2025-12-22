@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "name": "screenshot_url",
+  "description": "Take a screenshot of any webpage using Crawl4AI and optionally analyze it with vision AI.\n\nUse this when:\n- You need to SEE what a webpage looks like (debug crawling issues)\n- Extract info from visual content (charts, graphs, infographics, images)\n- Capture page state for documentation or evidence\n- Regular crawl fails but you need to know what's on the page\n- User wants to see/analyze a webpage visually\n\nReturns screenshot path (and optional AI analysis of what's visible).",
+  "script": "screenshot_url.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "URL of the webpage to screenshot"
+      },
+      "analyze": {
+        "type": "boolean",
+        "description": "If true, analyze the screenshot with vision AI and describe what's visible",
+        "default": false
+      },
+      "question": {
+        "type": "string",
+        "description": "Specific question to ask about the screenshot (only used if analyze=true)",
+        "default": "Describe what you see on this webpage"
+      },
+      "wait": {
+        "type": "number",
+        "description": "Seconds to wait before taking screenshot (for JS to load)",
+        "default": 2
+      },
+      "save_path": {
+        "type": "string",
+        "description": "Optional: specific path to save screenshot (default: temp directory)"
+      }
+    },
+    "required": ["url"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
+

@@ -1,0 +1,60 @@
+{
+  "enabled": true,
+  "name": "crawl_url",
+  "description": "Crawl and extract clean markdown content from any webpage using Crawl4AI.\n\nUse this when:\n- User wants to read or summarize a specific webpage\n- You need content from JavaScript-heavy or dynamic sites\n- Basic fetch fails or returns incomplete content\n- Site has anti-bot protection (use stealth mode)\n- User provides a URL and wants the full page content\n\nDo NOT use for:\n- General web searches (use brave_search or native search instead)\n- When you don't have a specific URL\n\nFor protected sites like Rotten Tomatoes, IMDB, etc., enable stealth mode.",
+  "script": "crawl_url.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Single URL to crawl"
+      },
+      "urls": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Multiple URLs to crawl (alternative to single url)"
+      },
+      "stealth": {
+        "type": "boolean",
+        "description": "Enable stealth mode to bypass bot detection. Use for protected sites like RT, IMDB, news sites.",
+        "default": false
+      },
+      "wait_for": {
+        "type": "string",
+        "description": "CSS selector to wait for before extracting content (e.g., '.main-content', '#article')"
+      },
+      "wait_for_js": {
+        "type": "boolean",
+        "description": "Wait for JavaScript to fully load (slower but needed for SPAs)",
+        "default": false
+      },
+      "js_code": {
+        "type": "string",
+        "description": "JavaScript code to execute before extraction (e.g., dismiss modals, click buttons)"
+      },
+      "css_selector": {
+        "type": "string",
+        "description": "Focus extraction on specific element (e.g., 'main.article', '#content')"
+      },
+      "exclude_tags": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "HTML tags to exclude from output (default: nav, footer, aside, script, style)"
+      },
+      "priority": {
+        "type": "integer",
+        "description": "Crawl priority (1-10, higher = faster)",
+        "default": 10
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
