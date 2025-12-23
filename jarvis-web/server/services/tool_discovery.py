@@ -24,9 +24,9 @@ class ToolDiscoveryService:
         # Get blocked tools for web
         blocked_tools = set(get_web_setting('tools.blocked', []))
         
-        # 1. Load local tools from skills/*.tool.json
+        # 1. Load local tools from skills/**/*.tool.json (including subdirectories like auto-tools/)
         if self.skills_path.exists():
-            for tool_file in self.skills_path.glob('*.tool.json'):
+            for tool_file in self.skills_path.glob('**/*.tool.json'):
                 try:
                     with open(tool_file, 'r') as f:
                         tool = json.load(f)

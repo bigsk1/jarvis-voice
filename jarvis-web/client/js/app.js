@@ -510,8 +510,8 @@ class JarvisApp {
           </div>
         `;
         
-        // Group tools
-        const localTools = tools.filter(t => t.source === 'local' && !t.blocked);
+        // Group tools (include 'database' source with local tools for auto-generated tools)
+        const localTools = tools.filter(t => (t.source === 'local' || t.source === 'database') && !t.blocked);
         const mcpTools = tools.filter(t => t.source === 'mcp' && !t.blocked);
         const blockedTools = tools.filter(t => t.blocked);
         
