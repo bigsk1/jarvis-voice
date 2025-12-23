@@ -44,6 +44,20 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 - Vague requests like "play something good" work via Spotify's search
 - Fuzzy matching works: "rock" finds "dad rock🤘", "grunge" finds "90's grunge🎸"
 
+### 🎄 Holiday & Seasonal Music (NEW!)
+
+| What You Say | What Happens |
+|--------------|--------------|
+| **"Play my Christmas playlist"** | Plays YOUR saved Christmas playlist from memory |
+| **"Play Christmas music"** | Searches Spotify's entire catalog (millions of options!) |
+| **"Play traditional Christmas music"** | Searches public playlists |
+| **"Play holiday music"** | Genre-based holiday search |
+
+**How it works:**
+- "**My** Christmas playlist" → Checks your library/memory first
+- "Christmas music" (generic) → Searches Spotify's vast catalog
+- Supports: christmas, holiday, xmas, halloween, thanksgiving, summer, winter, etc.
+
 ### 🎯 Personalized Features
 
 | What You Say | What Happens |
@@ -59,7 +73,7 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 | **"Play Daily Mix 1"** | Plays your Daily Mix playlists |
 | **"List my Made For You playlists"** | Shows all personalized Spotify playlists |
 
-### 🎙️ Podcast Conversations (NEW!)
+### 🎙️ Podcast Conversations
 
 | What You Say | What Happens |
 |--------------|--------------|
@@ -78,7 +92,7 @@ You: "Play episode 2425"
 Jarvis: "Playing #2425 - Ethan Hawke"
 ```
 
-### 🎵 Music Suggestions (NEW!)
+### 🎵 Music Suggestions
 
 | What You Say | What Happens |
 |--------------|--------------|
@@ -180,6 +194,48 @@ The email includes:
 
 ---
 
+## 📚 Library Export & Memory Integration (NEW!)
+
+Jarvis can learn your personal Spotify library to play your music more accurately.
+
+### Export Your Library
+
+```bash
+# Export playlists, podcasts, top artists/tracks to intel file
+./bin/spotify-export-library
+
+# Ingest into Jarvis memory
+python3 skills/ingest_intel.py
+```
+
+This creates `jarvis-intel/spotify-library.md` with:
+- All your playlists (with Spotify URIs)
+- Subscribed podcasts
+- Top artists and tracks
+- Genre tags
+
+### How Memory Integration Works
+
+| Request Type | Behavior |
+|--------------|----------|
+| "Play **my** Christmas playlist" | Checks memory first → uses saved URI |
+| "Play Christmas music" | Searches Spotify catalog (generic) |
+| "Play **my** rock playlist" | Memory lookup → your specific playlist |
+| "Play some rock" | Searches Spotify's massive library |
+
+**The key word is "my"** - it triggers personal library lookup.
+
+### Re-export Periodically
+
+When you save new playlists or follow new podcasts:
+
+```bash
+./bin/spotify-export-library
+python3 skills/ingest_intel.py
+```
+
+---
+
 ## Your Devices
 
 Based on your setup:
@@ -209,6 +265,8 @@ Jarvis is smart about understanding intent. These all work:
 "Play 80s hits"
 "Play electronic music"
 "Play some country"
+"Play Christmas music"
+"Play holiday classics"
 ```
 
 ### Activity Based
@@ -227,6 +285,7 @@ Jarvis is smart about understanding intent. These all work:
 "Play the album Rumours"
 "Play my Liked Songs"
 "Play my Discover Weekly"
+"Play my Christmas playlist"
 ```
 
 ### Control Flow
@@ -263,6 +322,14 @@ Spotify needs an active player somewhere. Fix:
 - Check spelling
 - Try being more specific: "Play playlist called Workout Mix"
 - Try the artist: "Play something by [artist]"
+- For personal playlists, use "my": "Play **my** rock playlist"
+
+### "Playing wrong playlist"
+
+If Jarvis plays something unexpected (e.g., classic rock when you asked for Christmas):
+1. Re-export your library: `./bin/spotify-export-library`
+2. Re-ingest: `python3 skills/ingest_intel.py`
+3. Use explicit "my" for personal: "Play **my** Christmas playlist"
 
 ### "Device not found"
 
@@ -316,6 +383,14 @@ Then re-authorize in browser.
 | `show` / `podcast` | Podcasts | "Joe Rogan" |
 | `episode` | Podcast episodes | "JRE #2425" |
 
+### Genre/Mood Keywords
+
+The tool recognizes these keywords to prefer playlist search:
+- **Genres:** pop, rock, jazz, classical, hip hop, rap, country, r&b, indie, electronic
+- **Moods:** upbeat, chill, relaxing, workout, party, focus
+- **Eras:** 80s, 90s, 2000s, 2010s, 70s, 60s
+- **Seasonal:** christmas, holiday, xmas, halloween, thanksgiving, summer, winter, spring, fall, valentines
+
 ### Files
 
 | File | Purpose |
@@ -323,7 +398,9 @@ Then re-authorize in browser.
 | `skills/spotify.py` | Main tool implementation |
 | `skills/spotify.tool.json` | Tool definition for LLM |
 | `bin/spotify-auth` | OAuth setup script |
+| `bin/spotify-export-library` | Export library to intel file |
 | `data/.spotify_cache` | Token cache (gitignored) |
+| `jarvis-intel/spotify-library.md` | Your library for memory ingestion |
 
 ### Config Variables
 
@@ -332,6 +409,7 @@ In `config/cloud.env`:
 SPOTIFY_CLIENT_ID=your_client_id
 SPOTIFY_CLIENT_SECRET=your_client_secret
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
+SPOTIFY_DEFAULT_DEVICE=Office fire TV  # Optional default device
 ```
 
 ### API Scopes
@@ -358,22 +436,48 @@ For reference, initial setup was:
 3. Run `./bin/spotify-auth`
 4. Authorize in browser
 5. Sync tools: `./bin/sync_tools.py cloud`
+6. Export library: `./bin/spotify-export-library` (optional but recommended)
+7. Ingest: `python3 skills/ingest_intel.py`
 
 ---
 
 ## Ideas for Future
 
+### Completed
 - [x] ~~"Play my Liked Songs"~~ ✅ Done!
 - [x] ~~Play specific podcast episode by number~~ ✅ Done! ("Play JRE #2425")
 - [x] ~~List podcast episodes~~ ✅ Done! ("What are latest Joe Rogan episodes?")
 - [x] ~~Made For You playlists~~ ✅ Done! (Discover Weekly, Daily Mix, Release Radar)
-- [ ] "What's in my queue?"
-- [ ] "Clear the queue"
-- [ ] "Repeat this song"
-- [ ] "Add to playlist [name]"
-- [ ] Playlist management (create, add songs)
-- [ ] "Play similar to this"
-- [ ] Integration with calendar (morning playlist at 7am)
+- [x] ~~Library export & memory integration~~ ✅ Done! (Dec 2025)
+- [x] ~~Holiday/seasonal keyword support~~ ✅ Done! (christmas, halloween, etc.)
+
+### Queue & Playback
+- [ ] "What's in my queue?" - Show upcoming tracks
+- [ ] "Clear the queue" - Empty the queue
+- [ ] "Repeat this song" - Toggle repeat mode
+- [ ] "Play similar to this" - Radio from current track
+
+### Playlist Management
+- [ ] "Add to playlist [name]" - Add current song to a playlist
+- [ ] "Create playlist called [name]" - Create new playlist
+- [ ] "Add [song] to [playlist]" - Add specific song
+- [ ] "Remove this from [playlist]" - Remove from playlist
+
+### Smart Features
+- [ ] Schedule playback: "Play jazz at 7am tomorrow"
+- [ ] Smart home integration: "Play music when I get home"
+- [ ] Context-aware suggestions: "What should I play for dinner?"
+- [ ] Auto-DJ mode: Smooth transitions between genres
+
+### Social
+- [ ] "What are my friends listening to?" - Friend activity
+- [ ] Collaborative playlist suggestions
+- [ ] "Play what [friend] is playing"
+
+### Analytics
+- [ ] "What's my most played song this month?"
+- [ ] "Show my listening stats"
+- [ ] Genre breakdown visualization
 
 ---
 
@@ -385,7 +489,11 @@ Some devices (Fire TV, Chromecast, Echo) don't allow volume control via the Spot
 ### Device Must Be Active
 At least one device must have Spotify running for the API to control it. If you get "No active device", open Spotify on any device first.
 
+### Personal vs Public Search
+- **"My [playlist]"** = searches your library/memory
+- **Generic request** = searches Spotify's public catalog
+- Memory search only triggers for explicit "my" or "saved" requests to prevent false matches
+
 ---
 
-**Last Updated:** 2025-12-14
-
+**Last Updated:** 2025-12-23

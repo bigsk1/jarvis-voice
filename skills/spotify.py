@@ -297,23 +297,45 @@ def _parse_episode_request(query: str) -> tuple[str, str]:
 def _check_memory_for_playlist(query: str) -> str | None:
     """
     Check Jarvis memory for saved playlist URIs.
-    Searches for keys containing playlist names and returns Spotify URI if found.
+    Only triggers for explicit personal requests (e.g., "my rock playlist", "saved christmas music").
+    
+    This prevents generic queries like "christmas music" from accidentally matching
+    unrelated playlists in memory that happen to contain "music".
     """
     try:
         from memory_db import MemoryDB
+        
+        query_lower = query.lower()
+        
+        # Only check memory for EXPLICIT personal playlist requests
+        # Must contain "my", "saved", or be very specific
+        personal_indicators = ['my ', 'my-', 'saved ', 'saved-', 'favorite ', 'favourite ']
+        is_personal_request = any(ind in query_lower for ind in personal_indicators)
+        
+        if not is_personal_request:
+            return None  # Skip memory for generic queries like "christmas music"
+        
         db = MemoryDB()
         
         # Clean query - remove common words
-        clean_query = query.lower()
-        for word in ['my', 'play', 'the', 'playlist', 'saved', 'on spotify']:
+        clean_query = query_lower
+        for word in ['my', 'play', 'the', 'playlist', 'saved', 'on spotify', 'favorite', 'favourite']:
             clean_query = clean_query.replace(word, '')
         clean_query = clean_query.strip()
         
-        if not clean_query:
+        if not clean_query or len(clean_query) < 3:
             return None
         
         # Search memory for playlist URIs
         memories = db.search_memory(clean_query, limit=5)
+        
+        # Extract meaningful search words (longer than 3 chars, not generic)
+        generic_words = {'music', 'songs', 'playlist', 'album', 'track', 'spotify'}
+        search_words = [w for w in clean_query.split() if len(w) > 3 and w not in generic_words]
+        
+        if not search_words:
+            # If only generic words remain, require exact match
+            search_words = [clean_query]
         
         for mem in memories:
             value = mem.get('value', '')
@@ -321,13 +343,15 @@ def _check_memory_for_playlist(query: str) -> str | None:
             
             # Check if this is a Spotify playlist URI
             if 'spotify:playlist:' in value:
-                # Verify the key matches what user asked for
-                if any(word in key for word in clean_query.split() if len(word) > 2):
+                # Require at least one meaningful word to match in the key
+                # This prevents "my music" from matching "rock_playlist" just because both exist
+                if any(word in key for word in search_words):
                     return value
             
-            # Also check if value contains URI in different format
+            # Also check if value IS a URI (not just contains one)
             if value.startswith('spotify:playlist:'):
-                return value
+                if any(word in key for word in search_words):
+                    return value
         
         return None
     except Exception:
@@ -714,7 +738,11 @@ def action_play(args: dict) -> dict:
             genre_mood_keywords = ['songs', 'music', 'hits', 'pop', 'rock', 'jazz', 'classical', 
                                    'hip hop', 'rap', 'country', 'r&b', 'indie', 'electronic', 
                                    'upbeat', 'chill', 'relaxing', 'workout', 'party', 'focus',
-                                   '80s', '90s', '2000s', '2010s', '70s', '60s']
+                                   '80s', '90s', '2000s', '2010s', '70s', '60s',
+                                   # Seasonal/holiday keywords
+                                   'christmas', 'holiday', 'xmas', 'halloween', 'thanksgiving',
+                                   'summer', 'winter', 'spring', 'fall', 'autumn',
+                                   'new year', 'valentines', 'love songs']
             is_genre_query = any(kw in query_lower for kw in genre_mood_keywords)
             
             # For genre/mood queries, search playlists FIRST

@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""
+Export Spotify Library to Intel File
+
+Creates a simple key:value markdown file for Jarvis intel ingestion.
+Outputs to jarvis-intel/spotify-library.md
+
+Usage:
+    ./bin/spotify-export-library
+    
+Then ingest:
+    python3 skills/ingest_intel.py
+"""
+
+import sys
+import os
+import argparse
+from pathlib import Path
+from datetime import datetime
+
+# Add paths
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+
+from config_loader import load_config, get_config_value
+
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+
+# Token cache location
+CACHE_PATH = Path(__file__).parent.parent / 'data' / '.spotify_cache'
+
+# Required scopes
+SCOPES = [
+    'user-read-playback-state',
+    'user-modify-playback-state',
+    'user-read-currently-playing',
+    'playlist-read-private',
+    'playlist-read-collaborative',
+    'user-library-read',
+    'user-read-recently-played',
+    'user-top-read',
+    'user-follow-read',
+]
+
+
+def get_spotify_client():
+    """Get authenticated Spotify client."""
+    load_config()
+    
+    client_id = get_config_value('SPOTIFY_CLIENT_ID')
+    client_secret = get_config_value('SPOTIFY_CLIENT_SECRET')
+    redirect_uri = get_config_value('SPOTIFY_REDIRECT_URI', 'http://127.0.0.1:8888/callback')
+    
+    if not client_id or not client_secret:
+        raise ValueError("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET in config")
+    
+    if not CACHE_PATH.exists():
+        raise ValueError("Not authenticated. Run ./bin/spotify-auth first")
+    
+    sp_oauth = SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        scope=' '.join(SCOPES),
+        cache_path=str(CACHE_PATH),
+        open_browser=False
+    )
+    
+    return spotipy.Spotify(auth_manager=sp_oauth)
+
+
+def clean_name(name: str) -> str:
+    """Clean playlist/track name for key format (remove special chars)."""
+    # Remove emoji and special chars, keep alphanumeric and spaces
+    cleaned = ''.join(c for c in name if c.isalnum() or c in ' -_')
+    return cleaned.strip()
+
+
+def get_all_playlists(sp) -> list:
+    """Get all user playlists with pagination."""
+    playlists = []
+    offset = 0
+    
+    while True:
+        result = sp.current_user_playlists(limit=50, offset=offset)
+        items = result.get('items', [])
+        if not items:
+            break
+        playlists.extend([p for p in items if p])
+        offset += 50
+        if offset >= result.get('total', 0):
+            break
+    
+    return playlists
+
+
+def get_followed_shows(sp) -> list:
+    """Get all followed/saved podcasts."""
+    shows = []
+    offset = 0
+    
+    while True:
+        try:
+            result = sp.current_user_saved_shows(limit=50, offset=offset)
+            items = result.get('items', [])
+            if not items:
+                break
+            shows.extend([s.get('show') for s in items if s and s.get('show')])
+            offset += 50
+            if offset >= result.get('total', 0):
+                break
+        except Exception as e:
+            print(f"Warning: Could not get saved shows: {e}", file=sys.stderr)
+            break
+    
+    return shows
+
+
+def get_top_artists(sp, limit=20) -> list:
+    """Get user's top artists."""
+    try:
+        result = sp.current_user_top_artists(limit=limit, time_range='medium_term')
+        return result.get('items', [])
+    except Exception:
+        return []
+
+
+def get_top_tracks(sp, limit=15) -> list:
+    """Get user's top tracks."""
+    try:
+        result = sp.current_user_top_tracks(limit=limit, time_range='medium_term')
+        return result.get('items', [])
+    except Exception:
+        return []
+
+
+def export_library(output_path: str = None):
+    """Export Spotify library to simple markdown intel file."""
+    print("🎵 Connecting to Spotify...")
+    sp = get_spotify_client()
+    
+    me = sp.current_user()
+    username = me.get('display_name', 'User')
+    user_id = me.get('id', '')
+    
+    print(f"✅ Connected as: {username}")
+    
+    # Collect data
+    print("📋 Fetching playlists...")
+    playlists = get_all_playlists(sp)
+    print(f"   Found {len(playlists)} playlists")
+    
+    print("🎙️ Fetching podcasts...")
+    podcasts = get_followed_shows(sp)
+    print(f"   Found {len(podcasts)} podcasts")
+    
+    print("⭐ Fetching top artists...")
+    top_artists = get_top_artists(sp)
+    print(f"   Found {len(top_artists)} top artists")
+    
+    print("🎵 Fetching top tracks...")
+    top_tracks = get_top_tracks(sp)
+    print(f"   Found {len(top_tracks)} top tracks")
+    
+    # Build simple key:value content for intel ingestion
+    lines = [
+        f"# {username} Spotify Library",
+        "",
+        f"Last updated: {datetime.now().strftime('%Y-%m-%d')}",
+        "",
+        "When I ask to play something, check this list first for exact matches.",
+        "",
+    ]
+    
+    # Playlists section - simple Key: Value format
+    lines.append("## My Playlists")
+    lines.append("")
+    
+    for p in playlists:
+        name = clean_name(p.get('name', 'Unknown'))
+        uri = p.get('uri', '')
+        tracks = p.get('tracks', {}).get('total', 0)
+        desc = p.get('description', '')[:50] if p.get('description') else ''
+        owner_id = p.get('owner', {}).get('id', '')
+        
+        # Mark if it's user's own playlist
+        if owner_id == user_id:
+            extra = f"({tracks} tracks, my playlist"
+        else:
+            extra = f"({tracks} tracks"
+        
+        if desc:
+            extra += f", {desc}"
+        extra += ")"
+        
+        lines.append(f"{name}: {uri} {extra}")
+    
+    lines.append("")
+    
+    # Podcasts section
+    if podcasts:
+        lines.append("## My Podcasts")
+        lines.append("")
+        
+        for show in podcasts:
+            name = clean_name(show.get('name', 'Unknown'))
+            uri = show.get('uri', '')
+            publisher = show.get('publisher', '')
+            
+            if publisher:
+                lines.append(f"{name} podcast: {uri} (by {publisher})")
+            else:
+                lines.append(f"{name} podcast: {uri}")
+        
+        lines.append("")
+    
+    # Top Artists
+    if top_artists:
+        lines.append("## My Top Artists")
+        lines.append("")
+        
+        for artist in top_artists:
+            name = clean_name(artist.get('name', 'Unknown'))
+            uri = artist.get('uri', '')
+            genres = ', '.join(artist.get('genres', [])[:2]) or ''
+            
+            if genres:
+                lines.append(f"{name}: {uri} ({genres})")
+            else:
+                lines.append(f"{name}: {uri}")
+        
+        lines.append("")
+    
+    # Top Tracks
+    if top_tracks:
+        lines.append("## My Top Songs")
+        lines.append("")
+        
+        for track in top_tracks:
+            name = clean_name(track.get('name', 'Unknown'))
+            artists = ', '.join([a.get('name', '') for a in track.get('artists', [])])
+            uri = track.get('uri', '')
+            
+            lines.append(f"{name} by {artists}: {uri}")
+        
+        lines.append("")
+    
+    # Usage hints for the LLM
+    lines.extend([
+        "## Usage Notes",
+        "",
+        "- When I say my playlist use the URI from My Playlists section",
+        "- For generic requests like christmas music search Spotify catalog instead",
+        "- For podcasts use the show URI from My Podcasts section",
+    ])
+    
+    # Write to jarvis-intel folder
+    if not output_path:
+        output_path = str(Path(__file__).parent.parent / 'jarvis-intel' / 'spotify-library.md')
+    
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    content = '\n'.join(lines)
+    output_file.write_text(content)
+    
+    print(f"\n✅ Exported to: {output_file}")
+    print(f"   - {len(playlists)} playlists")
+    print(f"   - {len(podcasts)} podcasts")
+    print(f"   - {len(top_artists)} top artists")
+    print(f"   - {len(top_tracks)} top tracks")
+    print(f"\n📥 To ingest into Jarvis memory:")
+    print(f"   python3 skills/ingest_intel.py")
+    
+    return str(output_file)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Export Spotify library to intel file for Jarvis memory'
+    )
+    parser.add_argument(
+        '--output', '-o',
+        help='Output file path (default: jarvis-intel/spotify-library.md)'
+    )
+    
+    args = parser.parse_args()
+    
+    try:
+        export_library(args.output)
+    except Exception as e:
+        print(f"❌ Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
