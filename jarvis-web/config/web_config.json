@@ -25,7 +25,7 @@
   "cloud": {
     "llm_provider": "xai",
     "llm_model": "grok-4-1-fast-non-reasoning-latest",
-    "image_provider": null
+    "image_provider": "gemini"
   },
   "local": {
     "llm_provider": "ollama",

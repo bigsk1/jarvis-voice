@@ -1,5 +1,6 @@
 ## My Notes, Ideas, Concerns
 
+notice openai generate image text was cropped 1024x1024 , just need to check if we are cropping or if really openai is producing images exactly like we get and we are not post processing and cropping? 
 
 audio on web isnt saved for mic like it is for terminal/tui/jarvis it seems in audio/cloud/mic , is there auto cleanup of old audio files?
 
