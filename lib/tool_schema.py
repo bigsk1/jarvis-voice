@@ -431,6 +431,80 @@ class ToolRegistry:
             print(f"⚠️ Tool retrieval failed: {e}. Falling back to ALL enabled tools.")
             # Fallback: return all enabled tools
             return [t for t in self.tools.values() if t.permissions.get('enabled', True)]
+    
+    def cleanup(self):
+        """Stop all MCP clients and release resources."""
+        if hasattr(self, 'mcp_manager') and self.mcp_manager:
+            try:
+                self.mcp_manager.stop_all()
+                print("🛑 MCP servers stopped")
+            except Exception as e:
+                print(f"Warning: MCP cleanup error: {e}")
+        
+        # Clear client references
+        self.mcp_clients = {}
+
+
+# ============================================================================
+# SINGLETON PATTERN - Prevents duplicate MCP containers
+# ============================================================================
+
+_tool_registry_instance: Optional[ToolRegistry] = None
+_tool_registry_mode: Optional[str] = None
+
+
+def get_tool_registry(skills_dir: str = None, mcp_config_path: str = None, mode: str = None) -> ToolRegistry:
+    """
+    Get the shared ToolRegistry singleton.
+    
+    This prevents spawning duplicate MCP Docker containers when multiple
+    Orchestrator instances are created (e.g., one per web UI message).
+    
+    Args:
+        skills_dir: Path to skills directory (uses default if not provided)
+        mcp_config_path: Path to MCP config (uses default if not provided)
+        mode: 'cloud' or 'local' - if mode changes, registry is recreated
+        
+    Returns:
+        Shared ToolRegistry instance
+    """
+    global _tool_registry_instance, _tool_registry_mode
+    
+    # Determine paths
+    if not skills_dir or not mcp_config_path:
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent
+        skills_dir = skills_dir or str(project_root / "skills")
+        mcp_config_path = mcp_config_path or str(project_root / "config" / "mcp-servers.json")
+    
+    # Check if we need to create or recreate the registry
+    need_new = (
+        _tool_registry_instance is None or 
+        (mode is not None and mode != _tool_registry_mode)
+    )
+    
+    if need_new:
+        # Cleanup old instance if mode changed
+        if _tool_registry_instance is not None:
+            print(f"🔄 Mode changed ({_tool_registry_mode} → {mode}), recreating registry...")
+            _tool_registry_instance.cleanup()
+        
+        _tool_registry_instance = ToolRegistry(skills_dir, mcp_config_path)
+        _tool_registry_mode = mode
+    
+    return _tool_registry_instance
+
+
+def reset_tool_registry():
+    """
+    Reset the singleton registry (e.g., when mode changes or for cleanup).
+    """
+    global _tool_registry_instance, _tool_registry_mode
+    
+    if _tool_registry_instance is not None:
+        _tool_registry_instance.cleanup()
+        _tool_registry_instance = None
+        _tool_registry_mode = None
 
 
 

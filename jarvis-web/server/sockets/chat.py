@@ -207,6 +207,14 @@ class ChatHandler:
                 except Exception as e:
                     print(f"[MODE] Warning: Could not reset intelligence: {e}")
                 
+                # Reset tool registry (cleans up MCP containers)
+                try:
+                    from tool_schema import reset_tool_registry
+                    reset_tool_registry()
+                    print(f"[MODE] Reset tool registry for {mode} mode")
+                except Exception as e:
+                    print(f"[MODE] Warning: Could not reset tool registry: {e}")
+                
                 emit('mode:changed', {'mode': mode})
         
         @self.socketio.on('tools:refresh')

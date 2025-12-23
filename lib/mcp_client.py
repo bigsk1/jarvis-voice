@@ -21,6 +21,10 @@ from threading import Lock, Thread, Event
 class MCPClient:
     """Client for communicating with MCP servers."""
     
+    # Crash recovery settings
+    MAX_RESTART_ATTEMPTS = 3
+    RESTART_COOLDOWN_SECONDS = 60  # After max restarts, wait before allowing more
+    
     def __init__(self, name: str, command: str, args: List[str], env: Optional[Dict[str, str]] = None):
         """
         Initialize MCP client.
@@ -39,6 +43,65 @@ class MCPClient:
         self.lock = Lock()
         self.request_id = 0
         self._tools_cache = None
+        
+        # Crash recovery state
+        self._restart_count = 0
+        self._last_restart_time = 0
+        self._in_cooldown = False
+    
+    def _check_health(self) -> bool:
+        """
+        Check if MCP process is healthy and restart if crashed.
+        
+        Returns:
+            True if healthy (or successfully restarted), False if in cooldown
+        """
+        if not self.process:
+            return True  # Will be started on first use
+        
+        # Check if process is still running
+        exit_code = self.process.poll()
+        if exit_code is None:
+            # Process is running, reset restart count on successful operation
+            self._restart_count = 0
+            return True
+        
+        # Process has died
+        print(f"⚠️ MCP {self.name} crashed (exit code: {exit_code})", file=sys.stderr)
+        
+        # Check if we're in cooldown
+        if self._in_cooldown:
+            elapsed = time.time() - self._last_restart_time
+            if elapsed < self.RESTART_COOLDOWN_SECONDS:
+                remaining = int(self.RESTART_COOLDOWN_SECONDS - elapsed)
+                print(f"🛑 MCP {self.name} in cooldown ({remaining}s remaining), skipping restart", file=sys.stderr)
+                return False
+            else:
+                # Cooldown expired, reset
+                self._in_cooldown = False
+                self._restart_count = 0
+        
+        # Check restart limit
+        if self._restart_count >= self.MAX_RESTART_ATTEMPTS:
+            print(f"🛑 MCP {self.name} hit max restarts ({self.MAX_RESTART_ATTEMPTS}), entering cooldown", file=sys.stderr)
+            self._in_cooldown = True
+            self._last_restart_time = time.time()
+            return False
+        
+        # Attempt restart
+        self._restart_count += 1
+        self._last_restart_time = time.time()
+        print(f"🔄 Restarting MCP {self.name} (attempt {self._restart_count}/{self.MAX_RESTART_ATTEMPTS})...", file=sys.stderr)
+        
+        try:
+            self.process = None
+            self._tools_cache = None  # Clear cache on restart
+            self.start()
+            print(f"✅ MCP {self.name} restarted successfully", file=sys.stderr)
+            return True
+        except Exception as e:
+            print(f"❌ MCP {self.name} restart failed: {e}", file=sys.stderr)
+            return False
     
     def start(self):
         """Start the MCP server process."""
@@ -188,6 +251,10 @@ class MCPClient:
             Response result
         """
         with self.lock:
+            # Health check: restart if crashed (with loop protection)
+            if not self._check_health():
+                raise Exception(f"MCP server {self.name} is in cooldown after repeated crashes")
+            
             if not self.process:
                 self.start()
             

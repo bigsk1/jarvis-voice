@@ -147,9 +147,7 @@
 |----------|---------|
 | **QUICKSTART.md** | Quick setup guide |
 | **../config/README.md** | Configuration reference |
-| **MCP_QUICKSTART.md** | MCP server setup |
-| **MCP_NAMING_CONVENTIONS.md** | MCP snake_case requirements ⭐ NEW |
-| **MCP_REGRESSION_FIX.md** | MCP parsing architecture ⭐ NEW |
+| **[mcp/README.md](./mcp/README.md)** | MCP integration (servers, transports, security) ⭐ |
 
 ### Advanced Features
 | Document | Purpose |

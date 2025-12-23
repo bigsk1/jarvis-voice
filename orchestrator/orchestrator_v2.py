@@ -116,14 +116,10 @@ class Orchestrator:
             # Non-critical - continue if sync fails
             pass
         
-        # Create tool registry once (includes MCP discovery)
-        # This prevents duplicate MCP containers
-        from pathlib import Path
-        from tool_schema import ToolRegistry
-        project_root = Path(__file__).parent.parent
-        skills_dir = str(project_root / "skills")
-        mcp_config = str(project_root / "config" / "mcp-servers.json")
-        self.registry = ToolRegistry(skills_dir, mcp_config)
+        # Get shared tool registry singleton (includes MCP discovery)
+        # This prevents duplicate MCP containers across multiple Orchestrator instances
+        from tool_schema import get_tool_registry
+        self.registry = get_tool_registry(mode=mode)
         
         # Pass shared registry to router and executor
         self.router = LLMRouter(
