@@ -1,5 +1,11 @@
 ## My Notes, Ideas, Concerns
 
+bookmark search from fire fox, able to find and even open in other devce browser a boomark or at least provide exact name to type to open bookmark, so you provide a general idea of what you think you saved and llm will find it. 
+
+
+morning recap skill, current weather, any pending alerts or reminders i need to know about, missed camera actions ( person detection over night and camera) , current bitcoin and solona price, tesla price, 
+
+
 notice openai generate image text was cropped 1024x1024 , just need to check if we are cropping or if really openai is producing images exactly like we get and we are not post processing and cropping? 
 
 audio on web isnt saved for mic like it is for terminal/tui/jarvis it seems in audio/cloud/mic , is there auto cleanup of old audio files?
