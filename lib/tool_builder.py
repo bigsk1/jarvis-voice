@@ -48,9 +48,12 @@ AVAILABLE_PACKAGES = {
     "urllib", "http", "socket", "sqlite3", "csv", "io", "tempfile",
     "shutil", "glob", "argparse", "logging", "traceback", "copy",
     
+    # Jarvis lib modules (auto-available via sys.path.insert)
+    "config_loader", "stash_helper", "memory_db", "llm_provider",
+    
     # Already installed in jarvis-venv
     "requests", "anthropic", "openai", "httpx", "pydantic",
-    "fastapi", "uvicorn",
+    "fastapi", "uvicorn", "yt-dlp",
     
     # Data Science & Math
     "numpy", "scipy", "sympy", "mpmath",
@@ -260,6 +263,109 @@ RESEARCH AVAILABLE:
 If you need current information about an API or library, research has been provided below.
 {research_context}
 
+STASH SYSTEM - USE FOR MULTI-STEP WORKFLOWS:
+When your tool downloads files, creates content, or produces artifacts that other tools might need:
+
+WHEN TO USE STASH:
+- Downloading files/images from URLs for later use (PDF creation, email attachment, printing)
+- Storing generated content (transcripts, converted files, reports)
+- Caching intermediate data between tool calls
+- Any output the user might want to print, email, or process further
+
+WHEN NOT TO USE STASH:
+- Simple text responses (just return in speech/data)
+- Permanent facts/preferences (use memory_db.remember() instead)
+- One-time computations without file output
+
+HOW TO USE STASH (import from lib/stash_helper.py, NOT subprocess):
+```python
+# Import at top of file (after sys.path.insert)
+from stash_helper import open_space, StashFile
+
+# Create/reuse a stash space with descriptive labels
+space, is_new = open_space(scope='session', labels=['youtube_transcripts'])
+
+# Save text content
+stash_file = StashFile(space)
+result = stash_file.save_text(
+    content="text content here",
+    name="filename.txt",
+    on_conflict='overwrite',  # or 'version' or 'error'
+    tags=['tag1', 'tag2'],
+    tool_origin='your_tool_name'
+)
+
+# Save binary content (images, PDFs, etc.)
+result = stash_file.save_binary(
+    data=binary_bytes,
+    name="image.png",
+    mime_type="image/png",
+    on_conflict='overwrite'
+)
+
+# Download from URL directly to stash
+result = stash_file.save_from_url(
+    url="https://example.com/file.pdf",
+    name="downloaded.pdf"
+)
+
+# IMPORTANT: save_* methods return dict with: file_id, ref, path, name, size_bytes
+# Check success by: success = bool(result.get('file_id'))
+# Get stash ref by: stash_ref = result.get('ref')  # e.g., "stash://space_xxx/f_yyy"
+```
+
+STASH RETURN VALUES (NOT 'ok'):
+- file_id: Unique file identifier
+- ref: Full stash reference (stash://space_id/file_id) - use this in output data
+- path: Local filesystem path
+- name: Original filename
+- stored_name: Sanitized filename
+- size_bytes: File size
+
+WRONG (DO NOT DO THIS):
+```python
+# WRONG - Don't subprocess call stash.py!
+subprocess.run(['python3', 'stash.py'], input=json.dumps(...))
+```
+
+INCLUDE STASH REFS IN OUTPUT:
+```python
+print(json.dumps({{
+    "ok": True,
+    "speech": "Downloaded transcript to stash",
+    "data": {{
+        "stash_ref": result.get('ref'),  # Other tools can use this!
+        "filename": filename,
+        "size": result.get('size_bytes')
+    }}
+}}))
+```
+
+IMPORTANT - SAVE STASH ARTIFACTS TO MEMORY FOR FOLLOW-UP QUERIES:
+After saving to stash, ALSO save a reference to memory so the LLM can find it later:
+```python
+from memory_db import MemoryDB
+
+# After stash save succeeds:
+if stash_ref and space:
+    db = MemoryDB()
+    db.remember(
+        key=f"your_tool_{space.space_id}",
+        value=f"Description of artifact. STASH: {{stash_ref}}. FILE: {{filename}}",
+        category="stash_artifact",  # IMPORTANT: use this category!
+        importance=6,  # Higher for stash items
+        source="your_tool_name",
+        metadata={{
+            "stash_ref": stash_ref,
+            "space_id": space.space_id,
+            "filename": filename,
+            "tags": ["relevant", "tags"],
+            "type": "artifact_type"  # e.g., "transcript", "image", "document"
+        }}
+    )
+```
+This allows users to ask follow-up questions like "read that transcript" or "print that file".
+
 TEMPLATE TO FOLLOW:
 ```python
 #!/usr/bin/env python3
@@ -272,9 +378,12 @@ import json
 
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config  # Add get_config_value only if reading API keys/config
 
 # Your imports here (from available packages only if possible)
+# If tool produces files/artifacts, add:
+# from stash_helper import open_space, StashFile
+# from memory_db import MemoryDB  # To save stash refs for follow-up queries
 
 def main():
     try:
@@ -288,12 +397,25 @@ def main():
         # Your logic here
         # Extract params: param = args.get('param_name')
         # Do work
-        # Return result
+        
+        # If using stash for outputs:
+        # space, _ = open_space(scope='session', labels=['your_labels'])
+        # stash_file = StashFile(space)
+        # result = stash_file.save_text(content, name, on_conflict='overwrite')
+        # success = bool(result.get('file_id'))
+        # stash_ref = result.get('ref')
+        #
+        # IMPORTANT: Also save to memory for follow-up queries:
+        # if success and stash_ref:
+        #     db = MemoryDB()
+        #     db.remember(key=f"tool_{space.space_id}", value=f"Desc. STASH: {stash_ref}",
+        #                 category="stash_artifact", importance=6, source="your_tool",
+        #                 metadata={"stash_ref": stash_ref, "type": "artifact_type"})
         
         print(json.dumps({{
             "ok": True,
             "speech": "Brief result for voice",
-            "data": {{"key": "value"}}
+            "data": {{"key": "value"}}  # Include stash_ref if applicable
         }}))
         
     except Exception as e:

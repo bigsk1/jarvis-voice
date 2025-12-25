@@ -1,0 +1,36 @@
+{
+  "enabled": true,
+  "name": "youtube_transcript",
+  "description": "Download YouTube video transcripts in .srt and .md formats. Automatically converts to markdown and saves both files to stash for indexing. Use when user says 'download youtube transcript', 'get transcript from youtube', 'save youtube captions', or pastes a YouTube URL asking for transcripts.",
+  "script": "youtube_transcript.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "YouTube video URL (youtube.com or youtu.be format)"
+      }
+    },
+    "required": [
+      "url"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "test_input": {
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  },
+  "expected_output_contains": [
+    "transcript",
+    "saved",
+    "stash"
+  ],
+  "auto_generated": true,
+  "created_at": "2025-12-25T06:04:32.307597",
+  "feedback_ids": []
+}
