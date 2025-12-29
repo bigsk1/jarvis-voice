@@ -868,3 +868,25 @@ send_email - sends email	list_reminders - reads reminders
 spotify (play/pause)	weather - reads weather
 api_call - makes API requests	get_recent_conversations - reads logs
 printer - prints documents	query_service_logs - reads logs
+
+# Example of saving a stash artifact to memory
+```bash
+from memory_db import MemoryDB
+
+# After stash save succeeds
+db = MemoryDB()
+db.remember(
+    key=f"youtube_transcript_{space_id}",
+    value=f"YouTube transcript: {video_title}. STASH: {md_ref}. FILE: {md_filename}. URL: {url}",
+    category="stash_artifact",
+    importance=6,
+    source="youtube_transcript",
+    metadata={
+        "stash_ref": md_ref,
+        "youtube_url": url,
+        "video_title": video_title,
+        "tags": ["transcript", "youtube", "video", "text"],
+        "type": "transcript"
+    }
+)
+```
