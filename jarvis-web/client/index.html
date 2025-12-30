@@ -144,6 +144,16 @@
               rows="1"
             ></textarea>
             <div class="input-actions">
+              <!-- Speaker button FIRST (far left) so it doesn't shift other buttons when appearing/disappearing -->
+              <button class="icon-btn speaker-btn" id="speakerBtn" title="Audio playing - click to pause" style="display: none;">
+                <span class="speaker-icon">🔊</span>
+                <span class="speaker-waves">
+                  <span class="wave wave-1"></span>
+                  <span class="wave wave-2"></span>
+                  <span class="wave wave-3"></span>
+                </span>
+                <span class="speaker-progress" id="speakerProgress"></span>
+              </button>
               <button class="icon-btn upload-btn" id="uploadBtn" title="Attach image">
                 📎
               </button>

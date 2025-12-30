@@ -973,6 +973,11 @@ class ChatUI {
     if (!rawMessage && !hasImage) return;
     if (this.isProcessing) return;
     
+    // Stop any currently playing audio (new message = new audio coming)
+    if (window.jarvisApp && window.jarvisApp.stopAudioPlayback) {
+      window.jarvisApp.stopAudioPlayback();
+    }
+    
     // Hide autocomplete
     this._hideAutocomplete();
     

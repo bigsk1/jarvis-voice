@@ -18,9 +18,17 @@ class JarvisApp {
     this.closeSettingsBtn = document.getElementById('closeSettingsBtn');
     this.newChatBtn = document.getElementById('newChatBtn');
     
+    // Audio playback control elements
+    this.speakerBtn = document.getElementById('speakerBtn');
+    
     // State
     this.audioEnabled = Utils.storage.get('audioEnabled', false);
     this.glowIntensity = Utils.storage.get('glowIntensity', 'low');
+    
+    // Audio playback state
+    this.currentAudio = null;
+    this.isPlaying = false;
+    this.audioQueue = [];  // Queue for multiple audio clips
     
     this._initialize();
   }
@@ -33,6 +41,7 @@ class JarvisApp {
     this._setupUIListeners();
     this._restoreState();
     this._applyGlowIntensity();  // Apply saved glow intensity
+    this._updateSpeakerButton(); // Ensure speaker button is hidden initially
     
     // Connect to server
     this.socket.connect();
@@ -175,12 +184,30 @@ class JarvisApp {
       Utils.toast(`Switched to ${newMode} mode. Refresh page for cleanest state.`, 'info', 5000);
     });
     
-    // Audio toggle
+    // Audio toggle (enable/disable TTS)
     this.audioToggle.addEventListener('click', () => {
       this.audioEnabled = !this.audioEnabled;
       Utils.storage.set('audioEnabled', this.audioEnabled);
       this._updateAudioButton();
+      
+      // If disabling audio, also stop any current playback
+      if (!this.audioEnabled && this.currentAudio) {
+        this.stopAudioPlayback();
+      }
     });
+    
+    // Speaker button (pause/resume playback)
+    if (this.speakerBtn) {
+      this.speakerBtn.addEventListener('click', () => {
+        this.toggleAudioPlayback();
+      });
+      
+      // Double-click to stop completely
+      this.speakerBtn.addEventListener('dblclick', () => {
+        this.stopAudioPlayback();
+        Utils.toast('Audio stopped', 'info', 1500);
+      });
+    }
     
     // Settings modal
     this.settingsBtn.addEventListener('click', () => {
@@ -382,15 +409,28 @@ class JarvisApp {
     
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-      // Escape to close modal
-      if (e.key === 'Escape' && this.settingsModal.classList.contains('active')) {
-        this.settingsModal.classList.remove('active');
+      // Escape to close modal or stop audio
+      if (e.key === 'Escape') {
+        if (this.settingsModal.classList.contains('active')) {
+          this.settingsModal.classList.remove('active');
+        } else if (this.currentAudio && this.isPlaying) {
+          // Stop audio on Escape if playing
+          this.stopAudioPlayback();
+          Utils.toast('Audio stopped', 'info', 1500);
+        }
       }
       
       // Ctrl/Cmd + / to focus input
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
         document.getElementById('chatInput').focus();
+      }
+      
+      // Space to toggle audio playback (when not typing)
+      if (e.key === ' ' && document.activeElement.tagName !== 'TEXTAREA' && 
+          document.activeElement.tagName !== 'INPUT' && this.currentAudio) {
+        e.preventDefault();
+        this.toggleAudioPlayback();
       }
     });
   }
@@ -437,15 +477,167 @@ class JarvisApp {
   }
   
   /**
-   * Play audio response
+   * Play audio response with controls
    */
   _playAudio(url) {
     console.log('[App] Playing audio:', url);
+    
+    // Stop any currently playing audio
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio = null;
+    }
+    
     const audio = new Audio(url);
+    this.currentAudio = audio;
+    
+    // Progress bar element
+    const progressBar = document.getElementById('speakerProgress');
+    
+    // Update UI when playback starts
+    audio.addEventListener('play', () => {
+      this.isPlaying = true;
+      this._updateSpeakerButton();
+    });
+    
+    // Update progress bar during playback
+    audio.addEventListener('timeupdate', () => {
+      if (progressBar && audio.duration) {
+        const progress = (audio.currentTime / audio.duration) * 100;
+        progressBar.style.width = `${progress}%`;
+      }
+    });
+    
+    // Update UI when paused
+    audio.addEventListener('pause', () => {
+      // Only mark as not playing if actually ended (not just paused)
+      if (audio.ended) {
+        this.isPlaying = false;
+        this._updateSpeakerButton();
+      }
+    });
+    
+    // Update UI when playback ends
+    audio.addEventListener('ended', () => {
+      this.isPlaying = false;
+      this._updateSpeakerButton();
+      
+      // Reset progress bar
+      if (progressBar) {
+        progressBar.style.width = '0%';
+      }
+      
+      // Keep button visible for replay for 10 seconds, then hide
+      setTimeout(() => {
+        // Only hide if this is still the same audio (not replaced by new audio)
+        if (this.currentAudio === audio) {
+          this.currentAudio = null;
+          this._updateSpeakerButton();
+          
+          // Revoke blob URL to free memory
+          if (url.startsWith('blob:')) {
+            URL.revokeObjectURL(url);
+          }
+        }
+      }, 10000);
+    });
+    
+    // Handle errors
+    audio.addEventListener('error', (e) => {
+      console.warn('[App] Audio error:', e);
+      this.isPlaying = false;
+      this.currentAudio = null;
+      this._updateSpeakerButton();
+      if (progressBar) {
+        progressBar.style.width = '0%';
+      }
+    });
+    
     audio.play().catch(err => {
       console.warn('[App] Audio playback failed:', err);
       Utils.toast('Audio playback failed', 'error');
+      this.isPlaying = false;
+      this.currentAudio = null;
+      this._updateSpeakerButton();
+      if (progressBar) {
+        progressBar.style.width = '0%';
+      }
     });
+  }
+  
+  /**
+   * Toggle audio playback (pause/resume/replay)
+   */
+  toggleAudioPlayback() {
+    if (!this.currentAudio) return;
+    
+    if (this.isPlaying) {
+      // Currently playing - pause it
+      this.currentAudio.pause();
+      this.isPlaying = false;
+    } else if (this.currentAudio.ended) {
+      // Finished - replay from start
+      this.currentAudio.currentTime = 0;
+      this.currentAudio.play();
+      this.isPlaying = true;
+    } else {
+      // Paused - resume
+      this.currentAudio.play();
+      this.isPlaying = true;
+    }
+    this._updateSpeakerButton();
+  }
+  
+  /**
+   * Stop audio playback completely
+   */
+  stopAudioPlayback() {
+    if (!this.currentAudio) return;
+    
+    this.currentAudio.pause();
+    this.currentAudio.currentTime = 0;
+    this.isPlaying = false;
+    this.currentAudio = null;
+    this._updateSpeakerButton();
+    
+    // Reset progress bar
+    const progressBar = document.getElementById('speakerProgress');
+    if (progressBar) {
+      progressBar.style.width = '0%';
+    }
+  }
+  
+  /**
+   * Update speaker button state based on playback
+   */
+  _updateSpeakerButton() {
+    if (!this.speakerBtn) return;
+    
+    if (this.currentAudio) {
+      // Show speaker button when audio is available
+      this.speakerBtn.style.display = 'flex';
+      
+      if (this.isPlaying) {
+        // Currently playing
+        this.speakerBtn.classList.add('playing');
+        this.speakerBtn.classList.remove('paused', 'finished');
+        this.speakerBtn.title = 'Click to pause | Double-click to stop';
+      } else if (this.currentAudio.ended) {
+        // Finished - available for replay
+        this.speakerBtn.classList.add('finished');
+        this.speakerBtn.classList.remove('playing', 'paused');
+        this.speakerBtn.title = 'Click to replay audio';
+      } else {
+        // Paused mid-playback
+        this.speakerBtn.classList.add('paused');
+        this.speakerBtn.classList.remove('playing', 'finished');
+        this.speakerBtn.title = 'Click to resume | Double-click to stop';
+      }
+    } else {
+      // Hide speaker button when no audio
+      this.speakerBtn.style.display = 'none';
+      this.speakerBtn.classList.remove('playing', 'paused', 'finished');
+    }
   }
   
   /**

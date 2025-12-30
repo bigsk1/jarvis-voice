@@ -15,21 +15,28 @@ API Endpoints:
     PUT  /api/pages/<id>      - Update page
     DELETE /api/pages/<id>    - Delete page
     GET  /api/health          - Health check
+    GET  /api/stash/<space>/<file_id> - Serve stash files
 """
 
 import os
 import sys
 import json
 import argparse
+import mimetypes
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, jsonify, request, render_template_string, send_from_directory
+from flask import Flask, jsonify, request, render_template_string, send_from_directory, send_file, abort
+
+# Add lib to path for stash helper
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+
 from flask_cors import CORS
 
 # Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
 CANVAS_DIR = PROJECT_ROOT / "data" / "canvas"
 STATIC_DIR = PROJECT_ROOT / "docs" / "images"
+STASH_DIR = PROJECT_ROOT / "data" / "stash"
 CANVAS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
@@ -45,6 +52,59 @@ def favicon():
 @app.route('/static/<path:filename>')
 def static_files(filename):
     return send_from_directory(STATIC_DIR, filename)
+
+
+@app.route('/api/stash/<space_id>/<file_id>')
+def serve_stash_file(space_id, file_id):
+    """
+    Serve files from the stash system.
+    
+    Supports:
+    - stash://space_id/file_id format (resolved via meta.json)
+    - Direct filename if file_id is actually a filename
+    """
+    space_path = STASH_DIR / space_id
+    meta_path = space_path / 'meta.json'
+    
+    if not space_path.exists():
+        abort(404, description=f"Stash space not found: {space_id}")
+    
+    # Try to resolve file_id via meta.json
+    file_path = None
+    mime_type = None
+    
+    if meta_path.exists():
+        try:
+            with open(meta_path) as f:
+                meta = json.load(f)
+            
+            # Find file by file_id
+            for file_info in meta.get('files', []):
+                if file_info.get('file_id') == file_id:
+                    file_path = space_path / file_info.get('stored_name')
+                    mime_type = file_info.get('mime_type')
+                    break
+                # Also match by stored_name in case file_id is the filename
+                if file_info.get('stored_name') == file_id or file_info.get('name') == file_id:
+                    file_path = space_path / file_info.get('stored_name')
+                    mime_type = file_info.get('mime_type')
+                    break
+        except Exception as e:
+            print(f"Error reading stash meta: {e}")
+    
+    # Fallback: try file_id as direct filename
+    if not file_path or not file_path.exists():
+        direct_path = space_path / file_id
+        if direct_path.exists():
+            file_path = direct_path
+            mime_type = mimetypes.guess_type(str(file_path))[0]
+    
+    if not file_path or not file_path.exists():
+        abort(404, description=f"File not found: {file_id}")
+    
+    # Serve the file
+    return send_file(file_path, mimetype=mime_type)
+
 
 # ============================================================================
 # HTML TEMPLATE - Beautiful Dark UI
@@ -1297,6 +1357,25 @@ HTML_TEMPLATE = '''
             breaks: true,
             gfm: true
         });
+        
+        /**
+         * Resolve stash:// URLs to API endpoints
+         * Converts: stash://space_id/file_id -> /api/stash/space_id/file_id
+         */
+        function resolveStashUrls(content) {
+            if (!content) return content;
+            // Match stash:// URLs in markdown image/link syntax and raw URLs
+            return content.replace(/stash:\/\/([^)\s"']+)/g, '/api/stash/$1');
+        }
+        
+        /**
+         * Render markdown with stash URL resolution
+         */
+        function renderMarkdown(content) {
+            // First resolve stash URLs, then parse markdown
+            const resolved = resolveStashUrls(content);
+            return DOMPurify.sanitize(marked.parse(resolved));
+        }
 
         // API Functions
         async function fetchPages() {
@@ -1533,7 +1612,7 @@ HTML_TEMPLATE = '''
                 </div>
             ` : '';
             
-            const content = DOMPurify.sanitize(marked.parse(page.content || ''));
+            const content = renderMarkdown(page.content || '');
             const created = new Date(page.created).toLocaleString();
             const updated = page.updated ? new Date(page.updated).toLocaleString() : null;
             

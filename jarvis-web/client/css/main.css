@@ -738,6 +738,261 @@ body {
   }
 }
 
+/* 🔊 Speaker button (audio playback control) */
+.speaker-btn {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  overflow: visible;
+  /* Neutral base - glow added via data-glow-intensity */
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  /* Ensure circle shape */
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 50% !important;
+  box-shadow: var(--shadow-depth-sm, 0 2px 8px rgba(0, 0, 0, 0.4));
+  min-height: 48px !important;
+  font-size: 1.4rem !important;
+  z-index: 100;
+  border-radius: 50% !important;
+  box-shadow: 
+    0 0 20px rgba(0, 212, 255, 0.6),
+    0 0 40px rgba(0, 255, 136, 0.4),
+    inset 0 0 10px rgba(255, 255, 255, 0.3) !important;
+}
+
+.speaker-btn:hover {
+  transform: scale(1.05);
+  border-color: var(--border-secondary);
+  box-shadow: var(--shadow-depth-md, 0 4px 12px rgba(0, 0, 0, 0.5));
+}
+
+.speaker-btn .speaker-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.speaker-btn .speaker-waves {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.speaker-btn .wave {
+  width: 3px;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  opacity: 0;
+  transform-origin: center;
+}
+
+.speaker-btn .wave-1 { height: 4px; animation-delay: 0s; }
+.speaker-btn .wave-2 { height: 8px; animation-delay: 0.15s; }
+.speaker-btn .wave-3 { height: 4px; animation-delay: 0.3s; }
+
+/* Playing state - animated waves */
+.speaker-btn.playing .wave {
+  opacity: 1;
+  animation: speaker-wave 0.8s ease-in-out infinite;
+}
+
+@keyframes speaker-wave {
+  0%, 100% {
+    transform: scaleY(0.3);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.speaker-btn.playing {
+  border-color: var(--border-secondary);
+  box-shadow: var(--shadow-depth-sm);
+}
+
+@keyframes speaker-glow {
+  from {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  to {
+    filter: brightness(1.3);
+    transform: scale(1.1);
+  }
+}
+
+@keyframes speaker-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(139, 92, 246, 0);
+  }
+}
+
+/* Paused state */
+.speaker-btn.paused {
+  background: var(--warning) !important;
+  border-color: var(--warning) !important;
+  animation: none;
+}
+
+.speaker-btn.paused .wave {
+  opacity: 0.3;
+  animation: none;
+  transform: scaleY(0.5);
+}
+
+.speaker-btn.paused .speaker-icon::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 10px;
+  border-left: 3px solid white;
+}
+
+/* Finished state - ready for replay */
+.speaker-btn.finished {
+  border-color: var(--border-primary);
+  box-shadow: var(--shadow-depth-sm);
+}
+
+.speaker-btn.finished .wave {
+  opacity: 0.5;
+  animation: none;
+  transform: scaleY(0.7);
+}
+
+.speaker-btn.finished .speaker-icon::before {
+  content: '↺';
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  font-size: 0.65rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-weight: bold;
+}
+
+@keyframes finished-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+}
+
+/* Keyboard hint tooltip */
+.speaker-btn::before {
+  content: 'Click: pause • Dbl-click: stop • Esc: stop';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  pointer-events: none;
+  margin-bottom: 4px;
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
+
+.speaker-btn:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Audio progress indicator */
+.speaker-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  transition: width 0.1s linear;
+  width: 0%;
+}
+
+/* Speaker button glow intensity variants */
+/* Off - completely neutral, no glow */
+[data-glow-intensity="off"] .speaker-btn,
+[data-glow-intensity="off"] .speaker-btn:hover,
+[data-glow-intensity="off"] .speaker-btn.playing,
+[data-glow-intensity="off"] .speaker-btn.finished {
+  box-shadow: var(--shadow-depth-sm);
+  border-color: var(--border-primary);
+}
+
+/* Low - subtle cyan on playing */
+[data-glow-intensity="low"] .speaker-btn.playing {
+  border-color: rgba(0, 217, 255, 0.2);
+  box-shadow: 0 0 6px var(--glow-light), var(--shadow-depth-sm);
+}
+[data-glow-intensity="low"] .speaker-btn:hover {
+  border-color: rgba(0, 217, 255, 0.15);
+  box-shadow: 0 0 4px var(--glow-subtle), var(--shadow-depth-md);
+}
+
+/* Medium - moderate glow */
+[data-glow-intensity="medium"] .speaker-btn {
+  border-color: rgba(0, 217, 255, 0.1);
+  box-shadow: 0 0 2px var(--glow-subtle), var(--shadow-depth-sm);
+}
+[data-glow-intensity="medium"] .speaker-btn:hover {
+  border-color: rgba(0, 217, 255, 0.25);
+  box-shadow: 0 0 8px var(--glow-light), var(--shadow-depth-md);
+}
+[data-glow-intensity="medium"] .speaker-btn.playing {
+  border-color: rgba(0, 217, 255, 0.3);
+  box-shadow: 0 0 12px var(--glow-medium), var(--shadow-depth-md);
+}
+
+/* High - full cyberpunk glow */
+[data-glow-intensity="high"] .speaker-btn {
+  border-color: rgba(0, 217, 255, 0.2);
+  box-shadow: 0 0 6px var(--glow-light), var(--shadow-depth-sm);
+}
+[data-glow-intensity="high"] .speaker-btn:hover {
+  border-color: rgba(0, 217, 255, 0.4);
+  box-shadow: 0 0 12px var(--glow-medium), 0 0 24px var(--glow-light), var(--shadow-depth-md);
+}
+[data-glow-intensity="high"] .speaker-btn.playing {
+  border-color: rgba(0, 217, 255, 0.5);
+  box-shadow: 0 0 16px var(--glow-strong), 0 0 32px var(--glow-medium), var(--shadow-depth-md);
+}
+
 /* Recording indicator overlay */
 .recording-indicator {
   position: fixed;
@@ -1064,8 +1319,14 @@ body {
     flex-wrap: nowrap;
   }
   
-  .input-row .icon-btn:not(.send-btn):not(.enhance-btn) {
-    display: none; /* Hide extra buttons on mobile, keep send and enhance */
+  .input-row .icon-btn:not(.send-btn):not(.enhance-btn):not(.speaker-btn) {
+    display: none; /* Hide extra buttons on mobile, keep send, enhance, and speaker */
+  }
+  
+  /* Show speaker button on mobile when audio is playing */
+  .speaker-btn.playing,
+  .speaker-btn.paused {
+    display: flex !important;
   }
   
   /* Keep the log panel usable on mobile */
