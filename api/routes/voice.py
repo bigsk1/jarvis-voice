@@ -61,3 +61,37 @@ async def speak(request: SpeakRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class AnnounceRequest(BaseModel):
+    """Simple announce request (CAAL-compatible)"""
+    message: str
+
+
+@router.post("/announce")
+async def announce(request: AnnounceRequest):
+    """
+    Simple announce endpoint (CAAL-compatible alias)
+    
+    This is a simpler version of /speak that:
+    - Auto-detects mode from environment
+    - Only requires 'message' field
+    - Easier for external integrations (Home Assistant, IFTTT, n8n)
+    
+    Example:
+    ```bash
+    curl -X POST http://localhost:8880/api/voice/announce \\
+      -H "Content-Type: application/json" \\
+      -d '{"message": "Package delivered at front door"}'
+    ```
+    
+    For full control (cloud/local mode), use /speak instead.
+    """
+    import os
+    
+    # Auto-detect mode from environment
+    mode = "local" if os.environ.get('LLM_PROVIDER') == 'ollama' else "cloud"
+    
+    # Use existing speak() function
+    speak_req = SpeakRequest(message=request.message, mode=mode)
+    return await speak(speak_req)
+

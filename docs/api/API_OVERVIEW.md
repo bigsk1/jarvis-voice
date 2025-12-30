@@ -656,6 +656,123 @@ print(f"Reminder created: {result['reminder_id']}")
 - Import iCal files
 - Two-way sync with `callback_url`
 
+# `/announce` Endpoint - Quick Summary
+
+## TL;DR
+
+**You already had this feature!** I just added a simpler alias for external integrations.
+
+---
+
+## Architecture Quick Reference
+
+```
+┌──────────────────────────────────────────────────────────┐
+│             JARVIS HAS 3 MODES                           │
+└──────────────────────────────────────────────────────────┘
+
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  1. TERMINAL    │  │  2. WEB UI      │  │  3. PROACTIVE   │
+│     (Local)     │  │  (Browser)      │  │     (API)       │
+├─────────────────┤  ├─────────────────┤  ├─────────────────┤
+│ wake_jarvis.py  │  │ port 5001       │  │ port 8880       │
+│                 │  │                 │  │                 │
+│ "Hey Jarvis"    │  │ Chat + Tools    │  │ Webhooks ← NEW! │
+│ → Q&A + Tools   │  │ Type or speak   │  │                 │
+│                 │  │ Browser TTS     │  │ /announce       │
+│ System speakers │  │                 │  │ /speak          │
+└─────────────────┘  └─────────────────┘  │ /alerts         │
+                                           │ /reminders      │
+                                           └─────────────────┘
+```
+
+---
+
+## What `/announce` Does
+
+**Simple HTTP endpoint for making Jarvis speak:**
+
+```bash
+POST http://localhost:8880/api/voice/announce
+{
+  "message": "Package delivered at front door"
+}
+```
+
+**→ Jarvis speaks through system speakers immediately**
+
+---
+
+## Use Cases
+
+### ✅ Home Assistant
+```yaml
+# Motion detected → Jarvis announces
+automation:
+  - trigger:
+      platform: state
+      entity_id: binary_sensor.front_door
+      to: "on"
+    action:
+      service: rest_command.jarvis_announce
+      data:
+        message: "Motion at front door"
+```
+
+### ✅ Monitoring Systems
+```bash
+# Server down → Jarvis alerts you
+curl -X POST http://192.168.1.100:8880/api/voice/announce \
+  -d '{"message": "Web server is offline"}'
+```
+
+### ✅ IFTTT / n8n / Custom Scripts
+```python
+# From any script
+requests.post(
+    "http://localhost:8880/api/voice/announce",
+    json={"message": "Build complete"}
+)
+```
+
+---
+
+## Does NOT Require:
+
+❌ LiveKit  
+❌ Additional setup  
+❌ Browser  
+❌ Wake word  
+
+## Only Requires:
+
+✅ Jarvis API running (`./bin/jarvis-api`)  
+✅ Network access (local or remote)  
+
+---
+
+## What Changed
+
+**Before (you already had this):**
+```bash
+POST /api/voice/speak
+{
+  "message": "Test",
+  "mode": "cloud"  # or "local"
+}
+```
+
+**After (new simpler alias):**
+```bash
+POST /api/voice/announce
+{
+  "message": "Test"
+  # mode auto-detected from LLM_PROVIDER env var
+}
+```
+
+**That's it!** Just a simpler endpoint for external systems.
+
 ---
 
 ## Troubleshooting
