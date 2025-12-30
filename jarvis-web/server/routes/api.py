@@ -17,6 +17,12 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 # Path to generated images
 IMAGES_PATH = JARVIS_ROOT / 'data' / 'generated_images'
 
+# Path to generated music
+MUSIC_PATH = JARVIS_ROOT / 'data' / 'generated_music'
+
+# Path to stash
+STASH_PATH = JARVIS_ROOT / 'data' / 'stash'
+
 # Paths for commands and prompts
 WEB_DATA_PATH = JARVIS_ROOT / 'jarvis-web' / 'data'
 COMMANDS_PATH = WEB_DATA_PATH / 'commands'
@@ -991,6 +997,91 @@ def serve_image(filename):
         abort(404)
     
     return send_from_directory(str(IMAGES_PATH), filename)
+
+
+@api_bp.route('/music/<filename>', methods=['GET'])
+def serve_music(filename):
+    """Serve generated music files"""
+    # Security: only allow audio files, no path traversal
+    if '..' in filename or '/' in filename:
+        abort(404)
+    
+    # Check common audio extensions
+    allowed_extensions = {'.mp3', '.wav', '.ogg', '.opus', '.m4a'}
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in allowed_extensions:
+        abort(404)
+    
+    if not MUSIC_PATH.exists():
+        abort(404)
+    
+    return send_from_directory(str(MUSIC_PATH), filename)
+
+
+@api_bp.route('/stash/<space_id>/<file_id>', methods=['GET'])
+def serve_stash_file(space_id, file_id):
+    """
+    Serve files from the stash system.
+    Resolves file_id via meta.json to get actual filename.
+    """
+    import json
+    
+    # Security: no path traversal
+    if '..' in space_id or '/' in space_id or '..' in file_id or '/' in file_id:
+        abort(404)
+    
+    space_path = STASH_PATH / space_id
+    meta_path = space_path / 'meta.json'
+    
+    if not space_path.exists():
+        abort(404)
+    
+    # Try to resolve file_id via meta.json
+    file_path = None
+    
+    if meta_path.exists():
+        try:
+            with open(meta_path, 'r') as f:
+                meta = json.load(f)
+            
+            # Search for file_id in meta.json files array
+            for file_info in meta.get('files', []):
+                if file_info.get('file_id') == file_id:
+                    filename = file_info.get('stored_name') or file_info.get('name', '')
+                    if filename:
+                        file_path = space_path / filename
+                        break
+        except Exception:
+            pass
+    
+    # Fallback: treat file_id as actual filename
+    if not file_path or not file_path.exists():
+        file_path = space_path / file_id
+    
+    if not file_path.exists():
+        abort(404)
+    
+    # Determine MIME type
+    ext = file_path.suffix.lower()
+    mime_types = {
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.ogg': 'audio/ogg',
+        '.opus': 'audio/opus',
+        '.m4a': 'audio/mp4',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.json': 'application/json',
+        '.txt': 'text/plain',
+        '.md': 'text/markdown'
+    }
+    
+    mimetype = mime_types.get(ext, 'application/octet-stream')
+    
+    return send_from_directory(str(space_path), file_path.name, mimetype=mimetype)
 
 
 # =============================================================================

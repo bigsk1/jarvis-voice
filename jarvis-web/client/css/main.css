@@ -1118,6 +1118,56 @@ body {
   opacity: 1;
 }
 
+/* Generated Audio Player */
+.message-audio {
+  margin-bottom: var(--space-sm);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  padding: var(--space-sm);
+}
+
+.audio-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+}
+
+.audio-icon {
+  font-size: 1.25rem;
+}
+
+.audio-title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.audio-player {
+  width: 100%;
+  height: 36px;
+  border-radius: var(--radius-md);
+  outline: none;
+}
+
+/* Style the audio player to match theme */
+.audio-player::-webkit-media-controls-panel {
+  background: var(--bg-secondary);
+}
+
+.audio-player::-webkit-media-controls-play-button,
+.audio-player::-webkit-media-controls-mute-button {
+  filter: invert(0.8);
+}
+
+.audio-player::-webkit-media-controls-current-time-display,
+.audio-player::-webkit-media-controls-time-remaining-display {
+  color: var(--text-secondary);
+}
+
 /* Lightbox */
 .lightbox-overlay {
   position: fixed;

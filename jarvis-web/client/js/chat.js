@@ -80,7 +80,10 @@ class CommandSystem {
       }
     }
     
-    return suggestions.slice(0, 8);  // Limit to 8 suggestions
+    // Sort alphabetically by name and limit to 30 suggestions
+    return suggestions
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 30);
   }
   
   /**
@@ -1075,11 +1078,11 @@ class ChatUI {
     }, 2500);
     
     // Build tool cards HTML
+    // Tool results are in data.data (nested), not data directly
+    const toolResultsData = data.data || data || {};
     let toolCardsHtml = '';
     if (toolsUsed.length > 0) {
       toolCardsHtml = '<div class="tool-cards">';
-      // Tool results are in data.data (nested), not data directly
-      const toolResultsData = data.data || data || {};
       for (const tool of toolsUsed) {
         const toolData = this.pendingTools[tool] || {};
         const toolResult = toolResultsData[tool] || toolData.result || {};
@@ -1133,6 +1136,76 @@ class ChatUI {
       `;
     }
     
+    // Check for generated music
+    let audioHtml = '';
+    let audioUrl = null;
+    let audioTitle = 'Generated Music';
+    
+    // Method 1: Check data.generate_music object
+    const musicData = data.generate_music;
+    if (musicData && typeof musicData === 'object') {
+      // Try various paths for audio URL
+      audioUrl = musicData.audio_url
+        || musicData.data?.audio_url
+        || musicData.file_url;
+      
+      // If we have a stash reference, convert to API URL
+      if (!audioUrl && musicData.stash_ref) {
+        const stashMatch = musicData.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
+        if (stashMatch) {
+          audioUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+        }
+      }
+      
+      // Or get the filename from file_path
+      if (!audioUrl && musicData.file_path) {
+        const musicFilename = musicData.file_path.split('/').pop();
+        audioUrl = `/api/music/${musicFilename}`;
+      }
+      
+      // Get title
+      audioTitle = musicData.title || musicData.data?.title || 'Generated Music';
+    }
+    
+    // Method 2: Search in tool results data
+    if (!audioUrl && toolsUsed.includes('generate_music')) {
+      const musicResult = toolResultsData['generate_music'];
+      if (musicResult) {
+        audioUrl = musicResult.audio_url 
+          || musicResult.data?.audio_url
+          || musicResult.file_url;
+        
+        if (!audioUrl && musicResult.stash_ref) {
+          const stashMatch = musicResult.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
+          if (stashMatch) {
+            audioUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+          }
+        }
+        
+        if (!audioUrl && musicResult.file_path) {
+          const musicFilename = musicResult.file_path.split('/').pop();
+          audioUrl = `/api/music/${musicFilename}`;
+        }
+        
+        audioTitle = musicResult.title || musicResult.data?.title || audioTitle;
+      }
+    }
+    
+    if (audioUrl) {
+      audioHtml = `
+        <div class="message-audio">
+          <div class="audio-header">
+            <span class="audio-icon">🎵</span>
+            <span class="audio-title">${Utils.escapeHtml(audioTitle)}</span>
+          </div>
+          <audio controls preload="metadata" class="audio-player">
+            <source src="${audioUrl}" type="audio/mpeg">
+            Your browser does not support audio playback.
+          </audio>
+        </div>
+      `;
+    }
+    
     const parsedText = Utils.parseMarkdown(text);
     
     // Build expandable details section
@@ -1160,6 +1233,7 @@ class ChatUI {
     messageEl.innerHTML = `
       ${toolCardsHtml}
       ${imageHtml}
+      ${audioHtml}
       <div class="message-bubble">
         ${parsedText}
         ${detailsHtml}
