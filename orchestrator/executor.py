@@ -123,6 +123,8 @@ class ToolExecutor:
                 timeout = 180  # 3 minutes (can auto-ingest, which needs time for embeddings)
             elif tool_name == "generate_image":
                 timeout = 300  # 5 minutes for AI image generation (especially with grounding)
+            elif tool_name == "generate_music":
+                timeout = 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
             elif tool_name == "weather":
                 timeout = 30  # Weather API can be slow with proxy fallback
             else:

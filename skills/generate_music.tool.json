@@ -1,0 +1,80 @@
+{
+  "enabled": true,
+  "name": "generate_music",
+  "description": "🎵 Generate AI music with ElevenLabs. Create songs, instrumentals, jingles, soundtracks. Use when user says 'make music', 'create a song', 'compose', 'generate a beat', 'make a jingle'. Supports genres (pop, rock, jazz, electronic, ambient, cinematic), moods (happy, sad, energetic, calm), and tempos. Can create instrumental or vocal tracks. Output saves to stash for playback in web UI. Duration 3 seconds to 10 minutes.",
+  "script": "generate_music.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "Describe the music: mood, instruments, style. Example: 'An upbeat summer pop song with catchy guitar riffs and positive lyrics about adventure'"
+      },
+      "title": {
+        "type": "string",
+        "description": "Song title for saving and display. Defaults to first 50 chars of prompt."
+      },
+      "duration_seconds": {
+        "type": "integer",
+        "description": "Length in seconds: 3-600 (10 min max). Default 60. Short jingles: 10-30s, full songs: 120-240s."
+      },
+      "genre": {
+        "type": "string",
+        "enum": ["pop", "rock", "jazz", "classical", "electronic", "ambient", "hip-hop", "country", "r&b", "folk", "metal", "lo-fi", "cinematic", "jingle"],
+        "description": "Music genre. Enhances prompt with genre-specific production hints."
+      },
+      "mood": {
+        "type": "string",
+        "description": "Emotional tone: happy, sad, energetic, calm, mysterious, epic, romantic, dark, hopeful, nostalgic"
+      },
+      "instrumental": {
+        "type": "boolean",
+        "description": "If true, generates instrumental music with no vocals. Default false."
+      },
+      "tempo": {
+        "type": "string",
+        "description": "Speed: 'slow', 'medium', 'fast', or specific BPM like '120 BPM'"
+      },
+      "output_format": {
+        "type": "string",
+        "enum": ["mp3_low", "mp3_medium", "mp3_high", "opus_low", "opus_medium", "opus_high"],
+        "description": "Audio quality: mp3_low (fast), mp3_medium (default), mp3_high (best). Opus formats for smaller files."
+      },
+      "composition_plan": {
+        "type": "object",
+        "description": "Advanced: Detailed composition with sections. Has 'global_styles' array and 'sections' array. Each section: {section_name, duration_seconds, styles[], lyrics[]}. Use for songs with specific structure/lyrics.",
+        "properties": {
+          "global_styles": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Overall song style directions"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section_name": {"type": "string", "description": "intro, verse, chorus, bridge, outro"},
+                "duration_seconds": {"type": "integer", "description": "Section length 3-120 seconds"},
+                "styles": {"type": "array", "items": {"type": "string"}, "description": "Style hints for this section"},
+                "lyrics": {"type": "array", "items": {"type": "string"}, "description": "Lyric lines (max 200 chars each)"}
+              }
+            }
+          }
+        }
+      },
+      "save": {
+        "type": "boolean",
+        "description": "Save to stash for web UI playback (default: true)"
+      }
+    },
+    "required": ["prompt"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
