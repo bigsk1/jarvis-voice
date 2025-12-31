@@ -539,18 +539,20 @@ class ChatHandler:
                 print(f"[CHAT] Command excludes tools: {cmd_exclude}")
             
             # Build enhanced message with command/prompt instructions
-            # IMPORTANT: Instructions go AFTER the user's task so LLM processes the task first
+            # Context/guidelines go FIRST, then the user's specific task
             enhanced_message = message
             system_instruction = command_meta.get('system_instruction')
             force_tool = command_meta.get('force_tool')
             
-            # Append instruction AFTER the task (not before)
+            # Put context BEFORE the task (natural reading order)
             if system_instruction or force_tool:
-                parts = [message]  # User's actual task comes FIRST
+                parts = []
                 
                 if system_instruction:
-                    print(f"[CHAT] Appending system instruction ({len(system_instruction)} chars)")
-                    parts.append(f"\n\n[AFTER completing the above task: {system_instruction}]")
+                    print(f"[CHAT] Prepending system instruction ({len(system_instruction)} chars)")
+                    parts.append(f"[CONTEXT - Use these guidelines for the request below]\n\n{system_instruction}\n\n[END CONTEXT]")
+                
+                parts.append(f"\n\nUser's request: {message}")
                 
                 if force_tool:
                     print(f"[CHAT] Appending tool hint: {force_tool}")

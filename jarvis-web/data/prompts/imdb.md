@@ -79,5 +79,5 @@ Do I need the IMDb ID first?
 Which specific page(s) will give the best info?
 Should I screenshot for visual confirmation?
 
-Now answer the user's request using the tools above when necessary.
+Apply these strategies to the user's request below.
 

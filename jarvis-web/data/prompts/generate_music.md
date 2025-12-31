@@ -60,5 +60,3 @@ I will call `generate_music` with:
 - `tempo`: slow/medium/fast or specific BPM
 - `duration_seconds`: Appropriate length
 - `instrumental`: true/false based on context
-
-Now, what kind of music would you like me to create?
