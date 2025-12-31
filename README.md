@@ -9,12 +9,25 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (December 2025)
 
 **Production Ready** ✅
-- **Memory Browser UI** - Web interface for memory management ⭐ NEW
+- **Deep Memory Search** - Comprehensive multi-source search across ALL data ⭐ NEW
+  - Searches: memory, conversations, web conversations, intel files, canvas, stash
+  - Uses ripgrep for blazing-fast file content searches
+  - Unified, deduplicated results with source labels
+  - "Find everything about X" in one tool call
+- **ElevenLabs Music Generation** - AI music creation with stash integration ⭐ NEW
+  - "Create an epic intro for my podcast" → generates and saves music
+  - Supports genres, moods, tempo, instrumental mode, 30-300s duration
+  - Auto-saves to stash + memory for cross-session recall
+  - Web UI playback with inline audio player
+- **Audio Playback Controls** - Enhanced TTS controls in Web UI ⭐ NEW
+  - Speaker button with pause/resume/stop, progress animation
+  - 10-second visibility after playback, auto-hides on new message
+- **Memory Browser UI** - Web interface for memory management
   - View/search/edit memories, intel files, conversations
   - FTS5 search, dual database, re-embed after edits
   - Mobile responsive with hamburger menu
   - Launch: `./bin/jarvis-memory` (localhost:5002)
-- **AI Image Generation** - Google Gemini 3 Pro with Search Grounding ⭐ NEW
+- **AI Image Generation** - Google Gemini 3 Pro with Search Grounding
   - "Generate a bitcoin infographic" → creates image with real-time price data
   - Supports aspect ratios, styles, negative prompts
   - Auto-saves to stash + memory for cross-session recall
@@ -38,7 +51,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 46+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, phone calls, spotify, reminders, canvas, etc.)
+- 48+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -172,12 +185,15 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ![jarvis-web](docs/images/jarvis-web.png)
 
 ### Web Interface ⭐ ENHANCED
-- **Jarvis Web UI v1.9** - Full-featured chat interface at localhost:5001
+- **Jarvis Web UI v2.0** - Full-featured chat interface at localhost:5001
   - Real-time WebSocket communication with tool streaming
   - Mode switching (cloud/local) with per-mode settings
-  - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!) ⭐ NEW
+  - **Audio playback controls**: Speaker button with pause/resume/stop ⭐ NEW
+  - **Music generation**: ElevenLabs music plays inline in chat ⭐ NEW
+  - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
   - **Slash commands**: `/canvas`, `/search`, `/detailed` - modify behavior
-  - **@prompts**: `@research`, `@quick`, `@compare` - inject methodologies
+  - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily` ⭐ NEW
+  - **Context-first injection**: Prompts inject BEFORE user message for better LLM context ⭐ NEW
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export
   - **Image upload**: Drag-drop/paste/click with vision analysis
@@ -566,6 +582,8 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 - `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute
 - `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
+- `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration ⭐ NEW
+- `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash ⭐ NEW
 
 **Artifact & Output Tools:** ⭐ ENHANCED
 - `generate_image` - **AI image generation**: Google Gemini 3 Pro with Search Grounding
@@ -1082,7 +1100,25 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
-- ✅ **Intelligence Dashboard** - Visual dashboard for self-learning ⭐ NEW
+- ✅ **Deep Memory Search** - Multi-source search across all Jarvis data repositories ⭐ NEW
+  - Searches memory, conversations, web conversations, intel files, canvas pages, stash artifacts
+  - Uses ripgrep for blazing-fast file content searches with JSON output
+  - Unified results with source labels, deduplication, date filtering
+  - "Find everything I know about Python" → searches everywhere at once
+- ✅ **ElevenLabs Music Generation** - AI music creation ⭐ NEW
+  - Genre, mood, tempo, instrumental mode, 30-300 second duration
+  - Auto-saves to stash + memory for recall
+  - Web UI inline audio playback
+- ✅ **Audio Playback Controls** - Enhanced TTS in Web UI ⭐ NEW
+  - Speaker button with pause/resume (click), stop (double-click)
+  - Progress animation, 10-second visibility after playback
+  - Auto-hides when typing new message
+- ✅ **New @prompts** - Context-first prompt injection ⭐ NEW
+  - `@generate_music` - ElevenLabs best practices for music prompts
+  - `@email` - Professional email composition with send_email format
+  - `@daily` - Daily briefing (time, weather, reminders, crypto)
+  - Prompts now inject BEFORE user message for better LLM context
+- ✅ **Intelligence Dashboard** - Visual dashboard for self-learning
   - Experience sorting (date, turns, tool count) & filtering (success/fail, tool count, specific tool)
   - Insight sorting (times applied, helpful, preferred/avoided tools, confidence, updated)
   - 5-tier confidence filtering: Elite (96%+), High (85-95%), Good (75-84%), Medium (50-74%), Low (0-49%)
@@ -1103,10 +1139,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Cross-UI navigation: 🧠 Memory and 📊 Intelligence links in all dashboard headers
   - Launch: `./bin/jarvis-memory` (localhost:5002)
 - ✅ **Canvas Mobile Responsive** - Hamburger menu and slide-out sidebar at ≤730px
-- ✅ **Jarvis Web UI v1.9** - Full-featured web interface ⭐ ENHANCED
-  - **Server Logs Panel**: Real-time LLM + Tool streaming at bottom of UI ⭐ NEW
-  - **Color-coded logs**: LLM (purple), Tools (green), with success/error status ⭐ NEW
-  - **Expandable details**: Click log entry to see full parsed JSON ⭐ NEW
+- ✅ **Jarvis Web UI v2.0** - Full-featured web interface ⭐ ENHANCED
+  - **Audio playback controls**: Speaker button with pause/resume/stop ⭐ NEW
+  - **Music playback**: ElevenLabs generated music plays inline ⭐ NEW
+  - **New @prompts**: `@generate_music`, `@email`, `@daily` with context-first injection ⭐ NEW
+  - **Server Logs Panel**: Real-time LLM + Tool streaming at bottom of UI
+  - **Color-coded logs**: LLM (purple), Tools (green), with success/error status
+  - **Expandable details**: Click log entry to see full parsed JSON
   - **Slash commands**: `/canvas`, `/search`, `/recall`, `/detailed` - modify behavior
   - **@prompts**: `@research`, `@quick`, `@compare` - inject methodologies
   - **✨ Enhance with AI**: Magic button transforms rough input into optimal prompts
@@ -1289,6 +1328,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.19 (December 2025)  
+**Current Version:** v2.20 (December 2025)  
 **Status:** Production Ready ✅  
-**Latest Features:** Intelligence Dashboard (sorting, 5-tier confidence, tool performance), Memory Browser UI
+**Latest Features:** Deep Memory Search, ElevenLabs Music Generation, Audio Playback Controls, New @prompts

@@ -130,10 +130,36 @@ Ideas:
 
 ## 🚀 Future / Nice to Have
 
-### 4) Remote VPS Ops (Tailscale + SSH + tmux)
+### 4) Stale Relationships / Contact Decay Detection
+**Priority:** Medium
+
+**Why:** Proactive relationship management - detect when contacts haven't been reached out to in a while.
+
+**Concept:** (From Digital Brain context engineering patterns)
+- Tiered thresholds based on relationship importance:
+  - `inner`: 14 days (close contacts)
+  - `active`: 30 days (regular contacts)
+  - `network`: 60 days (broader network)
+  - `dormant`: 180 days (potential reactivation)
+
+**Features:**
+- Returns contacts in 3 categories: `urgent` (way overdue), `due` (past threshold), `coming_up` (75% of threshold)
+- Integrates with existing contacts system (`config/contacts.json`)
+- Could trigger proactive suggestions: "You haven't contacted Andrew in 45 days"
+- Optional: Auto-generate email drafts or reminders
+
+**Implementation:**
+- New tool: `check_stale_relationships`
+- Add `last_contact` field to contacts.json
+- Track interactions via `send_email`, `phone_call` tools
+- Optional scheduled job for weekly relationship health report
+
+---
+
+### 5) Remote VPS Ops (Tailscale + SSH + tmux)
 **Priority:** High
 
-**Why:** A headless VPS becomes a “remote executor” for long-running jobs, deployments, and isolated workloads.
+**Why:** A headless VPS becomes a "remote executor" for long-running jobs, deployments, and isolated workloads.
 
 Design notes:
 - Prefer **Tailscale** networking (no public SSH ports required)
@@ -146,7 +172,7 @@ Potential tool: `remote_shell`
 - `upload_from_stash` / `download_to_stash` (safe artifact bridge)
 - `read_file` / `write_file` (guardrails + strict size limits)
 
-### 5) Profiles / Tool Packs (Not Multi-User)
+### 6) Profiles / Tool Packs (Not Multi-User)
 **Priority:** Medium
 
 Instead of multi-user identity, support **named profiles** that change:
@@ -155,7 +181,7 @@ Instead of multi-user identity, support **named profiles** that change:
 - safe-mode policies (disable dangerous tools)
 - preferred search mode (native search vs MCP)
 
-### 6) Smart Home Integration (Optional)
+### 7) Smart Home Integration (Optional)
 **Priority:** Low
 **Requires:** Home Assistant or similar
 
@@ -170,15 +196,15 @@ You: "Is the garage door open?"
 - `hass_state_check`
 - Device discovery
 
-### 7) Memory UX (Headless-Friendly)
+### 8) Memory UX (Headless-Friendly)
 **Priority:** Medium
 
 Ideas:
 - Memory browser/editor (simple local web UI)
 - Export/import tooling (backup + restore)
-- Clear “what was remembered and why” traceability
+- Clear "what was remembered and why" traceability
 
-### 8) Reliability: “Tool Doctor”
+### 9) Reliability: "Tool Doctor"
 **Priority:** Medium
 
 A single command that checks:

@@ -94,6 +94,7 @@
 | Document | Purpose |
 |----------|---------|
 | **MEMORY_SYSTEM.md** | Memory database architecture and tools |
+| **DEEP_MEMORY_SEARCH.md** | 🔍 **Deep search across ALL data sources** (memory, conversations, intel, canvas, stash) ⭐ NEW |
 | **USER_PROFILE_SYSTEM.md** | User profile management (intel + dynamic memories) ⭐ NEW |
 | **SEARCH_FALLBACK_SYSTEM.md** | Multi-tier search fallbacks (AND→OR→LIKE) |
 | **FTS5_SEARCH_SYSTEM.md** | FTS5 full-text search with BM25 ranking |

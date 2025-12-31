@@ -57,7 +57,8 @@ apt install -y \
     libsndfile1 \
     sqlite3 \
     cups \
-    sqlite3-dev
+    sqlite3-dev \
+    ripgrep
 
 echo ""
 echo "======================================"

@@ -537,6 +537,8 @@ class CommandRunner(App):
                 session_name = "jarvis-canvas"  # Canvas viewer
             elif "jarvis-memory" in cmd.command:
                 session_name = "jarvis-memory"  # Memory Browser UI
+            elif "jarvis-intelligence" in cmd.command:
+                session_name = "jarvis-intelligence"  # Intelligence Dashboard
             else:
                 session_name = window_name  # Use window name as session name
             

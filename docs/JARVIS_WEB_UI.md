@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v1.9)  
-> **Last Updated**: December 19, 2025
+> **Status**: MVP Complete (v2.0)  
+> **Last Updated**: December 31, 2025
 
 ---
 
@@ -61,8 +61,9 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | TTS playback | ✅ | Toggle audio, plays responses in browser |
 | Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro (via TTS_URL) |
 | Status TTS | ✅ | Status updates play as TTS when audio enabled |
-| **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send ⭐ NEW |
-| **Mode-aware STT** | ✅ | Cloud=OpenAI Whisper, Local=faster-whisper ⭐ NEW |
+| **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send |
+| **Mode-aware STT** | ✅ | Cloud=OpenAI Whisper, Local=faster-whisper |
+| **Audio playback controls** | ✅ | Speaker button with pause/resume/stop, progress animation ⭐ NEW |
 | Wake word | ⏳ | Planned - browser-based VAD |
 
 ### Phase 4: Advanced - COMPLETE ✅
@@ -457,6 +458,47 @@ def text_to_speech():
         return call_cloud_tts(text)
 ```
 
+### Audio Playback Controls (NEW)
+
+A speaker button appears in the input bar when audio is playing, providing visual feedback and playback control:
+
+**Visual Design:**
+- Positioned on the **far left** of the input bar (prevents accidental clicks)
+- Subtle **teal color scheme** (not bright green) that integrates with the glow intensity system
+- Animated pulse effect during playback
+
+**User Interactions:**
+
+| Action | Result |
+|--------|--------|
+| **Single click** (while playing) | Pause audio |
+| **Single click** (while paused) | Resume audio |
+| **Double-click** | Stop audio completely and hide button |
+| **Type new message** | Stops audio and hides button (ready for new response) |
+
+**Button States:**
+
+| State | Icon | Visual |
+|-------|------|--------|
+| **Playing** | 🔊 | Teal background with pulse animation |
+| **Paused** | ⏸️ | Teal outline, no animation |
+| **Hidden** | - | Button not visible |
+
+**Behavior:**
+- Button **appears** when TTS audio starts playing
+- Button **stays visible** for **10 seconds** after audio finishes
+- Button **immediately hides** if user types a new message
+- Integrates with existing audio toggle (🔊 in header enables/disables TTS)
+
+**CSS Classes:**
+```css
+.speaker-btn           /* Base button */
+.speaker-btn.playing   /* Active playback state */
+.speaker-btn.paused    /* Paused state */
+```
+
+---
+
 ### STT (Push-to-Talk) - Mode-Aware
 
 STT provider is determined by the current mode's `.env` file:
@@ -540,6 +582,38 @@ Action keywords: "create", "save", "canvas", "generate", "similar", "search"
   - `metadata` (stash_ref, file_id, tags, vision_analysis snippet)
 - This enables cross-tool workflows: "Email the image I uploaded earlier"
 - Stash has 7-day TTL, but memory entry persists for recall
+
+---
+
+### generate_music Tool (NEW)
+
+ElevenLabs music generation integrated into Jarvis with automatic stash storage and web UI playback:
+
+**How It Works:**
+1. User requests music generation (e.g., "Create an epic intro for my podcast")
+2. Tool calls ElevenLabs Music API with prompt, genre, mood, tempo, duration
+3. Generated audio saved to `data/generated_music/`
+4. Stash reference created for artifact management
+5. Memory entry saved for future recall
+6. Web UI renders inline audio player
+
+**Parameters:**
+- `prompt` (required): Music description/concept
+- `genre` (optional): Electronic, Cinematic, Rock, Jazz, Classical, Hip-Hop, etc.
+- `mood` (optional): Epic, Mysterious, Uplifting, Dark, Energetic, Calm, etc.
+- `tempo` (optional): Slow, Medium, Fast, or BPM number
+- `instrumental` (optional): Whether vocals should be excluded (default: true)
+- `duration_seconds` (optional): 30-300 seconds (default: 60)
+
+**Web UI Integration:**
+- Audio player renders in tool result card
+- Uses `/api/music/<filename>` or `/api/stash/<space>/<file>` endpoints
+- Supports both direct file paths and stash references
+
+**@generate_music Prompt:**
+A dedicated prompt (`jarvis-web/data/prompts/generate_music.md`) provides best practices for music prompts based on ElevenLabs guidelines.
+
+**Timeout:** Extended to 10 minutes (600s) for longer generations.
 
 ---
 
@@ -743,6 +817,18 @@ Type `@` in the chat input to see available prompts. Prompts inject methodology/
 | `@explain` | ELI5-style explanations |
 | `@step_by_step` | Step-by-step instruction format |
 | `@debug` | Debugging methodology |
+| `@generate_music` | ElevenLabs music generation best practices ⭐ NEW |
+| `@email` | Professional email composition with send_email tool format ⭐ NEW |
+| `@daily` | Daily briefing (time, weather, reminders, crypto prices) ⭐ NEW |
+
+**Context-First Injection (v2.0):**
+Prompts are injected **BEFORE** the user's message to provide context first:
+```
+[System instruction from @prompt]
+---
+[User's actual message/task]
+```
+This ensures the LLM understands the methodology before seeing the task.
 
 **Combining Commands + Prompts:**
 ```
@@ -949,7 +1035,7 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 - [ ] Light theme option
 - [ ] Keyboard shortcuts (Ctrl+Enter send, etc.)
 
-### ✅ Recently Completed (v1.9)
+### ✅ Recently Completed (v2.0)
 - [x] MCP tool discovery (reads from memory_db)
 - [x] Settings UI for blocked tools
 - [x] Dynamic LLM provider/model switching
@@ -967,6 +1053,13 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 - [x] Browser notifications - Notifications API integration
 - [x] Notification panel - View/acknowledge alerts & reminders
 - [x] Local audio fix - Now serves from audio/local/tts too
+- [x] **Audio playback controls** - Speaker button with pause/resume/stop ⭐ NEW
+- [x] **Progress animation** - Visual pulse during playback ⭐ NEW
+- [x] **Smart auto-hide** - 10s after audio ends, instant on new message ⭐ NEW
+- [x] **ElevenLabs music generation** - `generate_music` tool with stash integration ⭐ NEW
+- [x] **Music playback in web UI** - Generated music plays inline ⭐ NEW
+- [x] **@prompts system** - Context-first injection for LLM guidance ⭐ NEW
+- [x] **deep_memory_search tool** - Multi-source search across all data ⭐ NEW
 - [x] **Image upload** - Drag-drop/paste/click, auto-resize to 1024px
 - [x] **Mode-aware vision** - Cloud=Grok/Claude, Local=llava
 - [x] **Expand details button** - Show full LLM response, tool results
@@ -1250,4 +1343,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*  
 *v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*  
 *v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*  
-*v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*
+*v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*  
+*v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*
