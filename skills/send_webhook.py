@@ -16,11 +16,12 @@ import os
 import json
 import time
 import hashlib
+import re
 import requests
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
+from config_loader import load_config, get_config_value
 
 # Rate limit storage
 RATE_LIMIT_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', '.webhook_rate_limit')
@@ -36,6 +37,50 @@ def load_webhook_registry() -> dict:
             return data.get('webhooks', {})
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+
+def substitute_env_vars(value: str) -> str:
+    """
+    Substitute environment variables in a string.
+    Supports ${VAR_NAME} syntax, looks in config first, then os.environ.
+    """
+    pattern = r'\$\{([^}]+)\}'
+    
+    def replacer(match):
+        var_name = match.group(1)
+        # Try config_loader first (handles cloud.env/local.env)
+        config_val = get_config_value(var_name)
+        if config_val:
+            return config_val
+        # Fall back to os.environ
+        return os.environ.get(var_name, match.group(0))
+    
+    return re.sub(pattern, replacer, value)
+
+
+def process_headers(webhook_config: dict, request_headers: dict) -> dict:
+    """
+    Merge headers from webhook config with request headers.
+    Request headers take precedence. Env vars are substituted.
+    """
+    # Start with registry headers
+    merged = {}
+    registry_headers = webhook_config.get('headers', {})
+    
+    for key, value in registry_headers.items():
+        if isinstance(value, str):
+            merged[key] = substitute_env_vars(value)
+        else:
+            merged[key] = value
+    
+    # Override with request headers (they take precedence)
+    for key, value in request_headers.items():
+        if isinstance(value, str):
+            merged[key] = substitute_env_vars(value)
+        else:
+            merged[key] = value
+    
+    return merged
 
 
 def get_webhook_url(webhook_name: str, url: str, webhooks: dict) -> tuple[str, dict]:
@@ -156,16 +201,19 @@ def main():
         return_error(f"Missing required fields for this webhook: {', '.join(missing)}")
         return 1
     
+    # Merge headers from registry with request headers (with env var substitution)
+    merged_headers = process_headers(webhook_config, headers)
+    
     # Ensure Content-Type is set
-    if "Content-Type" not in headers:
-        headers["Content-Type"] = "application/json"
+    if "Content-Type" not in merged_headers:
+        merged_headers["Content-Type"] = "application/json"
     
     # Send webhook
     try:
         response = requests.post(
             resolved_url,
             json=data,
-            headers=headers,
+            headers=merged_headers,
             timeout=15
         )
         
