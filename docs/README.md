@@ -28,6 +28,11 @@
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools
 
+### Remote & Infrastructure ⭐ NEW
+- **[ssh/README.md](ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)
+- **[docker-tool/README.md](docker-tool/README.md)** - 🐳 **Docker Control** (containers, compose, images, networks, volumes, exec, prune)
+- **[DEEP_MEMORY_SEARCH.md](DEEP_MEMORY_SEARCH.md)** - 🔍 **Deep Memory Search** (unified search across all data sources)
+
 ### Monitoring & Observability ⭐ ENHANCED
 - **[../monitoring/README.md](../monitoring/README.md)** - Grafana + Prometheus + Loki stack
 - **[../jarvis-intelligence/README.md](../jarvis-intelligence/README.md)** - 📊 **Intelligence Dashboard** ⭐ ENHANCED
@@ -677,6 +682,17 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Camera bridge integration** - Ubiquiti Protect webhook middleware (Dockerized)
 - ✅ **Fuzzy reminder cancellation** - Cancel reminders by partial title match with safety checks
 
+**2026-01-06:**
+- ✅ **SSH Remote Tool** - Execute commands on remote hosts via SSH with secure credential management
+- ✅ **Docker Control Tool** - Manage containers, compose stacks, images, networks, volumes, exec, prune
+- ✅ **@ssh prompt** - Web UI prompt for guided remote operations
+
+**2025-12-31:**
+- ✅ **Deep Memory Search** - Unified multi-source search (memory, conversations, intel, canvas, stash)
+- ✅ **ElevenLabs Music Generation** - AI music creation with stash integration and web playback
+- ✅ **Audio Playback Controls** - Enhanced TTS controls with pause/resume/stop
+- ✅ **Prompt System Enhancements** - Context-first injection, new prompts (email, daily, music)
+
 **2025-11-18:**
 - ✅ **Natural language time parsing** - Word numbers ("one hour") and special times ("noon", "midnight")
 - ✅ **Enhanced tool descriptions** - Better LLM routing with explicit use cases
@@ -695,6 +711,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2025-12-21 (v2.19)  
-**Latest:** Intelligence Dashboard (sorting, 5-tier confidence, tool performance), Memory Browser UI  
+**Last Updated:** 2026-01-06 (v2.20)  
+**Latest:** SSH Remote Tool, Docker Control Tool, Deep Memory Search, Music Generation  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

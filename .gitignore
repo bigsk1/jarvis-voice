@@ -10,6 +10,7 @@ config/*.env
 config/contacts.json
 config/webhook_registry.json
 config/elevenlabs_voices.json
+config/ssh.json
 
 # ===== Stash (task artifacts) =====
 # Keep directory structure, ignore space contents

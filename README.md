@@ -6,9 +6,19 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ---
 
-## 🎯 Current Status (December 2025)
+## 🎯 Current Status (January 2026)
 
 **Production Ready** ✅
+- **SSH Remote Tool** - Execute commands on remote hosts via SSH ⭐ NEW
+  - Secure credential management (keys in filesystem, passwords in .env)
+  - Multi-command execution, apt management, sudo support
+  - Stateless sessions - no orphaned connections
+  - See [`docs/ssh/README.md`](docs/ssh/README.md)
+- **Docker Control Tool** - Manage Docker containers and compose stacks ⭐ NEW
+  - Container lifecycle: list, start, stop, restart, logs, inspect, stats
+  - Compose: up, down, restart, pull, build with force-recreate, remove-orphans
+  - Images, networks, volumes, exec, system prune
+  - See [`docs/docker-tool/README.md`](docs/docker-tool/README.md)
 - **Deep Memory Search** - Comprehensive multi-source search across ALL data ⭐ NEW
   - Searches: memory, conversations, web conversations, intel files, canvas, stash
   - Uses ripgrep for blazing-fast file content searches
@@ -51,7 +61,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 48+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, etc.)
+- 53+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, ssh_remote, docker_control, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)

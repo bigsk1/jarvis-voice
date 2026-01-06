@@ -1,0 +1,60 @@
+{
+  "enabled": true,
+  "name": "ssh_remote",
+  "description": "Execute commands on remote hosts via SSH. Hosts configured in config/ssh.json. Actions: 'list_hosts' (show configured hosts), 'test' (test connectivity), 'run' (execute command), 'apt_update' (update packages), 'multi' (run multiple commands). Examples: 'ssh into vps2 and check disk space', 'update apt packages on vps2', 'run docker ps on vps2', 'test ssh connection to vps2'.",
+  "script": "ssh_remote.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["list_hosts", "test", "run", "apt_update", "multi"],
+        "description": "Action: 'list_hosts' (show hosts), 'test' (test connection), 'run' (execute command), 'apt_update' (apt update/upgrade), 'multi' (multiple commands)"
+      },
+      "host": {
+        "type": "string",
+        "description": "Host alias from config/ssh.json (e.g., 'vps2'). Required for test, run, apt_update, multi."
+      },
+      "command": {
+        "type": "string",
+        "description": "Command to execute on remote host (for 'run' action)"
+      },
+      "commands": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "List of commands to execute in sequence (for 'multi' action)"
+      },
+      "sudo": {
+        "type": "boolean",
+        "description": "Run command(s) with sudo (password from env var configured in ssh.json)",
+        "default": false
+      },
+      "upgrade": {
+        "type": "boolean",
+        "description": "For apt_update: also run apt upgrade -y (default: true)",
+        "default": true
+      },
+      "stop_on_error": {
+        "type": "boolean",
+        "description": "For multi: stop if a command fails (default: true)",
+        "default": true
+      },
+      "output_limit": {
+        "type": "integer",
+        "description": "Max output lines to return (default: 150 from config)"
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": true,
+    "bash": true,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": false
+  },
+  "test_input": {
+    "action": "list_hosts"
+  },
+  "expected_output_contains": ["ok", "hosts"]
+}

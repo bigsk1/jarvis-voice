@@ -1,0 +1,26 @@
+{
+  "_comment": "SSH host configuration for ssh_remote tool. Copy to ssh.json and customize.",
+  "hosts": {
+    "example_host": {
+      "host": "192.168.1.100",
+      "user": "username",
+      "port": 22,
+      "key_path": "~/.ssh/id_rsa",
+      "sudo_env": "EXAMPLE_HOST_SUDO_PASS",
+      "description": "Example server"
+    },
+    "vps_template": {
+      "host": "your.vps.ip.address",
+      "user": "root",
+      "port": 22,
+      "key_path": "~/.ssh/vps/id_rsa",
+      "sudo_env": "VPS_SUDO_PASS",
+      "description": "VPS server template"
+    }
+  },
+  "defaults": {
+    "output_limit": 150,
+    "timeout": 60,
+    "connect_timeout": 10
+  }
+}
