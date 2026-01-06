@@ -350,7 +350,7 @@ from memory_db import MemoryDB
 if stash_ref and space:
     db = MemoryDB()
     db.remember(
-        key=f"your_tool_{space.space_id}",
+        key=f"your_tool_{{space.space_id}}",
         value=f"Description of artifact. STASH: {{stash_ref}}. FILE: {{filename}}",
         category="stash_artifact",  # IMPORTANT: use this category!
         importance=6,  # Higher for stash items
@@ -408,9 +408,9 @@ def main():
         # IMPORTANT: Also save to memory for follow-up queries:
         # if success and stash_ref:
         #     db = MemoryDB()
-        #     db.remember(key=f"tool_{space.space_id}", value=f"Desc. STASH: {stash_ref}",
-        #                 category="stash_artifact", importance=6, source="your_tool",
-        #                 metadata={"stash_ref": stash_ref, "type": "artifact_type"})
+#     db.remember(key=f"tool_{{space.space_id}}", value=f"Desc. STASH: {{stash_ref}}",
+#                 category="stash_artifact", importance=6, source="your_tool",
+#                 metadata={{"stash_ref": stash_ref, "type": "artifact_type"}})
         
         print(json.dumps({{
             "ok": True,

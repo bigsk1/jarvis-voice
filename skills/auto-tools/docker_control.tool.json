@@ -1,0 +1,146 @@
+{
+  "enabled": true,
+  "name": "docker_control",
+  "description": "Manage Docker containers and compose stacks with safe, structured commands. Actions: 'list' (containers), 'start'/'stop'/'restart' (container), 'pull' (image), 'logs' (view logs), 'inspect' (health/status), 'stats' (resources), 'compose' (up/down/restart/pull/build/ps/logs), 'images' (list images), 'networks' (list networks), 'volumes' (list volumes), 'exec' (run command in container), 'prune' (cleanup). Use for: 'show docker containers', 'restart nginx', 'pull latest postgres', 'docker compose up', 'show logs for redis', 'is mysql healthy', 'prune docker system'.",
+  "script": "docker_control.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "start",
+          "stop",
+          "restart",
+          "pull",
+          "logs",
+          "inspect",
+          "stats",
+          "compose",
+          "images",
+          "networks",
+          "volumes",
+          "exec",
+          "prune"
+        ],
+        "description": "Action to perform on Docker"
+      },
+      "container": {
+        "type": "string",
+        "description": "Container name or ID (for start/stop/restart/logs/inspect/stats/exec)"
+      },
+      "image": {
+        "type": "string",
+        "description": "Docker image name with tag (for pull, e.g., 'nginx:latest')"
+      },
+      "lines": {
+        "type": "integer",
+        "description": "Number of log lines (default: 50)",
+        "default": 50
+      },
+      "since": {
+        "type": "string",
+        "description": "Show logs since timestamp or relative (e.g., '10m', '2h', '2024-01-01')"
+      },
+      "all": {
+        "type": "boolean",
+        "description": "Include stopped containers/all images (default: false)",
+        "default": false
+      },
+      "full": {
+        "type": "boolean",
+        "description": "Full inspect output (default: false, shows summary)",
+        "default": false
+      },
+      "compose_action": {
+        "type": "string",
+        "enum": [
+          "up",
+          "down",
+          "restart",
+          "pull",
+          "ps",
+          "logs",
+          "build",
+          "stop",
+          "start",
+          "config"
+        ],
+        "description": "Docker Compose sub-action (required when action='compose')"
+      },
+      "compose_file": {
+        "type": "string",
+        "description": "Path to docker-compose.yml (optional)"
+      },
+      "service": {
+        "type": "string",
+        "description": "Specific service in compose stack (optional)"
+      },
+      "force_recreate": {
+        "type": "boolean",
+        "description": "Force recreate containers on compose up (--force-recreate)",
+        "default": false
+      },
+      "build": {
+        "type": "boolean",
+        "description": "Build images before starting (--build for compose up)",
+        "default": false
+      },
+      "remove_orphans": {
+        "type": "boolean",
+        "description": "Remove orphan containers (--remove-orphans)",
+        "default": false
+      },
+      "command": {
+        "type": "string",
+        "description": "Command to execute in container (for exec action)"
+      },
+      "workdir": {
+        "type": "string",
+        "description": "Working directory for exec command"
+      },
+      "user": {
+        "type": "string",
+        "description": "User for exec command (e.g., 'root', '1000:1000')"
+      },
+      "prune_type": {
+        "type": "string",
+        "enum": ["containers", "images", "volumes", "networks", "all", "system"],
+        "description": "What to prune (default: 'all')",
+        "default": "all"
+      },
+      "force": {
+        "type": "boolean",
+        "description": "Force prune without confirmation (default: true)",
+        "default": true
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "Timeout in seconds for stop command (default: 10)",
+        "default": 10
+      }
+    },
+    "required": [
+      "action"
+    ]
+  },
+  "permissions": {
+    "dangerous": true,
+    "bash": true,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": false
+  },
+  "test_input": {
+    "action": "list"
+  },
+  "expected_output_contains": [
+    "ok",
+    "containers",
+    "count"
+  ],
+  "auto_generated": true,
+  "created_at": "2026-01-06T02:46:38.822975",
+  "feedback_ids": []
+}
