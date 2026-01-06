@@ -51,16 +51,22 @@ echo ""
 echo "📝 Checking configuration..."
 
 if [ ! -f "config/cloud.env" ]; then
-  echo "⚠️  Cloud config not found. Copying template..."
-  cp config/config.env.template config/cloud.env
-  echo "   → Please edit config/cloud.env with your OpenAI API key"
+  echo "⚠️  Cloud config not found. Copy from example:"
+  echo "   cp config/cloud.env.example config/cloud.env"
+  echo "   chmod 600 config/cloud.env"
 fi
 
 if [ ! -f "config/local.env" ]; then
-  echo "⚠️  Local config not found. Copying template..."
-  cp config/config.env.template config/local.env
-  echo "   → Please edit config/local.env with your Ollama/Kokoro endpoints"
+  echo "⚠️  Local config not found. Copy from example:"
+  echo "   cp config/local.env.example config/local.env"
+  echo "   chmod 600 config/local.env"
 fi
+
+# Secure permissions on config files (git doesn't preserve these)
+echo ""
+echo "🔐 Securing config file permissions..."
+chmod 600 config/*.env config/*.json 2>/dev/null || true
+echo "✅ Config files secured (600)"
 
 # Create audio directories
 echo ""
@@ -112,8 +118,9 @@ echo ""
 echo "Next steps:"
 echo ""
 echo "1. Edit config files:"
-echo "   • config/cloud.env (Anthropic API key)"
-echo "   • config/local.env (Ollama/Kokoro endpoints)"
+echo "   • config/cloud.env (API keys, LLM provider)"
+echo "   • config/local.env (Ollama endpoints)"
+echo "   • config/ssh.json (SSH hosts for remote execution)"
 echo ""
 echo "2. Activate your Python virtual environment:"
 echo "   source ~/jarvis-venv/bin/activate"

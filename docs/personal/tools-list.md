@@ -1,12 +1,12 @@
 # Jarvis Tools & MCP Servers Inventory
 
-> Last updated: December 31, 2025
+> Last updated: January 6, 2026
 
 ---
 
 ## 📦 Native Tools (skills/)
 
-### ✅ Enabled (38)
+### ✅ Enabled (40)
 
 | Tool | Description |
 |------|-------------|
@@ -22,6 +22,7 @@
 | `create_reminder` | Create time-based reminders |
 | `crypto_price` | Get cryptocurrency prices |
 | `deep_memory_search` | Comprehensive search across all data sources |
+| `docker_control` | Docker containers, compose, images, networks, exec, prune |
 | `execute_bash` | Execute bash commands |
 | `forget` | Remove memories |
 | `generate_image` | AI image generation |
@@ -47,6 +48,7 @@
 | `send_webhook` | Send webhooks |
 | `speaker_volume` | Control speaker volume |
 | `spotify` | Spotify playback control |
+| `ssh_remote` | Execute commands on remote hosts via SSH |
 | `stash` | Temporary artifact storage |
 | `update_memory` | Update existing memories |
 | `weather` | Get weather information |
@@ -115,8 +117,8 @@
 
 ## 📊 Stats
 
-- **Total Native Tools**: 39
-  - Enabled: 38
+- **Total Native Tools**: 41
+  - Enabled: 40
   - Disabled: 1
 - **Total MCP Servers (Jarvis)**: 4
   - Enabled: 2
