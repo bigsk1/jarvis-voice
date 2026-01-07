@@ -1,12 +1,12 @@
 # Jarvis Tools & MCP Servers Inventory
 
-> Last updated: January 6, 2026
+> Last updated: January 7, 2026
 
 ---
 
 ## 📦 Native Tools (skills/)
 
-### ✅ Enabled (40)
+### ✅ Enabled (43)
 
 | Tool | Description |
 |------|-------------|
@@ -22,7 +22,6 @@
 | `create_reminder` | Create time-based reminders |
 | `crypto_price` | Get cryptocurrency prices |
 | `deep_memory_search` | Comprehensive search across all data sources |
-| `docker_control` | Docker containers, compose, images, networks, exec, prune |
 | `execute_bash` | Execute bash commands |
 | `forget` | Remove memories |
 | `generate_image` | AI image generation |
@@ -52,6 +51,18 @@
 | `stash` | Temporary artifact storage |
 | `update_memory` | Update existing memories |
 | `weather` | Get weather information |
+
+### 🤖 Auto-Tools (skills/auto-tools/)
+
+*Tools created by Tool Builder or for specialized operations*
+
+| Tool | Description |
+|------|-------------|
+| `docker_control` | Docker containers, compose, images, networks, exec, prune |
+| `network_tools` | Ping, DNS lookup, port scanning, HTTP/HTTPS checks, traceroute |
+| `system_monitor` | CPU, memory, disk, processes, network stats |
+| `text_summarizer` | Text summarization, keyword extraction, word/char counts |
+| `youtube_transcript` | Download YouTube transcripts as .srt/.md files |
 
 ### ❌ Disabled (1)
 
@@ -117,8 +128,8 @@
 
 ## 📊 Stats
 
-- **Total Native Tools**: 41
-  - Enabled: 40
+- **Total Native Tools**: 44
+  - Enabled: 43 (38 core + 5 auto-tools)
   - Disabled: 1
 - **Total MCP Servers (Jarvis)**: 4
   - Enabled: 2
