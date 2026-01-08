@@ -6,7 +6,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ---
 
-## 🎯 Current Status (January 2026)
+## 🎯 Current Status (January 7, 2026)
 
 **Production Ready** ✅
 - **SSH Remote Tool** - Execute commands on remote hosts via SSH ⭐ NEW
@@ -565,7 +565,7 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 
 ## 🛠️ Tool System
 
-### Available Skills (46+)
+### Available Skills (48+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -592,8 +592,11 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 - `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute
 - `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
-- `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration ⭐ NEW
-- `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash ⭐ NEW
+- `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration
+- `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
+- `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences ⭐ NEW
+- `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune ⭐ NEW
+- `youtube_transcript` - **YouTube transcripts**: Download video transcripts as .srt/.md files
 
 **Artifact & Output Tools:** ⭐ ENHANCED
 - `generate_image` - **AI image generation**: Google Gemini 3 Pro with Search Grounding
@@ -1338,6 +1341,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.20 (December 2025)  
+**Current Version:** v2.21 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Deep Memory Search, ElevenLabs Music Generation, Audio Playback Controls, New @prompts
+**Latest Features:** SSH Remote Tool, Docker Control, Deep Memory Search, ElevenLabs Music Generation

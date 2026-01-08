@@ -283,6 +283,26 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-01-07:**
+- ✅ **SSH Remote Tool** - Execute commands on remote hosts via SSH ⭐ NEW
+  - Secure credential management (keys in filesystem, passwords in .env)
+  - Multi-command execution, apt management, sudo support
+  - Stateless sessions - no orphaned connections
+  - See: `docs/ssh/README.md`
+- ✅ **Docker Control Tool** - Comprehensive Docker management ⭐ NEW
+  - Container lifecycle: list, start, stop, restart, logs, inspect, stats
+  - Compose: up, down, restart, pull, build with force-recreate
+  - Images, networks, volumes, exec, system prune
+  - See: `docs/docker-tool/README.md`
+- ✅ **@ssh prompt** - Web UI prompt for guided remote operations
+- ✅ **YouTube Transcript Tool** - Download video transcripts as .srt/.md files
+
+**2025-12-31:**
+- ✅ **Deep Memory Search** - Unified multi-source search (memory, conversations, intel, canvas, stash)
+- ✅ **ElevenLabs Music Generation** - AI music creation with stash integration and web playback
+- ✅ **Audio Playback Controls** - Enhanced TTS controls with pause/resume/stop
+- ✅ **Prompt System Enhancements** - Context-first injection, new prompts (email, daily, music)
+
 **2025-12-21:**
 - ✅ **Intelligence Dashboard** - Visual dashboard for self-learning system ⭐ NEW
   - **Experience sorting**: Date, Turns (complexity), Tool Count
@@ -682,17 +702,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Camera bridge integration** - Ubiquiti Protect webhook middleware (Dockerized)
 - ✅ **Fuzzy reminder cancellation** - Cancel reminders by partial title match with safety checks
 
-**2026-01-06:**
-- ✅ **SSH Remote Tool** - Execute commands on remote hosts via SSH with secure credential management
-- ✅ **Docker Control Tool** - Manage containers, compose stacks, images, networks, volumes, exec, prune
-- ✅ **@ssh prompt** - Web UI prompt for guided remote operations
-
-**2025-12-31:**
-- ✅ **Deep Memory Search** - Unified multi-source search (memory, conversations, intel, canvas, stash)
-- ✅ **ElevenLabs Music Generation** - AI music creation with stash integration and web playback
-- ✅ **Audio Playback Controls** - Enhanced TTS controls with pause/resume/stop
-- ✅ **Prompt System Enhancements** - Context-first injection, new prompts (email, daily, music)
-
 **2025-11-18:**
 - ✅ **Natural language time parsing** - Word numbers ("one hour") and special times ("noon", "midnight")
 - ✅ **Enhanced tool descriptions** - Better LLM routing with explicit use cases
@@ -711,6 +720,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-06 (v2.20)  
-**Latest:** SSH Remote Tool, Docker Control Tool, Deep Memory Search, Music Generation  
+**Last Updated:** 2026-01-07 (v2.21)  
+**Latest:** SSH Remote Tool, Docker Control Tool, YouTube Transcripts, Deep Memory Search  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
