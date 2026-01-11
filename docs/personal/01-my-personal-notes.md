@@ -14,7 +14,7 @@ when using openai image1.5 need to seperate the usd cost in token count as it co
 
 basic auth or user/password for all web ui servers, web,memory,Intelligence. 
 
-jarvis to opencode, need to see if jarvis can follow and get all opencode user logs ( what a user would see in a tui) and jarvis can stream and keep track of progress, and stop opencode and correct if needed just like a user can do in TUI but using opencode api's. need to check current setup if it is just send openocde task, is waiting with no opencode responces? jarvis can send open session log tool to check progress, but cant stop opencode. Jarvis needs to be basiclly me work with opencode directly. 
+jarvis to opencode, need to see if jarvis can follow and get all opencode user logs ( what a user would see in a tui) and jarvis can stream and keep track of progress, and stop opencode and correct if needed just like a user can do in TUI but using opencode api's. need to check current setup if it is just send openocde task, is waiting with no opencode responces? jarvis can send open session log tool to check progress, but cant stop opencode. Jarvis needs to be basiclly me working with opencode directly. 
 
 E. Tool enable/disable in UI	🔧 Toggle tools on/off from Settings → Tools tab
 
@@ -26,6 +26,7 @@ youtube transcripts tool, i guess web ui is good for this, pasting youtube url, 
 
 imdb search tool, for interesting movies, tv shows, etc. i might like based on interets or a topic at the time, can narrow it down. 
 
+metadata_scrubber	Remove Exif/GPS data from images or PDF metadata for privacy.	"Clean the metadata from these photos before I upload them."
 
 
 ### Notes
