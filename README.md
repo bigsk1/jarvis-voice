@@ -9,27 +9,27 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (January 7, 2026)
 
 **Production Ready** ✅
-- **SSH Remote Tool** - Execute commands on remote hosts via SSH ⭐ NEW
+- **SSH Remote Tool** - Execute commands on remote hosts via SSH
   - Secure credential management (keys in filesystem, passwords in .env)
   - Multi-command execution, apt management, sudo support
   - Stateless sessions - no orphaned connections
   - See [`docs/ssh/README.md`](docs/ssh/README.md)
-- **Docker Control Tool** - Manage Docker containers and compose stacks ⭐ NEW
+- **Docker Control Tool** - Manage Docker containers and compose stacks
   - Container lifecycle: list, start, stop, restart, logs, inspect, stats
   - Compose: up, down, restart, pull, build with force-recreate, remove-orphans
   - Images, networks, volumes, exec, system prune
   - See [`docs/docker-tool/README.md`](docs/docker-tool/README.md)
-- **Deep Memory Search** - Comprehensive multi-source search across ALL data ⭐ NEW
+- **Deep Memory Search** - Comprehensive multi-source search across ALL data
   - Searches: memory, conversations, web conversations, intel files, canvas, stash
   - Uses ripgrep for blazing-fast file content searches
   - Unified, deduplicated results with source labels
   - "Find everything about X" in one tool call
-- **ElevenLabs Music Generation** - AI music creation with stash integration ⭐ NEW
+- **ElevenLabs Music Generation** - AI music creation with stash integration
   - "Create an epic intro for my podcast" → generates and saves music
   - Supports genres, moods, tempo, instrumental mode, 30-300s duration
   - Auto-saves to stash + memory for cross-session recall
   - Web UI playback with inline audio player
-- **Audio Playback Controls** - Enhanced TTS controls in Web UI ⭐ NEW
+- **Audio Playback Controls** - Enhanced TTS controls in Web UI
   - Speaker button with pause/resume/stop, progress animation
   - 10-second visibility after playback, auto-hides on new message
 - **Memory Browser UI** - Web interface for memory management
@@ -41,16 +41,16 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - "Generate a bitcoin infographic" → creates image with real-time price data
   - Supports aspect ratios, styles, negative prompts
   - Auto-saves to stash + memory for cross-session recall
-- **AI Phone Calls** - Outbound AI calls via Vapi.ai with personas and transcripts ⭐ NEW
-- **Native Web Search** - Built-in real-time search for xAI and Anthropic ⭐ NEW
+- **AI Phone Calls** - Outbound AI calls via Vapi.ai with personas and transcripts
+- **Native Web Search** - Built-in real-time search for xAI and Anthropic
   - `XAI_SEARCH=true`: Grok searches web + X posts internally (no tool calls!)
   - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations
   - Auto mode: Only searches when query needs real-time data
   - Eliminates endless search tool loops, cleaner context
-- **Stash System** - Artifact storage for multi-step workflows (URL downloads, SSRF protection) ⭐ NEW
-- **PDF Create** - Generate PDFs from stash files, images, or text ⭐ NEW
-- **Printer Tool** - Print from stash, files, or Canvas pages (CUPS integration) ⭐ NEW
-- **Speaker Volume** - Control system audio volume via voice ⭐ NEW
+- **Stash System** - Artifact storage for multi-step workflows (URL downloads, SSRF protection)
+- **PDF Create** - Generate PDFs from stash files, images, or text
+- **Printer Tool** - Print from stash, files, or Canvas pages (CUPS integration)
+- **Speaker Volume** - Control system audio volume via voice
 - **Network Tools** - Ping, DNS, port checks, HTTP/HTTPS status, traceroute
 - **System Monitor** - CPU, RAM, disk, processes, network I/O, uptime
 - **Text Summarizer** - Summarization, keywords, sentiment, word count
@@ -83,16 +83,16 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - **Positive constraints**: "Use mcp_fetch for server status checks"
   - **Negative constraints**: "Avoid search_memory for real-time data"
   - Generalizability filtering (only stores reusable insights)
-  - **Insight tracking**: times_applied, times_helpful, times_failed ⭐ NEW
-  - **Decay job**: Auto-prunes stale/failed insights ⭐ NEW
-  - **Anomaly detection**: Flags unusual experiences ⭐ NEW
-  - **Meta-cognition**: Analyzes learning health ⭐ NEW
+  - **Insight tracking**: times_applied, times_helpful, times_failed
+  - **Decay job**: Auto-prunes stale/failed insights
+  - **Anomaly detection**: Flags unusual experiences
+  - **Meta-cognition**: Analyzes learning health
   - Separate databases for cloud/local (1536 vs 768 dimensions)
   - See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
 
 ![jarvis-intellegince](docs/images/jarvis-intellegince.png)
 
-- **Intelligence Dashboard** at localhost:5003 ⭐ NEW
+- **Intelligence Dashboard** at localhost:5003
   - Sort experiences by date, turns, tool count
   - Filter by success/fail, tool count, specific tool
   - Sort insights by applied, helpful, preferred/avoided tools
@@ -121,11 +121,11 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Auto-Resolve**: URL-based and agent-based automatic issue resolution
 - **Background Services**: 24/7 daemons for follow-ups, healing, and reminders
 - **Smart Reminders**: Time-based reminders with natural language parsing and recurring support
-- **Remote Monitoring**: Deploy [Jarvis Agent](https://github.com/bigsk1/jarvis-voice) (Docker) anywhere to send health checks and alerts
+- **Remote Monitoring**: Deploy [Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor) (Docker) anywhere to send health checks and alerts
 - **Voice Notifications**: Jarvis speaks alerts and reminders via TTS
 
-### Integrations & Automation ⭐ NEW
-- **AI Phone Calls via Vapi.ai**: Outbound AI phone calls on your behalf ⭐ NEW
+### Integrations & Automation
+- **AI Phone Calls via Vapi.ai**: Outbound AI phone calls on your behalf
   - "Call Boss and ask if he wants to see Gladiator II tonight"
   - Multiple personas: Jarvis (default), James (professional), Jay (casual), Samantha (female)
   - Custom Vapi dashboard characters with dynamic variables (`{{owner}}`, `{{task}}`)
@@ -133,7 +133,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Auto-save transcripts to Canvas and memory for later recall
   - Contact management: save numbers by name
   - See [`docs/phone/PHONE_CALLS.md`](docs/phone/PHONE_CALLS.md)
-- **Spotify Integration**: Full music control via Spotify API ⭐ NEW
+- **Spotify Integration**: Full music control via Spotify API
   - "Play Chill Vibes playlist", "Skip this song", "What's playing?"
   - Search your library first, then public Spotify
   - Multi-device support (Fire TV, Echo, phone, desktop)
@@ -166,7 +166,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ### Memory System
 - **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)
 - **Auto-Sync**: Bidirectional sync between modes on startup
-- **FTS5 Full-Text Search**: SQLite FTS5 with BM25 ranking for fast, accurate keyword searches ⭐ NEW
+- **FTS5 Full-Text Search**: SQLite FTS5 with BM25 ranking for fast, accurate keyword searches
 - **Knowledge Base**: Facts, preferences, technical info with embeddings
 - **Conversation History**: Full logging with metadata (cost, tokens, model)
 - **Semantic Search**: AI embeddings with configurable similarity threshold (tune via .env)
@@ -184,7 +184,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Wake Detection**: "Hey Jarvis" using OpenWakeWord
 - **Fine-tuned Audio**: Optimized for noisy environments + far-field mic
 - **Smart Response Formatting**: Auto-condenses verbose outputs for voice
-- **Status Updates**: Real-time voice progress during long tasks ⭐ NEW
+- **Status Updates**: Real-time voice progress during long tasks
   - "Searching the web", "Building with OpenCode", "Checking the weather"
   - LLM-generated dynamic summaries from tool output
   - Configurable phrases with humor/encouragement toggles
@@ -198,12 +198,12 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Jarvis Web UI v2.0** - Full-featured chat interface at localhost:5001
   - Real-time WebSocket communication with tool streaming
   - Mode switching (cloud/local) with per-mode settings
-  - **Audio playback controls**: Speaker button with pause/resume/stop ⭐ NEW
-  - **Music generation**: ElevenLabs music plays inline in chat ⭐ NEW
+  - **Audio playback controls**: Speaker button with pause/resume/stop
+  - **Music generation**: ElevenLabs music plays inline in chat
   - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
   - **Slash commands**: `/canvas`, `/search`, `/detailed` - modify behavior
-  - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily` ⭐ NEW
-  - **Context-first injection**: Prompts inject BEFORE user message for better LLM context ⭐ NEW
+  - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
+  - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export
   - **Image upload**: Drag-drop/paste/click with vision analysis
@@ -220,14 +220,14 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
   - Live system status (CPU, RAM, API health)
   - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
-- **Intelligence Dashboard**: Visual dashboard for self-learning at localhost:5003 ⭐ NEW
+- **Intelligence Dashboard**: Visual dashboard for self-learning at localhost:5003
   - Experience sorting (date, turns, tool count) and filtering (success/fail, tool count, specific tool)
   - Insight sorting (applied, helpful, preferred/avoided tools, confidence)
   - 5-tier confidence: Elite (96%+), High (85-95%), Good (75-84%), Medium (50-74%), Low (0-49%)
   - Tool performance showing ALL tools with prefer/avoid stats
   - Mobile responsive: hamburger menu at ≤730px
   - Launch: `./bin/jarvis-intelligence`
-- **Memory Browser UI**: Web interface for memory management at localhost:5002 ⭐ NEW
+- **Memory Browser UI**: Web interface for memory management at localhost:5002
   - View, search, add, edit, delete memories from `knowledge_base`
   - Intel file manager (create, upload, edit, ingest `.md`/`.txt` files)
   - Conversation browser with full detail popup
@@ -374,9 +374,9 @@ jarvis-voice/
 │   │   ├── system_monitor.*  # System resources
 │   │   ├── text_summarizer.* # Text processing
 │   │   └── youtube_transcript.* # YouTube transcripts
-│   ├── ssh_remote.py         # Remote SSH execution ⭐ NEW
-│   ├── docker_control.py     # Docker/compose management ⭐ NEW
-│   ├── deep_memory_search.py # Multi-source search ⭐ NEW
+│   ├── ssh_remote.py         # Remote SSH execution
+│   ├── docker_control.py     # Docker/compose management
+│   ├── deep_memory_search.py # Multi-source search
 │   ├── generate_image.py     # AI image generation (Gemini) ⭐
 │   ├── generate_music.py     # AI music (ElevenLabs) ⭐
 │   ├── analyze_image.py      # Vision analysis ⭐
@@ -435,7 +435,7 @@ jarvis-voice/
 ├── jarvis-memory/            # Memory Browser UI ⭐
 │   ├── client/               # Frontend (HTML/CSS/JS)
 │   └── server/               # Backend (Flask routes)
-├── jarvis-monitor/           # Remote Monitoring Agent ⭐ NEW
+├── jarvis-monitor/           # Remote Monitoring Agent
 │   ├── monitor.py            # Health check daemon
 │   ├── Dockerfile            # Docker image
 │   ├── docker-compose.yml    # Compose config
@@ -459,8 +459,8 @@ jarvis-voice/
 │   ├── service/              # Background services docs
 │   ├── phone/                # AI phone calls (Vapi.ai) ⭐
 │   ├── spotify/              # Spotify integration ⭐
-│   ├── ssh/                  # SSH remote tool ⭐ NEW
-│   ├── docker-tool/          # Docker control ⭐ NEW
+│   ├── ssh/                  # SSH remote tool
+│   ├── docker-tool/          # Docker control
 │   ├── opencode/             # OpenCode integration
 │   ├── n8n/                  # n8n workflows & calendar sync
 │   ├── INTELLIGENCE_LAYER.md # Self-learning system
@@ -556,18 +556,50 @@ source ~/jarvis-venv/bin/activate
 ./orchestrator/orchestrator_v2.py cloud "What time is it?"
 ./orchestrator/orchestrator_v2.py local "What time is it?"
 
-# Command Dashboard (all commands in one TUI!) ⭐ NEW
+# Command Dashboard (all commands in one TUI!)
 ./bin/jarvis-dashboard
 ```
 
 Say **"Hey Jarvis"** to wake it up!
 
-### 5. Proactive API & Reminders
+### 5. Start All Services (Recommended) ⭐
+
+Start everything with one command using tmux sessions (make sure they are all setup first):
+
+```bash
+# Start ALL services (API, background services, all UIs)
+./bin/start
+
+# Or start only what you need:
+./bin/start --ui-only    # Just the web UIs (no API/services)
+./bin/start --list       # Check status of all sessions
+./bin/start --stop       # Stop everything
+```
+
+**Services started:**
+| Session | Port | Description |
+|---------|------|-------------|
+| `jarvis-api` | 8880 | Proactive API (webhooks, reminders) |
+| `jarvis-services` | - | Background services (auto-resolve) |
+| `jarvis-web` | 5001 | Web UI chat interface |
+| `jarvis-canvas` | 8090 | Canvas viewer |
+| `jarvis-memory` | 5002 | Memory Browser UI |
+| `jarvis-intelligence` | 5003 | Intelligence Dashboard |
+
+```bash
+# Attach to any session to see logs
+tmux attach -t jarvis-web
+
+# Detach without stopping: Ctrl+B then D
+```
+
+### 6. Proactive API & Reminders
 
 Enable event-driven alerts, notifications, and smart reminders:
 
 ![reactive-vs-proactive-info-graph](docs/images/reactive-vs-proactive-info-graph.jpeg)
 
+If you prefer to start services individually (instead of `./bin/start`):
 
 ```bash
 # Start API server (receives webhooks, processes reminders)
@@ -594,28 +626,29 @@ Enable event-driven alerts, notifications, and smart reminders:
 
 See [Proactive API docs](docs/api/) and [Reminder System](docs/api/REMINDER_SYSTEM.md) for details.
 
-### 6. Remote Monitoring Agent (Optional)
+### 7. Remote Monitoring Agent (Optional)
 
-Deploy the **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** (Docker) on remote servers for health checks and alerts:
+Deploy the **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** (Docker) on remote servers for health checks and alerts:
 
 ![jarvis-monitoring-agent-info-graph](docs/images/jarvis-monitoring-agent-info-graph.jpeg)
 
 ```bash
 # On remote server (Docker required)
 docker run -d \
-  --name jarvis-agent \
+  --name jarvis-monitor \
   --restart unless-stopped \
-  -e JARVIS_API_URL="http://your-jarvis-server:8880" \
-  -e SERVICE_NAME="my-app" \
-  -e CHECK_INTERVAL=300 \
-  bigsk1/jarvis-agent:latest
+  -e JARVIS_API_URL="http://your-jarvis-server:8880/api/alerts" \
+  -e MONITOR_URLS="MyApp|http://localhost:8080/health" \
+  -e SOURCE_NAME="remote-server" \
+  -e CHECK_INTERVAL=60 \
+  bigsk1/jarvis-monitor:latest
 
-# Agent sends webhooks to Jarvis when issues detected
+# Monitor sends alerts to Jarvis API when issues detected
 # Jarvis speaks alerts via voice TTS
 # Auto-resolve when service recovers
 ```
 
-See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for templates and configuration options.
+See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for configuration options and Docker Compose examples.
 
 </details>
 
@@ -652,8 +685,8 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
 - `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
-- `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences ⭐ NEW
-- `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune ⭐ NEW
+- `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
+- `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune
 - `youtube_transcript` - **YouTube transcripts**: Download video transcripts as .srt/.md files
 
 **Artifact & Output Tools:** ⭐ ENHANCED
@@ -662,7 +695,7 @@ See the [Jarvis Agent repo](https://github.com/bigsk1/jarvis-voice) for template
   - **Google Search Grounding** - Real-time data in images (weather, crypto prices, news)
   - Auto-saves to stash + memory for cross-session recall
   - Multi-tool ready: generate → email, generate → print, generate → canvas
-- `analyze_image` - **Vision analysis**: Analyze images from URLs, files, or stash refs ⭐ NEW
+- `analyze_image` - **Vision analysis**: Analyze images from URLs, files, or stash refs
   - Cloud=Grok/Claude/GPT-4o, Local=llava
   - SSRF protection (blocks private IPs), path traversal protection
   - Auto-stashes analyzed images + creates memory_db entry
@@ -821,16 +854,16 @@ The Intelligence Layer is Jarvis's self-learning system. It observes interaction
 - Turns taken
 - Success/failure
 - User satisfaction signals
-- LLM response & tool results (for content quality eval) ⭐ NEW
+- LLM response & tool results (for content quality eval)
 
 **Insights Generated**:
 - Pattern: "Status queries need real-time tools"
 - Applies to: "Server health, uptime checks"
 - Preferred approach: "Use fetch tools directly"
 - Confidence: 0.0-1.0
-- Tracking: times_applied, times_helpful, times_failed ⭐ NEW
+- Tracking: times_applied, times_helpful, times_failed
 
-**Maintenance Jobs** ⭐ NEW:
+**Maintenance Jobs**:
 ```bash
 # Run all maintenance (decay, anomaly, meta-cognition)
 ./bin/run-intelligence-maintenance.py --watch
@@ -845,8 +878,8 @@ When a new query comes in:
 2. Find similar insights (cosine similarity)
 3. Weight by confidence and relevance
 4. Inject into routing context
-5. Track which insights were applied ⭐ NEW
-6. Update helpful/failed counts after interaction ⭐ NEW
+5. Track which insights were applied
+6. Update helpful/failed counts after interaction
 
 See `docs/INTELLIGENCE_LAYER.md` for details.
 
@@ -951,11 +984,11 @@ LIMIT 7;"
 **Proactive System:**
 - `docs/api/` - **Proactive API** documentation (webhooks, alerts, monitoring)
 - `docs/service/` - **Background Services** documentation (daemons, auto-resolve)
-- **[Jarvis Agent](https://github.com/bigsk1/jarvis-voice)** - Docker agent for remote health checks
+- **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
 
 **Core System:**
-- `docs/phone/PHONE_CALLS.md` - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts) ⭐ NEW
-- `docs/spotify/SPOTIFY.md` - **Spotify Integration** (playback control, search, multi-device) ⭐ NEW
+- `docs/phone/PHONE_CALLS.md` - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts)
+- `docs/spotify/SPOTIFY.md` - **Spotify Integration** (playback control, search, multi-device)
 - `docs/STASH_SYSTEM.md` - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
 - `docs/INTELLIGENCE_LAYER.md` - **Self-learning system** (Phase 1: positive/negative constraints)
 - `docs/AUTO_CONTEXT_SYSTEM.md` - Short-term conversation memory
@@ -1171,20 +1204,20 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (December 2025):**
-- ✅ **Deep Memory Search** - Multi-source search across all Jarvis data repositories ⭐ NEW
+- ✅ **Deep Memory Search** - Multi-source search across all Jarvis data repositories
   - Searches memory, conversations, web conversations, intel files, canvas pages, stash artifacts
   - Uses ripgrep for blazing-fast file content searches with JSON output
   - Unified results with source labels, deduplication, date filtering
   - "Find everything I know about Python" → searches everywhere at once
-- ✅ **ElevenLabs Music Generation** - AI music creation ⭐ NEW
+- ✅ **ElevenLabs Music Generation** - AI music creation
   - Genre, mood, tempo, instrumental mode, 30-300 second duration
   - Auto-saves to stash + memory for recall
   - Web UI inline audio playback
-- ✅ **Audio Playback Controls** - Enhanced TTS in Web UI ⭐ NEW
+- ✅ **Audio Playback Controls** - Enhanced TTS in Web UI
   - Speaker button with pause/resume (click), stop (double-click)
   - Progress animation, 10-second visibility after playback
   - Auto-hides when typing new message
-- ✅ **New @prompts** - Context-first prompt injection ⭐ NEW
+- ✅ **New @prompts** - Context-first prompt injection
   - `@generate_music` - ElevenLabs best practices for music prompts
   - `@email` - Professional email composition with send_email format
   - `@daily` - Daily briefing (time, weather, reminders, crypto)
@@ -1198,7 +1231,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Tool performance table showing ALL tools with prefer/avoid counts and net score
   - Mobile responsive at ≤730px: hamburger menu, slide-out sidebar
   - Launch: `./bin/jarvis-intelligence` (localhost:5003)
-- ✅ **Memory Browser UI** - Web interface for memory management ⭐ NEW
+- ✅ **Memory Browser UI** - Web interface for memory management
   - View, search, add, edit, delete memories from `knowledge_base`
   - Intel file manager: create, upload, edit, delete, ingest `.md`/`.txt` files
   - Conversation browser with full detail popup
@@ -1211,9 +1244,9 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Launch: `./bin/jarvis-memory` (localhost:5002)
 - ✅ **Canvas Mobile Responsive** - Hamburger menu and slide-out sidebar at ≤730px
 - ✅ **Jarvis Web UI v2.0** - Full-featured web interface ⭐ ENHANCED
-  - **Audio playback controls**: Speaker button with pause/resume/stop ⭐ NEW
-  - **Music playback**: ElevenLabs generated music plays inline ⭐ NEW
-  - **New @prompts**: `@generate_music`, `@email`, `@daily` with context-first injection ⭐ NEW
+  - **Audio playback controls**: Speaker button with pause/resume/stop
+  - **Music playback**: ElevenLabs generated music plays inline
+  - **New @prompts**: `@generate_music`, `@email`, `@daily` with context-first injection
   - **Server Logs Panel**: Real-time LLM + Tool streaming at bottom of UI
   - **Color-coded logs**: LLM (purple), Tools (green), with success/error status
   - **Expandable details**: Click log entry to see full parsed JSON
@@ -1225,7 +1258,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **Image upload**: Drag-drop/paste/click with vision analysis
   - Real-time WebSocket chat with tool streaming
   - See: `docs/JARVIS_WEB_UI.md`
-- ✅ **AI Image Generation (Gemini 3 Pro)** - High-quality image generation ⭐ NEW
+- ✅ **AI Image Generation (Gemini 3 Pro)** - High-quality image generation
   - "Generate a bitcoin infographic with current price" → Gemini creates with real data
   - Aspect ratios (1:1, 16:9, 9:16, 3:4, etc.), styles, negative prompts
   - **Google Search Grounding** - Images can include real-time data (weather, prices, news)
@@ -1237,7 +1270,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **Memory** = Index (permanent entries pointing to stash locations)
   - `safe_resolve_file()` gracefully handles expired stash with fallbacks
   - All artifact tools now: save to stash → create memory entry → enable multi-tool
-- ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls ⭐ NEW
+- ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls
   - "Call Boss and ask about dinner plans" → Jarvis calls, has conversation, reports back
   - Multiple personas: Jarvis (default), James (professional), Jay (casual), Samantha (female)
   - Custom Vapi dashboard assistants with `{{owner}}`, `{{task}}`, `{{reason}}` variables
@@ -1246,7 +1279,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Auto-save transcripts to Canvas (`Phone Calls/` folder) and memory
   - Contact book: "Save Andrew's number as +15551234567"
   - See: `docs/phone/PHONE_CALLS.md`
-- ✅ **Spotify Integration** - Full music playback control ⭐ NEW
+- ✅ **Spotify Integration** - Full music playback control
   - "Play my Chill Vibes playlist", "Skip", "What's playing?", "Pause"
   - Searches your saved playlists/library first, then public Spotify
   - Multi-device support (Fire TV, Echo, phone, desktop, etc.)
@@ -1254,20 +1287,20 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Share currently playing via email with album art and Spotify link
   - OAuth setup via `./bin/spotify-auth`
   - See: `docs/spotify/SPOTIFY.md`
-- ✅ **Native Web Search** - Built-in real-time search for cloud providers ⭐ NEW
+- ✅ **Native Web Search** - Built-in real-time search for cloud providers
   - `XAI_SEARCH=true`: Grok live search (web + X posts, auto mode)
   - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations
   - No external tool calls - cleaner context, faster responses
-- ✅ **Network Tools** - Network diagnostics (ping, DNS, port, HTTP/HTTPS, traceroute) ⭐ NEW
+- ✅ **Network Tools** - Network diagnostics (ping, DNS, port, HTTP/HTTPS, traceroute)
   - Enhanced ping with min/avg/max/loss statistics
   - HTTP/HTTPS checks with SSL verification and response times
   - Port connectivity with latency measurement
   - Cross-platform traceroute support
-- ✅ **System Monitor** - Real-time system resource monitoring ⭐ NEW
+- ✅ **System Monitor** - Real-time system resource monitoring
   - CPU usage (total + per-core), memory (RAM + swap)
   - Disk usage per mount point, process list (sortable)
   - Network I/O stats, system uptime with boot time
-- ✅ **Text Summarizer** - Text processing and analysis ⭐ NEW
+- ✅ **Text Summarizer** - Text processing and analysis
   - Extractive summarization, keyword extraction
   - Word/character/sentence counting, sentiment analysis
 - ✅ **Prompt Evolution System** - Self-evolving prompts ⭐ MAJOR
@@ -1288,18 +1321,18 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Full audit trail with report cards + Grafana dashboard
   - `./bin/build-tool --mode cloud build "Check URL accessibility"`
   - See: `docs/TOOL_BUILDER.md`
-- ✅ **Canvas System** - Visual knowledge viewer ⭐ NEW
+- ✅ **Canvas System** - Visual knowledge viewer
   - Beautiful dark web UI at localhost:8890
   - Jarvis saves research, comparisons, code to visual pages
   - Evolution suggestions now auto-create Canvas pages
   - Markdown rendering, syntax highlighting, live reload
   - Search, pin, edit, delete - all auto-saved to memory
   - Launch: `./bin/jarvis-canvas`
-- ✅ **Calculator Tool** - Advanced calculations ⭐ NEW
+- ✅ **Calculator Tool** - Advanced calculations
   - Arithmetic, percentages (15% of 200), statistics (mean, stdev)
   - Unit conversions (miles↔km, °F↔°C, GB↔TB, cups↔ml)
   - Trig (sin, cos, tan with degree variants), logarithms, factorials
-- ✅ **Feedback System** - LLM self-critique ⭐ NEW
+- ✅ **Feedback System** - LLM self-critique
   - `--feedback` flag for per-query feedback
   - `./bin/jarvis-feedback` CLI (run, batch, summary, issues)
   - Cross-model grading (FEEDBACK_PROVIDER/FEEDBACK_MODEL)
@@ -1342,10 +1375,10 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Activity timeline (LLM + Tool logs interleaved)
   - Cost/token tracking over time
 - ✅ Multi-turn tool orchestration
-- ✅ **xAI Grok integration** (2M context, 10-15x cheaper, automatic caching, reasoning mode) ⭐
-- ✅ **Google Calendar bidirectional sync** (reminders ↔ events via n8n workflows) ⭐
-- ✅ **Monitoring Stack** (Grafana + Prometheus + Loki for real-time observability) ⭐
-- ✅ **LLM Call Logging** (comprehensive telemetry: cost, latency, tokens, multi-turn analysis) ⭐
+- ✅ **xAI Grok integration** (2M context, 10-15x cheaper, automatic caching, reasoning mode)
+- ✅ **Google Calendar bidirectional sync** (reminders ↔ events via n8n workflows)
+- ✅ **Monitoring Stack** (Grafana + Prometheus + Loki for real-time observability)
+- ✅ **LLM Call Logging** (comprehensive telemetry: cost, latency, tokens, multi-turn analysis)
 - ✅ **Modular webhook system** (send_email, send_webhook with auth support)
 - ✅ **Email tool** (contact management, HTML templates, SMTP via n8n)
 - ✅ **Ghost tools pattern** (critical tools always available, bypasses semantic search)
