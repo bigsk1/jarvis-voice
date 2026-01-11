@@ -11,6 +11,7 @@ config/contacts.json
 config/webhook_registry.json
 config/elevenlabs_voices.json
 config/ssh.json
+jarvis-monitor/.env
 
 # ===== Stash (task artifacts) =====
 # Keep directory structure, ignore space contents
@@ -107,4 +108,4 @@ jarvis-web/data/uploads/
 # web ui
 data/web_conversations/
 docs/Agent-Skills-for-Context-Engineering-main
-jarvis-monitor/.env
+
