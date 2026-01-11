@@ -323,97 +323,155 @@ Key decision points:
 
 ```
 jarvis-voice/
-├── bin/                      # Executable scripts & utilities
+├── bin/                      # Executable scripts & utilities (40+)
 │   ├── wake_jarvis.py        # Cloud wake word loop
 │   ├── wake_jarvis_local.py  # Local wake word loop
 │   ├── say.sh / say-local.sh # Text-to-speech
-│   ├── jarvis-api            # Proactive API server
+│   ├── jarvis-api            # Proactive API server (port 8880)
 │   ├── jarvis-services       # Background services daemon
-│   ├── restart-api           # Restart API server
-│   ├── restart-services      # Restart background services
-│   ├── question*.sh          # Q&A entry points
-│   ├── memory                # Memory CLI tool
+│   ├── jarvis-dashboard      # Command Dashboard TUI ⭐
+│   ├── jarvis-web            # Web UI launcher (port 5001) ⭐
+│   ├── jarvis-canvas         # Canvas viewer (port 8090) ⭐
+│   ├── jarvis-memory         # Memory Browser UI (port 5002) ⭐
+│   ├── jarvis-intelligence   # Intelligence Dashboard (port 5003) ⭐
+│   ├── jarvis-feedback       # Feedback system CLI ⭐
+│   ├── build-tool            # Dynamic tool builder ⭐
+│   ├── evolve-prompts        # Prompt evolution system ⭐
 │   ├── manage-tools.py       # Enable/disable tools
 │   ├── sync-memory-db.py     # Manual database sync
-│   └── setup-memory-db.sh    # Initialize databases
-├── lib/                      # Core libraries
+│   ├── sync_tools.py         # Sync tools to LLM context
+│   ├── cleanup-intelligence.py # Clean false-positive experiences
+│   ├── spotify-auth          # Spotify OAuth setup
+│   ├── memory                # Memory CLI tool
+│   └── question*.sh          # Q&A entry points
+├── lib/                      # Core libraries (28+)
 │   ├── config_loader.py      # Configuration management
 │   ├── memory_db.py          # SQLite memory system
-│   ├── llm_provider.py       # LLM provider abstraction
+│   ├── llm_provider.py       # LLM provider abstraction (xAI/Anthropic/OpenAI/Ollama)
+│   ├── intelligence.py       # Self-learning system ⭐
+│   ├── intelligence_hooks.py # Experience recording ⭐
+│   ├── tool_builder.py       # Dynamic tool creation ⭐
+│   ├── prompt_evolution.py   # Self-evolving prompts ⭐
+│   ├── prompt_versioning.py  # Prompt A/B testing ⭐
+│   ├── stash_helper.py       # Artifact storage system ⭐
+│   ├── embeddings.py         # Embedding management
+│   ├── feedback.py           # LLM self-critique
+│   ├── status_updater.py     # Voice status updates
+│   ├── mcp_client.py         # MCP server integration
 │   ├── opencode_client.py    # OpenCode API client
 │   ├── cost_estimator.py     # Token cost calculation
-│   └── local_model_corrections.py # Post-processing for local models
+│   ├── llm_logger.py         # LLM call logging
+│   └── tool_logger.py        # Tool execution logging
 ├── orchestrator/             # Tool orchestration system
 │   ├── orchestrator_v2.py    # Main orchestration logic
 │   ├── router_v2.py          # LLM-based routing
 │   ├── executor.py           # Tool execution engine
 │   └── tool_schema.py        # Tool discovery & validation
-├── skills/                   # Tool scripts (24+)
-│   ├── remember.py           # Store facts
-│   ├── recall.py             # Retrieve facts
-│   ├── forget.py             # Delete memories
-│   ├── update_memory.py      # Modify existing memories
-│   ├── search_memory.py      # Keyword search
-│   ├── semantic_recall.py    # AI-powered semantic search
-│   ├── get_recent_conversations.py # Conversation history
-│   ├── search_conversations.py # Search past conversations
-│   ├── execute_bash.py       # Shell command execution
-│   ├── opencode.py           # Autonomous coding agent
-│   ├── check_opencode_sessions.py # OpenCode progress monitoring
-│   ├── send_webhook.py       # HTTP POST/GET requests
-│   ├── api_call.py           # Generic API calls
-│   ├── crypto_price.py       # Crypto prices
-│   ├── get_time.py           # Current time/date
-│   ├── create_reminder.py    # Time-based reminders
-│   ├── list_reminders.py     # Show reminders
-│   ├── acknowledge_reminders.py # Cancel/complete reminders
-│   ├── list_alerts.py        # Show alerts (from API)
-│   ├── acknowledge_alerts.py # Acknowledge alerts
-│   ├── query_service_logs.py # Service status checks
-│   ├── ingest_intel.py       # Bulk knowledge import
-│   ├── manage_intel.py       # Manage intel files
-│   ├── check_tool_logs.py    # Debug tool failures
-│   └── *.tool.json           # Tool definitions (JSON schema)
+├── skills/                   # Tool scripts (53+)
+│   ├── auto-tools/           # Auto-generated tools ⭐
+│   │   ├── docker_control.*  # Docker management
+│   │   ├── network_tools.*   # Network diagnostics
+│   │   ├── system_monitor.*  # System resources
+│   │   ├── text_summarizer.* # Text processing
+│   │   └── youtube_transcript.* # YouTube transcripts
+│   ├── ssh_remote.py         # Remote SSH execution ⭐ NEW
+│   ├── docker_control.py     # Docker/compose management ⭐ NEW
+│   ├── deep_memory_search.py # Multi-source search ⭐ NEW
+│   ├── generate_image.py     # AI image generation (Gemini) ⭐
+│   ├── generate_music.py     # AI music (ElevenLabs) ⭐
+│   ├── analyze_image.py      # Vision analysis ⭐
+│   ├── phone_call.py         # AI phone calls (Vapi.ai) ⭐
+│   ├── spotify.py            # Spotify music control ⭐
+│   ├── canvas.py             # Canvas page management ⭐
+│   ├── stash.py              # Artifact storage ⭐
+│   ├── pdf_create.py         # PDF generation ⭐
+│   ├── printer.py            # CUPS printing ⭐
+│   ├── calculator.py         # Advanced math ⭐
+│   ├── weather.py            # Weather forecasts ⭐
+│   ├── remember.py / recall.py / forget.py  # Memory tools
+│   ├── search_memory.py      # FTS5 keyword search
+│   ├── semantic_recall.py    # AI semantic search
+│   ├── execute_bash.py       # Shell commands
+│   ├── opencode.py           # Autonomous coding
+│   ├── send_email.py         # Email with templates
+│   ├── send_webhook.py       # Webhook triggers
+│   ├── create_reminder.py    # Smart reminders
+│   └── *.tool.json           # Tool definitions
 ├── config/                   # Configuration files
-│   ├── cloud.env             # Cloud mode settings
-│   ├── local.env             # Local mode settings
+│   ├── cloud.env             # Cloud mode settings (gitignored)
+│   ├── local.env             # Local mode settings (gitignored)
 │   ├── cloud.env.example     # Template (safe for git)
 │   ├── local.env.example     # Template (safe for git)
-│   └── README.md             # Config documentation
+│   ├── ssh.json              # SSH host config (gitignored) ⭐
+│   ├── contacts.json         # Contact book (gitignored)
+│   ├── webhook_registry.json # Named webhooks
+│   └── mcp-servers.json      # MCP server config
 ├── data/                     # Runtime data
-│   ├── jarvis_memory.db      # Cloud mode database (OpenAI embeddings)
-│   └── jarvis_memory_local.db # Local mode database (nomic embeddings)
+│   ├── jarvis_memory.db      # Cloud mode DB (OpenAI 1536-dim)
+│   ├── jarvis_memory_local.db # Local mode DB (nomic 768-dim)
+│   ├── jarvis_intelligence.db # Intelligence layer (cloud)
+│   ├── jarvis_intelligence_local.db # Intelligence layer (local)
+│   ├── canvas/               # Canvas pages (Markdown) ⭐
+│   ├── stash/                # Artifact storage (7-day TTL) ⭐
+│   ├── generated_images/     # AI-generated images ⭐
+│   ├── generated_music/      # AI-generated music ⭐
+│   ├── web_conversations/    # Web UI chat history
+│   └── backups/              # Database backups
 ├── logs/                     # Execution logs
-│   ├── tools/                # Tool call logs
+│   ├── tools/                # Tool call logs (JSONL)
+│   ├── llm/                  # LLM call logs (JSONL) ⭐
 │   ├── opencode/             # OpenCode session logs
 │   ├── api/                  # API server logs
-│   └── services/             # Background services logs
+│   ├── services/             # Background services logs
+│   ├── intelligence/         # Intelligence layer logs ⭐
+│   └── tool-builder/         # Tool builder reports ⭐
+├── jarvis-web/               # Web UI (Flask + WebSocket) ⭐
+│   ├── client/               # Frontend (HTML/CSS/JS)
+│   ├── server/               # Backend (Flask routes)
+│   └── data/prompts/         # @prompt templates
+├── jarvis-intelligence/      # Intelligence Dashboard ⭐
+│   ├── client/               # Frontend (HTML/CSS/JS)
+│   └── server/               # Backend (Flask routes)
+├── jarvis-memory/            # Memory Browser UI ⭐
+│   ├── client/               # Frontend (HTML/CSS/JS)
+│   └── server/               # Backend (Flask routes)
+├── jarvis-monitor/           # Remote Monitoring Agent ⭐ NEW
+│   ├── monitor.py            # Health check daemon
+│   ├── Dockerfile            # Docker image
+│   ├── docker-compose.yml    # Compose config
+│   └── README.md             # Agent documentation
+├── jarvis-intel/             # Private knowledge base (gitignored)
+├── services/                 # Background services ⭐
+│   ├── api/                  # Proactive API server
+│   └── background/           # Auto-resolve, reminders
+├── monitoring/               # Grafana + Prometheus + Loki ⭐
+│   ├── grafana/              # Dashboard configs
+│   ├── prometheus/           # Metrics collection
+│   └── loki/                 # Log aggregation
 ├── tests/                    # Test suites
 │   ├── integration/          # Integration tests
-│   │   ├── compare-models.sh # Model comparison framework
+│   │   ├── compare-models.sh # Model comparison
 │   │   ├── test-memory-*.sh  # Memory system tests
-│   │   └── logs/             # Test results and analysis
-│   ├── e2e/                  # End-to-end tests (future)
-│   └── unit/                 # Unit tests (future)
-├── docs/                     # Documentation
-│   ├── api/                  # Proactive API documentation
-│   ├── service/              # Background services documentation
-│   ├── AUTO_CONTEXT_SYSTEM.md # Short-term conversation memory
-│   ├── MEMORY_SYSTEM.md      # Long-term memory architecture
-│   ├── DUAL_DATABASE_SYSTEM.md # Cloud/local DB system
-│   ├── JARVIS_WORKFLOW.md    # Complete request workflow
-│   └── *.md                  # Core system documentation
-├── jarvis-intel/             # Private knowledge base (gitignored)
-├── jarvis-intelligence/      # Intelligence Dashboard (Flask server)
-│   ├── client/               # Frontend (HTML/CSS/JS)
-│   └── server/               # Backend (Flask routes/services)
-├── jarvis-memory/            # Memory Browser UI (Flask server)
-│   ├── client/               # Frontend (HTML/CSS/JS)
-│   └── server/               # Backend (Flask routes/services)
+│   │   └── logs/             # Test results
+│   └── e2e/                  # End-to-end tests
+├── docs/                     # Documentation (60+ files)
+│   ├── api/                  # Proactive API docs
+│   ├── service/              # Background services docs
+│   ├── phone/                # AI phone calls (Vapi.ai) ⭐
+│   ├── spotify/              # Spotify integration ⭐
+│   ├── ssh/                  # SSH remote tool ⭐ NEW
+│   ├── docker-tool/          # Docker control ⭐ NEW
+│   ├── opencode/             # OpenCode integration
+│   ├── n8n/                  # n8n workflows & calendar sync
+│   ├── INTELLIGENCE_LAYER.md # Self-learning system
+│   ├── TOOL_BUILDER.md       # Dynamic tool creation
+│   ├── STASH_SYSTEM.md       # Artifact storage
+│   ├── JARVIS_WEB_UI.md      # Web interface guide
+│   └── *.md                  # Core system docs
 ├── jarvis                    # Launcher (cloud mode)
 ├── jarvis-local              # Launcher (local mode)
-├── test-all-tools.sh         # Run all tool tests (cloud)
-├── test-all-tools-local.sh   # Run all tool tests (local)
+├── setup.sh                  # Initial setup script
+├── requirements.txt          # Python dependencies
 └── README.md                 # This file
 ```
 
