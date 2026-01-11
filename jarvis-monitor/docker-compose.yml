@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  jarvis-monitor:
+    # Build the image from the Dockerfile locally when testing changes, we do have a dockerhub image bigsk1/jarvis-monitor:latest this is built on windows desktop wsl only! and pushed to dockerhub
+    image: jarvis-monitor:local
+    container_name: jarvis-monitor
+    restart: unless-stopped
+    
+    # Load environment variables from .env file
+    env_file:
+      - .env
+    
+    environment:
+      # Environment variables are loaded from .env file
+      # You can override them here if needed
+      JARVIS_API: ${JARVIS_API}
+      CHECK_INTERVAL: ${CHECK_INTERVAL}
+      AUTO_RESOLVE_INTERVAL: ${AUTO_RESOLVE_INTERVAL}
+      MONITOR_CONTAINERS: ${MONITOR_CONTAINERS}
+      MONITOR_URLS: ${MONITOR_URLS}
+      SOURCE_NAME: ${SOURCE_NAME}
+      ALERT_TIMEOUT: ${ALERT_TIMEOUT}
+    
+    volumes:
+      # Mount Docker socket to monitor containers
+      # READ-ONLY for security
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    networks:
+      - monitoring
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  monitoring:
+    driver: bridge
+
