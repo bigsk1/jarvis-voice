@@ -2124,6 +2124,28 @@ body {
   color: var(--text-muted);
 }
 
+.config-value.loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.config-value.error {
+  color: var(--error);
+}
+
+.config-value.usage-ok {
+  color: var(--success);
+}
+
+.config-value.usage-warning {
+  color: var(--warning);
+}
+
+.config-value.usage-critical {
+  color: var(--error);
+  font-weight: 600;
+}
+
 .config-section {
   margin-top: var(--space-lg);
   padding-top: var(--space-md);

@@ -237,6 +237,84 @@ def get_provider_models(provider):
     })
 
 
+@api_bp.route('/tts/usage', methods=['GET'])
+def get_tts_usage():
+    """Get TTS usage/quota for ElevenLabs (only applicable for cloud mode with ElevenLabs)"""
+    import requests as http_requests
+    from ..config import load_jarvis_config, get_jarvis_setting
+    
+    # Get mode from query param
+    mode = request.args.get('mode', 'cloud')
+    load_jarvis_config(mode)
+    
+    tts_provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs' if mode == 'cloud' else 'kokoro')
+    
+    # Only fetch for ElevenLabs
+    if tts_provider != 'elevenlabs':
+        return jsonify({
+            'ok': False,
+            'provider': tts_provider,
+            'message': 'Usage tracking only available for ElevenLabs'
+        })
+    
+    api_key = get_jarvis_setting('ELEVENLABS_API_KEY', '')
+    if not api_key:
+        return jsonify({
+            'ok': False,
+            'provider': 'elevenlabs',
+            'error': 'ELEVENLABS_API_KEY not configured'
+        })
+    
+    try:
+        response = http_requests.get(
+            "https://api.elevenlabs.io/v1/user",
+            headers={"xi-api-key": api_key},
+            timeout=10
+        )
+        response.raise_for_status()
+        user_data = response.json()
+        
+        subscription = user_data.get('subscription', {})
+        character_count = subscription.get('character_count', 0)
+        character_limit = subscription.get('character_limit', 0)
+        
+        # Calculate percentage and remaining
+        percentage_used = (character_count / character_limit * 100) if character_limit > 0 else 0
+        remaining = character_limit - character_count
+        
+        return jsonify({
+            'ok': True,
+            'provider': 'elevenlabs',
+            'usage': {
+                'used': character_count,
+                'limit': character_limit,
+                'remaining': remaining,
+                'percentage_used': round(percentage_used, 1),
+                'tier': subscription.get('tier', 'unknown'),
+                'next_reset': subscription.get('next_character_count_reset_unix', None)
+            }
+        })
+        
+    except http_requests.exceptions.Timeout:
+        return jsonify({
+            'ok': False,
+            'provider': 'elevenlabs',
+            'error': 'Request timed out'
+        })
+    except http_requests.exceptions.RequestException as e:
+        return jsonify({
+            'ok': False,
+            'provider': 'elevenlabs',
+            'error': f'API request failed: {str(e)}'
+        })
+    except Exception as e:
+        return jsonify({
+            'ok': False,
+            'provider': 'elevenlabs',
+            'error': str(e)
+        })
+
+
 @api_bp.route('/settings/blocked-tools', methods=['GET'])
 def get_blocked_tools():
     """Get list of tools blocked for web mode"""

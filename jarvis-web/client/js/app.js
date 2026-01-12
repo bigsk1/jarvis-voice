@@ -951,6 +951,10 @@ class JarvisApp {
               <span class="config-label">ELEVENLABS_TTS_VOICE</span>
               <span class="config-value">${c.ELEVENLABS_TTS_VOICE || '(default)'}</span>
             </div>
+            <div class="config-item" id="elevenlabs-usage">
+              <span class="config-label">Usage</span>
+              <span class="config-value loading">Loading...</span>
+            </div>
             `}
             <div class="config-item">
               <span class="config-label">STATUS_UPDATES_ENABLED</span>
@@ -982,9 +986,63 @@ class JarvisApp {
             </div>
           </div>
         `;
+        
+        // Fetch ElevenLabs usage if in cloud mode
+        if (!isLocal && c.TTS_PROVIDER === 'elevenlabs') {
+          this._loadElevenLabsUsage();
+        }
       }
     } catch (err) {
       console.error('[App] Failed to load system config:', err);
+    }
+  }
+  
+  /**
+   * Load ElevenLabs usage/quota and update the UI
+   */
+  async _loadElevenLabsUsage() {
+    const usageEl = document.getElementById('elevenlabs-usage');
+    if (!usageEl) return;
+    
+    try {
+      const response = await fetch(`/api/tts/usage?mode=${this.socket.mode}`);
+      const data = await response.json();
+      
+      if (data.ok && data.usage) {
+        const u = data.usage;
+        const usedFormatted = u.used.toLocaleString();
+        const limitFormatted = u.limit.toLocaleString();
+        const remainingFormatted = u.remaining.toLocaleString();
+        
+        // Color based on usage percentage
+        let usageClass = 'usage-ok';
+        if (u.percentage_used >= 90) {
+          usageClass = 'usage-critical';
+        } else if (u.percentage_used >= 75) {
+          usageClass = 'usage-warning';
+        }
+        
+        usageEl.innerHTML = `
+          <span class="config-label">Characters</span>
+          <span class="config-value ${usageClass}">
+            ${usedFormatted} / ${limitFormatted} (${u.percentage_used}%)
+          </span>
+        `;
+        
+        // Add remaining info as a tooltip
+        usageEl.title = `${remainingFormatted} characters remaining this month`;
+      } else {
+        usageEl.innerHTML = `
+          <span class="config-label">Usage</span>
+          <span class="config-value error">${data.error || 'Unavailable'}</span>
+        `;
+      }
+    } catch (err) {
+      console.error('[App] Failed to load ElevenLabs usage:', err);
+      usageEl.innerHTML = `
+        <span class="config-label">Usage</span>
+        <span class="config-value error">Error loading</span>
+      `;
     }
   }
   
