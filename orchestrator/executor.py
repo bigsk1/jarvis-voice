@@ -127,8 +127,10 @@ class ToolExecutor:
                 timeout = 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
             elif tool_name == "weather":
                 timeout = 30  # Weather API can be slow with proxy fallback
+            elif tool_name == "status_recap":
+                timeout = 180  # 3 minutes - calls multiple tools including generate_image
             else:
-                timeout = 30 if self.mode == "local" else 15
+                timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
             
             # Pass current environment to subprocess so tools inherit LLM_PROVIDER
             tool_env = os.environ.copy()

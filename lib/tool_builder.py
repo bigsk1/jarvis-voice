@@ -366,6 +366,112 @@ if stash_ref and space:
 ```
 This allows users to ask follow-up questions like "read that transcript" or "print that file".
 
+CALLING OTHER JARVIS TOOLS (ORCHESTRATOR PATTERN):
+When your tool needs to call existing Jarvis tools (e.g., weather, crypto_price, system_monitor, generate_image):
+
+1. TOOL DISCOVERY - Find tools in skills/ or skills/auto-tools/:
+```python
+SKILLS_DIR = os.path.join(os.path.dirname(__file__), '..')
+AUTO_TOOLS_DIR = os.path.dirname(__file__)
+
+def find_tool(tool_name):
+    # Check skills/ first, then auto-tools/
+    for base_dir in [SKILLS_DIR, AUTO_TOOLS_DIR]:
+        tool_path = os.path.join(base_dir, f"{{tool_name}}.py")
+        if os.path.exists(tool_path):
+            # CRITICAL: Use realpath to resolve any ".." in path
+            return os.path.abspath(os.path.realpath(tool_path))
+    return None
+```
+
+2. CALLING TOOLS VIA SUBPROCESS:
+```python
+def call_tool(tool_name, args=None):
+    tool_path = find_tool(tool_name)
+    if not tool_path:
+        return {{"ok": False, "error": f"Tool {{tool_name}} not found"}}
+    
+    # Get project root for proper module imports
+    project_root = os.path.join(os.path.dirname(__file__), '..', '..')
+    
+    input_data = json.dumps(args or {{}})
+    # IMPORTANT: Most tools expect JSON as argv[1], not stdin
+    cmd = ["python3", tool_path, input_data]
+    
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=60,  # Adjust per tool (generate_image needs 120+)
+        cwd=project_root  # CRITICAL: So tools can find their lib imports
+    )
+    
+    if result.returncode == 0 and result.stdout:
+        try:
+            return json.loads(result.stdout)
+        except:
+            return {{"ok": False, "error": "Invalid JSON response"}}
+    return {{"ok": False, "error": result.stderr or "Tool failed"}}
+```
+
+3. KNOWN TOOL RESPONSE STRUCTURES:
+Different tools return data in different structures. Here are the correct paths:
+
+STASH TOOL (action: "save"):
+- Returns: data.ref (NOT data.stash_ref)
+- Example: result.get('data', {{}}).get('ref')  # "stash://space_xxx/f_yyy"
+
+GENERATE_IMAGE:
+- Returns: data.saved.stash_ref (nested inside saved object!)
+- Example: result.get('data', {{}}).get('saved', {{}}).get('stash_ref')
+- Timeout: Use 120+ seconds for image generation
+
+CRYPTO_PRICE:
+- Returns: data.price_usd, data.change_24h_percent (NOT price or change_24h)
+- Example: result.get('data', {{}}).get('price_usd')
+
+SYSTEM_MONITOR:
+- Returns: data.cpu.total_percent (NOT cpu.percent)
+- Returns: data.memory.ram.percent_used (NOT memory.percent)
+- Returns: data.disks[0].percent_used (array of disks, skip /dev/loop*)
+- Returns: data.uptime.uptime_string
+
+LIST_REMINDERS:
+- Use status: "scheduled" for pending reminders only (not "all")
+- Returns: data.reminders (array with title, trigger_time, relative_time)
+
+WEATHER:
+- Returns: data.temperature, data.condition, data.humidity, data.wind_speed
+
+4. EMBEDDING IMAGES IN CANVAS:
+If you call generate_image and want to show the image in canvas:
+```python
+# Get the stash ref from generate_image
+img_result = call_tool('generate_image', {{'prompt': prompt}})
+if img_result.get('ok'):
+    stash_ref = img_result.get('data', {{}}).get('saved', {{}}).get('stash_ref')
+    
+    # Canvas markdown format for images:
+    canvas_content = f"![Image Title]({{stash_ref}})\n\n# Rest of content..."
+```
+
+5. SAFE NESTED ACCESS HELPER:
+```python
+def safe_get(data, *keys, default='N/A'):
+    for key in keys:
+        if isinstance(data, dict):
+            data = data.get(key)
+        elif isinstance(data, list) and isinstance(key, int) and len(data) > key:
+            data = data[key]
+        else:
+            return default
+        if data is None:
+            return default
+    return data
+
+# Usage: safe_get(result, 'data', 'saved', 'stash_ref', default=None)
+```
+
 TEMPLATE TO FOLLOW:
 ```python
 #!/usr/bin/env python3

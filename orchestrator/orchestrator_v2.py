@@ -425,12 +425,34 @@ class Orchestrator:
                 if tools_used:
                     self.status_updater.update(category='near_complete')
                 
-                raw_speech = route.get("text_response", "I'm not sure how to respond.")
+                # Check if last tool has high-quality built-in speech that should be used directly
+                # (LLM tends to mangle numbers/prices when reformulating)
+                DIRECT_SPEECH_TOOLS = {'status_recap', 'generate_music', 'phone_call'}
+                last_tool = tools_used[-1] if tools_used else None
+                use_direct_speech = False
+                
+                if last_tool in DIRECT_SPEECH_TOOLS and conversation_context:
+                    # Use the tool's speech directly instead of LLM's reformulation
+                    last_ctx = conversation_context[-1]
+                    tool_speech = last_ctx.get("speech", "") or last_ctx.get("result", {}).get("speech", "")
+                    if tool_speech:
+                        raw_speech = tool_speech
+                        use_direct_speech = True  # Skip further formatting!
+                        if sys.stdout.isatty():
+                            print(f"🎯 Using {last_tool}'s direct speech (bypassing LLM reformatting)")
+                    else:
+                        raw_speech = route.get("text_response", "I'm not sure how to respond.")
+                else:
+                    raw_speech = route.get("text_response", "I'm not sure how to respond.")
                 
                 # Apply response style formatting (for ALL responses, not just multi-turn)
+                # UNLESS we're using direct speech from a tool (to avoid LLM mangling numbers)
                 response_style = os.environ.get('JARVIS_RESPONSE_STYLE', 'casual').lower()
                 
-                if response_style == 'casual':
+                if use_direct_speech:
+                    # Direct speech tools: use their speech verbatim, no LLM reformatting
+                    speech = raw_speech
+                elif response_style == 'casual':
                     # Format for voice (short & sweet)
                     if turn_num > 0:
                         # Multi-turn: summarize all tool results
@@ -1072,6 +1094,9 @@ Your BEST EFFORT response:"""
                 if "search" in tool_name.lower() or "fetch" in tool_name.lower():
                     # Search/fetch tools: need MORE context (3000 chars) to capture movie titles, URLs, descriptions
                     max_chars = 3000
+                elif tool_name == "status_recap":
+                    # Status recap aggregates lots of data - needs full context (4000 chars)
+                    max_chars = 4000
                 else:
                     # Other tools: standard truncation (1500 chars)
                     max_chars = 1500
@@ -1081,9 +1106,22 @@ Your BEST EFFORT response:"""
             context_parts.append(f"\n{i}. {tool_name}")
             context_parts.append(f"   Result: {result_summary}")
         
+        # Check if any tool requested news - prompt LLM to use native search
+        news_requested = False
+        for ctx in conversation_context:
+            result = ctx.get("result", {})
+            data = result.get("data", {})
+            # Check both top-level and nested report data
+            if data.get("news_requested") or data.get("report", {}).get("news_requested"):
+                news_requested = True
+                break
+        
         context_parts.append("\n\nBased on the above results, determine if you need to:")
         context_parts.append("1. Call another tool to complete the user's request")
         context_parts.append("2. Respond directly to the user (task complete)")
+        
+        if news_requested:
+            context_parts.append("\n⚠️ NEWS REQUESTED: The user asked for news. Use your NATIVE SEARCH capability to get current news headlines. DO NOT call external search tools - use your built-in web search to find 3-5 relevant news headlines and include them in your response.")
         
         return "\n".join(context_parts)
     
