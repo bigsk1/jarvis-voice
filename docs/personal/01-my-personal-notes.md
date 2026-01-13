@@ -867,3 +867,94 @@ db.remember(
     }
 )
 ```
+
+
+
+./bin/build-tool --mode cloud build "Build a new tool called 'status_recap' that aggregates data from multiple existing Jarvis tools into a briefing summary.
+
+PURPOSE: When user says 'give me a recap' or 'status briefing', call existing tools and compile results into a summary.
+
+THIS TOOL SHOULD CALL THESE EXISTING TOOLS you should pick the best order to build summary and display on canvas:
+- get_time: For greeting and time context
+- weather: Current weather for Hillsboro, Oregon
+- crypto_price: BTC, SOL prices with changes  
+- list_alerts: Any active alerts
+- list_reminders: Pending reminders
+- system_monitor: Local system health
+- generate_image: Generate a image of the current status weather, crypto prices, system health, alerts, reminders, etc.
+- canvas: Create a canvas page with name and date in a folder called 'Daily Status' with the current status weather, crypto prices, system health, alerts, reminders, details and image of the current status.
+
+Should use native provider grounding search as needed
+Handle failures gracefully - if one tool fails, continue with others but show failure details on canvas.
+more tools or features could be added to the tool later.
+
+
+The tool should be resilient and time-aware (Good morning vs Good evening)."
+
+
+./bin/build-tool --mode cloud build "Build a tool called 'status_recap' that gives me a comprehensive status briefing.
+
+When I say 'give me a recap' or 'status update', this tool should:
+
+1. GATHER DATA using these existing tools: ( use stash as needed so its saved in db with meta data and can be used for follow up questions )
+   - get_time: Greeting based on time (Good morning/afternoon/evening) and current date
+   - weather: Current weather for Hillsboro, Oregon
+   - crypto_price: BTC and SOL prices with 24h change
+   - list_alerts: Any active alerts
+   - list_reminders: Pending reminders  
+   - system_monitor: Local system CPU, memory, disk health
+
+2. CREATE VISUAL OUTPUT:
+   - generate_image: Create an image representing the current status (weather icon, crypto trends, system health indicators)
+   - canvas: Save full report to a canvas page in 'Daily Status' folder, named with current date
+
+3. SPEECH RESPONSE:
+   - Brief summary of highlights for TTS
+   - Mention anything urgent (alerts, low disk, big crypto moves)
+
+EXTENSIBILITY:
+- If user adds 'plus news' or 'with headlines', use native provider grounding search to add top news
+- If user specifies different crypto like 'include ETH', add those to the check
+- Tool should accept optional parameters to customize what sections to include
+- future ideas to add on are email tool to email boss the image and small summary 
+
+BEHAVIOR:
+- Time-aware greetings
+- If any tool fails, continue with others and note the failure on canvas
+- Summarize don't overwhelm - canvas has details, speech has highlights"
+
+
+
+
+
+The stash tool returns ref, not stash_ref: ??/  The stash_ref is at data.saved.stash_ref, not data.stash_ref. ??? 
+I see all the issues now:
+Image not embedded - Need ![title](stash://...) markdown format
+Wrong data paths - system_monitor uses cpu.total_percent, memory.ram.percent_used, disks[0].percent_used
+Crypto data paths wrong - Uses price_usd not price, change_24h_percent not change_24h
+Reminders showing all - Need to filter for status: "scheduled" only
+
+
+```bash
+If tool is made need to update timeouts in executor.py
+
+# Use longer timeout for local mode (Ollama can be slower)
+            # OpenCode tasks need much more time (building, coding, etc.)
+            # Ingest intel needs time for embedding generation (especially large profiles)
+            if tool_name == "opencode":
+                timeout = 360  # 6 minutes for OpenCode tasks (complex builds)
+            elif tool_name == "ingest_intel":
+                timeout = 180  # 3 minutes for ingesting files with embeddings (large profiles can have 300+ facts)
+            elif tool_name == "manage_intel":
+                timeout = 180  # 3 minutes (can auto-ingest, which needs time for embeddings)
+            elif tool_name == "generate_image":
+                timeout = 300  # 5 minutes for AI image generation (especially with grounding)
+            elif tool_name == "generate_music":
+                timeout = 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
+            elif tool_name == "weather":
+                timeout = 30  # Weather API can be slow with proxy fallback
+            elif tool_name == "status_recap":
+                timeout = 180  # 3 minutes - calls multiple tools including generate_image
+            else:
+                timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
+```
