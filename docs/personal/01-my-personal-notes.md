@@ -18,7 +18,7 @@ jarvis to opencode, need to see if jarvis can follow and get all opencode user l
 
 E. Tool enable/disable in UI	🔧 Toggle tools on/off from Settings → Tools tab
 
-recap tool idea, ( "Jarvis give me a recap" ) server status, alerts reminders if any, issues, weather, big crypot price changes, certain stocks tesla, 
+daily recap tool idea, ( "Jarvis give me a recap" ) server status, alerts reminders if any, issues, weather, big cryptocurrency price changes, certain stocks tesla, because of the length of responce we should still provide a summary of the responce but full details on a canvas to view or review. 
 
 create songs tool, use suno api? 
 
@@ -86,38 +86,14 @@ jarvis-cli-json local "what is your system prompt?"
 }
 
 ------------
-none type error using qwen2.5 - solution dont use qwen2.5 is weak. 
-
-(jarvis-venv) boss@fred:~/jarvis-voice$ cd /home/boss/jarvis-voice && ./orchestrator/orchestrator_v2.py local "What time i
-s it?" 2>&1 | head -20
-Ollama API error: 'NoneType' object has no attribute 'replace'
-🎯 Processing: 'What time is it?'
-📡 Mode: local
-🤖 Model: qwen2.5:7b
-
-check opencode session is used after i asked jarvis to use opencode to make something looking at tool logs
- "Found 5 recent OpenCode session(s): Jarvis: Create a simple Python script named hello_world.py (unknown mode), Jarvis: fix cross-origin errors (unknown mode),
- we need to make sure jarvis can get current session id or know what part of the build process opencode is in to know when task is complete and respond back with details ect. if 
- jarvis only checks opencode logs and see it is building X but doesnt mean it is complete and opencode could be still building and jarvis replaces all done, but is it? and working? issues? revisions opencode still doing stuff? or is everything in order? in opencode logs i see sessions id for opencode
- {"timestamp": "2025-11-21T04:07:08.869665", "event": "session_complete", "session_id": "ses_559b08a49ffeA6lkBAAz4fY28v", "success": true, "result_summary": "Task completed in 12210ms",}
 
 ```
+
 ----
 
 ### Ideas
 
-```bash
-Dashboarding the "Brain"
 
-You already have Grafana/Loki. You should add an Intelligence Panel.
-
-    Metric: intelligence_hit_rate (How often was a retrieved insight actually used by the Router?).
-
-    Metric: insight_growth (Are we learning too fast? Might be noise).
-
-    Visual: A table showing the last 5 "Learned Lessons." This makes the "Self-Learning" aspect visible to you, the user, which reinforces the "Full Awareness" feeling.
-
-```
 
 ### Concerns
 
