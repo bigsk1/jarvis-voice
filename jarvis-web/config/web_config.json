@@ -23,8 +23,8 @@
     "mode": "cloud"
   },
   "cloud": {
-    "llm_provider": "anthropic",
-    "llm_model": "claude-sonnet-4-5-20250929",
+    "llm_provider": "xai",
+    "llm_model": "grok-4-1-fast-non-reasoning-latest",
     "image_provider": "gemini"
   },
   "local": {

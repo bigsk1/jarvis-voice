@@ -58,3 +58,4 @@ fpdf2
 spotipy>=2.25.0
 yt-dlp==2025.12.8
 paramiko>=3.0.0
+yfinance
