@@ -162,7 +162,7 @@ COMMANDS: List[Command] = [
     Command("Open Intelligence UI", "echo '🌐 Open http://192.168.70.228:5003 in browser' && echo 'Or from Jarvis Web UI, click the 📊 icon'", "Intelligence Dashboard URL", "🧠 Intelligence"),
     Command("Intel Health", "./bin/check-intelligence-health.py", "Check intelligence health", "🧠 Intelligence"),
     Command("Intel Sync", "./bin/sync-intelligence-db.py", "Sync intelligence DBs", "🧠 Intelligence"),
-    Command("Run All Maintenance", "./bin/run-intelligence-maintenance.py --all --watch", "All maintenance jobs", "🧠 Intelligence"),
+    Command("Run All Maintenance", "./bin/run-intelligence-maintenance.py --watch", "All maintenance jobs", "🧠 Intelligence"),
     Command("Run Decay", "./bin/run-intelligence-maintenance.py --decay", "Decay unused insights", "🧠 Intelligence"),
     Command("Run Anomaly", "./bin/run-intelligence-maintenance.py --anomaly", "Detect anomalies", "🧠 Intelligence"),
     Command("Run Meta-Cognition", "./bin/run-intelligence-maintenance.py --meta", "Meta-cognition analysis", "🧠 Intelligence"),
