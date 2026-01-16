@@ -694,9 +694,13 @@ FROM insights WHERE times_applied > 0"
 ./bin/run-intelligence-maintenance.py --watch
 
 # Individual jobs
-./bin/run-intelligence-maintenance.py --decay
 ./bin/run-intelligence-maintenance.py --anomaly
 ./bin/run-intelligence-maintenance.py --meta
+# Normal run - will skip if already ran within 14 days
+./bin/run-intelligence-maintenance.py --decay
+
+# Force run - bypasses interval check (use with caution!)
+./bin/run-intelligence-maintenance.py --decay --force
 
 # All jobs
 curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/all

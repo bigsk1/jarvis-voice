@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "api_call",
-  "description": "Make an HTTP API call (GET or POST) to any REST API endpoint.\n\nUse this when:\n- User provides a specific API URL to call\n- User asks to fetch data from a known web service or API\n- User wants to check if an API endpoint is responding\n- User needs to send data to an external service via POST\n\nDo NOT use for:\n- General web searches or browsing (use web search instead)\n- Vague requests like \"find information about X\" without a specific API endpoint\n- Authentication flows requiring OAuth or complex multi-step processes",
+  "description": "Make an HTTP API call (GET or POST) to any REST API endpoint.\n\nUse this when:\n- User provides a specific API URL to call\n- User asks to fetch data from a known web service or API\n- User wants to check if an API endpoint is responding\n- User needs to send data to an external service via POST\n\nDo NOT use for:\n- General web searches or browsing (use web search instead or native grounding search if enabled)\n- Vague requests like \"find information about X\" without a specific API endpoint\n- Authentication flows requiring OAuth or complex multi-step processes",
   "script": "api_call.py",
   "parameters": {
     "type": "object",

@@ -26,6 +26,8 @@ A comprehensive status briefing tool that aggregates data from multiple Jarvis s
 
 ## Overview
 
+![status-recap-image](status-recap.jpg)
+
 The `status_recap` tool provides a "morning briefing" or on-demand status check by:
 
 1. **Gathering** data from 6+ internal tools
