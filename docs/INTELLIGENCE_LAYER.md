@@ -188,7 +188,8 @@ Three automated maintenance jobs keep the intelligence layer healthy:
 #### Decay Job
 ```bash
 # Config
-INTELLIGENCE_DECAY_RATE=0.95  # 5% decay per week unused
+INTELLIGENCE_DECAY_RATE=0.95           # 5% decay per week unused
+INTELLIGENCE_DECAY_INTERVAL_DAYS=14    # Minimum days between decay runs
 ```
 
 **What it does**:
@@ -197,6 +198,8 @@ INTELLIGENCE_DECAY_RATE=0.95  # 5% decay per week unused
 - If has failures: extra decay `confidence *= 0.9^consecutive_failures`
 - If successful (>80% helpful): slight boost
 - If confidence drops below 0.15: **auto-pruned**
+
+**⚠️ IMPORTANT**: The decay job tracks when it was last run and **skips if run within the minimum interval** (default: 14 days). This prevents accidental double-decay from compounding confidence reductions. Use `--force` to bypass if needed.
 
 #### Anomaly Detection
 ```bash
@@ -555,11 +558,12 @@ tests/integration/
 JARVIS_INTELLIGENCE=true
 
 # Learning parameters (advanced, optional)
-INTELLIGENCE_LEARNING_RATE=0.1      # How fast to update confidence on new evidence
-INTELLIGENCE_DECAY_RATE=0.95        # Decay multiplier per week unused (0.95 = 5% decay)
-INTELLIGENCE_ANOMALY_THRESHOLD=2.5  # Z-score threshold for outlier detection
-INTELLIGENCE_MIN_CONFIDENCE=0.3     # Minimum confidence to apply insight to routing
-INTELLIGENCE_NEGATIVE_WEIGHT=1.5    # Multiplier for negative constraints (higher = stronger)
+INTELLIGENCE_LEARNING_RATE=0.1          # How fast to update confidence on new evidence
+INTELLIGENCE_DECAY_RATE=0.95            # Decay multiplier per week unused (0.95 = 5% decay)
+INTELLIGENCE_DECAY_INTERVAL_DAYS=14     # Minimum days between decay runs (prevents double-decay)
+INTELLIGENCE_ANOMALY_THRESHOLD=2.5      # Z-score threshold for outlier detection
+INTELLIGENCE_MIN_CONFIDENCE=0.3         # Minimum confidence to apply insight to routing
+INTELLIGENCE_NEGATIVE_WEIGHT=1.5        # Multiplier for negative constraints (higher = stronger)
 ```
 
 ### Parameter Tuning Guide
@@ -824,7 +828,12 @@ Results
 
 # Specify mode
 ./bin/run-intelligence-maintenance.py --mode local --watch
+
+# Force decay run (bypasses minimum interval check - use with caution!)
+./bin/run-intelligence-maintenance.py --decay --force
 ```
+
+**⚠️ Decay Job Interval Protection**: The decay job tracks when it was last run and will **skip** if run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (default: 14 days). This prevents accidental double-decay which compounds confidence reductions incorrectly. Use `--force` only if you understand the implications.
 
 **API Endpoints**:
 ```bash
@@ -845,20 +854,31 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
 #### 1. Decay Job (`--decay`)
 **Purpose**: Keep insight pool fresh by decaying unused/failed insights
 
+**⚠️ Interval Protection**: The decay job tracks when it was last run in the `meta_knowledge` table. If run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (default: 14 days), it will **skip** with status `"skipped"`. Use `--force` to bypass.
+
+**Why?** Running decay multiple times compounds the reduction incorrectly:
+- First run: 1.0 → 0.95 (correct: 5% decay)
+- Second run same day: 0.95 → 0.9025 (wrong: double decay!)
+
 **Algorithm**:
 ```
-For each insight:
-  1. If last_applied > 7 days ago:
-     confidence *= DECAY_RATE  (default 0.95 = 5% decay)
-  
-  2. If consecutive_failures > 0:
-     confidence *= 0.9 ^ consecutive_failures
-  
-  3. If helpful_ratio > 80%:
-     confidence *= 1.02  (2% boost)
-  
-  4. If confidence < 0.15:
-     DELETE insight (pruned)
+1. Check if decay ran within minimum interval
+   If yes: SKIP (unless --force)
+
+2. For each insight:
+   a. If last_applied > 7 days ago:
+      confidence *= DECAY_RATE  (default 0.95 = 5% decay)
+   
+   b. If consecutive_failures > 0:
+      confidence *= 0.9 ^ consecutive_failures
+   
+   c. If helpful_ratio > 80%:
+      confidence *= 1.02  (2% boost)
+   
+   d. If confidence < 0.15:
+      DELETE insight (pruned)
+
+3. Record run timestamp in meta_knowledge table
 ```
 
 **Log Events**:

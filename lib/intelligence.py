@@ -42,7 +42,7 @@ import logging
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
-from config_loader import load_config, get_config_value, get_float
+from config_loader import load_config, get_config_value, get_float, get_int
 
 logger = logging.getLogger(__name__)
 
@@ -1487,7 +1487,7 @@ Example for FACTUAL (should NOT be stored here):
     # MAINTENANCE JOBS (Decay, Anomaly, Meta-Cognition)
     # ============================================
     
-    async def run_decay_job(self) -> Dict[str, Any]:
+    async def run_decay_job(self, force: bool = False) -> Dict[str, Any]:
         """
         Apply confidence decay to stale/unused insights.
         
@@ -1495,11 +1495,39 @@ Example for FACTUAL (should NOT be stored here):
         Insights that haven't been applied recently lose confidence.
         Insights that have failed repeatedly decay faster.
         
+        IMPORTANT: This job should only run once per decay period (default: 7 days).
+        Running it multiple times will compound the decay incorrectly.
+        
+        Args:
+            force: If True, bypass the minimum interval check
+        
         Returns:
             Stats about the decay job run
         """
         intel_log = get_intel_logger()
         cursor = self.conn.cursor()
+        
+        # Check if decay was already run recently (prevent double-decay)
+        min_interval_days = get_int('INTELLIGENCE_DECAY_INTERVAL_DAYS', 7)
+        
+        cursor.execute("""
+            SELECT MAX(timestamp) as last_run 
+            FROM meta_knowledge 
+            WHERE meta_type = 'decay_job_run'
+        """)
+        row = cursor.fetchone()
+        
+        if row and row['last_run'] and not force:
+            last_run = datetime.fromisoformat(row['last_run'].replace('Z', '+00:00').replace('+00:00', ''))
+            days_since_run = (datetime.now() - last_run).days
+            
+            if days_since_run < min_interval_days:
+                return {
+                    'status': 'skipped',
+                    'reason': f'Decay job already ran {days_since_run} days ago (minimum interval: {min_interval_days} days)',
+                    'last_run': row['last_run'],
+                    'next_eligible': (last_run + timedelta(days=min_interval_days)).isoformat()
+                }
         
         # Get insights with tracking data
         cursor.execute("""
@@ -1581,6 +1609,19 @@ Example for FACTUAL (should NOT be stored here):
                     'below_threshold', new_confidence
                 )
                 stats['pruned'] += 1
+        
+        # Record that decay job ran (for interval tracking)
+        cursor.execute("""
+            INSERT INTO meta_knowledge (meta_type, description, observation, conclusion, action_taken, confidence)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            'decay_job_run',
+            'Decay maintenance job executed',
+            f"Checked {stats['total_checked']} insights",
+            f"Decayed: {stats['decayed']}, Boosted: {stats['boosted']}, Pruned: {stats['pruned']}",
+            'decay_applied',
+            1.0
+        ))
         
         self.conn.commit()
         
@@ -1855,11 +1896,15 @@ Example for FACTUAL (should NOT be stored here):
         intel_log.log_maintenance_run('meta_cognition', stats)
         return stats
     
-    async def run_all_maintenance(self) -> Dict[str, Any]:
-        """Run all maintenance jobs and return combined results."""
+    async def run_all_maintenance(self, force: bool = False) -> Dict[str, Any]:
+        """Run all maintenance jobs and return combined results.
+        
+        Args:
+            force: If True, bypass minimum interval check for decay job
+        """
         results = {}
         
-        results['decay'] = await self.run_decay_job()
+        results['decay'] = await self.run_decay_job(force=force)
         results['anomalies'] = await self.run_anomaly_detection()
         results['meta_cognition'] = await self.run_meta_cognition()
         

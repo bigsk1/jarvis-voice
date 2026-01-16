@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--decay', action='store_true', help='Run decay job only')
     parser.add_argument('--anomaly', action='store_true', help='Run anomaly detection only')
     parser.add_argument('--meta', action='store_true', help='Run meta-cognition only')
+    parser.add_argument('--force', action='store_true', help='Force run even if within minimum interval (use with caution!)')
     parser.add_argument('--watch', action='store_true', help='Show recent log entries after running')
     parser.add_argument('--mode', choices=['cloud', 'local'], default='cloud', help='Mode to run in')
     args = parser.parse_args()
@@ -53,9 +54,13 @@ def main():
     
     results = {}
     
+    if args.force:
+        print("⚠️  FORCE MODE: Bypassing minimum interval checks!")
+        print()
+    
     if args.decay:
         print("Running decay job...")
-        results['decay'] = run_decay_job()
+        results['decay'] = run_decay_job(force=args.force)
     elif args.anomaly:
         print("Running anomaly detection...")
         results['anomaly'] = run_anomaly_detection()
@@ -64,7 +69,7 @@ def main():
         results['meta_cognition'] = run_meta_cognition()
     else:
         print("Running ALL maintenance jobs...")
-        results = run_all_maintenance()
+        results = run_all_maintenance(force=args.force)
     
     print()
     print("=" * 60)
@@ -74,13 +79,22 @@ def main():
     # Pretty print results
     if 'decay' in results:
         decay = results['decay']
-        if isinstance(decay, dict) and decay.get('status') != 'error':
-            print("\n📉 DECAY JOB:")
-            print(f"   Insights checked: {decay.get('total_checked', 0)}")
-            print(f"   Decayed: {decay.get('decayed', 0)}")
-            print(f"   Boosted: {decay.get('boosted', 0)}")
-            print(f"   Pruned: {decay.get('pruned', 0)}")
-            print(f"   Unchanged: {decay.get('unchanged', 0)}")
+        if isinstance(decay, dict):
+            if decay.get('status') == 'skipped':
+                print("\n📉 DECAY JOB: ⏭️  SKIPPED")
+                print(f"   Reason: {decay.get('reason', 'Unknown')}")
+                print(f"   Last run: {decay.get('last_run', 'Unknown')}")
+                print(f"   Next eligible: {decay.get('next_eligible', 'Unknown')}")
+                print("   (Use --force to bypass)")
+            elif decay.get('status') != 'error':
+                print("\n📉 DECAY JOB:")
+                print(f"   Insights checked: {decay.get('total_checked', 0)}")
+                print(f"   Decayed: {decay.get('decayed', 0)}")
+                print(f"   Boosted: {decay.get('boosted', 0)}")
+                print(f"   Pruned: {decay.get('pruned', 0)}")
+                print(f"   Unchanged: {decay.get('unchanged', 0)}")
+            else:
+                print(f"\n📉 DECAY JOB: {decay}")
         else:
             print(f"\n📉 DECAY JOB: {decay}")
     

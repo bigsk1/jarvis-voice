@@ -658,11 +658,17 @@ def evaluate_learning() -> Dict[str, Any]:
 # MAINTENANCE JOBS
 # ============================================
 
-def run_decay_job() -> Dict[str, Any]:
+def run_decay_job(force: bool = False) -> Dict[str, Any]:
     """
     Run the confidence decay job.
     
     Reduces confidence of stale/unused insights based on DECAY_RATE.
+    
+    IMPORTANT: This job should only run once per decay period (default: 7 days).
+    Running multiple times will be skipped unless force=True.
+    
+    Args:
+        force: If True, bypass minimum interval check (use with caution!)
     
     Returns:
         Stats about decayed/pruned insights
@@ -675,7 +681,7 @@ def run_decay_job() -> Dict[str, Any]:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            return loop.run_until_complete(intel.run_decay_job())
+            return loop.run_until_complete(intel.run_decay_job(force=force))
         finally:
             loop.close()
     except Exception as e:
@@ -737,9 +743,12 @@ def run_meta_cognition() -> Dict[str, Any]:
         return {'status': 'error', 'error': str(e)}
 
 
-def run_all_maintenance() -> Dict[str, Any]:
+def run_all_maintenance(force: bool = False) -> Dict[str, Any]:
     """
     Run all maintenance jobs (decay, anomaly, meta-cognition).
+    
+    Args:
+        force: If True, bypass minimum interval check for decay job
     
     Returns:
         Combined results from all jobs
@@ -752,7 +761,7 @@ def run_all_maintenance() -> Dict[str, Any]:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            return loop.run_until_complete(intel.run_all_maintenance())
+            return loop.run_until_complete(intel.run_all_maintenance(force=force))
         finally:
             loop.close()
     except Exception as e:
