@@ -1122,6 +1122,16 @@ The tool will be auto-discovered!
 
 </details>
 
+### Tool Builder
+
+- [Tool Builder](docs/TOOL_BUILDER.md) - Automatically create new tools when capability gaps are detected in feedback or you want a new tool.
+
+
+```bash
+./bin/build-tool --mode cloud build "Tool description here"
+```
+
+
 ### Testing
 
 ```bash
