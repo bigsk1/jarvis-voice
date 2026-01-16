@@ -886,6 +886,29 @@ curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
 - `insight_pruned` - When insight deleted
 - `maintenance_run` with `job_type: "decay_job"`
 
+**Understanding the Two Boost Systems**:
+
+There are TWO separate mechanisms that can boost insight confidence:
+
+| System | When | Boost Amount | Conditions |
+|--------|------|--------------|------------|
+| **Real-Time** | After each interaction | **+5% flat** | Insight was shown to LLM AND interaction succeeded |
+| **Maintenance** | During decay job | **×1.02 (2%)** | Insight applied 3+ times AND >80% success rate |
+
+```python
+# Real-time boost (in record_insight_usage)
+# Happens IMMEDIATELY after each successful use
+if was_helpful:
+    new_confidence = min(1.0, old_confidence + 0.05)  # +5% flat
+
+# Maintenance boost (in run_decay_job)  
+# Only during maintenance, AFTER time-decay applied
+if times_applied > 3 and success_rate > 80%:
+    new_confidence = min(1.0, new_confidence * 1.02)  # ×1.02
+```
+
+**Key insight**: The maintenance boost (1.02×) is applied AFTER the time-decay, so it mitigates but cannot prevent decay for rarely-used insights. See "Rare-But-Valid Insights Decay Problem" in Known Limitations.
+
 #### 2. Anomaly Detection (`--anomaly`)
 **Purpose**: Flag unusual experiences for manual review
 
@@ -1592,6 +1615,42 @@ Current intelligence focuses on **tool routing**. It does NOT learn:
 - Response verbosity preferences
 - Communication style (formal/casual)
 - User-specific terminology
+
+### 4. Rare-But-Valid Insights Decay Problem ⚠️
+
+**The Issue**: Good insights that are rarely triggered decay over time, even when they're 100% correct when used.
+
+**Example scenario**:
+```
+Insight: "Use crypto_price tool for cryptocurrency queries"
+- Created with confidence 1.0
+- Works perfectly every time (100% success rate)
+- But user only asks about crypto once a month
+
+Day 0:   confidence = 1.00
+Day 14:  Decay runs → 1.00 × 0.95² = 0.90  (2 weeks decay)
+Day 28:  Decay runs → 0.90 × 0.95² = 0.81
+Day 42:  Decay runs → 0.81 × 0.95² = 0.73
+Day 56:  Decay runs → 0.73 × 0.95² = 0.66
+...eventually drops below threshold and gets pruned!
+```
+
+**Why it happens**: The decay formula `confidence *= DECAY_RATE^(days/7)` is based on time since last use, not success rate. The maintenance boost (1.02×) cannot outpace the decay (0.9025×) for rarely-used insights.
+
+**Current design philosophy**: 
+- Frequently used + helpful = valuable → stays high
+- Rarely used = probably not important → fades away
+- This works for common patterns but punishes niche/specialized insights
+
+**Workarounds**:
+1. **Manual fix**: Use Intelligence Dashboard UI to manually boost confidence for known-good insights
+2. **Increase interval**: Set `INTELLIGENCE_DECAY_INTERVAL_DAYS=30` or higher to slow decay
+
+**Potential future fixes** (not implemented):
+- "Verified" flag to exempt insights from time decay
+- Category-based decay rates (technical insights decay slower)
+- Minimum confidence floor based on success rate (100% success → can't drop below 0.7)
+- Success-weighted decay (high success rate reduces decay multiplier)
 
 ---
 
