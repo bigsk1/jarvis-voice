@@ -72,7 +72,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 55+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, ssh_remote, docker_control, stock_price, status_recap, etc.)
+- 50+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, ssh_remote, docker_control, stock_price, status_recap, crawl_url, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -667,7 +667,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (55+)
+### Available Skills (50+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -701,8 +701,10 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
 - `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune
 - `youtube_transcript` - **YouTube transcripts**: Download video transcripts as .srt/.md files
+- `crawl_url` - **Web scraping**: Crawl4AI to extract markdown from any webpage (stealth mode, JS wait)
+- `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 
-**Artifact & Output Tools:** ⭐ ENHANCED
+**Artifact & Output Tools:**
 - `generate_image` - **AI image generation**: Google Gemini 3 Pro with Search Grounding
   - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
   - **Google Search Grounding** - Real-time data in images (weather, crypto prices, news)
