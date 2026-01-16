@@ -29,7 +29,16 @@ from config_loader import load_config, get_config_value
 
 FEEDBACK_PROMPT = """A task was just completed as a voice assistant. Now provide HONEST, SPECIFIC FEEDBACK to help improve the system.
 
-IMPORTANT: Today's date is {current_date}. Any references to dates before this are in the PAST, not future.
+📅 CRITICAL - TODAY'S DATE: {current_date}
+
+⚠️ DATE-RELATIVE QUERY RULES (read carefully):
+- "this weekend" = the UPCOMING Saturday/Sunday (or Friday-Sunday) from today's date
+- "tonight", "today", "tomorrow" = relative to TODAY ({current_date})
+- If user asks about "this weekend" and response mentions dates 1-4 days in the future, that is CORRECT
+- DO NOT penalize responses that correctly reference upcoming dates
+- Example: If today is Jan 15 and response says "Jan 17-18", that IS this weekend = CORRECT
+- The assistant CANNOT predict exact future content, but can report what is SCHEDULED
+- For streaming/entertainment queries, listing scheduled releases is acceptable behavior
 
 🔴 NATIVE SEARCH CHECK - READ FIRST: {native_search_status}
 {native_search_instructions}
@@ -382,7 +391,7 @@ If real-time data was needed and no tools were used, rate poorly."""
         
         # Build the feedback prompt
         prompt = FEEDBACK_PROMPT.format(
-            current_date=datetime.now().strftime("%B %d, %Y"),  # e.g., "December 13, 2025"
+            current_date=datetime.now().strftime("%A, %B %d, %Y"),  # e.g., "Wednesday, January 15, 2026"
             query=query,
             success="Yes" if result.get('ok') else "No",
             raw_llm_response=raw_llm_response,
