@@ -6,9 +6,20 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ---
 
-## 🎯 Current Status (January 7, 2026)
+## 🎯 Current Status (January 15, 2026)
 
 **Production Ready** ✅
+- **Stock Price Tool** - Stock, futures, and commodity prices via yfinance
+  - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
+  - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
+  - Forex pairs: EURUSD=X, USDJPY=X, etc.
+  - Returns price, change, volume, market cap, P/E, 52-week range
+- **Status Recap Tool v1.4** - Comprehensive daily status aggregator
+  - Weather, crypto (BTC, SOL), stocks/futures (TSLA, gold, silver by default)
+  - Alerts, reminders, system health (CPU, RAM, disk, uptime)
+  - Saves full report to Canvas + Stash for follow-up queries
+  - Optional AI-generated dashboard image, native search for news
+  - See [`docs/status-tool/README.md`](docs/status-tool/README.md)
 - **SSH Remote Tool** - Execute commands on remote hosts via SSH
   - Secure credential management (keys in filesystem, passwords in .env)
   - Multi-command execution, apt management, sudo support
@@ -61,7 +72,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 53+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, ssh_remote, docker_control, etc.)
+- 55+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, ssh_remote, docker_control, stock_price, status_recap, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)
@@ -656,7 +667,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (48+)
+### Available Skills (55+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -683,6 +694,8 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute
 - `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
+- `stock_price` - **Stock/futures prices**: stocks (TSLA, AAPL), futures (GC=F gold, SI=F silver), forex (EURUSD=X)
+- `status_recap` - **Daily status**: aggregates weather, crypto, stocks, alerts, reminders, system health → Canvas + Stash
 - `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
@@ -1203,6 +1216,26 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
+**Completed (January 2026):**
+- ✅ **Stock Price Tool** - Stock, futures, and commodity prices via yfinance
+  - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
+  - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
+  - Forex pairs: EURUSD=X, USDJPY=X, etc.
+  - Uses LOCAL_PROXY for network connectivity
+- ✅ **Status Recap Tool v1.4** - Comprehensive daily status aggregator
+  - Weather, crypto (BTC, SOL), stocks/futures (TSLA, gold, silver defaults)
+  - Alerts, reminders, system health (CPU, RAM, disk, uptime)
+  - Saves full report to Canvas + Stash for follow-up queries
+  - Optional AI-generated dashboard image (Gemini)
+  - Native grounding search for news when enabled
+  - Direct speech mode prevents LLM price mangling
+  - See: `docs/status-tool/README.md`
+- ✅ **Tool Builder v2.0** - Network/proxy auto-fix enhancement
+  - Auto-detects network errors during tool verification
+  - Injects proxy configuration instructions on retry
+  - Three proxy patterns: requests proxies, env vars, http_client
+  - See: `docs/TOOL_BUILDER.md`
+
 **Completed (December 2025):**
 - ✅ **Deep Memory Search** - Multi-source search across all Jarvis data repositories
   - Searches memory, conversations, web conversations, intel files, canvas pages, stash artifacts
@@ -1432,6 +1465,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.21 (January 2026)  
+**Current Version:** v2.22 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** SSH Remote Tool, Docker Control, Deep Memory Search, ElevenLabs Music Generation
+**Latest Features:** Stock Price Tool, Status Recap v1.4, Tool Builder v2.0 (proxy auto-fix)

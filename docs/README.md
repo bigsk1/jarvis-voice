@@ -27,7 +27,7 @@
 - **[opencode/OPENCODE.md](opencode/OPENCODE.md)** - Autonomous coding agent
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools
-- **[status-tool/README.md](status-tool/README.md)** - 📊 **Status Recap Tool** (aggregates weather, crypto, alerts, reminders, system health)
+- **[status-tool/README.md](status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 
 ### Remote & Infrastructure
 - **[ssh/README.md](ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)
@@ -284,13 +284,34 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-01-15:**
+- ✅ **Stock Price Tool** - Stock, futures, and commodity prices via yfinance ⭐ NEW
+  - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
+  - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
+  - Forex pairs: EURUSD=X, USDJPY=X, etc.
+  - Returns price, change, volume, market cap, P/E, 52-week range
+  - See: `skills/stock_price.py`
+- ✅ **Status Recap Tool v1.4** - Comprehensive daily status aggregator ⭐ ENHANCED
+  - Weather, crypto (BTC, SOL), stocks/futures (TSLA, gold, silver)
+  - Alerts, reminders, system health (CPU, RAM, disk, uptime)
+  - Saves full report to Canvas + Stash for follow-up queries
+  - Optional AI-generated dashboard image (Gemini)
+  - Native grounding search for news when enabled
+  - Direct speech mode prevents LLM price mangling
+  - See: `docs/status-tool/README.md`
+- ✅ **Tool Builder v2.0** - Network/proxy auto-fix ⭐ ENHANCED
+  - Auto-detects network errors during tool verification
+  - Injects proxy configuration instructions on retry
+  - Three proxy patterns: requests proxies, env vars, http_client
+  - See: `docs/TOOL_BUILDER.md`
+
 **2026-01-07:**
-- ✅ **SSH Remote Tool** - Execute commands on remote hosts via SSH ⭐ NEW
+- ✅ **SSH Remote Tool** - Execute commands on remote hosts via SSH
   - Secure credential management (keys in filesystem, passwords in .env)
   - Multi-command execution, apt management, sudo support
   - Stateless sessions - no orphaned connections
   - See: `docs/ssh/README.md`
-- ✅ **Docker Control Tool** - Comprehensive Docker management ⭐ NEW
+- ✅ **Docker Control Tool** - Comprehensive Docker management
   - Container lifecycle: list, start, stop, restart, logs, inspect, stats
   - Compose: up, down, restart, pull, build with force-recreate
   - Images, networks, volumes, exec, system prune
@@ -721,6 +742,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-07 (v2.21)  
-**Latest:** SSH Remote Tool, Docker Control Tool, YouTube Transcripts, Deep Memory Search  
+**Last Updated:** 2026-01-15 (v2.22)  
+**Latest:** Stock Price Tool, Status Recap v1.4, Tool Builder v2.0 (proxy auto-fix)  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
