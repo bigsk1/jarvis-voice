@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+  "name": "stock_price",
+  "description": "Get current STOCK, FUTURES, or COMMODITY price from Yahoo Finance. NOT for cryptocurrencies (use crypto_price for Bitcoin, Ethereum spot prices). Supports: company names (Tesla), tickers (TSLA), futures (GC=F for gold), forex (EURUSD=X). COMMODITIES: gold (GC=F), silver (SI=F), oil/crude (CL=F), natural gas (NG=F), copper (HG=F). STOCKS: Tesla (TSLA), Apple (AAPL), Nvidia (NVDA), Microsoft (MSFT), Amazon (AMZN), Google (GOOGL), Meta. ETFs: SPY (S&P 500), QQQ (Nasdaq), GLD (gold ETF), SLV (silver ETF). INDEX FUTURES: ES=F (S&P), NQ=F (Nasdaq). Use when user asks: 'gold price', 'Tesla stock', 'price of oil', 'silver futures', 'AAPL price'.",
+  "script": "stock_price.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Stock ticker, futures symbol, or name. Stocks: TSLA, AAPL, NVDA. Futures use =F suffix: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas), ES=F (S&P futures). Forex use =X suffix: EURUSD=X. Common names auto-map: 'gold'->GC=F, 'oil'->CL=F, 'Tesla'->TSLA. Examples: 'gold', 'TSLA', 'silver futures', 'CL=F', 'Apple'"
+      }
+    },
+    "required": [
+      "symbol"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

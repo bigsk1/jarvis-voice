@@ -21,6 +21,7 @@ TIMEOUTS = {
     'default': 45,
     'weather': 60,
     'crypto_price': 45,
+    'stock_price': 45,
     'generate_image': 120,
     'system_monitor': 30,
     'list_alerts': 20,
@@ -108,7 +109,8 @@ def main():
         include_news = args.get('include_news', False)
         generate_image = args.get('generate_image', False)
         crypto_coins = args.get('crypto_coins', ['bitcoin', 'solana'])
-        sections = args.get('sections', ['time', 'weather', 'crypto', 'alerts', 'reminders', 'system'])
+        stock_symbols = args.get('stock_symbols', ['TSLA', 'GC=F', 'SI=F'])
+        sections = args.get('sections', ['time', 'weather', 'crypto', 'stocks', 'alerts', 'reminders', 'system'])
         save_to_canvas = args.get('save_to_canvas', True)
         
         # Data collection
@@ -163,6 +165,40 @@ def main():
                     }
                 else:
                     failures.append(f"crypto_{coin}: {result.get('error')}")
+        
+        # 3b. Stocks - extract correct fields
+        if 'stocks' in sections:
+            report_data['stocks'] = {}
+            for symbol in stock_symbols:
+                result = call_tool('stock_price', {'symbol': symbol})
+                if result.get('ok'):
+                    d = result.get('data', {})
+                    price = d.get('price_usd', 0)
+                    change = d.get('change_today_percent', 0)
+                    name = d.get('company', symbol.upper())
+                    ticker = d.get('symbol', symbol.upper())
+                    
+                    # Pre-format display string so LLM doesn't mangle it
+                    change_str = f"+{change:.1f}%" if change >= 0 else f"{change:.1f}%"
+                    if price >= 1000:
+                        price_display = f"${int(price):,}"
+                    else:
+                        price_display = f"${price:.2f}"
+                    
+                    report_data['stocks'][ticker] = {
+                        'price': price,
+                        'price_display': price_display,
+                        'change_today': change,
+                        'change_display': change_str,
+                        'summary': f"{ticker} {price_display} ({change_str})",
+                        'company': name,
+                        'market_cap': d.get('market_cap_usd', 0),
+                        'market_cap_display': d.get('market_cap_display'),
+                        'pe_ratio': d.get('pe_ratio'),
+                        'sector': d.get('sector'),
+                    }
+                else:
+                    failures.append(f"stock_{symbol}: {result.get('error')}")
         
         # 4. Alerts - pending only
         if 'alerts' in sections:
@@ -235,6 +271,16 @@ def main():
                     crypto_lines.append(f"{data.get('name', coin)}: ${price:,.0f} ({arrow}{abs(change):.1f}%)")
                 prompt_parts.append(f"CRYPTO: {', '.join(crypto_lines)}")
             
+            # Stocks with actual prices and changes
+            if report_data.get('stocks'):
+                stock_lines = []
+                for ticker, data in report_data['stocks'].items():
+                    price = data.get('price', 0)
+                    change = data.get('change_today', 0)
+                    arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
+                    stock_lines.append(f"{ticker}: ${price:,.2f} ({arrow}{abs(change):.1f}%)")
+                prompt_parts.append(f"STOCKS: {', '.join(stock_lines)}")
+            
             # System stats with actual numbers
             if 'system' in report_data:
                 s = report_data['system']
@@ -288,6 +334,11 @@ def main():
         if crypto_summaries:
             speech_parts.append(", ".join(crypto_summaries))
         
+        # Stocks - use pre-formatted summary
+        stock_summaries = [data.get('summary') for data in report_data.get('stocks', {}).values() if data.get('summary')]
+        if stock_summaries:
+            speech_parts.append(", ".join(stock_summaries))
+        
         # Alerts/reminders counts
         alert_count = len(report_data.get('alerts', {}).get('alerts', []))
         reminder_count = len(report_data.get('reminders', {}).get('reminders', []))
@@ -332,6 +383,17 @@ def main():
             crypto_summaries.append(f"{name} **{price_display}** ({emoji} {change_display})")
         if crypto_summaries:
             summary_parts.append(" • ".join(crypto_summaries))
+        
+        # Stock summary - use pre-formatted values
+        stock_summaries = []
+        for ticker, data in report_data.get('stocks', {}).items():
+            change = data.get('change_today', 0)
+            emoji = "📈" if change > 0 else "📉" if change < 0 else "➡️"
+            price_display = data.get('price_display', f"${data.get('price', 0):,.2f}")
+            change_display = data.get('change_display', f"{change:+.1f}%")
+            stock_summaries.append(f"{ticker} **{price_display}** ({emoji} {change_display})")
+        if stock_summaries:
+            summary_parts.append(" • ".join(stock_summaries))
         
         # Alerts/reminders summary
         alert_count = len(report_data.get('alerts', {}).get('alerts', []))
@@ -398,6 +460,21 @@ def main():
                 change = data.get('change_24h', 0)
                 emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪"
                 canvas_lines.append(f"- **{data.get('name', coin.upper())}:** ${price:,.2f} ({emoji} {change:+.2f}% 24h)")
+            canvas_lines.append("")
+        
+        # Stocks section
+        if report_data.get('stocks'):
+            canvas_lines.append("## 📊 Stocks")
+            for ticker, data in report_data['stocks'].items():
+                price = data.get('price', 0)
+                change = data.get('change_today', 0)
+                emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪"
+                company = data.get('company', ticker)
+                pe = data.get('pe_ratio')
+                cap = data.get('market_cap_display', '')
+                pe_str = f" • P/E: {pe:.1f}" if pe else ""
+                cap_str = f" • Cap: {cap}" if cap else ""
+                canvas_lines.append(f"- **{ticker}** ({company}): ${price:,.2f} ({emoji} {change:+.2f}% today){pe_str}{cap_str}")
             canvas_lines.append("")
         
         # Alerts section

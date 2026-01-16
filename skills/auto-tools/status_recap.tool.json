@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "status_recap",
-  "description": "Comprehensive status briefing with time-aware greeting, weather, crypto prices, alerts, reminders, and system health. Saves full report to canvas and stash for follow-up questions. Use when user says 'give me a recap', 'status update', 'morning briefing', 'what's happening', or 'daily status'. Data is saved to stash so user can ask follow-up questions about the report.",
+  "description": "Comprehensive status briefing with time-aware greeting, weather, crypto prices, stock prices, alerts, reminders, and system health. Saves full report to canvas and stash for follow-up questions. Use when user says 'give me a recap', 'status update', 'morning briefing', 'what's happening', or 'daily status'. Default crypto: Bitcoin, Solana. Default stocks: Tesla (TSLA), Gold (GLD). Data is saved to stash so user can ask follow-up questions about the report.",
   "script": "status_recap.py",
   "parameters": {
     "type": "object",
@@ -24,13 +24,21 @@
         "description": "Cryptocurrencies to check prices for",
         "default": ["bitcoin", "solana"]
       },
+      "stock_symbols": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Stock/futures symbols: TSLA, AAPL, GC=F (gold), SI=F (silver), CL=F (oil)",
+        "default": ["TSLA", "GC=F", "SI=F"]
+      },
       "sections": {
         "type": "array",
         "items": {
           "type": "string"
         },
-        "description": "Sections to include: time, weather, crypto, alerts, reminders, system",
-        "default": ["time", "weather", "crypto", "alerts", "reminders", "system"]
+        "description": "Sections to include: time, weather, crypto, stocks, alerts, reminders, system",
+        "default": ["time", "weather", "crypto", "stocks", "alerts", "reminders", "system"]
       },
       "save_to_canvas": {
         "type": "boolean",
@@ -48,12 +56,13 @@
     "auto_approve": true
   },
   "test_input": {
-    "sections": ["time", "weather", "crypto"],
-    "crypto_coins": ["bitcoin"]
+    "sections": ["time", "weather", "crypto", "stocks"],
+    "crypto_coins": ["bitcoin"],
+    "stock_symbols": ["TSLA"]
   },
   "expected_output_contains": ["ok", "speech", "data"],
   "auto_generated": true,
   "created_at": "2026-01-13T07:17:25.430578",
-  "updated_at": "2026-01-13T08:45:00.000000",
+  "updated_at": "2026-01-15T18:00:00.000000",
   "feedback_ids": []
 }

@@ -1,5 +1,7 @@
 # Jarvis Tool Builder - Autonomous Tool Creation
 
+> **Version:** 2.0  
+> **Updated:** January 2026  
 > **Purpose**: Automatically create new tools when capability gaps are detected in feedback. Uses existing LLM providers (no external dependencies) with safety checks and full traceability.
 
 ---
@@ -32,6 +34,9 @@ The Tool Builder automatically creates new tools when:
 - **Dependency gating** - New packages require human approval
 - **Full traceability** - Report card links to feedback IDs
 - **MCP overlap check** - Skips if existing MCP tool does the job
+- **Network/Proxy Auto-Fix** - Detects connection errors and auto-injects proxy instructions
+- **Inter-tool Calling** - Guides LLM to call other Jarvis tools correctly
+- **Stash Integration** - Built-in patterns for artifact storage
 
 ---
 
@@ -87,6 +92,12 @@ The Tool Builder automatically creates new tools when:
 │  [PASS]        [FAIL]                                              │
 │      │             │                                                │
 │      │             ▼                                                │
+│      │      ┌──────────────────┐                                   │
+│      │      │ Analyze Error    │                                   │
+│      │      │ - Network error? │→ Inject proxy fix instructions   │
+│      │      │ - Syntax error?  │→ Show exact error                │
+│      │      └────────┬─────────┘                                   │
+│      │               ▼                                              │
 │      │      ┌──────────────────┐                                   │
 │      │      │ Back to LLM      │                                   │
 │      │      │ "Fix this error" │                                   │
@@ -223,8 +234,9 @@ If too simple/unnecessary → SKIP_TRIVIAL
 ### 3. Dependency Gating
 
 **Available packages** (no install needed):
-- Standard library: `os`, `sys`, `json`, `re`, `datetime`, etc.
-- Already installed: `requests`, `pint`, `flask`, `beautifulsoup4`, etc.
+- Standard library: `os`, `sys`, `json`, `re`, `datetime`, `subprocess`, `sqlite3`, etc.
+- Jarvis lib modules: `config_loader`, `stash_helper`, `memory_db`, `llm_provider`, `http_client`
+- Already installed: `requests`, `yfinance`, `flask`, `beautifulsoup4`, `pyyaml`, `psutil`, `numpy`, etc.
 
 **New packages** → Tool goes to `skills/pending/` for human review.
 
@@ -252,9 +264,91 @@ This prevents tools from being deployed that would fail at runtime due to missin
 2. **Import check** - Try importing
 3. **Runtime test** - Run with `test_input` from JSON config
 
-### 5. Retry Loop
+### 6. Retry Loop with Smart Error Analysis
 
 If verification fails, the LLM gets 3 attempts with error feedback to fix it.
+
+**Network Error Detection** - If the error contains network indicators:
+- "Failed to connect", "Connection refused", "Read timed out"
+- "Could not resolve host", "yahoo.com", "curl"
+
+The retry prompt automatically includes detailed proxy fix instructions.
+
+---
+
+## Network/Proxy Auto-Fix (NEW)
+
+Many networks require proxy for external API access. The Tool Builder now automatically detects network errors and provides fix instructions.
+
+### How It Works
+
+```
+Attempt 1: Tool generated without proxy
+    ↓
+Verification fails: "Failed to connect to yahoo.com"
+    ↓
+_is_network_error() detects: "yahoo.com" in error → True
+    ↓
+Attempt 2: Prompt includes proxy fix instructions
+    ↓
+LLM regenerates tool WITH proxy support
+    ↓
+Verification passes ✅
+```
+
+### Proxy Patterns in BUILD_PROMPT
+
+The LLM is taught three patterns for proxy support:
+
+**Option 1 - requests library:**
+```python
+from config_loader import load_config, get_config_value
+
+def setup_proxy():
+    proxy = get_config_value('LOCAL_PROXY', '')
+    if proxy:
+        return {'http': proxy, 'https': proxy}
+    return None
+
+proxies = setup_proxy()
+response = requests.get(url, proxies=proxies, timeout=30)
+```
+
+**Option 2 - Environment variables (for yfinance, etc.):**
+```python
+def setup_proxy_env():
+    proxy = get_config_value('LOCAL_PROXY', '')
+    if proxy:
+        os.environ['http_proxy'] = proxy
+        os.environ['https_proxy'] = proxy
+        return True
+    return False
+```
+
+**Option 3 - Jarvis http_client (auto-fallback):**
+```python
+from http_client import http_request
+
+response = http_request(
+    'GET', url,
+    use_proxy=True,
+    fallback_on_proxy_fail=True
+)
+```
+
+### Example: stock_price Tool
+
+The `stock_price` tool was created after the tool builder learned to add proxy support:
+
+```python
+# skills/stock_price.py uses Option 2 for yfinance
+def setup_proxy_env():
+    proxy = get_config_value('LOCAL_PROXY', '')
+    if proxy:
+        os.environ['http_proxy'] = proxy
+        os.environ['https_proxy'] = proxy
+    return bool(proxy)
+```
 
 ---
 
@@ -272,13 +366,30 @@ The Tool Builder uses providers in this order:
 # config/cloud.env
 
 # Dedicated tool builder (optional)
+TOOL_BUILDER_PROVIDER=xai
+TOOL_BUILDER_MODEL=grok-4.1-fast-non-reasoning-latest
+
+# Or use Anthropic
 TOOL_BUILDER_PROVIDER=anthropic
 TOOL_BUILDER_MODEL=claude-sonnet-4-5-20250929
 
-# Or falls back to feedback provider
-FEEDBACK_PROVIDER=anthropic
-FEEDBACK_MODEL=claude-sonnet-4-5-20250929
+# Falls back to FEEDBACK_PROVIDER, then LLM_PROVIDER
 ```
+
+### Provider Fallback Chain
+
+```
+TOOL_BUILDER_PROVIDER → FEEDBACK_PROVIDER → LLM_PROVIDER
+```
+
+### Default Models (if not set)
+
+| Provider | Default Model |
+|----------|---------------|
+| xAI | `grok-4.1-fast-non-reasoning-latest` |
+| Anthropic | `claude-sonnet-4-5-20250929` |
+| OpenAI | `gpt-4o` |
+| Ollama | `qwen3:14b` |
 
 ---
 
@@ -329,6 +440,79 @@ tail -f logs/tool-builder/ouroboros-research-*.jsonl | jq .
 
 # See what Jarvis found
 cat logs/tool-builder/ouroboros-research-*.jsonl | jq '{query: .query, tools_used: .tools_used, duration_ms: .duration_ms}'
+```
+
+---
+
+## Inter-Tool Calling Pattern
+
+Tools can call other Jarvis tools via subprocess. The BUILD_PROMPT includes detailed guidance:
+
+### Tool Discovery
+
+```python
+SKILLS_DIR = os.path.join(os.path.dirname(__file__), '..')
+AUTO_TOOLS_DIR = os.path.dirname(__file__)
+
+def find_tool(tool_name):
+    for base_dir in [SKILLS_DIR, AUTO_TOOLS_DIR]:
+        tool_path = os.path.join(base_dir, f"{tool_name}.py")
+        if os.path.exists(tool_path):
+            return os.path.abspath(os.path.realpath(tool_path))
+    return None
+```
+
+### Calling Pattern
+
+```python
+def call_tool(tool_name, args=None):
+    tool_path = find_tool(tool_name)
+    project_root = os.path.join(os.path.dirname(__file__), '..', '..')
+    
+    result = subprocess.run(
+        ["python3", tool_path, json.dumps(args or {})],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=project_root  # CRITICAL: So tools find their lib imports
+    )
+    
+    if result.returncode == 0:
+        return json.loads(result.stdout)
+    return {"ok": False, "error": result.stderr}
+```
+
+### Known Tool Response Structures
+
+The BUILD_PROMPT documents correct data paths for common tools:
+
+| Tool | Data Path | Example |
+|------|-----------|---------|
+| `stash` (save) | `data.ref` | `result.get('data', {}).get('ref')` |
+| `generate_image` | `data.saved.stash_ref` | `result.get('data', {}).get('saved', {}).get('stash_ref')` |
+| `crypto_price` | `data.price_usd` | `result.get('data', {}).get('price_usd')` |
+| `stock_price` | `data.price_usd` | `result.get('data', {}).get('price_usd')` |
+| `system_monitor` | `data.cpu.total_percent` | Nested structure |
+| `weather` | `data.temperature` | `result.get('data', {}).get('temperature')` |
+
+### Example: status_recap Tool
+
+The `status_recap` tool demonstrates inter-tool calling by aggregating data from 7+ tools:
+
+```python
+# Get weather
+weather_result = call_tool('weather', {'location': 'Hillsboro, OR'})
+
+# Get crypto prices
+for coin in ['bitcoin', 'solana']:
+    crypto_result = call_tool('crypto_price', {'coin': coin})
+
+# Get stock prices
+for symbol in ['TSLA', 'GC=F']:
+    stock_result = call_tool('stock_price', {'symbol': symbol})
+
+# Generate dashboard image
+img_result = call_tool('generate_image', {'prompt': '...'})
 ```
 
 ### Loop Prevention
@@ -401,17 +585,33 @@ skills/
 ├── *.py                      # Human-created tools
 ├── *.tool.json              
 ├── auto-tools/               # Auto-generated tools
-│   ├── text_case_converter.py
-│   ├── text_case_converter.tool.json
-│   └── text_case_converter.report.json
+│   ├── docker_control.py     # Docker management
+│   ├── network_tools.py      # Ping, DNS, port scan
+│   ├── status_recap.py       # Comprehensive status briefing
+│   ├── system_monitor.py     # CPU, RAM, disk stats
+│   ├── text_summarizer.py    # Text summarization
+│   ├── youtube_transcript.py # YouTube transcript download
+│   └── *.report.json         # Report cards
 └── pending/                  # Tools needing approval
     ├── new_tool.py
     ├── new_tool.tool.json
     └── new_tool.report.json
 
 logs/tool-builder/
-└── tool-builder-YYYY-MM-DD.jsonl  # Creation logs
+├── tool-builder-YYYY-MM-DD.jsonl      # Creation logs
+└── ouroboros-research-YYYY-MM-DD.jsonl # Research logs
 ```
+
+### Auto-Generated Tools (as of Jan 2026)
+
+| Tool | Purpose | Key Features |
+|------|---------|--------------|
+| `docker_control` | Manage Docker containers | List, start, stop, logs, exec |
+| `network_tools` | Network diagnostics | Ping, DNS lookup, port scan, traceroute |
+| `status_recap` | Comprehensive briefing | Weather, crypto, stocks, alerts, system |
+| `system_monitor` | System metrics | CPU, RAM, disk, network, processes |
+| `text_summarizer` | Text processing | Summarize, extract keywords, counts |
+| `youtube_transcript` | YouTube transcripts | Download as .srt or .md |
 
 ---
 
@@ -499,6 +699,26 @@ Check the error message - common issues:
 - Wrong sys.path (auto-tools need `'..', '..', 'lib'`)
 - Invalid JSON output
 
+### Network/Connection errors (3 retries all failed)
+
+If you see errors like:
+- "Failed to connect to yahoo.com"
+- "Connection refused"
+- "Read timed out"
+
+The tool builder should auto-inject proxy instructions on retry. If it still fails:
+
+1. Check if `LOCAL_PROXY` is set in `config/cloud.env` or `config/local.env`
+2. Manually add proxy support using one of the patterns in the BUILD_PROMPT
+3. Test the API directly with proxy:
+   ```python
+   import os
+   os.environ['http_proxy'] = 'http://user:pass@host:port'
+   os.environ['https_proxy'] = 'http://user:pass@host:port'
+   import yfinance as yf
+   yf.Ticker('AAPL').history(period='1d')
+   ```
+
 ### Pending tool approval
 
 ```bash
@@ -512,6 +732,13 @@ Check the error message - common issues:
 pip install package_name
 ./bin/build-tool approve my_tool
 ```
+
+### Tool calls other tools incorrectly
+
+Check the BUILD_PROMPT's "Known Tool Response Structures" section:
+- `stash` returns `data.ref`, not `data.stash_ref`
+- `generate_image` returns `data.saved.stash_ref` (nested!)
+- Always use `cwd=project_root` in subprocess.run()
 
 ---
 
@@ -562,25 +789,27 @@ A dedicated dashboard is available at:
 | Limitation | Status | Workaround |
 |-----------|--------|------------|
 | **Python only** | By design | Tools can call external CLIs via subprocess |
-| **One-shot generation** | Working on | Retries for JSON parsing, not for logic errors |
+| ~~One-shot generation~~ | ✅ **DONE** | Retries with error context + smart analysis |
 | ~~No web search~~ | ✅ **DONE** | Ouroboros pattern - calls Jarvis for research |
 | ~~No tool access~~ | ✅ **DONE** | Uses Jarvis's existing tools via Ouroboros |
 | **Manual API key setup** | By design | Shows required env vars in pending |
 | ~~No duplicate check~~ | ✅ **DONE** | Checks ALL existing tools before building |
+| ~~Network errors~~ | ✅ **DONE** | Auto-detects and injects proxy fix instructions |
+| ~~Inter-tool calling~~ | ✅ **DONE** | BUILD_PROMPT documents correct patterns |
 
 ### Planned Enhancements
 
-1. **Iterative Building**
-   - If verification fails, send error back to LLM
-   - Let it fix the code instead of regenerating
-   
-2. **Test Coverage**
+1. **Test Coverage**
    - Run tool in isolated container
    - Multiple test cases, not just one
    
-3. **Smart API Key Detection**
+2. **Smart API Key Detection**
    - Auto-detect if similar API already configured
    - Suggest reusing existing credentials
+   
+3. **Auto-Dependency Resolution**
+   - Auto-approve safe packages from allowlist
+   - Better pip install handling
 
 ### Python-Only Is Actually Powerful
 

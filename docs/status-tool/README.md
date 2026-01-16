@@ -1,6 +1,6 @@
 # Status Recap Tool
 
-> **Version:** 1.0  
+> **Version:** 1.4  
 > **Created:** January 2026  
 > **Type:** Auto-generated Tool (enhanced)  
 > **Location:** `skills/auto-tools/status_recap.py`
@@ -54,7 +54,8 @@ The `status_recap` tool provides a "morning briefing" or on-demand status check 
 
 - **Time-Aware Greeting** - "Good morning/afternoon/evening" based on current hour
 - **Weather Report** - Current conditions, temperature, humidity, wind
-- **Crypto Prices** - Real-time prices with 24h change percentages
+- **Crypto Prices** - Real-time prices with 24h change percentages (Bitcoin, Solana default)
+- **Stock/Futures Prices** - Real-time stock and commodity prices (Tesla, Gold, Silver default)
 - **Alerts Check** - Any pending system alerts
 - **Reminders List** - Upcoming scheduled reminders
 - **System Health** - CPU, RAM, disk, uptime, network stats
@@ -64,9 +65,10 @@ The `status_recap` tool provides a "morning briefing" or on-demand status check 
 - **Canvas Integration** - Auto-saves formatted markdown report
 - **Stash Integration** - Saves JSON data for programmatic access
 - **Image Generation** - Optional AI-generated dashboard visualization
-- **News Integration** - Native LLM search for headlines (via `include_news` flag)
+- **News Integration** - Native LLM grounding search for headlines (via `include_news` flag)
 - **Configurable Sections** - Enable/disable specific data sources
 - **Custom Crypto List** - Specify which coins to track
+- **Custom Stock/Futures List** - Specify which stocks or commodities to track
 
 ---
 
@@ -79,6 +81,7 @@ The tool calls these Jarvis tools internally:
 | `get_time` | Current date/time | 10s |
 | `weather` | Weather conditions | 60s |
 | `crypto_price` | Per-coin pricing | 45s (per coin) |
+| `stock_price` | Per-stock/futures pricing | 45s (per symbol) |
 | `list_alerts` | Pending alerts | 20s |
 | `list_reminders` | Scheduled reminders | 20s |
 | `system_monitor` | System metrics | 30s |
@@ -89,28 +92,28 @@ The tool calls these Jarvis tools internally:
 ### Data Flow
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  status_recap.py                     │
-├─────────────────────────────────────────────────────┤
-│                                                      │
-│  ┌─────────┐  ┌─────────┐  ┌────────────────┐       │
-│  │get_time │  │ weather │  │ crypto_price   │       │
-│  └────┬────┘  └────┬────┘  └───────┬────────┘       │
-│       │            │               │                 │
-│       └────────────┼───────────────┘                 │
-│                    ▼                                 │
-│  ┌─────────────────────────────────────┐            │
-│  │         report_data (dict)          │            │
-│  └─────────────────┬───────────────────┘            │
-│                    │                                 │
-│       ┌────────────┼────────────┐                   │
-│       ▼            ▼            ▼                   │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐             │
-│  │  stash  │  │ canvas  │  │  image  │             │
-│  │  (JSON) │  │  (MD)   │  │ (opt.)  │             │
-│  └─────────┘  └─────────┘  └─────────┘             │
-│                                                      │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      status_recap.py                          │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌─────────┐  ┌─────────┐  ┌─────────────┐  ┌─────────────┐  │
+│  │get_time │  │ weather │  │crypto_price │  │ stock_price │  │
+│  └────┬────┘  └────┬────┘  └──────┬──────┘  └──────┬──────┘  │
+│       │            │              │                │          │
+│       └────────────┴──────────────┴────────────────┘          │
+│                           ▼                                   │
+│         ┌─────────────────────────────────────┐               │
+│         │         report_data (dict)          │               │
+│         └─────────────────┬───────────────────┘               │
+│                           │                                   │
+│              ┌────────────┼────────────┐                      │
+│              ▼            ▼            ▼                      │
+│         ┌─────────┐  ┌─────────┐  ┌─────────┐                │
+│         │  stash  │  │ canvas  │  │  image  │                │
+│         │  (JSON) │  │  (MD)   │  │ (opt.)  │                │
+│         └─────────┘  └─────────┘  └─────────┘                │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -119,10 +122,11 @@ The tool calls these Jarvis tools internally:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `include_news` | boolean | `false` | Flag telling LLM to use native search for news |
+| `include_news` | boolean | `false` | Flag telling LLM to use native grounding search for news |
 | `generate_image` | boolean | `false` | Generate AI dashboard image (~60-90s) |
 | `crypto_coins` | array | `["bitcoin", "solana"]` | Coins to check prices for |
-| `sections` | array | `["time", "weather", "crypto", "alerts", "reminders", "system"]` | Data sections to include |
+| `stock_symbols` | array | `["TSLA", "GC=F", "SI=F"]` | Stock tickers or futures symbols to check |
+| `sections` | array | `["time", "weather", "crypto", "stocks", "alerts", "reminders", "system"]` | Data sections to include |
 | `save_to_canvas` | boolean | `true` | Save formatted report to canvas |
 
 ### Section Options
@@ -132,9 +136,23 @@ Available sections for the `sections` parameter:
 - `time` - Current date/time
 - `weather` - Weather conditions
 - `crypto` - Cryptocurrency prices
+- `stocks` - Stock and commodity/futures prices
 - `alerts` - System alerts
 - `reminders` - Upcoming reminders
 - `system` - System health metrics
+
+### Stock/Futures Symbols
+
+The `stock_symbols` parameter accepts:
+
+| Type | Examples | Description |
+|------|----------|-------------|
+| **Stocks** | `TSLA`, `AAPL`, `NVDA`, `MSFT` | Individual company stocks |
+| **Commodities** | `GC=F`, `SI=F`, `CL=F`, `NG=F` | Gold, Silver, Oil, Natural Gas futures |
+| **ETFs** | `SPY`, `QQQ`, `GLD`, `SLV` | Index and commodity ETFs |
+| **Forex** | `EURUSD=X`, `USDJPY=X` | Currency pairs |
+
+**Note:** Use futures (`GC=F`) for actual commodity prices per unit. Use ETFs (`GLD`) for fund share prices.
 
 ---
 
@@ -144,8 +162,8 @@ Available sections for the `sections` parameter:
 
 Concise summary for voice output:
 ```
-"Good morning. It's 72°F and partly cloudy. Bitcoin is up 3.2%. 
-You have 2 upcoming reminders. Full details on canvas."
+"Good morning. It's 72°F and partly cloudy. Bitcoin $95,000 (+3.2%), Solana $145 (+1.5%). 
+TSLA $438.57 (-0.9%), Gold $4,608 (-0.3%). No alerts. 2 upcoming reminders. Full details on canvas."
 ```
 
 ### Data Structure
@@ -168,8 +186,32 @@ You have 2 upcoming reminders. Full details on canvas."
       "crypto": {
         "bitcoin": {
           "price": 95000,
+          "price_display": "$95,000",
           "change_24h": 3.2,
+          "change_display": "+3.2%",
+          "summary": "Bitcoin $95,000 (+3.2%)",
           "name": "Bitcoin"
+        }
+      },
+      "stocks": {
+        "TSLA": {
+          "price": 438.57,
+          "price_display": "$438.57",
+          "change_today": -0.87,
+          "change_display": "-0.9%",
+          "summary": "TSLA $438.57 (-0.9%)",
+          "company": "Tesla, Inc.",
+          "market_cap_display": "$1.46T",
+          "pe_ratio": 302.46,
+          "sector": "Consumer Cyclical"
+        },
+        "GC=F": {
+          "price": 4608,
+          "price_display": "$4,608",
+          "change_today": -0.3,
+          "change_display": "-0.3%",
+          "summary": "GC=F $4,608 (-0.3%)",
+          "company": "Gold Feb 26"
         }
       },
       "alerts": {"alerts": []},
@@ -196,13 +238,15 @@ You have 2 upcoming reminders. Full details on canvas."
 The canvas page includes:
 
 1. **Dashboard image** (if generated) - embedded at top
-2. **Weather section** - conditions, temp, humidity, wind
-3. **Crypto section** - prices with 24h change indicators
-4. **Alerts section** - active alerts or "no active alerts"
-5. **Reminders section** - upcoming reminders or "none"
-6. **System health** - CPU, RAM, disk, uptime, network
-7. **Data issues** - any failed data sources
-8. **Stash reference** - link to JSON report
+2. **Executive summary** - Key highlights in blockquote
+3. **Weather section** - conditions, temp, humidity, wind
+4. **Crypto section** - prices with 24h change indicators
+5. **Stocks section** - prices with daily change, P/E ratio, market cap
+6. **Alerts section** - active alerts or "no active alerts"
+7. **Reminders section** - upcoming reminders or "none"
+8. **System health** - CPU, RAM, disk, uptime, network
+9. **Data issues** - any failed data sources
+10. **Stash reference** - link to JSON report
 
 ---
 
@@ -293,6 +337,18 @@ source ~/jarvis-venv/bin/activate
 @status_recap Status update with ETH and DOGE prices
 ```
 Parameters: `{"crypto_coins": ["bitcoin", "solana", "ethereum", "dogecoin"]}`
+
+### With Custom Stocks/Futures
+
+```
+@status_recap Status with Apple, oil, and natural gas
+```
+Parameters: `{"stock_symbols": ["TSLA", "AAPL", "CL=F", "NG=F"]}`
+
+**Common symbols:**
+- Stocks: `TSLA`, `AAPL`, `NVDA`, `MSFT`, `AMZN`, `GOOGL`
+- Commodities: `GC=F` (gold ~$4600/oz), `SI=F` (silver), `CL=F` (oil), `NG=F` (natural gas)
+- ETFs: `SPY`, `QQQ`, `GLD` (gold ETF ~$420/share)
 
 ### With Dashboard Image
 
@@ -397,10 +453,10 @@ Potential additions to the status recap:
 |---------|--------------|-------|
 | **Email summary** | `check_email` | Unread count, important senders |
 | **Calendar events** | `calendar` | Today's appointments |
-| **Stock prices** | `stock_price` (new) | Track specific tickers |
 | **Home automation** | `home_assistant` | Smart home status |
 | **Server health** | `ssh_remote` | Remote server checks |
 | **Docker status** | `docker_control` | Container health |
+| **Spotify** | `spotify` | Currently playing, recent tracks |
 
 ---
 
@@ -491,5 +547,6 @@ ls -la data/canvas/
 |------|---------|---------|
 | 2026-01-13 | 1.0 | Initial release with weather, crypto, alerts, reminders, system |
 | 2026-01-13 | 1.1 | Fixed data paths, added stash/canvas integration, image embedding |
-| 2026-01-13 | 1.2 | Added news integration via native LLM search |
+| 2026-01-13 | 1.2 | Added news integration via native LLM grounding search |
 | 2026-01-13 | 1.3 | Fixed crypto price mangling - added to DIRECT_SPEECH_TOOLS to bypass LLM reformatting |
+| 2026-01-15 | 1.4 | Added stocks/futures support via `stock_price` tool. Defaults: TSLA, GC=F (gold), SI=F (silver). Supports stocks, commodities, ETFs, and forex. |

@@ -49,11 +49,11 @@ AVAILABLE_PACKAGES = {
     "shutil", "glob", "argparse", "logging", "traceback", "copy",
     
     # Jarvis lib modules (auto-available via sys.path.insert)
-    "config_loader", "stash_helper", "memory_db", "llm_provider",
+    "config_loader", "stash_helper", "memory_db", "llm_provider", "http_client",
     
     # Already installed in jarvis-venv
     "requests", "anthropic", "openai", "httpx", "pydantic",
-    "fastapi", "uvicorn", "yt-dlp",
+    "fastapi", "uvicorn", "yt-dlp", "yfinance",
     
     # Data Science & Math
     "numpy", "scipy", "sympy", "mpmath",
@@ -467,6 +467,82 @@ def safe_get(data, *keys, default='N/A'):
             return default
         if data is None:
             return default
+```
+
+NETWORK/PROXY SUPPORT (CRITICAL FOR EXTERNAL APIs):
+Many networks require proxy for external API access. Use this pattern for ANY tool making HTTP requests:
+
+OPTION 1 - Using requests library (RECOMMENDED for most APIs):
+```python
+from config_loader import load_config, get_config_value
+import requests
+
+def setup_proxy():
+    """Get proxy config for requests library."""
+    proxy = get_config_value('LOCAL_PROXY', '')
+    if proxy:
+        return {{'http': proxy, 'https': proxy}}
+    return None
+
+def main():
+    load_config()
+    proxies = setup_proxy()
+    
+    # Use proxies parameter in requests
+    response = requests.get(url, proxies=proxies, timeout=30)
+```
+
+OPTION 2 - Using environment variables (for libraries like yfinance that don't accept proxy param):
+```python
+from config_loader import load_config, get_config_value
+import os
+
+def setup_proxy_env():
+    """Set proxy via environment variables."""
+    proxy = get_config_value('LOCAL_PROXY', '')
+    if proxy:
+        os.environ['http_proxy'] = proxy
+        os.environ['https_proxy'] = proxy
+        os.environ['HTTP_PROXY'] = proxy
+        os.environ['HTTPS_PROXY'] = proxy
+        return True
+    return False
+
+def main():
+    load_config()
+    proxy_enabled = setup_proxy_env()
+    
+    # Now libraries like yfinance will use the proxy automatically
+    import yfinance as yf
+    ticker = yf.Ticker('TSLA')
+```
+
+OPTION 3 - Using Jarvis http_client (has automatic fallback):
+```python
+from http_client import http_request, get_proxy_config
+
+# Automatically uses proxy with fallback to direct connection
+response = http_request(
+    'GET',
+    url,
+    params=params,
+    timeout=30,
+    use_proxy=True,
+    fallback_on_proxy_fail=True
+)
+```
+
+WHEN TO USE PROXY:
+- yfinance (Yahoo Finance) - Use OPTION 2 (env vars)
+- requests-based APIs - Use OPTION 1 or 3
+- External APIs that fail with connection errors
+
+NETWORK ERROR INDICATORS (if you see these in error messages, ADD PROXY SUPPORT):
+- "Failed to connect"
+- "Connection refused"
+- "ConnectionError"
+- "Read timed out"
+- "Could not resolve host"
     return data
 
 # Usage: safe_get(result, 'data', 'saved', 'stash_ref', default=None)
@@ -596,7 +672,7 @@ class ToolBuilder:
             self.provider = create_provider(
                 provider_type,
                 api_key=get_config_value('XAI_API_KEY'),
-                model=model or get_config_value('XAI_MODEL', 'grok-3-latest')
+                model=model or get_config_value('XAI_MODEL', 'grok-4.1-fast-non-reasoning-latest')
             )
         elif provider_type == 'ollama':
             self.provider = create_provider(
@@ -852,12 +928,20 @@ class ToolBuilder:
         
         retries = 0
         last_error = ""
+        needs_proxy = False
         
         while retries < max_retries:
             try:
                 # Ask LLM to generate the tool
                 if retries > 0:
-                    prompt += f"\n\nPREVIOUS ATTEMPT FAILED:\n{last_error}\n\nPlease fix and try again."
+                    error_context = f"\n\nPREVIOUS ATTEMPT FAILED:\n{last_error}\n\nPlease fix and try again."
+                    
+                    # Detect network/connection errors and add proxy instructions
+                    if self._is_network_error(last_error):
+                        needs_proxy = True
+                        error_context += self._get_proxy_fix_instructions()
+                    
+                    prompt += error_context
                 
                 response = self.provider.chat(
                     prompt,
@@ -1206,6 +1290,86 @@ class ToolBuilder:
             return False, "Execution timed out (30s)", ""
         except Exception as e:
             return False, f"Verification error: {e}", ""
+    
+    def _is_network_error(self, error_message: str) -> bool:
+        """Detect if an error is network/connection related."""
+        network_indicators = [
+            'failed to connect',
+            'connection refused',
+            'connectionerror',
+            'connection error',
+            'read timed out',
+            'could not resolve host',
+            'no route to host',
+            'network is unreachable',
+            'timeout',
+            'ssl: certificate_verify_failed',
+            'getaddrinfo failed',
+            'name or service not known',
+            'errno 111',
+            'errno 110',
+            'curl',
+            'yahoo.com',  # Specific to yfinance
+            'fc.yahoo.com',
+        ]
+        error_lower = error_message.lower()
+        return any(indicator in error_lower for indicator in network_indicators)
+    
+    def _get_proxy_fix_instructions(self) -> str:
+        """Return instructions for adding proxy support to fix network errors."""
+        return '''
+
+⚠️ NETWORK ERROR DETECTED - ADD PROXY SUPPORT!
+
+The tool failed due to a network/connection error. This environment REQUIRES proxy for external API access.
+
+FIX: Add proxy support using one of these patterns:
+
+FOR yfinance (Yahoo Finance) - USE ENVIRONMENT VARIABLES:
+```python
+from config_loader import load_config, get_config_value
+import os
+
+def setup_proxy_env():
+    """Set proxy via environment variables for yfinance."""
+    proxy = get_config_value('LOCAL_PROXY', '')
+    if proxy:
+        os.environ['http_proxy'] = proxy
+        os.environ['https_proxy'] = proxy
+        os.environ['HTTP_PROXY'] = proxy
+        os.environ['HTTPS_PROXY'] = proxy
+        return True
+    return False
+
+def main():
+    load_config()  # MUST call this first!
+    proxy_enabled = setup_proxy_env()  # Set proxy BEFORE importing yfinance operations
+    
+    import yfinance as yf
+    # Now yfinance will use the proxy automatically
+    ticker = yf.Ticker('TSLA')
+    hist = ticker.history(period='1d')
+```
+
+FOR requests library:
+```python
+from config_loader import load_config, get_config_value
+import requests
+
+def setup_proxy():
+    proxy = get_config_value('LOCAL_PROXY', '')
+    if proxy:
+        return {'http': proxy, 'https': proxy}
+    return None
+
+def main():
+    load_config()
+    proxies = setup_proxy()
+    response = requests.get(url, proxies=proxies, timeout=30)
+```
+
+CRITICAL: Call load_config() and setup proxy BEFORE making any network requests!
+'''
     
     def _log_creation(self, report: ToolReportCard, status: str):
         """Log tool creation for Grafana/Loki."""
