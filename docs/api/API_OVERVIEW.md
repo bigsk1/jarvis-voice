@@ -2,9 +2,19 @@
 
 ## What Is It?
 
-Jarvis Proactive API transforms Jarvis from **reactive** (waits for commands) to **proactive** (receives events and notifies you).
+Jarvis Proactive API transforms Jarvis from **reactive** (waits for commands) to **proactive** (receives events and notifies you). It also provides programmatic access to all Jarvis features.
 
 **Example**: Instead of asking "Are there any issues?", Jarvis tells you: *"Boss, urgent alert! Container stopped on your server"*
+
+---
+
+## API Documentation
+
+| URL | Description |
+|-----|-------------|
+| http://localhost:8880/docs/dark | **Swagger UI (Dark Mode)** 🌙 |
+| http://localhost:8880/docs | Swagger UI (Light) |
+| http://localhost:8880/redoc | ReDoc (Alternative) |
 
 ---
 
@@ -182,7 +192,7 @@ curl http://localhost:8880/api/alerts
 ✅ URL-based auto-resolve (web services)
 ✅ Agent-based auto-resolve (containers, services)
 ✅ Follow-up reminders
-✅ Time-based reminders
+✅ Time-based reminders (multi-day, daily recurring)
 ✅ TTS notifications
 ✅ Voice control
 ✅ Remote monitoring via Docker
@@ -191,14 +201,18 @@ curl http://localhost:8880/api/alerts
 ✅ Intelligence API endpoints
 ✅ Self-learning metrics & logs
 ✅ API start/stop/status management
-✅ Insight tracking (times_applied, helpful/failed) ⭐ NEW
-✅ Maintenance jobs (decay, anomaly, meta-cognition) ⭐ NEW
-✅ Meta-knowledge table & API ⭐ NEW
+✅ Insight tracking (times_applied, helpful/failed)
+✅ Maintenance jobs (decay, anomaly, meta-cognition)
+✅ Meta-knowledge table & API
+✅ Reflection queue management (list, cancel) ⭐ NEW
+✅ Memory API (CRUD, keyword search, semantic search) ⭐ NEW
+✅ Query/Chat API (programmatic Jarvis access) ⭐ NEW
+✅ Dark mode Swagger UI ⭐ NEW
 
 ---
 
 **Status**: Production Ready ✅  
-**Last Updated**: Nov 28, 2025
+**Last Updated**: January 17, 2026
 
 See [READY_TO_USE.md](READY_TO_USE.md) for detailed setup instructions.
 
@@ -482,6 +496,20 @@ GET /api/intelligence/logs/recent?limit=50
 GET /api/intelligence/meta-knowledge
 # Returns: blind spots, over-generalization issues, learning quality
 
+# === REFLECTION QUEUE ===
+
+# List pending reflections
+GET /api/intelligence/reflections?limit=50
+# Returns: experiences waiting for insight generation
+
+# Cancel a pending reflection (don't process it)
+DELETE /api/intelligence/reflections/{id}
+# Use when testing tools or have known bad data
+
+# Cancel ALL pending reflections
+DELETE /api/intelligence/reflections
+# Clears the entire reflection queue
+
 # === ACTIONS ===
 
 # Manually trigger reflection processing
@@ -493,7 +521,7 @@ POST /api/intelligence/evaluate
 Body: {"query": "What's the Bitcoin price?"}
 # Returns: relevant insights and tool biases
 
-# === MAINTENANCE JOBS (NEW) ===
+# === MAINTENANCE JOBS ===
 
 # Run decay job (reduce stale insight confidence)
 POST /api/intelligence/maintenance/decay
@@ -516,9 +544,102 @@ POST /api/intelligence/maintenance/all
 
 | Job | What It Does | When to Run |
 |-----|--------------|-------------|
-| **Decay** | Reduces confidence of unused/failed insights, prunes <0.15 | Daily or after heavy use |
+| **Decay** | Reduces confidence of unused/failed insights, prunes <0.15 | Every 2 weeks (auto-protected) |
 | **Anomaly** | Flags experiences with unusually high turns or failures | Weekly or on-demand |
 | **Meta-Cognition** | Detects blind spots, over-generalization, learning issues | Weekly for health check |
+
+### Memory ⭐ NEW
+
+```bash
+# === CRUD Operations ===
+
+# Create/update a memory
+POST /api/memory
+Body: {
+  "category": "technical",
+  "key": "project_location",
+  "value": "Flask API at ~/projects/flask-api",
+  "importance": 8,
+  "source": "user"
+}
+
+# List all memories
+GET /api/memory
+GET /api/memory?category=personal&limit=50
+
+# Get specific memory
+GET /api/memory/{id}
+
+# Update memory
+PUT /api/memory/{id}
+Body: { "value": "Updated value", "importance": 9 }
+
+# Delete memory (forget)
+DELETE /api/memory/{id}
+
+# === Search ===
+
+# Keyword search (FTS5, fast)
+GET /api/memory/search/keyword?q=flask&limit=10
+# Good for: 1-3 word searches
+
+# Semantic search (AI embeddings)
+GET /api/memory/search/semantic?q=Where%20is%20my%20web%20project?&limit=5
+# Good for: Natural language questions
+
+# === Utility ===
+
+# List categories with counts
+GET /api/memory/categories
+
+# Get memory statistics
+GET /api/memory/stats
+
+# Rebuild FTS index
+POST /api/memory/rebuild-fts
+```
+
+**Memory Categories:**
+- `personal` - User info, preferences
+- `technical` - Code, configs, projects
+- `contact` - People, addresses
+- `project` - Project locations, status
+- `fact` - General knowledge
+- `location` - Places, addresses
+
+### Query/Chat ⭐ NEW
+
+Programmatically send queries to Jarvis (for n8n, scripts, integrations).
+
+```bash
+# Full query with options
+POST /api/query
+Body: {
+  "query": "What's the weather like?",
+  "mode": "cloud",
+  "session_id": "n8n-workflow-123"
+}
+# Returns: { ok, speech, response, tools_used, session_id }
+
+# Quick query (minimal params)
+POST /api/query/quick?q=What+time+is+it&mode=cloud
+
+# Quick query via GET (for testing)
+GET /api/query/quick?q=What+is+the+weather
+```
+
+**Example n8n integration:**
+```json
+{
+  "query": "Check if my servers are healthy",
+  "mode": "cloud",
+  "session_id": "n8n-health-check"
+}
+```
+
+**Modes:**
+- `cloud` - Uses xAI/Anthropic/OpenAI (faster, smarter)
+- `local` - Uses Ollama (private, offline)
 
 ### Health
 
@@ -536,8 +657,11 @@ GET /api/status
 
 Once the server is running, visit:
 
-**Swagger UI**: http://localhost:8880/docs  
-**ReDoc**: http://localhost:8880/redoc
+| URL | Description |
+|-----|-------------|
+| http://localhost:8880/docs/dark | **Swagger UI (Dark Mode)** 🌙 Recommended |
+| http://localhost:8880/docs | Swagger UI (Light) |
+| http://localhost:8880/redoc | ReDoc (Alternative) |
 
 These provide interactive documentation where you can test endpoints directly in the browser.
 

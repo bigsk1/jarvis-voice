@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.routes import alerts_router, reminders_router, health_router, voice_router
+from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router
 from api.routes.intelligence import router as intelligence_router
 
 # Prometheus metrics
@@ -33,14 +33,90 @@ except ImportError as e:
     INTEL_METRICS_AVAILABLE = False
     print(f"⚠️  Intelligence metrics not available: {e}")
 
+# Swagger UI dark mode CSS
+SWAGGER_DARK_CSS = """
+/* Dark mode for Swagger UI */
+body { background-color: #1a1a2e !important; }
+.swagger-ui { background-color: #1a1a2e !important; }
+.swagger-ui .topbar { background-color: #16213e !important; }
+.swagger-ui .info { margin: 20px 0; }
+.swagger-ui .info .title { color: #e94560 !important; }
+.swagger-ui .info .description { color: #a0a0a0 !important; }
+.swagger-ui .scheme-container { background-color: #1a1a2e !important; box-shadow: none !important; }
+.swagger-ui .opblock-tag { color: #e0e0e0 !important; border-bottom: 1px solid #333 !important; }
+.swagger-ui .opblock { background: #16213e !important; border: 1px solid #333 !important; }
+.swagger-ui .opblock .opblock-summary { border: none !important; }
+.swagger-ui .opblock .opblock-summary-method { background: #e94560 !important; }
+.swagger-ui .opblock.opblock-get .opblock-summary-method { background: #61affe !important; }
+.swagger-ui .opblock.opblock-post .opblock-summary-method { background: #49cc90 !important; }
+.swagger-ui .opblock.opblock-put .opblock-summary-method { background: #fca130 !important; }
+.swagger-ui .opblock.opblock-delete .opblock-summary-method { background: #f93e3e !important; }
+.swagger-ui .opblock .opblock-summary-path { color: #e0e0e0 !important; }
+.swagger-ui .opblock .opblock-summary-description { color: #a0a0a0 !important; }
+.swagger-ui .opblock-body pre { background: #0f0f1a !important; color: #e0e0e0 !important; }
+.swagger-ui .opblock-description-wrapper { color: #a0a0a0 !important; }
+.swagger-ui table thead tr th { color: #e0e0e0 !important; border-bottom: 1px solid #333 !important; }
+.swagger-ui table tbody tr td { color: #a0a0a0 !important; border-bottom: 1px solid #222 !important; }
+.swagger-ui .parameter__name { color: #e0e0e0 !important; }
+.swagger-ui .parameter__type { color: #a0a0a0 !important; }
+.swagger-ui .model-box { background: #16213e !important; }
+.swagger-ui .model { color: #e0e0e0 !important; }
+.swagger-ui .prop-type { color: #61affe !important; }
+.swagger-ui .response-col_status { color: #49cc90 !important; }
+.swagger-ui .btn { background: #333 !important; color: #e0e0e0 !important; border: 1px solid #444 !important; }
+.swagger-ui .btn:hover { background: #444 !important; }
+.swagger-ui .btn.execute { background: #e94560 !important; border-color: #e94560 !important; }
+.swagger-ui input[type=text], .swagger-ui textarea { background: #0f0f1a !important; color: #e0e0e0 !important; border: 1px solid #333 !important; }
+.swagger-ui select { background: #16213e !important; color: #e0e0e0 !important; border: 1px solid #333 !important; }
+.swagger-ui .responses-inner { background: #0f0f1a !important; }
+.swagger-ui .response { color: #e0e0e0 !important; }
+.swagger-ui .markdown p, .swagger-ui .markdown li { color: #a0a0a0 !important; }
+.swagger-ui .markdown code { background: #0f0f1a !important; color: #e94560 !important; }
+.swagger-ui section.models { border: 1px solid #333 !important; }
+.swagger-ui section.models h4 { color: #e0e0e0 !important; }
+"""
+
 # Create FastAPI app
 app = FastAPI(
     title="Jarvis Proactive Assistant API",
-    description="REST API for alerts, reminders, and proactive notifications",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    description="REST API for alerts, reminders, intelligence, and proactive notifications",
+    version="1.1.0",
+    docs_url=None,  # Disable default, we'll add custom
+    redoc_url="/redoc",
+    swagger_ui_oauth2_redirect_url=None
 )
+
+# Custom Swagger UI with dark mode
+from fastapi.openapi.docs import get_swagger_ui_html
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui():
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Docs",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+        swagger_ui_parameters={"syntaxHighlight.theme": "monokai", "docExpansion": "none"},
+    )
+
+# Inject dark mode CSS
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+
+@app.get("/docs/dark", include_in_schema=False)
+async def swagger_ui_dark():
+    """Swagger UI with dark mode"""
+    html = get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Docs (Dark)",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+        swagger_ui_parameters={"syntaxHighlight.theme": "monokai", "docExpansion": "none"},
+    )
+    # Inject dark CSS
+    dark_html = html.body.decode().replace(
+        "</head>",
+        f"<style>{SWAGGER_DARK_CSS}</style></head>"
+    )
+    return HTMLResponse(content=dark_html)
 
 # CORS middleware (for web UIs in the future)
 app.add_middleware(
@@ -76,6 +152,8 @@ app.include_router(health_router)
 app.include_router(alerts_router)
 app.include_router(reminders_router)
 app.include_router(voice_router)
+app.include_router(memory_router)
+app.include_router(query_router)
 app.include_router(intelligence_router)
 
 # Add /metrics endpoint LAST
@@ -102,8 +180,19 @@ async def root():
     endpoints = {
         "health": "/api/health",
         "status": "/api/status",
+        "query": {
+            "post": "/api/query",
+            "quick": "/api/query/quick"
+        },
         "alerts": "/api/alerts",
         "reminders": "/api/reminders",
+        "memory": {
+            "list": "/api/memory",
+            "search_keyword": "/api/memory/search/keyword",
+            "search_semantic": "/api/memory/search/semantic",
+            "stats": "/api/memory/stats",
+            "categories": "/api/memory/categories"
+        },
         "speak": "/api/voice/speak",
         "intelligence": {
             "stats": "/api/intelligence/stats",
@@ -111,6 +200,7 @@ async def root():
             "metrics": "/api/intelligence/metrics",
             "insights": "/api/intelligence/insights",
             "experiences": "/api/intelligence/experiences",
+            "reflections": "/api/intelligence/reflections",
             "logs": "/api/intelligence/logs/recent"
         }
     }
@@ -120,8 +210,12 @@ async def root():
     
     return {
         "service": "Jarvis Proactive Assistant API",
-        "version": "1.0.0",
-        "docs": "/docs",
+        "version": "1.1.0",
+        "docs": {
+            "swagger": "/docs",
+            "swagger_dark": "/docs/dark",
+            "redoc": "/redoc"
+        },
         "endpoints": endpoints,
         "metrics_enabled": PROMETHEUS_AVAILABLE
     }
