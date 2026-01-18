@@ -2,7 +2,7 @@
 # ========================
 # Edit values here - n8n workflow will pick up changes
 # 
-# Last updated: 2026-01-18 02:28
+# Last updated: 2026-01-17 22:28
 
 settings:
   check_interval_minutes: 10
@@ -22,9 +22,9 @@ watchlist:
     enabled: true
     conditions:
     - type: above
-      value: 99000.0
+      value: 100000
       severity: high
-      message: BTC above $99,000
+      message: Bitcoin hit $100k! 🚀
     - type: below
       value: 85000
       severity: high
