@@ -7,6 +7,7 @@ from .voice import router as voice_router
 from .memory import router as memory_router
 from .query import router as query_router
 from .conversations import router as conversations_router
+from .stash import router as stash_router
 
-__all__ = ['alerts_router', 'reminders_router', 'health_router', 'voice_router', 'memory_router', 'query_router', 'conversations_router']
+__all__ = ['alerts_router', 'reminders_router', 'health_router', 'voice_router', 'memory_router', 'query_router', 'conversations_router', 'stash_router']
 
