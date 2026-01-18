@@ -154,7 +154,7 @@ def list_alerts(config: dict) -> dict:
     return alerts
 
 def add_alert(config: dict, symbol: str, condition_type: str, value: float, 
-              severity: str = "medium", message: str = None) -> str:
+              severity: str = "high", message: str = None) -> str:
     """Add a new price alert condition."""
     symbol = normalize_symbol(symbol)
     asset_type, idx, existing = find_asset(config, symbol)
@@ -292,7 +292,7 @@ def main():
         condition_type = args.get('condition', args.get('type', '')).lower()
         value = args.get('value')
         old_value = args.get('old_value')
-        severity = args.get('severity', 'medium')
+        severity = args.get('severity', 'high')
         message = args.get('message')
         
         # Map condition aliases

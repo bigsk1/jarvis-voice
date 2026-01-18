@@ -64,10 +64,29 @@ class AlertManager:
             speak_immediately: Whether to speak the alert via TTS
             
         Returns:
-            Alert ID
+            Alert ID, or -1 if duplicate pending alert exists
         """
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
+        
+        # Deduplication: Check for existing pending alert from same source with same symbol
+        # This prevents n8n price monitors from creating duplicate alerts every 10 minutes
+        if source == 'price_monitor' and metadata and 'symbol' in metadata:
+            symbol = metadata['symbol']
+            alert_type = metadata.get('type', '')
+            
+            # Look for pending alerts with same symbol and type
+            cursor.execute("""
+                SELECT id FROM alerts 
+                WHERE source = ? AND status = 'pending' 
+                AND metadata LIKE ? AND metadata LIKE ?
+            """, (source, f'%"symbol": "{symbol}"%', f'%"type": "{alert_type}"%'))
+            
+            existing = cursor.fetchone()
+            if existing:
+                conn.close()
+                # Return existing alert ID with negative sign to indicate duplicate
+                return -existing[0]
         
         # Convert metadata to JSON string
         metadata_json = json.dumps(metadata) if metadata else None
