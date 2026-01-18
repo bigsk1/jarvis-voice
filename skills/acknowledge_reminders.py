@@ -128,11 +128,52 @@ def main():
                 matching_reminders = sql_matches
             
             if not matching_reminders:
+                # Check if there are already-acknowledged/cancelled reminders matching
+                cursor.execute("""
+                    SELECT id, title, status, acknowledged_at FROM reminders
+                    WHERE status IN ('acknowledged', 'cancelled')
+                    AND (title LIKE ? OR description LIKE ?)
+                    ORDER BY acknowledged_at DESC
+                    LIMIT 5
+                """, (f'%{title_search}%', f'%{title_search}%'))
+                
+                already_done = cursor.fetchall()
                 conn.close()
+                
+                if already_done:
+                    # Found matching reminders but they're already done
+                    count = len(already_done)
+                    if count == 1:
+                        r = already_done[0]
+                        status_word = "acknowledged" if r[2] == "acknowledged" else "cancelled"
+                        print(json.dumps({
+                            "ok": True,  # Not an error - user's intent was already fulfilled
+                            "speech": f"The reminder '{r[1]}' was already {status_word}. Nothing to do.",
+                            "data": {
+                                "already_done": True,
+                                "reminder_id": r[0],
+                                "title": r[1],
+                                "status": r[2]
+                            }
+                        }))
+                    else:
+                        titles = [f"'{r[1]}' ({r[2]})" for r in already_done]
+                        print(json.dumps({
+                            "ok": True,
+                            "speech": f"Found {count} reminders matching '{title_search}' but they're already done: {', '.join(titles)}",
+                            "data": {
+                                "already_done": True,
+                                "count": count,
+                                "reminders": [{"id": r[0], "title": r[1], "status": r[2]} for r in already_done]
+                            }
+                        }))
+                    return 0
+                
+                # Truly not found anywhere
                 print(json.dumps({
                     "ok": False,
                     "error": f"No reminders found matching '{title_search}'",
-                    "speech": f"I couldn't find any reminder matching '{title_search}'"
+                    "speech": f"I couldn't find any reminder matching '{title_search}' - not active or past."
                 }))
                 return 1
             

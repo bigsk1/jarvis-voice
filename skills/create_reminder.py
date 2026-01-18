@@ -123,10 +123,45 @@ def normalize_time_words(text: str) -> str:
     
     return re.sub(pattern, replace_word, text, flags=re.IGNORECASE)
 
+def parse_multi_day_pattern(when: str):
+    """Parse patterns that require multiple individual reminders.
+    
+    Patterns:
+    - "next 5 days at 2pm"
+    - "for the next 5 days at 2pm"
+    - "5 days in a row at 2pm"
+    - "every day for 5 days at 2pm"
+    
+    Returns: (num_days, time_match) or (None, None) if not a multi-day pattern
+    """
+    when_lower = when.lower()
+    
+    # Pattern: "next N days" or "for the next N days"
+    next_days_match = re.search(r'(?:for\s+)?(?:the\s+)?next\s+(\d+)\s+days?', when_lower)
+    if next_days_match:
+        num_days = int(next_days_match.group(1))
+        return num_days, when_lower
+    
+    # Pattern: "N days in a row"
+    in_a_row_match = re.search(r'(\d+)\s+days?\s+in\s+a\s+row', when_lower)
+    if in_a_row_match:
+        num_days = int(in_a_row_match.group(1))
+        return num_days, when_lower
+    
+    # Pattern: "every day for N days" or "every day for the next N days"
+    every_day_match = re.search(r'every\s+day\s+(?:for\s+)?(?:the\s+)?(?:next\s+)?(\d+)\s+days?', when_lower)
+    if every_day_match:
+        num_days = int(every_day_match.group(1))
+        return num_days, when_lower
+    
+    return None, None
+
+
 def parse_recurrence(when: str):
     """Parse recurring patterns from time expression.
     
     Returns: recurrence_rule string or None
+    - "DAILY" for every day
     - "WEEKLY:1" for every Monday (0=Mon, 6=Sun)
     - "MONTHLY:10" for 10th of each month
     - None if not recurring
@@ -158,8 +193,42 @@ def parse_recurrence(when: str):
         for day_name, day_num in days_of_week.items():
             if day_name in when_lower:
                 return f"WEEKLY:{day_num}"
+        
+        # Check for "every day" (infinite daily - no bounded limit)
+        # Must NOT have a day limit like "for 5 days"
+        if when_lower.startswith('day') and not re.search(r'for\s+(?:the\s+)?(?:next\s+)?\d+\s+days?', when.lower()):
+            return "DAILY"
     
     return None
+
+
+def extract_time_from_expression(when: str, default_hour: int = 10):
+    """Extract hour and minute from a time expression.
+    
+    Returns: (hour, minute) tuple
+    """
+    time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)', when.lower())
+    if time_match:
+        hour = int(time_match.group(1))
+        minute = int(time_match.group(2)) if time_match.group(2) else 0
+        meridiem = time_match.group(3)
+        
+        if meridiem == 'pm' and hour != 12:
+            hour += 12
+        elif meridiem == 'am' and hour == 12:
+            hour = 0
+        
+        return hour, minute
+    
+    # Check for "noon" or "midday"
+    if "noon" in when.lower() or "midday" in when.lower():
+        return 12, 0
+    
+    # Check for "midnight"
+    if "midnight" in when.lower():
+        return 0, 0
+    
+    return default_hour, 0
 
 
 def parse_time_expression(when: str, default_hour: int = 10):
@@ -170,13 +239,15 @@ def parse_time_expression(when: str, default_hour: int = 10):
         default_hour: Default hour to use when time not specified (default 10am)
     
     Returns:
-        tuple: (trigger_datetime, recurrence_rule or None)
+        tuple: (trigger_datetime OR list of datetimes, recurrence_rule or None)
     
     Examples:
     - "in 30 minutes" -> (datetime, None)
     - "every wednesday" -> (next Wed 10am, "WEEKLY:2")
     - "every month on the 10th" -> (next 10th 10am, "MONTHLY:10")
+    - "every day at 2pm" -> (tomorrow 2pm, "DAILY")
     - "tomorrow at 3pm" -> (datetime, None)
+    - "next 5 days at 2pm" -> ([datetime1, datetime2, ...], None)  # Multiple!
     """
     when = when.lower().strip()
     
@@ -184,12 +255,36 @@ def parse_time_expression(when: str, default_hour: int = 10):
     when = normalize_time_words(when)
     now = datetime.now()
     
-    # Check for recurring patterns first
+    # Check for multi-day patterns FIRST (creates multiple reminders)
+    num_days, _ = parse_multi_day_pattern(when)
+    if num_days and num_days > 0:
+        hour, minute = extract_time_from_expression(when, default_hour)
+        
+        # Create list of datetimes for each day
+        datetimes = []
+        for day_offset in range(1, num_days + 1):  # Start from tomorrow
+            target = now + timedelta(days=day_offset)
+            target = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            datetimes.append(target)
+        
+        return datetimes, None  # Returns LIST, not single datetime
+    
+    # Check for recurring patterns
     recurrence = parse_recurrence(when)
     
     # If recurring, calculate first trigger time
     if recurrence:
         rule = recurrence
+        
+        # Handle DAILY recurrence (every day at X time)
+        if rule == "DAILY":
+            hour, minute = extract_time_from_expression(when, default_hour)
+            
+            # First trigger is tomorrow at the specified time
+            trigger_time = now + timedelta(days=1)
+            trigger_time = trigger_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            
+            return trigger_time, rule
         
         if rule.startswith("WEEKLY:"):
             target_weekday = int(rule.split(':')[1])
@@ -351,6 +446,79 @@ def format_local_time(dt: datetime) -> str:
     return dt.strftime("%A, %B %d at %I:%M %p")
 
 
+def create_single_reminder(title: str, description: str, trigger_time_local: datetime, 
+                           recurrence_rule: str = None, db_path: str = None):
+    """Create a single reminder in the database and sync to Google Calendar.
+    
+    Returns: dict with reminder details
+    """
+    import sqlite3
+    
+    # Convert to UTC for storage
+    utc_offset = datetime.now() - datetime.now(timezone.utc).replace(tzinfo=None)
+    trigger_time_utc = trigger_time_local - utc_offset
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO reminders (
+            title, description, trigger_time, status,
+            created_at, spoken, spoken_at, triggered_at,
+            acknowledged_at, callback_url, recurrence_rule,
+            related_intel_file, metadata
+        ) VALUES (?, ?, ?, 'scheduled', ?, 0, NULL, NULL, NULL, NULL, ?, NULL, NULL)
+    """, (
+        title,
+        description,
+        trigger_time_utc.isoformat(),
+        datetime.now(timezone.utc).isoformat(),
+        recurrence_rule
+    ))
+    
+    reminder_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    # Sync to Google Calendar via n8n
+    gcal_result = sync_to_google_calendar(
+        reminder_id=reminder_id,
+        title=title,
+        description=description,
+        trigger_time_utc=trigger_time_utc,
+        recurrence_rule=recurrence_rule
+    )
+    
+    # If sync succeeded, update reminder metadata
+    gcal_synced = False
+    gcal_event_id = None
+    if gcal_result and gcal_result.get('ok'):
+        gcal_event_id = gcal_result.get('gcal_event_id')
+        if gcal_event_id:
+            gcal_synced = True
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            metadata = json.dumps({
+                "gcal_event_id": gcal_event_id,
+                "gcal_synced": True,
+                "gcal_synced_at": datetime.now(timezone.utc).isoformat()
+            })
+            cursor.execute("UPDATE reminders SET metadata = ? WHERE id = ?", (metadata, reminder_id))
+            conn.commit()
+            conn.close()
+    
+    return {
+        "reminder_id": reminder_id,
+        "trigger_time": trigger_time_utc.isoformat(),
+        "trigger_time_local": trigger_time_local.isoformat(),
+        "formatted_time": format_local_time(trigger_time_local),
+        "recurring": recurrence_rule is not None,
+        "recurrence_rule": recurrence_rule,
+        "gcal_synced": gcal_synced,
+        "gcal_event_id": gcal_event_id
+    }
+
+
 def main():
     try:
         # Parse arguments
@@ -372,94 +540,77 @@ def main():
         if not when:
             raise ValueError("when is required (e.g., 'in 4 hours', 'tomorrow at 3pm')")
         
-        # Parse time (returns tuple: datetime, recurrence_rule)
-        trigger_time_local, recurrence_rule = parse_time_expression(when)
+        # Parse time (returns tuple: datetime OR list of datetimes, recurrence_rule)
+        trigger_result, recurrence_rule = parse_time_expression(when)
         
-        # Convert to UTC for storage
-        # Note: This assumes system timezone is set correctly
-        utc_offset = datetime.now() - datetime.now(timezone.utc).replace(tzinfo=None)
-        trigger_time_utc = trigger_time_local - utc_offset
-        
-        # Create reminder in database
-        import sqlite3
+        # Get database path
         db = MemoryDB()
+        db_path = db.db_path
         
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO reminders (
-                title, description, trigger_time, status,
-                created_at, spoken, spoken_at, triggered_at,
-                acknowledged_at, callback_url, recurrence_rule,
-                related_intel_file, metadata
-            ) VALUES (?, ?, ?, 'scheduled', ?, 0, NULL, NULL, NULL, NULL, ?, NULL, NULL)
-        """, (
-            title,
-            description,
-            trigger_time_utc.isoformat(),
-            datetime.now(timezone.utc).isoformat(),
-            recurrence_rule
-        ))
-        
-        reminder_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        # Sync to Google Calendar via n8n (non-blocking, won't fail if n8n is down)
-        gcal_result = sync_to_google_calendar(
-            reminder_id=reminder_id,
-            title=title,
-            description=description,
-            trigger_time_utc=trigger_time_utc,
-            recurrence_rule=recurrence_rule
-        )
-        
-        # If sync succeeded, update reminder metadata with gcal_event_id
-        gcal_synced = False
-        gcal_event_id = None
-        if gcal_result and gcal_result.get('ok'):
-            gcal_event_id = gcal_result.get('gcal_event_id')
-            if gcal_event_id:
-                gcal_synced = True
-                # Update reminder with gcal metadata
-                conn = sqlite3.connect(db.db_path)
-                cursor = conn.cursor()
-                metadata = json.dumps({
-                    "gcal_event_id": gcal_event_id,
-                    "gcal_synced": True,
-                    "gcal_synced_at": datetime.now(timezone.utc).isoformat()
-                })
-                cursor.execute("UPDATE reminders SET metadata = ? WHERE id = ?", (metadata, reminder_id))
-                conn.commit()
-                conn.close()
-        
-        # Format response
-        time_str = format_local_time(trigger_time_local)
-        
-        if recurrence_rule:
-            speech = f"Recurring reminder set: {title}. First trigger {time_str}"
+        # Check if we have multiple datetimes (multi-day pattern)
+        if isinstance(trigger_result, list):
+            # Create multiple individual reminders
+            reminders_created = []
+            gcal_synced_count = 0
+            
+            for trigger_time_local in trigger_result:
+                result = create_single_reminder(
+                    title=title,
+                    description=description,
+                    trigger_time_local=trigger_time_local,
+                    recurrence_rule=None,  # Individual reminders, not recurring
+                    db_path=db_path
+                )
+                reminders_created.append(result)
+                if result.get('gcal_synced'):
+                    gcal_synced_count += 1
+            
+            # Format response for multiple reminders
+            num_reminders = len(reminders_created)
+            first_date = reminders_created[0]['formatted_time']
+            last_date = reminders_created[-1]['formatted_time']
+            
+            speech = f"Created {num_reminders} reminders for '{title}': {first_date} through {last_date}"
+            if gcal_synced_count > 0:
+                speech += f". All {gcal_synced_count} added to Google Calendar."
+            
+            print(json.dumps({
+                "ok": True,
+                "speech": speech,
+                "data": {
+                    "reminders_created": num_reminders,
+                    "reminders": reminders_created,
+                    "first_reminder": reminders_created[0],
+                    "last_reminder": reminders_created[-1],
+                    "gcal_synced_count": gcal_synced_count
+                }
+            }))
         else:
-            speech = f"Reminder set for {time_str}: {title}"
-        
-        # Add Google Calendar sync status to speech
-        if gcal_synced:
-            speech += ". Also added to Google Calendar."
-        
-        print(json.dumps({
-            "ok": True,
-            "speech": speech,
-            "data": {
-                "reminder_id": reminder_id,
-                "trigger_time": trigger_time_utc.isoformat(),
-                "trigger_time_local": trigger_time_local.isoformat(),
-                "formatted_time": time_str,
-                "recurring": recurrence_rule is not None,
-                "recurrence_rule": recurrence_rule,
-                "gcal_synced": gcal_synced,
-                "gcal_event_id": gcal_event_id
-            }
-        }))
+            # Single reminder (original behavior)
+            trigger_time_local = trigger_result
+            
+            result = create_single_reminder(
+                title=title,
+                description=description,
+                trigger_time_local=trigger_time_local,
+                recurrence_rule=recurrence_rule,
+                db_path=db_path
+            )
+            
+            # Format response
+            if recurrence_rule:
+                speech = f"Recurring reminder set: {title}. First trigger {result['formatted_time']}"
+            else:
+                speech = f"Reminder set for {result['formatted_time']}: {title}"
+            
+            if result.get('gcal_synced'):
+                speech += ". Also added to Google Calendar."
+            
+            print(json.dumps({
+                "ok": True,
+                "speech": speech,
+                "data": result
+            }))
         
     except Exception as e:
         print(json.dumps({

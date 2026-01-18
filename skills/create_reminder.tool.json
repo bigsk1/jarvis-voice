@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "create_reminder",
-  "description": "Create a reminder or calendar event that syncs to Google Calendar and triggers TTS notification. Use when user says: 'remind me', 'set a reminder', 'add to calendar', 'schedule', 'create event', 'calendar event', etc. Supports natural time expressions like 'in 30 minutes', 'in 4 hours', 'tomorrow at 3pm', 'Wednesday at 11am', 'every Wednesday at 2pm', 'every month on the 10th'. Recurring reminders auto-reschedule. Syncs bidirectionally with Google Calendar.",
+  "description": "Create reminder(s) or calendar event(s) that sync to Google Calendar and trigger TTS notifications. Use when user says: 'remind me', 'set a reminder', 'add to calendar', 'schedule', 'create event', 'calendar event', etc. IMPORTANT: Supports MULTI-DAY patterns in a SINGLE call - 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm' will create 5 individual reminders automatically. Also supports: 'in 30 minutes', 'tomorrow at 3pm', 'every Wednesday at 2pm' (weekly), 'every month on the 10th' (monthly), 'every day at 2pm' (daily recurring). Syncs to Google Calendar.",
   "script": "create_reminder.py",
   "parameters": {
     "type": "object",
@@ -16,7 +16,7 @@
       },
       "when": {
         "type": "string",
-        "description": "Natural time expression: 'in 30 minutes', 'in 4 hours', 'in 2 days', 'tomorrow at 3pm', 'at 5pm', 'every Wednesday', 'every month on the 10th', 'every Friday at 2pm', etc. Use the user's expressed time directly. Supports one-time and recurring reminders."
+        "description": "Natural time expression. Multi-day: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm' (creates multiple reminders). One-time: 'in 30 minutes', 'tomorrow at 3pm', 'at 5pm'. Recurring: 'every day at 2pm', 'every Wednesday at 2pm', 'every month on the 10th'. Use the user's natural phrasing."
       }
     },
     "required": ["title", "when"]
