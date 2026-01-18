@@ -295,12 +295,17 @@ for (const item of allItems) {
 
 ```javascript
 function priceToSpeech(price) {
+  // Check if price is a whole number (no meaningful cents)
+  const isWhole = price % 1 === 0 || Math.abs(price % 1) < 0.01;
+  
   if (price >= 1000000) {
-    return `${(price / 1000000).toFixed(1)} million dollars`;
+    const millions = price / 1000000;
+    return isWhole ? `${Math.round(millions)} million dollars` : `${millions.toFixed(1)} million dollars`;
   } else if (price >= 1000) {
     return `${Math.round(price).toLocaleString()} dollars`;
   } else {
-    return `${price.toFixed(2)} dollars`;
+    // For small prices: $400 not $400.00, but $142.50 keeps cents
+    return isWhole ? `${Math.round(price)} dollars` : `${price.toFixed(2)} dollars`;
   }
 }
 ```
@@ -308,8 +313,10 @@ function priceToSpeech(price) {
 **Examples:**
 - `94994` → "94,994 dollars"
 - `4595.40` → "4,595 dollars"
-- `142.10` → "142.10 dollars"
-- `1500000` → "1.5 million dollars"
+- `400` → "400 dollars" (NOT "400.00 dollars")
+- `400.00` → "400 dollars" (drops .00)
+- `142.50` → "142.50 dollars" (keeps real cents)
+- `1500000` → "2 million dollars"
 
 ### Threshold Helper
 
