@@ -292,15 +292,243 @@ sqlite3 data/jarvis_memory.db "SELECT name FROM sqlite_master WHERE type='table'
 cat /proc/$(lsof -t -i :8880)/environ | tr '\0' '\n' | grep LLM_PROVIDER
 ```
 
+---
+
+## Memory API Tests
+
+### 11. Test Memory Stats
+
+```bash
+curl -s http://localhost:8880/api/memory/stats | jq
+```
+
+**Expected:** Returns total memories, embedding coverage, top categories.
+
+### 12. Test Memory Categories
+
+```bash
+curl -s http://localhost:8880/api/memory/categories | jq
+```
+
+**Expected:** Returns category count and total memories.
+
+### 13. Test Memory List
+
+```bash
+# List all (limited)
+curl -s "http://localhost:8880/api/memory?limit=5" | jq '.memories[].key'
+
+# Filter by category
+curl -s "http://localhost:8880/api/memory?category=personal" | jq '.memories[].key'
+```
+
+### 14. Test Keyword Search
+
+```bash
+# Search for "flask"
+curl -s "http://localhost:8880/api/memory/search/keyword?q=flask&limit=5" | jq '.memories[] | {key, relevance}'
+
+# Search in specific category
+curl -s "http://localhost:8880/api/memory/search/keyword?q=project&category=technical" | jq
+```
+
+**Expected:** Returns memories with relevance scores.
+
+### 15. Test Semantic Search
+
+```bash
+# Natural language question
+curl -s "http://localhost:8880/api/memory/search/semantic?q=what%20is%20my%20dog%27s%20name" | jq '.memories[] | {key, value, similarity}'
+
+# With threshold
+curl -s "http://localhost:8880/api/memory/search/semantic?q=where%20is%20my%20project&threshold=0.4" | jq
+```
+
+**Expected:** Returns memories with similarity scores (0-1).
+
+### 16. Test Get Memory by ID
+
+```bash
+# Get specific memory (replace ID with actual)
+curl -s http://localhost:8880/api/memory/273 | jq '.memory'
+
+# Test 404
+curl -s http://localhost:8880/api/memory/99999 | jq
+```
+
+### 17. Test Create Memory (Non-destructive)
+
+```bash
+# Create a test memory
+curl -X POST http://localhost:8880/api/memory \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "test",
+    "key": "api_test_memory",
+    "value": "This is a test memory from API testing",
+    "importance": 3
+  }' | jq
+
+# Verify it exists
+curl -s "http://localhost:8880/api/memory/search/keyword?q=api_test_memory" | jq '.memories[0]'
+```
+
+### 18. Test Update Memory
+
+```bash
+# First get the ID from create response, then:
+curl -X PUT http://localhost:8880/api/memory/{ID} \
+  -H "Content-Type: application/json" \
+  -d '{"value": "Updated test memory", "importance": 4}' | jq
+```
+
+### 19. Test Delete Memory
+
+```bash
+# Delete the test memory (use ID from step 17)
+curl -X DELETE http://localhost:8880/api/memory/{ID} | jq
+
+# Verify deleted
+curl -s http://localhost:8880/api/memory/{ID} | jq
+# Should return 404
+```
+
+---
+
+## Query/Chat API Tests
+
+### 20. Test Quick Query (GET)
+
+```bash
+# Time query
+curl -s "http://localhost:8880/api/query/quick?q=What%20time%20is%20it" | jq
+
+# Weather query
+curl -s "http://localhost:8880/api/query/quick?q=What%20is%20the%20weather" | jq
+
+# Math query
+curl -s "http://localhost:8880/api/query/quick?q=What%20is%202%20%2B%202" | jq
+```
+
+**Expected:** Returns `ok: true`, `speech`, and `tools_used`.
+
+### 21. Test Quick Query (POST)
+
+```bash
+curl -X POST http://localhost:8880/api/query/quick \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is the price of Bitcoin?"}' | jq
+```
+
+**Expected:** Returns crypto price with `tools_used: ["crypto_price"]`.
+
+### 22. Test Full Query Endpoint
+
+```bash
+curl -X POST http://localhost:8880/api/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What is my dogs name?",
+    "mode": "cloud",
+    "session_id": "api-test-123"
+  }' | jq
+```
+
+**Expected:** Returns memory recall with `tools_used: ["semantic_recall"]`.
+
+### 23. Test Local Mode
+
+```bash
+# Only if Ollama is running
+curl -X POST http://localhost:8880/api/query/quick \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What time is it?", "mode": "local"}' | jq
+```
+
+**Note:** Local mode requires Ollama running and takes longer.
+
+### 24. Test Tool Selection
+
+```bash
+# Should use calculator
+curl -s "http://localhost:8880/api/query/quick?q=sqrt%28144%29" | jq '.tools_used'
+# Expected: ["calculator"]
+
+# Should use weather
+curl -s "http://localhost:8880/api/query/quick?q=temperature%20outside" | jq '.tools_used'
+# Expected: ["weather"]
+
+# Should use memory
+curl -s "http://localhost:8880/api/query/quick?q=what%20do%20you%20remember%20about%20my%20projects" | jq '.tools_used'
+# Expected: ["semantic_recall"] or ["search_memory"]
+```
+
+---
+
+## Quick Test Script
+
+Run all Memory and Query API tests:
+
+```bash
+#!/bin/bash
+# test-new-apis.sh
+
+BASE="http://localhost:8880"
+
+echo "=== Memory API Tests ==="
+
+echo -e "\n1. Stats:"
+curl -s $BASE/api/memory/stats | jq -c '{total: .total_memories, coverage: .embedding_coverage}'
+
+echo -e "\n2. Categories:"
+curl -s $BASE/api/memory/categories | jq -c '{count: .count}'
+
+echo -e "\n3. Keyword Search (flask):"
+curl -s "$BASE/api/memory/search/keyword?q=flask&limit=2" | jq -c '.count'
+
+echo -e "\n4. Semantic Search (dog name):"
+curl -s "$BASE/api/memory/search/semantic?q=dog%20name&limit=1" | jq -c '.memories[0] | {key, similarity}'
+
+echo -e "\n=== Query API Tests ==="
+
+echo -e "\n5. Time Query:"
+curl -s "$BASE/api/query/quick?q=time" | jq -c '{ok, tools: .tools_used}'
+
+echo -e "\n6. Math Query:"
+curl -s -X POST $BASE/api/query/quick \
+  -H "Content-Type: application/json" \
+  -d '{"query": "2+2"}' | jq -c '{speech, tools: .tools_used}'
+
+echo -e "\n7. Memory Query:"
+curl -s "$BASE/api/query/quick?q=my%20dogs%20name" | jq -c '{ok, tools: .tools_used}'
+
+echo -e "\n✅ All tests completed!"
+```
+
+Save and run:
+```bash
+chmod +x test-new-apis.sh
+./test-new-apis.sh
+```
+
+---
+
 ## Success Criteria
 
-✅ All 14 tests pass in `test-api-endpoints.sh`  
+✅ All 14 original tests pass in `test-api-endpoints.sh`  
 ✅ TTS works for high/critical alerts  
 ✅ Alerts stored in database  
 ✅ Query filters work  
 ✅ Auto-sync works between modes  
 ✅ Interactive docs accessible  
 ✅ Both cloud and local modes work  
+
+**NEW:**
+✅ Memory API stats returns data  
+✅ Memory keyword search finds results  
+✅ Memory semantic search finds related memories  
+✅ Query API returns speech and tools_used  
+✅ Query API selects correct tools  
 
 ---
 
@@ -310,3 +538,11 @@ cat /proc/$(lsof -t -i :8880)/environ | tr '\0' '\n' | grep LLM_PROVIDER
 ./tests/test-api-endpoints.sh
 ```
 
+**Test new APIs:**
+```bash
+# Quick memory test
+curl -s http://localhost:8880/api/memory/stats | jq '.total_memories'
+
+# Quick query test
+curl -s "http://localhost:8880/api/query/quick?q=time" | jq '.speech'
+```
