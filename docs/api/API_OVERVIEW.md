@@ -736,6 +736,72 @@ GET /api/canvas/{page_id}
 
 See [CANVAS.md](./CANVAS.md) for detailed documentation.
 
+### Prices ⭐ NEW
+
+Direct price retrieval without LLM routing - fast, free, silent. Perfect for n8n workflows.
+
+```bash
+# Stock/Futures price (direct, no LLM)
+GET /api/prices/stock/TSLA
+GET /api/prices/stock/GC=F    # Gold futures
+GET /api/prices/stock/AAPL
+
+# Crypto price (direct, no LLM)
+GET /api/prices/crypto/BTC
+GET /api/prices/crypto/SOL
+
+# Batch prices
+GET /api/prices/batch?stocks=TSLA,GC=F&crypto=BTC,SOL
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "data": {
+    "symbol": "TSLA",
+    "company": "Tesla, Inc.",
+    "price_usd": 437.50,
+    "change_today_percent": -0.46,
+    "change_emoji": "📉"
+  }
+}
+```
+
+**Benefits over `/api/query`:**
+- ~2s vs ~20s (no LLM routing)
+- No token usage
+- No speech output (silent)
+
+See [PRICES.md](./PRICES.md) for detailed documentation.
+
+### Config ⭐ NEW
+
+Serve configuration files to external systems (n8n workflows).
+
+```bash
+# Get price alert config (for n8n)
+GET /api/config/price-alerts
+
+# Get thresholds only
+GET /api/config/price-alerts/thresholds
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "settings": { "check_interval_minutes": 10 },
+  "watchlist": {
+    "crypto": [{ "symbol": "BTC", "conditions": [...] }],
+    "stocks": [{ "symbol": "TSLA", "conditions": [...] }]
+  },
+  "source": "config/price-alerts.yaml"
+}
+```
+
+**Single Source of Truth**: Edit `config/price-alerts.yaml`, n8n fetches via this API.
+
 ### Health
 
 ```bash
