@@ -300,6 +300,168 @@ def open_canvas() -> Dict[str, Any]:
     }
 
 
+def read_page(page_id: str = None, search: str = None) -> Dict[str, Any]:
+    """Read a canvas page content. Can find by ID or search by title/content.
+    
+    Useful for:
+    - Verifying a page was created correctly
+    - Reading back content for troubleshooting
+    - Finding pages by keyword
+    """
+    
+    # Try Canvas server API first
+    if check_canvas_health():
+        if page_id:
+            result = api_request('GET', f'/pages/{page_id}')
+            if 'error' not in result:
+                return {
+                    "ok": True,
+                    "speech": f"Here's the canvas page '{result.get('title', 'Untitled')}'.",
+                    "data": {
+                        "page_id": result.get('id'),
+                        "title": result.get('title'),
+                        "content": result.get('content', ''),
+                        "tags": result.get('tags', []),
+                        "created": result.get('created'),
+                        "content_length": len(result.get('content', ''))
+                    }
+                }
+    
+    # Fallback to direct file access
+    if not os.path.exists(CANVAS_DIR):
+        return {
+            "ok": False,
+            "error": "Canvas directory not found",
+            "speech": "Couldn't find any canvas pages."
+        }
+    
+    # If page_id provided, try direct file read
+    if page_id:
+        # Handle various ID formats
+        if not page_id.startswith("page_"):
+            page_id = f"page_{page_id}"
+        filename = f"{page_id}.json" if not page_id.endswith(".json") else page_id
+        filepath = os.path.join(CANVAS_DIR, filename)
+        
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+                return {
+                    "ok": True,
+                    "speech": f"Here's the canvas page '{data.get('title', 'Untitled')}'.",
+                    "data": {
+                        "page_id": data.get('id'),
+                        "title": data.get('title'),
+                        "content": data.get('content', ''),
+                        "tags": data.get('tags', []),
+                        "created": data.get('created'),
+                        "content_length": len(data.get('content', ''))
+                    }
+                }
+            except Exception as e:
+                return {
+                    "ok": False,
+                    "error": f"Failed to read page: {e}",
+                    "speech": f"Couldn't read that page: {e}"
+                }
+        else:
+            return {
+                "ok": False,
+                "error": f"Page not found: {page_id}",
+                "speech": f"I couldn't find a page with ID {page_id}."
+            }
+    
+    # Search by keyword if no page_id
+    if search:
+        search_lower = search.lower()
+        matches = []
+        
+        for filename in os.listdir(CANVAS_DIR):
+            if filename.startswith("page_") and filename.endswith(".json"):
+                filepath = os.path.join(CANVAS_DIR, filename)
+                try:
+                    with open(filepath, 'r') as f:
+                        data = json.load(f)
+                    title = data.get('title', '').lower()
+                    content = data.get('content', '').lower()
+                    
+                    if search_lower in title or search_lower in content:
+                        matches.append({
+                            "page_id": data.get('id'),
+                            "title": data.get('title'),
+                            "content": data.get('content', ''),
+                            "tags": data.get('tags', []),
+                            "created": data.get('created'),
+                            "content_length": len(data.get('content', ''))
+                        })
+                except:
+                    continue
+        
+        if not matches:
+            return {
+                "ok": True,
+                "speech": f"No canvas pages found matching '{search}'.",
+                "data": {"matches": [], "count": 0}
+            }
+        
+        # Sort by created date, newest first
+        matches.sort(key=lambda x: x.get('created', ''), reverse=True)
+        
+        if len(matches) == 1:
+            return {
+                "ok": True,
+                "speech": f"Found one page: '{matches[0]['title']}'.",
+                "data": matches[0]
+            }
+        else:
+            return {
+                "ok": True,
+                "speech": f"Found {len(matches)} pages matching '{search}'. Most recent: '{matches[0]['title']}'.",
+                "data": {
+                    "matches": matches[:5],  # Return top 5
+                    "count": len(matches),
+                    "most_recent": matches[0]
+                }
+            }
+    
+    # No page_id or search - get most recent page
+    pages = []
+    for filename in os.listdir(CANVAS_DIR):
+        if filename.startswith("page_") and filename.endswith(".json"):
+            filepath = os.path.join(CANVAS_DIR, filename)
+            try:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+                pages.append(data)
+            except:
+                continue
+    
+    if not pages:
+        return {
+            "ok": True,
+            "speech": "Your canvas is empty.",
+            "data": {"pages": [], "count": 0}
+        }
+    
+    # Sort and return most recent
+    pages.sort(key=lambda x: x.get('created', ''), reverse=True)
+    latest = pages[0]
+    
+    return {
+        "ok": True,
+        "speech": f"Your most recent canvas page is '{latest.get('title')}'.",
+        "data": {
+            "page_id": latest.get('id'),
+            "title": latest.get('title'),
+            "content": latest.get('content', ''),
+            "tags": latest.get('tags', []),
+            "created": latest.get('created'),
+            "content_length": len(latest.get('content', ''))
+        }
+    }
+
+
 def main():
     try:
         # Parse arguments
@@ -352,8 +514,13 @@ def main():
         elif action == 'open':
             result = open_canvas()
         
+        elif action == 'read':
+            page_id = args.get('page_id')
+            search = args.get('search')
+            result = read_page(page_id=page_id, search=search)
+        
         else:
-            raise ValueError(f"Unknown action: {action}. Use: create, update, delete, list, open")
+            raise ValueError(f"Unknown action: {action}. Use: create, update, delete, list, open, read")
         
         print(json.dumps(result))
         
