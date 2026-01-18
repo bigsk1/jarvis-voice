@@ -63,8 +63,14 @@ def _get_all_pages() -> List[tuple]:
     return pages
 
 
-def _page_to_model(data: dict, include_content: bool = False) -> CanvasPage:
-    """Convert raw page data to Pydantic model."""
+def _page_to_model(data: dict, include_content: bool = False, for_list: bool = True) -> CanvasPage:
+    """Convert raw page data to Pydantic model.
+    
+    Args:
+        data: Raw page data dict
+        include_content: Whether to include full content
+        for_list: If True, return CanvasPage; if False, return CanvasPageFull
+    """
     content = data.get('content', '')
     
     page_data = {
@@ -79,6 +85,12 @@ def _page_to_model(data: dict, include_content: bool = False) -> CanvasPage:
         "embedded_images": _extract_embedded_images(content)
     }
     
+    # For single page responses, always use CanvasPageFull
+    if not for_list:
+        page_data["content"] = content if include_content else ""
+        return CanvasPageFull(**page_data)
+    
+    # For list responses, use CanvasPage (no content field)
     if include_content:
         page_data["content"] = content
         return CanvasPageFull(**page_data)
@@ -312,5 +324,5 @@ async def get_page(
     
     return CanvasPageResponse(
         ok=True,
-        page=_page_to_model(data, include_content=include_content)
+        page=_page_to_model(data, include_content=include_content, for_list=False)
     )
