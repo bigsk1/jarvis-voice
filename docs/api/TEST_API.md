@@ -465,9 +465,89 @@ curl -s "http://localhost:8880/api/query/quick?q=what%20do%20you%20remember%20ab
 
 ---
 
+## Conversations API Tests
+
+### 25. Test Conversation Stats
+
+```bash
+curl -s http://localhost:8880/api/conversations/stats | jq
+```
+
+**Expected:** Returns total_conversations, success_rate, top_tools.
+
+### 26. Test List Conversations
+
+```bash
+# List recent 5
+curl -s "http://localhost:8880/api/conversations?limit=5" | jq '.conversations[] | {id, query: .user_query, tools: .tools_used}'
+
+# With pagination
+curl -s "http://localhost:8880/api/conversations?limit=10&offset=10" | jq '{page, pages, count}'
+```
+
+### 27. Test Get Conversation by ID
+
+```bash
+# Get specific conversation (use actual ID from list)
+curl -s http://localhost:8880/api/conversations/858 | jq '.conversation'
+
+# Test 404
+curl -s http://localhost:8880/api/conversations/999999 | jq
+```
+
+### 28. Test Recent Conversations
+
+```bash
+# Last 30 minutes
+curl -s "http://localhost:8880/api/conversations/recent" | jq '.count'
+
+# Last 2 hours
+curl -s "http://localhost:8880/api/conversations/recent?minutes=120" | jq '.conversations[].user_query'
+```
+
+### 29. Test Search Conversations
+
+```bash
+# Search for bitcoin
+curl -s "http://localhost:8880/api/conversations/search?q=bitcoin" | jq '.conversations[] | {query: .user_query, response: .jarvis_response}'
+
+# Search for weather
+curl -s "http://localhost:8880/api/conversations/search?q=weather&limit=5" | jq '.count'
+```
+
+### 30. Test Filter by Tool
+
+```bash
+# Filter by crypto_price tool
+curl -s "http://localhost:8880/api/conversations?tool=crypto_price&limit=5" | jq '.conversations[].user_query'
+
+# Filter by get_time tool
+curl -s "http://localhost:8880/api/conversations?tool=get_time&limit=5" | jq '.count'
+```
+
+### 31. Test Sessions List
+
+```bash
+curl -s "http://localhost:8880/api/conversations/sessions?limit=5" | jq '.sessions'
+```
+
+**Expected:** Returns session_id, message_count, first_message, last_message.
+
+### 32. Test Filter by Success
+
+```bash
+# Only successful
+curl -s "http://localhost:8880/api/conversations?success=true&limit=5" | jq '.count'
+
+# Only failed
+curl -s "http://localhost:8880/api/conversations?success=false&limit=5" | jq '.conversations[].user_query'
+```
+
+---
+
 ## Quick Test Script
 
-Run all Memory and Query API tests:
+Run all Memory, Query, and Conversations API tests:
 
 ```bash
 #!/bin/bash
@@ -502,6 +582,17 @@ curl -s -X POST $BASE/api/query/quick \
 echo -e "\n7. Memory Query:"
 curl -s "$BASE/api/query/quick?q=my%20dogs%20name" | jq -c '{ok, tools: .tools_used}'
 
+echo -e "\n=== Conversations API Tests ==="
+
+echo -e "\n8. Conversation Stats:"
+curl -s $BASE/api/conversations/stats | jq -c '{total: .total_conversations, rate: .success_rate}'
+
+echo -e "\n9. Recent Conversations:"
+curl -s "$BASE/api/conversations/recent?minutes=60&limit=3" | jq -c '.count'
+
+echo -e "\n10. Search Conversations:"
+curl -s "$BASE/api/conversations/search?q=time&limit=3" | jq -c '.count'
+
 echo -e "\n✅ All tests completed!"
 ```
 
@@ -523,12 +614,21 @@ chmod +x test-new-apis.sh
 ✅ Interactive docs accessible  
 ✅ Both cloud and local modes work  
 
-**NEW:**
+**Memory API:**
 ✅ Memory API stats returns data  
 ✅ Memory keyword search finds results  
 ✅ Memory semantic search finds related memories  
+
+**Query API:**
 ✅ Query API returns speech and tools_used  
 ✅ Query API selects correct tools  
+
+**Conversations API:**
+✅ Conversations stats returns totals and top tools  
+✅ Recent conversations returns data  
+✅ Search finds matching conversations  
+✅ Filter by tool works  
+✅ Sessions list returns session data  
 
 ---
 
@@ -545,4 +645,7 @@ curl -s http://localhost:8880/api/memory/stats | jq '.total_memories'
 
 # Quick query test
 curl -s "http://localhost:8880/api/query/quick?q=time" | jq '.speech'
+
+# Quick conversations test
+curl -s http://localhost:8880/api/conversations/stats | jq '.total_conversations'
 ```
