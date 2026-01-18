@@ -1,86 +1,82 @@
 # Deep Research Workflow
 
-You are conducting thorough, multi-source research. This is NOT a quick lookup—invest time to build comprehensive understanding.
+You are conducting thorough, multi-source research. This is NOT a quick lookup.
+
+⚠️ **CRITICAL RULES - READ FIRST:**
+1. **Canvas is ALWAYS the LAST tool** - Never use canvas until ALL research is complete
+2. **Stash artifacts BEFORE canvas** - Save raw sources for follow-up questions
+3. **Follow phases IN ORDER** - Don't skip ahead
+4. **Deep dive BEFORE synthesizing** - Read full articles, not just snippets
 
 ---
 
-## Phase 1: Plan (Optional but Recommended for Complex Topics)
+## Phase 1: Plan First (USE THIS)
 
-For multi-faceted topics, use **sequential thinking** (MCP: `sequentialthinking`) to:
-- Break down the research question into sub-questions
-- Identify what types of sources would be authoritative
-- Plan the order of investigation
+Use `mcp_sequentialthinking_sequentialthinking` to create a research plan:
+- What are the key sub-questions?
+- What sources would be authoritative?
+- What's the investigation order?
 
-Skip this for straightforward topics.
-
----
-
-## Phase 2: Gather Context
-
-### Step 2a: Check Existing Knowledge
-Use `semantic_recall` to see if we already have relevant memories or past research on this topic. Don't reinvent the wheel.
-
-### Step 2b: Native Grounding Search (Primary)
-Use your **native grounding search** first—it's fast and comprehensive for:
-- Current facts, prices, dates
-- Overview of the topic
-- Recent news and developments
-
-This should give you the lay of the land.
-
-### Step 2c: Brave Search (If Needed)
-If native search doesn't cover it or you need:
-- More diverse sources
-- Specific site searches
-- News from particular timeframes
-
-Use `mcp_brave_search_brave_web_search` to fill gaps.
+This takes 30 seconds but dramatically improves output quality.
 
 ---
 
-## Phase 3: Deep Dive
+## Phase 2: Gather Initial Context
 
-Now that you have an overview, go deeper on the most valuable sources:
+### Step 2a: Check Existing Knowledge (REQUIRED)
+`semantic_recall` → Do we already have research on this topic?
 
-### Step 3a: Fetch Key URLs
-Use `mcp_fetch_fetch` to extract full content from authoritative sources identified in Phase 2. Get the actual article/doc content, not just search snippets.
+### Step 2b: Native Grounding Search (PREFERRED)
+Use your **native grounding search** first—it's fast, free, and comprehensive.
+Good for: current facts, prices, dates, topic overview, recent news.
+
+### Step 2c: Brave Search (IF NEEDED)
+Only use `mcp_brave_search_brave_web_search` or `mcp_brave_search_brave_news_search` if:
+- Native search doesn't have what you need
+- You need specific site searches
+- You need news from specific timeframes
+
+---
+
+## Phase 3: Deep Dive into Sources (REQUIRED BEFORE CANVAS)
+
+⚠️ **DO NOT USE CANVAS YET** - First read the actual sources!
+
+### Step 3a: Fetch Full Articles
+`mcp_fetch_fetch` → Get complete article content from URLs found in Phase 2.
+Search snippets are NOT enough. Read the actual sources.
 
 ### Step 3b: Crawl Complex Pages
-For pages that need deeper extraction or have multiple relevant sections, use `crawl_url`. This handles:
-- Pages with complex structure
-- Sites that need more thorough parsing
+`crawl_url` → For sites with complex structure or multiple sections.
 
 ### Step 3c: Video Sources (If Relevant)
-If the topic has valuable video content (tutorials, talks, interviews), use `youtube_transcript` to get transcripts for analysis.
+`youtube_transcript` → Get transcripts from relevant videos.
 
 ---
 
-## Phase 4: Process & Store
+## Phase 4: Process & Store Artifacts (REQUIRED BEFORE CANVAS)
+
+⚠️ **DO NOT USE CANVAS YET** - First stash your artifacts!
 
 ### Step 4a: Summarize Long Content
-Use `text_summarizer` to condense lengthy articles or transcripts into key points. Don't lose important details.
+`text_summarizer` → Condense lengthy articles into key points.
 
-### Step 4b: Stash Artifacts (Mid-Process)
-As you gather valuable content, use `stash` to save:
-- Raw source content
-- Important quotes with attribution
+### Step 4b: Stash Artifacts (REQUIRED)
+`stash` → Save raw sources BEFORE creating final output:
+- Full article content with URLs
+- Key quotes with attribution
 - Data tables or figures
 
-**Why stash mid-process**: This preserves artifacts for follow-up questions. Tag with: `research`, `[topic]`, `source:[name]`
+**Why this matters**: Stashing preserves artifacts for follow-up questions. Tag with: `research`, `[topic]`, `source:[name]`
 
 ---
 
-## Phase 5: Synthesize & Output
+## Phase 5: Synthesize & Output (LAST PHASE)
 
-### Step 5a: Analyze & Synthesize
-Now that you have all materials:
-- Compare different perspectives
-- Identify consensus vs debate
-- Note caveats and limitations
-- Draw actionable conclusions
+✅ **NOW you can use canvas** - Only after completing Phases 1-4!
 
-### Step 5b: Save to Canvas (Final Output)
-Create a comprehensive canvas page with:
+### Step 5a: Create Final Report
+`canvas` → Create comprehensive research page:
 
 ```
 Title: "Research: [Topic]"
@@ -93,51 +89,36 @@ Tags: research, [topic keywords]
 [Organized by theme or importance]
 
 ## Sources & Evidence
-[Links and citations]
+[Links and citations from stashed artifacts]
 
 ## Open Questions
-[What remains unclear or needs more investigation]
-
-## Related Artifacts
-[Links to stash items saved during research]
+[What remains unclear]
 ```
 
 ---
 
-## Tool Order Summary
+## Required Tool Order
 
 ```
-1. sequential thinking  → Plan (complex topics only)
-2. semantic_recall      → Check existing knowledge
-3. native grounding     → Fast overview
-4. brave_search         → Fill gaps (if needed)
-5. fetch / crawl_url    → Deep dive into sources
-6. youtube_transcript   → Video content (if relevant)
-7. text_summarizer      → Condense long content
-8. stash                → Save artifacts mid-process
-9. canvas               → Final synthesized report
+1. mcp_sequentialthinking_sequentialthinking → Plan the research
+2. semantic_recall                           → Check existing knowledge
+3. native grounding search                   → Fast overview (no tool needed)
+4. brave_search (if needed)                  → Fill gaps
+5. mcp_fetch_fetch / crawl_url               → READ FULL SOURCES
+6. youtube_transcript (if relevant)          → Video content
+7. text_summarizer                           → Condense content
+8. stash                                     → SAVE ARTIFACTS
+9. canvas                                    → FINAL OUTPUT (LAST!)
 ```
 
-Each step builds on the previous. Don't skip to the end—the quality comes from the journey.
+**canvas is ALWAYS LAST. If you haven't used fetch/crawl + stash, you're not ready for canvas.**
 
 ---
 
-## Quality Markers
+## Anti-Patterns (DO NOT DO THESE)
 
-Good research output should have:
-- [ ] Multiple corroborating sources
-- [ ] Primary sources when possible (not just aggregators)
-- [ ] Recent information (check dates)
-- [ ] Clear attribution for claims
-- [ ] Acknowledgment of uncertainty where it exists
-- [ ] Actionable insights, not just facts
-
----
-
-## Anti-Patterns to Avoid
-
-- ❌ Using only search snippets without reading sources
-- ❌ Relying on a single source for important claims
-- ❌ Ignoring conflicting information
-- ❌ Presenting speculation as fact
-- ❌ Skipping stash—artifacts enable follow-up questions
+❌ **Using canvas early** - Canvas is ONLY for final output after all research
+❌ **Skipping fetch/crawl** - Search snippets aren't real research
+❌ **Skipping stash** - No artifacts = no follow-up capability
+❌ **fetch/crawl AFTER canvas** - That's backwards! Deep dive comes FIRST
+❌ **Relying on single source** - Multiple sources required
