@@ -610,6 +610,24 @@ curl -s "$BASE/api/stash/search?q=image&limit=2" | jq -c '{count: .count}'
 echo -e "\n15. Filter by Tool:"
 curl -s "$BASE/api/stash?tool=generate_image&limit=3" | jq -c '{count: .count, message: .message}'
 
+echo -e "\n=== Canvas API Tests ==="
+
+echo -e "\n16. Canvas Stats:"
+curl -s $BASE/api/canvas/stats | jq -c '{pages: .total_pages, size: .total_size_human, with_images: .pages_with_images}'
+
+echo -e "\n17. List Tags:"
+curl -s $BASE/api/canvas/tags | jq -c '{count: .count}'
+
+echo -e "\n18. Recent Pages:"
+curl -s "$BASE/api/canvas/recent?limit=3" | jq -c '.count'
+
+echo -e "\n19. Search Canvas:"
+curl -s "$BASE/api/canvas/search?q=status&limit=2" | jq -c '{count: .count}'
+
+echo -e "\n20. Get Page:"
+PAGE_ID=$(curl -s "$BASE/api/canvas/recent?limit=1" | jq -r '.pages[0].page_id')
+curl -s "$BASE/api/canvas/$PAGE_ID?include_content=false" | jq -c '{ok, title: .page.title}'
+
 echo -e "\n✅ All tests completed!"
 ```
 

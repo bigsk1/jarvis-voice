@@ -209,6 +209,7 @@ curl http://localhost:8880/api/alerts
 ✅ Query/Chat API (programmatic Jarvis access) ⭐ NEW
 ✅ Conversations API (read-only history access) ⭐ NEW
 ✅ Stash API (read-only artifacts access) ⭐ NEW
+✅ Canvas API (read-only pages access) ⭐ NEW
 ✅ Dark mode Swagger UI ⭐ NEW
 
 ---
@@ -703,6 +704,37 @@ GET /api/stash/space/{space_id}/file/{file_id}/download
 ```
 
 See [STASH.md](./STASH.md) for detailed documentation.
+
+### Canvas ⭐ NEW
+
+Read-only access to canvas pages (markdown documents with embedded images).
+
+```bash
+# Canvas statistics
+GET /api/canvas/stats
+
+# List pages (with filters)
+GET /api/canvas?limit=50
+GET /api/canvas?tag=status
+GET /api/canvas?search=bitcoin
+
+# List tags with counts
+GET /api/canvas/tags
+
+# List source tools with counts
+GET /api/canvas/tools
+
+# Recent pages
+GET /api/canvas/recent?limit=10
+
+# Search pages
+GET /api/canvas/search?q=bitcoin
+
+# Get page with content
+GET /api/canvas/{page_id}
+```
+
+See [CANVAS.md](./CANVAS.md) for detailed documentation.
 
 ### Health
 
