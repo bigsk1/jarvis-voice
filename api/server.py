@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router
+from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router
 from api.routes.intelligence import router as intelligence_router
 
 # Prometheus metrics
@@ -193,6 +193,7 @@ app.include_router(reminders_router)
 app.include_router(voice_router)
 app.include_router(memory_router)
 app.include_router(query_router)
+app.include_router(conversations_router)
 app.include_router(intelligence_router)
 
 # Add /metrics endpoint LAST
@@ -232,6 +233,13 @@ async def root():
             "stats": "/api/memory/stats",
             "categories": "/api/memory/categories"
         },
+        "conversations": {
+            "list": "/api/conversations",
+            "recent": "/api/conversations/recent",
+            "search": "/api/conversations/search",
+            "stats": "/api/conversations/stats",
+            "sessions": "/api/conversations/sessions"
+        },
         "speak": "/api/voice/speak",
         "intelligence": {
             "stats": "/api/intelligence/stats",
@@ -249,7 +257,7 @@ async def root():
     
     return {
         "service": "Jarvis Proactive Assistant API",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "docs": {
             "swagger": "/docs",
             "swagger_dark": "/docs/dark",
