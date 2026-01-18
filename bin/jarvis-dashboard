@@ -243,12 +243,46 @@ COMMANDS: List[Command] = [
     Command("Git Log", "git log --oneline -15", "Recent commits", "🔒 Maint"),
     
     # === 🌐 API CALLS ===
+    Command("API: Health", "curl -s http://localhost:8880/api/health | jq", "API health check", "🌐 API"),
     Command("API: Alerts", "curl -s http://localhost:8880/api/alerts | jq", "Get all alerts", "🌐 API"),
     Command("API: Reminders", "curl -s http://localhost:8880/api/reminders | jq", "Get all reminders", "🌐 API"),
+    
+    # Memory API
+    Command("API: Memory Stats", "curl -s http://localhost:8880/api/memory/stats | jq", "Memory statistics", "🌐 API"),
+    Command("API: Memory Categories", "curl -s http://localhost:8880/api/memory/categories | jq", "Memory categories", "🌐 API"),
+    Command("API: Memory Search", "curl -s 'http://localhost:8880/api/memory/search/keyword?q=flask&limit=5' | jq", "Keyword search", "🌐 API"),
+    Command("API: Memory Semantic", "curl -s 'http://localhost:8880/api/memory/search/semantic?q=dog%20name&limit=3' | jq", "Semantic search", "🌐 API"),
+    
+    # Query API
+    Command("API: Quick Query", "curl -s -X POST http://localhost:8880/api/query/quick -H 'Content-Type: application/json' -d '{\"query\": \"What time is it?\"}' | jq", "Quick Jarvis query", "🌐 API"),
+    
+    # Conversations API
+    Command("API: Conversations Stats", "curl -s http://localhost:8880/api/conversations/stats | jq", "Conversation stats", "🌐 API"),
+    Command("API: Conversations Recent", "curl -s 'http://localhost:8880/api/conversations/recent?minutes=60&limit=5' | jq", "Recent conversations", "🌐 API"),
+    Command("API: Conversations Search", "curl -s 'http://localhost:8880/api/conversations/search?q=time&limit=5' | jq", "Search conversations", "🌐 API"),
+    
+    # Stash API
+    Command("API: Stash Stats", "curl -s http://localhost:8880/api/stash/stats | jq", "Stash statistics", "🌐 API"),
+    Command("API: Stash Labels", "curl -s http://localhost:8880/api/stash/labels | jq", "Stash labels", "🌐 API"),
+    Command("API: Stash Recent", "curl -s 'http://localhost:8880/api/stash/recent?limit=5' | jq", "Recent stash items", "🌐 API"),
+    Command("API: Stash Search", "curl -s 'http://localhost:8880/api/stash/search?q=image&limit=3' | jq", "Search stash", "🌐 API"),
+    
+    # Canvas API
+    Command("API: Canvas Stats", "curl -s http://localhost:8880/api/canvas/stats | jq", "Canvas statistics", "🌐 API"),
+    Command("API: Canvas Tags", "curl -s http://localhost:8880/api/canvas/tags | jq", "Canvas tags", "🌐 API"),
+    Command("API: Canvas Recent", "curl -s 'http://localhost:8880/api/canvas/recent?limit=5' | jq", "Recent canvas pages", "🌐 API"),
+    Command("API: Canvas Search", "curl -s 'http://localhost:8880/api/canvas/search?q=status&limit=3' | jq", "Search canvas", "🌐 API"),
+    
+    # Intelligence API
     Command("API: Intel Stats", "curl -s http://localhost:8880/api/intelligence/stats | jq", "Intelligence stats", "🌐 API"),
     Command("API: Intel Health", "curl -s http://localhost:8880/api/intelligence/health | jq", "Intelligence health", "🌐 API"),
+    Command("API: Intel Reflections", "curl -s http://localhost:8880/api/intelligence/reflections | jq", "Pending reflections", "🌐 API"),
     Command("API: Trigger Reflect", "curl -X POST http://localhost:8880/api/intelligence/reflect | jq", "Trigger reflection", "🌐 API"),
     Command("API: Run Maintenance", "curl -X POST http://localhost:8880/api/intelligence/maintenance/all | jq", "Run all maintenance", "🌐 API"),
+    
+    # API Docs
+    Command("API: Open Docs (Dark)", "echo '🌐 Open http://192.168.70.228:8880/docs/dark in browser'", "Swagger UI (dark mode)", "🌐 API"),
+    Command("API: Open Docs (Light)", "echo '🌐 Open http://192.168.70.228:8880/docs in browser'", "Swagger UI (light mode)", "🌐 API"),
 ]
 
 # ============================================================================
