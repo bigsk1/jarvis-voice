@@ -410,6 +410,37 @@ class IntelligenceService:
         finally:
             conn.close()
     
+    def delete_reflection(self, reflection_id: int) -> bool:
+        """Delete a pending reflection from the queue (cancel it without processing)"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            # Only delete if not yet processed
+            cursor.execute("""
+                DELETE FROM reflection_queue 
+                WHERE id = ? AND processed = 0
+            """, (reflection_id,))
+            
+            deleted = cursor.rowcount > 0
+            conn.commit()
+            return deleted
+        finally:
+            conn.close()
+    
+    def delete_all_pending_reflections(self) -> int:
+        """Delete all pending reflections from the queue"""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("DELETE FROM reflection_queue WHERE processed = 0")
+            deleted_count = cursor.rowcount
+            conn.commit()
+            return deleted_count
+        finally:
+            conn.close()
+    
     # =========================================================================
     # Statistics
     # =========================================================================

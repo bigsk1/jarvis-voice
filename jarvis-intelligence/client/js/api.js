@@ -146,6 +146,18 @@ class IntelligenceAPI {
     return this.fetch(`/api/stats/reflection-queue?limit=${limit}`);
   }
   
+  async deleteReflection(id) {
+    return this.fetch(`/api/stats/reflection-queue/${id}`, {
+      method: 'DELETE'
+    });
+  }
+  
+  async deleteAllReflections() {
+    return this.fetch('/api/stats/reflection-queue', {
+      method: 'DELETE'
+    });
+  }
+  
   async getMetaKnowledge(type = null) {
     const query = type ? `?type=${encodeURIComponent(type)}` : '';
     return this.fetch(`/api/stats/meta-knowledge${query}`);

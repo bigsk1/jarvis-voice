@@ -52,6 +52,50 @@ def get_reflection_queue():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+@stats_bp.route('/reflection-queue/<int:reflection_id>', methods=['DELETE'])
+def delete_reflection(reflection_id):
+    """Delete (cancel) a pending reflection without processing it
+    
+    Use this when you don't want to generate insights from an experience
+    (e.g., testing/development, known bad data, unfinished tool experiments)
+    """
+    try:
+        service = get_service()
+        success = service.delete_reflection(reflection_id)
+        
+        if success:
+            return jsonify({
+                'ok': True,
+                'message': f'Reflection {reflection_id} cancelled'
+            })
+        else:
+            return jsonify({
+                'ok': False,
+                'error': f'Reflection {reflection_id} not found or already processed'
+            }), 404
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@stats_bp.route('/reflection-queue', methods=['DELETE'])
+def delete_all_reflections():
+    """Delete ALL pending reflections
+    
+    Use with caution - clears the entire reflection queue
+    """
+    try:
+        service = get_service()
+        deleted_count = service.delete_all_pending_reflections()
+        
+        return jsonify({
+            'ok': True,
+            'deleted': deleted_count,
+            'message': f'Cancelled {deleted_count} pending reflections'
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 @stats_bp.route('/meta-knowledge', methods=['GET'])
 def get_meta_knowledge():
     """Get meta-knowledge entries (blind spots, over-generalizations, etc.)"""

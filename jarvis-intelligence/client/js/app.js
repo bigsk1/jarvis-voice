@@ -715,7 +715,10 @@ function renderReflectionPanel(queue, metaKnowledge) {
       <div style="margin-bottom: var(--space-xl);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
           <h3 style="color: var(--text-primary);">🔄 Pending Reflections (${queue.length})</h3>
-          <button class="btn btn-primary" id="triggerReflectionBtn">⚡ Process ${Math.min(5, queue.length)}</button>
+          <div style="display: flex; gap: var(--space-sm);">
+            ${queue.length > 0 ? `<button class="btn btn-secondary" id="clearAllReflectionsBtn" title="Cancel all pending reflections">🗑️ Clear All</button>` : ''}
+            <button class="btn btn-primary" id="triggerReflectionBtn">⚡ Process ${Math.min(5, queue.length)}</button>
+          </div>
         </div>
         ${queue.length === 0 ? `
           <div class="empty-state" style="padding: var(--space-lg);">
@@ -725,13 +728,19 @@ function renderReflectionPanel(queue, metaKnowledge) {
           </div>
         ` : `
           <div class="queue-list">
-            ${queue.slice(0, 10).map(item => `
-              <div class="queue-item">
-                <span class="queue-query">${escapeHtml(truncate(item.query || 'Unknown', 80))}</span>
-                <span class="queue-priority">Priority: ${(item.priority || 0.5).toFixed(1)}</span>
+            ${queue.slice(0, 20).map(item => `
+              <div class="queue-item" style="display: flex; align-items: center; gap: var(--space-sm);">
+                <button class="btn btn-icon delete-reflection-btn" data-id="${item.id}" title="Cancel this reflection (don't process)">✕</button>
+                <div style="flex: 1; min-width: 0;">
+                  <span class="queue-query">${escapeHtml(truncate(item.query || 'Unknown', 70))}</span>
+                  <span class="queue-meta" style="font-size: var(--text-xs); color: var(--text-muted); margin-left: var(--space-sm);">
+                    ${item.outcome_success ? '✅' : '❌'} Exp #${item.experience_id}
+                  </span>
+                </div>
+                <span class="queue-priority">P: ${(item.priority || 0.5).toFixed(1)}</span>
               </div>
             `).join('')}
-            ${queue.length > 10 ? `<div style="text-align: center; color: var(--text-muted); padding: var(--space-sm);">... and ${queue.length - 10} more</div>` : ''}
+            ${queue.length > 20 ? `<div style="text-align: center; color: var(--text-muted); padding: var(--space-sm);">... and ${queue.length - 20} more</div>` : ''}
           </div>
         `}
       </div>
@@ -790,6 +799,47 @@ function renderReflectionPanel(queue, metaKnowledge) {
       }
       reflectBtn.disabled = false;
       reflectBtn.textContent = `⚡ Process ${Math.min(5, queue.length)}`;
+    });
+  }
+  
+  // Delete individual reflection buttons
+  document.querySelectorAll('.delete-reflection-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (!confirm('Cancel this reflection? It won\'t be processed for insights.')) return;
+      
+      btn.disabled = true;
+      btn.textContent = '⏳';
+      try {
+        await api.deleteReflection(id);
+        showToast('Reflection cancelled', 'success');
+        await loadReflectionQueue();
+      } catch (error) {
+        showToast(`Failed to cancel: ${error.message}`, 'error');
+        btn.disabled = false;
+        btn.textContent = '✕';
+      }
+    });
+  });
+  
+  // Clear all reflections button
+  const clearAllBtn = document.getElementById('clearAllReflectionsBtn');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', async () => {
+      if (!confirm('Cancel ALL pending reflections? This cannot be undone.')) return;
+      
+      clearAllBtn.disabled = true;
+      clearAllBtn.textContent = '⏳ Clearing...';
+      try {
+        const result = await api.deleteAllReflections();
+        showToast(`Cancelled ${result.deleted} reflections`, 'success');
+        await loadReflectionQueue();
+      } catch (error) {
+        showToast(`Failed to clear: ${error.message}`, 'error');
+        clearAllBtn.disabled = false;
+        clearAllBtn.textContent = '🗑️ Clear All';
+      }
     });
   }
   

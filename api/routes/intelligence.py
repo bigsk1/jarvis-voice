@@ -279,6 +279,118 @@ async def get_recent_logs():
         }
 
 
+@router.get("/reflections")
+async def get_pending_reflections(limit: int = 50):
+    """Get pending reflections in the queue.
+    
+    Returns experiences waiting to be processed for insight generation.
+    Use DELETE to cancel reflections you don't want processed.
+    """
+    try:
+        from intelligence import get_intelligence_layer
+        
+        intel = get_intelligence_layer()
+        if not intel:
+            return {"status": "error", "error": "Intelligence layer not available"}
+        
+        cursor = intel.conn.cursor()
+        cursor.execute("""
+            SELECT rq.id, rq.experience_id, rq.priority, rq.queued_at, rq.processed,
+                   e.query, e.tools_used, e.outcome_success
+            FROM reflection_queue rq
+            LEFT JOIN experiences e ON rq.experience_id = e.id
+            WHERE rq.processed = 0
+            ORDER BY rq.priority DESC, rq.queued_at ASC
+            LIMIT ?
+        """, (limit,))
+        
+        reflections = []
+        for row in cursor.fetchall():
+            tools = json.loads(row['tools_used']) if row['tools_used'] else []
+            reflections.append({
+                "id": row['id'],
+                "experience_id": row['experience_id'],
+                "query": row['query'][:100] if row['query'] else None,
+                "tools_used": tools,
+                "success": bool(row['outcome_success']),
+                "priority": row['priority'],
+                "queued_at": row['queued_at']
+            })
+        
+        return {
+            "status": "ok",
+            "count": len(reflections),
+            "reflections": reflections
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.delete("/reflections/{reflection_id}")
+async def delete_reflection(reflection_id: int):
+    """Cancel a pending reflection (don't process it for insights).
+    
+    Use this when you don't want to generate insights from an experience,
+    e.g., during testing/development or for known bad data.
+    """
+    try:
+        from intelligence import get_intelligence_layer
+        
+        intel = get_intelligence_layer()
+        if not intel:
+            return {"status": "error", "error": "Intelligence layer not available"}
+        
+        cursor = intel.conn.cursor()
+        cursor.execute("""
+            DELETE FROM reflection_queue 
+            WHERE id = ? AND processed = 0
+        """, (reflection_id,))
+        
+        deleted = cursor.rowcount > 0
+        intel.conn.commit()
+        
+        if deleted:
+            return {
+                "status": "ok",
+                "message": f"Reflection {reflection_id} cancelled"
+            }
+        else:
+            return {
+                "status": "error",
+                "error": f"Reflection {reflection_id} not found or already processed"
+            }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.delete("/reflections")
+async def delete_all_reflections():
+    """Cancel ALL pending reflections.
+    
+    Use with caution - clears the entire reflection queue.
+    Useful after testing sessions or to reset the queue.
+    """
+    try:
+        from intelligence import get_intelligence_layer
+        
+        intel = get_intelligence_layer()
+        if not intel:
+            return {"status": "error", "error": "Intelligence layer not available"}
+        
+        cursor = intel.conn.cursor()
+        cursor.execute("DELETE FROM reflection_queue WHERE processed = 0")
+        deleted_count = cursor.rowcount
+        intel.conn.commit()
+        
+        return {
+            "status": "ok",
+            "deleted": deleted_count,
+            "message": f"Cancelled {deleted_count} pending reflections"
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @router.post("/reflect")
 async def trigger_reflection_endpoint(batch_size: int = 5):
     """Manually trigger reflection processing."""

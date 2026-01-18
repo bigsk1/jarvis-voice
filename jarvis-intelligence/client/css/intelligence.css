@@ -1121,6 +1121,29 @@ textarea.form-input {
   border-radius: var(--radius-full);
 }
 
+.delete-reflection-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.delete-reflection-btn:hover {
+  background: var(--error-bg, rgba(239, 68, 68, 0.15));
+  border-color: var(--error, #ef4444);
+  color: var(--error, #ef4444);
+}
+
 /* Responsive - Mobile breakpoint at 730px */
 @media (max-width: 730px) {
   .hamburger-btn {
