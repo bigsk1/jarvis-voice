@@ -27,7 +27,7 @@ watchlist:
       message: Bitcoin hit $100k! 🚀
     - type: below
       value: 85000
-      severity: medium
+      severity: high
       message: Bitcoin dropped below $85k
     - type: percent_change_24h
       value: 8
@@ -40,11 +40,11 @@ watchlist:
     conditions:
     - type: above
       value: 200
-      severity: medium
+      severity: high
       message: Solana above $200
     - type: below
       value: 120
-      severity: medium
+      severity: high
       message: Solana dropped below $120
     - type: percent_change_24h
       value: 10
@@ -57,11 +57,11 @@ watchlist:
     conditions:
     - type: above
       value: 400
-      severity: medium
-      message: Tesla above $450
+      severity: high
+      message: Tesla above $400
     - type: below
       value: 350
-      severity: medium
+      severity: high
       message: Tesla dropped below $350
     - type: percent_change_24h
       value: 5
@@ -89,5 +89,5 @@ watchlist:
     conditions:
     - type: above
       value: 35
-      severity: medium
+      severity: high
       message: Silver above $35/oz

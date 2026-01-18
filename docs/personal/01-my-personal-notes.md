@@ -962,3 +962,11 @@ If tool is made need to update timeouts in executor.py
             else:
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
 ```
+
+# Price Alert Monitor - adding new assets
+
+1. Edit config/price-alerts.yaml     → Add symbol + conditions
+2. In n8n: Copy a Fetch node         → Change URL to new symbol
+3. Wire to Wait For All Data         → Increase numberInputs
+4. In Code node: Add identification  → if (symbol === 'NEW') newData = json.data;
+5. In Code node: Add threshold check → Copy existing block, change symbol
