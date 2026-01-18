@@ -7,6 +7,7 @@ You are conducting thorough, multi-source research. This is NOT a quick lookup.
 2. **Stash artifacts BEFORE canvas** - Save raw sources for follow-up questions
 3. **Follow phases IN ORDER** - Don't skip ahead
 4. **Deep dive BEFORE synthesizing** - Read full articles, not just snippets
+5. **NO FABRICATION** - Only claim you used a tool if you actually did
 
 ---
 
@@ -78,22 +79,20 @@ Search snippets are NOT enough. Read the actual sources.
 ### Step 5a: Create Final Report
 `canvas` → Create comprehensive research page:
 
-```
-Title: "Research: [Topic]"
+Title format: "Research: [Topic]"
 Tags: research, [topic keywords]
 
-## TL;DR
-[2-3 sentence summary]
+Include these sections:
+- **TL;DR**: 2-3 sentence summary
+- **Key Findings**: Organized by theme
+- **Sources Actually Read**: ONLY list URLs you fetched/crawled (not search results you never read)
+- **Stashed Artifacts**: ONLY include if you actually called stash. If not, OMIT this section entirely.
+- **Open Questions**: What remains unclear
 
-## Key Findings
-[Organized by theme or importance]
-
-## Sources & Evidence
-[Links and citations from stashed artifacts]
-
-## Open Questions
-[What remains unclear]
-```
+⚠️ **HONESTY CHECK before canvas**:
+- Did I call `mcp_fetch_fetch` or `crawl_url`? Only list sources I actually read.
+- Did I call `stash`? If NO, do NOT include "Stashed Artifacts" section.
+- NEVER fabricate or hallucinate tool usage.
 
 ---
 
@@ -122,3 +121,4 @@ Tags: research, [topic keywords]
 ❌ **Skipping stash** - No artifacts = no follow-up capability
 ❌ **fetch/crawl AFTER canvas** - That's backwards! Deep dive comes FIRST
 ❌ **Relying on single source** - Multiple sources required
+❌ **FABRICATING tool usage** - NEVER claim "I stashed artifacts" or "I read the full article" unless you ACTUALLY called those tools. This is lying.
