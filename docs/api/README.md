@@ -1,6 +1,8 @@
-# Jarvis Proactive API - Documentation
+# Jarvis API - Documentation
 
-Event-driven webhook system for proactive notifications.
+> **Version**: 2.0 | **Updated**: January 2026
+
+Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks, memory management, query interface, and system monitoring.
 
 ![reactive-vs-proactive-info-graph](../images/reactive-vs-proactive-info-graph.jpeg)
 
@@ -9,18 +11,51 @@ Event-driven webhook system for proactive notifications.
 ## 📚 Documentation Index
 
 ### Getting Started
-- **[API Overview](API_OVERVIEW.md)** - What it is, how it works, quick start
+- **[API Overview](API_OVERVIEW.md)** - Complete endpoint reference, quick start
 - **[Ready to Use Guide](READY_TO_USE.md)** - Setup and deployment
-- **[API Quick Start](API_QUICK_START.md)** - Endpoint reference
+- **[API Quick Start](API_QUICK_START.md)** - Legacy endpoint reference
+- **[Test API Guide](TEST_API.md)** - Testing examples and validation
 
-### Integration & Examples
-- **[Code Examples](code-examples/)** - Ready-to-use templates (Python, Node.js, Bash, Docker)
-- **[Alert Scenarios](code-examples/ALERT_SCENARIOS.md)** - Complete integration patterns
-- **[Remote Monitoring](REMOTE_MONITORING.md)** - Monitor remote servers/containers
-- **[Security Options](SECURITY_OPTIONS.md)** - Tailscale, WireGuard, secure access
+### Core APIs ⭐ NEW (January 2026)
 
-### Intelligence API ⭐ NEW
-The API exposes intelligence layer metrics and controls:
+| API | Documentation | Description |
+|-----|---------------|-------------|
+| **Memory** | [MEMORY.md](MEMORY.md) | CRUD, search (keyword/semantic), categories |
+| **Query** | [QUERY.md](QUERY.md) | Send queries to Jarvis programmatically |
+| **Conversations** | [CONVERSATIONS.md](CONVERSATIONS.md) | Browse conversation history |
+| **Stash** | [STASH.md](STASH.md) | Access stored artifacts and files |
+| **Canvas** | [CANVAS.md](CANVAS.md) | Browse visual knowledge pages |
+
+### Quick Reference - Core Endpoints
+
+```bash
+# Memory
+GET  /api/memory              # List memories
+POST /api/memory              # Create memory
+GET  /api/memory/search/keyword?q=flask    # Keyword search
+GET  /api/memory/search/semantic?q=where+is+my+app  # Semantic search
+
+# Query
+POST /api/query               # Full query with options
+POST /api/query/quick         # Simple query {"q": "what time is it"}
+
+# Conversations
+GET  /api/conversations       # List conversations
+GET  /api/conversations/recent?minutes=30  # Recent conversations
+GET  /api/conversations/search?q=weather   # Search history
+
+# Stash
+GET  /api/stash               # List stash spaces
+GET  /api/stash/{id}/files    # List files in space
+GET  /api/stash/{id}/files/{file_id}/content  # Download file
+
+# Canvas
+GET  /api/canvas              # List canvas pages
+GET  /api/canvas/search?q=status  # Search pages
+GET  /api/canvas/{id}         # Get page with content
+```
+
+### Intelligence API
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -31,9 +66,29 @@ The API exposes intelligence layer metrics and controls:
 | `/api/intelligence/experiences` | GET | Recent experiences (last 20) |
 | `/api/intelligence/logs/recent` | GET | Today's intelligence logs |
 | `/api/intelligence/reflect` | POST | Trigger manual reflection |
+| `/api/intelligence/reflections` | GET | List pending reflections |
+| `/api/intelligence/reflections/{id}` | DELETE | Cancel specific reflection |
+| `/api/intelligence/reflections` | DELETE | Cancel all pending reflections |
 | `/api/intelligence/evaluate` | GET | Meta-cognition evaluation |
+| `/api/intelligence/maintenance` | POST | Run maintenance jobs |
 
 See **[../INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md)** for full documentation.
+
+### Proactive API (Webhooks)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/webhook/alert` | POST | Receive external alerts |
+| `/api/alerts` | GET | List active alerts |
+| `/api/alerts/{id}` | DELETE | Dismiss alert |
+| `/api/reminders` | GET | List reminders |
+| `/health` | GET | API health check |
+
+### Integration & Examples
+- **[Code Examples](code-examples/)** - Ready-to-use templates (Python, Node.js, Bash, Docker)
+- **[Alert Scenarios](code-examples/ALERT_SCENARIOS.md)** - Complete integration patterns
+- **[Remote Monitoring](REMOTE_MONITORING.md)** - Monitor remote servers/containers
+- **[Security Options](SECURITY_OPTIONS.md)** - Tailscale, WireGuard, secure access
 
 ### Prometheus Metrics
 Intelligence metrics exposed at `/metrics`:
@@ -55,12 +110,46 @@ jarvis_intelligence_pending_reflections{mode="cloud"}
 
 ---
 
+## Swagger UI
+
+Interactive API documentation available at:
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:8880/docs` | Swagger UI (Light mode) |
+| `http://localhost:8880/docs/dark` | Swagger UI (Dark mode) ⭐ |
+| `http://localhost:8880/redoc` | ReDoc alternative |
+
+---
+
 ## Quick Links
 
-**Start Here**: [API Overview](API_OVERVIEW.md)
+| Need | Link |
+|------|------|
+| **Complete Reference** | [API Overview](API_OVERVIEW.md) |
+| **Memory Operations** | [Memory API](MEMORY.md) |
+| **Query Jarvis** | [Query API](QUERY.md) |
+| **Code Examples** | [code-examples/](code-examples/) |
+| **Remote Setup** | [Remote Monitoring Guide](REMOTE_MONITORING.md) |
+| **Intelligence Layer** | [INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md) |
+| **Test Everything** | [Test API Guide](TEST_API.md) |
 
-**Need Examples?**: [Code Examples](code-examples/)
+---
 
-**Remote Setup?**: [Remote Monitoring Guide](REMOTE_MONITORING.md)
+## Changelog
 
-**Intelligence Layer**: [INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md)
+### v2.0 (January 2026)
+- Added Memory API (CRUD, keyword/semantic search)
+- Added Query/Chat API (programmatic Jarvis queries)
+- Added Conversations API (history browsing)
+- Added Stash API (artifact access)
+- Added Canvas API (knowledge pages)
+- Added Swagger dark mode (`/docs/dark`)
+- Added reflection management endpoints
+- Added maintenance trigger endpoint
+
+### v1.0 (Original)
+- Proactive webhook system
+- Alert management
+- Intelligence metrics
+- Prometheus integration
