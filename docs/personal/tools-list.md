@@ -6,7 +6,6 @@
 
 ## 📦 Native Tools (skills/)
 
-### ✅ Enabled (44)
 
 | Tool | Description |
 |------|-------------|
@@ -36,6 +35,7 @@
 | `opencode` | AI coding assistant (isolated workspace) |
 | `pdf_create` | Create PDF documents |
 | `phone_call` | Make phone calls |
+| `price_alert` | Manage price alerts for crypto/stocks/futures (n8n monitored) |
 | `printer` | Print documents |
 | `query_service_logs` | Query systemd service logs |
 | `recall` | Recall specific memory by key |
@@ -131,8 +131,8 @@
 
 ## 📊 Stats
 
-- **Total Native Tools**: 50
-  - Core Skills (skills/): 44 enabled
+- **Total Native Tools**: 51
+  - Core Skills (skills/): 45 enabled
   - Auto-Tools (skills/auto-tools/): 6 enabled
   - Templates: 1 (example_tool)
 - **Total MCP Servers (Jarvis)**: 4

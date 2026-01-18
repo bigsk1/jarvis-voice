@@ -1,0 +1,213 @@
+{
+  "name": "Price Alert Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 10 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,solana&vs_currencies=usd&include_24hr_change=true",
+        "options": {}
+      },
+      "id": "fetch-crypto",
+      "name": "Fetch Crypto Prices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://query1.finance.yahoo.com/v8/finance/chart/TSLA?interval=1d&range=1d",
+        "options": {}
+      },
+      "id": "fetch-tsla",
+      "name": "Fetch TSLA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=1d",
+        "options": {}
+      },
+      "id": "fetch-gold",
+      "name": "Fetch Gold",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse all price data and check against thresholds\n// Edit thresholds here or load from external config\n\nconst config = {\n  // CRYPTO THRESHOLDS\n  crypto: {\n    BTC: {\n      name: 'Bitcoin',\n      above: 100000,\n      below: 85000,\n      percent_change_24h: 8\n    },\n    SOL: {\n      name: 'Solana', \n      above: 200,\n      below: 120,\n      percent_change_24h: 10\n    }\n  },\n  // STOCK THRESHOLDS\n  stocks: {\n    TSLA: {\n      name: 'Tesla',\n      above: 450,\n      below: 350,\n      percent_change: 5\n    },\n    'GC=F': {\n      name: 'Gold Futures',\n      above: 2800,\n      percent_change: 3\n    }\n  },\n  // SETTINGS\n  cooldown_hours: 4,\n  jarvis_api: 'http://192.168.70.228:8880'\n};\n\n// Get input data from all HTTP requests\nconst cryptoData = $('Fetch Crypto Prices').first().json;\nconst tslaData = $('Fetch TSLA').first().json;\nconst goldData = $('Fetch Gold').first().json;\n\nconst alerts = [];\nconst now = new Date().toISOString();\n\n// Check BTC\nif (cryptoData.bitcoin) {\n  const btc = cryptoData.bitcoin;\n  const price = btc.usd;\n  const change24h = btc.usd_24h_change;\n  const cfg = config.crypto.BTC;\n  \n  if (cfg.above && price >= cfg.above) {\n    alerts.push({\n      title: `BTC Price Alert: $${price.toLocaleString()}`,\n      description: `Bitcoin hit $${cfg.above.toLocaleString()}! Current price: $${price.toLocaleString()} (${change24h > 0 ? '+' : ''}${change24h.toFixed(2)}% 24h)`,\n      severity: 'high',\n      source: 'price_monitor',\n      metadata: { symbol: 'BTC', price, threshold: cfg.above, type: 'above' }\n    });\n  }\n  if (cfg.below && price <= cfg.below) {\n    alerts.push({\n      title: `BTC Price Alert: $${price.toLocaleString()}`,\n      description: `Bitcoin dropped below $${cfg.below.toLocaleString()}! Current: $${price.toLocaleString()}`,\n      severity: 'medium',\n      source: 'price_monitor',\n      metadata: { symbol: 'BTC', price, threshold: cfg.below, type: 'below' }\n    });\n  }\n  if (cfg.percent_change_24h && Math.abs(change24h) >= cfg.percent_change_24h) {\n    alerts.push({\n      title: `BTC Volatility Alert: ${change24h > 0 ? '+' : ''}${change24h.toFixed(2)}%`,\n      description: `Bitcoin moved ${Math.abs(change24h).toFixed(2)}% in 24 hours. Price: $${price.toLocaleString()}`,\n      severity: 'high',\n      source: 'price_monitor',\n      metadata: { symbol: 'BTC', price, change_24h: change24h, type: 'percent_change' }\n    });\n  }\n}\n\n// Check SOL\nif (cryptoData.solana) {\n  const sol = cryptoData.solana;\n  const price = sol.usd;\n  const change24h = sol.usd_24h_change;\n  const cfg = config.crypto.SOL;\n  \n  if (cfg.above && price >= cfg.above) {\n    alerts.push({\n      title: `SOL Price Alert: $${price.toFixed(2)}`,\n      description: `Solana above $${cfg.above}! Current: $${price.toFixed(2)}`,\n      severity: 'medium',\n      source: 'price_monitor',\n      metadata: { symbol: 'SOL', price, threshold: cfg.above, type: 'above' }\n    });\n  }\n  if (cfg.below && price <= cfg.below) {\n    alerts.push({\n      title: `SOL Price Alert: $${price.toFixed(2)}`,\n      description: `Solana dropped below $${cfg.below}! Current: $${price.toFixed(2)}`,\n      severity: 'medium',\n      source: 'price_monitor',\n      metadata: { symbol: 'SOL', price, threshold: cfg.below, type: 'below' }\n    });\n  }\n  if (cfg.percent_change_24h && Math.abs(change24h) >= cfg.percent_change_24h) {\n    alerts.push({\n      title: `SOL Volatility Alert: ${change24h > 0 ? '+' : ''}${change24h.toFixed(2)}%`,\n      description: `Solana moved ${Math.abs(change24h).toFixed(2)}% in 24 hours`,\n      severity: 'high',\n      source: 'price_monitor',\n      metadata: { symbol: 'SOL', price, change_24h: change24h, type: 'percent_change' }\n    });\n  }\n}\n\n// Check TSLA\nif (tslaData.chart?.result?.[0]) {\n  const result = tslaData.chart.result[0];\n  const meta = result.meta;\n  const price = meta.regularMarketPrice;\n  const prevClose = meta.previousClose || meta.chartPreviousClose;\n  const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;\n  const cfg = config.stocks.TSLA;\n  \n  if (cfg.above && price >= cfg.above) {\n    alerts.push({\n      title: `TSLA Price Alert: $${price.toFixed(2)}`,\n      description: `Tesla above $${cfg.above}! Current: $${price.toFixed(2)} (${change > 0 ? '+' : ''}${change.toFixed(2)}%)`,\n      severity: 'medium',\n      source: 'price_monitor',\n      metadata: { symbol: 'TSLA', price, threshold: cfg.above, type: 'above' }\n    });\n  }\n  if (cfg.below && price <= cfg.below) {\n    alerts.push({\n      title: `TSLA Price Alert: $${price.toFixed(2)}`,\n      description: `Tesla dropped below $${cfg.below}! Current: $${price.toFixed(2)}`,\n      severity: 'medium',\n      source: 'price_monitor',\n      metadata: { symbol: 'TSLA', price, threshold: cfg.below, type: 'below' }\n    });\n  }\n  if (cfg.percent_change && Math.abs(change) >= cfg.percent_change) {\n    alerts.push({\n      title: `TSLA Volatility Alert: ${change > 0 ? '+' : ''}${change.toFixed(2)}%`,\n      description: `Tesla moved ${Math.abs(change).toFixed(2)}% today. Price: $${price.toFixed(2)}`,\n      severity: 'high',\n      source: 'price_monitor',\n      metadata: { symbol: 'TSLA', price, change_percent: change, type: 'percent_change' }\n    });\n  }\n}\n\n// Check Gold\nif (goldData.chart?.result?.[0]) {\n  const result = goldData.chart.result[0];\n  const meta = result.meta;\n  const price = meta.regularMarketPrice;\n  const prevClose = meta.previousClose || meta.chartPreviousClose;\n  const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;\n  const cfg = config.stocks['GC=F'];\n  \n  if (cfg.above && price >= cfg.above) {\n    alerts.push({\n      title: `Gold Price Alert: $${price.toFixed(2)}`,\n      description: `Gold above $${cfg.above}/oz! Current: $${price.toFixed(2)}`,\n      severity: 'medium',\n      source: 'price_monitor',\n      metadata: { symbol: 'GC=F', price, threshold: cfg.above, type: 'above' }\n    });\n  }\n  if (cfg.percent_change && Math.abs(change) >= cfg.percent_change) {\n    alerts.push({\n      title: `Gold Volatility Alert: ${change > 0 ? '+' : ''}${change.toFixed(2)}%`,\n      description: `Gold moved ${Math.abs(change).toFixed(2)}% today. Price: $${price.toFixed(2)}/oz`,\n      severity: 'high',\n      source: 'price_monitor',\n      metadata: { symbol: 'GC=F', price, change_percent: change, type: 'percent_change' }\n    });\n  }\n}\n\n// Return alerts (or empty if none triggered)\nreturn alerts.length > 0 ? alerts.map(a => ({ json: a })) : [{ json: { no_alerts: true } }];"
+      },
+      "id": "check-thresholds",
+      "name": "Check Thresholds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "filter-alerts",
+              "leftValue": "={{ $json.no_alerts }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-alerts",
+      "name": "Has Alerts?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.70.228:8880/api/alerts",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "send-to-jarvis",
+      "name": "Send Alert to Jarvis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "content": "## Price Alert Monitor\n\n**Purpose:** Monitor crypto and stock prices, send alerts to Jarvis when thresholds are crossed.\n\n**How to customize:**\n1. Edit thresholds in the \"Check Thresholds\" Code node\n2. Add more assets by adding HTTP Request nodes\n3. Adjust schedule (default: every 10 minutes)\n\n**Thresholds configured:**\n- BTC: above $100k, below $85k, 8% daily move\n- SOL: above $200, below $120, 10% daily move  \n- TSLA: above $450, below $350, 5% daily move\n- Gold: above $2800, 3% daily move\n\n**Or edit config/price-alerts.yaml** and modify this workflow to fetch it.",
+        "height": 340,
+        "width": 380
+      },
+      "id": "sticky-note",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-60, -80]
+    }
+  ],
+  "connections": {
+    "Every 10 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Crypto Prices",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch TSLA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Gold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Crypto Prices": {
+      "main": [
+        [
+          {
+            "node": "Check Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch TSLA": {
+      "main": [
+        [
+          {
+            "node": "Check Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Gold": {
+      "main": [
+        [
+          {
+            "node": "Check Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Thresholds": {
+      "main": [
+        [
+          {
+            "node": "Has Alerts?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Alerts?": {
+      "main": [
+        [
+          {
+            "node": "Send Alert to Jarvis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "jarvis"
+    },
+    {
+      "name": "price-alerts"
+    }
+  ],
+  "triggerCount": 0,
+  "pinData": {}
+}

@@ -1,0 +1,50 @@
+{
+  "enabled": true,
+  "name": "price_alert",
+  "description": "Manage price alerts for cryptocurrency, stocks, and futures. Actions: 'list' shows all active alerts, 'add' creates new alert (e.g., 'alert me when BTC hits 100k'), 'remove' deletes alerts, 'update' changes threshold values. Supports crypto (BTC, SOL, ETH), stocks (TSLA, AAPL), and futures (gold, silver, oil). Alerts are monitored by n8n and trigger Jarvis notifications when conditions are met. Use this tool when user says 'set price alert', 'alert me when', 'notify me if price', 'what price alerts do I have', etc.",
+  "script": "price_alert.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["list", "add", "remove", "update"],
+        "description": "Action to perform: list (show all alerts), add (create new), remove (delete), update (change value)"
+      },
+      "symbol": {
+        "type": "string",
+        "description": "Asset symbol or name: BTC, bitcoin, TSLA, tesla, gold, silver, etc. Automatically mapped to correct ticker."
+      },
+      "condition": {
+        "type": "string",
+        "enum": ["above", "below", "percent_change_24h"],
+        "description": "Alert condition: 'above' (price >= value), 'below' (price <= value), 'percent_change_24h' (daily move >= value%)"
+      },
+      "value": {
+        "type": "number",
+        "description": "Target price or percentage. For add/update: the threshold value. For percent_change: the percentage (e.g., 5 for 5%)."
+      },
+      "old_value": {
+        "type": "number",
+        "description": "Only for 'update' action: the current threshold value to change."
+      },
+      "severity": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "critical"],
+        "description": "Alert severity level. Default: medium"
+      },
+      "message": {
+        "type": "string",
+        "description": "Optional custom message for the alert. Auto-generated if not provided."
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}

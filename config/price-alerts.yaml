@@ -1,0 +1,89 @@
+# Price Alert Configuration
+# ========================
+# Edit values here - n8n workflow will pick up changes
+# 
+# Last updated: 2026-01-17 22:28
+
+settings:
+  check_interval_minutes: 10
+  cooldown_hours: 4
+  jarvis_api_url: http://192.168.70.228:8880
+sources:
+  crypto:
+    api: coingecko
+    base_url: https://api.coingecko.com/api/v3
+  stocks:
+    api: yfinance
+watchlist:
+  crypto:
+  - symbol: BTC
+    coingecko_id: bitcoin
+    name: Bitcoin
+    enabled: true
+    conditions:
+    - type: above
+      value: 100000
+      severity: high
+      message: Bitcoin hit $100k! 🚀
+    - type: below
+      value: 85000
+      severity: medium
+      message: Bitcoin dropped below $85k
+    - type: percent_change_24h
+      value: 8
+      severity: high
+      message: Bitcoin moved 8%+ in 24 hours
+  - symbol: SOL
+    coingecko_id: solana
+    name: Solana
+    enabled: true
+    conditions:
+    - type: above
+      value: 200
+      severity: medium
+      message: Solana above $200
+    - type: below
+      value: 120
+      severity: medium
+      message: Solana dropped below $120
+    - type: percent_change_24h
+      value: 10
+      severity: high
+      message: Solana moved 10%+ in 24 hours
+  stocks:
+  - symbol: TSLA
+    name: Tesla
+    enabled: true
+    conditions:
+    - type: above
+      value: 450
+      severity: medium
+      message: Tesla above $450
+    - type: below
+      value: 350
+      severity: medium
+      message: Tesla dropped below $350
+    - type: percent_change_24h
+      value: 5
+      severity: high
+      message: Tesla moved 5%+ today
+  - symbol: GC=F
+    name: Gold Futures
+    enabled: true
+    conditions:
+    - type: above
+      value: 2800
+      severity: medium
+      message: Gold above $2,800/oz
+    - type: percent_change_24h
+      value: 3
+      severity: high
+      message: Gold moved 3%+ today
+  - symbol: SI=F
+    name: Silver Futures
+    enabled: false
+    conditions:
+    - type: above
+      value: 35
+      severity: medium
+      message: Silver above $35/oz
