@@ -44,150 +44,114 @@ def memory_to_dict(row) -> dict:
 
 
 # ============================================
-# CRUD Operations
+# Utility Operations (MUST be before /{memory_id} routes)
 # ============================================
 
-@router.post("", response_model=MemoryResponse)
-@router.post("/", response_model=MemoryResponse, include_in_schema=False)
-async def create_memory(memory: MemoryCreate):
+@router.get("/stats")
+async def get_memory_stats():
     """
-    Create or update a memory.
+    Get memory database statistics.
     
-    If a memory with the same category+key exists, it will be updated.
-    Generates vector embedding for semantic search by default.
-    
-    **Categories**: personal, technical, contact, preference, project, fact, location, other
-    
-    **Example use cases**:
-    - Store project locations
-    - Remember user preferences
-    - Save API keys/configs (use importance=10)
-    - Track contacts and relationships
+    Returns counts, top categories, and storage info.
     """
-    try:
-        db = get_db()
-        memory_id = db.remember(
-            category=memory.category,
-            key=memory.key,
-            value=memory.value,
-            importance=memory.importance,
-            source=memory.source,
-            generate_embedding=memory.generate_embedding,
-            metadata=memory.metadata
-        )
-        
-        return MemoryResponse(
-            ok=True,
-            memory_id=memory_id,
-            message=f"Memory saved (ID: {memory_id})"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("", response_model=MemoryResponse)
-@router.get("/", response_model=MemoryResponse, include_in_schema=False)
-async def list_memories(
-    category: Optional[str] = Query(None, description="Filter by category"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum results")
-):
-    """
-    List all memories with optional category filter.
-    
-    Returns memories sorted by importance (descending), then by updated_at.
-    """
-    try:
-        db = get_db()
-        memories = db.get_all_memories(category=category)
-        
-        # Limit results
-        memories = memories[:limit]
-        
-        return MemoryResponse(
-            ok=True,
-            count=len(memories),
-            memories=[Memory(**memory_to_dict(m)) for m in memories]
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{memory_id}", response_model=MemoryResponse)
-async def get_memory(memory_id: int):
-    """Get a specific memory by ID"""
     try:
         db = get_db()
         cursor = db.conn.cursor()
         
-        row = cursor.execute(
-            "SELECT * FROM knowledge_base WHERE id = ?", 
-            (memory_id,)
-        ).fetchone()
+        # Total memories
+        total = cursor.execute("SELECT COUNT(*) FROM knowledge_base").fetchone()[0]
         
-        if not row:
-            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+        # With embeddings
+        with_embeddings = cursor.execute(
+            "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
+        ).fetchone()[0]
         
-        return MemoryResponse(
-            ok=True,
-            memory=Memory(**memory_to_dict(row))
-        )
-    except HTTPException:
-        raise
+        # By category
+        categories = cursor.execute("""
+            SELECT category, COUNT(*) as count
+            FROM knowledge_base
+            GROUP BY category
+            ORDER BY count DESC
+            LIMIT 10
+        """).fetchall()
+        
+        # Recent
+        recent = cursor.execute("""
+            SELECT COUNT(*) FROM knowledge_base
+            WHERE updated_at > datetime('now', '-7 days')
+        """).fetchone()[0]
+        
+        # High importance
+        high_importance = cursor.execute(
+            "SELECT COUNT(*) FROM knowledge_base WHERE importance >= 8"
+        ).fetchone()[0]
+        
+        return {
+            "status": "ok",
+            "total_memories": total,
+            "with_embeddings": with_embeddings,
+            "embedding_coverage": f"{(with_embeddings/max(total,1))*100:.1f}%",
+            "updated_last_7_days": recent,
+            "high_importance": high_importance,
+            "top_categories": {row['category']: row['count'] for row in categories},
+            "database": db.db_path
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{memory_id}", response_model=MemoryResponse)
-async def update_memory(memory_id: int, update: MemoryUpdate):
+@router.get("/categories", response_model=MemoryResponse)
+async def list_categories():
     """
-    Update an existing memory.
+    List all memory categories with counts.
     
-    Only updates provided fields (value, importance).
-    Does NOT regenerate embeddings - use POST to fully replace.
+    Useful for understanding what's stored and filtering.
     """
     try:
         db = get_db()
-        success = db.update_memory(
-            memory_id=memory_id,
-            value=update.value,
-            importance=update.importance
-        )
+        cursor = db.conn.cursor()
         
-        if not success:
-            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+        rows = cursor.execute("""
+            SELECT category, COUNT(*) as count
+            FROM knowledge_base
+            GROUP BY category
+            ORDER BY count DESC
+        """).fetchall()
+        
+        categories = {row['category']: row['count'] for row in rows}
         
         return MemoryResponse(
             ok=True,
-            message=f"Memory {memory_id} updated"
+            message=f"Found {len(categories)} categories",
+            memories=None,
+            count=sum(categories.values())
         )
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{memory_id}", response_model=MemoryResponse)
-async def delete_memory(memory_id: int):
-    """Delete a memory (forget it)"""
+@router.post("/rebuild-fts")
+async def rebuild_fts_index():
+    """
+    Rebuild the FTS5 full-text search index.
+    
+    Use this if keyword search seems broken or incomplete.
+    """
     try:
         db = get_db()
-        success = db.forget(memory_id)
+        count = db.rebuild_fts_index()
         
-        if not success:
-            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
-        
-        return MemoryResponse(
-            ok=True,
-            message=f"Memory {memory_id} deleted"
-        )
-    except HTTPException:
-        raise
+        return {
+            "status": "ok",
+            "indexed": count,
+            "message": f"Rebuilt FTS index with {count} memories"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================
-# Search Operations
+# Search Operations (MUST be before /{memory_id} routes)
 # ============================================
 
 @router.get("/search/keyword", response_model=MemoryResponse)
@@ -276,107 +240,147 @@ async def search_memories_semantic_post(request: SemanticSearchRequest):
 
 
 # ============================================
-# Utility Operations
+# CRUD Operations
 # ============================================
 
-@router.get("/categories", response_model=MemoryResponse)
-async def list_categories():
+@router.post("", response_model=MemoryResponse)
+@router.post("/", response_model=MemoryResponse, include_in_schema=False)
+async def create_memory(memory: MemoryCreate):
     """
-    List all memory categories with counts.
+    Create or update a memory.
     
-    Useful for understanding what's stored and filtering.
+    If a memory with the same category+key exists, it will be updated.
+    Generates vector embedding for semantic search by default.
+    
+    **Categories**: personal, technical, contact, preference, project, fact, location, other
+    
+    **Example use cases**:
+    - Store project locations
+    - Remember user preferences
+    - Save API keys/configs (use importance=10)
+    - Track contacts and relationships
     """
     try:
         db = get_db()
-        cursor = db.conn.cursor()
-        
-        rows = cursor.execute("""
-            SELECT category, COUNT(*) as count
-            FROM knowledge_base
-            GROUP BY category
-            ORDER BY count DESC
-        """).fetchall()
-        
-        categories = {row['category']: row['count'] for row in rows}
+        memory_id = db.remember(
+            category=memory.category,
+            key=memory.key,
+            value=memory.value,
+            importance=memory.importance,
+            source=memory.source,
+            generate_embedding=memory.generate_embedding,
+            metadata=memory.metadata
+        )
         
         return MemoryResponse(
             ok=True,
-            message=f"Found {len(categories)} categories",
-            memories=None,
-            count=sum(categories.values())
+            memory_id=memory_id,
+            message=f"Memory saved (ID: {memory_id})"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/stats")
-async def get_memory_stats():
+@router.get("", response_model=MemoryResponse)
+@router.get("/", response_model=MemoryResponse, include_in_schema=False)
+async def list_memories(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum results")
+):
     """
-    Get memory database statistics.
+    List all memories with optional category filter.
     
-    Returns counts, top categories, and storage info.
+    Returns memories sorted by importance (descending), then by updated_at.
     """
     try:
         db = get_db()
-        cursor = db.conn.cursor()
+        memories = db.get_all_memories(category=category)
         
-        # Total memories
-        total = cursor.execute("SELECT COUNT(*) FROM knowledge_base").fetchone()[0]
+        # Limit results
+        memories = memories[:limit]
         
-        # With embeddings
-        with_embeddings = cursor.execute(
-            "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
-        ).fetchone()[0]
-        
-        # By category
-        categories = cursor.execute("""
-            SELECT category, COUNT(*) as count
-            FROM knowledge_base
-            GROUP BY category
-            ORDER BY count DESC
-            LIMIT 10
-        """).fetchall()
-        
-        # Recent
-        recent = cursor.execute("""
-            SELECT COUNT(*) FROM knowledge_base
-            WHERE updated_at > datetime('now', '-7 days')
-        """).fetchone()[0]
-        
-        # High importance
-        high_importance = cursor.execute(
-            "SELECT COUNT(*) FROM knowledge_base WHERE importance >= 8"
-        ).fetchone()[0]
-        
-        return {
-            "status": "ok",
-            "total_memories": total,
-            "with_embeddings": with_embeddings,
-            "embedding_coverage": f"{(with_embeddings/max(total,1))*100:.1f}%",
-            "updated_last_7_days": recent,
-            "high_importance": high_importance,
-            "top_categories": {row['category']: row['count'] for row in categories},
-            "database": db.db_path
-        }
+        return MemoryResponse(
+            ok=True,
+            count=len(memories),
+            memories=[Memory(**memory_to_dict(m)) for m in memories]
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/rebuild-fts")
-async def rebuild_fts_index():
+# ============================================
+# Parameterized routes (MUST be LAST to avoid catching /stats, /categories, etc.)
+# ============================================
+
+@router.get("/{memory_id}", response_model=MemoryResponse)
+async def get_memory(memory_id: int):
+    """Get a specific memory by ID"""
+    try:
+        db = get_db()
+        cursor = db.conn.cursor()
+        
+        row = cursor.execute(
+            "SELECT * FROM knowledge_base WHERE id = ?", 
+            (memory_id,)
+        ).fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+        
+        return MemoryResponse(
+            ok=True,
+            memory=Memory(**memory_to_dict(row))
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{memory_id}", response_model=MemoryResponse)
+async def update_memory(memory_id: int, update: MemoryUpdate):
     """
-    Rebuild the FTS5 full-text search index.
+    Update an existing memory.
     
-    Use this if keyword search seems broken or incomplete.
+    Only updates provided fields (value, importance).
+    Does NOT regenerate embeddings - use POST to fully replace.
     """
     try:
         db = get_db()
-        count = db.rebuild_fts_index()
+        success = db.update_memory(
+            memory_id=memory_id,
+            value=update.value,
+            importance=update.importance
+        )
         
-        return {
-            "status": "ok",
-            "indexed": count,
-            "message": f"Rebuilt FTS index with {count} memories"
-        }
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+        
+        return MemoryResponse(
+            ok=True,
+            message=f"Memory {memory_id} updated"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{memory_id}", response_model=MemoryResponse)
+async def delete_memory(memory_id: int):
+    """Delete a memory (forget it)"""
+    try:
+        db = get_db()
+        success = db.forget(memory_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+        
+        return MemoryResponse(
+            ok=True,
+            message=f"Memory {memory_id} deleted"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -21,6 +21,20 @@ class QueryRequest(BaseModel):
         }
 
 
+class QuickQueryRequest(BaseModel):
+    """Simple query request for /quick endpoint"""
+    query: str = Field(..., description="The question or command")
+    mode: str = Field("cloud", description="LLM mode: 'cloud' or 'local'")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "What time is it?",
+                "mode": "cloud"
+            }
+        }
+
+
 class ToolUsed(BaseModel):
     """Information about a tool that was used"""
     name: str

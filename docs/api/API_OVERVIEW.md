@@ -860,13 +860,7 @@ requests.post(
 ```
 
 ---
-
-## Does NOT Require:
-
-❌ LiveKit  
-❌ Additional setup  
-❌ Browser  
-❌ Wake word  
+  
 
 ## Only Requires:
 

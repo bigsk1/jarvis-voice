@@ -20,12 +20,32 @@ import sys
 import json
 import asyncio
 import logging
+import concurrent.futures
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 logger = logging.getLogger(__name__)
+
+
+def _run_async(coro):
+    """
+    Run an async coroutine from sync context.
+    
+    Handles both standalone execution and when called from within
+    an existing event loop (e.g., FastAPI).
+    """
+    try:
+        # Check if there's already a running event loop (e.g., FastAPI)
+        loop = asyncio.get_running_loop()
+        # Already in async context - run in thread to avoid blocking
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result(timeout=30)
+    except RuntimeError:
+        # No running loop - safe to use asyncio.run()
+        return asyncio.run(coro)
 
 # Lazy import to avoid circular dependencies
 _intelligence_layer = None
@@ -138,23 +158,19 @@ def record_interaction(
             'available_tools': available_tools
         }
         
-        # Run async in sync context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            exp_id = loop.run_until_complete(
-                intel.record_experience(
-                    query=query,
-                    tools_used=tools_used,
-                    outcome=outcome,
-                    context=context,
-                    user_signals=user_signals
-                )
+        # Run async in sync context (handles FastAPI and standalone)
+        exp_id = _run_async(
+            intel.record_experience(
+                query=query,
+                tools_used=tools_used,
+                outcome=outcome,
+                context=context,
+                user_signals=user_signals
             )
-            logger.debug(f"Recorded experience {exp_id} for query: {query[:50]}...")
-            return exp_id  # Return the experience ID for feedback linking
-        finally:
-            loop.close()
+        )
+        
+        logger.debug(f"Recorded experience {exp_id} for query: {query[:50]}...")
+        return exp_id  # Return the experience ID for feedback linking
         
     except Exception as e:
         logger.warning(f"Failed to record experience: {e}")
@@ -290,50 +306,43 @@ def get_routing_insights(query: str) -> Dict[str, Any]:
         return {'tool_biases': {}, 'insights': [], 'confidence': 0.0}
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            # Get tool biases
-            biases = loop.run_until_complete(intel.get_tool_biases(query))
-            
-            # Get relevant insights
-            insights = loop.run_until_complete(intel.get_relevant_insights(query, top_k=3))
-            
-            # Calculate overall confidence
-            if insights:
-                avg_confidence = sum(i['confidence'] for i in insights) / len(insights)
-            else:
-                avg_confidence = 0.0
-            
-            result = {
-                'tool_biases': biases,
-                'insights': [
-                    {
-                        'id': i.get('id'),
-                        'description': i['insight'],
-                        'applies_to': i['applies_to'],
-                        'relevance': round(i['relevance'], 3),
-                        # PHASE 1: New fields
-                        'constraint_type': i.get('constraint_type', 'positive'),
-                        'avoided_tools': i.get('avoided_tools', []),
-                        'reasoning': i.get('reasoning', '')
-                    }
-                    for i in insights
-                ],
-                'confidence': round(avg_confidence, 3)
-            }
-            
-            # Log when insights are being applied
-            if insights or biases:
-                try:
-                    from intelligence import get_intel_logger
-                    get_intel_logger().log_insights_applied(query, insights, biases)
-                except Exception:
-                    pass  # Don't let logging break the main flow
-            
-            return result
-        finally:
-            loop.close()
+        # Get tool biases and insights (handles FastAPI and standalone)
+        biases = _run_async(intel.get_tool_biases(query))
+        insights = _run_async(intel.get_relevant_insights(query, top_k=3))
+        
+        # Calculate overall confidence
+        if insights:
+            avg_confidence = sum(i['confidence'] for i in insights) / len(insights)
+        else:
+            avg_confidence = 0.0
+        
+        result = {
+            'tool_biases': biases,
+            'insights': [
+                {
+                    'id': i.get('id'),
+                    'description': i['insight'],
+                    'applies_to': i['applies_to'],
+                    'relevance': round(i['relevance'], 3),
+                    # PHASE 1: New fields
+                    'constraint_type': i.get('constraint_type', 'positive'),
+                    'avoided_tools': i.get('avoided_tools', []),
+                    'reasoning': i.get('reasoning', '')
+                }
+                for i in insights
+            ],
+            'confidence': round(avg_confidence, 3)
+        }
+        
+        # Log when insights are being applied
+        if insights or biases:
+            try:
+                from intelligence import get_intel_logger
+                get_intel_logger().log_insights_applied(query, insights, biases)
+            except Exception:
+                pass  # Don't let logging break the main flow
+        
+        return result
             
     except Exception as e:
         logger.warning(f"Failed to get routing insights: {e}")
@@ -483,36 +492,31 @@ def track_insight_outcomes(
     outcome_success = result.get('ok', True)
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            for insight in insights:
-                insight_id = insight.get('id')
-                if not insight_id:
-                    continue
-                
-                # Determine if this insight was helpful
-                was_helpful = _evaluate_insight_helpfulness(
-                    insight=insight,
-                    tools_used=tools_used,
-                    outcome_success=outcome_success
-                )
-                
-                # Record the usage
-                loop.run_until_complete(
-                    intel.record_insight_usage(
-                        insight_id=insight_id,
-                        was_helpful=was_helpful,
-                        outcome='success' if outcome_success else 'failure'
-                    )
-                )
-                tracked += 1
-                
-                logger.debug(f"Tracked insight {insight_id}: helpful={was_helpful}")
+        for insight in insights:
+            insight_id = insight.get('id')
+            if not insight_id:
+                continue
             
-            return tracked
-        finally:
-            loop.close()
+            # Determine if this insight was helpful
+            was_helpful = _evaluate_insight_helpfulness(
+                insight=insight,
+                tools_used=tools_used,
+                outcome_success=outcome_success
+            )
+            
+            # Record the usage (handles FastAPI and standalone)
+            _run_async(
+                intel.record_insight_usage(
+                    insight_id=insight_id,
+                    was_helpful=was_helpful,
+                    outcome='success' if outcome_success else 'failure'
+                )
+            )
+            tracked += 1
+            
+            logger.debug(f"Tracked insight {insight_id}: helpful={was_helpful}")
+        
+        return tracked
             
     except Exception as e:
         logger.warning(f"Failed to track insight outcomes: {e}")
@@ -601,17 +605,10 @@ def trigger_reflection(batch_size: int = 3) -> int:
         return 0
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            processed = loop.run_until_complete(
-                intel.process_reflection_queue(batch_size)
-            )
-            if processed > 0:
-                logger.info(f"Processed {processed} reflections")
-            return processed
-        finally:
-            loop.close()
+        processed = _run_async(intel.process_reflection_queue(batch_size))
+        if processed > 0:
+            logger.info(f"Processed {processed} reflections")
+        return processed
             
     except Exception as e:
         logger.warning(f"Reflection processing failed: {e}")
@@ -642,12 +639,7 @@ def evaluate_learning() -> Dict[str, Any]:
         return {'status': 'unavailable'}
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(intel.evaluate_learning_quality())
-        finally:
-            loop.close()
+        return _run_async(intel.evaluate_learning_quality())
             
     except Exception as e:
         logger.warning(f"Learning evaluation failed: {e}")
@@ -678,12 +670,7 @@ def run_decay_job(force: bool = False) -> Dict[str, Any]:
         return {'status': 'unavailable'}
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(intel.run_decay_job(force=force))
-        finally:
-            loop.close()
+        return _run_async(intel.run_decay_job(force=force))
     except Exception as e:
         logger.warning(f"Decay job failed: {e}")
         return {'status': 'error', 'error': str(e)}
@@ -704,12 +691,7 @@ def run_anomaly_detection() -> Dict[str, Any]:
         return {'status': 'unavailable'}
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(intel.run_anomaly_detection())
-        finally:
-            loop.close()
+        return _run_async(intel.run_anomaly_detection())
     except Exception as e:
         logger.warning(f"Anomaly detection failed: {e}")
         return {'status': 'error', 'error': str(e)}
@@ -732,12 +714,7 @@ def run_meta_cognition() -> Dict[str, Any]:
         return {'status': 'unavailable'}
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(intel.run_meta_cognition())
-        finally:
-            loop.close()
+        return _run_async(intel.run_meta_cognition())
     except Exception as e:
         logger.warning(f"Meta-cognition failed: {e}")
         return {'status': 'error', 'error': str(e)}
@@ -758,12 +735,7 @@ def run_all_maintenance(force: bool = False) -> Dict[str, Any]:
         return {'status': 'unavailable'}
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(intel.run_all_maintenance(force=force))
-        finally:
-            loop.close()
+        return _run_async(intel.run_all_maintenance(force=force))
     except Exception as e:
         logger.warning(f"Maintenance failed: {e}")
         return {'status': 'error', 'error': str(e)}

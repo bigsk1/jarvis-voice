@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'orchestrator'))
 
-from api.models.query import QueryRequest, QueryResponse
+from api.models.query import QueryRequest, QueryResponse, QuickQueryRequest
 
 router = APIRouter(prefix="/api/query", tags=["query"])
 
@@ -85,21 +85,20 @@ async def query_jarvis(request: QueryRequest):
         )
 
 
-@router.post("/quick")
-async def quick_query(
-    q: str,
-    mode: str = "cloud"
-):
+@router.post("/quick", response_model=QueryResponse)
+async def quick_query(request: QuickQueryRequest):
     """
-    Quick query endpoint with minimal parameters.
+    Quick query endpoint with minimal parameters (JSON body).
     
     Simpler than POST /query for basic use cases:
     ```bash
-    curl -X POST "http://localhost:8880/api/query/quick?q=What+time+is+it&mode=cloud"
+    curl -X POST http://localhost:8880/api/query/quick \\
+      -H "Content-Type: application/json" \\
+      -d '{"query": "What time is it?"}'
     ```
     """
-    request = QueryRequest(query=q, mode=mode)
-    return await query_jarvis(request)
+    full_request = QueryRequest(query=request.query, mode=request.mode)
+    return await query_jarvis(full_request)
 
 
 @router.get("/quick")
