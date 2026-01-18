@@ -207,6 +207,8 @@ curl http://localhost:8880/api/alerts
 ✅ Reflection queue management (list, cancel) ⭐ NEW
 ✅ Memory API (CRUD, keyword search, semantic search) ⭐ NEW
 ✅ Query/Chat API (programmatic Jarvis access) ⭐ NEW
+✅ Conversations API (read-only history access) ⭐ NEW
+✅ Stash API (read-only artifacts access) ⭐ NEW
 ✅ Dark mode Swagger UI ⭐ NEW
 
 ---
@@ -641,6 +643,66 @@ GET /api/query/quick?q=What+is+the+weather&mode=cloud
 **Modes:**
 - `cloud` - Uses xAI/Anthropic/OpenAI (faster, smarter)
 - `local` - Uses Ollama (private, offline)
+
+### Conversations ⭐ NEW
+
+Read-only access to conversation history (stored in database).
+
+```bash
+# List conversations
+GET /api/conversations?limit=50&offset=0
+
+# Get conversation stats
+GET /api/conversations/stats
+
+# Get recent conversations (last N minutes)
+GET /api/conversations/recent?minutes=60&limit=20
+
+# Search conversation text
+GET /api/conversations/search?q=weather&limit=10
+
+# Get specific conversation
+GET /api/conversations/{id}
+
+# List unique sessions
+GET /api/conversations/sessions
+```
+
+See [CONVERSATIONS.md](./CONVERSATIONS.md) for detailed documentation.
+
+### Stash ⭐ NEW
+
+Read-only access to stashed artifacts (images, PDFs, music, etc.).
+
+```bash
+# Stash statistics
+GET /api/stash/stats
+
+# List spaces (with filters)
+GET /api/stash?limit=50
+GET /api/stash?label=generated_images
+GET /api/stash?tool=generate_image
+
+# List labels with counts
+GET /api/stash/labels
+
+# Recent spaces
+GET /api/stash/recent?limit=10
+
+# Search stash
+GET /api/stash/search?q=bitcoin
+
+# Get space with files
+GET /api/stash/space/{space_id}
+
+# Get file info
+GET /api/stash/space/{space_id}/file/{file_id}
+
+# Download file
+GET /api/stash/space/{space_id}/file/{file_id}/download
+```
+
+See [STASH.md](./STASH.md) for detailed documentation.
 
 ### Health
 

@@ -593,6 +593,23 @@ curl -s "$BASE/api/conversations/recent?minutes=60&limit=3" | jq -c '.count'
 echo -e "\n10. Search Conversations:"
 curl -s "$BASE/api/conversations/search?q=time&limit=3" | jq -c '.count'
 
+echo -e "\n=== Stash API Tests ==="
+
+echo -e "\n11. Stash Stats:"
+curl -s $BASE/api/stash/stats | jq -c '{spaces: .total_spaces, files: .total_files, size: .total_size_human}'
+
+echo -e "\n12. List Labels:"
+curl -s $BASE/api/stash/labels | jq -c '{count: .count}'
+
+echo -e "\n13. Recent Spaces:"
+curl -s "$BASE/api/stash/recent?limit=3" | jq -c '.count'
+
+echo -e "\n14. Search Stash:"
+curl -s "$BASE/api/stash/search?q=image&limit=2" | jq -c '{count: .count}'
+
+echo -e "\n15. Filter by Tool:"
+curl -s "$BASE/api/stash?tool=generate_image&limit=3" | jq -c '{count: .count, message: .message}'
+
 echo -e "\n✅ All tests completed!"
 ```
 
