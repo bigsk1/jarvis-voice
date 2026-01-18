@@ -184,26 +184,41 @@ def main():
         try:
             stock = yf.Ticker(ticker)
             
-            # Get current price via history (more reliable)
-            hist = stock.history(period='1d')
-            
-            if hist.empty:
-                return_error(f"No data found for '{symbol}'. Check if the ticker symbol is correct.")
-                return 1
-            
-            # Get info for additional details
+            # Get info first (works better for futures outside market hours)
             info = stock.info
             
-            # Current price and change
-            current_price = hist['Close'].iloc[-1]
-            open_price = hist['Open'].iloc[0]
-            day_change = current_price - open_price
-            day_change_pct = (day_change / open_price) * 100 if open_price else 0
+            # Try history first for most accurate current data
+            hist = stock.history(period='1d')
+            
+            if not hist.empty:
+                # Use history data (most accurate during market hours)
+                current_price = hist['Close'].iloc[-1]
+                open_price = hist['Open'].iloc[0]
+                day_change = current_price - open_price
+                day_change_pct = (day_change / open_price) * 100 if open_price else 0
+            else:
+                # Fall back to info data (works for futures/commodities outside hours)
+                current_price = info.get('regularMarketPrice') or info.get('currentPrice') or info.get('previousClose')
+                prev_close = info.get('regularMarketPreviousClose') or info.get('previousClose')
+                
+                if not current_price:
+                    return_error(f"No data found for '{symbol}'. Check if the ticker symbol is correct.")
+                    return 1
+                
+                if prev_close:
+                    day_change = current_price - prev_close
+                    day_change_pct = (day_change / prev_close) * 100
+                else:
+                    day_change = 0
+                    day_change_pct = 0
             
             # Additional data from info
             company_name = info.get('shortName', info.get('longName', ticker))
             market_cap = info.get('marketCap')
-            volume = info.get('volume', hist['Volume'].iloc[-1] if 'Volume' in hist else None)
+            # Get volume from info first, fall back to history if available
+            volume = info.get('volume') or info.get('regularMarketVolume')
+            if not volume and not hist.empty and 'Volume' in hist.columns:
+                volume = hist['Volume'].iloc[-1]
             pe_ratio = info.get('trailingPE')
             fifty_two_week_high = info.get('fiftyTwoWeekHigh')
             fifty_two_week_low = info.get('fiftyTwoWeekLow')
