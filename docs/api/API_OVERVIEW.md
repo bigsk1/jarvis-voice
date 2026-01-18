@@ -621,11 +621,12 @@ Body: {
 }
 # Returns: { ok, speech, response, tools_used, session_id }
 
-# Quick query (minimal params)
-POST /api/query/quick?q=What+time+is+it&mode=cloud
+# Quick query (JSON body)
+POST /api/query/quick
+Body: { "query": "What time is it?", "mode": "cloud" }
 
 # Quick query via GET (for testing)
-GET /api/query/quick?q=What+is+the+weather
+GET /api/query/quick?q=What+is+the+weather&mode=cloud
 ```
 
 **Example n8n integration:**
