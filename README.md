@@ -998,6 +998,7 @@ LIMIT 7;"
 
 **Proactive System:**
 - `docs/api/` - **Proactive API** documentation (webhooks, alerts, monitoring)
+- `docs/api/API_OVERVIEW.md` - **FastAPI** (Memory, Query, Stash, Canvas, Conversations) ⭐ ENHANCED
 - `docs/service/` - **Background Services** documentation (daemons, auto-resolve)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
 
@@ -1229,6 +1230,18 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Comprehensive FastAPI Expansion** - Full programmatic access ⭐ MAJOR
+  - Memory API (CRUD, keyword/semantic search, stats)
+  - Query/Chat API (POST /api/query/quick)
+  - Conversations API (read-only history)
+  - Stash API (read-only artifacts)
+  - Canvas API (read-only pages)
+  - Intelligence API (reflection management)
+  - Dark mode Swagger UI at /docs/dark
+- ✅ **Canvas Tool Read Action** - Read pages for verification/troubleshooting
+- ✅ **Intelligence Interval Protection** - Prevents decay job compounding
+- ✅ **Multi-day Reminders** - "Set reminder for next 5 days at 2pm"
+- ✅ **Dashboard API Commands** - 27 API commands (was 6)
 - ✅ **Stock Price Tool** - Stock, futures, and commodity prices via yfinance
   - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
   - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
@@ -1477,6 +1490,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.22 (January 2026)  
+**Current Version:** v2.23 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Stock Price Tool, Status Recap v1.4, Tool Builder v2.0 (proxy auto-fix)
+**Latest Features:** Comprehensive FastAPI (Memory, Query, Stash, Canvas, Conversations), Canvas read action

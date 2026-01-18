@@ -1014,13 +1014,98 @@ STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
 
 ---
 
-## 11. Related Docs
+## 11. Stash FastAPI ⭐ NEW (Jan 2026)
+
+Read-only API for external integrations, scripts, and programmatic access at **port 8880**.
+
+### Endpoints
+
+```bash
+# Statistics
+curl http://localhost:8880/api/stash/stats
+# → {total_spaces, total_files, total_size_human, by_label, by_tool}
+
+# List spaces with filters
+curl "http://localhost:8880/api/stash?limit=20&label=generated_images"
+curl "http://localhost:8880/api/stash?tool=generate_image"
+curl "http://localhost:8880/api/stash?pinned=true"
+
+# Search spaces
+curl "http://localhost:8880/api/stash/search?q=bitcoin"
+
+# Get recent spaces
+curl "http://localhost:8880/api/stash/recent?limit=5"
+
+# List all labels with counts
+curl http://localhost:8880/api/stash/labels
+
+# Get specific space with files
+curl http://localhost:8880/api/stash/space/space_20260118_005400_7374e32c
+
+# Get file info
+curl http://localhost:8880/api/stash/space/{space_id}/file/{file_id}
+
+# Download file
+curl -O http://localhost:8880/api/stash/space/{space_id}/file/{file_id}/download
+```
+
+### Response Examples
+
+**Stats:**
+```json
+{
+  "total_spaces": 149,
+  "total_files": 143,
+  "total_size_human": "164.5 MB",
+  "by_label": {"generated_images": 54, "pdf": 10},
+  "by_tool": {"generate_image": 54, "stash": 42}
+}
+```
+
+**Space with files:**
+```json
+{
+  "space_id": "space_20260118_005400_7374e32c",
+  "labels": ["generated_images"],
+  "files": [{
+    "file_id": "f_5d190ce797c6",
+    "name": "generated_bitcoin_infographic.jpg",
+    "mime_type": "image/jpeg",
+    "size_bytes": 2314172,
+    "tool_origin": "generate_image"
+  }]
+}
+```
+
+### Use Cases
+
+- **n8n workflows**: Access stash files for automation
+- **Backup scripts**: List and download generated images
+- **Monitoring**: Track storage usage over time
+- **Debugging**: Inspect stash contents via API
+
+### Note: Stash Tool vs FastAPI
+
+| Component | Port | Purpose |
+|-----------|------|---------|
+| `stash` tool (skills/stash.py) | N/A | Create, manage, download artifacts |
+| Stash FastAPI (api/routes/stash.py) | 8880 | Read-only external access |
+
+The `stash` tool has direct DB/file access. The FastAPI is for external integrations only.
+
+See: `docs/api/STASH.md` for full API documentation.
+
+---
+
+## 12. Related Docs
 
 - [Memory System](MEMORY_SYSTEM.md) - Long-term fact storage
 - [Canvas System](CANVAS_SYSTEM.md) - Human-facing research notes  
 - [Tool Development](../AGENTS.md) - Tool creation guidelines
+- [Stash API](api/STASH.md) - FastAPI documentation ⭐ NEW
+- [Canvas API](api/CANVAS.md) - FastAPI documentation ⭐ NEW
 
 ---
 
-*Last updated: 2025-12-11*
+*Last updated: 2026-01-18*
 

@@ -14,6 +14,7 @@
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v1.9** (server logs panel, search/export, ✨ enhance) ⭐ ENHANCED
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) ⭐ NEW
+- **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence) ⭐ ENHANCED
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
@@ -283,6 +284,29 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-01-18:**
+- ✅ **Comprehensive FastAPI Expansion** - Full programmatic access to Jarvis ⭐ MAJOR
+  - **Memory API** - CRUD operations, keyword/semantic search, stats, categories
+  - **Query/Chat API** - Send queries programmatically (`POST /api/query/quick`)
+  - **Conversations API** - Read-only access to conversation history
+  - **Stash API** - Read-only access to artifacts (images, PDFs, music)
+  - **Canvas API** - Read-only access to canvas pages
+  - **Intelligence API** - Reflection queue management (list, cancel)
+  - **Dark mode Swagger UI** at `/docs/dark`
+  - See: `docs/api/API_OVERVIEW.md`, individual API docs in `docs/api/`
+- ✅ **Canvas Tool Read Action** - Read pages back for verification/troubleshooting
+  - `action="read"` with `page_id` or `search` parameter
+  - Direct file access fallback when canvas server is down
+  - Enables self-correction workflows (read → verify → update)
+- ✅ **Intelligence Interval Protection** - Decay job won't compound if run multiple times
+  - `INTELLIGENCE_DECAY_INTERVAL_DAYS` config (default 14 days)
+  - `--force` flag to override protection
+- ✅ **Multi-day Reminders** - "Set a reminder for the next 5 days at 2pm"
+  - Creates multiple individual reminders from single tool call
+  - Supports patterns: "next N days", "every day for N days"
+- ✅ **Smart Reminder Cancellation** - Clear feedback when reminder already acknowledged
+- ✅ **Dashboard API Commands** - 27 API commands (was 6) for testing all endpoints
 
 **2026-01-15:**
 - ✅ **Stock Price Tool** - Stock, futures, and commodity prices via yfinance ⭐ NEW
@@ -742,6 +766,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-15 (v2.22)  
-**Latest:** Stock Price Tool, Status Recap v1.4, Tool Builder v2.0 (proxy auto-fix)  
+**Last Updated:** 2026-01-18 (v2.23)  
+**Latest:** Comprehensive FastAPI (Memory, Query, Stash, Canvas, Conversations), Canvas read action  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

@@ -138,6 +138,7 @@ curl -X DELETE http://localhost:8890/api/pages/page_20241201_143022
 | `delete` | Remove page | `page_id` |
 | `list` | Show all pages | None |
 | `open` | Get canvas URL | None |
+| `read` | Get page content ⭐ NEW | `page_id` or `search` |
 
 ### Example Tool Calls
 
@@ -450,10 +451,110 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 | `skills/canvas.py` | Tool implementation |
 | `skills/canvas.tool.json` | Tool definition |
 | `data/canvas/*.json` | Page storage |
+| `api/routes/canvas.py` | FastAPI routes ⭐ NEW |
 | `docs/CANVAS_SYSTEM.md` | This documentation |
 
 ---
 
-**Version:** 1.1  
-**Last Updated:** 2025-12-18
+## Two API Systems
+
+Canvas has **two separate API systems** for different use cases:
+
+### 1. Canvas Server API (Port 8890)
+The internal Flask server for the Canvas web UI viewer.
+
+```bash
+# Health check
+curl http://localhost:8890/api/health
+
+# List pages (for web UI)
+curl http://localhost:8890/api/pages
+
+# Create/Update/Delete pages
+POST/PUT/DELETE http://localhost:8890/api/pages/{id}
+```
+
+**Used by:**
+- Canvas tool (`skills/canvas.py`) for create/update/delete
+- Canvas web viewer (localhost:8890)
+
+### 2. Jarvis FastAPI (Port 8880) ⭐ NEW (Jan 2026)
+Read-only API for external integrations, scripts, and programmatic access.
+
+```bash
+# Statistics
+curl http://localhost:8880/api/canvas/stats
+# → {total_pages, total_size_human, by_tag, by_tool}
+
+# List pages with filters
+curl "http://localhost:8880/api/canvas?limit=20&tag=status"
+
+# Search pages
+curl "http://localhost:8880/api/canvas/search?q=bitcoin"
+
+# Get recent pages
+curl "http://localhost:8880/api/canvas/recent?limit=5"
+
+# List all tags
+curl http://localhost:8880/api/canvas/tags
+
+# List source tools
+curl http://localhost:8880/api/canvas/tools
+
+# Get specific page with content
+curl http://localhost:8880/api/canvas/page_20260115_175126
+```
+
+**Used by:**
+- n8n workflows
+- External scripts and integrations
+- Jarvis Dashboard TUI (API section)
+- Monitoring and debugging
+
+### When to Use Which
+
+| Use Case | API | Port |
+|----------|-----|------|
+| Canvas web viewer | Canvas Server | 8890 |
+| Create/update/delete pages | Canvas Server | 8890 |
+| `canvas` tool (skills/canvas.py) | Canvas Server | 8890 |
+| External integrations (n8n) | FastAPI | 8880 |
+| Programmatic queries | FastAPI | 8880 |
+| Monitoring/debugging | FastAPI | 8880 |
+| Dashboard TUI commands | FastAPI | 8880 |
+
+See: `docs/api/CANVAS.md` for full FastAPI documentation.
+
+---
+
+## Tool Read Action ⭐ NEW (Jan 2026)
+
+The canvas tool now supports reading pages back:
+
+```json
+// Read most recent page
+{"action": "read"}
+
+// Read by page ID
+{"action": "read", "page_id": "page_20260115_175126"}
+
+// Search by keyword
+{"action": "read", "search": "bitcoin"}
+```
+
+**Use cases:**
+- Verify a page was created correctly
+- Read back content for troubleshooting
+- Find pages by keyword
+- Self-correction workflows (read → update)
+
+**Fallback behavior:**
+- Tries Canvas server API first (port 8890)
+- Falls back to direct file access if server is down
+- Works even when canvas viewer isn't running
+
+---
+
+**Version:** 1.2  
+**Last Updated:** 2026-01-18
 
