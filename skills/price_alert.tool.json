@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "price_alert",
-  "description": "Manage price alerts for cryptocurrency, stocks, and futures. Actions: 'list' shows all active alerts, 'add' creates new alert (e.g., 'alert me when BTC hits 100k'), 'remove' deletes alerts, 'update' changes threshold values. Supports crypto (BTC, SOL, ETH), stocks (TSLA, AAPL), and futures (gold, silver, oil). Alerts are monitored by n8n and trigger Jarvis notifications when conditions are met. Use this tool when user says 'set price alert', 'alert me when', 'notify me if price', 'what price alerts do I have', etc.",
+  "description": "View and modify price alert THRESHOLDS in config/price-alerts.yaml. This manages the CONDITIONS that n8n monitors - NOT the triggered alerts (use list_alerts for those). Actions: 'list' shows monitoring thresholds, 'update' changes a threshold value (e.g., 'change my BTC alert to 110k'), 'add'/'remove' modify thresholds. NOTE: Adding NEW assets requires manual n8n workflow changes; this tool only updates existing thresholds. For 'what triggered alerts do I have?', use list_alerts instead.",
   "script": "price_alert.py",
   "parameters": {
     "type": "object",
@@ -18,7 +18,7 @@
       "condition": {
         "type": "string",
         "enum": ["above", "below", "percent_change_24h"],
-        "description": "Alert condition: 'above' (price >= value), 'below' (price <= value), 'percent_change_24h' (daily move >= value%)"
+        "description": "Alert condition: 'above' (price >= value, default), 'below' (price <= value), 'percent_change_24h' (daily move >= value%)"
       },
       "value": {
         "type": "number",
@@ -26,7 +26,7 @@
       },
       "old_value": {
         "type": "number",
-        "description": "Only for 'update' action: the current threshold value to change."
+        "description": "Optional for 'update': specific value to change. If omitted, updates first matching condition."
       },
       "severity": {
         "type": "string",

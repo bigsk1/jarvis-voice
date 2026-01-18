@@ -252,8 +252,12 @@ def remove_alert(config: dict, symbol: str, condition_type: str = None, value: f
     
     return f"No conditions found for {symbol}"
 
-def update_alert(config: dict, symbol: str, condition_type: str, old_value: float, new_value: float) -> str:
-    """Update an existing alert value."""
+def update_alert(config: dict, symbol: str, condition_type: str, new_value: float, old_value: float = None) -> str:
+    """Update an existing alert value.
+    
+    If old_value is provided, matches exactly.
+    If old_value is None, updates the first matching condition_type.
+    """
     symbol = normalize_symbol(symbol)
     asset_type, idx, existing = find_asset(config, symbol)
     
@@ -261,7 +265,12 @@ def update_alert(config: dict, symbol: str, condition_type: str, old_value: floa
         return f"No alerts found for {symbol}"
     
     for cond in existing.get("conditions", []):
-        if cond["type"] == condition_type and cond["value"] == old_value:
+        # Match by condition_type, and optionally by old_value if provided
+        if cond["type"] == condition_type:
+            if old_value is not None and cond["value"] != old_value:
+                continue  # Skip if old_value provided but doesn't match
+            
+            old_val = cond["value"]
             cond["value"] = new_value
             # Update message
             if condition_type == "above":
@@ -271,9 +280,9 @@ def update_alert(config: dict, symbol: str, condition_type: str, old_value: floa
             
             config["watchlist"][asset_type][idx] = existing
             save_config_file(config)
-            return f"Updated {symbol} {condition_type} alert: ${old_value:,.0f} → ${new_value:,.0f}"
+            return f"Updated {symbol} {condition_type} alert: ${old_val:,.0f} → ${new_value:,.0f}"
     
-    return f"No matching alert found for {symbol} {condition_type} {old_value}"
+    return f"No {condition_type} alert found for {symbol}"
 
 def main():
     try:
@@ -400,13 +409,14 @@ def main():
             if not symbol:
                 raise ValueError("Symbol is required")
             if not condition_type:
-                raise ValueError("Condition type is required")
-            if old_value is None:
-                raise ValueError("Old value is required")
+                # Default to 'above' if not specified (most common case)
+                condition_type = 'above'
             if value is None:
                 raise ValueError("New value is required")
             
-            result = update_alert(config, symbol, condition_type, float(old_value), float(value))
+            # old_value is now optional - if not provided, updates first matching condition
+            result = update_alert(config, symbol, condition_type, float(value), 
+                                  float(old_value) if old_value is not None else None)
             
             print(json.dumps({
                 "ok": True,
