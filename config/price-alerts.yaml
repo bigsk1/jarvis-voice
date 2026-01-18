@@ -56,7 +56,7 @@ watchlist:
     enabled: true
     conditions:
     - type: above
-      value: 450
+      value: 400
       severity: medium
       message: Tesla above $450
     - type: below
@@ -72,9 +72,13 @@ watchlist:
     enabled: true
     conditions:
     - type: above
-      value: 2800
-      severity: medium
-      message: Gold above $2,800/oz
+      value: 4800
+      severity: high
+      message: Gold above $4,800/oz
+    - type: below
+      value: 4400
+      severity: high
+      message: Gold dropped below $4,400/oz
     - type: percent_change_24h
       value: 3
       severity: high

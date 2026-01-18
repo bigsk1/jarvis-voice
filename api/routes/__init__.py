@@ -10,6 +10,7 @@ from .conversations import router as conversations_router
 from .stash import router as stash_router
 from .canvas import router as canvas_router
 from .prices import router as prices_router
+from .config import router as config_router
 
-__all__ = ['alerts_router', 'reminders_router', 'health_router', 'voice_router', 'memory_router', 'query_router', 'conversations_router', 'stash_router', 'canvas_router', 'prices_router']
+__all__ = ['alerts_router', 'reminders_router', 'health_router', 'voice_router', 'memory_router', 'query_router', 'conversations_router', 'stash_router', 'canvas_router', 'prices_router', 'config_router']
 
