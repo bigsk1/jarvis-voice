@@ -1,12 +1,12 @@
 # Jarvis Tools & MCP Servers Inventory
 
-> Last updated: January 7, 2026
+> Last updated: January 17, 2026
 
 ---
 
 ## 📦 Native Tools (skills/)
 
-### ✅ Enabled (43)
+### ✅ Enabled (44)
 
 | Tool | Description |
 |------|-------------|
@@ -15,16 +15,17 @@
 | `analyze_image` | Analyze images with vision models |
 | `api_call` | Make HTTP API requests |
 | `calculator` | Math calculations |
-| `canvas` | Visual knowledge pages |
+| `canvas` | Visual knowledge pages (create, list, read) |
 | `check_opencode_sessions` | Check OpenCode tmux sessions |
 | `check_tool_logs` | View tool execution logs |
 | `crawl_url` | Crawl/scrape web pages |
-| `create_reminder` | Create time-based reminders |
+| `create_reminder` | Create time-based reminders (supports multi-day patterns) |
 | `crypto_price` | Get cryptocurrency prices |
 | `deep_memory_search` | Comprehensive search across all data sources |
+| `evolution_test` | Test tool for prompt evolution |
 | `execute_bash` | Execute bash commands |
 | `forget` | Remove memories |
-| `generate_image` | AI image generation |
+| `generate_image` | AI image generation (Google Imagen) |
 | `generate_music` | ElevenLabs music generation |
 | `get_recent_conversations` | Get recent terminal conversations |
 | `get_time` | Get current time/date |
@@ -49,6 +50,7 @@
 | `spotify` | Spotify playback control |
 | `ssh_remote` | Execute commands on remote hosts via SSH |
 | `stash` | Temporary artifact storage |
+| `stock_price` | Get stock/futures/commodity/forex prices (yfinance) |
 | `update_memory` | Update existing memories |
 | `weather` | Get weather information |
 
@@ -60,15 +62,16 @@
 |------|-------------|
 | `docker_control` | Docker containers, compose, images, networks, exec, prune |
 | `network_tools` | Ping, DNS lookup, port scanning, HTTP/HTTPS checks, traceroute |
+| `status_recap` | Daily status briefing (weather, crypto, stocks, alerts, system, canvas) |
 | `system_monitor` | CPU, memory, disk, processes, network stats |
 | `text_summarizer` | Text summarization, keyword extraction, word/char counts |
 | `youtube_transcript` | Download YouTube transcripts as .srt/.md files |
 
-### ❌ Disabled (1)
+### 📝 Templates (Not Counted)
 
-| Tool | Description | Reason |
-|------|-------------|--------|
-| `evolution_test` | Test tool for prompt evolution | Development only |
+| Tool | Description |
+|------|-------------|
+| `example_tool` | Template for creating new tools |
 
 ---
 
@@ -128,9 +131,10 @@
 
 ## 📊 Stats
 
-- **Total Native Tools**: 44
-  - Enabled: 43 (38 core + 5 auto-tools)
-  - Disabled: 1
+- **Total Native Tools**: 50
+  - Core Skills (skills/): 44 enabled
+  - Auto-Tools (skills/auto-tools/): 6 enabled
+  - Templates: 1 (example_tool)
 - **Total MCP Servers (Jarvis)**: 4
   - Enabled: 2
   - Disabled: 2
