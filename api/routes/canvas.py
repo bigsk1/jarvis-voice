@@ -12,7 +12,7 @@ from ..models.canvas import (
     CanvasListResponse, CanvasStats
 )
 
-router = APIRouter(prefix="/api/canvas", tags=["Canvas"])
+router = APIRouter(prefix="/api/canvas", tags=["canvas"])
 
 # Canvas data directory
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
