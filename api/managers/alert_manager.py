@@ -69,24 +69,39 @@ class AlertManager:
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
         
-        # Deduplication: Check for existing pending alert from same source with same symbol
+        # Deduplication: Check for existing pending alert from same source
         # This prevents n8n price monitors from creating duplicate alerts every 10 minutes
-        if source == 'price_monitor' and metadata and 'symbol' in metadata:
-            symbol = metadata['symbol']
-            alert_type = metadata.get('type', '')
+        if source == 'price_monitor' and metadata:
+            # For price alerts with symbol
+            if 'symbol' in metadata:
+                symbol = metadata['symbol']
+                alert_type = metadata.get('type', '')
+                
+                cursor.execute("""
+                    SELECT id FROM alerts 
+                    WHERE source = ? AND status = 'pending' 
+                    AND metadata LIKE ? AND metadata LIKE ?
+                """, (source, f'%"symbol": "{symbol}"%', f'%"type": "{alert_type}"%'))
+                
+                existing = cursor.fetchone()
+                if existing:
+                    conn.close()
+                    return -existing[0]
             
-            # Look for pending alerts with same symbol and type
-            cursor.execute("""
-                SELECT id FROM alerts 
-                WHERE source = ? AND status = 'pending' 
-                AND metadata LIKE ? AND metadata LIKE ?
-            """, (source, f'%"symbol": "{symbol}"%', f'%"type": "{alert_type}"%'))
-            
-            existing = cursor.fetchone()
-            if existing:
-                conn.close()
-                # Return existing alert ID with negative sign to indicate duplicate
-                return -existing[0]
+            # For error alerts (no symbol but has 'error' key)
+            elif 'error' in metadata:
+                error_type = metadata['error']
+                
+                cursor.execute("""
+                    SELECT id FROM alerts 
+                    WHERE source = ? AND status = 'pending' 
+                    AND metadata LIKE ?
+                """, (source, f'%"error": "{error_type}"%'))
+                
+                existing = cursor.fetchone()
+                if existing:
+                    conn.close()
+                    return -existing[0]
         
         # Convert metadata to JSON string
         metadata_json = json.dumps(metadata) if metadata else None
