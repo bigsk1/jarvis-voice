@@ -243,6 +243,15 @@ class Orchestrator:
                 # Subsequent turns: provide context from previous tools
                 turn_input = self._build_turn_context(enhanced_transcript, conversation_context)
             
+            # Inject turn limit awareness (helps LLM prioritize finishing critical tasks)
+            turns_remaining = max_turns - turn_num
+            if turns_remaining <= 5:
+                # Warn when getting close to limit
+                turn_input = f"[TURN {turn_num + 1}/{max_turns} - {turns_remaining} turns remaining. Prioritize finishing critical tasks like canvas/remember before limit!]\n\n{turn_input}"
+            elif turn_num > 0:
+                # Lighter context for middle turns
+                turn_input = f"[Turn {turn_num + 1}/{max_turns}]\n\n{turn_input}"
+            
             # Route using LLM
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: About to route turn {turn_num}", file=sys.stderr)

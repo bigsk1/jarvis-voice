@@ -55,7 +55,7 @@ def parse_date_filter(date_filter: str) -> Optional[datetime]:
 
 
 def ripgrep_search(query: str, paths: List[str], file_globs: List[str] = None, 
-                   case_sensitive: bool = False) -> List[Dict]:
+                   case_sensitive: bool = False, no_ignore: bool = False) -> List[Dict]:
     """
     Search files using ripgrep with JSON output.
     
@@ -64,6 +64,7 @@ def ripgrep_search(query: str, paths: List[str], file_globs: List[str] = None,
         paths: List of paths to search
         file_globs: Optional glob patterns like ['*.md', '*.json']
         case_sensitive: Whether to be case sensitive
+        no_ignore: Skip .gitignore (needed for stash which is gitignored)
         
     Returns:
         List of match dicts with file, line_number, line_content, match_text
@@ -77,6 +78,9 @@ def ripgrep_search(query: str, paths: List[str], file_globs: List[str] = None,
     
     # Build ripgrep command
     cmd = ['rg', '--json', '--smart-case', '--multiline', '--max-count', '10']
+    
+    if no_ignore:
+        cmd.append('--no-ignore')
     
     if case_sensitive:
         cmd.remove('--smart-case')
@@ -381,30 +385,36 @@ def search_canvas_pages(query: str, limit: int, date_filter: datetime = None) ->
 
 
 def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) -> List[Dict]:
-    """Search stash space metadata (labels, tags, tool_origin)."""
+    """Search stash space metadata AND file contents."""
     results = []
     stash_dir = PROJECT_ROOT / 'data' / 'stash'
     
     if not stash_dir.exists():
         return results
     
-    # Search meta.json files
+    # Search both meta.json AND content files (.md, .txt, .json but not meta.json)
+    # Use no_ignore=True because stash is in .gitignore
     rg_results = ripgrep_search(
         query,
         [str(stash_dir)],
-        file_globs=['meta.json']
+        file_globs=['*.md', '*.txt', '*.json'],
+        no_ignore=True
     )
     
     seen_spaces = set()
     for match in rg_results:
         file_path = match.get('file', '')
         space_dir = Path(file_path).parent.name
+        matched_file = Path(file_path).name
+        
         if space_dir in seen_spaces:
             continue
         seen_spaces.add(space_dir)
         
+        # Get meta.json for this space
+        meta_path = PROJECT_ROOT / 'data' / 'stash' / space_dir / 'meta.json'
         try:
-            with open(file_path, 'r') as f:
+            with open(meta_path, 'r') as f:
                 meta = json.load(f)
             
             # Date filtering
@@ -421,6 +431,15 @@ def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) ->
             file_names = [f.get('name', '') for f in files]
             tool_origins = list(set(f.get('tool_origin', '') for f in files if f.get('tool_origin')))
             
+            # Get content preview from matched file (if not meta.json)
+            content_preview = ""
+            if matched_file != 'meta.json':
+                try:
+                    with open(file_path, 'r') as f:
+                        content_preview = f.read()[:500]
+                except:
+                    pass
+            
             results.append({
                 'space_id': meta.get('space_id'),
                 'labels': meta.get('labels', []),
@@ -429,7 +448,9 @@ def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) ->
                 'file_names': file_names[:5],
                 'tool_origins': tool_origins,
                 'pinned': meta.get('pinned', False),
+                'matched_file': matched_file if matched_file != 'meta.json' else None,
                 'matched_line': match.get('line_content', '')[:200],
+                'content_preview': content_preview[:300] if content_preview else None,
                 '_source': 'stash',
                 '_source_display': f"Stash: {', '.join(meta.get('labels', []))[:50] or space_dir}"
             })

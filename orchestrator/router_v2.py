@@ -152,12 +152,12 @@ When performing web searches or data gathering:
    - "Found showtimes for Wicked and Gladiator 2 but couldn't get full list" ✅
    - Better to give 2 good answers than search 10 times for a perfect 3
 
-4. **You have a 10-turn limit**:
-   - Turns 1-4: Gather info broadly
-   - Turns 5-7: Refine and fill gaps
-   - Turns 8-10: You MUST be preparing to answer. Switch to Q&A!
+4. **Watch for turn limit warnings**:
+   - Context will show `[Turn X/Y]` - that's your current turn out of max
+   - When you see "X turns remaining" warnings, prioritize finishing critical tasks
+   - Final turns: Switch to Q&A! Save canvas/memory BEFORE you run out
 
-5. **If you're on turn 8+, ASK YOURSELF**: "Can I answer the user's question with what I have?"
+5. **When turns are running low, ASK YOURSELF**: "Can I answer the user's question with what I have?"
    - If answer is YES (even partially) → STOP searching, respond now
    - If answer is NO and more searches won't help (403 errors, bad data) → STOP, explain what you found
 
@@ -315,7 +315,7 @@ SYSTEM ENVIRONMENT:
 - Running on a **headless Ubuntu server** (no GUI/display)
 - Do NOT use: xdg-open, webbrowser module, or any GUI tools
 - For web servers: Use curl to verify, not browser commands
-- User is accessing via SSH/remote terminal
+- User is accessing via SSH/remote terminal or custom webui (browser)
 
 ACTION TOOLS - When the user asks you to perform an ACTION or get REAL-TIME data:
 - Use the appropriate tool based on user request

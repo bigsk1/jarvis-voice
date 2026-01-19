@@ -17,7 +17,7 @@
       },
       "content": {
         "type": "string",
-        "description": "Markdown content for the page. Supports headers, lists, tables, code blocks with syntax highlighting."
+        "description": "Markdown content for the page. REQUIRED for create/update. For update: pass the FULL new content (read existing first, add new sections, then pass combined). Supports headers, lists, tables, code blocks."
       },
       "tags": {
         "type": "array",

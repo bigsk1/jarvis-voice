@@ -16,9 +16,16 @@ import json
 import requests
 from base64 import b64encode
 
+# Add lib to path for config_loader
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from config_loader import load_config, get_config_value
+
 
 def main():
     """Crawl URL and extract content."""
+    # Load config (auto-detects mode)
+    load_config()
+    
     # Read input
     try:
         input_data = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
@@ -26,11 +33,11 @@ def main():
         return_error("Invalid JSON input")
         return 1
     
-    # Get configuration from environment
-    crawl4ai_url = os.environ.get("CRAWL4AI_URL", "").rstrip("/")
-    crawl4ai_user = os.environ.get("CRAWL4AI_USER", "")
-    crawl4ai_pass = os.environ.get("CRAWL4AI_PASS", "")
-    crawl4ai_api_key = os.environ.get("CRAWL4AI_API_KEY", "")
+    # Get configuration from config
+    crawl4ai_url = get_config_value("CRAWL4AI_URL", "").rstrip("/")
+    crawl4ai_user = get_config_value("CRAWL4AI_USER", "")
+    crawl4ai_pass = get_config_value("CRAWL4AI_PASS", "")
+    crawl4ai_api_key = get_config_value("CRAWL4AI_API_KEY", "")
     
     if not crawl4ai_url:
         return_error("CRAWL4AI_URL not configured")

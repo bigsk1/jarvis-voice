@@ -234,6 +234,7 @@ Add `--feedback` to any orchestrator command:
 # With other flags
 ./orchestrator/orchestrator_v2.py cloud "Search memory" --feedback --json
 ./orchestrator/orchestrator_v2.py cloud "Complex task" --feedback --debug-thinking
+
 ```
 
 **When to use**: 
@@ -517,6 +518,16 @@ jarvis-cli "send test webhook to n8n logger and remember the response"
 
 # Complex task
 jarvis-cli "search my memory for tetris, then use bash to check if the server is running on port 5000"
+```
+
+# Load a custom prompt (from jarvis-web/data/prompts/NAME.md)
+
+```bash
+./orchestrator/orchestrator_v2.py cloud "query" --prompt deep_research "Research AI chips"
+
+# List available prompts (on error)
+./orchestrator/orchestrator_v2.py cloud --prompt nonexistent "test"
+# Shows: blog_post, code_review, compare, daily, debug, deep_research, email, explain...
 ```
 
 **Testing Different Response Styles:**
