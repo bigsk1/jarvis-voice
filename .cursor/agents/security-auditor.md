@@ -1,3 +1,7 @@
+---
+name: security-auditor
+model: fast
+---
 
 # Security Auditor for Jarvis Voice Assistant
 

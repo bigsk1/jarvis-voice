@@ -1,3 +1,9 @@
+---
+description: Complete agent guidelines for Jarvis Voice Assistant - coding standards, architectural patterns, tool development, memory system patterns, and best practices. Use when developing features, creating tools, or making changes to the Jarvis codebase.
+globs: ["skills/**", "lib/**", "orchestrator/**", "api/**", "tests/**"]
+alwaysApply: false
+---
+
 # Agent Guidelines for Jarvis Voice Assistant
 
 > **Purpose**: This document provides coding standards, architectural patterns, and best practices for developing Jarvis Voice Assistant. Follow these guidelines to ensure consistency, maintainability, and compatibility with the existing codebase.

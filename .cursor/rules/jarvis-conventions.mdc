@@ -1,7 +1,7 @@
 ---
-alwaysApply: true
+description: jarvis conventions - how the app works, command patterns, do and dont's, critical patterns to use
+alwaysApply: false
 ---
-
 # Jarvis Voice Assistant - Development Conventions
 
 ## Mode System (CRITICAL)
