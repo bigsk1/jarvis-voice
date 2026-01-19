@@ -6,12 +6,13 @@ Enhanced with LLM-based routing and confirmation flow.
 import os
 import sys
 import json
+from pathlib import Path
 from typing import Dict, Any, List, Tuple
 from datetime import datetime
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
+from config_loader import load_config, get_int
 from memory_db import get_memory_db
 from status_updater import StatusUpdater
 
@@ -1244,15 +1245,17 @@ Your BEST EFFORT response:"""
 def main():
     """CLI interface."""
     if len(sys.argv) < 2:
-        print("Usage: orchestrator_v2.py <mode> <transcript> [--json] [--debug-thinking]", file=sys.stderr)
+        print("Usage: orchestrator_v2.py <mode> <transcript> [--json] [--debug-thinking] [--prompt NAME]", file=sys.stderr)
         print("  mode: 'cloud' or 'local'", file=sys.stderr)
         print("  --json: Output only JSON (for scripting)", file=sys.stderr)
         print("  --debug-thinking: Show LLM reasoning (for debugging)", file=sys.stderr)
         print("  --feedback: Ask LLM for feedback about the experience (QA mode)", file=sys.stderr)
+        print("  --prompt NAME: Load a prompt from jarvis-web/data/prompts/NAME.md", file=sys.stderr)
         print("\nExample:")
         print("  ./orchestrator_v2.py cloud 'Send a webhook to my server'")
         print("  ./orchestrator_v2.py cloud 'Should I save this?' --debug-thinking")
         print("  ./orchestrator_v2.py cloud 'Test a task' --feedback")
+        print("  ./orchestrator_v2.py cloud --prompt deep_research 'Research AI chips'")
         sys.exit(1)
     
     mode = sys.argv[1]
@@ -1276,7 +1279,37 @@ def main():
     if collect_feedback:
         sys.argv.remove("--feedback")
     
+    # Check for --prompt flag (load prompt file as context)
+    prompt_context = None
+    prompt_name = None
+    if "--prompt" in sys.argv:
+        idx = sys.argv.index("--prompt")
+        if idx + 1 < len(sys.argv):
+            prompt_name = sys.argv[idx + 1]
+            # Remove both --prompt and the name
+            sys.argv.pop(idx)  # Remove --prompt
+            sys.argv.pop(idx)  # Remove the name (now at same index)
+            
+            # Load the prompt file
+            prompt_path = Path(__file__).parent.parent / "jarvis-web" / "data" / "prompts" / f"{prompt_name}.md"
+            if prompt_path.exists():
+                prompt_context = prompt_path.read_text()
+            else:
+                print(f"❌ Prompt not found: {prompt_path}", file=sys.stderr)
+                print(f"   Available prompts:", file=sys.stderr)
+                prompts_dir = Path(__file__).parent.parent / "jarvis-web" / "data" / "prompts"
+                for p in sorted(prompts_dir.glob("*.md")):
+                    print(f"     - {p.stem}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print("❌ --prompt requires a name (e.g., --prompt deep_research)", file=sys.stderr)
+            sys.exit(1)
+    
     transcript = " ".join(sys.argv[2:])
+    
+    # Inject prompt context if provided
+    if prompt_context:
+        transcript = f"[CONTEXT - Use these guidelines for the request below]\n\n{prompt_context}\n\n[END CONTEXT]\n\nUser's request: {transcript}"
     
     # Load config early for random feedback check
     load_config(mode)
