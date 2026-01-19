@@ -206,7 +206,7 @@ class Orchestrator:
             enhanced_transcript = f"{learning_context}\n\n{enhanced_transcript}"
         
         # Multi-turn context tracking
-        max_turns = 10  # Safety limit
+        max_turns = get_int('MAX_TOOL_TURNS', 15)  # Configurable, default 15 for deep research
         conversation_context = []
         tools_used = []
         accumulated_data = {}

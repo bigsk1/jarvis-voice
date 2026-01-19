@@ -194,7 +194,6 @@ def condense_for_voice(result: dict, task: str) -> str:
     OpenCode returns technical details, we need natural speech.
     """
     # For now, simple condensation
-    # TODO: Use LLM to intelligently condense in Phase 2
 
     # Check if there's text content in the result
     if isinstance(result, dict):
