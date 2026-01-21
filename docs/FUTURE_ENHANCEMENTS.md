@@ -261,5 +261,15 @@ Want to implement something? Here's how:
 
 ---
 
-**Last Updated:** 2025-12-12
-**Version:** 2.0 (Stash + Native Search + Tool Blocklist + TTS Providers)
+---
+
+## 🔗 Related Documentation
+
+- **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - Multi-tool workflow system (recipes, pipelines, tool chains)
+- **[ADVANCED_AI_TECHNIQUES.md](ADVANCED_AI_TECHNIQUES.md)** - Self-learning, prompt evolution, dynamic tool creation
+- **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - Learning from interactions
+
+---
+
+**Last Updated:** January 2026
+**Version:** 2.1 (Added workflow orchestration reference)
