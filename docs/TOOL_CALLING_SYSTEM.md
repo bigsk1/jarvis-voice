@@ -321,6 +321,97 @@ Then use `jarvis-local` instead of `jarvis`.
 - 📖 **orchestrator/README.md** - Orchestrator details
 - 📖 **skills/README.md** - Tool creation guide
 
+## Inter-Tool Calling (Tools Calling Other Tools)
+
+Some tools need to call other tools internally. For example:
+- `stash.remember` calls `pdf_read` to extract text from PDFs
+- `status_recap` calls `weather`, `crypto_price`, `stock_price`, etc.
+
+### Pattern: Subprocess Tool Calls
+
+```python
+import subprocess
+import json
+import os
+
+# Tool locations
+SKILLS_DIR = os.path.dirname(__file__)
+AUTO_TOOLS_DIR = os.path.join(SKILLS_DIR, 'auto-tools')
+
+def find_tool(tool_name: str) -> str:
+    """Find tool path - check skills/ then skills/auto-tools/"""
+    tool_path = os.path.join(SKILLS_DIR, f"{tool_name}.py")
+    if os.path.exists(tool_path):
+        return os.path.abspath(tool_path)
+    tool_path = os.path.join(AUTO_TOOLS_DIR, f"{tool_name}.py")
+    if os.path.exists(tool_path):
+        return os.path.abspath(tool_path)
+    return None
+
+def call_tool(tool_name: str, args: dict = None, timeout: int = 60) -> dict:
+    """Call another Jarvis tool and return its result."""
+    try:
+        tool_path = find_tool(tool_name)
+        if not tool_path:
+            return {"ok": False, "error": f"Tool {tool_name} not found"}
+        
+        # Get project root for proper module resolution
+        project_root = os.path.join(os.path.dirname(__file__), '..')
+        
+        input_data = json.dumps(args or {})
+        cmd = ["python3", tool_path, input_data]
+        
+        # Run from project root so tools can find their lib imports
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=timeout, 
+            cwd=project_root
+        )
+        
+        if result.returncode == 0 and result.stdout:
+            return json.loads(result.stdout)
+        return {"ok": False, "error": result.stderr or f"Tool {tool_name} failed"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"{tool_name} timed out"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+```
+
+### Usage Example
+
+```python
+# In stash.py - call pdf_read to extract text from PDFs
+def extract_pdf_text(file_path: str) -> str:
+    result = call_tool('pdf_read', {
+        'action': 'extract_text',
+        'file_path': file_path
+    })
+    
+    if result.get('ok') and result.get('data', {}).get('text'):
+        return result['data']['text']
+    return None
+```
+
+### Key Points
+
+1. **Search both directories**: Tools can be in `skills/` or `skills/auto-tools/`
+2. **Run from project root**: Use `cwd=project_root` so tools can import from `lib/`
+3. **Pass args as JSON**: Tools expect `sys.argv[1]` to be a JSON string
+4. **Handle timeouts**: Set appropriate timeouts (default 60s, longer for image generation)
+5. **Parse JSON response**: All tools return `{"ok": bool, "speech": str, "data": {...}}`
+
+### Tools Using This Pattern
+
+| Tool | Calls | Purpose |
+|------|-------|---------|
+| `stash.py` | `pdf_read` | Extract text from PDFs for memory storage |
+| `status_recap.py` | `weather`, `crypto_price`, `stock_price`, `generate_image`, `canvas`, `stash` | Aggregate status data |
+| `deep_memory_search.py` | Uses `ripgrep` subprocess | Search file contents |
+
+---
+
 ## What's Next?
 
 1. **Add your tools** - Home automation, webhooks, API integrations

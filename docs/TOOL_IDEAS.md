@@ -398,26 +398,32 @@
 
 ---
 
-### 16. PDF Handler Tool
-**Name**: `pdf_handler.py`  
-**Gap**: No document processing capability  
-**Priority**: ⭐⭐  
-**Difficulty**: Medium  
+### 16. PDF Handler Tool ✅ IMPLEMENTED
+**Name**: `pdf_read.py`  
+**Status**: ✅ Implemented (January 2026)  
+**Library**: `PyMuPDF` (fitz)
 
 **Actions**:
-- `extract_text` - Get text from PDF
-- `extract_images` - Extract embedded images
-- `merge_pdfs` - Combine multiple PDFs
-- `split_pdf` - Split PDF into pages
-- `pdf_to_images` - Convert pages to images
+- `info` - Get PDF metadata, page count, size
+- `extract_text` - Get text from PDF (with page ranges)
+- `extract_images` - Extract embedded images to stash
+- `merge` - Combine multiple PDFs
+- `split` - Split PDF at page(s) or into individual pages
+- `to_images` - Convert pages to PNG/JPEG images
+- `search` - Find text in PDF with context
 
-**Libraries**: `PyPDF2`, `pdfplumber`, `pdf2image`
+**Integration**:
+- Reads from stash refs or local paths
+- Writes back to stash
+- Integrated with `stash.remember` for PDF text extraction + summarization
 
 **Use Cases**:
 ```
 "Extract text from this invoice PDF"
 "Merge these 3 PDFs into one"
 "Split this PDF at page 5"
+"Search this PDF for 'invoice number'"
+"Convert PDF pages to images"
 ```
 
 ---

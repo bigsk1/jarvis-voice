@@ -80,7 +80,7 @@ AVAILABLE_PACKAGES = {
     
     # File & I/O
     "filelock", "fsspec", "certifi", "charset-normalizer",
-    "idna", "urllib3", "tqdm",
+    "idna", "urllib3", "tqdm", "pymupdf", "fpdf2",
     
     # Monitoring
     "prometheus-fastapi-instrumentator", "coloredlogs", "humanfriendly",
@@ -1032,6 +1032,14 @@ class ToolBuilder:
         except json.JSONDecodeError:
             pass
         
+        # Try to extract and fix python_code field (common issue: unescaped newlines)
+        extracted_code, fixed_response = self._extract_python_code_field(response)
+        if extracted_code:
+            try:
+                return json.loads(fixed_response)
+            except json.JSONDecodeError:
+                pass
+        
         # Try to repair common JSON issues
         repaired = self._repair_json(response)
         try:
@@ -1041,7 +1049,9 @@ class ToolBuilder:
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if json_match:
                 try:
-                    return json.loads(self._repair_json(json_match.group(0)))
+                    # Also try extracting python_code from the extracted JSON
+                    _, fixed_json = self._extract_python_code_field(json_match.group(0))
+                    return json.loads(self._repair_json(fixed_json))
                 except:
                     pass
             raise ValueError(f"Failed to parse JSON: {e}\nResponse preview: {original[:500]}...")
@@ -1050,9 +1060,6 @@ class ToolBuilder:
         """Attempt to repair common JSON issues from local models."""
         # Remove trailing commas before ] or }
         text = re.sub(r',\s*([}\]])', r'\1', text)
-        
-        # Fix unescaped newlines in strings
-        # This is tricky - look for strings and escape newlines inside them
         
         # Try to close unclosed strings/brackets
         # Count brackets
@@ -1085,6 +1092,69 @@ class ToolBuilder:
             text += '"'
         
         return text
+    
+    def _extract_python_code_field(self, text: str) -> Tuple[Optional[str], str]:
+        """
+        Extract python_code field separately to handle unescaped newlines.
+        Returns (extracted_code, text_with_placeholder) or (None, original_text).
+        """
+        # Look for "python_code": followed by a string
+        # The code often has unescaped newlines which break JSON
+        
+        # Pattern: "python_code": "...code..." (with possible newlines)
+        # We look for the field and try to find where it ends
+        
+        match = re.search(r'"python_code"\s*:\s*"', text)
+        if not match:
+            return None, text
+        
+        start_idx = match.end()  # Position right after opening quote
+        
+        # Find the end of the python_code string
+        # This is tricky because we need to handle:
+        # - Escaped quotes \"
+        # - The actual closing quote followed by , or }
+        
+        # Walk through finding the real end
+        i = start_idx
+        depth = 0
+        while i < len(text):
+            c = text[i]
+            
+            # Handle escapes
+            if c == '\\' and i + 1 < len(text):
+                i += 2
+                continue
+            
+            # Track nested braces for f-strings like {{
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+            
+            # Found potential end quote
+            if c == '"':
+                # Check if followed by , or } or whitespace then , or }
+                rest = text[i+1:i+20].strip()
+                if rest.startswith(',') or rest.startswith('}'):
+                    # This is the end
+                    code = text[start_idx:i]
+                    
+                    # Properly escape the code for JSON
+                    escaped_code = (code
+                        .replace('\\', '\\\\')  # Escape backslashes first
+                        .replace('\n', '\\n')   # Escape newlines
+                        .replace('\r', '\\r')   # Escape carriage returns  
+                        .replace('\t', '\\t')   # Escape tabs
+                        .replace('"', '\\"'))   # Escape quotes
+                    
+                    # Replace in original text
+                    new_text = text[:start_idx] + escaped_code + text[i:]
+                    return code, new_text
+            
+            i += 1
+        
+        return None, text
     
     def _create_tool(
         self,

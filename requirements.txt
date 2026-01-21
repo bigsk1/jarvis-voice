@@ -55,6 +55,7 @@ urllib3==2.5.0
 textual==6.6.0
 fpdf2==2.10.0
 fpdf2
+pymupdf>=1.26.0
 spotipy>=2.25.0
 yt-dlp==2025.12.8
 paramiko>=3.0.0

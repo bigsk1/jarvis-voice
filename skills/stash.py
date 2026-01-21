@@ -15,6 +15,7 @@ import os
 import json
 import base64
 import requests
+import subprocess
 from typing import Dict, Any, Optional
 
 # Add lib to path
@@ -24,6 +25,57 @@ from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
     StashFile, StashSpace, get_stash_dir
 )
+
+# Tool locations for calling other tools
+SKILLS_DIR = os.path.dirname(__file__)
+
+
+def call_tool(tool_name: str, args: Dict = None, timeout: int = 60) -> Dict:
+    """
+    Call another Jarvis tool and return its result.
+    Used for calling pdf_read to extract text from PDFs.
+    """
+    try:
+        tool_path = os.path.join(SKILLS_DIR, f"{tool_name}.py")
+        if not os.path.exists(tool_path):
+            return {"ok": False, "error": f"Tool {tool_name} not found"}
+        
+        # Get project root for proper module resolution
+        project_root = os.path.join(os.path.dirname(__file__), '..')
+        
+        input_data = json.dumps(args or {})
+        cmd = ["python3", tool_path, input_data]
+        
+        # Run from project root so tools can find their lib imports
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=project_root)
+        
+        if result.returncode == 0 and result.stdout:
+            try:
+                return json.loads(result.stdout)
+            except json.JSONDecodeError:
+                return {"ok": False, "error": f"Invalid JSON from {tool_name}"}
+        return {"ok": False, "error": result.stderr or f"Tool {tool_name} failed"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"{tool_name} timed out"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def extract_pdf_text(file_path: str) -> Optional[str]:
+    """
+    Extract text from a PDF file using pdf_read tool.
+    
+    Returns:
+        Extracted text, or None if extraction fails
+    """
+    result = call_tool('pdf_read', {
+        'action': 'extract_text',
+        'file_path': file_path
+    })
+    
+    if result.get('ok') and result.get('data', {}).get('text'):
+        return result['data']['text']
+    return None
 
 
 def summarize_content_with_llm(content: str, file_name: str, max_length: int = 500) -> Optional[str]:
@@ -531,12 +583,39 @@ def action_remember(args: Dict) -> Dict:
     
     # Build value based on file type
     is_text = mime_type.startswith('text/') or mime_type == 'application/json'
+    is_pdf = mime_type == 'application/pdf'
     content_truncated = False
     llm_summarized = False
+    pdf_extracted = False
     
     if summary:
         # Use provided summary
         value = summary
+    elif is_pdf:
+        # Extract text from PDF using pdf_read tool
+        file_path = space.space_path / file_meta.get('stored_name')
+        content = extract_pdf_text(str(file_path))
+        
+        if content:
+            pdf_extracted = True
+            # Handle long content (same logic as text)
+            if len(content) > 2000:
+                if auto_summarize:
+                    llm_summary = summarize_content_with_llm(content, file_name)
+                    if llm_summary:
+                        value = llm_summary
+                        llm_summarized = True
+                    else:
+                        value = f"{content[:2000]}... [truncated]"
+                        content_truncated = True
+                else:
+                    value = f"{content[:2000]}... [truncated]"
+                    content_truncated = True
+            else:
+                value = content
+        else:
+            # PDF extraction failed
+            value = f"PDF file: {file_name} ({format_size(file_meta.get('size_bytes', 0))}) [text extraction failed]"
     elif is_text:
         # Read text content
         file_path = space.space_path / file_meta.get('stored_name')
@@ -581,7 +660,8 @@ def action_remember(args: Dict) -> Dict:
         "stash_created_at": file_meta.get('created_at'),
         "content_truncated": content_truncated,
         "llm_summarized": llm_summarized,
-        "is_text": is_text,
+        "pdf_extracted": pdf_extracted,
+        "is_text": is_text or pdf_extracted,  # True if text or successfully extracted PDF
         "hash_sha256": file_meta.get('hash_sha256')
     }
     

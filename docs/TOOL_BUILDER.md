@@ -1,7 +1,7 @@
 # Jarvis Tool Builder - Autonomous Tool Creation
 
-> **Version:** 2.0  
-> **Updated:** January 2026  
+> **Version:** 2.1  
+> **Updated:** January 21, 2026  
 > **Purpose**: Automatically create new tools when capability gaps are detected in feedback. Uses existing LLM providers (no external dependencies) with safety checks and full traceability.
 
 ---
@@ -273,6 +273,21 @@ If verification fails, the LLM gets 3 attempts with error feedback to fix it.
 - "Could not resolve host", "yahoo.com", "curl"
 
 The retry prompt automatically includes detailed proxy fix instructions.
+
+### 7. Robust JSON Parsing (v2.1)
+
+LLMs often generate Python code with **unescaped newlines** in the `python_code` JSON field, causing parse failures like:
+```
+Failed to parse JSON: Expecting ',' delimiter: line 14 column 12156
+```
+
+The Tool Builder now includes `_extract_python_code_field()` which:
+1. Finds the `"python_code":` field in the response
+2. Extracts raw code content (including unescaped newlines)
+3. Properly escapes: `\n`, `\r`, `\t`, `"`, `\\`
+4. Rebuilds valid JSON before parsing
+
+**This fixes the common issue where multi-line Python code breaks JSON parsing.**
 
 ---
 
@@ -740,6 +755,16 @@ Check the BUILD_PROMPT's "Known Tool Response Structures" section:
 - `generate_image` returns `data.saved.stash_ref` (nested!)
 - Always use `cwd=project_root` in subprocess.run()
 
+### JSON parse error with python_code (Fixed in v2.1)
+
+If you previously saw errors like:
+```
+Failed to parse JSON: Expecting ',' delimiter: line 14 column 12156
+```
+
+This was caused by LLMs generating Python code with literal newlines instead of `\n` escapes.
+**This is now automatically fixed** by `_extract_python_code_field()` in tool_builder.py.
+
 ---
 
 ## Grafana Monitoring
@@ -796,6 +821,7 @@ A dedicated dashboard is available at:
 | ~~No duplicate check~~ | ✅ **DONE** | Checks ALL existing tools before building |
 | ~~Network errors~~ | ✅ **DONE** | Auto-detects and injects proxy fix instructions |
 | ~~Inter-tool calling~~ | ✅ **DONE** | BUILD_PROMPT documents correct patterns |
+| ~~JSON parse errors~~ | ✅ **DONE** | v2.1 - Robust python_code field extraction |
 
 ### Planned Enhancements
 

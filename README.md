@@ -6,7 +6,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ---
 
-## 🎯 Current Status (January 15, 2026)
+## 🎯 Current Status (January 21, 2026)
 
 **Production Ready** ✅
 - **Stock Price Tool** - Stock, futures, and commodity prices via yfinance
@@ -59,6 +59,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Auto mode: Only searches when query needs real-time data
   - Eliminates endless search tool loops, cleaner context
 - **Stash System** - Artifact storage for multi-step workflows (URL downloads, SSRF protection)
+  - `stash.remember` - Save stash artifacts to permanent memory with one tool call
+  - LLM-based summarization for large text files (>2KB)
+  - Automatic PDF text extraction via `pdf_read` integration
+- **PDF Read** - Read and manipulate PDFs (PyMuPDF)
+  - Extract text (with page ranges), extract images, search text
+  - Merge multiple PDFs, split PDFs, convert to images
+  - Reads from stash, writes back to stash
 - **PDF Create** - Generate PDFs from stash files, images, or text
 - **Printer Tool** - Print from stash, files, or Canvas pages (CUPS integration)
 - **Speaker Volume** - Control system audio volume via voice
@@ -72,7 +79,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 - **Feedback System** - LLM self-critique and cross-model grading
 - **Tool RAG System** - Dynamic tool retrieval for infinite scalability
 - Multi-turn tool orchestration with LLM routing
-- 50+ working skills (memory, bash, OpenCode, stash, printer, pdf, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, ssh_remote, docker_control, stock_price, status_recap, crawl_url, etc.)
+- 50+ working skills (memory, bash, OpenCode, stash, printer, pdf_create, pdf_read, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, ssh_remote, docker_control, stock_price, status_recap, crawl_url, etc.)
 - **Proactive API** for event-driven alerts and notifications
 - **Background services** for auto-resolve and follow-ups
 - **Dual database system** with auto-sync (cloud ↔ local)

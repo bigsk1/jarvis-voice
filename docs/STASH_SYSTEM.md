@@ -1,8 +1,8 @@
 # Stash System Design
 
-> **Status**: ✅ Implemented (v2.13)  
+> **Status**: ✅ Implemented (v2.14)  
 > **Purpose**: Generic artifact storage layer for the Jarvis ecosystem  
-> **Updated**: 2025-12-16 - Added Memory+Stash architecture pattern
+> **Updated**: 2026-01-21 - Added `stash.remember` action with LLM summarization + PDF extraction
 
 ---
 
@@ -530,6 +530,113 @@ Delete spaces (single or expired).
 
 ---
 
+### 3.9 `stash.remember` ⭐ NEW (January 2026)
+
+Save a stash artifact to permanent memory with one tool call. Bridges stash (temporary) to memory (permanent).
+
+**Input:**
+```json
+{
+  "action": "remember",
+  "search": "google quantum",
+  "key": "quantum_computing_article",
+  "category": "research",
+  "importance": 7,
+  "summary": "Optional override summary",
+  "summarize": true
+}
+```
+
+**Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `search` | ✅ | Search query to find stash file (matches filename, tags, space labels) |
+| `key` | ❌ | Memory key (auto-generated if not provided) |
+| `category` | ❌ | Memory category (default: `stash_artifact`) |
+| `importance` | ❌ | 1-10 importance score (default: 5) |
+| `summary` | ❌ | Override the auto-generated summary |
+| `summarize` | ❌ | Use LLM to summarize large content (default: false) |
+
+**Output:**
+```json
+{
+  "ok": true,
+  "speech": "Saved 'google_quantum_article.txt' to memory",
+  "data": {
+    "memory_key": "stash_google_quantum_article_abc123",
+    "file_name": "google_quantum_article.txt",
+    "space_id": "space_20260119_011530_e688ca88",
+    "file_id": "google_quantum_article.txt",
+    "content_truncated": false,
+    "llm_summarized": true,
+    "metadata": {
+      "stash_ref": "stash://space_20260119_011530_e688ca88/google_quantum_article.txt",
+      "space_id": "space_20260119_011530_e688ca88",
+      "file_id": "google_quantum_article.txt",
+      "file_name": "google_quantum_article.txt",
+      "mime_type": "text/plain",
+      "size_bytes": 15432,
+      "tags": ["web_extract", "text"],
+      "tool_origin": "crawl_url",
+      "stash_created_at": "2026-01-19T01:15:30Z",
+      "content_truncated": false,
+      "llm_summarized": true,
+      "is_text": true,
+      "hash_sha256": "a1b2c3d4..."
+    }
+  }
+}
+```
+
+**Content Handling:**
+
+| File Type | Size | Behavior |
+|-----------|------|----------|
+| Text/JSON | ≤2KB | Full content stored |
+| Text/JSON | >2KB | Truncated to 2KB OR LLM-summarized (if `summarize: true`) |
+| PDF | Any | Text extracted via `pdf_read` tool, then summarized/truncated |
+| Binary | Any | Metadata only (no content extraction) |
+
+**LLM Summarization:**
+
+When `summarize: true` is set:
+1. Content is sent to configured LLM provider
+2. LLM extracts key facts for embedding-friendly storage
+3. Result is limited to ~300 tokens
+4. Works with text, JSON, and PDFs
+
+**PDF Processing:**
+
+PDFs are automatically processed using the `pdf_read` tool:
+1. `stash.remember` detects `application/pdf` mime type
+2. Internally calls `pdf_read` with `action: extract_text`
+3. Extracted text is then summarized/truncated like other text
+4. Metadata includes `pdf_extracted: true`
+
+**Search Matching:**
+
+The `search` query is split into terms and matched against:
+- Filename (e.g., `google_quantum_article.txt`)
+- File tags (e.g., `["web_extract", "quantum"]`)
+- Space labels (e.g., `["research", "google"]`)
+
+All terms must match somewhere in the combined text.
+
+**Use Cases:**
+```
+"Jarvis, save that stash data about google quantum breakthrough"
+→ stash.remember(search="google quantum", category="research")
+
+"Remember the bitcoin analysis PDF"
+→ stash.remember(search="bitcoin analysis pdf", summarize=true)
+
+"Save the crawled article to memory with high importance"
+→ stash.remember(search="crawled article", importance=9)
+```
+
+---
+
 ## 4. Security Considerations
 
 ### 4.1 URL Download Security (Redirect-Aware SSRF Protection)
@@ -897,9 +1004,150 @@ else:
 |------|-------|--------|--------------|
 | `generate_image` | ✅ Saves | ✅ Saves | ✅ |
 | `pdf_create` | ✅ Saves | ✅ Saves | ✅ |
+| `pdf_read` | ✅ Reads/Writes | N/A | ✅ |
+| `stash.remember` | ✅ Reads | ✅ Saves | ✅ |
 | `printer` | ✅ Resolves | N/A | ✅ |
 | `send_email` | ✅ Resolves | N/A | ✅ |
 | `canvas` | N/A | ✅ Already | N/A |
+
+### 5.7 The `stash.remember` Bridge ⭐ NEW
+
+**Problem**: Stash artifacts are temporary (7-day TTL), but users want to persist important findings.
+
+**Solution**: `stash.remember` action bridges stash → memory in one tool call.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    stash.remember FLOW                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   User: "Save that stash about google quantum"                       │
+│                           │                                          │
+│                           ▼                                          │
+│   ┌──────────────────────────────────────────┐                      │
+│   │  1. Search stash for "google quantum"    │                      │
+│   │     (filename, tags, labels)             │                      │
+│   └──────────────────────────────────────────┘                      │
+│                           │                                          │
+│                           ▼                                          │
+│   ┌──────────────────────────────────────────┐                      │
+│   │  2. Detect file type                     │                      │
+│   │     - text/plain → read content          │                      │
+│   │     - application/pdf → call pdf_read    │                      │
+│   │     - binary → metadata only             │                      │
+│   └──────────────────────────────────────────┘                      │
+│                           │                                          │
+│                           ▼                                          │
+│   ┌──────────────────────────────────────────┐                      │
+│   │  3. Process content                      │                      │
+│   │     - If >2KB: truncate OR summarize     │                      │
+│   │     - If summarize=true: call LLM        │                      │
+│   └──────────────────────────────────────────┘                      │
+│                           │                                          │
+│                           ▼                                          │
+│   ┌──────────────────────────────────────────┐                      │
+│   │  4. Save to Memory DB                    │                      │
+│   │     - key: stash_{filename}_{hash}       │                      │
+│   │     - value: content/summary             │                      │
+│   │     - metadata: stash_ref, tags, etc.    │                      │
+│   └──────────────────────────────────────────┘                      │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Structured Metadata Storage**
+
+Unlike simple text values, `stash.remember` stores rich metadata:
+
+```json
+{
+  "key": "stash_google_quantum_abc123",
+  "value": "Key facts: Google achieved quantum supremacy...",
+  "category": "research",
+  "importance": 7,
+  "metadata": {
+    "stash_ref": "stash://space_xxx/google_quantum.txt",
+    "space_id": "space_xxx",
+    "file_id": "google_quantum.txt",
+    "file_name": "google_quantum.txt",
+    "mime_type": "text/plain",
+    "size_bytes": 15432,
+    "tags": ["web_extract", "quantum"],
+    "tool_origin": "crawl_url",
+    "stash_created_at": "2026-01-19T01:15:30Z",
+    "content_truncated": false,
+    "llm_summarized": true,
+    "pdf_extracted": false,
+    "is_text": true,
+    "hash_sha256": "a1b2c3d4..."
+  }
+}
+```
+
+This metadata enables:
+- **Future retrieval**: Find by tool_origin, tags, or stash_ref
+- **Graceful degradation**: If stash expires, memory still has content
+- **Auditing**: Track which tools created which artifacts
+
+### 5.8 Inter-Tool Calling Pattern ⭐ NEW
+
+Some tools need to call other tools internally. This is done via subprocess.
+
+**Example: `stash.remember` calling `pdf_read`**
+
+```python
+import subprocess
+import json
+import os
+
+SKILLS_DIR = os.path.dirname(__file__)
+AUTO_TOOLS_DIR = os.path.join(SKILLS_DIR, 'auto-tools')
+
+def find_tool(tool_name: str) -> str:
+    """Find tool path - check skills/ then skills/auto-tools/"""
+    for base_dir in [SKILLS_DIR, AUTO_TOOLS_DIR]:
+        tool_path = os.path.join(base_dir, f"{tool_name}.py")
+        if os.path.exists(tool_path):
+            return os.path.abspath(tool_path)
+    return None
+
+def call_tool(tool_name: str, args: dict = None, timeout: int = 60) -> dict:
+    """Call another Jarvis tool and return its result."""
+    tool_path = find_tool(tool_name)
+    if not tool_path:
+        return {"ok": False, "error": f"Tool {tool_name} not found"}
+    
+    project_root = os.path.join(os.path.dirname(__file__), '..')
+    input_data = json.dumps(args or {})
+    
+    result = subprocess.run(
+        ["python3", tool_path, input_data],
+        capture_output=True, text=True,
+        timeout=timeout, cwd=project_root
+    )
+    
+    if result.returncode == 0 and result.stdout:
+        return json.loads(result.stdout)
+    return {"ok": False, "error": result.stderr}
+
+# Usage in stash.remember for PDF extraction
+def extract_pdf_text(file_path: str) -> str:
+    result = call_tool('pdf_read', {
+        'action': 'extract_text',
+        'file_path': file_path
+    })
+    if result.get('ok'):
+        return result.get('data', {}).get('text', '')
+    return None
+```
+
+**Key Points:**
+1. **Search both directories**: `skills/` and `skills/auto-tools/`
+2. **Run from project root**: Ensures `lib/` imports work
+3. **JSON in/out**: Pass args as `sys.argv[1]`, parse stdout as JSON
+4. **Handle timeouts**: Set appropriate timeout per tool type
+
+See also: [TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md) for full pattern documentation.
 
 ---
 
@@ -983,7 +1231,36 @@ STASH_MAX_SPACE_SIZE_MB=500
 STASH_MAX_TOTAL_SIZE_GB=5
 STASH_ALLOWED_DOWNLOAD_HOSTS=""  # Empty = allow all external
 STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
+
+# Stash LLM Summarization (for stash.remember)
+# Optional: Override model for summarization (uses provider's default otherwise)
+# STASH_SUMMARIZE_MODEL="gpt-4o-mini"        # OpenAI
+# STASH_SUMMARIZE_MODEL="claude-3-5-haiku-latest"  # Anthropic
+# STASH_SUMMARIZE_MODEL="qwen3:14b"          # Ollama (local)
+# STASH_SUMMARIZE_MODEL="grok-4-1-fast-non-reasoning-latest"  # xAI
 ```
+
+### LLM Summarization Details
+
+When `stash.remember` is called with `summarize: true`:
+
+1. **Provider Detection**: Uses `LLM_PROVIDER` from environment
+2. **Model Selection**: Uses `STASH_SUMMARIZE_MODEL` if set, otherwise provider default
+3. **API Call**: Direct HTTP call to provider (not via orchestrator)
+4. **Token Limit**: Input truncated to 8000 chars, output limited to 300 tokens
+5. **Cost**: Separate from orchestrator tool call limits
+
+**Supported Providers:**
+
+| Provider | Model Default | API Endpoint |
+|----------|---------------|--------------|
+| OpenAI | `gpt-4o-mini` | api.openai.com |
+| Anthropic | `claude-3-5-haiku-latest` | api.anthropic.com |
+| Ollama | `qwen3:14b` | localhost:11434 |
+| xAI | `grok-4-1-fast-non-reasoning-latest` | api.x.ai |
+
+**Note**: Summarization calls are independent of the main conversation context.
+This means costs are separate from your orchestrator tool call budget.
 
 ---
 
@@ -1102,10 +1379,12 @@ See: `docs/api/STASH.md` for full API documentation.
 - [Memory System](MEMORY_SYSTEM.md) - Long-term fact storage
 - [Canvas System](CANVAS_SYSTEM.md) - Human-facing research notes  
 - [Tool Development](../AGENTS.md) - Tool creation guidelines
-- [Stash API](api/STASH.md) - FastAPI documentation ⭐ NEW
-- [Canvas API](api/CANVAS.md) - FastAPI documentation ⭐ NEW
+- [Tool Calling System](TOOL_CALLING_SYSTEM.md) - Inter-tool calling patterns ⭐ ENHANCED
+- [Stash API](api/STASH.md) - FastAPI documentation
+- [Canvas API](api/CANVAS.md) - FastAPI documentation
+- **PDF Read Tool** (`skills/pdf_read.py`) - PDF extraction, used by `stash.remember` ⭐ NEW
 
 ---
 
-*Last updated: 2026-01-18*
+*Last updated: 2026-01-21*
 

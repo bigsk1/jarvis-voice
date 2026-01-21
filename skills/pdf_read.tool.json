@@ -1,0 +1,94 @@
+{
+  "enabled": true,
+  "name": "pdf_read",
+  "description": "Read and process EXISTING PDF files: extract text/images, merge, split, convert to images, search. This is for PDF INPUT processing, not creating new PDFs.\n\nUse when:\n- 'Extract text from this PDF' → action: extract_text\n- 'What's in this PDF?' → action: info or extract_text\n- 'Get images from PDF' → action: extract_images\n- 'Merge these PDFs into one' → action: merge\n- 'Split this PDF at page 5' → action: split\n- 'Convert PDF pages to images' → action: to_images\n- 'Search PDF for keyword' → action: search\n- 'How many pages in this PDF?' → action: info\n\nDo NOT use for:\n- Creating new PDFs from scratch → use pdf_create instead\n- Making reports/documents from text → use pdf_create instead\n- Generating printable output → use pdf_create instead\n\nWorkflow direction:\n- pdf_read: PDF → text/images/info (extract FROM pdf)\n- pdf_create: text/images → PDF (generate TO pdf)",
+  "script": "pdf_read.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform",
+        "enum": ["info", "extract_text", "extract_images", "merge", "split", "to_images", "search"]
+      },
+      "stash_ref": {
+        "type": "string",
+        "description": "Stash reference URI (stash://space_id/file_id)"
+      },
+      "space_id": {
+        "type": "string",
+        "description": "Stash space ID (use with file_id)"
+      },
+      "file_id": {
+        "type": "string",
+        "description": "File ID or name in stash space"
+      },
+      "file_path": {
+        "type": "string",
+        "description": "Direct file path (alternative to stash ref)"
+      },
+      "pages": {
+        "description": "Pages to process: null=all, [1,2,3]=specific, '1-5'=range",
+        "oneOf": [
+          {"type": "array", "items": {"type": "integer"}},
+          {"type": "string"},
+          {"type": "null"}
+        ]
+      },
+      "save_to_stash": {
+        "type": "boolean",
+        "description": "Save extracted text to stash (for extract_text)",
+        "default": false
+      },
+      "output_name": {
+        "type": "string",
+        "description": "Output filename"
+      },
+      "output_space_id": {
+        "type": "string",
+        "description": "Stash space for output (creates new if not provided)"
+      },
+      "pdfs": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "List of stash_refs or paths (for merge action)"
+      },
+      "split_at": {
+        "description": "Page number(s) to split at, or 'each' for every page",
+        "oneOf": [
+          {"type": "integer"},
+          {"type": "array", "items": {"type": "integer"}},
+          {"type": "string", "enum": ["each"]}
+        ]
+      },
+      "dpi": {
+        "type": "integer",
+        "description": "DPI for image conversion (default: 150)",
+        "default": 150
+      },
+      "format": {
+        "type": "string",
+        "description": "Image format for to_images",
+        "enum": ["png", "jpeg"],
+        "default": "png"
+      },
+      "min_size": {
+        "type": "integer",
+        "description": "Minimum image dimension to extract (filters small icons)",
+        "default": 100
+      },
+      "query": {
+        "type": "string",
+        "description": "Search query (for search action)"
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}
