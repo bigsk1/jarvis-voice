@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "stash",
-  "description": "Temporary artifact storage for multi-step workflows. Store files, images, JSON, or downloaded data that tools need to share.\n\nUse this when:\n- Downloading images/files from URLs for later use\n- Storing intermediate data between tool calls\n- Preparing artifacts for pdf_create or printer\n- Caching API responses or web search results\n\nDo NOT use for:\n- Permanent memory (user preferences, facts) → use remember instead\n- Building software → use opencode instead\n- One-off text notes → use canvas instead\n\nWorkflow pattern: stash.save(download URL) → pdf_create(stash files) → printer.print()\n\nActions:\n- open_space: Create/resume a task bucket\n- save: Store text, JSON, base64, or download from URL (kind='url')\n- list: List files or spaces\n- read: Get file content or path\n- cleanup: Delete expired spaces\n\nExamples:\n- 'Download this image' → save with kind='url', url='https://...'\n- 'What files do I have?' → list\n- 'Get that file' → read with file_id",
+  "description": "Temporary artifact storage for multi-step workflows. Store files, images, JSON, or downloaded data that tools need to share.\n\nUse this when:\n- Downloading images/files from URLs for later use\n- Storing intermediate data between tool calls\n- Preparing artifacts for pdf_create or printer\n- Caching API responses or web search results\n- SAVING STASH DATA TO MEMORY → use action='remember'\n\nDo NOT use for:\n- Permanent memory (user preferences, facts) → use remember tool instead (unless saving stash content)\n- Building software → use opencode instead\n- One-off text notes → use canvas instead\n\nWorkflow patterns:\n- stash.save(download URL) → pdf_create(stash files) → printer.print()\n- crawl_url → stash.save → stash.remember (save important findings to memory)\n\nActions:\n- open_space: Create/resume a task bucket\n- save: Store text, JSON, base64, or download from URL (kind='url')\n- list: List files or spaces\n- read: Get file content or path\n- remember: Save stash artifact to PERMANENT MEMORY (text content or metadata for binary)\n- cleanup: Delete expired spaces\n\nExamples:\n- 'Download this image' → save with kind='url', url='https://...'\n- 'Save that stash data to memory' → remember with search='keyword' or space_id+file_id\n- 'What files do I have?' → list\n- 'Get that file' → read with file_id",
   "script": "stash.py",
   "parameters": {
     "type": "object",
@@ -9,7 +9,7 @@
       "action": {
         "type": "string",
         "description": "Action to perform",
-        "enum": ["open_space", "info", "save", "list", "read", "update", "cleanup"]
+        "enum": ["open_space", "info", "save", "list", "read", "update", "cleanup", "remember"]
       },
       "space_id": {
         "type": "string",
@@ -66,7 +66,7 @@
       },
       "file_id": {
         "type": "string",
-        "description": "File ID or name (for read)"
+        "description": "File ID or name (for read or remember)"
       },
       "mode": {
         "type": "string",
@@ -76,6 +76,30 @@
       "pinned": {
         "type": "boolean",
         "description": "Pin space to prevent auto-deletion (for update)"
+      },
+      "search": {
+        "type": "string",
+        "description": "Search term to find stash file by name or tags (for remember action, alternative to space_id+file_id)"
+      },
+      "key": {
+        "type": "string",
+        "description": "Memory key for remember action. Auto-generated from filename if not provided."
+      },
+      "category": {
+        "type": "string",
+        "description": "Memory category for remember action",
+        "enum": ["contact", "personal", "preference", "location", "technical", "network", "credentials", "project", "system", "fact"],
+        "default": "fact"
+      },
+      "importance": {
+        "type": "integer",
+        "description": "Importance 1-10 for remember action (default: 7)",
+        "minimum": 1,
+        "maximum": 10
+      },
+      "summary": {
+        "type": "string",
+        "description": "Custom summary to save instead of full content (for remember action)"
       }
     },
     "required": ["action"]
@@ -88,4 +112,3 @@
     "auto_approve": true
   }
 }
-

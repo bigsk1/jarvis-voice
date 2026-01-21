@@ -290,6 +290,191 @@ def action_cleanup(args: Dict) -> Dict:
         }
 
 
+def action_remember(args: Dict) -> Dict:
+    """
+    Save stash artifact to persistent memory.
+    
+    This bridges the gap between temporary stash storage and permanent memory.
+    For text files: saves content with metadata
+    For binary files: saves metadata only (description, tags, stash ref)
+    
+    Args:
+        space_id: Stash space ID (required if not using search)
+        file_id: File ID or filename (required if not using search)
+        search: Search term to find stash file (alternative to space_id/file_id)
+        key: Memory key (optional - auto-generated if not provided)
+        category: Memory category (default: 'fact')
+        importance: Importance 1-10 (default: 7)
+        summary: Custom summary to save instead of full content
+    """
+    # Import memory_db here to avoid circular imports
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+    from memory_db import get_memory_db
+    
+    space_id = args.get('space_id')
+    file_id = args.get('file_id')
+    search = args.get('search')
+    key = args.get('key')
+    category = args.get('category', 'fact')
+    importance = args.get('importance', 7)
+    summary = args.get('summary')
+    
+    # Find the file - either by direct reference or search
+    if search and not (space_id and file_id):
+        # Search for the file in recent stash spaces
+        all_spaces = list_spaces()
+        found = None
+        search_lower = search.lower()
+        search_terms = search_lower.split()  # Split into words for better matching
+        
+        for space_info in all_spaces:
+            try:
+                space = get_space(space_info['space_id'])
+                space_labels = [l.lower() for l in space.meta.get('labels', [])]
+                
+                for file_meta in space.meta.get('files', []):
+                    file_name = file_meta.get('name', '').lower()
+                    file_tags = [t.lower() for t in file_meta.get('tags', [])]
+                    
+                    # Match: all search terms found in filename, tags, or space labels
+                    searchable = file_name + ' ' + ' '.join(file_tags) + ' ' + ' '.join(space_labels)
+                    
+                    # For single-word search, simple substring match
+                    # For multi-word, check if all words are present
+                    if len(search_terms) == 1:
+                        matched = search_terms[0] in searchable
+                    else:
+                        matched = all(term in searchable for term in search_terms)
+                    
+                    if matched:
+                        found = {
+                            'space': space,
+                            'file_meta': file_meta,
+                            'space_id': space_info['space_id']
+                        }
+                        break
+                if found:
+                    break
+            except Exception:
+                continue
+        
+        if not found:
+            return {
+                "ok": False,
+                "speech": f"Could not find stash file matching '{search}'",
+                "error": "File not found"
+            }
+        
+        space = found['space']
+        file_meta = found['file_meta']
+        space_id = found['space_id']
+        file_id = file_meta.get('file_id')
+    
+    elif space_id and file_id:
+        # Direct reference
+        space = get_space(space_id)
+        stash_file = StashFile(space, file_id=file_id)
+        if not stash_file.exists:
+            stash_file = StashFile(space, name=file_id)
+        if not stash_file.exists:
+            return {
+                "ok": False,
+                "speech": f"File '{file_id}' not found in space",
+                "error": "File not found"
+            }
+        file_meta = stash_file.meta
+    else:
+        return {
+            "ok": False,
+            "speech": "Provide space_id+file_id or search term",
+            "error": "Missing parameters"
+        }
+    
+    # Build the memory entry
+    file_name = file_meta.get('name', 'unknown')
+    mime_type = file_meta.get('mime_type', '')
+    stash_ref = f"stash://{space_id}/{file_meta.get('file_id')}"
+    tags = file_meta.get('tags', [])
+    tool_origin = file_meta.get('tool_origin', 'stash')
+    
+    # Auto-generate key if not provided
+    if not key:
+        # Create key from filename, removing extension and sanitizing
+        base_name = os.path.splitext(file_name)[0]
+        key = f"stash_{base_name.replace(' ', '_').replace('-', '_')[:50]}"
+    
+    # Build value based on file type
+    is_text = mime_type.startswith('text/') or mime_type == 'application/json'
+    content_truncated = False
+    
+    if summary:
+        # Use provided summary
+        value = summary
+    elif is_text:
+        # Read text content
+        file_path = space.space_path / file_meta.get('stored_name')
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+            # Truncate if too long (memory entries should be searchable, not giant)
+            if len(content) > 2000:
+                value = f"{content[:2000]}... [truncated]"
+                content_truncated = True
+            else:
+                value = content
+        except Exception as e:
+            value = f"[Could not read content: {e}]"
+    else:
+        # Binary file - save metadata only
+        value = f"Binary file: {file_name} ({mime_type}, {format_size(file_meta.get('size_bytes', 0))})"
+    
+    # Build structured metadata (for db.remember metadata field)
+    memory_metadata = {
+        "stash_ref": stash_ref,
+        "space_id": space_id,
+        "file_id": file_meta.get('file_id'),
+        "file_name": file_name,
+        "mime_type": mime_type,
+        "size_bytes": file_meta.get('size_bytes', 0),
+        "tags": tags,
+        "tool_origin": tool_origin,
+        "stash_created_at": file_meta.get('created_at'),
+        "content_truncated": content_truncated,
+        "is_text": is_text,
+        "hash_sha256": file_meta.get('hash_sha256')
+    }
+    
+    # Save to memory with proper metadata
+    try:
+        db = get_memory_db()
+        db.remember(
+            key=key,
+            value=value,
+            category=category,
+            importance=importance,
+            source=f"stash:{space_id}",
+            metadata=memory_metadata
+        )
+        db.close()
+    except Exception as e:
+        return {
+            "ok": False,
+            "speech": f"Failed to save to memory: {e}",
+            "error": str(e)
+        }
+    
+    return {
+        "ok": True,
+        "speech": f"Saved '{file_name}' to memory as '{key}'",
+        "data": {
+            "key": key,
+            "category": category,
+            "importance": importance,
+            "metadata": memory_metadata
+        }
+    }
+
+
 def main():
     try:
         # Parse arguments
@@ -313,6 +498,7 @@ def main():
             'read': action_read,
             'update': action_update,
             'cleanup': action_cleanup,
+            'remember': action_remember,
         }
         
         if action not in handlers:
