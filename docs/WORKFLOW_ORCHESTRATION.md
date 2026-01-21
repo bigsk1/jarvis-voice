@@ -875,30 +875,342 @@ def select_mode(self, query, command_match, workflow_match):
 
 ---
 
-## Integration Points
+## Implementation Architecture
 
-### Router (`lib/router_v2.py`)
-- Match workflows by trigger patterns
-- Inject tool chain into LLM context
-- Select execution mode
+### Current Orchestrator Structure
 
-### Executor (`orchestrator/executor.py`)
-- New pipeline execution path
-- Variable substitution engine
-- Step result tracking
+```
+orchestrator/
+├── orchestrator_v2.py   # Main Orchestrator class, process() entry point
+├── router_v2.py         # LLMRouter - decides which tool (freeform mode)
+├── executor.py          # ToolExecutor - executes individual tools
+├── orchestrator.py      # Legacy v1 (deprecated)
+└── router.py            # Legacy v1 (deprecated)
+```
 
-### Commands (`jarvis-web/data/commands/`)
-- Extended JSON schema with `tool_chain`
-- Chain mode configuration
+### Proposed New Files
 
-### Workflows (`data/workflows/`)
-- New folder for workflow JSON files
-- Workflow validation on load
+```
+orchestrator/
+├── workflow_loader.py   # NEW: Load workflows, match triggers
+├── pipeline_executor.py # NEW: Execute workflow steps deterministically
+└── ... existing files unchanged ...
 
-### Intelligence (`lib/intelligence.py`)
-- Record workflow executions
-- Generate macro_skill insights
-- Surface learned sequences
+data/
+├── workflows/           # NEW: Workflow JSON definitions
+│   ├── deep_research.json
+│   ├── status_briefing.json
+│   └── ...
+```
+
+### Integration Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    orchestrator_v2.py                            │
+│                    Orchestrator.process()                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   def process(self, transcript, ...):                           │
+│       │                                                          │
+│       ▼                                                          │
+│   ┌──────────────────────────────────────────────────────────┐  │
+│   │  1. Check for workflow match (NEW)                       │  │
+│   │     workflow = self.workflow_loader.match(transcript)    │  │
+│   └──────────────────────────────────────────────────────────┘  │
+│       │                                                          │
+│       ├── Match found ──────────────────────────────────────────│──► Pipeline Mode
+│       │                                                          │
+│       │   ┌──────────────────────────────────────────────────┐  │
+│       │   │  return self.pipeline_executor.execute(          │  │
+│       │   │      workflow, transcript, ...                   │  │
+│       │   │  )                                               │  │
+│       │   └──────────────────────────────────────────────────┘  │
+│       │                                                          │
+│       └── No match ─────────────────────────────────────────────│──► Freeform Mode
+│                                                                  │
+│           ┌──────────────────────────────────────────────────┐  │
+│           │  # Existing multi-turn loop (unchanged)          │  │
+│           │  for turn_num in range(max_turns):               │  │
+│           │      route = self.router.route(...)              │  │
+│           │      if route["intent"] == "tool":               │  │
+│           │          result = self.executor.execute(...)     │  │
+│           └──────────────────────────────────────────────────┘  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### File Responsibilities
+
+#### `orchestrator/workflow_loader.py` (NEW)
+
+```python
+class WorkflowLoader:
+    """Load and match workflow definitions."""
+    
+    def __init__(self, workflows_dir: str):
+        self.workflows_dir = Path(workflows_dir)
+        self.workflows = {}
+        self._load_workflows()
+    
+    def _load_workflows(self):
+        """Load all enabled workflow JSON files."""
+        for path in self.workflows_dir.glob("*.json"):
+            workflow = json.load(path.open())
+            if workflow.get("enabled", True):  # Default enabled
+                self.workflows[workflow["id"]] = workflow
+    
+    def match(self, query: str) -> Optional[Dict]:
+        """Match query against workflow triggers."""
+        query_lower = query.lower()
+        for workflow in self.workflows.values():
+            triggers = workflow.get("triggers", {})
+            
+            # Check explicit commands (e.g., "/research")
+            for explicit in triggers.get("explicit", []):
+                if query_lower.startswith(explicit):
+                    return workflow
+            
+            # Check patterns (e.g., "research about")
+            for pattern in triggers.get("patterns", []):
+                if pattern.lower() in query_lower:
+                    return workflow
+            
+            # Check keywords
+            keywords = triggers.get("keywords", [])
+            if keywords and all(kw.lower() in query_lower for kw in keywords[:2]):
+                return workflow
+        
+        return None
+    
+    def reload(self):
+        """Hot-reload workflows (for development)."""
+        self.workflows = {}
+        self._load_workflows()
+```
+
+#### `orchestrator/pipeline_executor.py` (NEW)
+
+```python
+class PipelineExecutor:
+    """Execute workflow pipelines step-by-step."""
+    
+    def __init__(self, mode: str, executor: ToolExecutor, provider):
+        self.mode = mode
+        self.executor = executor  # Reuse existing ToolExecutor
+        self.provider = provider  # LLM for parameter filling
+    
+    def execute(self, workflow: Dict, query: str, 
+                status_callback=None) -> Dict[str, Any]:
+        """
+        Execute a workflow pipeline.
+        
+        Returns same format as Orchestrator.process() for compatibility.
+        """
+        variables = {"query": query, "topic": self._extract_topic(query)}
+        tool_defaults = workflow.get("tool_defaults", {})
+        steps = workflow.get("steps", [])
+        results = []
+        tools_used = []
+        
+        for step in steps:
+            step_num = step.get("step", len(results) + 1)
+            tool_name = step["tool"]
+            
+            # Status update
+            if status_callback:
+                status_callback(f"Step {step_num}: {tool_name}")
+            
+            # Resolve parameters (layered: step > tool_defaults > llm)
+            params = self._resolve_params(
+                step, tool_defaults.get(tool_name, {}), variables
+            )
+            
+            # Handle for_each loops
+            if "for_each" in step:
+                items = self._resolve_variable(step["for_each"], variables)
+                step_results = []
+                success_count = 0
+                
+                for item in items:
+                    item_params = {**params, **self._item_to_params(item, step)}
+                    result = self.executor.execute(tool_name, item_params)
+                    
+                    # Validate result
+                    if self._validate_result(result, step, variables):
+                        step_results.append(result)
+                        success_count += 1
+                    elif step.get("retry"):
+                        # Retry logic
+                        pass
+                
+                # Check required_success_count
+                required = step.get("required_success_count", 1)
+                if success_count < required:
+                    if step.get("on_all_fail") == "abort_with_message":
+                        return self._abort_response(workflow, step, results)
+                
+                variables[step.get("output_var", f"step{step_num}")] = step_results
+            else:
+                # Single execution
+                result = self.executor.execute(tool_name, params)
+                
+                if not result.get("ok") and step.get("required", True):
+                    # Required step failed
+                    if step.get("on_all_fail") == "abort_with_message":
+                        return self._abort_response(workflow, step, results)
+                
+                # Store output
+                if step.get("output_var"):
+                    variables[step["output_var"]] = result.get("data", {})
+            
+            results.append({"step": step_num, "tool": tool_name, "result": result})
+            tools_used.append(tool_name)
+        
+        # Build final response
+        return {
+            "ok": True,
+            "speech": self._build_speech(workflow, results, variables),
+            "data": {"workflow_id": workflow["id"], "results": results},
+            "tools_used": tools_used
+        }
+    
+    def _resolve_params(self, step, tool_defaults, variables) -> Dict:
+        """Resolve parameters: step > tool_defaults > llm_fills."""
+        params = {**tool_defaults}  # Start with defaults
+        
+        # Override with step params
+        for key, value in step.get("params", {}).items():
+            if isinstance(value, str) and value.startswith("${"):
+                params[key] = self._resolve_variable(value, variables)
+            else:
+                params[key] = value
+        
+        # LLM fills remaining (if llm_hints provided)
+        if step.get("llm_hints"):
+            llm_params = self._llm_fill_params(step, variables)
+            for key, value in llm_params.items():
+                if key not in params:  # Don't override explicit params
+                    params[key] = value
+        
+        return params
+    
+    def _validate_result(self, result, step, variables) -> bool:
+        """Validate step result using configured validation."""
+        if not step.get("validation"):
+            return result.get("ok", False)
+        
+        validation = step["validation"]
+        content = result.get("data", {}).get("content", "")
+        
+        # Heuristic checks
+        if validation.get("type") in ["heuristic", "hybrid"]:
+            heuristic = validation.get("heuristic", validation)
+            
+            if len(content) < heuristic.get("min_length", 0):
+                return False
+            
+            for pattern in heuristic.get("reject_patterns", []):
+                if pattern.lower() in content.lower():
+                    return False
+        
+        # LLM validation
+        if validation.get("type") in ["llm", "hybrid"] and validation.get("llm_prompt"):
+            # Call LLM to validate
+            pass
+        
+        return True
+```
+
+#### `orchestrator/orchestrator_v2.py` (MODIFIED)
+
+```python
+# Add imports at top
+from workflow_loader import WorkflowLoader
+from pipeline_executor import PipelineExecutor
+
+class Orchestrator:
+    def __init__(self, mode='cloud', ...):
+        # ... existing init ...
+        
+        # NEW: Initialize workflow system
+        workflows_dir = self.project_root / "data" / "workflows"
+        if workflows_dir.exists():
+            self.workflow_loader = WorkflowLoader(str(workflows_dir))
+            self.pipeline_executor = PipelineExecutor(
+                mode, self.executor, self.router.provider
+            )
+        else:
+            self.workflow_loader = None
+            self.pipeline_executor = None
+    
+    def process(self, transcript: str, ...) -> Dict[str, Any]:
+        # ... existing setup code ...
+        
+        # NEW: Check for workflow match BEFORE freeform loop
+        if self.workflow_loader:
+            workflow = self.workflow_loader.match(transcript)
+            if workflow:
+                # Execute via pipeline (bypasses freeform routing)
+                return self.pipeline_executor.execute(
+                    workflow, 
+                    transcript,
+                    status_callback=self.status_updater.update
+                )
+        
+        # ... existing freeform loop (unchanged) ...
+```
+
+### Web UI Integration
+
+The pipeline executor returns the same response format as `Orchestrator.process()`:
+
+```python
+{
+    "ok": True,
+    "speech": "Research complete...",
+    "data": {...},
+    "tools_used": ["stash", "brave_search", "crawl_url", "canvas"]
+}
+```
+
+**No changes needed** to:
+- `jarvis-web/server/sockets/chat.py` - Uses Orchestrator.process()
+- Terminal scripts - Use Orchestrator.process()
+
+The pipeline executor is **transparent** to callers.
+
+### Testing Strategy
+
+```bash
+# Test workflow loading
+python -c "
+from orchestrator.workflow_loader import WorkflowLoader
+loader = WorkflowLoader('data/workflows')
+print(f'Loaded {len(loader.workflows)} workflows')
+print(loader.match('research about quantum computing'))
+"
+
+# Test pipeline execution
+./orchestrator/orchestrator_v2.py cloud "research about quantum computing 2026"
+
+# Compare with freeform (should match if no workflow defined)
+./orchestrator/orchestrator_v2.py cloud "what time is it"
+```
+
+---
+
+## Integration Points (Summary)
+
+| Component | Change | Effort |
+|-----------|--------|--------|
+| `orchestrator/workflow_loader.py` | **NEW FILE** | Medium |
+| `orchestrator/pipeline_executor.py` | **NEW FILE** | High |
+| `orchestrator/orchestrator_v2.py` | Add workflow check at top of `process()` | Low |
+| `data/workflows/*.json` | **NEW FOLDER** + JSON files | Low |
+| `router_v2.py` | No changes | None |
+| `executor.py` | No changes (reused by pipeline) | None |
+| Web UI / Terminal | No changes (same response format) | None |
 
 ---
 
@@ -979,12 +1291,35 @@ crawl_url → stash.save → stash.remember → canvas
 
 ## Next Steps
 
-- [ ] Decide: Phase 1 (commands) vs Phase 2 (full recipes)
-- [ ] Design tool_chain JSON schema
-- [ ] Prototype router injection
-- [ ] Test with `research` workflow
-- [ ] Document learnings
+### Phase 1: Foundation
+- [ ] Create `data/workflows/` folder
+- [ ] Create `orchestrator/workflow_loader.py`
+- [ ] Create first workflow JSON: `deep_research.json`
+- [ ] Test workflow matching
+
+### Phase 2: Pipeline Executor
+- [ ] Create `orchestrator/pipeline_executor.py`
+- [ ] Implement step execution loop
+- [ ] Implement variable substitution
+- [ ] Implement parameter layering (step > defaults > LLM)
+
+### Phase 3: Integration
+- [ ] Modify `orchestrator/orchestrator_v2.py` to check workflows first
+- [ ] Test end-to-end with terminal
+- [ ] Test end-to-end with web UI
+
+### Phase 4: Validation & Retry
+- [ ] Implement heuristic content validation
+- [ ] Implement LLM content validation
+- [ ] Implement retry strategies
+
+### Phase 5: Polish
+- [ ] Add more workflow recipes - ssh_tool have ideas for creating and fully controling remote vps2 , start to finish app on vps2.. x amount of steps stop summarize, continue X amount of steps stop summarize, need way to pause during workflow for summary and not rerun workflow from start. ( 15 tool calls limit via .env can increase or lower as needed)
+- [ ] Add status updates during pipeline execution
+- [ ] Add workflow execution logging to intelligence layer
+- [ ] Document in main README
+- [ ] Create a workflow builder - like we have a tool builder, ./bin/workflow_builder --cloud "create a multi tool workflow for getting current bitcoin and tesla prices and create a investment stratagy based on public data put on canvas" 
 
 ---
 
-**Questions or ideas?** This is a design doc - implementation details TBD based on chosen approach.
+**Status**: Design complete. Ready for implementation.
