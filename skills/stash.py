@@ -14,15 +14,140 @@ import sys
 import os
 import json
 import base64
-from typing import Dict, Any
+import requests
+from typing import Dict, Any, Optional
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
+from config_loader import load_config, get_config_value
 from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
     StashFile, StashSpace, get_stash_dir
 )
+
+
+def summarize_content_with_llm(content: str, file_name: str, max_length: int = 500) -> Optional[str]:
+    """
+    Summarize content using configured LLM provider.
+    
+    Makes a direct API call (not through orchestrator) to keep key facts
+    for memory storage. Uses cheap/fast models when available.
+    
+    Args:
+        content: Full text content to summarize
+        file_name: For context in the prompt
+        max_length: Target summary length
+    
+    Returns:
+        Summary string, or None if LLM call fails (caller should fallback to truncation)
+    """
+    provider = get_config_value('LLM_PROVIDER', 'openai').lower()
+    
+    # System prompt for summarization
+    system_prompt = """You are a precise summarizer. Extract and preserve ALL key facts, numbers, dates, names, and conclusions from the content. 
+Output a dense summary that captures the essential information for future reference.
+Do NOT add commentary or opinions - just the facts."""
+    
+    user_prompt = f"""Summarize this content from "{file_name}" in under {max_length} characters, preserving all key facts:
+
+{content[:8000]}"""  # Cap input to avoid token limits
+    
+    try:
+        if provider == 'openai':
+            api_key = get_config_value('OPENAI_API_KEY')
+            if not api_key:
+                return None
+            
+            response = requests.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+                json={
+                    'model': get_config_value('STASH_SUMMARIZE_MODEL', 'gpt-4o-mini'),
+                    'messages': [
+                        {'role': 'system', 'content': system_prompt},
+                        {'role': 'user', 'content': user_prompt}
+                    ],
+                    'max_tokens': 300,
+                    'temperature': 0.3
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()['choices'][0]['message']['content'].strip()
+        
+        elif provider == 'anthropic':
+            api_key = get_config_value('ANTHROPIC_API_KEY')
+            if not api_key:
+                return None
+            
+            response = requests.post(
+                'https://api.anthropic.com/v1/messages',
+                headers={
+                    'x-api-key': api_key,
+                    'Content-Type': 'application/json',
+                    'anthropic-version': '2023-06-01'
+                },
+                json={
+                    'model': get_config_value('STASH_SUMMARIZE_MODEL', 'claude-4-5-sonnet-20250929'),
+                    'max_tokens': 300,
+                    'system': system_prompt,
+                    'messages': [{'role': 'user', 'content': user_prompt}]
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()['content'][0]['text'].strip()
+        
+        
+        elif provider == 'ollama':
+            base_url = get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
+            model = get_config_value('STASH_SUMMARIZE_MODEL', 'qwen3:14b')
+            
+            response = requests.post(
+                f'{base_url}/api/chat',
+                json={
+                    'model': model,
+                    'messages': [
+                        {'role': 'system', 'content': system_prompt},
+                        {'role': 'user', 'content': user_prompt}
+                    ],
+                    'stream': False,
+                    'options': {'num_predict': 300, 'temperature': 0.3}
+                },
+                timeout=60  # Ollama can be slower
+            )
+            response.raise_for_status()
+            return response.json()['message']['content'].strip()
+        
+        elif provider == 'xai':
+            api_key = get_config_value('XAI_API_KEY')
+            if not api_key:
+                return None
+            
+            response = requests.post(
+                'https://api.x.ai/v1/chat/completions',
+                headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+                json={
+                    'model': get_config_value('STASH_SUMMARIZE_MODEL', 'grok-4-1-fast-non-reasoning-latest'),
+                    'messages': [
+                        {'role': 'system', 'content': system_prompt},
+                        {'role': 'user', 'content': user_prompt}
+                    ],
+                    'max_tokens': 300,
+                    'temperature': 0.3
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()['choices'][0]['message']['content'].strip()
+        
+        else:
+            return None
+            
+    except Exception as e:
+        # Silent fail - caller will fallback to truncation
+        print(f"LLM summarize failed: {e}", file=sys.stderr)
+        return None
 
 
 def format_size(bytes_size: int) -> str:
@@ -318,6 +443,7 @@ def action_remember(args: Dict) -> Dict:
     category = args.get('category', 'fact')
     importance = args.get('importance', 7)
     summary = args.get('summary')
+    auto_summarize = args.get('summarize', False)  # Use LLM to summarize large content
     
     # Find the file - either by direct reference or search
     if search and not (space_id and file_id):
@@ -406,6 +532,7 @@ def action_remember(args: Dict) -> Dict:
     # Build value based on file type
     is_text = mime_type.startswith('text/') or mime_type == 'application/json'
     content_truncated = False
+    llm_summarized = False
     
     if summary:
         # Use provided summary
@@ -416,10 +543,23 @@ def action_remember(args: Dict) -> Dict:
         try:
             with open(file_path, 'r') as f:
                 content = f.read()
-            # Truncate if too long (memory entries should be searchable, not giant)
+            
+            # Handle long content
             if len(content) > 2000:
-                value = f"{content[:2000]}... [truncated]"
-                content_truncated = True
+                if auto_summarize:
+                    # Use LLM to create intelligent summary
+                    llm_summary = summarize_content_with_llm(content, file_name)
+                    if llm_summary:
+                        value = llm_summary
+                        llm_summarized = True
+                    else:
+                        # LLM failed, fallback to truncation
+                        value = f"{content[:2000]}... [truncated]"
+                        content_truncated = True
+                else:
+                    # Simple truncation (default)
+                    value = f"{content[:2000]}... [truncated]"
+                    content_truncated = True
             else:
                 value = content
         except Exception as e:
@@ -440,6 +580,7 @@ def action_remember(args: Dict) -> Dict:
         "tool_origin": tool_origin,
         "stash_created_at": file_meta.get('created_at'),
         "content_truncated": content_truncated,
+        "llm_summarized": llm_summarized,
         "is_text": is_text,
         "hash_sha256": file_meta.get('hash_sha256')
     }

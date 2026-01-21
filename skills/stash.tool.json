@@ -100,6 +100,11 @@
       "summary": {
         "type": "string",
         "description": "Custom summary to save instead of full content (for remember action)"
+      },
+      "summarize": {
+        "type": "boolean",
+        "description": "Use LLM to intelligently summarize large content instead of truncating (for remember action). Adds ~1-2s latency but preserves key facts. Default: false",
+        "default": false
       }
     },
     "required": ["action"]
@@ -107,7 +112,7 @@
   "permissions": {
     "dangerous": false,
     "bash": false,
-    "network": false,
+    "network": true,
     "filesystem": true,
     "auto_approve": true
   }
