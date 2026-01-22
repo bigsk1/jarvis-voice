@@ -14,7 +14,7 @@ skills/
 │   ├── *.py
 │   ├── *.tool.json
 │   └── *.report.json # Build audit reports
-└── profiles/         # Tool sync profiles (cloud/local)
+└── profiles/         # Tool sync profiles (cloud/local) Not fully added yet
 ```
 
 ---
@@ -307,12 +307,6 @@ Tools are discovered dynamically using semantic search:
 - Only relevant tools are loaded per query (reduces context)
 - Tool descriptions are embedded for similarity matching
 - "Ghost tools" (critical tools) are always available
-
-Configure in `config/cloud.env`:
-```bash
-TOOL_RAG_ENABLED=true
-TOOL_RAG_TOP_K=8
-```
 
 ---
 
