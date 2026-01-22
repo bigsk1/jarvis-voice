@@ -149,30 +149,6 @@ For `/commands`, deterministic execution:
 ./orchestrator/orchestrator_v2.py cloud "/health vps2"
 ```
 
----
-
-## Tool Contract
-
-Tools in `skills/` follow this interface:
-
-**Input**: JSON via command line argument
-```json
-{
-  "location": "Portland, OR"
-}
-```
-
-**Output**: JSON via stdout
-```json
-{
-  "ok": true,
-  "speech": "It's 72 degrees and sunny",
-  "data": {
-    "temp": 72,
-    "condition": "sunny"
-  }
-}
-```
 
 **Exit Code**: 0 for success, non-zero for error
 
@@ -182,21 +158,6 @@ Tools in `skills/` follow this interface:
 
 Key environment variables (in `config/cloud.env` or `config/local.env`):
 
-```bash
-# LLM Provider
-LLM_PROVIDER="xai"           # xai, anthropic, openai, ollama
-LLM_MODEL="grok-4-fast"      # Model to use
-
-# Tool RAG
-TOOL_RAG_ENABLED="true"      # Dynamic tool discovery
-TOOL_RAG_TOP_K="8"           # Tools to retrieve per query
-
-# Intelligence Layer
-INTELLIGENCE_ENABLED="true"  # Self-learning system
-
-# Response Style
-JARVIS_RESPONSE_STYLE="auto" # auto, casual, detailed
-```
 
 ---
 
