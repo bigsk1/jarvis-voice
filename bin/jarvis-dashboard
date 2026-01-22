@@ -149,6 +149,14 @@ COMMANDS: List[Command] = [
     Command("View Health Workflow", "cat data/workflows/server_health_check.json | jq '.name, .description, .steps[].tool'", "Server health workflow details", "🔄 Workflows"),
     Command("Workflow Docs", "echo '📖 See: docs/WORKFLOW_ORCHESTRATION.md' && echo '📖 See: data/workflows/AGENTS.md' && echo '📖 See: data/workflows/README.md'", "Workflow documentation links", "🔄 Workflows"),
     
+    # === 🔄 WORKFLOWS API ===
+    Command("API: List Workflows", "curl -s http://localhost:8880/api/workflows | jq '.workflows[] | {id, trigger, tools: .tools_used | length}'", "List workflows via API", "🔄 Workflows API"),
+    Command("API: Workflow Details", "curl -s http://localhost:8880/api/workflows/crypto_market_report | jq", "Get crypto workflow details", "🔄 Workflows API"),
+    Command("API: Workflow History", "curl -s 'http://localhost:8880/api/workflows/history?limit=10' | jq '.executions[] | {workflow_id, ok, steps_completed, duration_ms}'", "Recent workflow executions", "🔄 Workflows API"),
+    Command("API: History by Workflow", "curl -s 'http://localhost:8880/api/workflows/history?workflow_id=crypto_market_report&limit=5' | jq", "Filter history by workflow", "🔄 Workflows API"),
+    Command("API: Success Rate", "curl -s 'http://localhost:8880/api/workflows/history?limit=50' | jq '{total: .count, success: .success_count, fail: .failure_count, rate: (.success_count / .count * 100 | round)}'", "Workflow success rate", "🔄 Workflows API"),
+    Command("API Docs", "echo '🌐 Swagger UI: http://192.168.70.228:8880/docs/dark#/workflows' && echo '📖 Docs: docs/api/WORKFLOWS.md'", "Workflows API documentation", "🔄 Workflows API"),
+    
     # === 🧪 TESTING ===
     Command("Test All (Cloud)", "./test-all-tools.sh", "All tool tests - cloud", "🧪 Testing"),
     Command("Test All (Local)", "./test-all-tools-local.sh", "All tool tests - local", "🧪 Testing"),

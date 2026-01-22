@@ -22,6 +22,7 @@ Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks,
 |-----|---------------|-------------|
 | **Memory** | [MEMORY.md](MEMORY.md) | CRUD, search (keyword/semantic), categories |
 | **Query** | [QUERY.md](QUERY.md) | Send queries to Jarvis programmatically |
+| **Workflows** | [WORKFLOWS.md](WORKFLOWS.md) | Execute multi-tool pipelines (e.g., /crypto, /archive) |
 | **Conversations** | [CONVERSATIONS.md](CONVERSATIONS.md) | Browse conversation history |
 | **Stash** | [STASH.md](STASH.md) | Access stored artifacts and files |
 | **Canvas** | [CANVAS.md](CANVAS.md) | Browse visual knowledge pages |
@@ -38,6 +39,12 @@ GET  /api/memory/search/semantic?q=where+is+my+app  # Semantic search
 # Query
 POST /api/query               # Full query with options
 POST /api/query/quick         # Simple query {"q": "what time is it"}
+
+# Workflows
+GET  /api/workflows           # List available workflows
+GET  /api/workflows/{id}      # Get workflow details
+POST /api/workflows/{id}/execute  # Execute workflow
+GET  /api/workflows/history   # Execution history
 
 # Conversations
 GET  /api/conversations       # List conversations
@@ -129,6 +136,7 @@ Interactive API documentation available at:
 | **Complete Reference** | [API Overview](API_OVERVIEW.md) |
 | **Memory Operations** | [Memory API](MEMORY.md) |
 | **Query Jarvis** | [Query API](QUERY.md) |
+| **Workflow Pipelines** | [Workflows API](WORKFLOWS.md) |
 | **Code Examples** | [code-examples/](code-examples/) |
 | **Remote Setup** | [Remote Monitoring Guide](REMOTE_MONITORING.md) |
 | **Intelligence Layer** | [INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md) |
