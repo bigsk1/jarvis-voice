@@ -125,12 +125,12 @@ class JarvisSocket {
   }
 
   /**
-   * Send a chat message (with optional image and command metadata)
+   * Send a chat message (with optional image and prompt metadata)
    * @param {string} message - The message text
    * @param {Object} imageData - Optional image data {base64, url, filename}
-   * @param {Object} commandMeta - Optional command/prompt metadata from CommandSystem
+   * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name}
    */
-  sendMessage(message, imageData = null, commandMeta = null) {
+  sendMessage(message, imageData = null, promptMeta = null) {
     if (!this.connected) {
       console.error('[Socket] Not connected');
       return false;
@@ -147,25 +147,13 @@ class JarvisSocket {
       payload.image = imageData;
     }
     
-    // Include command/prompt metadata if provided
-    if (commandMeta) {
-      if (commandMeta.instruction) {
-        payload.system_instruction = commandMeta.instruction;
+    // Include prompt metadata if provided (workflows are handled by orchestrator via /trigger)
+    if (promptMeta) {
+      if (promptMeta.system_instruction) {
+        payload.system_instruction = promptMeta.system_instruction;
       }
-      if (commandMeta.force_tool) {
-        payload.force_tool = commandMeta.force_tool;
-      }
-      if (commandMeta.exclude_tools && commandMeta.exclude_tools.length > 0) {
-        payload.exclude_tools = commandMeta.exclude_tools;
-      }
-      if (commandMeta.response_style) {
-        payload.response_style = commandMeta.response_style;
-      }
-      if (commandMeta.command) {
-        payload.command = commandMeta.command;
-      }
-      if (commandMeta.prompt) {
-        payload.prompt_name = commandMeta.prompt;
+      if (promptMeta.prompt_name) {
+        payload.prompt_name = promptMeta.prompt_name;
       }
     }
 

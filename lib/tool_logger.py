@@ -39,7 +39,9 @@ class ToolLogger:
         result: Dict[str, Any],
         duration_ms: float,
         user_query: Optional[str] = None,
-        mode: str = "cloud"
+        mode: str = "cloud",
+        workflow_id: Optional[str] = None,
+        workflow_step: Optional[int] = None
     ):
         """
         Log a tool execution.
@@ -51,6 +53,8 @@ class ToolLogger:
             duration_ms: Execution time in milliseconds
             user_query: Original user query (if available)
             mode: cloud or local
+            workflow_id: ID of the workflow (if executed as part of workflow)
+            workflow_step: Step number within workflow (if applicable)
         """
         log_entry = {
             "timestamp": datetime.now().isoformat(),
@@ -59,7 +63,7 @@ class ToolLogger:
             "arguments": arguments,
             "result": {
                 "ok": result.get("ok", False),
-                "speech": result.get("speech", ""),
+                "speech": result.get("speech", "")[:200] if result.get("speech") else "",
                 "has_data": "data" in result,
                 "error": result.get("error", None)
             },
@@ -67,8 +71,61 @@ class ToolLogger:
             "user_query": user_query
         }
         
+        # Add workflow context if present
+        if workflow_id:
+            log_entry["workflow_id"] = workflow_id
+        if workflow_step is not None:
+            log_entry["workflow_step"] = workflow_step
+        
         # Write as JSON lines (one JSON object per line)
         with open(self.log_file, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    
+    def log_workflow_execution(
+        self,
+        workflow_id: str,
+        workflow_name: str,
+        user_query: str,
+        result: Dict[str, Any],
+        duration_ms: float,
+        steps_completed: int,
+        tools_used: list,
+        mode: str = "cloud"
+    ):
+        """
+        Log a complete workflow execution.
+        
+        Args:
+            workflow_id: Unique workflow ID
+            workflow_name: Human-readable workflow name
+            user_query: Original user query that triggered workflow
+            result: Final workflow result
+            duration_ms: Total execution time
+            steps_completed: Number of steps completed
+            tools_used: List of tools used in workflow
+            mode: cloud or local
+        """
+        # Use a separate workflow log file
+        today = datetime.now().strftime("%Y-%m-%d")
+        workflow_log = self.log_dir.parent / f"workflows-{today}.jsonl"
+        
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "mode": mode,
+            "type": "workflow_execution",
+            "workflow_id": workflow_id,
+            "workflow_name": workflow_name,
+            "user_query": user_query,
+            "result": {
+                "ok": result.get("ok", False),
+                "speech": result.get("speech", "")[:200] if result.get("speech") else "",
+                "steps_completed": steps_completed,
+                "tools_used": tools_used
+            },
+            "duration_ms": round(duration_ms, 2)
+        }
+        
+        with open(workflow_log, 'a') as f:
             f.write(json.dumps(log_entry) + '\n')
     
     def get_recent_logs(self, limit: int = 10) -> list:

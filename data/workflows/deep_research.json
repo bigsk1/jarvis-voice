@@ -1,0 +1,153 @@
+{
+  "id": "deep_research",
+  "name": "Deep Research Workflow",
+  "description": "Comprehensive research with stash artifacts, memory, and canvas output. Validates content quality and retries failed sources.",
+  "enabled": true,
+  "version": "1.0",
+  
+  "triggers": {
+    "patterns": [
+      "research about",
+      "deep dive on",
+      "comprehensive analysis of",
+      "investigate",
+      "research on"
+    ],
+    "keywords": ["research", "deep", "comprehensive"],
+    "explicit": ["/research"]
+  },
+  
+  "variables": {
+    "topic": {"from": "query", "extract": "main_subject"}
+  },
+  
+  "tool_defaults": {
+    "crawl_url": {
+      "stealth": true,
+      "wait_for_js": true,
+      "exclude_tags": ["nav", "footer", "aside", "script", "style", "header"]
+    },
+    "stash": {
+      "tags": ["research", "auto"]
+    }
+  },
+  
+  "validation_policy": {
+    "default_validation": "hybrid",
+    "abort_threshold": 0.5,
+    "max_total_retries": 10,
+    "retry_delay_ms": 500
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "stash",
+      "action": "open_space",
+      "params": {
+        "labels": ["research", "${topic}"]
+      },
+      "output_var": "space_id",
+      "required": true,
+      "description": "Create research workspace"
+    },
+    {
+      "step": 2,
+      "tool": "mcp_brave_search_brave_web_search",
+      "params": {
+        "query": "${topic}",
+        "count": 5
+      },
+      "output_var": "search_results",
+      "required": true,
+      "validation": {
+        "type": "heuristic",
+        "min_results": 3
+      },
+      "retry": {
+        "max_attempts": 2,
+        "strategy": "broaden_search"
+      },
+      "description": "Search for sources"
+    },
+    {
+      "step": 3,
+      "tool": "crawl_url",
+      "for_each": "${search_results.urls[:5]}",
+      "output_var": "articles",
+      "params": {},
+      "llm_hints": {
+        "css_selector": "Look for main content: .article, .post-content, main, .entry-content",
+        "wait_for": "If React/SPA site, wait for content to load"
+      },
+      "validation": {
+        "type": "heuristic",
+        "heuristic": {
+          "min_length": 500,
+          "reject_patterns": [
+            "subscribe to continue reading",
+            "subscribe to read the full",
+            "create an account to continue",
+            "sign in to continue",
+            "403 forbidden",
+            "access denied",
+            "page not found",
+            "404 error",
+            "please verify you are human",
+            "enable cookies to continue"
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 5,
+        "strategy": "next_url",
+        "fallback_tools": ["mcp_fetch_fetch"]
+      },
+      "required_success_count": 2,
+      "on_all_fail": "abort_with_message",
+      "description": "Crawl and validate sources"
+    },
+    {
+      "step": 4,
+      "tool": "stash",
+      "action": "save",
+      "for_each": "${validated_articles}",
+      "params": {
+        "space_id": "${space_id}",
+        "kind": "text",
+        "tags": ["research", "source", "${topic}"]
+      },
+      "output_var": "saved_files",
+      "required": true,
+      "description": "Save articles to stash"
+    },
+    {
+      "step": 5,
+      "tool": "remember",
+      "condition": "${llm_decides}",
+      "llm_prompt": "Based on the research findings, what 2-3 key facts should be saved to long-term memory? Format as separate remember calls.",
+      "params": {
+        "category": "research",
+        "importance": 7
+      },
+      "required": false,
+      "description": "Save key findings to memory"
+    },
+    {
+      "step": 6,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Research: ${topic}",
+        "tags": ["research", "${topic}"]
+      },
+      "llm_prompt": "Create a comprehensive research summary about '${topic}' using these articles:\n\n${validated_articles}\n\nInclude:\n- Executive summary (2-3 sentences with specific findings)\n- Key findings with specific facts, dates, and quotes from the articles\n- Sources used (list the actual URLs)\n- Reference to stash ${space_id} for full articles\n- Open questions for further research",
+      "required": true,
+      "description": "Create canvas summary"
+    }
+  ],
+  
+  "success_speech": "Research complete. I found ${article_count} quality sources and created a canvas summary. The full articles are saved in stash ${space_id}.",
+  "partial_speech": "Research partially complete. Some sources couldn't be retrieved, but I created a summary with what I found.",
+  "abort_speech": "I couldn't find enough quality sources on ${topic}. The sites I tried were paywalled or had access restrictions."
+}

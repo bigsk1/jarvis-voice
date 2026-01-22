@@ -3,40 +3,41 @@
  */
 
 /**
- * Command and Prompt System
- * Handles /commands and @prompts for enhanced chat interaction
+ * Workflow and Prompt System
+ * Handles /workflows and @prompts for enhanced chat interaction
  */
 class CommandSystem {
   constructor() {
-    this.commands = {};    // /command registry
     this.prompts = {};     // @prompt registry
+    this.workflows = {};   // /workflow registry (multi-tool pipelines)
     this.loaded = false;
     this._loadRegistry();
   }
   
   /**
-   * Load commands and prompts from server
+   * Load prompts and workflows from server
    */
   async _loadRegistry() {
     try {
-      // Load both in parallel
-      const [commandsRes, promptsRes] = await Promise.all([
-        fetch('/api/commands'),
-        fetch('/api/prompts')
+      // Load prompts and workflows in parallel
+      const [promptsRes, workflowsRes] = await Promise.all([
+        fetch('/api/prompts'),
+        fetch('/api/workflows')
       ]);
-      
-      if (commandsRes.ok) {
-        const data = await commandsRes.json();
-        this.commands = data.commands || {};
-      }
       
       if (promptsRes.ok) {
         const data = await promptsRes.json();
         this.prompts = data.prompts || {};
       }
       
+      if (workflowsRes.ok) {
+        const data = await workflowsRes.json();
+        this.workflows = data.workflows || {};
+      }
+      
       this.loaded = true;
-      console.log('[Commands] Loaded:', Object.keys(this.commands).length, 'commands,', Object.keys(this.prompts).length, 'prompts');
+      console.log('[Commands] Loaded:', Object.keys(this.prompts).length, 'prompts,',
+                  Object.keys(this.workflows || {}).length, 'workflows');
     } catch (err) {
       console.warn('[Commands] Failed to load registry:', err);
     }
@@ -50,17 +51,28 @@ class CommandSystem {
   getSuggestions(input) {
     const suggestions = [];
     
-    // Check for /command prefix
+    // Check for /workflow prefix
     if (input.startsWith('/')) {
       const query = input.slice(1).toLowerCase();
-      for (const [name, cmd] of Object.entries(this.commands)) {
-        if (name.toLowerCase().startsWith(query) || query === '') {
-          suggestions.push({
-            type: 'command',
-            name: name,
-            icon: cmd.icon || '⚡',
-            description: cmd.description
-          });
+      
+      // Add workflow suggestions
+      for (const [id, wf] of Object.entries(this.workflows || {})) {
+        // Match against workflow triggers (e.g., /research, /note)
+        const triggers = wf.triggers || [];
+        for (const trigger of triggers) {
+          const triggerName = trigger.replace('/', '');
+          if (triggerName.toLowerCase().startsWith(query) || query === '') {
+            suggestions.push({
+              type: 'workflow',
+              name: triggerName,
+              icon: wf.icon || '🔄',
+              description: wf.description || `${wf.name} (${wf.step_count} steps)`,
+              workflow_id: id,
+              steps: wf.steps || [],  // Include steps for tooltip
+              tools_used: wf.tools_used || []
+            });
+            break; // Only add once per workflow
+          }
         }
       }
     }
@@ -74,7 +86,8 @@ class CommandSystem {
             type: 'prompt',
             name: name,
             icon: '📝',
-            description: prompt.description || `Use ${name} methodology`
+            description: prompt.description || `Use ${name} methodology`,
+            key_points: prompt.key_points || []  // Include key points for tooltip
           });
         }
       }
@@ -87,37 +100,37 @@ class CommandSystem {
   }
   
   /**
-   * Parse input and extract command/prompt + message
+   * Parse input and extract workflow/prompt + message
    * @param {string} input - Raw input text
-   * @returns {Object} {command?, prompt?, message, instruction?}
+   * @returns {Object} {workflow?, prompt?, message, instruction?}
    */
   parseInput(input) {
     const result = {
-      command: null,
       prompt: null,
+      workflow: null,
       message: input,
-      instruction: null,
-      force_tool: null,
-      exclude_tools: [],
-      response_style: null
+      instruction: null
     };
     
-    // Check for /command
-    const cmdMatch = input.match(/^\/(\w+)\s*(.*)/s);
+    // Check for /workflow
+    const cmdMatch = input.match(/^\/(\w+[-\w]*)\s*(.*)/s);
     if (cmdMatch) {
       const cmdName = cmdMatch[1].toLowerCase();
-      const cmd = this.commands[cmdName];
-      if (cmd) {
-        result.command = cmdName;
-        result.message = cmdMatch[2].trim();
-        result.instruction = cmd.instruction;
-        result.force_tool = cmd.force_tool;
-        result.exclude_tools = cmd.exclude_tools || [];
-        result.response_style = cmd.response_style;
+      
+      // Check if it's a workflow trigger
+      for (const [id, wf] of Object.entries(this.workflows || {})) {
+        const triggers = wf.triggers || [];
+        for (const trigger of triggers) {
+          if (trigger.replace('/', '') === cmdName) {
+            result.workflow = id;
+            result.message = input; // Keep full message for orchestrator's workflow detection
+            return result; // Workflows don't combine with @prompts
+          }
+        }
       }
     }
     
-    // Check for @prompt (can be combined with /command)
+    // Check for @prompt (only if not a workflow)
     const promptMatch = result.message.match(/^@(\w+)\s*(.*)/s);
     if (promptMatch) {
       const promptName = promptMatch[1].toLowerCase();
@@ -125,9 +138,7 @@ class CommandSystem {
       if (prompt) {
         result.prompt = promptName;
         result.message = promptMatch[2].trim();
-        // Prepend prompt content to instruction
-        const promptInstruction = prompt.content || '';
-        result.instruction = promptInstruction + (result.instruction ? '\n\n' + result.instruction : '');
+        result.instruction = prompt.content || '';
       }
     }
     
@@ -135,13 +146,13 @@ class CommandSystem {
   }
   
   /**
-   * Get display text for active command/prompt
+   * Get display text for active workflow/prompt
    */
   getActiveDisplay(parsed) {
     const parts = [];
-    if (parsed.command) {
-      const cmd = this.commands[parsed.command];
-      parts.push(`/${parsed.command} ${cmd?.icon || '⚡'}`);
+    if (parsed.workflow) {
+      const wf = this.workflows[parsed.workflow];
+      parts.push(`/${parsed.workflow} ${wf?.icon || '🔄'}`);
     }
     if (parsed.prompt) {
       parts.push(`@${parsed.prompt} 📝`);
@@ -290,9 +301,9 @@ class ChatUI {
       return;
     }
     
-    // Don't enhance if already using commands/prompts
+    // Don't enhance if already using workflows/prompts
     if (input.startsWith('/') || input.startsWith('@')) {
-      Utils.toast('Remove the / or @ command first to enhance', 'info');
+      Utils.toast('Remove the / or @ prefix first to enhance', 'info');
       return;
     }
     
@@ -347,7 +358,7 @@ class ChatUI {
   _checkAutocomplete() {
     const input = this.inputField.value;
     
-    // Case 1: Start with / and no space yet (typing command)
+    // Case 1: Start with / and no space yet (typing workflow)
     if (input.startsWith('/') && !input.includes(' ')) {
       const suggestions = window.commandSystem.getSuggestions(input);
       if (suggestions.length > 0) {
@@ -365,36 +376,59 @@ class ChatUI {
       }
     }
     
-    // Case 3: Already have /command, now typing @prompt (e.g., "/canvas @res")
-    const cmdWithPromptMatch = input.match(/^\/\w+\s+(@\w*)$/);
-    if (cmdWithPromptMatch) {
-      const atPart = cmdWithPromptMatch[1];  // "@res" or "@"
-      const suggestions = window.commandSystem.getSuggestions(atPart);
-      if (suggestions.length > 0) {
-        this._showAutocomplete(suggestions, 'prompt_after_command');
-        return;
-      }
-    }
-    
     this._hideAutocomplete();
   }
   
   /**
    * Show autocomplete dropdown
    * @param {Array} suggestions - List of suggestions
-   * @param {string} mode - 'normal' or 'prompt_after_command'
    */
-  _showAutocomplete(suggestions, mode = 'normal') {
+  _showAutocomplete(suggestions) {
     this.selectedSuggestionIndex = -1;
-    this.autocompleteMode = mode;  // Store mode for selection
     
-    const html = suggestions.map((s, i) => `
-      <div class="autocomplete-item" data-index="${i}" data-type="${s.type}" data-name="${s.name}">
-        <span class="autocomplete-icon">${s.icon}</span>
-        <span class="autocomplete-name">${s.type === 'command' ? '/' : '@'}${s.name}</span>
-        <span class="autocomplete-desc">${Utils.truncate(s.description, 40)}</span>
-      </div>
-    `).join('');
+    const html = suggestions.map((s, i) => {
+      // Build tooltip content for workflows
+      let tooltipHtml = '';
+      if (s.type === 'workflow' && s.steps && s.steps.length > 0) {
+        const stepsHtml = s.steps.map(step => 
+          `<div class="tooltip-step">
+            <span class="tooltip-step-num">${step.step}.</span>
+            <span class="tooltip-step-tool">${step.tool}${step.action ? '.' + step.action : ''}</span>
+            ${step.description ? `<span class="tooltip-step-desc">- ${step.description}</span>` : ''}
+          </div>`
+        ).join('');
+        tooltipHtml = `
+          <div class="workflow-tooltip">
+            <div class="tooltip-header">${s.name}</div>
+            <div class="tooltip-steps">${stepsHtml}</div>
+          </div>
+        `;
+      }
+      // Build tooltip content for prompts
+      else if (s.type === 'prompt' && s.key_points && s.key_points.length > 0) {
+        const pointsHtml = s.key_points.map((point, idx) => 
+          `<div class="tooltip-step">
+            <span class="tooltip-step-num">•</span>
+            <span class="tooltip-step-desc">${point}</span>
+          </div>`
+        ).join('');
+        tooltipHtml = `
+          <div class="workflow-tooltip prompt-tooltip">
+            <div class="tooltip-header">${s.description || s.name}</div>
+            <div class="tooltip-steps">${pointsHtml}</div>
+          </div>
+        `;
+      }
+      
+      return `
+        <div class="autocomplete-item" data-index="${i}" data-type="${s.type}" data-name="${s.name}">
+          <span class="autocomplete-icon">${s.icon}</span>
+          <span class="autocomplete-name">${s.type === 'prompt' ? '@' : '/'}${s.name}</span>
+          <span class="autocomplete-desc">${Utils.truncate(s.description, 40)}</span>
+          ${tooltipHtml}
+        </div>
+      `;
+    }).join('');
     
     this.autocompleteEl.innerHTML = html;
     this.autocompleteEl.style.display = 'block';
@@ -405,8 +439,30 @@ class ChatUI {
         const index = parseInt(item.dataset.index);
         this._selectSuggestion(index);
       });
-      item.addEventListener('mouseenter', () => {
+      item.addEventListener('mouseenter', (e) => {
         this._highlightSuggestion(parseInt(item.dataset.index));
+        // Position tooltip for workflow and prompt items
+        const tooltip = item.querySelector('.workflow-tooltip, .prompt-tooltip');
+        if (tooltip) {
+          const rect = item.getBoundingClientRect();
+          tooltip.style.display = 'block';
+          tooltip.style.left = `${rect.right + 8}px`;
+          tooltip.style.top = `${rect.top}px`;
+          // Keep tooltip on screen
+          const tooltipRect = tooltip.getBoundingClientRect();
+          if (tooltipRect.right > window.innerWidth) {
+            tooltip.style.left = `${rect.left - tooltipRect.width - 8}px`;
+          }
+          if (tooltipRect.bottom > window.innerHeight) {
+            tooltip.style.top = `${window.innerHeight - tooltipRect.height - 8}px`;
+          }
+        }
+      });
+      item.addEventListener('mouseleave', () => {
+        const tooltip = item.querySelector('.workflow-tooltip, .prompt-tooltip');
+        if (tooltip) {
+          tooltip.style.display = 'none';
+        }
       });
     });
   }
@@ -456,21 +512,10 @@ class ChatUI {
     
     const type = item.dataset.type;
     const name = item.dataset.name;
-    const prefix = type === 'command' ? '/' : '@';
+    const prefix = type === 'prompt' ? '@' : '/';
     
-    if (this.autocompleteMode === 'prompt_after_command') {
-      // We're adding @prompt after /command - replace the @xxx part only
-      const currentValue = this.inputField.value;
-      const match = currentValue.match(/^(\/\w+\s+)@\w*$/);
-      if (match) {
-        this.inputField.value = `${match[1]}@${name} `;
-      } else {
-        this.inputField.value = `${currentValue.replace(/@\w*$/, '')}@${name} `;
-      }
-    } else {
-      // Normal mode - replace entire input with selected command/prompt + space
-      this.inputField.value = `${prefix}${name} `;
-    }
+    // Replace entire input with selected workflow/prompt + space
+    this.inputField.value = `${prefix}${name} `;
     
     this.inputField.focus();
     this._hideAutocomplete();
@@ -984,36 +1029,32 @@ class ChatUI {
     // Hide autocomplete
     this._hideAutocomplete();
     
-    // Parse commands and prompts
+    // Parse workflows and prompts
     const parsed = window.commandSystem.parseInput(rawMessage);
     
     // Build display message (show original with decorations)
     let displayMessage = rawMessage;
-    let commandBadge = '';
-    if (parsed.command || parsed.prompt) {
-      commandBadge = window.commandSystem.getActiveDisplay(parsed);
+    let activeBadge = '';
+    if (parsed.workflow || parsed.prompt) {
+      activeBadge = window.commandSystem.getActiveDisplay(parsed);
     }
     
     // Add user message to UI (with image if attached)
-    this.addUserMessage(displayMessage, this.attachedImage, commandBadge);
+    this.addUserMessage(displayMessage, this.attachedImage, activeBadge);
     
     // Clear input
     this.inputField.value = '';
     Utils.autoResize(this.inputField);
     
-    // Send via socket (include image data and command metadata)
+    // Send via socket (include image data and prompt metadata)
     this.isProcessing = true;
     this.updateSendButton();
     this.pendingTools = {};
     
-    // Pass parsed command data to socket
+    // Pass parsed data to socket (workflows are handled by orchestrator via /trigger)
     window.jarvisSocket.sendMessage(parsed.message || rawMessage, this.attachedImage, {
-      instruction: parsed.instruction,
-      force_tool: parsed.force_tool,
-      exclude_tools: parsed.exclude_tools,
-      response_style: parsed.response_style,
-      command: parsed.command,
-      prompt: parsed.prompt
+      system_instruction: parsed.instruction,
+      prompt_name: parsed.prompt
     });
     
     // Clear attached image after sending
@@ -1021,9 +1062,9 @@ class ChatUI {
   }
 
   /**
-   * Add user message to chat (with optional image and command badge)
+   * Add user message to chat (with optional image and active badge)
    */
-  addUserMessage(text, imageData = null, commandBadge = '') {
+  addUserMessage(text, imageData = null, activeBadge = '') {
     const messageEl = document.createElement('div');
     messageEl.className = 'message user';
     
@@ -1039,8 +1080,8 @@ class ChatUI {
     }
     
     let badgeHtml = '';
-    if (commandBadge) {
-      badgeHtml = `<div class="command-badge">${Utils.escapeHtml(commandBadge)}</div>`;
+    if (activeBadge) {
+      badgeHtml = `<div class="command-badge">${Utils.escapeHtml(activeBadge)}</div>`;
     }
     
     messageEl.innerHTML = `
@@ -1395,17 +1436,33 @@ class ChatUI {
   }
 
   /**
-   * Update a tool card
+   * Update a tool card (creates it if doesn't exist - for workflows)
    */
   updateToolCard(toolName, status, result = {}, duration = null) {
-    if (this.pendingTools[toolName]) {
-      this.pendingTools[toolName].status = status;
-      this.pendingTools[toolName].result = result;
-      this.pendingTools[toolName].duration = duration;
+    // Store in pendingTools
+    if (!this.pendingTools[toolName]) {
+      this.pendingTools[toolName] = { status, args: {}, result: null, duration: null };
     }
+    this.pendingTools[toolName].status = status;
+    this.pendingTools[toolName].result = result;
+    this.pendingTools[toolName].duration = duration;
     
-    const card = document.getElementById(`tool-card-${toolName}`);
-    if (!card) return;
+    let card = document.getElementById(`tool-card-${toolName}`);
+    
+    // Create card if it doesn't exist (workflow case - no tool:start event)
+    if (!card) {
+      const pendingCards = document.getElementById('pendingToolCards');
+      if (!pendingCards) return;
+      
+      const cardHtml = this._createToolCardHtml(toolName, status, result, duration);
+      const cardEl = document.createElement('div');
+      cardEl.innerHTML = cardHtml;
+      cardEl.firstChild.id = `tool-card-${toolName}`;
+      
+      pendingCards.appendChild(cardEl.firstChild);
+      Utils.scrollToBottom(this.messagesContainer);
+      return;
+    }
     
     card.className = `tool-card ${status}`;
     

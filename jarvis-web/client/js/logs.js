@@ -8,7 +8,7 @@ class LogPanelManager {
         this.isSubscribed = false;
         this.autoScroll = true;
         this.maxEntries = 500;  // Keep last 500 entries
-        this.enabledSources = new Set(['llm', 'tool']);  // Default: LLM and Tools
+        this.enabledSources = new Set(['llm', 'tool', 'workflow']);  // Default: LLM, Tools, and Workflows
         
         // DOM elements
         this.panel = document.getElementById('logPanel');
@@ -174,7 +174,7 @@ class LogPanelManager {
     _updateSourceFilter() {
         this.socket.emit('logs:set_sources', {
             sources: Object.fromEntries(
-                ['llm', 'tool', 'opencode', 'thinking', 'feedback'].map(s => 
+                ['llm', 'tool', 'workflow', 'opencode', 'thinking', 'feedback'].map(s => 
                     [s, this.enabledSources.has(s)]
                 )
             )

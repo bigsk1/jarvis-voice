@@ -1,0 +1,80 @@
+{
+  "id": "server_health_check",
+  "name": "Server Health Check",
+  "description": "Check server health via SSH and create a report. Uses hosts from config/ssh.json.",
+  "version": "1.1",
+  "enabled": true,
+  
+  "triggers": {
+    "explicit": ["/health", "/server-check"],
+    "patterns": [],
+    "keywords": []
+  },
+  
+  "variables": {
+    "host": {"from": "query", "extract": "main_subject", "default": "vps2"}
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {},
+      "output_var": "time_result",
+      "extract": {
+        "check_time": "date_formatted",
+        "check_hour": "time_12h"
+      },
+      "required": true,
+      "description": "Record check timestamp"
+    },
+    {
+      "step": 2,
+      "tool": "ssh_remote",
+      "params": {
+        "action": "run",
+        "host": "${host}",
+        "command": "echo '=== UPTIME ===' && uptime && echo '\\n=== MEMORY ===' && free -h && echo '\\n=== DISK ===' && df -h / && echo '\\n=== LOAD ===' && cat /proc/loadavg && echo '\\n=== TOP PROCESSES ===' && ps aux --sort=-%mem | head -6"
+      },
+      "output_var": "ssh_result",
+      "extract": {
+        "ssh_output": "stdout",
+        "exit_code": "exit_code"
+      },
+      "required": true,
+      "description": "Get server stats via SSH"
+    },
+    {
+      "step": 3,
+      "tool": "stash",
+      "action": "save",
+      "params": {
+        "kind": "text",
+        "text": "${ssh_output}",
+        "name": "health_${host}_${timestamp}.txt",
+        "tags": ["health-check", "${host}"]
+      },
+      "extract": {
+        "stash_ref": "ref"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Save raw output to stash"
+    },
+    {
+      "step": 4,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Health Check: ${host}",
+        "tags": ["health", "server", "${host}"]
+      },
+      "llm_prompt": "Create a server health report from this SSH output.\n\nHost: ${host}\nChecked at: ${check_time} at ${check_hour}\nStash reference: ${stash_ref}\n\nRaw Output:\n${ssh_output}\n\nFormat as markdown with:\n- Server Status (up/healthy or issues)\n- Uptime\n- Memory Usage (used/total, percentage)\n- Disk Usage (used/total, percentage)\n- Load Average (1/5/15 min)\n- Top memory-consuming processes\n- Any concerns or recommendations",
+      "required": true,
+      "description": "Create health report canvas"
+    }
+  ],
+  
+  "success_speech": "Health check complete for ${host}. Report saved to canvas.",
+  "abort_speech": "Couldn't connect to ${host}. Check SSH configuration with 'list ssh hosts'."
+}

@@ -18,6 +18,8 @@ from status_updater import StatusUpdater
 
 from router_v2 import LLMRouter
 from executor import ToolExecutor
+from workflow_loader import WorkflowLoader
+from pipeline_executor import PipelineExecutor
 
 
 def _sanitize_error_for_speech(error) -> str:
@@ -131,6 +133,10 @@ class Orchestrator:
         )
         self.executor = ToolExecutor(mode, registry=self.registry)
         self.max_retries = 1  # Maximum retry attempts
+        
+        # Workflow orchestration (explicit commands like /research, /note)
+        self.workflow_loader = WorkflowLoader(explicit_only=True)
+        self.pipeline_executor = PipelineExecutor(mode, self.executor)
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # Unique session ID
         
         # Auto-context configuration
@@ -173,6 +179,12 @@ class Orchestrator:
         """
         # Reset status updater for new task
         self.status_updater.reset()
+        
+        # Check for explicit workflow commands (e.g., /research, /note, /health)
+        # These bypass normal LLM routing and execute a predefined pipeline
+        workflow_result = self._try_workflow(transcript)
+        if workflow_result:
+            return workflow_result
         
         # Auto-inject recent conversation context
         if conversation_history:
@@ -946,6 +958,46 @@ Your BEST EFFORT response:"""
         context_lines.append(f"Current request: {current_query}")
         
         return "\n".join(context_lines)
+    
+    def _try_workflow(self, transcript: str) -> Dict[str, Any] | None:
+        """
+        Check if transcript matches an explicit workflow command.
+        
+        Workflows are triggered by explicit commands like /research, /note, /health.
+        If matched, executes the workflow pipeline and returns the result.
+        If no match, returns None to continue with normal LLM routing.
+        """
+        try:
+            workflow = self.workflow_loader.match(transcript)
+            if not workflow:
+                return None
+            
+            workflow_name = workflow.get("name", workflow.get("id"))
+            
+            # Status callback to use the existing status updater
+            def status_callback(msg: str):
+                self.status_updater.update(msg)
+            
+            # Execute the workflow pipeline
+            result = self.pipeline_executor.execute(
+                workflow, 
+                transcript, 
+                status_callback=status_callback
+            )
+            
+            # Return in standard orchestrator response format
+            return {
+                "ok": result.get("ok", False),
+                "speech": result.get("speech", "Workflow complete."),
+                "data": result.get("data", {}),
+                "tools_used": result.get("tools_used", []),
+                "workflow_executed": workflow.get("id")
+            }
+            
+        except Exception as e:
+            # If workflow execution fails, log but don't crash - fall back to normal routing
+            print(f"Workflow execution error: {e}", file=sys.stderr)
+            return None
     
     def _build_conversation_context(self, current_query: str) -> str:
         """

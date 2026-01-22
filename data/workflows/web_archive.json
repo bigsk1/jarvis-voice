@@ -1,0 +1,102 @@
+{
+  "id": "web_archive",
+  "name": "Web Archive Workflow",
+  "description": "Fetch a URL, save to stash, save key points to memory, and create a canvas summary.",
+  "enabled": true,
+  "version": "1.0",
+  
+  "triggers": {
+    "patterns": [
+      "archive this",
+      "save this article",
+      "save this page",
+      "remember this url",
+      "archive url"
+    ],
+    "keywords": ["archive", "save", "url"],
+    "explicit": ["/archive"]
+  },
+  
+  "variables": {
+    "url": {"from": "query", "extract": "url"},
+    "topic": {"from": "query", "extract": "main_subject"}
+  },
+  
+  "tool_defaults": {
+    "crawl_url": {
+      "stealth": true,
+      "wait_for_js": true
+    }
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "crawl_url",
+      "params": {
+        "url": "${url}"
+      },
+      "output_var": "article",
+      "validation": {
+        "type": "heuristic",
+        "heuristic": {
+          "min_length": 200,
+          "reject_patterns": ["paywall", "subscribe to continue reading", "captcha required", "403 forbidden", "access denied"]
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "fallback_tools": ["mcp_fetch_fetch"]
+      },
+      "required": true,
+      "description": "Fetch article content"
+    },
+    {
+      "step": 2,
+      "tool": "stash",
+      "action": "save",
+      "params": {
+        "kind": "text",
+        "text": "${article.content}",
+        "name": "archive_${timestamp}.txt",
+        "tags": ["archive", "article", "${topic}"]
+      },
+      "output_var": "stash_result",
+      "extract": {
+        "stash_ref": "ref"
+      },
+      "required": true,
+      "description": "Save to stash"
+    },
+    {
+      "step": 3,
+      "tool": "stash",
+      "action": "remember",
+      "params": {
+        "search": "${stash_ref}",
+        "key": "Archived: ${article.url}",
+        "category": "archive",
+        "importance": 6,
+        "summarize": true
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Save to permanent memory"
+    },
+    {
+      "step": 4,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Archive: ${article.url}",
+        "tags": ["archive", "${topic}"]
+      },
+      "llm_prompt": "Create a well-formatted summary of this archived webpage.\n\nSource URL: ${article.url}\nStash reference: ${stash_ref}\nDate archived: ${timestamp}\n\nArticle content to summarize:\n${article.content}\n\nGenerate a markdown summary with:\n- Title/source\n- Key points (3-5 bullets summarizing the main content)\n- Stash reference for full content\n- Archive date",
+      "required": true,
+      "description": "Create canvas summary"
+    }
+  ],
+  
+  "success_speech": "Article archived. I saved it to stash, added the key points to memory, and created a canvas summary.",
+  "abort_speech": "I couldn't archive that page. It may be paywalled or have access restrictions."
+}

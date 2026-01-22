@@ -47,6 +47,11 @@ class LogStreamer:
             'enabled': True,
             'parse': '_parse_tool_entry'
         },
+        'workflow': {
+            'pattern': 'logs/workflows-{date}.jsonl',
+            'enabled': True,
+            'parse': '_parse_workflow_entry'
+        },
         'opencode': {
             'pattern': 'logs/opencode/opencode-{date}.jsonl',
             'enabled': False,  # Enable on demand
@@ -283,6 +288,51 @@ class LogStreamer:
                     'args': data.get('args', {}),
                     'result_preview': str(data.get('result', ''))[:300],
                     'error': error,
+                    'mode': data.get('mode', 'unknown')
+                },
+                raw=line
+            )
+        except json.JSONDecodeError:
+            return None
+    
+    def _parse_workflow_entry(self, line: str, source: str) -> Optional[LogEntry]:
+        """Parse workflow execution log entry."""
+        try:
+            data = json.loads(line)
+            
+            workflow_id = data.get('workflow_id', 'unknown')
+            workflow_name = data.get('workflow_name', workflow_id)
+            result = data.get('result', {})
+            success = result.get('ok', False)
+            duration = data.get('duration_ms', 0)
+            steps = result.get('steps_completed', 0)
+            tools = result.get('tools_used', [])
+            
+            level = 'success' if success else 'error'
+            
+            # Format duration nicely
+            if duration >= 1000:
+                duration_str = f"{duration/1000:.1f}s"
+            else:
+                duration_str = f"{duration:.0f}ms"
+            
+            title = f"🔄 {workflow_name} ({steps} steps) → {duration_str}"
+            title += " ✓" if success else " ✗"
+            
+            return LogEntry(
+                source=source,
+                timestamp=data.get('timestamp', datetime.now().isoformat()),
+                level=level,
+                title=title,
+                details={
+                    'workflow_id': workflow_id,
+                    'workflow_name': workflow_name,
+                    'success': success,
+                    'duration_ms': duration,
+                    'steps_completed': steps,
+                    'tools_used': tools,
+                    'query': data.get('user_query', ''),
+                    'speech': result.get('speech', '')[:200],
                     'mode': data.get('mode', 'unknown')
                 },
                 raw=line

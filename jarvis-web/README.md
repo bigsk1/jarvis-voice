@@ -40,10 +40,11 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Real-time Server Logs** - Stream logs with source filters:
   - 🤖 LLM API calls
   - 🔧 Tool executions
+  - 🔄 Workflow executions
   - 💻 OpenCode sessions
   - ⭐ Feedback ratings
 - **Tools Browser** - View all available tools with descriptions
-- **Commands System** - `/commands` with JSON definitions
+- **Workflows System** - `/workflows` for deterministic multi-tool pipelines
 - **Prompts System** - `@prompts` with Markdown templates
 - **✨ Prompt Enhancement** - AI-powered prompt optimization
 
@@ -108,7 +109,6 @@ jarvis-web/
 │   └── web_config.json       # Web UI configuration
 ├── data/
 │   ├── conversations/        # Conversation JSON files
-│   ├── commands/             # /command definitions (*.json)
 │   ├── prompts/              # @prompt templates (*.md)
 │   └── uploads/              # Uploaded images
 └── requirements.txt
@@ -162,12 +162,12 @@ jarvis-web/
 | `/api/uploads/:filename` | GET | Serve uploaded images |
 | `/api/audio/:filename` | GET | Serve audio files |
 
-### Commands & Prompts
+### Workflows & Prompts
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/commands` | GET | List all /commands |
-| `/api/commands/:name` | GET | Get specific command |
+| `/api/workflows` | GET | List all /workflows |
+| `/api/workflows/:id` | GET | Get specific workflow |
 | `/api/prompts` | GET | List all @prompts |
 | `/api/prompts/:name` | GET | Get specific prompt |
 | `/api/enhance-prompt` | POST | AI-enhanced prompt generation |
@@ -219,22 +219,28 @@ jarvis-web/
 }
 ```
 
-### Commands System
+### Workflows System
 
-Create `/commands` by adding JSON files to `data/commands/`:
+Workflows are deterministic multi-tool pipelines defined in `data/workflows/`:
 
 ```json
 {
-  "name": "research",
-  "description": "Deep research on a topic",
-  "icon": "🔬",
-  "instruction": "Conduct thorough research on this topic...",
-  "force_tool": null,
-  "exclude_tools": [],
-  "response_style": "detailed",
-  "examples": ["AI trends", "market analysis"]
+  "id": "deep_research",
+  "name": "Deep Research Workflow",
+  "description": "Comprehensive research with validation",
+  "enabled": true,
+  "triggers": {
+    "explicit": ["/research"]
+  },
+  "steps": [
+    {"step": 1, "tool": "stash.open_space", "params": {"name": "${topic}"}},
+    {"step": 2, "tool": "brave_search", "params": {"query": "${topic}"}},
+    {"step": 3, "tool": "crawl_url", "params": {"url": "${urls[:3]}"}}
+  ]
 }
 ```
+
+Available workflows: `/research`, `/note`, `/archive`, `/health`
 
 ### Prompts System
 

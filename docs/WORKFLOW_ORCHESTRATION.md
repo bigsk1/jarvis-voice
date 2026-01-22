@@ -1,8 +1,8 @@
 # Workflow Orchestration System
 
-> **Status**: 📋 Design Phase  
+> **Status**: ✅ Implemented  
 > **Purpose**: Structured multi-tool workflow execution without hardcoded Python logic  
-> **Last Updated**: January 2026
+> **Last Updated**: January 22, 2026
 
 ---
 
@@ -27,6 +27,314 @@ Jarvis has two ways to handle multi-tool tasks:
 1. **`status_recap.py`** (560 lines) - Calls 8-10 tools via Python subprocess because LLM couldn't reliably gather all data
 2. **`deep_memory_search.py`** (610 lines) - Searches 6 data sources with custom Python because LLM missed sources
 3. **`deep_research.md` prompt** (180 lines) - Detailed instructions LLM still doesn't follow consistently
+
+---
+
+## Quick Start: Creating a Workflow
+
+### Step 1: Create the JSON file
+
+Create a new file in `data/workflows/` (e.g., `my_workflow.json`):
+
+```json
+{
+  "id": "my_workflow",
+  "name": "My Workflow",
+  "description": "Description shown in WebUI",
+  "enabled": true,
+  "version": "1.0",
+  
+  "triggers": {
+    "explicit": ["/mycommand"]
+  },
+  
+  "variables": {
+    "topic": {"from": "query", "extract": "main_subject"}
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "brave_search",
+      "params": {"query": "${topic}"},
+      "output_var": "search_results",
+      "required": true
+    },
+    {
+      "step": 2,
+      "tool": "canvas",
+      "action": "create",
+      "params": {"title": "Results: ${topic}"},
+      "llm_prompt": "Summarize these search results:\n${search_results}",
+      "required": true
+    }
+  ],
+  
+  "success_speech": "Workflow complete!",
+  "abort_speech": "Workflow failed."
+}
+```
+
+### Step 2: Test via CLI
+
+```bash
+source ~/jarvis-venv/bin/activate
+./orchestrator/orchestrator_v2.py cloud "/mycommand quantum computing"
+```
+
+### Step 3: Use via WebUI
+
+Restart WebUI, then type `/mycommand topic` in chat. The workflow appears in `/` autocomplete.
+
+---
+
+## Workflow JSON Reference
+
+### Required Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier (used in logs) |
+| `name` | string | Display name |
+| `enabled` | boolean | Set `false` to disable without deleting |
+| `triggers.explicit` | array | Commands like `["/research"]` |
+| `steps` | array | List of step objects |
+
+### Optional Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `description` | string | Shown in WebUI workflow list |
+| `version` | string | For tracking changes |
+| `variables` | object | Extract variables from query |
+| `tool_defaults` | object | Default params per tool |
+| `success_speech` | string | Spoken on success |
+| `abort_speech` | string | Spoken on failure |
+
+### Step Object
+
+```json
+{
+  "step": 1,                          // Step number (for ordering/logging)
+  "tool": "tool_name",                // Tool to execute
+  "action": "action_name",            // For tools with actions (stash, canvas)
+  "params": {"key": "value"},         // Tool parameters (supports ${variables})
+  "output_var": "my_var",             // Store result in variable
+  "extract": {"var_name": "path"},    // Extract specific fields from result
+  "llm_prompt": "Generate content",   // LLM generates content parameter
+  "validation": {...},                // Validation rules
+  "retry": {...},                     // Retry configuration
+  "required": true,                   // Abort if fails (default: true)
+  "on_fail": "continue",              // Override abort behavior
+  "description": "What this does"     // For logging
+}
+```
+
+---
+
+## Variable System
+
+### Variable Sources
+
+1. **From query** - Extracted from user input via `variables` section
+2. **From steps** - `output_var` and `extract` from previous steps
+3. **Built-in** - `timestamp`, `topic`
+
+### Variable Syntax
+
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| `${var}` | `${topic}` | Simple variable |
+| `${obj.key}` | `${article.url}` | Nested path |
+| `${arr[0]}` | `${urls[0]}` | Array index |
+| `${arr[:N]}` | `${urls[:5]}` | Array slice (first N) |
+
+### Extracting Variables from Query
+
+```json
+"variables": {
+  "url": {"from": "query", "extract": "url"},
+  "topic": {"from": "query", "extract": "main_subject"}
+}
+```
+
+**Supported extractions:**
+- `url` - Extracts URL from query (auto-adds `https://` to bare domains)
+- `main_subject` - Extracts topic after the command
+
+**Example:** `/archive bigsk1.com` extracts:
+- `url` = `https://bigsk1.com`
+- `topic` = `bigsk1.com`
+
+### Extracting Data from Step Results
+
+Use `extract` to pull specific fields from tool output:
+
+```json
+{
+  "step": 2,
+  "tool": "stash",
+  "action": "save",
+  "output_var": "stash_result",
+  "extract": {
+    "stash_ref": "ref",           // data.ref -> ${stash_ref}
+    "space_id": "space_id"        // data.space_id -> ${space_id}
+  }
+}
+```
+
+**Common extraction paths by tool:**
+
+| Tool | Field | Path |
+|------|-------|------|
+| `stash` (save) | Reference | `ref` |
+| `stash` (save) | Space ID | `space_id` |
+| `remember` | Memory ID | `memory_id` |
+| `canvas` | Page ID | `page_id` |
+| `crawl_url` | Content | `results[0].markdown` |
+| `brave_search` | URLs | `results[*].url` |
+
+### Built-in Output Transforms
+
+Some tools have automatic extraction (no `extract` needed):
+
+**`crawl_url`** - Automatically creates `${article}` with:
+- `${article.title}` - Page title
+- `${article.content}` - Markdown content
+- `${article.url}` - Source URL
+
+**Search tools** - Automatically creates `${search_results.urls}` array
+
+---
+
+## LLM Parameter Filling
+
+### Using `llm_prompt`
+
+When a step needs LLM-generated content (e.g., summaries), use `llm_prompt`:
+
+```json
+{
+  "step": 4,
+  "tool": "canvas",
+  "action": "create",
+  "params": {
+    "title": "Archive: ${article.url}",
+    "tags": ["archive"]
+  },
+  "llm_prompt": "Create a summary of this webpage.\n\nURL: ${article.url}\nContent:\n${article.content}\n\nGenerate markdown with key points.",
+  "required": true
+}
+```
+
+**How it works:**
+1. Variables in `llm_prompt` are resolved (e.g., `${article.content}` → actual content)
+2. LLM generates content based on the prompt
+3. Result is passed as `content` parameter to the tool
+
+### Variable Resolution in Prompts
+
+All `${...}` variables in `llm_prompt` are resolved:
+- Simple: `${topic}` → `"quantum computing"`
+- Nested: `${article.url}` → `"https://bigsk1.com"`
+- Objects: `${stash_result}` → JSON representation
+
+---
+
+## Working Example: Web Archive Workflow
+
+This workflow demonstrates all key patterns:
+
+```json
+{
+  "id": "web_archive",
+  "name": "Web Archive Workflow",
+  "description": "Fetch a URL, save to stash, and create a canvas summary.",
+  "enabled": true,
+  "version": "1.0",
+  
+  "triggers": {
+    "explicit": ["/archive"]
+  },
+  
+  "variables": {
+    "url": {"from": "query", "extract": "url"},
+    "topic": {"from": "query", "extract": "main_subject"}
+  },
+  
+  "tool_defaults": {
+    "crawl_url": {
+      "stealth": true,
+      "wait_for_js": true
+    }
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "crawl_url",
+      "params": {"url": "${url}"},
+      "output_var": "article",
+      "validation": {
+        "type": "heuristic",
+        "heuristic": {
+          "min_length": 200,
+          "reject_patterns": ["paywall", "captcha required", "403 forbidden"]
+        }
+      },
+      "required": true,
+      "description": "Fetch article content"
+    },
+    {
+      "step": 2,
+      "tool": "stash",
+      "action": "save",
+      "params": {
+        "kind": "text",
+        "text": "${article.content}",
+        "name": "archive_${timestamp}.txt",
+        "tags": ["archive", "${topic}"]
+      },
+      "extract": {
+        "stash_ref": "ref"
+      },
+      "required": true,
+      "description": "Save to stash"
+    },
+    {
+      "step": 3,
+      "tool": "stash",
+      "action": "remember",
+      "params": {
+        "search": "${stash_ref}",
+        "key": "Archived: ${article.url}",
+        "category": "archive",
+        "importance": 6
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Save to memory (optional)"
+    },
+    {
+      "step": 4,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Archive: ${article.url}",
+        "tags": ["archive", "${topic}"]
+      },
+      "llm_prompt": "Create a summary of this archived webpage.\n\nSource URL: ${article.url}\nStash reference: ${stash_ref}\nDate archived: ${timestamp}\n\nContent:\n${article.content}\n\nGenerate markdown with:\n- Title/source\n- Key points (3-5 bullets)\n- Stash reference\n- Archive date",
+      "required": true,
+      "description": "Create canvas summary"
+    }
+  ],
+  
+  "success_speech": "Article archived. I saved it to stash, added the key points to memory, and created a canvas summary.",
+  "abort_speech": "I couldn't archive that page. It may be paywalled or have access restrictions."
+}
+```
+
+**Usage:** `/archive https://example.com` or `/archive example.com`
 
 ---
 
@@ -314,6 +622,41 @@ Workflows support an `enabled` flag for easy toggling without deletion:
 - Only `enabled: true` workflows are loaded
 - If multiple workflows match the same trigger, first enabled match wins
 - Workflows can share trigger patterns if only one is enabled
+
+### Trigger Behavior: Explicit Commands Only (Safe Default)
+
+**By default, workflows ONLY trigger on explicit commands like `/research` or `/archive`.**
+
+This prevents workflows from accidentally hijacking normal queries:
+
+```
+# Default behavior (explicit_only=True):
+"research about quantum computing"  →  No match (goes to freeform)
+"/research quantum computing"       →  Matches deep_research workflow
+
+# With explicit_only=False (risky):
+"research about quantum computing"  →  Matches deep_research workflow
+```
+
+**Why explicit-only is the default:**
+- Workflows are deterministic multi-step pipelines
+- User should consciously choose to run a workflow vs. normal query
+- Prevents "I just wanted a quick search" from triggering 6-step research
+- Pattern matching can be too aggressive (e.g., "save" matches web_archive)
+
+**Trigger types in workflow JSON:**
+```json
+"triggers": {
+  "explicit": ["/research"],      // ALWAYS checked (safe)
+  "patterns": ["research about"], // Only if explicit_only=False
+  "keywords": ["research", "deep"] // Only if explicit_only=False
+}
+```
+
+**To enable pattern matching** (use with caution):
+```python
+loader = WorkflowLoader(explicit_only=False)
+```
 
 ---
 
@@ -1163,22 +1506,46 @@ class Orchestrator:
 
 ### Web UI Integration
 
-The pipeline executor returns the same response format as `Orchestrator.process()`:
+The pipeline executor returns a response compatible with the WebUI:
 
 ```python
 {
     "ok": True,
     "speech": "Research complete...",
-    "data": {...},
+    "data": {
+        "workflow_id": "deep_research",
+        "workflow_name": "Deep Research Workflow",
+        "steps_completed": 4,
+        "results": [
+            {"step": 1, "tool": "stash", "ok": True, "data": {...}},
+            {"step": 2, "tool": "brave_search", "ok": True, "data": {...}},
+            ...
+        ]
+    },
     "tools_used": ["stash", "brave_search", "crawl_url", "canvas"]
 }
 ```
 
-**No changes needed** to:
-- `jarvis-web/server/sockets/chat.py` - Uses Orchestrator.process()
-- Terminal scripts - Use Orchestrator.process()
+**WebUI Changes Made:**
 
-The pipeline executor is **transparent** to callers.
+| Component | Change |
+|-----------|--------|
+| `jarvis-web/server/routes/api.py` | Added `/api/workflows` endpoint to list enabled workflows |
+| `jarvis-web/client/js/chat.js` | Workflow autocomplete on `/` prefix, replaced old commands system |
+| `jarvis-web/server/sockets/chat.py` | Detects workflow results, emits `tool:complete` for each step |
+| `jarvis-web/client/js/logs.js` | Added workflow log source button |
+| `jarvis-web/server/services/log_streamer.py` | Added workflow log parsing |
+
+**How WebUI Displays Workflows:**
+
+1. User types `/` → autocomplete shows enabled workflows
+2. User selects workflow → sends to orchestrator
+3. Backend detects workflow, runs pipeline executor
+4. For each step, `tool:complete` event sent to frontend
+5. Tool cards appear in correct execution order
+6. Final response displayed with workflow speech
+
+**Removed:** The old `/commands` system was removed. Commands were prompt hints that competed with tool RAG. Workflows are deterministic pipelines that replace them entirely. Prompts (`@` prefix) remain unchanged.
 
 ### Testing Strategy
 
@@ -1291,35 +1658,119 @@ crawl_url → stash.save → stash.remember → canvas
 
 ## Next Steps
 
-### Phase 1: Foundation
-- [ ] Create `data/workflows/` folder
-- [ ] Create `orchestrator/workflow_loader.py`
-- [ ] Create first workflow JSON: `deep_research.json`
-- [ ] Test workflow matching
+### Phase 1: Foundation ✅ COMPLETE
+- [x] Create `data/workflows/` folder
+- [x] Create `orchestrator/workflow_loader.py`
+- [x] Create first workflow JSON: `deep_research.json`
+- [x] Create second workflow JSON: `web_archive.json`
+- [x] Create third workflow JSON: `quick_note.json`
+- [x] Test workflow matching
+- [x] **Safe by default**: Only explicit commands (`/research`, `/archive`) trigger workflows
+  - Pattern/keyword matching disabled by default to prevent hijacking normal queries
+  - Can be enabled with `explicit_only=False` if needed
 
-### Phase 2: Pipeline Executor
-- [ ] Create `orchestrator/pipeline_executor.py`
-- [ ] Implement step execution loop
-- [ ] Implement variable substitution
-- [ ] Implement parameter layering (step > defaults > LLM)
+### Phase 2: Pipeline Executor ✅ COMPLETE
+- [x] Create `orchestrator/pipeline_executor.py`
+- [x] Implement step execution loop
+- [x] Implement variable substitution (including array slicing `${urls[:5]}`)
+- [x] Implement parameter layering (step > defaults > LLM)
+- [x] Handle for_each loops with validation
+- [x] Extract URLs from MCP search results
+- [x] LLM provider integration for parameter filling
+- [x] Generic output extraction via `_apply_output_transforms()`
+- [x] Step-defined `extract` rules support
+- [x] Nested path resolution for variables (e.g., `${article.url}`)
+- [x] URL extraction from query (handles bare domains like `bigsk1.com`)
 
-### Phase 3: Integration
-- [ ] Modify `orchestrator/orchestrator_v2.py` to check workflows first
-- [ ] Test end-to-end with terminal
-- [ ] Test end-to-end with web UI
+### Phase 3: WebUI Integration ✅ COMPLETE
+- [x] Import WorkflowLoader and PipelineExecutor in `orchestrator_v2.py`
+- [x] Initialize workflow components in Orchestrator `__init__`
+- [x] Add `_try_workflow()` method to check for explicit commands
+- [x] Workflow check runs before normal LLM routing
+- [x] Non-workflow queries pass through to normal flow unchanged
+- [x] Status updates integrated via existing StatusUpdater
+- [x] **Removed old `/commands` system** - Workflows replace commands
+- [x] **WebUI API**: `/api/workflows` lists enabled workflows
+- [x] **WebUI autocomplete**: Type `/` to see workflow suggestions
+- [x] **WebUI tool cards**: Display workflow step results in order
+- [x] **WebUI logs**: Workflow execution logs in server logs panel
 
-### Phase 4: Validation & Retry
-- [ ] Implement heuristic content validation
-- [ ] Implement LLM content validation
-- [ ] Implement retry strategies
+### Phase 4: Validation & Retry (Partial)
+- [x] Implement heuristic content validation (min_length, reject_patterns)
+- [x] Basic retry counting in for_each loops
+- [x] Required step failure aborts workflow by default
+- [x] `on_fail: continue` option for non-critical steps
+- [ ] Implement LLM content validation (llm_prompt for validation)
+- [ ] Implement advanced retry strategies (next_url, alternative_tool, broaden_search)
 
 ### Phase 5: Polish
-- [ ] Add more workflow recipes - ssh_tool have ideas for creating and fully controling remote vps2 , start to finish app on vps2.. x amount of steps stop summarize, continue X amount of steps stop summarize, need way to pause during workflow for summary and not rerun workflow from start. ( 15 tool calls limit via .env can increase or lower as needed)
-- [ ] Add status updates during pipeline execution
+- [ ] Add more workflow recipes - ssh_tool have ideas for creating and fully controlling remote vps2, start to finish app on vps2.. x amount of steps stop summarize, continue X amount of steps stop summarize, need way to pause during workflow for summary and not rerun workflow from start. (15 tool calls limit via .env can increase or lower as needed)
 - [ ] Add workflow execution logging to intelligence layer
 - [ ] Document in main README
-- [ ] Create a workflow builder - like we have a tool builder, ./bin/workflow_builder --cloud "create a multi tool workflow for getting current bitcoin and tesla prices and create a investment stratagy based on public data put on canvas" 
+- [ ] Create a workflow builder - like we have a tool builder, ./bin/workflow_builder --cloud "create a multi tool workflow for getting current bitcoin and tesla prices and create an investment strategy based on public data put on canvas"
 
 ---
 
-**Status**: Design complete. Ready for implementation.
+## Troubleshooting
+
+### Common Issues
+
+**Variables not resolving (showing `${var}` literally):**
+- Check the `extract` rules match the actual field names from the tool
+- Use CLI test to see what fields a tool returns: `python -c "from skills.stash import stash; print(stash('save', kind='text', text='test', name='test.txt'))"`
+- Nested paths like `${article.url}` require the parent variable to be a dict
+
+**Workflow completes instantly:**
+- Check if a required step is failing silently
+- Add `"required": true` to ensure failures abort the workflow
+- Check logs for validation failures
+
+**Tool cards show `{}`:**
+- Ensure the tool returns data in `result.data`
+- Check `extract` rules are capturing the right paths
+- WebUI expects workflow results in `data.results[]` format
+
+**URL not extracted from query:**
+- `/archive bigsk1.com` extracts `https://bigsk1.com`
+- Variables section needs `"url": {"from": "query", "extract": "url"}`
+- URL extraction handles bare domains, adds `https://` automatically
+
+### Testing Workflows
+
+```bash
+# Test workflow matching
+python -c "
+from orchestrator.workflow_loader import WorkflowLoader
+loader = WorkflowLoader()
+print(loader.match('/archive bigsk1.com'))
+"
+
+# Test full execution
+source ~/jarvis-venv/bin/activate
+./orchestrator/orchestrator_v2.py cloud "/archive https://example.com"
+
+# Check extracted variables
+python -c "
+from orchestrator.pipeline_executor import PipelineExecutor
+pe = PipelineExecutor.__new__(PipelineExecutor)
+print(pe._extract_url_from_text('/archive bigsk1.com'))
+"
+```
+
+---
+
+## Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `orchestrator/workflow_loader.py` | Load/match workflow JSON files |
+| `orchestrator/pipeline_executor.py` | Execute workflow steps |
+| `orchestrator/orchestrator_v2.py` | Integration point (`_try_workflow()`) |
+| `data/workflows/*.json` | Workflow definitions |
+| `jarvis-web/server/routes/api.py` | `/api/workflows` endpoint |
+| `jarvis-web/client/js/chat.js` | WebUI workflow autocomplete |
+| `jarvis-web/server/sockets/chat.py` | WebSocket workflow result handling |
+
+---
+
+**Status**: Fully implemented and working. Add new workflows by creating JSON files in `data/workflows/`.

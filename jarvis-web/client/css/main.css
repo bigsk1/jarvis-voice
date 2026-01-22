@@ -2609,6 +2609,74 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Workflow tooltip on hover */
+.autocomplete-item {
+  position: relative;
+}
+
+.workflow-tooltip {
+  display: none;
+  position: fixed;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  min-width: 280px;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  z-index: 1001;
+  pointer-events: none;
+}
+
+.tooltip-header {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  padding-bottom: var(--space-xs);
+  margin-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tooltip-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tooltip-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.tooltip-step-num {
+  color: var(--accent-primary);
+  font-weight: 600;
+  min-width: 16px;
+}
+
+.tooltip-step-tool {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.tooltip-step-desc {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Prompt tooltip specific styles */
+.prompt-tooltip .tooltip-header {
+  color: var(--accent-secondary, #9b59b6);
+}
+
+.prompt-tooltip .tooltip-step-num {
+  color: var(--accent-secondary, #9b59b6);
+}
+
 /* Command badge in user messages */
 .command-badge {
   display: inline-flex;
@@ -2795,6 +2863,7 @@ body {
 
 .log-source-llm { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
 .log-source-tool { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+.log-source-workflow { background: rgba(0, 217, 255, 0.2); color: #00d9ff; }
 .log-source-opencode { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
 .log-source-thinking { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
 .log-source-feedback { background: rgba(236, 72, 153, 0.2); color: #f472b6; }

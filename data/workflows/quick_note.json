@@ -1,0 +1,63 @@
+{
+  "id": "quick_note",
+  "name": "Quick Note",
+  "description": "Quickly save a note to memory and canvas",
+  "version": "1.0",
+  "enabled": true,
+  
+  "triggers": {
+    "explicit": ["/note", "/quicknote", "/remember-this"],
+    "patterns": [],
+    "keywords": []
+  },
+  
+  "variables": {
+    "content": "The note content from the user's message"
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {},
+      "output_var": "time_result",
+      "extract": {
+        "timestamp": "time",
+        "date": "date"
+      },
+      "required": true,
+      "description": "Get current timestamp"
+    },
+    {
+      "step": 2,
+      "tool": "remember",
+      "params": {
+        "key": "note_${date}",
+        "value": "${content}",
+        "category": "notes",
+        "importance": 5
+      },
+      "output_var": "memory_result",
+      "extract": {
+        "memory_id": "memory_id"
+      },
+      "required": true,
+      "description": "Save to long-term memory"
+    },
+    {
+      "step": 3,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Note - ${date}",
+        "tags": ["note", "quick"]
+      },
+      "llm_prompt": "Format this note nicely:\n\n${content}\n\nAdd:\n- Timestamp: ${timestamp}\n- Any relevant tags or categories\n- Keep it concise",
+      "required": true,
+      "description": "Create canvas page"
+    }
+  ],
+  
+  "success_speech": "Note saved to memory and canvas.",
+  "abort_speech": "Couldn't save the note."
+}

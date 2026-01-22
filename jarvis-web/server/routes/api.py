@@ -23,10 +23,10 @@ MUSIC_PATH = JARVIS_ROOT / 'data' / 'generated_music'
 # Path to stash
 STASH_PATH = JARVIS_ROOT / 'data' / 'stash'
 
-# Paths for commands and prompts
+# Paths for prompts and workflows
 WEB_DATA_PATH = JARVIS_ROOT / 'jarvis-web' / 'data'
-COMMANDS_PATH = WEB_DATA_PATH / 'commands'
 PROMPTS_PATH = WEB_DATA_PATH / 'prompts'
+WORKFLOWS_PATH = JARVIS_ROOT / 'data' / 'workflows'  # Workflows are in main data folder
 
 
 @api_bp.route('/status', methods=['GET'])
@@ -1259,61 +1259,88 @@ def serve_upload(filename):
 
 
 # =============================================================================
-# Commands and Prompts System (Slash Commands / At-Prompts)
+# WORKFLOWS API - Explicit multi-tool pipelines (triggered via /workflow_name)
 # =============================================================================
 
-@api_bp.route('/commands', methods=['GET'])
-def list_commands():
-    """List all available /commands (auto-discovered from data/commands/*.json)"""
+@api_bp.route('/workflows', methods=['GET'])
+def list_workflows():
+    """List all available workflows (auto-discovered from data/workflows/*.json)"""
     import json
     
-    commands = {}
+    workflows = {}
     
-    if COMMANDS_PATH.exists():
-        for cmd_file in COMMANDS_PATH.glob('*.json'):
+    if WORKFLOWS_PATH.exists():
+        for wf_file in WORKFLOWS_PATH.glob('*.json'):
             try:
-                with open(cmd_file, 'r') as f:
-                    cmd_data = json.load(f)
-                    name = cmd_data.get('name') or cmd_file.stem
-                    commands[name] = {
-                        'name': name,
-                        'description': cmd_data.get('description', ''),
-                        'icon': cmd_data.get('icon', '⚡'),
-                        'instruction': cmd_data.get('instruction', ''),
-                        'force_tool': cmd_data.get('force_tool'),
-                        'exclude_tools': cmd_data.get('exclude_tools', []),
-                        'response_style': cmd_data.get('response_style'),
-                        'examples': cmd_data.get('examples', [])
+                with open(wf_file, 'r') as f:
+                    wf_data = json.load(f)
+                    
+                    # Skip disabled workflows
+                    if not wf_data.get('enabled', True):
+                        continue
+                    
+                    wf_id = wf_data.get('id') or wf_file.stem
+                    triggers = wf_data.get('triggers', {})
+                    explicit_cmds = triggers.get('explicit', [])
+                    steps = wf_data.get('steps', [])
+                    
+                    # Build step summary for tooltip
+                    step_summary = []
+                    for s in steps:
+                        tool = s.get('tool', 'unknown')
+                        action = s.get('action', '')
+                        desc = s.get('description', '')
+                        step_text = f"{tool}.{action}" if action else tool
+                        if desc:
+                            step_text += f" - {desc}"
+                        step_summary.append({
+                            'step': s.get('step', len(step_summary) + 1),
+                            'tool': tool,
+                            'action': action,
+                            'description': desc,
+                            'display': step_text
+                        })
+                    
+                    workflows[wf_id] = {
+                        'id': wf_id,
+                        'name': wf_data.get('name', wf_id),
+                        'description': wf_data.get('description', ''),
+                        'version': wf_data.get('version', '1.0'),
+                        'triggers': explicit_cmds,  # e.g., ["/research", "/deep-research"]
+                        'step_count': len(steps),
+                        'tools_used': list(dict.fromkeys(s.get('tool', '') for s in steps)),  # Preserve order
+                        'steps': step_summary,  # For hover tooltip
+                        'icon': '🔄'  # Default workflow icon
                     }
             except Exception as e:
-                print(f"[Commands] Error loading {cmd_file}: {e}")
+                print(f"[Workflows] Error loading {wf_file}: {e}")
     
     return jsonify({
         'ok': True,
-        'count': len(commands),
-        'commands': commands
+        'count': len(workflows),
+        'workflows': workflows
     })
 
 
-@api_bp.route('/commands/<name>', methods=['GET'])
-def get_command(name):
-    """Get a specific command by name"""
+@api_bp.route('/workflows/<workflow_id>', methods=['GET'])
+def get_workflow(workflow_id):
+    """Get a specific workflow by ID"""
     import json
     
-    cmd_file = COMMANDS_PATH / f"{name}.json"
+    wf_file = WORKFLOWS_PATH / f"{workflow_id}.json"
     
-    if cmd_file.exists():
+    if wf_file.exists():
         try:
-            with open(cmd_file, 'r') as f:
-                cmd_data = json.load(f)
+            with open(wf_file, 'r') as f:
+                wf_data = json.load(f)
                 return jsonify({
                     'ok': True,
-                    'command': cmd_data
+                    'workflow': wf_data
                 })
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
     
-    return jsonify({'ok': False, 'error': f'Command not found: {name}'}), 404
+    return jsonify({'ok': False, 'error': f'Workflow not found: {workflow_id}'}), 404
 
 
 @api_bp.route('/prompts', methods=['GET'])
@@ -1334,10 +1361,36 @@ def list_prompts():
                     if lines and lines[0].startswith('#'):
                         description = lines[0].lstrip('#').strip()
                     
+                    # Extract key points for tooltip (bullets or first meaningful lines)
+                    key_points = []
+                    for line in lines[1:]:  # Skip title
+                        line = line.strip()
+                        if not line:
+                            continue
+                        # Look for bullet points or numbered items
+                        if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] in '.):'):
+                            point = line.lstrip('-*•0123456789.) ').strip()
+                            if point and len(point) > 3:
+                                key_points.append(point[:80])  # Truncate long points
+                        # Also capture section headers
+                        elif line.startswith('##'):
+                            key_points.append(line.lstrip('#').strip())
+                        # Stop after finding enough points
+                        if len(key_points) >= 5:
+                            break
+                    
+                    # If no bullets found, take first few non-empty lines
+                    if not key_points:
+                        for line in lines[1:6]:
+                            line = line.strip()
+                            if line and not line.startswith('#'):
+                                key_points.append(line[:80])
+                    
                     prompts[name] = {
                         'name': name,
                         'description': description,
-                        'content': content
+                        'content': content,
+                        'key_points': key_points[:5]  # Max 5 points
                     }
             except Exception as e:
                 print(f"[Prompts] Error loading {prompt_file}: {e}")

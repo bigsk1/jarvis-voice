@@ -74,13 +74,9 @@ class ChatHandler:
             # Image data for vision requests
             image_data = data.get('image')  # {base64, url, filename}
             
-            # Command/prompt metadata from slash command system
-            command_meta = {
+            # Prompt metadata from @prompt system (workflows are handled by orchestrator)
+            prompt_meta = {
                 'system_instruction': data.get('system_instruction'),
-                'force_tool': data.get('force_tool'),
-                'exclude_tools': data.get('exclude_tools', []),
-                'response_style': data.get('response_style'),
-                'command': data.get('command'),
                 'prompt_name': data.get('prompt_name')
             }
             
@@ -109,14 +105,12 @@ class ChatHandler:
                     'title': conv['title']
                 })
             
-            # Save user message (include image URL and command info if present)
+            # Save user message (include image URL and prompt info if present)
             user_msg_data = {}
             if image_data:
                 user_msg_data['image_url'] = image_data.get('url')
-            if command_meta.get('command'):
-                user_msg_data['command'] = command_meta['command']
-            if command_meta.get('prompt_name'):
-                user_msg_data['prompt'] = command_meta['prompt_name']
+            if prompt_meta.get('prompt_name'):
+                user_msg_data['prompt'] = prompt_meta['prompt_name']
             store.add_message(conversation_id, 'user', message, data=user_msg_data if user_msg_data else None)
             
             # Update session
@@ -142,7 +136,7 @@ class ChatHandler:
                 message_id,
                 conversation_id,
                 image_data,
-                command_meta
+                prompt_meta
             )
         
         @self.socketio.on('conversation:load')
@@ -439,13 +433,12 @@ class ChatHandler:
     
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
-                         command_meta: dict = None):
-        """Process a chat message through the orchestrator (with optional vision and command metadata)"""
+                         prompt_meta: dict = None):
+        """Process a chat message through the orchestrator (with optional vision and prompt metadata)"""
         start_time = time.time()
-        command_meta = command_meta or {}
-        cmd_info = f", cmd={command_meta.get('command')}" if command_meta.get('command') else ""
-        prompt_info = f", prompt={command_meta.get('prompt_name')}" if command_meta.get('prompt_name') else ""
-        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{cmd_info}{prompt_info})")
+        prompt_meta = prompt_meta or {}
+        prompt_info = f", prompt={prompt_meta.get('prompt_name')}" if prompt_meta.get('prompt_name') else ""
+        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{prompt_info})")
         
         try:
             # Debug image data
@@ -532,33 +525,13 @@ class ChatHandler:
             from ..config import get_web_setting
             blocked_tools = list(get_web_setting('tools.blocked', []))
             
-            # Add command-excluded tools
-            cmd_exclude = command_meta.get('exclude_tools', [])
-            if cmd_exclude:
-                blocked_tools.extend(cmd_exclude)
-                print(f"[CHAT] Command excludes tools: {cmd_exclude}")
-            
-            # Build enhanced message with command/prompt instructions
-            # Context/guidelines go FIRST, then the user's specific task
+            # Build enhanced message with @prompt instructions if present
             enhanced_message = message
-            system_instruction = command_meta.get('system_instruction')
-            force_tool = command_meta.get('force_tool')
+            system_instruction = prompt_meta.get('system_instruction')
             
-            # Put context BEFORE the task (natural reading order)
-            if system_instruction or force_tool:
-                parts = []
-                
-                if system_instruction:
-                    print(f"[CHAT] Prepending system instruction ({len(system_instruction)} chars)")
-                    parts.append(f"[CONTEXT - Use these guidelines for the request below]\n\n{system_instruction}\n\n[END CONTEXT]")
-                
-                parts.append(f"\n\nUser's request: {message}")
-                
-                if force_tool:
-                    print(f"[CHAT] Appending tool hint: {force_tool}")
-                    parts.append(f"\n\n[Use the {force_tool} tool for this request]")
-                
-                enhanced_message = ''.join(parts)
+            if system_instruction:
+                print(f"[CHAT] Prepending prompt instruction ({len(system_instruction)} chars)")
+                enhanced_message = f"[CONTEXT - Use these guidelines for the request below]\n\n{system_instruction}\n\n[END CONTEXT]\n\nUser's request: {message}"
             
             # Process the query with conversation context and excluded tools
             print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools...")
@@ -573,18 +546,36 @@ class ChatHandler:
             
             # Extract tools used from result
             tools_used = result.get('tools_used', [])
-            
-            # Emit tool completion events for each tool
             data = result.get('data', {})
-            for tool in tools_used:
-                tool_result = data.get(tool, {})
-                self.socketio.emit('tool:complete', {
-                    'tool': tool,
-                    'result': tool_result,
-                    'duration_ms': duration_ms // max(len(tools_used), 1),
-                    'success': True,
-                    'message_id': message_id
-                }, room=session_id)
+            
+            # Check if this is a workflow result (has different structure)
+            is_workflow = result.get('workflow_executed') or data.get('workflow_id')
+            
+            if is_workflow:
+                # Workflow results have step-by-step data in data.results
+                step_results = data.get('results', [])
+                for step_data in step_results:
+                    tool = step_data.get('tool', 'unknown')
+                    step_ok = step_data.get('ok', True)
+                    self.socketio.emit('tool:complete', {
+                        'tool': tool,
+                        'result': step_data.get('data', {}),
+                        'duration_ms': duration_ms // max(len(step_results), 1),
+                        'success': step_ok,
+                        'message_id': message_id,
+                        'workflow_step': step_data.get('step')
+                    }, room=session_id)
+            else:
+                # Normal orchestrator results - data keyed by tool name
+                for tool in tools_used:
+                    tool_result = data.get(tool, {})
+                    self.socketio.emit('tool:complete', {
+                        'tool': tool,
+                        'result': tool_result,
+                        'duration_ms': duration_ms // max(len(tools_used), 1),
+                        'success': True,
+                        'message_id': message_id
+                    }, room=session_id)
             
             # Save assistant response to conversation
             try:

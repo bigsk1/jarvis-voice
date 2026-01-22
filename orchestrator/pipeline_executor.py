@@ -1,0 +1,948 @@
+#!/usr/bin/env python3
+"""
+Jarvis Voice Assistant - Pipeline Executor
+
+Executes workflow pipelines step-by-step, bypassing the normal LLM routing.
+The LLM is only used for parameter filling and content validation, not tool selection.
+
+This provides deterministic multi-tool execution while still leveraging LLM intelligence
+for flexible parameter resolution.
+"""
+import os
+import sys
+import json
+import re
+import time
+from pathlib import Path
+from typing import Dict, Any, Optional, List, Callable
+from datetime import datetime
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from config_loader import load_config, get_config_value
+from llm_provider import create_provider, LLMProvider
+from tool_logger import ToolLogger
+
+
+class PipelineExecutor:
+    """Execute workflow pipelines step-by-step."""
+    
+    def __init__(self, mode: str, executor, provider=None):
+        """
+        Initialize pipeline executor.
+        
+        Args:
+            mode: 'cloud' or 'local'
+            executor: ToolExecutor instance (reused for individual tool calls)
+            provider: Optional LLM provider for parameter filling and validation
+        """
+        self.mode = mode
+        self.executor = executor
+        self.provider = provider or self._create_provider()
+        self.logger = ToolLogger()
+        load_config(mode)
+    
+    def _create_provider(self):
+        """Create LLM provider for parameter filling and validation."""
+        try:
+            provider_type = get_config_value("LLM_PROVIDER", "openai").lower()
+            
+            # Build config based on provider
+            config = {}
+            if provider_type == "openai":
+                config["api_key"] = get_config_value("OPENAI_API_KEY")
+                config["model"] = get_config_value("OPENAI_MODEL", "gpt-4o")
+            elif provider_type == "anthropic":
+                config["api_key"] = get_config_value("ANTHROPIC_API_KEY")
+                config["model"] = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+            elif provider_type == "xai":
+                config["api_key"] = get_config_value("XAI_API_KEY")
+                config["model"] = get_config_value("XAI_MODEL", "grok-3-mini")
+            elif provider_type == "ollama":
+                config["model"] = get_config_value("OLLAMA_MODEL", "llama3.2")
+                config["base_url"] = get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
+            
+            return create_provider(provider_type, **config)
+        except Exception as e:
+            print(f"Warning: Could not create LLM provider: {e}", file=sys.stderr)
+            return None
+    
+    def execute(self, workflow: Dict, query: str, 
+                status_callback: Callable[[str], None] = None) -> Dict[str, Any]:
+        """
+        Execute a workflow pipeline.
+        
+        Args:
+            workflow: Workflow definition dict
+            query: Original user query
+            status_callback: Optional callback for status updates (e.g., "Step 2: crawl_url")
+        
+        Returns:
+            Same format as Orchestrator.process() for compatibility:
+            {
+                "ok": True/False,
+                "speech": "Text to speak",
+                "data": {...},
+                "tools_used": [...]
+            }
+        """
+        workflow_id = workflow.get("id", "unknown")
+        workflow_name = workflow.get("name", workflow_id)
+        steps = workflow.get("steps", [])
+        tool_defaults = workflow.get("tool_defaults", {})
+        validation_policy = workflow.get("validation_policy", {})
+        
+        # Track execution time
+        start_time = time.time()
+        
+        # Initialize execution state
+        topic = self._extract_topic(query, workflow)
+        variables = self._extract_workflow_variables(query, workflow, topic)
+        
+        # Store workflow context for logging
+        self._current_workflow_id = workflow_id
+        
+        results = []
+        tools_used = []
+        total_retries = 0
+        max_total_retries = validation_policy.get("max_total_retries", 10)
+        
+        if status_callback:
+            status_callback(f"Starting workflow: {workflow_name}")
+        
+        # Execute each step
+        for step in steps:
+            step_num = step.get("step", len(results) + 1)
+            tool_name = step["tool"]
+            action = step.get("action")
+            description = step.get("description", f"{tool_name}")
+            
+            if status_callback:
+                status_callback(f"Step {step_num}: {description}")
+            
+            # Check condition (if specified)
+            if step.get("condition") == "${llm_decides}":
+                if not self._llm_should_execute(step, variables):
+                    results.append({
+                        "step": step_num,
+                        "tool": tool_name,
+                        "skipped": True,
+                        "reason": "LLM decided to skip"
+                    })
+                    continue
+            
+            # Handle for_each loops
+            if "for_each" in step:
+                step_result = self._execute_for_each(
+                    step, tool_name, action, tool_defaults, 
+                    variables, validation_policy, total_retries, max_total_retries
+                )
+                
+                if step_result.get("abort"):
+                    # Workflow abort requested
+                    return self._build_abort_response(workflow, step, results, variables,
+                                                      start_time=start_time, query=query)
+                
+                total_retries += step_result.get("retries", 0)
+                variables[step.get("output_var", f"step{step_num}_results")] = step_result.get("outputs", [])
+                
+                # Also store validated articles for convenience
+                if step_result.get("validated_outputs"):
+                    variables["validated_articles"] = step_result["validated_outputs"]
+                
+                results.append({
+                    "step": step_num,
+                    "tool": tool_name,
+                    "items_processed": step_result.get("items_processed", 0),
+                    "items_succeeded": step_result.get("items_succeeded", 0),
+                    "outputs": step_result.get("outputs", [])
+                })
+                tools_used.append(tool_name)
+            else:
+                # Single execution
+                step_result = self._execute_single(
+                    step, tool_name, action, tool_defaults,
+                    variables, validation_policy
+                )
+                
+                if not step_result.get("ok") and step.get("required", True):
+                    # Required step failed - abort by default unless explicitly told to continue
+                    if step.get("on_fail") != "continue":
+                        return self._build_abort_response(workflow, step, results, variables,
+                                                          start_time=start_time, query=query)
+                
+                # Store output
+                output_var = step.get("output_var")
+                if output_var and step_result.get("ok"):
+                    variables[output_var] = step_result.get("data", {})
+                
+                # Apply output transformations defined in the step
+                self._apply_output_transforms(step, step_result, variables, tool_name, action)
+                
+                results.append({
+                    "step": step_num,
+                    "tool": tool_name,
+                    "ok": step_result.get("ok", False),
+                    "data": step_result.get("data")
+                })
+                tools_used.append(tool_name)
+        
+        # Build final response and log workflow execution
+        return self._build_success_response(workflow, results, variables, tools_used, 
+                                            start_time=start_time, query=query)
+    
+    def _execute_single(self, step: Dict, tool_name: str, action: str,
+                        tool_defaults: Dict, variables: Dict,
+                        validation_policy: Dict) -> Dict[str, Any]:
+        """Execute a single step (not for_each)."""
+        
+        # Resolve parameters
+        params = self._resolve_params(step, tool_defaults.get(tool_name, {}), variables)
+        
+        # Add action if specified
+        if action:
+            params["action"] = action
+        
+        # LLM parameter filling if needed
+        if step.get("llm_prompt") and self.provider:
+            llm_params = self._llm_fill_params(step, variables)
+            params.update(llm_params)
+        
+        # Execute tool
+        result = self.executor.execute(tool_name, params)
+        
+        # Validate if needed
+        if step.get("validation") and result.get("ok"):
+            if not self._validate_result(result, step, variables):
+                result["ok"] = False
+                result["validation_failed"] = True
+        
+        return result
+    
+    def _execute_for_each(self, step: Dict, tool_name: str, action: str,
+                          tool_defaults: Dict, variables: Dict,
+                          validation_policy: Dict,
+                          current_retries: int, max_retries: int) -> Dict[str, Any]:
+        """Execute a for_each step with retry logic."""
+        
+        # Get items to iterate
+        for_each_expr = step["for_each"]
+        items = self._resolve_variable(for_each_expr, variables)
+        
+        if not items:
+            return {
+                "items_processed": 0,
+                "items_succeeded": 0,
+                "outputs": [],
+                "retries": 0
+            }
+        
+        outputs = []
+        validated_outputs = []
+        retries = 0
+        required_success = step.get("required_success_count", 1)
+        max_attempts = step.get("retry", {}).get("max_attempts", 1)
+        
+        item_index = 0
+        while item_index < len(items) and len(validated_outputs) < required_success:
+            if current_retries + retries >= max_retries:
+                break
+            
+            item = items[item_index]
+            
+            # Resolve parameters for this item
+            params = self._resolve_params(step, tool_defaults.get(tool_name, {}), variables)
+            
+            # Add action if specified
+            if action:
+                params["action"] = action
+            
+            # Add item-specific params (e.g., url)
+            if isinstance(item, str):
+                # Assume it's a URL for crawl_url
+                params["url"] = item
+            elif isinstance(item, dict):
+                params.update(item)
+            
+            # Execute tool
+            result = self.executor.execute(tool_name, params)
+            
+            # Validate result
+            if result.get("ok") and step.get("validation"):
+                if self._validate_result(result, step, variables):
+                    validated_outputs.append(result)
+                    outputs.append(result)
+                else:
+                    # Validation failed - count as retry
+                    retries += 1
+                    result["validation_failed"] = True
+                    outputs.append(result)
+            elif result.get("ok"):
+                validated_outputs.append(result)
+                outputs.append(result)
+            else:
+                retries += 1
+                outputs.append(result)
+            
+            item_index += 1
+        
+        # Check if we met required success count
+        abort = False
+        if len(validated_outputs) < required_success:
+            if step.get("on_all_fail") == "abort_with_message":
+                abort = True
+        
+        return {
+            "items_processed": len(outputs),
+            "items_succeeded": len(validated_outputs),
+            "outputs": outputs,
+            "validated_outputs": validated_outputs,
+            "retries": retries,
+            "abort": abort
+        }
+    
+    def _resolve_params(self, step: Dict, tool_defaults: Dict, variables: Dict) -> Dict:
+        """
+        Resolve parameters with layering: step > tool_defaults > variables.
+        """
+        params = {}
+        
+        # Start with tool defaults
+        params.update(tool_defaults)
+        
+        # Override with step params
+        for key, value in step.get("params", {}).items():
+            resolved = self._resolve_variable(value, variables)
+            if resolved is not None:
+                params[key] = resolved
+        
+        return params
+    
+    def _resolve_variable(self, expr: Any, variables: Dict) -> Any:
+        """
+        Resolve a variable expression like ${topic} or ${search_results.urls[:5]}.
+        Also handles embedded variables in strings and arrays.
+        """
+        # Handle arrays - recursively resolve each element
+        if isinstance(expr, list):
+            return [self._resolve_variable(item, variables) for item in expr]
+        
+        # Handle dicts - recursively resolve each value
+        if isinstance(expr, dict):
+            return {k: self._resolve_variable(v, variables) for k, v in expr.items()}
+        
+        if not isinstance(expr, str):
+            return expr
+        
+        # Handle embedded variables like "Research: ${topic}"
+        if "${" in expr and not (expr.startswith("${") and expr.endswith("}")):
+            result = expr
+            for match in re.finditer(r'\$\{([^}]+)\}', expr):
+                full_match = match.group(0)
+                var_path = match.group(1)
+                value = self._get_nested_value(variables, var_path)
+                if value is not None:
+                    result = result.replace(full_match, str(value))
+            return result
+        
+        if not expr.startswith("${") or not expr.endswith("}"):
+            return expr
+        
+        # Extract variable path
+        path = expr[2:-1]  # Remove ${ and }
+        
+        # Handle array slicing like urls[:5]
+        slice_match = re.match(r'^(.+)\[(\d*):(\d*)\]$', path)
+        if slice_match:
+            base_path = slice_match.group(1)
+            start = int(slice_match.group(2)) if slice_match.group(2) else None
+            end = int(slice_match.group(3)) if slice_match.group(3) else None
+            
+            value = self._get_nested_value(variables, base_path)
+            if isinstance(value, list):
+                return value[start:end]
+            return value
+        
+        # Handle array indexing like urls[0]
+        index_match = re.match(r'^(.+)\[(\d+)\]$', path)
+        if index_match:
+            base_path = index_match.group(1)
+            index = int(index_match.group(2))
+            
+            value = self._get_nested_value(variables, base_path)
+            if isinstance(value, list) and index < len(value):
+                return value[index]
+            return None
+        
+        # Simple path like "topic" or "search_results.urls"
+        return self._get_nested_value(variables, path)
+    
+    def _get_nested_value(self, data: Dict, path: str) -> Any:
+        """Get a nested value from a dict using dot notation."""
+        parts = path.split(".")
+        current = data
+        
+        for part in parts:
+            if isinstance(current, dict):
+                current = current.get(part)
+            else:
+                return None
+            
+            if current is None:
+                return None
+        
+        return current
+    
+    def _apply_output_transforms(self, step: Dict, result: Dict, variables: Dict, 
+                                    tool_name: str, action: str) -> None:
+        """
+        Apply output transformations to extract useful data from step results.
+        Uses step-defined 'extract' rules or falls back to built-in patterns.
+        """
+        data = result.get("data", {})
+        
+        # Check for step-defined extraction rules first
+        extract_rules = step.get("extract", {})
+        if extract_rules:
+            for var_name, path in extract_rules.items():
+                value = self._extract_by_path(data, path)
+                if value is not None:
+                    variables[var_name] = value
+            return
+        
+        # Built-in patterns (fallback for common tools)
+        
+        # Stash open_space - extract space_id
+        if tool_name == "stash" and action == "open_space":
+            if data.get("space_id"):
+                variables["space_id"] = data["space_id"]
+        
+        # Crawl URL - extract content and title from results
+        if tool_name == "crawl_url":
+            results = data.get("results", [])
+            if results:
+                first_result = results[0] if isinstance(results, list) else results
+                output_var = step.get("output_var", "article")
+                # Flatten for easier access: ${article.title}, ${article.content}
+                variables[output_var] = {
+                    "title": first_result.get("title", "Untitled"),
+                    "content": first_result.get("markdown", ""),
+                    "url": first_result.get("url", ""),
+                    "results": results  # Keep full results too
+                }
+        
+        # Search tools - extract URLs
+        if self._is_search_tool(tool_name):
+            urls = self._extract_urls_from_search(data)
+            if urls:
+                variables["search_results"] = {"urls": urls, "data": data}
+                # Mark as successful if we got URLs even if tool reported failure
+                if not result.get("ok"):
+                    result["ok"] = True
+                    result["recovered"] = True
+        
+        # Remember tool - extract memory_id
+        if tool_name == "remember":
+            if data.get("memory_id"):
+                variables["memory_id"] = data["memory_id"]
+            elif data.get("id"):
+                variables["memory_id"] = data["id"]
+        
+        # Canvas tool - extract page_id
+        if tool_name == "canvas":
+            if data.get("page_id"):
+                variables["canvas_id"] = data["page_id"]
+            elif data.get("id"):
+                variables["canvas_id"] = data["id"]
+        
+        # SSH tool - extract output
+        if tool_name == "ssh_remote":
+            if data.get("output"):
+                variables["ssh_output"] = data["output"]
+        
+        # Generate image - extract path
+        if tool_name == "generate_image":
+            if data.get("path"):
+                variables["image_path"] = data["path"]
+    
+    def _is_search_tool(self, tool_name: str) -> bool:
+        """Check if a tool is a search tool."""
+        search_indicators = ["search", "brave", "serp", "google", "bing", "duckduckgo"]
+        tool_lower = tool_name.lower()
+        return any(ind in tool_lower for ind in search_indicators)
+    
+    def _extract_by_path(self, data: Dict, path: str) -> Any:
+        """
+        Extract a value from nested data using dot notation or special syntax.
+        
+        Examples:
+            "space_id" -> data["space_id"]
+            "results[0].url" -> data["results"][0]["url"]
+            "results[*].url" -> [r["url"] for r in data["results"]]
+        """
+        if not path or not data:
+            return None
+        
+        # Handle array wildcard like "results[*].url"
+        if "[*]" in path:
+            parts = path.split("[*]")
+            if len(parts) == 2:
+                array_path = parts[0].strip(".")
+                item_path = parts[1].strip(".")
+                
+                array_data = self._get_nested_value(data, array_path) if array_path else data
+                if isinstance(array_data, list):
+                    return [self._get_nested_value(item, item_path) for item in array_data 
+                            if self._get_nested_value(item, item_path) is not None]
+            return None
+        
+        # Handle indexed access like "results[0].url"
+        # Convert to nested format for _get_nested_value
+        return self._get_nested_value(data, path)
+    
+    def _format_articles_for_llm(self, articles: List[Dict]) -> str:
+        """Format validated articles for LLM consumption."""
+        if not articles:
+            return "[No articles gathered]"
+        
+        formatted = []
+        for i, article in enumerate(articles, 1):
+            # Extract content from various possible structures
+            data = article.get("data", {})
+            content = ""
+            url = ""
+            
+            # Handle crawl_url format: data.results[0].markdown
+            if "results" in data and data["results"]:
+                result = data["results"][0]
+                content = result.get("markdown", result.get("content", ""))
+                url = result.get("url", "")
+            else:
+                content = data.get("markdown", data.get("content", data.get("text", "")))
+                url = data.get("url", "")
+            
+            # Truncate content to reasonable size (keep first ~3000 chars per article)
+            if len(content) > 3000:
+                content = content[:3000] + "\n\n[... content truncated ...]"
+            
+            formatted.append(f"### Article {i}\n**URL**: {url}\n\n{content}")
+        
+        return "\n\n---\n\n".join(formatted)
+    
+    def _extract_urls_from_search(self, search_data: Dict) -> List[str]:
+        """
+        Extract URLs from search results (handles MCP and native formats).
+        """
+        urls = []
+        
+        # Handle MCP brave_search format (full_text contains JSON strings)
+        full_text = search_data.get("full_text", "")
+        if full_text:
+            # Parse JSON objects from full_text
+            import re
+            json_pattern = r'\{[^{}]+\}'
+            matches = re.findall(json_pattern, full_text)
+            for match in matches:
+                try:
+                    obj = json.loads(match)
+                    if obj.get("url"):
+                        urls.append(obj["url"])
+                except json.JSONDecodeError:
+                    continue
+        
+        # Handle standard results array format
+        if not urls:
+            results = search_data.get("results", [])
+            for result in results:
+                if result.get("url"):
+                    urls.append(result["url"])
+        
+        # Handle web.results format (Brave API direct)
+        if not urls:
+            web = search_data.get("web", {})
+            for result in web.get("results", []):
+                if result.get("url"):
+                    urls.append(result["url"])
+        
+        return urls
+    
+    def _extract_topic(self, query: str, workflow: Dict) -> str:
+        """Extract the main topic from the query."""
+        # Remove explicit command prefix
+        for explicit in workflow.get("triggers", {}).get("explicit", []):
+            if query.lower().startswith(explicit.lower()):
+                topic = query[len(explicit):].strip()
+                return topic
+        
+        # Remove common patterns
+        patterns = workflow.get("triggers", {}).get("patterns", [])
+        query_lower = query.lower()
+        for pattern in patterns:
+            if pattern.lower() in query_lower:
+                # Remove the pattern and return the rest
+                idx = query_lower.find(pattern.lower())
+                topic = query[idx + len(pattern):].strip()
+                if topic:
+                    return topic
+        
+        # Return the whole query as topic
+        return query
+    
+    def _extract_workflow_variables(self, query: str, workflow: Dict, topic: str) -> Dict[str, Any]:
+        """
+        Extract workflow-defined variables from the query.
+        
+        Handles variable definitions like:
+        - {"from": "query", "extract": "url"}
+        - {"from": "query", "extract": "main_subject"}
+        - {"from": "query", "extract": "main_subject", "default": "vps2"}
+        """
+        variables = {
+            "query": query,
+            "topic": topic,
+            "content": topic,  # Alias for workflows that expect 'content'
+            "workflow_id": workflow.get("id", "unknown"),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        var_defs = workflow.get("variables", {})
+        for var_name, var_def in var_defs.items():
+            if not isinstance(var_def, dict):
+                continue
+            
+            source = var_def.get("from", "query")
+            extract_type = var_def.get("extract", "main_subject")
+            default_value = var_def.get("default")
+            
+            extracted_value = None
+            
+            if source == "query":
+                if extract_type == "url":
+                    # Extract URL from query
+                    extracted_value = self._extract_url_from_text(topic)
+                elif extract_type == "main_subject":
+                    extracted_value = topic if topic and topic.strip() else None
+                else:
+                    extracted_value = topic if topic and topic.strip() else None
+            
+            # Use extracted value or fall back to default
+            if extracted_value and str(extracted_value).strip():
+                variables[var_name] = extracted_value
+            elif default_value is not None:
+                variables[var_name] = default_value
+            else:
+                variables[var_name] = None
+        
+        return variables
+    
+    def _extract_url_from_text(self, text: str) -> Optional[str]:
+        """Extract a URL from text, adding https:// if needed."""
+        # Try to find a URL with protocol
+        url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+        match = re.search(url_pattern, text)
+        if match:
+            return match.group(0)
+        
+        # Try to find a domain-like pattern (e.g., "bigsk1.com" or "www.example.com")
+        domain_pattern = r'(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.)+[a-zA-Z]{2,}(?:/[^\s]*)?'
+        match = re.search(domain_pattern, text)
+        if match:
+            domain = match.group(0)
+            # Add https:// if not present
+            if not domain.startswith(('http://', 'https://')):
+                domain = 'https://' + domain
+            return domain
+        
+        return None
+    
+    def _validate_result(self, result: Dict, step: Dict, variables: Dict) -> bool:
+        """Validate step result using configured validation."""
+        validation = step.get("validation", {})
+        
+        # Get content to validate (handle various result formats)
+        content = ""
+        data = result.get("data", {})
+        if isinstance(data, dict):
+            # Try direct content fields first
+            content = data.get("content", data.get("markdown", data.get("text", "")))
+            
+            # Handle crawl_url format: data.results[0].markdown
+            if not content and "results" in data:
+                results = data.get("results", [])
+                if results and isinstance(results[0], dict):
+                    content = results[0].get("markdown", results[0].get("content", ""))
+        elif isinstance(data, str):
+            content = data
+        
+        # Heuristic validation
+        if validation.get("type") in ["heuristic", "hybrid"]:
+            heuristic = validation.get("heuristic", validation)
+            
+            # Check minimum length
+            min_length = heuristic.get("min_length", 0)
+            if len(content) < min_length:
+                return False
+            
+            # Check reject patterns
+            content_lower = content.lower()
+            for pattern in heuristic.get("reject_patterns", []):
+                if pattern.lower() in content_lower:
+                    return False
+            
+            # Check minimum results (for search)
+            min_results = heuristic.get("min_results", 0)
+            if min_results > 0:
+                results_list = data.get("results", [])
+                if len(results_list) < min_results:
+                    return False
+        
+        # LLM validation (if hybrid or llm type)
+        if validation.get("type") in ["llm", "hybrid"] and validation.get("llm_prompt"):
+            if self.provider:
+                return self._llm_validate(content, validation["llm_prompt"], variables)
+        
+        return True
+    
+    def _llm_validate(self, content: str, prompt_template: str, variables: Dict) -> bool:
+        """Use LLM to validate content."""
+        if not self.provider:
+            return True  # Skip LLM validation if no provider
+        
+        # Resolve variables in prompt
+        prompt = prompt_template
+        for key, value in variables.items():
+            if isinstance(value, str):
+                prompt = prompt.replace(f"${{{key}}}", value)
+        
+        # Truncate content for validation
+        content_preview = content[:2000] if len(content) > 2000 else content
+        
+        try:
+            user_message = f"{prompt}\n\nContent to validate:\n{content_preview}"
+            system_prompt = "You are validating content quality. Respond with only 'YES' or 'NO'."
+            
+            # chat() returns a string, not a dict
+            response = self.provider.chat(user_message, system_prompt=system_prompt)
+            answer = response.strip().upper() if isinstance(response, str) else ""
+            
+            return answer.startswith("YES")
+        except Exception as e:
+            print(f"LLM validation error: {e}", file=sys.stderr)
+            return True  # Default to valid on error
+    
+    def _llm_should_execute(self, step: Dict, variables: Dict) -> bool:
+        """Use LLM to decide if a step should execute."""
+        if not self.provider:
+            return True
+        
+        prompt = step.get("llm_prompt", "Should this step be executed?")
+        
+        # Resolve variables in prompt
+        for key, value in variables.items():
+            if isinstance(value, str):
+                prompt = prompt.replace(f"${{{key}}}", value)
+        
+        try:
+            system_prompt = "Decide if this action should be taken. Respond with only 'YES' or 'NO'."
+            
+            # chat() returns a string, not a dict
+            response = self.provider.chat(prompt, system_prompt=system_prompt)
+            answer = response.strip().upper() if isinstance(response, str) else ""
+            
+            return answer.startswith("YES")
+        except Exception:
+            return True
+    
+    def _llm_fill_params(self, step: Dict, variables: Dict) -> Dict:
+        """Use LLM to fill in parameters based on llm_prompt."""
+        if not self.provider:
+            return {}
+        
+        prompt = step.get("llm_prompt", "")
+        
+        # Find all ${...} patterns in the prompt and resolve them
+        import re
+        pattern = r'\$\{([^}]+)\}'
+        matches = re.findall(pattern, prompt)
+        
+        for var_path in matches:
+            placeholder = f"${{{var_path}}}"
+            
+            # Get value using nested path resolution
+            value = self._get_nested_value(variables, var_path)
+            
+            if value is None:
+                continue
+            
+            if isinstance(value, str):
+                prompt = prompt.replace(placeholder, value)
+            elif var_path == "validated_articles" and isinstance(value, list):
+                # Special handling for articles - extract actual content
+                articles_text = self._format_articles_for_llm(value)
+                prompt = prompt.replace(placeholder, articles_text)
+            elif isinstance(value, dict):
+                # For complex values, provide JSON representation
+                prompt = prompt.replace(placeholder, json.dumps(value, indent=2, default=str)[:2000])
+            elif isinstance(value, list):
+                prompt = prompt.replace(placeholder, json.dumps(value, indent=2, default=str)[:2000])
+            else:
+                prompt = prompt.replace(placeholder, str(value))
+        
+        try:
+            system_prompt = "Generate content based on the instruction. Be comprehensive and well-structured."
+            
+            # chat() returns a string, not a dict
+            response = self.provider.chat(prompt, system_prompt=system_prompt)
+            content = response if isinstance(response, str) else ""
+            
+            # Return as content parameter
+            return {"content": content}
+        except Exception as e:
+            print(f"LLM param fill error: {e}", file=sys.stderr)
+            return {}
+    
+    def _build_success_response(self, workflow: Dict, results: List[Dict],
+                                 variables: Dict, tools_used: List[str],
+                                 start_time: float = None, query: str = None) -> Dict[str, Any]:
+        """Build success response and log workflow execution."""
+        # Count successful articles
+        article_count = len(variables.get("validated_articles", []))
+        variables["article_count"] = article_count  # Make available for speech
+        
+        # Build speech from template - resolve all ${variables}
+        speech_template = workflow.get("success_speech", "Workflow complete.")
+        speech = self._resolve_variable(speech_template, variables)
+        
+        # If still has unresolved vars, they stay as-is (shouldn't happen normally)
+        if not isinstance(speech, str):
+            speech = str(speech)
+        
+        response = {
+            "ok": True,
+            "speech": speech,
+            "data": {
+                "workflow_id": workflow.get("id"),
+                "workflow_name": workflow.get("name"),
+                "steps_completed": len(results),
+                "results": results,
+                "variables": {k: v for k, v in variables.items() if not k.startswith("_")}
+            },
+            "tools_used": list(dict.fromkeys(tools_used))  # Preserve order, remove duplicates
+        }
+        
+        # Log workflow execution
+        if start_time:
+            duration_ms = (time.time() - start_time) * 1000
+            self.logger.log_workflow_execution(
+                workflow_id=workflow.get("id", "unknown"),
+                workflow_name=workflow.get("name", ""),
+                user_query=query or variables.get("query", ""),
+                result=response,
+                duration_ms=duration_ms,
+                steps_completed=len(results),
+                tools_used=list(set(tools_used)),
+                mode=self.mode
+            )
+        
+        return response
+    
+    def _build_abort_response(self, workflow: Dict, failed_step: Dict,
+                               results: List[Dict], variables: Dict,
+                               start_time: float = None, query: str = None) -> Dict[str, Any]:
+        """Build abort response and log workflow abortion."""
+        speech_template = workflow.get("abort_speech", "Workflow aborted.")
+        speech = speech_template
+        speech = speech.replace("${topic}", variables.get("topic", ""))
+        
+        tools_used = [r.get("tool") for r in results if r.get("tool")]
+        
+        response = {
+            "ok": False,
+            "speech": speech,
+            "data": {
+                "workflow_id": workflow.get("id"),
+                "aborted_at_step": failed_step.get("step"),
+                "reason": f"Step {failed_step.get('step')} ({failed_step.get('tool')}) failed",
+                "results": results
+            },
+            "tools_used": tools_used
+        }
+        
+        # Log aborted workflow execution
+        if start_time:
+            duration_ms = (time.time() - start_time) * 1000
+            self.logger.log_workflow_execution(
+                workflow_id=workflow.get("id", "unknown"),
+                workflow_name=workflow.get("name", ""),
+                user_query=query or variables.get("query", ""),
+                result=response,
+                duration_ms=duration_ms,
+                steps_completed=len(results),
+                tools_used=tools_used,
+                mode=self.mode
+            )
+        
+        return response
+
+
+def main():
+    """CLI for testing pipeline executor."""
+    import argparse
+    from executor import ToolExecutor
+    from workflow_loader import WorkflowLoader
+    
+    parser = argparse.ArgumentParser(description="Pipeline Executor CLI")
+    parser.add_argument("mode", choices=["cloud", "local"], help="Execution mode")
+    parser.add_argument("query", help="Query to execute")
+    parser.add_argument("--workflow", "-w", help="Workflow ID (optional, auto-matches if not provided)")
+    
+    args = parser.parse_args()
+    
+    # Load config
+    load_config(args.mode)
+    
+    # Initialize components
+    loader = WorkflowLoader()
+    
+    # Match or get workflow
+    if args.workflow:
+        workflow = loader.get_workflow(args.workflow)
+        if not workflow:
+            print(f"Workflow '{args.workflow}' not found")
+            sys.exit(1)
+    else:
+        workflow = loader.match(args.query)
+        if not workflow:
+            print("No workflow matched. Use --workflow to specify.")
+            sys.exit(1)
+    
+    print(f"Executing workflow: {workflow['id']}")
+    print(f"Steps: {len(workflow.get('steps', []))}")
+    print("-" * 40)
+    
+    # Initialize executor
+    from tool_schema import ToolRegistry
+    project_root = Path(__file__).parent.parent.resolve()
+    registry = ToolRegistry(str(project_root / "skills"))
+    tool_executor = ToolExecutor(args.mode, registry=registry)
+    
+    # Execute pipeline
+    pipeline = PipelineExecutor(args.mode, tool_executor)
+    
+    def status_callback(msg):
+        print(f"[STATUS] {msg}")
+    
+    result = pipeline.execute(workflow, args.query, status_callback=status_callback)
+    
+    print("-" * 40)
+    print(f"Result: {'SUCCESS' if result.get('ok') else 'FAILED'}")
+    print(f"Speech: {result.get('speech')}")
+    print(f"Tools used: {result.get('tools_used')}")
+    
+    if os.environ.get("JARVIS_DEBUG"):
+        print("\nFull result:")
+        print(json.dumps(result, indent=2, default=str))
+
+
+if __name__ == "__main__":
+    main()
