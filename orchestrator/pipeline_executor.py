@@ -596,6 +596,7 @@ class PipelineExecutor:
         - {"from": "query", "extract": "url"}
         - {"from": "query", "extract": "main_subject"}
         - {"from": "query", "extract": "main_subject", "default": "vps2"}
+        - {"from": "static", "value": "some fixed value"}
         """
         variables = {
             "query": query,
@@ -616,7 +617,10 @@ class PipelineExecutor:
             
             extracted_value = None
             
-            if source == "query":
+            if source == "static":
+                # Static value - use directly
+                extracted_value = var_def.get("value")
+            elif source == "query":
                 if extract_type == "url":
                     # Extract URL from query
                     extracted_value = self._extract_url_from_text(topic)
@@ -630,8 +634,7 @@ class PipelineExecutor:
                 variables[var_name] = extracted_value
             elif default_value is not None:
                 variables[var_name] = default_value
-            else:
-                variables[var_name] = None
+            # Note: Don't set to None if no value - preserve any existing variable
         
         return variables
     
@@ -692,7 +695,8 @@ class PipelineExecutor:
             # Check minimum results (for search)
             min_results = heuristic.get("min_results", 0)
             if min_results > 0:
-                results_list = data.get("results", [])
+                # Check various result formats: results, raw, urls
+                results_list = data.get("results", data.get("raw", []))
                 if len(results_list) < min_results:
                     return False
         
@@ -795,8 +799,12 @@ class PipelineExecutor:
             response = self.provider.chat(prompt, system_prompt=system_prompt)
             content = response if isinstance(response, str) else ""
             
-            # Return as content parameter
-            return {"content": content}
+            # Return as multiple parameter names for different tools:
+            # - 'content' for canvas
+            # - 'text' for stash
+            # - 'body' for send_email
+            # The tool will use whichever one it needs
+            return {"content": content, "text": content, "body": content}
         except Exception as e:
             print(f"LLM param fill error: {e}", file=sys.stderr)
             return {}

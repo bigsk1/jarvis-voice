@@ -144,6 +144,41 @@ PYEOF
 "extract": {"canvas_id": "page_id"}
 ```
 
+### crypto_price
+```python
+# Params: coin="bitcoin" or coin="solana"
+{
+  "ok": true,
+  "data": {
+    "coin": "Bitcoin",           # Display name
+    "coin_id": "bitcoin",        # CoinGecko ID
+    "price_usd": 89436,          # <- Use this
+    "change_24h_percent": 1.77,  # <- Use this
+    "market_cap_usd": 1787245973310.0,
+    "source": "CoinGecko"
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"btc_price": "price_usd", "btc_change": "change_24h_percent"}
+```
+
+### send_email
+```python
+# Params: to="boss", subject="...", body="..."
+{
+  "ok": true,
+  "data": {
+    "to": "boss@example.com",
+    "to_name": "Boss",
+    "subject": "Email subject",
+    "status": "sent"
+  }
+}
+```
+**Note**: `body` parameter is required. When using `llm_prompt`, the LLM-generated content is automatically mapped to `body`.
+
 ### remember
 ```python
 # Params: key="Important fact", value="Details here", category="notes"

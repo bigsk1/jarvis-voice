@@ -1,0 +1,169 @@
+{
+  "id": "crypto_market_report",
+  "name": "Crypto Market Report Workflow",
+  "description": "Get Bitcoin and Solana prices, search market sentiment and news, analyze price movements, save to canvas/stash, and email report to Boss.",
+  "enabled": true,
+  "version": "1.0",
+  
+  "triggers": {
+    "patterns": [
+      "crypto market report",
+      "crypto analysis",
+      "bitcoin solana report"
+    ],
+    "keywords": ["crypto", "market", "report"],
+    "explicit": ["/crypto"]
+  },
+  
+  "tool_defaults": {
+    "crawl_url": {
+      "stealth": true,
+      "wait_for_js": true,
+      "exclude_tags": ["nav", "footer", "aside", "script", "style", "header"]
+    }
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {},
+      "extract": {
+        "report_date": "date_formatted",
+        "report_time": "time_12h"
+      },
+      "required": true,
+      "description": "Get current timestamp"
+    },
+    {
+      "step": 2,
+      "tool": "crypto_price",
+      "params": {
+        "coin": "bitcoin"
+      },
+      "extract": {
+        "btc_price": "price_usd",
+        "btc_change": "change_24h_percent",
+        "btc_mcap": "market_cap_usd"
+      },
+      "required": true,
+      "description": "Get Bitcoin price"
+    },
+    {
+      "step": 3,
+      "tool": "crypto_price",
+      "params": {
+        "coin": "solana"
+      },
+      "extract": {
+        "sol_price": "price_usd",
+        "sol_change": "change_24h_percent",
+        "sol_mcap": "market_cap_usd"
+      },
+      "required": true,
+      "description": "Get Solana price"
+    },
+    {
+      "step": 4,
+      "tool": "mcp_brave_search_brave_web_search",
+      "params": {
+        "query": "cryptocurrency market news bitcoin solana price movement today",
+        "count": 5
+      },
+      "output_var": "search_results",
+      "required": true,
+      "validation": {
+        "type": "heuristic",
+        "min_results": 2
+      },
+      "description": "Search for crypto news"
+    },
+    {
+      "step": 5,
+      "tool": "crawl_url",
+      "for_each": "${search_results.urls[:3]}",
+      "output_var": "news_articles",
+      "params": {},
+      "validation": {
+        "type": "heuristic",
+        "heuristic": {
+          "min_length": 300,
+          "reject_patterns": [
+            "subscribe to continue",
+            "sign in to continue",
+            "403 forbidden",
+            "access denied",
+            "page not found"
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "strategy": "next_url"
+      },
+      "required_success_count": 1,
+      "on_all_fail": "continue",
+      "description": "Crawl news articles"
+    },
+    {
+      "step": 6,
+      "tool": "stash",
+      "action": "open_space",
+      "params": {
+        "labels": ["crypto", "market-report"]
+      },
+      "extract": {
+        "space_id": "space_id"
+      },
+      "required": true,
+      "description": "Create stash workspace"
+    },
+    {
+      "step": 7,
+      "tool": "stash",
+      "action": "save",
+      "params": {
+        "space_id": "${space_id}",
+        "kind": "text",
+        "name": "crypto_report_${report_date}.txt",
+        "tags": ["crypto", "report", "market"]
+      },
+      "llm_prompt": "Create a detailed crypto market report text file with:\n\n## Price Data\nBitcoin: $${btc_price} (${btc_change}% 24h)\nSolana: $${sol_price} (${sol_change}% 24h)\n\n## Market News\n${validated_articles}\n\nFormat as a plain text report with sections for prices, market sentiment, key news, and analysis of what's affecting prices.",
+      "extract": {
+        "stash_ref": "ref"
+      },
+      "required": true,
+      "description": "Save report to stash"
+    },
+    {
+      "step": 8,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Crypto Market Report - ${report_date}",
+        "tags": ["crypto", "market", "report"]
+      },
+      "llm_prompt": "Create a comprehensive crypto market report canvas page.\n\nReport generated: ${report_date} at ${report_time}\n\n## Price Data\n- Bitcoin (BTC): $${btc_price} (${btc_change}% 24h change)\n- Solana (SOL): $${sol_price} (${sol_change}% 24h change)\n\n## News & Sentiment\nBased on these articles:\n${validated_articles}\n\nGenerate a well-formatted markdown report including:\n1. **Executive Summary** - Quick overview of market conditions\n2. **Price Analysis** - BTC and SOL with formatted prices and changes (use green/red indicators)\n3. **Market Sentiment** - What the news says about current conditions\n4. **Key Drivers** - What's affecting price movements today\n5. **Notable Headlines** - Top 3 stories with brief summaries\n6. **Stash Reference**: ${stash_ref}",
+      "extract": {
+        "canvas_id": "page_id"
+      },
+      "required": true,
+      "description": "Create canvas report"
+    },
+    {
+      "step": 9,
+      "tool": "send_email",
+      "params": {
+        "to": "boss",
+        "subject": "Crypto Market Report - ${report_date}"
+      },
+      "llm_prompt": "Write a concise email body (3-4 paragraphs max) for a crypto market report.\n\nData:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n- Report date: ${report_date} at ${report_time}\n\nNews summary:\n${validated_articles}\n\nInclude:\n1. Opening with key price points and 24h changes\n2. Brief market sentiment (bullish/bearish/neutral based on the data)\n3. What's driving prices today (1-2 sentences from the news)\n4. Note that full report is saved in Canvas\n\nKeep it professional and scannable. Use plain text only (no markdown). Start directly with content, no greeting.",
+      "required": true,
+      "description": "Email report to Boss"
+    }
+  ],
+  
+  "success_speech": "Crypto market report complete. Bitcoin is at ${btc_price} dollars, ${btc_change} percent change. Solana is at ${sol_price} dollars. Report emailed to Boss and saved to canvas.",
+  "partial_speech": "Report generated with available data. Some news sources couldn't be crawled.",
+  "abort_speech": "Couldn't generate the crypto report. There may be issues with price data or news sources."
+}

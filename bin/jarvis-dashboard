@@ -141,6 +141,7 @@ COMMANDS: List[Command] = [
     Command("🔍 Deep Research", './orchestrator/orchestrator_v2.py cloud "/research AI trends 2026"', "Multi-source research with Brave + crawling", "🔄 Workflows"),
     Command("📝 Quick Note", './orchestrator/orchestrator_v2.py cloud "/note Remember to check server logs"', "Save note to memory + Canvas", "🔄 Workflows"),
     Command("🏥 Server Health", './orchestrator/orchestrator_v2.py cloud "/health vps2"', "SSH health check (default: vps2)", "🔄 Workflows"),
+    Command("📊 Crypto Report", './orchestrator/orchestrator_v2.py cloud "/crypto"', "BTC/SOL prices, news, email to Boss", "🔄 Workflows"),
     Command("List Workflows", "ls -la data/workflows/*.json 2>/dev/null | awk '{print $NF}' | xargs -I{} basename {} .json", "Show available workflow files", "🔄 Workflows"),
     Command("View Archive Workflow", "cat data/workflows/web_archive.json | jq '.name, .description, .steps[].tool'", "Web archive workflow details", "🔄 Workflows"),
     Command("View Research Workflow", "cat data/workflows/deep_research.json | jq '.name, .description, .steps[].tool'", "Deep research workflow details", "🔄 Workflows"),
