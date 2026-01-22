@@ -9,6 +9,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (January 21, 2026)
 
 **Production Ready** ✅
+- **Workflow Orchestration System** - Deterministic multi-tool pipelines ⭐ NEW
+  - Explicit triggers: `/archive`, `/research`, `/note`, `/health`
+  - Pipeline executor bypasses LLM routing for predictable, repeatable execution
+  - Variable system with query extraction, step results, nested paths
+  - WebUI hover tooltips show workflow steps and prompt key points
+  - Replaced /commands system - workflows are the new standard
+  - See [`docs/WORKFLOW_ORCHESTRATION.md`](docs/WORKFLOW_ORCHESTRATION.md)
 - **Stock Price Tool** - Stock, futures, and commodity prices via yfinance
   - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
   - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
@@ -219,7 +226,9 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - **Audio playback controls**: Speaker button with pause/resume/stop
   - **Music generation**: ElevenLabs music plays inline in chat
   - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
-  - **Slash commands**: `/canvas`, `/search`, `/detailed` - modify behavior
+  - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines ⭐ NEW
+  - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions ⭐ NEW
+  - **Prompt hover tooltips**: Hover over `@` suggestions to see key points ⭐ NEW
   - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
   - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
@@ -384,7 +393,9 @@ jarvis-voice/
 │   ├── orchestrator_v2.py    # Main orchestration logic
 │   ├── router_v2.py          # LLM-based routing
 │   ├── executor.py           # Tool execution engine
-│   └── tool_schema.py        # Tool discovery & validation
+│   ├── tool_schema.py        # Tool discovery & validation
+│   ├── workflow_loader.py    # Workflow JSON loader ⭐
+│   └── pipeline_executor.py  # Deterministic pipeline execution ⭐
 ├── skills/                   # Tool scripts (53+)
 │   ├── auto-tools/           # Auto-generated tools ⭐
 │   │   ├── docker_control.*  # Docker management
@@ -429,6 +440,11 @@ jarvis-voice/
 │   ├── jarvis_memory_local.db # Local mode DB (nomic 768-dim)
 │   ├── jarvis_intelligence.db # Intelligence layer (cloud)
 │   ├── jarvis_intelligence_local.db # Intelligence layer (local)
+│   ├── workflows/            # Workflow JSON definitions ⭐
+│   │   ├── web_archive.json  # /archive command
+│   │   ├── deep_research.json # /research command
+│   │   ├── quick_note.json   # /note command
+│   │   └── server_health_check.json # /health command
 │   ├── canvas/               # Canvas pages (Markdown) ⭐
 │   ├── stash/                # Artifact storage (7-day TTL) ⭐
 │   ├── generated_images/     # AI-generated images ⭐
@@ -1237,6 +1253,16 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Workflow Orchestration System** - Deterministic multi-tool pipelines ⭐ MAJOR
+  - **Explicit command triggers**: `/archive`, `/research`, `/note`, `/health`
+  - **Pipeline executor**: Executes workflow steps deterministically (bypasses LLM tool selection)
+  - **Variable system**: Extract from query, step results, nested paths (`${article.url}`)
+  - **LLM parameter filling**: `llm_prompt` for dynamic parameter resolution
+  - **Content validation**: Heuristic validation with min_length, reject_patterns
+  - **WebUI integration**: Hover tooltips for workflows/prompts, tool cards, server logs
+  - **Replaced /commands**: Workflows are the new standard for multi-tool tasks
+  - Pre-built workflows: web_archive, deep_research, quick_note, server_health_check
+  - See: `docs/WORKFLOW_ORCHESTRATION.md`, `data/workflows/`
 - ✅ **Comprehensive FastAPI Expansion** - Full programmatic access ⭐ MAJOR
   - Memory API (CRUD, keyword/semantic search, stats)
   - Query/Chat API (POST /api/query/quick)
@@ -1497,6 +1523,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.23 (January 2026)  
+**Current Version:** v2.24 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Comprehensive FastAPI (Memory, Query, Stash, Canvas, Conversations), Canvas read action
+**Latest Features:** Workflow Orchestration System (deterministic pipelines, WebUI hover tooltips)

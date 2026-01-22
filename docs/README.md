@@ -12,7 +12,7 @@
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
-- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v1.9** (server logs panel, search/export, ✨ enhance) ⭐ ENHANCED
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.0** (workflow tooltips, prompt tooltips, server logs) ⭐ ENHANCED
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) ⭐ NEW
 - **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence) ⭐ ENHANCED
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
@@ -27,7 +27,7 @@
 - **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - Modular webhook system (email, n8n, external APIs with auth)
 - **[opencode/OPENCODE.md](opencode/OPENCODE.md)** - Autonomous coding agent
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + **inter-tool calling patterns** ⭐ ENHANCED
-- **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (workflow recipes, pipeline execution, tool chains) ⭐ DESIGN
+- **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (deterministic pipelines, variable extraction, WebUI integration) ⭐ IMPLEMENTED
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools
 - **[status-tool/README.md](status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 
@@ -124,6 +124,8 @@
 ### Tool System
 | Document | Purpose |
 |----------|---------|
+| **WORKFLOW_ORCHESTRATION.md** | 🔄 **Workflow system** - Deterministic multi-tool pipelines ⭐ IMPLEMENTED |
+| **[../data/workflows/AGENTS.md](../data/workflows/AGENTS.md)** | 📖 **Workflow building guide** - Tool outputs, extract rules, testing |
 | **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval ⭐ NEW |
 | **TOOL_RAG_IMPLEMENTATION_SUMMARY.md** | Tool RAG implementation details ⭐ NEW |
 | **TOOL_RAG_TROUBLESHOOTING.md** | Tool RAG debugging guide ⭐ NEW |
@@ -294,6 +296,29 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-01-21:**
+- ✅ **Workflow Orchestration System** - Deterministic multi-tool pipeline execution ⭐ MAJOR
+  - **Explicit command triggers**: `/archive`, `/research`, `/note`, `/health`
+  - **Pipeline executor**: Executes workflow steps deterministically (no LLM routing variability)
+  - **Variable system**: Extract from query, step results, nested paths (`${article.url}`)
+  - **LLM parameter filling**: `llm_prompt` resolves variables before LLM fills remaining params
+  - **Content validation**: Heuristic validation with `min_length`, `reject_patterns`
+  - **Required step failure**: Aborts workflow on critical step failures
+  - **Built-in transforms**: Output transforms for crawl_url and search tools
+  - **WebUI integration**:
+    - Hover tooltips show workflow steps and descriptions
+    - Hover tooltips show prompt key points
+    - Tool cards display correctly for workflow results
+    - Workflow logs appear in server logs panel
+  - **Replaced /commands system** - Workflows are the new standard for multi-tool tasks
+  - See: `docs/WORKFLOW_ORCHESTRATION.md`, `data/workflows/AGENTS.md`
+- ✅ **Workflow Recipes** - Pre-built workflow definitions
+  - `/archive <url>` - Archive web pages to stash with Canvas summary
+  - `/research <topic>` - Multi-source research with Brave search and crawling
+  - `/note <content>` - Quick note to memory with Canvas
+  - `/health [host]` - Server health check via SSH (defaults to vps2)
+  - See: `data/workflows/*.json`, `data/workflows/README.md`
 
 **2026-01-18:**
 - ✅ **Comprehensive FastAPI Expansion** - Full programmatic access to Jarvis ⭐ MAJOR
@@ -776,6 +801,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-18 (v2.23)  
-**Latest:** Comprehensive FastAPI (Memory, Query, Stash, Canvas, Conversations), Canvas read action  
+**Last Updated:** 2026-01-21 (v2.24)  
+**Latest:** Workflow Orchestration System (deterministic pipelines, WebUI integration)  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

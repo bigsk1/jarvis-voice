@@ -136,6 +136,18 @@ COMMANDS: List[Command] = [
     Command("UniFi Webhook Rules", "curl -sf http://localhost:5050/rules | jq '.rules | to_entries | .[] | select(.value.enabled) | {(.key): {severity: .value.severity, auto_ack: .value.auto_ack}}' || echo '❌ Not running'", "Enabled alert rules", "🔧 Services"),
     Command("UniFi Webhook Logs", "journalctl -u unifi-protect-webhook -n 30 --no-pager 2>/dev/null || echo 'No logs or needs sudo'", "Recent webhook logs", "🔧 Services"),
     
+    # === 🔄 WORKFLOWS ===
+    Command("📦 Archive URL", './orchestrator/orchestrator_v2.py cloud "/archive https://example.com"', "Archive webpage to stash + Canvas", "🔄 Workflows"),
+    Command("🔍 Deep Research", './orchestrator/orchestrator_v2.py cloud "/research AI trends 2026"', "Multi-source research with Brave + crawling", "🔄 Workflows"),
+    Command("📝 Quick Note", './orchestrator/orchestrator_v2.py cloud "/note Remember to check server logs"', "Save note to memory + Canvas", "🔄 Workflows"),
+    Command("🏥 Server Health", './orchestrator/orchestrator_v2.py cloud "/health vps2"', "SSH health check (default: vps2)", "🔄 Workflows"),
+    Command("List Workflows", "ls -la data/workflows/*.json 2>/dev/null | awk '{print $NF}' | xargs -I{} basename {} .json", "Show available workflow files", "🔄 Workflows"),
+    Command("View Archive Workflow", "cat data/workflows/web_archive.json | jq '.name, .description, .steps[].tool'", "Web archive workflow details", "🔄 Workflows"),
+    Command("View Research Workflow", "cat data/workflows/deep_research.json | jq '.name, .description, .steps[].tool'", "Deep research workflow details", "🔄 Workflows"),
+    Command("View Note Workflow", "cat data/workflows/quick_note.json | jq '.name, .description, .steps[].tool'", "Quick note workflow details", "🔄 Workflows"),
+    Command("View Health Workflow", "cat data/workflows/server_health_check.json | jq '.name, .description, .steps[].tool'", "Server health workflow details", "🔄 Workflows"),
+    Command("Workflow Docs", "echo '📖 See: docs/WORKFLOW_ORCHESTRATION.md' && echo '📖 See: data/workflows/AGENTS.md' && echo '📖 See: data/workflows/README.md'", "Workflow documentation links", "🔄 Workflows"),
+    
     # === 🧪 TESTING ===
     Command("Test All (Cloud)", "./test-all-tools.sh", "All tool tests - cloud", "🧪 Testing"),
     Command("Test All (Local)", "./test-all-tools-local.sh", "All tool tests - local", "🧪 Testing"),
