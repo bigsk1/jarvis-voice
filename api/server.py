@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router, stash_router, canvas_router, prices_router, config_router
+from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router, stash_router, canvas_router, prices_router, config_router, workflows_router
 from api.routes.intelligence import router as intelligence_router
 
 # Prometheus metrics
@@ -198,6 +198,7 @@ app.include_router(stash_router)
 app.include_router(canvas_router)
 app.include_router(prices_router)
 app.include_router(config_router)
+app.include_router(workflows_router)
 app.include_router(intelligence_router)
 
 # Add /metrics endpoint LAST
@@ -263,6 +264,12 @@ async def root():
             "page": "/api/canvas/{page_id}"
         },
         "speak": "/api/voice/speak",
+        "workflows": {
+            "list": "/api/workflows",
+            "history": "/api/workflows/history",
+            "get": "/api/workflows/{workflow_id}",
+            "execute": "/api/workflows/{workflow_id}/execute"
+        },
         "intelligence": {
             "stats": "/api/intelligence/stats",
             "health": "/api/intelligence/health",
