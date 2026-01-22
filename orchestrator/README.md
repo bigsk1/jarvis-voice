@@ -1,63 +1,161 @@
 # Orchestrator
 
-The orchestrator is the "brain" between STT and TTS that:
-1. **Routes** transcripts to appropriate handlers
-2. **Executes** tools/skills
-3. **Formats** responses for TTS
+The orchestrator is the "brain" of Jarvis that:
+1. **Routes** user queries via LLM analysis
+2. **Executes** tools/skills with multi-turn support
+3. **Runs** deterministic workflow pipelines
+4. **Formats** responses for voice/text output
+
+---
 
 ## Architecture
 
 ```
-Transcription → Router → Executor → Response
-                   ↓
-              (determines intent)
-                   ↓
-         ┌─────────┴─────────┐
-         ↓                   ↓
-      [Tool]              [Q&A]
-    (skills/)         (question.sh)
+User Query
+    ↓
+┌───────────────────────────────────────────────┐
+│              orchestrator_v2.py               │
+│  (main coordinator - handles all routing)     │
+└───────────────────────────────────────────────┘
+    ↓
+┌───────────────────┐     ┌─────────────────────┐
+│  Workflow Check   │────→│  pipeline_executor  │
+│  (explicit /cmd)  │     │  (deterministic)    │
+└───────────────────┘     └─────────────────────┘
+    ↓ (if not workflow)
+┌───────────────────┐
+│    router_v2.py   │
+│  (LLM analysis)   │
+└───────────────────┘
+    ↓
+┌─────────┬─────────┐
+│  Tool   │   Q&A   │
+│  Call   │Response │
+└─────────┴─────────┘
+    ↓
+┌───────────────────┐
+│   executor.py     │
+│  (runs skills/)   │
+└───────────────────┘
 ```
+
+---
 
 ## Components
 
-### `router.py`
-- Determines user intent from transcript
-- Returns: `{intent, tool_name, args, confidence}`
-- Currently rule-based; future: LLM-based classification
+### `orchestrator_v2.py` (Main Entry Point)
+The primary orchestration script. Handles:
+- Mode selection (cloud/local)
+- Workflow detection and execution
+- LLM routing for tool selection
+- Multi-turn orchestration (chains tools automatically)
+- Intelligence layer integration
+- Cost tracking and logging
 
-### `executor.py`
-- Executes tools/skills in `skills/` directory
-- Manages timeouts, errors, JSON I/O
+```bash
+# Usage
+./orchestrator/orchestrator_v2.py cloud "What time is it?"
+./orchestrator/orchestrator_v2.py local "Search for Python tutorials"
+./orchestrator/orchestrator_v2.py cloud "/crypto"  # Triggers workflow
+```
+
+### `router_v2.py` (LLM-Based Router)
+Analyzes user queries and determines:
+- Whether to call a tool or respond directly
+- Which tool(s) to use
+- Parameters to extract from the query
+- Uses Tool RAG for dynamic tool discovery
+
+Returns routing decisions with tool selections and arguments.
+
+### `executor.py` (Tool Executor)
+Executes tools/skills from `skills/` and `skills/auto-tools/`:
+- Manages timeouts and error handling
+- Handles JSON I/O with tools
+- Supports MCP server tools
 - Returns: `{ok, speech, data}`
 
-### `orchestrator.py`
-- Main coordinator
-- Combines routing + execution
-- Falls back to Q&A for general questions
+### `pipeline_executor.py` (Workflow Engine)
+Executes deterministic workflow pipelines:
+- Loads workflow definitions from `data/workflows/*.json`
+- Runs tools in predefined sequence
+- Handles variable substitution between steps
+- LLM parameter filling for dynamic values
+- Content validation and retry logic
+- Bypasses normal LLM routing
 
-## Usage
+### `workflow_loader.py` (Workflow Loader)
+Loads and validates workflow JSON definitions:
+- Discovers workflows from `data/workflows/`
+- Validates required fields (id, trigger, steps)
+- Provides workflow metadata for API/UI
 
-### Test Router
-```bash
-cd /home/boss/jarvis-voice
-./orchestrator/router.py cloud "What's the weather like?"
+### Legacy Files
+- `orchestrator.py` - Original orchestrator (deprecated, kept for reference)
+- `router.py` - Original rule-based router (deprecated, kept for reference)
+
+---
+
+## Two Execution Paths
+
+### 1. LLM Routing (Default)
+For general queries, the LLM analyzes and selects tools:
+
+```
+"What's the weather?" → router_v2 → weather tool → response
+"Build a Flask API"  → router_v2 → opencode → multi-turn → response
 ```
 
-### Test Executor
-```bash
-./orchestrator/executor.py cloud weather '{"location":"Portland"}'
+### 2. Workflow Pipelines (Explicit Commands)
+For `/commands`, deterministic execution:
+
+```
+"/crypto"     → pipeline_executor → [get_time, crypto_price, search, ...] → response
+"/archive X"  → pipeline_executor → [crawl_url, stash, remember, canvas] → response
 ```
 
-### Test Full Orchestrator
+---
+
+## Usage Examples
+
+### CLI Queries
 ```bash
-./orchestrator/orchestrator.py cloud "What's the weather in Seattle?"
+# Cloud mode (xAI/Anthropic/OpenAI)
+./orchestrator/orchestrator_v2.py cloud "What time is it?"
+./orchestrator/orchestrator_v2.py cloud "Remember my server IP is 192.168.1.100"
+
+# Local mode (Ollama)
+./orchestrator/orchestrator_v2.py local "Search for Python tutorials"
+
+# With debug output
+./orchestrator/orchestrator_v2.py cloud "What's the weather?" --debug
 ```
 
-## Creating Tools
+### Workflow Execution
+```bash
+# Crypto market report
+./orchestrator/orchestrator_v2.py cloud "/crypto"
 
-Tools live in `skills/` and follow this contract:
+# Web archive
+./orchestrator/orchestrator_v2.py cloud "/archive https://example.com"
 
-**Input**: JSON via stdin
+# Deep research
+./orchestrator/orchestrator_v2.py cloud "/research AI trends 2026"
+
+# Quick note
+./orchestrator/orchestrator_v2.py cloud "/note Remember to check logs"
+
+# Server health (SSH)
+./orchestrator/orchestrator_v2.py cloud "/health vps2"
+```
+
+---
+
+## Tool Contract
+
+Tools in `skills/` follow this interface:
+
+**Input**: JSON via command line argument
 ```json
 {
   "location": "Portland, OR"
@@ -78,32 +176,34 @@ Tools live in `skills/` and follow this contract:
 
 **Exit Code**: 0 for success, non-zero for error
 
-### Example Tool
+---
+
+## Configuration
+
+Key environment variables (in `config/cloud.env` or `config/local.env`):
 
 ```bash
-#!/bin/bash
-# skills/time.sh
-NOW=$(date "+%I:%M %p")
-jq -n --arg speech "It's $NOW" '{ok:true, speech:$speech}'
+# LLM Provider
+LLM_PROVIDER="xai"           # xai, anthropic, openai, ollama
+LLM_MODEL="grok-4-fast"      # Model to use
+
+# Tool RAG
+TOOL_RAG_ENABLED="true"      # Dynamic tool discovery
+TOOL_RAG_TOP_K="8"           # Tools to retrieve per query
+
+# Intelligence Layer
+INTELLIGENCE_ENABLED="true"  # Self-learning system
+
+# Response Style
+JARVIS_RESPONSE_STYLE="auto" # auto, casual, detailed
 ```
 
-## Integration
+---
 
-To integrate the orchestrator into the wake loop:
+## Related Documentation
 
-1. Modify `question-mic.sh` to call orchestrator instead of direct Q&A
-2. Orchestrator returns speech text
-3. Pass to TTS scripts (`say.sh` or `say-local.sh`)
-
-This keeps the wake loop clean and extensible.
-
-## Future Enhancements
-
-- [ ] LLM-based intent classification
-- [ ] Multi-step workflows
-- [ ] Context/session management
-- [ ] MCP (Model Context Protocol) integration
-- [ ] Tool marketplace/discovery
-- [ ] Async tool execution
-- [ ] Retry logic with backoff
-
+- **[WORKFLOW_ORCHESTRATION.md](../docs/WORKFLOW_ORCHESTRATION.md)** - Full workflow system
+- **[TOOL_CALLING_SYSTEM.md](../docs/TOOL_CALLING_SYSTEM.md)** - How tool routing works
+- **[JARVIS_WORKFLOW.md](../docs/JARVIS_WORKFLOW.md)** - Complete request flow
+- **[INTELLIGENCE_LAYER.md](../docs/INTELLIGENCE_LAYER.md)** - Self-learning system
+- **[api/WORKFLOWS.md](../docs/api/WORKFLOWS.md)** - Workflows API reference
