@@ -1,9 +1,9 @@
 {
   "id": "crypto_market_report",
   "name": "Crypto Market Report Workflow",
-  "description": "Get Bitcoin and Solana prices, search market sentiment and news, analyze price movements, save to canvas/stash, and email report to Boss.",
+  "description": "Get crypto prices, search market sentiment and news, analyze price movements, save to canvas/stash, and email report to Boss. Specify coins after /crypto or defaults to BTC and SOL.",
   "enabled": true,
-  "version": "1.0",
+  "version": "1.1",
   
   "triggers": {
     "patterns": [
@@ -13,6 +13,10 @@
     ],
     "keywords": ["crypto", "market", "report"],
     "explicit": ["/crypto"]
+  },
+  
+  "variables": {
+    "coins": {"from": "query", "extract": "main_subject", "default": "bitcoin and solana"}
   },
   
   "tool_defaults": {
@@ -38,36 +42,36 @@
     {
       "step": 2,
       "tool": "crypto_price",
-      "params": {
-        "coin": "bitcoin"
-      },
+      "params": {},
+      "llm_prompt": "The user requested a crypto report for: ${coins}\n\nExtract the FIRST cryptocurrency mentioned. If none specified or just 'bitcoin and solana', return 'bitcoin'.\n\nCommon mappings: btc=bitcoin, eth=ethereum, sol=solana, xrp=ripple, ada=cardano, doge=dogecoin, bnb=binancecoin, dot=polkadot, avax=avalanche-2, matic=matic-network\n\nRespond with ONLY the coin id (lowercase, no extra text). Example: bitcoin",
       "extract": {
-        "btc_price": "price_usd",
-        "btc_change": "change_24h_percent",
-        "btc_mcap": "market_cap_usd"
+        "coin1_price": "price_usd",
+        "coin1_change": "change_24h_percent",
+        "coin1_name": "coin",
+        "coin1_mcap": "market_cap_usd"
       },
       "required": true,
-      "description": "Get Bitcoin price"
+      "description": "Get first coin price"
     },
     {
       "step": 3,
       "tool": "crypto_price",
-      "params": {
-        "coin": "solana"
-      },
+      "params": {},
+      "llm_prompt": "The user requested a crypto report for: ${coins}\n\nExtract the SECOND cryptocurrency mentioned. If only one coin specified, or none specified, or just 'bitcoin and solana', return 'solana'.\n\nCommon mappings: btc=bitcoin, eth=ethereum, sol=solana, xrp=ripple, ada=cardano, doge=dogecoin, bnb=binancecoin, dot=polkadot, avax=avalanche-2, matic=matic-network\n\nRespond with ONLY the coin id (lowercase, no extra text). Example: solana",
       "extract": {
-        "sol_price": "price_usd",
-        "sol_change": "change_24h_percent",
-        "sol_mcap": "market_cap_usd"
+        "coin2_price": "price_usd",
+        "coin2_change": "change_24h_percent",
+        "coin2_name": "coin",
+        "coin2_mcap": "market_cap_usd"
       },
       "required": true,
-      "description": "Get Solana price"
+      "description": "Get second coin price"
     },
     {
       "step": 4,
       "tool": "mcp_brave_search_brave_web_search",
       "params": {
-        "query": "cryptocurrency market news bitcoin solana price movement today",
+        "query": "cryptocurrency market news ${coins} price movement today",
         "count": 5
       },
       "output_var": "search_results",
@@ -128,7 +132,7 @@
         "name": "crypto_report_${report_date}.txt",
         "tags": ["crypto", "report", "market"]
       },
-      "llm_prompt": "Create a detailed crypto market report text file with:\n\n## Price Data\nBitcoin: $${btc_price} (${btc_change}% 24h)\nSolana: $${sol_price} (${sol_change}% 24h)\n\n## Market News\n${validated_articles}\n\nFormat as a plain text report with sections for prices, market sentiment, key news, and analysis of what's affecting prices.",
+      "llm_prompt": "Create a detailed crypto market report text file with:\n\n## Price Data\n${coin1_name}: $${coin1_price} (${coin1_change}% 24h)\n${coin2_name}: $${coin2_price} (${coin2_change}% 24h)\n\n## Market News\n${validated_articles}\n\nFormat as a plain text report with sections for prices, market sentiment, key news, and analysis of what's affecting prices.",
       "extract": {
         "stash_ref": "ref"
       },
@@ -143,7 +147,7 @@
         "title": "Crypto Market Report - ${report_date}",
         "tags": ["crypto", "market", "report"]
       },
-      "llm_prompt": "Create a comprehensive crypto market report canvas page.\n\nReport generated: ${report_date} at ${report_time}\n\n## Price Data\n- Bitcoin (BTC): $${btc_price} (${btc_change}% 24h change)\n- Solana (SOL): $${sol_price} (${sol_change}% 24h change)\n\n## News & Sentiment\nBased on these articles:\n${validated_articles}\n\nGenerate a well-formatted markdown report including:\n1. **Executive Summary** - Quick overview of market conditions\n2. **Price Analysis** - BTC and SOL with formatted prices and changes (use green/red indicators)\n3. **Market Sentiment** - What the news says about current conditions\n4. **Key Drivers** - What's affecting price movements today\n5. **Notable Headlines** - Top 3 stories with brief summaries\n6. **Stash Reference**: ${stash_ref}",
+      "llm_prompt": "Create a comprehensive crypto market report canvas page.\n\nReport generated: ${report_date} at ${report_time}\n\n## Price Data\n- ${coin1_name}: $${coin1_price} (${coin1_change}% 24h change)\n- ${coin2_name}: $${coin2_price} (${coin2_change}% 24h change)\n\n## News & Sentiment\nBased on these articles:\n${validated_articles}\n\nGenerate a well-formatted markdown report including:\n1. **Executive Summary** - Quick overview of market conditions\n2. **Price Analysis** - Both coins with formatted prices and changes (use green/red indicators)\n3. **Market Sentiment** - What the news says about current conditions\n4. **Key Drivers** - What's affecting price movements today\n5. **Notable Headlines** - Top 3 stories with brief summaries\n6. **Stash Reference**: ${stash_ref}",
       "extract": {
         "canvas_id": "page_id"
       },
@@ -157,13 +161,13 @@
         "to": "boss",
         "subject": "Crypto Market Report - ${report_date}"
       },
-      "llm_prompt": "Write a concise email body (3-4 paragraphs max) for a crypto market report.\n\nData:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n- Report date: ${report_date} at ${report_time}\n\nNews summary:\n${validated_articles}\n\nInclude:\n1. Opening with key price points and 24h changes\n2. Brief market sentiment (bullish/bearish/neutral based on the data)\n3. What's driving prices today (1-2 sentences from the news)\n4. Note that full report is saved in Canvas\n\nKeep it professional and scannable. Use plain text only (no markdown). Start directly with content, no greeting.",
+      "llm_prompt": "Write a concise email body (3-4 paragraphs max) for a crypto market report.\n\nData:\n- ${coin1_name}: $${coin1_price} (${coin1_change}% 24h)\n- ${coin2_name}: $${coin2_price} (${coin2_change}% 24h)\n- Report date: ${report_date} at ${report_time}\n\nNews summary:\n${validated_articles}\n\nInclude:\n1. Opening with key price points and 24h changes\n2. Brief market sentiment (bullish/bearish/neutral based on the data)\n3. What's driving prices today (1-2 sentences from the news)\n4. Note that full report is saved in Canvas\n\nKeep it professional and scannable. Use plain text only (no markdown). Start directly with content, no greeting.",
       "required": true,
       "description": "Email report to Boss"
     }
   ],
   
-  "success_speech": "Crypto market report complete. Bitcoin is at ${btc_price} dollars, ${btc_change} percent change. Solana is at ${sol_price} dollars. Report emailed to Boss and saved to canvas.",
+  "success_speech": "Crypto market report complete. ${coin1_name} is at ${coin1_price} dollars, ${coin1_change} percent change. ${coin2_name} is at ${coin2_price} dollars. Report emailed to Boss and saved to canvas.",
   "partial_speech": "Report generated with available data. Some news sources couldn't be crawled.",
   "abort_speech": "Couldn't generate the crypto report. There may be issues with price data or news sources."
 }

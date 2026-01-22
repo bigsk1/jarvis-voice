@@ -763,6 +763,7 @@ class PipelineExecutor:
             return {}
         
         prompt = step.get("llm_prompt", "")
+        tool_name = step.get("tool", "")
         
         # Find all ${...} patterns in the prompt and resolve them
         import re
@@ -793,18 +794,29 @@ class PipelineExecutor:
                 prompt = prompt.replace(placeholder, str(value))
         
         try:
-            system_prompt = "Generate content based on the instruction. Be comprehensive and well-structured."
+            # Use appropriate system prompt based on tool type
+            if tool_name == "crypto_price":
+                system_prompt = "Extract the requested value. Respond with ONLY the value, no extra text."
+            else:
+                system_prompt = "Generate content based on the instruction. Be comprehensive and well-structured."
             
             # chat() returns a string, not a dict
             response = self.provider.chat(prompt, system_prompt=system_prompt)
-            content = response if isinstance(response, str) else ""
+            content = response.strip() if isinstance(response, str) else ""
             
-            # Return as multiple parameter names for different tools:
-            # - 'content' for canvas
-            # - 'text' for stash
-            # - 'body' for send_email
-            # The tool will use whichever one it needs
-            return {"content": content, "text": content, "body": content}
+            # Return appropriate parameter names based on tool
+            if tool_name == "crypto_price":
+                # For crypto_price, the LLM should return just the coin name
+                return {"coin": content.lower().strip()}
+            elif tool_name == "send_email":
+                return {"body": content}
+            elif tool_name == "stash":
+                return {"text": content}
+            elif tool_name == "canvas":
+                return {"content": content}
+            else:
+                # Generic fallback - return all common parameter names
+                return {"content": content, "text": content, "body": content}
         except Exception as e:
             print(f"LLM param fill error: {e}", file=sys.stderr)
             return {}
