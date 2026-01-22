@@ -820,6 +820,55 @@ See `docs/TOOL_MANAGEMENT.md` for details.
 
 ---
 
+## 🔄 Workflow Orchestration
+
+Workflows are deterministic multi-tool pipelines that execute predefined sequences of tools. Unlike normal LLM routing (where the LLM decides which tools to use), workflows guarantee consistent, repeatable execution.
+
+### Two Ways Tools Execute
+
+| Method | Trigger | Who Decides Tools | Use Case |
+|--------|---------|-------------------|----------|
+| **LLM Routing** | Any query | LLM analyzes and selects | General questions, flexible tasks |
+| **Workflow Pipelines** | `/command` | Predefined in JSON recipe | Repeatable multi-step tasks |
+
+### Available Workflows
+
+| Command | Description | Tools Used |
+|---------|-------------|------------|
+| `/crypto [coins]` | Crypto prices, news, analysis, email report | get_time, crypto_price, brave_search, crawl_url, stash, canvas, send_email |
+| `/archive <url>` | Archive webpage to stash with Canvas summary | crawl_url, stash, remember, canvas |
+| `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, canvas |
+| `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
+| `/health [host]` | SSH health check (default: vps2) | ssh_remote |
+
+### Workflow Features
+
+- **Variable System**: Extract parameters from queries, pass data between steps
+- **LLM Parameter Filling**: Dynamic parameter resolution via `llm_prompt`
+- **Content Validation**: Heuristic validation with min_length, reject_patterns
+- **Retry Logic**: Automatic retries with configurable limits
+- **Bypass Intelligence**: Workflows skip intelligence layer (deterministic = no routing to learn)
+
+### API Access
+
+```bash
+# List workflows
+curl http://localhost:8880/api/workflows | jq
+
+# Execute workflow
+curl -X POST http://localhost:8880/api/workflows/crypto_market_report/execute
+
+# View history
+curl http://localhost:8880/api/workflows/history | jq
+```
+
+See:
+- `docs/WORKFLOW_ORCHESTRATION.md` - Full workflow system documentation
+- `docs/api/WORKFLOWS.md` - Workflows API reference
+- `data/workflows/` - Workflow JSON definitions
+
+---
+
 ## 🧠 Memory System
 
 ### Knowledge Base
@@ -1021,9 +1070,16 @@ LIMIT 7;"
 
 **Proactive System:**
 - `docs/api/` - **Proactive API** documentation (webhooks, alerts, monitoring)
-- `docs/api/API_OVERVIEW.md` - **FastAPI** (Memory, Query, Stash, Canvas, Conversations) ⭐ ENHANCED
+- `docs/api/API_OVERVIEW.md` - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Conversations) ⭐ ENHANCED
+- `docs/api/WORKFLOWS.md` - **Workflows API** (list, execute, history) ⭐ NEW
 - `docs/service/` - **Background Services** documentation (daemons, auto-resolve)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
+
+**Workflow Orchestration:** ⭐ NEW
+- `docs/WORKFLOW_ORCHESTRATION.md` - **Full workflow system** (pipelines, variables, validation)
+- `docs/api/WORKFLOWS.md` - **Workflows API** (programmatic execution)
+- `data/workflows/AGENTS.md` - Workflow building guide
+- `data/workflows/README.md` - Workflow recipes reference
 
 **Core System:**
 - `docs/phone/PHONE_CALLS.md` - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts)
