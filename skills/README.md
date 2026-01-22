@@ -1,151 +1,325 @@
 # Skills / Tools
 
-This directory contains executable tools that Jarvis can invoke.
+This directory contains 50+ executable tools that Jarvis can invoke. Each tool is a Python script paired with a JSON definition file.
 
-## Tool Contract
+---
 
-All tools must follow this interface:
+## Directory Structure
 
-### Input (stdin)
-JSON object with parameters:
+```
+skills/
+├── *.py              # Tool scripts (executable)
+├── *.tool.json       # Tool definitions (schema, permissions)
+├── auto-tools/       # Tools created by Tool Builder
+│   ├── *.py
+│   ├── *.tool.json
+│   └── *.report.json # Build audit reports
+└── profiles/         # Tool sync profiles (cloud/local)
+```
+
+---
+
+## Tool Discovery
+
+Tools are automatically discovered when they have:
+1. A Python script: `toolname.py`
+2. A JSON definition: `toolname.tool.json`
+3. Executable permission: `chmod +x toolname.py`
+
+The orchestrator loads tools from both `skills/` and `skills/auto-tools/`.
+
+---
+
+## Tool Definition Format
+
+Every tool needs a `.tool.json` file:
+
 ```json
 {
-  "param1": "value1",
-  "param2": "value2"
+  "enabled": true,
+  "name": "weather",
+  "description": "Get current weather and forecast for a location",
+  "script": "weather.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "location": {
+        "type": "string",
+        "description": "City name or location"
+      }
+    },
+    "required": ["location"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "network": true,
+    "filesystem": false,
+    "bash": false,
+    "auto_approve": true
+  }
 }
 ```
 
-### Output (stdout)
-JSON object with result:
+---
+
+## Tool Contract
+
+### Input
+JSON object passed as command line argument:
+```bash
+./weather.py '{"location": "Portland, OR"}'
+```
+
+### Output
+JSON object printed to stdout:
 ```json
 {
   "ok": true,
-  "speech": "Text to speak to user",
+  "speech": "It's 72 degrees and sunny in Portland",
   "data": {
-    "additional": "metadata"
+    "temp": 72,
+    "condition": "sunny",
+    "location": "Portland, OR"
   }
 }
 ```
 
 ### Exit Code
 - `0`: Success
-- Non-zero: Error
+- Non-zero: Error (with error message in output)
 
-## Example Tools
+---
 
-### `time.sh`
-Returns current time.
+## Available Tools (50+)
 
-**Usage:**
+### Memory
+| Tool | Description |
+|------|-------------|
+| `remember` | Store facts, preferences, technical info |
+| `recall` | Retrieve specific memories by category/key |
+| `search_memory` | FTS5 full-text keyword search |
+| `semantic_recall` | AI-powered conceptual search |
+| `update_memory` | Modify existing memories |
+| `forget` | Delete memories |
+| `deep_memory_search` | Multi-source search (memory, canvas, stash, intel) |
+
+### Conversations
+| Tool | Description |
+|------|-------------|
+| `get_recent_conversations` | Access conversation history |
+| `search_conversations` | Search past interactions |
+
+### Media & Content
+| Tool | Description |
+|------|-------------|
+| `generate_image` | AI image generation (Gemini) |
+| `analyze_image` | Vision analysis (Grok/Claude/GPT-4o) |
+| `generate_music` | AI music creation (ElevenLabs) |
+| `pdf_create` | Generate PDFs from content |
+| `pdf_read` | Extract text/images from PDFs |
+| `screenshot_url` | Full-page screenshots with AI analysis |
+| `crawl_url` | Web scraping with Crawl4AI |
+
+### Storage & Output
+| Tool | Description |
+|------|-------------|
+| `stash` | Artifact storage (temp files, 7-day TTL) |
+| `canvas` | Visual knowledge pages |
+| `printer` | Print from stash/files (CUPS) |
+
+### Communication
+| Tool | Description |
+|------|-------------|
+| `send_email` | Email with HTML templates |
+| `send_webhook` | Trigger webhooks (Slack, Discord, APIs) |
+| `phone_call` | AI phone calls (Vapi.ai) |
+
+### System & Network
+| Tool | Description |
+|------|-------------|
+| `execute_bash` | Run shell commands |
+| `ssh_remote` | SSH into remote hosts |
+| `docker_control` | Docker/compose management |
+| `network_tools` | Ping, DNS, port checks, traceroute |
+| `system_monitor` | CPU, RAM, disk, processes |
+| `speaker_volume` | Audio volume control |
+
+### Integrations
+| Tool | Description |
+|------|-------------|
+| `weather` | Weather forecasts (OpenWeatherMap) |
+| `crypto_price` | Cryptocurrency prices |
+| `stock_price` | Stock/futures/forex prices |
+| `spotify` | Music playback control |
+| `opencode` | Autonomous coding agent |
+| `calculator` | Math, stats, unit conversions |
+
+### Proactive System
+| Tool | Description |
+|------|-------------|
+| `create_reminder` | Time-based reminders |
+| `list_reminders` | View scheduled reminders |
+| `acknowledge_reminders` | Clear reminders |
+| `list_alerts` | View active alerts |
+| `acknowledge_alerts` | Dismiss alerts |
+
+### Development
+| Tool | Description |
+|------|-------------|
+| `check_tool_logs` | View tool/workflow execution logs |
+| `check_opencode_sessions` | Monitor OpenCode progress |
+| `query_service_logs` | Check background service status |
+| `ingest_intel` | Bulk import knowledge files |
+| `manage_intel` | Create/manage intel files |
+
+---
+
+## Auto-Tools (Tool Builder)
+
+The `auto-tools/` directory contains tools created by the Dynamic Tool Builder:
+
+| Tool | Description |
+|------|-------------|
+| `docker_control` | Docker container and compose management |
+| `network_tools` | Network diagnostics suite |
+| `system_monitor` | System resource monitoring |
+| `text_summarizer` | Text processing and analysis |
+| `youtube_transcript` | Download YouTube transcripts |
+| `status_recap` | Daily status aggregator |
+| `generate_password` | Secure password generation |
+
+Each auto-tool includes a `.report.json` with build audit information.
+
+---
+
+## Managing Tools
+
+### Enable/Disable Tools
 ```bash
-echo '{}' | ./time.sh
+# List all tools
+./bin/manage-tools.py list
+
+# Disable a tool
+./bin/manage-tools.py disable crypto_price
+
+# Enable a tool
+./bin/manage-tools.py enable crypto_price
 ```
 
-**Output:**
-```json
-{
-  "ok": true,
-  "speech": "It's 03:30 PM on Monday, November 11",
-  "data": {
-    "time": "15:30"
-  }
-}
-```
-
-### `weather.sh`
-Returns weather information (currently mocked).
-
-**Usage:**
+### Sync Tools to LLM Context
 ```bash
-echo '{"location":"Portland"}' | ./weather.sh
+# Sync for cloud mode
+./bin/sync_tools.py cloud
+
+# Sync for local mode
+./bin/sync_tools.py local
 ```
 
-**Output:**
-```json
-{
-  "ok": true,
-  "speech": "It's 72 degrees and partly cloudy in Portland",
-  "data": {
-    "location": "Portland",
-    "temp": 72,
-    "condition": "partly cloudy"
-  }
-}
-```
+---
 
 ## Creating New Tools
 
-### Bash Template
+### 1. Use Tool Builder (Recommended)
 ```bash
-#!/bin/bash
-set -euo pipefail
-
-# Read input
-INPUT=$(cat)
-PARAM=$(echo "$INPUT" | jq -r '.param')
-
-# Do work...
-RESULT="some result"
-
-# Return JSON
-jq -n --arg speech "Result: $RESULT" '{ok:true, speech:$speech}'
+./bin/build-tool --mode cloud build "Check if a URL is accessible"
 ```
 
-### Python Template
+### 2. Manual Creation
+
+**Create the script (`skills/mytool.py`):**
 ```python
 #!/usr/bin/env python3
 import sys
 import json
 
-# Read input
-input_data = json.load(sys.stdin)
-param = input_data.get("param", "default")
+def main():
+    # Parse input from command line
+    input_data = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
+    param = input_data.get("param", "default")
+    
+    # Do work...
+    result = f"Processed: {param}"
+    
+    # Return JSON
+    print(json.dumps({
+        "ok": True,
+        "speech": result,
+        "data": {"param": param}
+    }))
 
-# Do work...
-result = f"Processed: {param}"
-
-# Return JSON
-output = {
-    "ok": True,
-    "speech": result,
-    "data": {"param": param}
-}
-print(json.dumps(output))
+if __name__ == "__main__":
+    main()
 ```
+
+**Create the definition (`skills/mytool.tool.json`):**
+```json
+{
+  "enabled": true,
+  "name": "mytool",
+  "description": "What the tool does - be specific for Tool RAG",
+  "script": "mytool.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "param": {
+        "type": "string",
+        "description": "Parameter description"
+      }
+    },
+    "required": ["param"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "network": false,
+    "filesystem": false,
+    "bash": false,
+    "auto_approve": true
+  }
+}
+```
+
+**Make executable and sync:**
+```bash
+chmod +x skills/mytool.py
+./bin/sync_tools.py cloud
+```
+
+---
 
 ## Testing Tools
 
 ```bash
-# Direct test
-echo '{"location":"Seattle"}' | ./weather.sh
+# Direct execution
+./skills/weather.py '{"location": "Seattle"}'
 
 # Via orchestrator
-cd ..
-./orchestrator/executor.py cloud weather '{"location":"Seattle"}'
+./orchestrator/orchestrator_v2.py cloud "What's the weather in Seattle?"
+
+# Check tool logs
+./orchestrator/orchestrator_v2.py cloud "show recent tool logs"
 ```
-
-## Tool Ideas
-
-- 🌤️ Real weather API integration
-- 🏠 Smart home control
-- 📅 Calendar integration
-- 📧 Email summaries
-- 🖥️ System status (CPU, memory, disk)
-- 🎵 Music control
-- 📝 Note taking
-- ⏰ Timer/reminder management
-- 📊 Stock prices
-- 📰 News headlines
-
-## Integration
-
-Tools are automatically discovered by the orchestrator when:
-1. Placed in `skills/` directory
-2. Named `<tool_name>.sh` or `<tool_name>.py`
-3. Made executable: `chmod +x skills/mytool.sh`
-4. Router maps intent to tool name
 
 ---
 
-**Keep tools simple, fast, and focused on one task!**
+## Tool RAG Integration
 
+Tools are discovered dynamically using semantic search:
+- Only relevant tools are loaded per query (reduces context)
+- Tool descriptions are embedded for similarity matching
+- "Ghost tools" (critical tools) are always available
+
+Configure in `config/cloud.env`:
+```bash
+TOOL_RAG_ENABLED=true
+TOOL_RAG_TOP_K=8
+```
+
+---
+
+## Related Documentation
+
+- **[TOOL_CALLING_SYSTEM.md](../docs/TOOL_CALLING_SYSTEM.md)** - How tool routing works
+- **[TOOL_MANAGEMENT.md](../docs/TOOL_MANAGEMENT.md)** - Enable/disable tools
+- **[TOOL_RAG_STRATEGY.md](../docs/TOOL_RAG_STRATEGY.md)** - Dynamic tool discovery
+- **[TOOL_BUILDER.md](../docs/TOOL_BUILDER.md)** - Automatic tool creation
+- **[STASH_SYSTEM.md](../docs/STASH_SYSTEM.md)** - Artifact storage for tools
