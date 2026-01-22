@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "check_tool_logs",
-  "description": "Check recent tool execution logs to see if there were errors. Use this when a tool fails to understand what went wrong and how to fix it. Returns the last few tool calls with their results and error messages.",
+  "description": "Check recent tool execution logs and workflow execution logs. Use this when a tool or workflow fails to understand what went wrong. Can show tool calls, workflow executions, or both. For workflows, shows which steps completed and any errors.",
   "script": "check_tool_logs.py",
   "parameters": {
     "type": "object",
@@ -13,6 +13,15 @@
       "limit": {
         "type": "integer",
         "description": "Number of recent log entries to return (default: 3)"
+      },
+      "log_type": {
+        "type": "string",
+        "enum": ["tools", "workflows", "all"],
+        "description": "Type of logs to check: 'tools' for tool calls (default), 'workflows' for workflow executions, 'all' for both."
+      },
+      "workflow_id": {
+        "type": "string",
+        "description": "Optional: filter workflow logs by specific workflow ID (e.g., 'crypto_market_report', 'web_archive')."
       }
     }
   },

@@ -399,6 +399,43 @@ scrape_configs:
           format: RFC3339Nano
 
   # ==========================================
+  # Workflow Execution Logs
+  # ==========================================
+  - job_name: jarvis_workflows
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: jarvis
+          log_type: workflows
+          host: fred
+          __path__: /var/log/jarvis/workflows-*.jsonl
+    
+    pipeline_stages:
+      # Parse JSON structure (matches workflow_logger format)
+      - json:
+          expressions:
+            timestamp: timestamp
+            mode: mode
+            type: type
+            workflow_id: workflow_id
+            workflow_name: workflow_name
+            user_query: user_query
+            result_ok: result.ok
+            steps_completed: result.steps_completed
+            duration_ms: duration_ms
+            
+      # Extract labels for filtering
+      - labels:
+          mode:
+          workflow_id:
+          result_ok:
+          
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # ==========================================
   # Orchestrator Logs (General)
   # ==========================================
   - job_name: jarvis_orchestrator
