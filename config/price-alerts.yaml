@@ -43,9 +43,9 @@ watchlist:
       severity: high
       message: Solana above $160
     - type: below
-      value: 128
+      value: 110
       severity: high
-      message: Solana dropped below $128
+      message: Solana dropped below $110
     - type: percent_change_24h
       value: 10
       severity: high
