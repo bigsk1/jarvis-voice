@@ -297,6 +297,20 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-01-23:**
+- ✅ **Token/Cost Tracking in WebUI** - Real-time token usage and cost display ⭐ NEW
+  - Floating counter shows cumulative tokens + estimated USD cost
+  - Context-aware: correct window for xAI (2M), Anthropic (200K), OpenAI (128K/400K)
+  - Warning states at 50%/80% context usage with provider tooltip
+  - Persists across conversation switches (saved with messages)
+- ✅ **Workflow Token Tracking** - Pipeline executor now tracks LLM usage
+  - Tracks usage from llm_prompt, validation, and decision calls
+  - Returns usage in workflow response for WebUI display
+- ✅ **Workflow Token Efficiency Documentation** - Highlighted 99%+ savings
+  - Workflows bypass 35K baseline (system prompt + tool definitions)
+  - Critical for local models with limited context windows
+  - See: `docs/WORKFLOW_ORCHESTRATION.md`, `docs/BASELINE_TOKEN_USAGE.md`
+
 **2026-01-21:**
 - ✅ **Workflow Orchestration System** - Deterministic multi-tool pipeline execution ⭐ MAJOR
   - **Explicit command triggers**: `/archive`, `/research`, `/note`, `/health`
@@ -801,6 +815,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-21 (v2.24)  
-**Latest:** Workflow Orchestration System (deterministic pipelines, WebUI integration)  
+**Last Updated:** 2026-01-23 (v2.25)  
+**Latest:** Token/Cost Tracking in WebUI + Workflow token efficiency documentation  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
