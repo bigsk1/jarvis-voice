@@ -50,6 +50,7 @@ class WorkflowExecuteResponse(BaseModel):
     steps_completed: int = Field(0, description="Number of steps completed")
     duration_ms: Optional[float] = Field(None, description="Execution time in milliseconds")
     data: Optional[Dict[str, Any]] = Field(None, description="Accumulated data from steps")
+    usage: Optional[Dict[str, Any]] = Field(None, description="LLM token usage from workflow")
     error: Optional[str] = None
     
     class Config:

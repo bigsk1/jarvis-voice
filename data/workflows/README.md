@@ -20,6 +20,9 @@ This folder contains JSON workflow definitions that the orchestrator can execute
   "triggers": {
     "explicit": ["/command"]
   },
+  "variables": {
+    "location": "Static value here"
+  },
   "steps": [
     {"step": 1, "tool": "tool_name", "params": {...}}
   ],
@@ -35,15 +38,50 @@ This folder contains JSON workflow definitions that the orchestrator can execute
 | `deep_research.json` | `/research <topic>` | Multi-source research with validation |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
+| `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, system health dashboard |
+| `daily_status_visual.json` | `/status-visual` | Same as /status but with AI-generated dashboard image |
+| `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
 
 ## Variables
 
-- `${topic}` - Main subject from query
-- `${url}` - URL extracted from query
-- `${timestamp}` - Current ISO timestamp
+Two formats supported:
+
+**Simple static values:**
+```json
+"variables": {
+  "location": "Hillsboro, Oregon",
+  "timeout": 30,
+  "enabled": true
+}
+```
+
+**Dynamic extraction:**
+```json
+"variables": {
+  "topic": {"from": "query", "extract": "main_subject"},
+  "url": {"from": "query", "extract": "url"},
+  "host": {"from": "query", "extract": "main_subject", "default": "vps2"}
+}
+```
+
+**Variable usage:**
+- `${topic}` - Simple variable
 - `${article.content}` - Nested path from previous step
 - `${urls[:5]}` - Array slice (first 5 items)
 
+## Extract Rules
+
+Extract paths are relative to `result.data` - do NOT include `data.` prefix:
+
+```json
+// CORRECT - paths relative to data
+"extract": {"temperature": "temperature", "cpu": "cpu.total_percent"}
+
+// WRONG - don't include data. prefix
+"extract": {"temperature": "data.temperature"}
+```
+
 ## Documentation
 
-Full documentation: [docs/WORKFLOW_ORCHESTRATION.md](../../docs/WORKFLOW_ORCHESTRATION.md)
+- Full reference: [docs/WORKFLOW_ORCHESTRATION.md](../../docs/WORKFLOW_ORCHESTRATION.md)
+- Tool structures: [AGENTS.md](AGENTS.md)

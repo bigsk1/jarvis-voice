@@ -211,6 +211,131 @@ PYEOF
 ```
 **Built-in transform**: Pipeline executor automatically creates `${search_results.urls}` array.
 
+### weather
+```python
+# Params: location="Hillsboro, Oregon"
+{
+  "ok": true,
+  "data": {
+    "location": "Hillsboro, Oregon",
+    "temperature": 36,
+    "feels_like": 34,
+    "humidity": 79,
+    "condition": "overcast clouds",
+    "wind_speed": 3,
+    "wind_unit": "mph"
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"temperature": "temperature", "humidity": "humidity", "condition": "condition"}
+```
+
+### stock_price
+```python
+# Params: symbol="TSLA" or symbol="GC=F" (gold futures)
+{
+  "ok": true,
+  "data": {
+    "symbol": "TSLA",
+    "company": "Tesla, Inc.",
+    "price_usd": 449.36,
+    "change_today_percent": 3.26,
+    "market_cap_usd": 1490000000000,
+    "pe_ratio": 312.1,
+    "sector": "Consumer Cyclical"
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"tsla_price": "price_usd", "tsla_change": "change_today_percent"}
+```
+
+### system_monitor
+```python
+# Params: {} (no params needed)
+{
+  "ok": true,
+  "data": {
+    "cpu": {"total_percent": 0.3, "per_cpu": [...]},
+    "memory": {"ram": {"percent_used": 15.4, "used_gb": 4.6, "total_gb": 30.1}},
+    "uptime": {"uptime_string": "8d 20h 3m"},
+    "disks": [{"mountpoint": "/", "percent_used": 5.3}]
+  }
+}
+```
+**Extract rules (nested paths):**
+```json
+"extract": {
+  "cpu_percent": "cpu.total_percent",
+  "memory_percent": "memory.ram.percent_used",
+  "uptime": "uptime.uptime_string"
+}
+```
+
+### list_alerts
+```python
+# Params: status="pending"
+{
+  "ok": true,
+  "data": {
+    "count": 3,
+    "alerts": [
+      {"id": 350, "message": "Gold moved...", "severity": "high", "status": "pending"}
+    ]
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"alert_count": "count", "alerts": "alerts"}
+```
+
+### list_reminders
+```python
+# Params: status="scheduled", limit=5
+{
+  "ok": true,
+  "data": {
+    "count": 2,
+    "reminders": [
+      {"id": 10, "title": "Call mom", "relative_time": "in 2 hours"}
+    ]
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"reminder_count": "count", "reminders": "reminders"}
+```
+
+### generate_image
+```python
+# Params: prompt="...", aspect_ratio="landscape" (optional)
+{
+  "ok": true,
+  "data": {
+    "prompt": "Original prompt",
+    "revised_prompt": "Enhanced prompt",
+    "saved": {
+      "stash_ref": "stash://space_.../f_abc123",
+      "memory_id": 456
+    }
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"image_ref": "saved.stash_ref"}
+```
+**LLM prompt example** (llm_prompt fills the `prompt` param):
+```json
+"llm_prompt": "Create a dashboard image showing: Weather ${temperature}°F, Bitcoin $${btc_price}. Style: dark theme, neon accents, futuristic HUD."
+```
+Note: The LLM will generate a text description for the image, NOT ASCII art.
+
 ---
 
 ## Step 3: Workflow JSON Structure
@@ -248,8 +373,18 @@ PYEOF
 }
 ```
 
-### Variable Extraction from Query
+### Variable Definitions
 
+**Simple static values** (strings, numbers, booleans):
+```json
+"variables": {
+  "location": "Hillsboro, Oregon",   // String - used as-is
+  "timeout": 30,                     // Number
+  "enabled": true                    // Boolean
+}
+```
+
+**Dynamic extraction from query:**
 ```json
 "variables": {
   "url": {"from": "query", "extract": "url"},           // Extracts URL, adds https:// if needed
@@ -316,6 +451,15 @@ PYEOF
 
 // CORRECT
 "params": {"action": "run", "host": "vps2", "command": "uptime"}
+```
+
+### Extract Paths Include "data." Prefix
+```json
+// WRONG - extract paths are relative to result.data, don't include "data."
+"extract": {"temperature": "data.temperature", "cpu": "data.cpu.total_percent"}
+
+// CORRECT - paths start from inside data
+"extract": {"temperature": "temperature", "cpu": "cpu.total_percent"}
 ```
 
 ### Assuming Built-in Transforms Exist
@@ -388,6 +532,9 @@ cat "$(ls /home/boss/jarvis-voice/data/canvas/page_* | tail -1)"
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `deep_research.json` | `/research <topic>` | Search, for_each crawl, validation |
+| `daily_status.json` | `/status` | Static variables, nested extracts, multi-tool dashboard |
+| `daily_status_visual.json` | `/status-visual` | generate_image with data, image_ref in canvas |
+| `crypto_market_report.json` | `/crypto [coins]` | Multiple crypto_price calls, LLM formatting |
 
 ---
 

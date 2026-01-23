@@ -971,6 +971,12 @@ If tool is made need to update timeouts in executor.py
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
 ```
 
+
+
+
+
+
+
 # Price Alert Monitor - adding new assets
 
 1. Edit config/price-alerts.yaml     → Add symbol + conditions

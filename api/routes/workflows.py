@@ -282,6 +282,7 @@ async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest = N
             steps_completed=result.get("steps_completed", 0),
             duration_ms=duration_ms,
             data=result.get("data"),
+            usage=result.get("usage"),
             error=result.get("error")
         )
         

@@ -660,6 +660,11 @@ class PipelineExecutor:
         
         # First pass: extract variables from query/static
         for var_name, var_def in var_defs.items():
+            # Handle simple values (string, int, float, bool) as static variables
+            if isinstance(var_def, (str, int, float, bool)):
+                variables[var_name] = var_def
+                continue
+            
             if not isinstance(var_def, dict):
                 continue
             
@@ -689,6 +694,7 @@ class PipelineExecutor:
         
         # Second pass: apply transforms that reference other variables
         for var_name, var_def in var_defs.items():
+            # Skip simple values (already handled in first pass)
             if not isinstance(var_def, dict):
                 continue
             
@@ -895,6 +901,8 @@ class PipelineExecutor:
             # Use appropriate system prompt based on tool type
             if tool_name == "crypto_price":
                 system_prompt = "Extract the requested value. Respond with ONLY the value, no extra text."
+            elif tool_name == "generate_image":
+                system_prompt = "Generate a detailed image prompt description. Focus on visual elements, colors, composition, and style. Do NOT use ASCII art or code blocks. Output only the text description for an AI image generator."
             else:
                 system_prompt = "Generate content based on the instruction. Be comprehensive and well-structured."
             
@@ -912,6 +920,8 @@ class PipelineExecutor:
                 return {"text": content}
             elif tool_name == "canvas":
                 return {"content": content}
+            elif tool_name == "generate_image":
+                return {"prompt": content}
             else:
                 # Generic fallback - return all common parameter names
                 return {"content": content, "text": content, "body": content}

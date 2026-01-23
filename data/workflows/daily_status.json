@@ -1,0 +1,166 @@
+{
+  "id": "daily_status",
+  "name": "Daily Status Briefing",
+  "description": "Workflow version of status_recap - gets weather, crypto, stocks, alerts, reminders, system health and creates canvas report",
+  "version": "1.0",
+  "enabled": true,
+  
+  "triggers": {
+    "explicit": ["/status", "/daily", "/briefing", "/recap"],
+    "patterns": [],
+    "keywords": []
+  },
+  
+  "variables": {
+    "location": "Hillsboro, Oregon"
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {},
+      "output_var": "time_result",
+      "extract": {
+        "timestamp": "time",
+        "date": "date",
+        "day_of_week": "day_of_week"
+      },
+      "required": true,
+      "description": "Get current date/time"
+    },
+    {
+      "step": 2,
+      "tool": "weather",
+      "params": {
+        "location": "${location}"
+      },
+      "output_var": "weather_result",
+      "extract": {
+        "temperature": "temperature",
+        "feels_like": "feels_like",
+        "condition": "condition",
+        "humidity": "humidity",
+        "wind_speed": "wind_speed"
+      },
+      "required": false,
+      "description": "Get weather forecast"
+    },
+    {
+      "step": 3,
+      "tool": "crypto_price",
+      "params": {
+        "coin": "bitcoin"
+      },
+      "output_var": "btc_result",
+      "extract": {
+        "btc_price": "price_usd",
+        "btc_change": "change_24h_percent"
+      },
+      "required": false,
+      "description": "Get Bitcoin price"
+    },
+    {
+      "step": 4,
+      "tool": "crypto_price",
+      "params": {
+        "coin": "solana"
+      },
+      "output_var": "sol_result",
+      "extract": {
+        "sol_price": "price_usd",
+        "sol_change": "change_24h_percent"
+      },
+      "required": false,
+      "description": "Get Solana price"
+    },
+    {
+      "step": 5,
+      "tool": "stock_price",
+      "params": {
+        "symbol": "TSLA"
+      },
+      "output_var": "tsla_result",
+      "extract": {
+        "tsla_price": "price_usd",
+        "tsla_change": "change_today_percent"
+      },
+      "required": false,
+      "description": "Get Tesla stock"
+    },
+    {
+      "step": 6,
+      "tool": "stock_price",
+      "params": {
+        "symbol": "GC=F"
+      },
+      "output_var": "gold_result",
+      "extract": {
+        "gold_price": "price_usd",
+        "gold_change": "change_today_percent"
+      },
+      "required": false,
+      "description": "Get Gold futures"
+    },
+    {
+      "step": 7,
+      "tool": "list_alerts",
+      "params": {
+        "status": "pending"
+      },
+      "output_var": "alerts_result",
+      "extract": {
+        "alert_count": "count",
+        "alerts": "alerts"
+      },
+      "required": false,
+      "description": "Get pending alerts"
+    },
+    {
+      "step": 8,
+      "tool": "list_reminders",
+      "params": {
+        "status": "scheduled",
+        "limit": 5
+      },
+      "output_var": "reminders_result",
+      "extract": {
+        "reminder_count": "count",
+        "reminders": "reminders"
+      },
+      "required": false,
+      "description": "Get upcoming reminders"
+    },
+    {
+      "step": 9,
+      "tool": "system_monitor",
+      "params": {},
+      "output_var": "system_result",
+      "extract": {
+        "cpu_percent": "cpu.total_percent",
+        "memory_percent": "memory.ram.percent_used",
+        "memory_used_gb": "memory.ram.used_gb",
+        "memory_total_gb": "memory.ram.total_gb",
+        "uptime": "uptime.uptime_string"
+      },
+      "required": false,
+      "description": "Get system health"
+    },
+    {
+      "step": 10,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Daily Status - ${date}",
+        "tags": ["status", "daily", "workflow"]
+      },
+      "llm_prompt": "Create a clean, well-formatted status report using this data. Use markdown headers and bullet points.\n\nDate: ${date} (${day_of_week})\nTime: ${timestamp}\n\n## Weather (${location}):\n- Temperature: ${temperature}°F (feels like ${feels_like}°F)\n- Condition: ${condition}\n- Humidity: ${humidity}%\n- Wind: ${wind_speed} mph\n\n## Crypto:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n\n## Stocks:\n- TSLA: $${tsla_price} (${tsla_change}% today)\n- Gold: $${gold_price} (${gold_change}% today)\n\n## Alerts: ${alert_count} pending\n${alerts}\n\n## Reminders: ${reminder_count} upcoming\n${reminders}\n\n## System Health:\n- CPU: ${cpu_percent}%\n- RAM: ${memory_percent}% (${memory_used_gb}/${memory_total_gb} GB)\n- Uptime: ${uptime}\n\nFormat nicely with emojis for sections (🌤️ Weather, 📈 Crypto, 📊 Stocks, 🚨 Alerts, ⏰ Reminders, 💻 System). Add green/red indicators for price changes. Keep it concise but complete.",
+      "required": true,
+      "description": "Create formatted canvas report"
+    }
+  ],
+  
+  "success_speech": "Daily status report created. Weather, crypto, stocks, and system health are on your canvas.",
+  "abort_speech": "Couldn't complete the status report."
+}
+
