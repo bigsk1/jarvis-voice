@@ -965,6 +965,71 @@ HTML_TEMPLATE = '''
             background: var(--accent-hover);
         }
 
+        .btn-full {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .sidebar-actions {
+            padding: 16px;
+            margin-top: auto;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* Upload area */
+        .upload-area {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 32px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 16px;
+        }
+
+        .upload-area:hover {
+            border-color: var(--accent);
+            background: var(--bg-tertiary);
+        }
+
+        .upload-area.dragover {
+            border-color: var(--accent);
+            background: var(--bg-tertiary);
+        }
+
+        .upload-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .upload-text {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .upload-preview {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 16px;
+            display: none;
+        }
+
+        .upload-preview.active {
+            display: block;
+        }
+
+        .upload-preview-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .upload-preview-info {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
         /* Toast Notifications */
         .toast-container {
             position: fixed;
@@ -1264,6 +1329,11 @@ HTML_TEMPLATE = '''
             <div class="sidebar-title">📄 Pages</div>
             <ul class="page-list" id="pageList"></ul>
         </div>
+        <div class="sidebar-section sidebar-actions">
+            <button class="btn btn-secondary btn-full" onclick="openUploadModal()">
+                📤 Upload Page
+            </button>
+        </div>
     </aside>
 
     <main class="main" id="mainContent">
@@ -1304,6 +1374,37 @@ HTML_TEMPLATE = '''
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">Upload Page</div>
+                <button class="modal-close" onclick="closeUploadModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('uploadFile').click()">
+                    <div class="upload-icon">📄</div>
+                    <div class="upload-text">Click or drag a JSON file here</div>
+                    <input type="file" id="uploadFile" accept=".json" style="display: none" onchange="handleFileSelect(event)">
+                </div>
+                <div class="upload-preview" id="uploadPreview">
+                    <div class="upload-preview-title" id="uploadPreviewTitle"></div>
+                    <div class="upload-preview-info" id="uploadPreviewInfo"></div>
+                </div>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="uploadForceNew">
+                        Create as new page (ignore existing ID)
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                <button class="btn btn-primary" id="uploadSubmitBtn" onclick="submitUpload()" disabled>Upload</button>
             </div>
         </div>
     </div>
@@ -1453,6 +1554,117 @@ HTML_TEMPLATE = '''
         // Print function
         function printPage() {
             window.print();
+        }
+
+        // Download page function
+        function downloadPage(id, format = 'json') {
+            const url = `/api/pages/${id}/download?format=${format}`;
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = ''; // Let server set filename
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Downloading page...', 'success');
+        }
+
+        // Upload modal functions
+        let uploadData = null;
+
+        function openUploadModal() {
+            uploadData = null;
+            document.getElementById('uploadFile').value = '';
+            document.getElementById('uploadPreview').classList.remove('active');
+            document.getElementById('uploadSubmitBtn').disabled = true;
+            document.getElementById('uploadForceNew').checked = false;
+            document.getElementById('uploadModal').classList.add('active');
+        }
+
+        function closeUploadModal() {
+            uploadData = null;
+            document.getElementById('uploadModal').classList.remove('active');
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    uploadData = JSON.parse(e.target.result);
+                    
+                    // Show preview
+                    document.getElementById('uploadPreviewTitle').textContent = uploadData.title || 'Untitled';
+                    const tags = uploadData.tags ? uploadData.tags.join(', ') : 'none';
+                    const contentLen = uploadData.content ? uploadData.content.length : 0;
+                    document.getElementById('uploadPreviewInfo').textContent = 
+                        `Tags: ${tags} | Content: ${contentLen} characters`;
+                    document.getElementById('uploadPreview').classList.add('active');
+                    document.getElementById('uploadSubmitBtn').disabled = false;
+                } catch (err) {
+                    showToast('Invalid JSON file', 'error');
+                    uploadData = null;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        async function submitUpload() {
+            if (!uploadData) return;
+
+            const forceNew = document.getElementById('uploadForceNew').checked;
+            if (forceNew) {
+                uploadData.force_new = true;
+            }
+
+            try {
+                const response = await fetch('/api/pages/upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(uploadData)
+                });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showToast(`Page ${result.action}!`, 'success');
+                    closeUploadModal();
+                    fetchPages();
+                    if (result.page && result.page.id) {
+                        selectPage(result.page.id);
+                    }
+                } else {
+                    showToast(result.error || 'Upload failed', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to upload page', 'error');
+            }
+        }
+
+        // Drag and drop support for upload
+        const uploadArea = document.getElementById('uploadArea');
+        if (uploadArea) {
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file && file.name.endsWith('.json')) {
+                    const input = document.getElementById('uploadFile');
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input.files = dt.files;
+                    handleFileSelect({ target: input });
+                } else {
+                    showToast('Please drop a JSON file', 'error');
+                }
+            });
         }
 
         // Extract folder from title (e.g., "Phone Calls/2025-12-14" → "Phone Calls")
@@ -1644,6 +1856,9 @@ HTML_TEMPLATE = '''
                             <button class="btn btn-secondary btn-icon" onclick="togglePin('${page.id}')" title="${page.pinned ? 'Unpin' : 'Pin'}">
                                 ${page.pinned ? '📌' : '📍'}
                             </button>
+                            <button class="btn btn-secondary btn-icon" onclick="downloadPage('${page.id}')" title="Download">
+                                📥
+                            </button>
                             <button class="btn btn-secondary btn-icon" onclick="printPage()" title="Print">
                                 🖨️
                             </button>
@@ -1768,6 +1983,7 @@ HTML_TEMPLATE = '''
             }
             if (e.key === 'Escape') {
                 closeEditModal();
+                closeUploadModal();
             }
         });
 
