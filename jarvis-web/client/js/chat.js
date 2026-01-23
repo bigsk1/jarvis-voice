@@ -897,7 +897,9 @@ class ChatUI {
     });
     
     socket.on('toolComplete', (data) => {
-      this.updateToolCard(data.tool, 'success', data.result, data.duration_ms);
+      // Use workflow_step for unique ID if present (allows duplicate tools)
+      const cardId = data.workflow_step != null ? `${data.tool}_step${data.workflow_step}` : data.tool;
+      this.updateToolCard(cardId, data.tool, 'success', data.result, data.duration_ms);
     });
     
     socket.on('toolError', (data) => {
@@ -1182,21 +1184,30 @@ class ChatUI {
       messageEl.classList.remove('new-message');
     }, 2500);
     
-    // Build tool cards HTML
-    // Tool results are in data.data (nested), not data directly
+    // Build tool cards HTML from pendingTools (supports duplicate tools with unique keys)
     const toolResultsData = data.data || data || {};
     let toolCardsHtml = '';
-    if (toolsUsed.length > 0) {
+    const pendingToolEntries = Object.entries(this.pendingTools);
+    if (pendingToolEntries.length > 0) {
       toolCardsHtml = '<div class="tool-cards">';
-      for (const tool of toolsUsed) {
-        const toolData = this.pendingTools[tool] || {};
-        const toolResult = toolResultsData[tool] || toolData.result || {};
+      for (const [cardId, toolData] of pendingToolEntries) {
+        // Get display name - either stored toolName or extract from cardId
+        const displayName = toolData.toolName || cardId.replace(/_step\d+$/, '');
+        const toolResult = toolResultsData[displayName] || toolData.result || {};
         toolCardsHtml += this._createToolCardHtml(
-          tool,
+          displayName,
           toolData.status || 'success',
           toolResult,
           toolData.duration
         );
+      }
+      toolCardsHtml += '</div>';
+    } else if (toolsUsed.length > 0) {
+      // Fallback for non-workflow responses
+      toolCardsHtml = '<div class="tool-cards">';
+      for (const tool of toolsUsed) {
+        const toolResult = toolResultsData[tool] || {};
+        toolCardsHtml += this._createToolCardHtml(tool, 'success', toolResult, null);
       }
       toolCardsHtml += '</div>';
     }
@@ -1224,7 +1235,10 @@ class ChatUI {
     }
     
     // Method 2: Extract from speech/text (fallback)
-    if (!filename && toolsUsed.includes('generate_image')) {
+    // Check both toolsUsed array and pendingTools (which may have step-keyed entries like generate_image_step5)
+    const hasImageTool = toolsUsed.includes('generate_image') || 
+      Object.keys(this.pendingTools).some(k => k.startsWith('generate_image'));
+    if (!filename && hasImageTool) {
       const textToSearch = text + ' ' + JSON.stringify(data);
       const match = textToSearch.match(/generated_[\w\-]+\.(jpg|png|jpeg)/i);
       if (match) filename = match[0];
@@ -1273,7 +1287,9 @@ class ChatUI {
     }
     
     // Method 2: Search in tool results data
-    if (!audioUrl && toolsUsed.includes('generate_music')) {
+    const hasMusicTool = toolsUsed.includes('generate_music') || 
+      Object.keys(this.pendingTools).some(k => k.startsWith('generate_music'));
+    if (!audioUrl && hasMusicTool) {
       const musicResult = toolResultsData['generate_music'];
       if (musicResult) {
         audioUrl = musicResult.audio_url 
@@ -1482,10 +1498,11 @@ class ChatUI {
   }
 
   /**
-   * Add a tool execution card
+   * Add a tool execution card (for tool:start events)
    */
   addToolCard(toolName, status, args = {}) {
-    this.pendingTools[toolName] = { status, args, result: null, duration: null };
+    // For non-workflow tools, cardId equals toolName
+    this.pendingTools[toolName] = { toolName, status, args, result: null, duration: null };
     
     const pendingCards = document.getElementById('pendingToolCards');
     if (!pendingCards) return;
@@ -1501,17 +1518,32 @@ class ChatUI {
 
   /**
    * Update a tool card (creates it if doesn't exist - for workflows)
+   * @param {string} cardId - Unique ID for the card (may include step number for workflows)
+   * @param {string} toolName - Display name of the tool
+   * @param {string} status - Status: 'pending', 'success', 'error'
+   * @param {object} result - Tool result data
+   * @param {number} duration - Duration in ms
    */
-  updateToolCard(toolName, status, result = {}, duration = null) {
-    // Store in pendingTools
-    if (!this.pendingTools[toolName]) {
-      this.pendingTools[toolName] = { status, args: {}, result: null, duration: null };
+  updateToolCard(cardId, toolName, status, result = {}, duration = null) {
+    // Handle legacy calls with 4 args (cardId = toolName)
+    if (typeof toolName !== 'string' || ['pending', 'success', 'error'].includes(toolName)) {
+      // Legacy call: updateToolCard(toolName, status, result, duration)
+      duration = result;
+      result = status;
+      status = toolName;
+      toolName = cardId;
+      // cardId already equals toolName
     }
-    this.pendingTools[toolName].status = status;
-    this.pendingTools[toolName].result = result;
-    this.pendingTools[toolName].duration = duration;
     
-    let card = document.getElementById(`tool-card-${toolName}`);
+    // Store in pendingTools
+    if (!this.pendingTools[cardId]) {
+      this.pendingTools[cardId] = { toolName, status, args: {}, result: null, duration: null };
+    }
+    this.pendingTools[cardId].status = status;
+    this.pendingTools[cardId].result = result;
+    this.pendingTools[cardId].duration = duration;
+    
+    let card = document.getElementById(`tool-card-${cardId}`);
     
     // Create card if it doesn't exist (workflow case - no tool:start event)
     if (!card) {
@@ -1521,7 +1553,7 @@ class ChatUI {
       const cardHtml = this._createToolCardHtml(toolName, status, result, duration);
       const cardEl = document.createElement('div');
       cardEl.innerHTML = cardHtml;
-      cardEl.firstChild.id = `tool-card-${toolName}`;
+      cardEl.firstChild.id = `tool-card-${cardId}`;
       
       pendingCards.appendChild(cardEl.firstChild);
       Utils.scrollToBottom(this.messagesContainer);

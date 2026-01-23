@@ -554,17 +554,39 @@ class ChatHandler:
             if is_workflow:
                 # Workflow results have step-by-step data in data.results
                 step_results = data.get('results', [])
+                emit_index = 0
                 for step_data in step_results:
                     tool = step_data.get('tool', 'unknown')
                     step_ok = step_data.get('ok', True)
-                    self.socketio.emit('tool:complete', {
-                        'tool': tool,
-                        'result': step_data.get('data', {}),
-                        'duration_ms': duration_ms // max(len(step_results), 1),
-                        'success': step_ok,
-                        'message_id': message_id,
-                        'workflow_step': step_data.get('step')
-                    }, room=session_id)
+                    step_num = step_data.get('step')
+                    
+                    # Check for for_each outputs (multiple iterations of same tool)
+                    outputs = step_data.get('outputs', [])
+                    if outputs:
+                        # Emit separate event for each for_each iteration
+                        for idx, output in enumerate(outputs):
+                            output_ok = output.get('ok', True) if isinstance(output, dict) else True
+                            output_data = output.get('data', output) if isinstance(output, dict) else output
+                            self.socketio.emit('tool:complete', {
+                                'tool': tool,
+                                'result': output_data,
+                                'duration_ms': duration_ms // max(len(step_results), 1),
+                                'success': output_ok,
+                                'message_id': message_id,
+                                'workflow_step': f"{step_num}_{idx}"  # Unique per iteration
+                            }, room=session_id)
+                            emit_index += 1
+                    else:
+                        # Single execution step
+                        self.socketio.emit('tool:complete', {
+                            'tool': tool,
+                            'result': step_data.get('data', {}),
+                            'duration_ms': duration_ms // max(len(step_results), 1),
+                            'success': step_ok,
+                            'message_id': message_id,
+                            'workflow_step': step_num
+                        }, room=session_id)
+                        emit_index += 1
             else:
                 # Normal orchestrator results - data keyed by tool name
                 for tool in tools_used:
