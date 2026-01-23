@@ -978,3 +978,98 @@ If tool is made need to update timeouts in executor.py
 3. Wire to Wait For All Data         → Increase numberInputs
 4. In Code node: Add identification  → if (symbol === 'NEW') newData = json.data;
 5. In Code node: Add threshold check → Copy existing block, change symbol
+
+
+
+
+## 🎯 Current Status (January 21, 2026)
+
+**Production Ready** ✅
+- **Workflow Orchestration System** - Deterministic multi-tool pipelines 
+  - Explicit triggers: `/archive`, `/research`, `/note`, `/health`
+  - Pipeline executor bypasses LLM routing for predictable, repeatable execution
+  - Variable system with query extraction, step results, nested paths
+  - WebUI hover tooltips show workflow steps and prompt key points
+  - Replaced /commands system - workflows are the new standard
+  - See [`docs/WORKFLOW_ORCHESTRATION.md`](docs/WORKFLOW_ORCHESTRATION.md)
+- **Stock Price Tool** - Stock, futures, and commodity prices via yfinance
+  - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
+  - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
+  - Forex pairs: EURUSD=X, USDJPY=X, etc.
+  - Returns price, change, volume, market cap, P/E, 52-week range
+- **Status Recap Tool v1.4** - Comprehensive daily status aggregator
+  - Weather, crypto (BTC, SOL), stocks/futures (TSLA, gold, silver by default)
+  - Alerts, reminders, system health (CPU, RAM, disk, uptime)
+  - Saves full report to Canvas + Stash for follow-up queries
+  - Optional AI-generated dashboard image, native search for news
+  - See [`docs/status-tool/README.md`](docs/status-tool/README.md)
+- **SSH Remote Tool** - Execute commands on remote hosts via SSH
+  - Secure credential management (keys in filesystem, passwords in .env)
+  - Multi-command execution, apt management, sudo support
+  - Stateless sessions - no orphaned connections
+  - See [`docs/ssh/README.md`](docs/ssh/README.md)
+- **Docker Control Tool** - Manage Docker containers and compose stacks
+  - Container lifecycle: list, start, stop, restart, logs, inspect, stats
+  - Compose: up, down, restart, pull, build with force-recreate, remove-orphans
+  - Images, networks, volumes, exec, system prune
+  - See [`docs/docker-tool/README.md`](docs/docker-tool/README.md)
+- **Deep Memory Search** - Comprehensive multi-source search across ALL data
+  - Searches: memory, conversations, web conversations, intel files, canvas, stash
+  - Uses ripgrep for blazing-fast file content searches
+  - Unified, deduplicated results with source labels
+  - "Find everything about X" in one tool call
+- **ElevenLabs Music Generation** - AI music creation with stash integration
+  - "Create an epic intro for my podcast" → generates and saves music
+  - Supports genres, moods, tempo, instrumental mode, 30-300s duration
+  - Auto-saves to stash + memory for cross-session recall
+  - Web UI playback with inline audio player
+- **Audio Playback Controls** - Enhanced TTS controls in Web UI
+  - Speaker button with pause/resume/stop, progress animation
+  - 10-second visibility after playback, auto-hides on new message
+- **Memory Browser UI** - Web interface for memory management
+  - View/search/edit memories, intel files, conversations
+  - FTS5 search, dual database, re-embed after edits
+  - Mobile responsive with hamburger menu
+  - Launch: `./bin/jarvis-memory` (localhost:5002)
+- **AI Image Generation** - Google Gemini 3 Pro with Search Grounding
+  - "Generate a bitcoin infographic" → creates image with real-time price data
+  - Supports aspect ratios, styles, negative prompts
+  - Auto-saves to stash + memory for cross-session recall
+- **AI Phone Calls** - Outbound AI calls via Vapi.ai with personas and transcripts
+- **Native Web Search** - Built-in real-time search for xAI and Anthropic
+  - `XAI_SEARCH=true`: Grok searches web + X posts internally (no tool calls!)
+  - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations
+  - Auto mode: Only searches when query needs real-time data
+  - Eliminates endless search tool loops, cleaner context
+- **Stash System** - Artifact storage for multi-step workflows (URL downloads, SSRF protection)
+  - `stash.remember` - Save stash artifacts to permanent memory with one tool call
+  - LLM-based summarization for large text files (>2KB)
+  - Automatic PDF text extraction via `pdf_read` integration
+- **PDF Read** - Read and manipulate PDFs (PyMuPDF)
+  - Extract text (with page ranges), extract images, search text
+  - Merge multiple PDFs, split PDFs, convert to images
+  - Reads from stash, writes back to stash
+- **PDF Create** - Generate PDFs from stash files, images, or text
+- **Printer Tool** - Print from stash, files, or Canvas pages (CUPS integration)
+- **Speaker Volume** - Control system audio volume via voice
+- **Network Tools** - Ping, DNS, port checks, HTTP/HTTPS status, traceroute
+- **System Monitor** - CPU, RAM, disk, processes, network I/O, uptime
+- **Text Summarizer** - Summarization, keywords, sentiment, word count
+- **Prompt Evolution** - Self-evolving prompts and tool descriptions
+- **Dynamic Tool Builder** - Autonomous tool creation with safety checks
+- **Canvas System** - Visual knowledge viewer for rich content display
+- **Calculator Tool** - Advanced math, statistics, unit conversions
+- **Feedback System** - LLM self-critique and cross-model grading
+- **Tool RAG System** - Dynamic tool retrieval for infinite scalability
+- Multi-turn tool orchestration with LLM routing
+- 50+ working skills (memory, bash, OpenCode, stash, printer, pdf_create, pdf_read, image generation, analyze_image, music generation, deep_memory_search, phone calls, spotify, reminders, canvas, ssh_remote, docker_control, stock_price, status_recap, crawl_url, etc.)
+- **Proactive API** for event-driven alerts and notifications
+- **Background services** for auto-resolve and follow-ups
+- **Dual database system** with auto-sync (cloud ↔ local)
+- **Intelligent memory** with semantic search + configurable thresholds
+- OpenCode integration for autonomous coding tasks
+- **Tool management** system (enable/disable per mode)
+- **Model comparison framework** for testing different LLMs
+- MCP server support for extensibility
+- Cost tracking and metadata logging
+- Dual mode operation (cloud/local)

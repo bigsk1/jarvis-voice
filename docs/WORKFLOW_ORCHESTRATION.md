@@ -6,6 +6,8 @@
 
 ---
 
+![workflow-graph](images/workflow-info-graph.jpeg)
+
 ## Problem Statement
 
 ### Current State
