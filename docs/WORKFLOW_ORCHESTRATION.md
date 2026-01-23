@@ -166,6 +166,33 @@ Restart WebUI, then type `/mycommand topic` in chat. The workflow appears in `/`
 - `url` = `https://bigsk1.com`
 - `topic` = `bigsk1.com`
 
+### Variable Transforms ⭐ NEW
+
+Derive variables from other variables using `transform`:
+
+```json
+"variables": {
+  "url": {"from": "query", "extract": "url"},
+  "url_domain": {"from": "url", "transform": "domain"}
+}
+```
+
+**Supported transforms:**
+| Transform | Input | Output |
+|-----------|-------|--------|
+| `domain` | `https://www.bigsk1.com/page` | `bigsk1.com` |
+| `lowercase` | `HELLO` | `hello` |
+| `uppercase` | `hello` | `HELLO` |
+| `strip` | `  text  ` | `text` |
+
+**Use case:** Canvas folder organization
+```json
+"params": {
+  "title": "Workflows/Archive/${url_domain}"
+}
+```
+Creates: `Workflows/Archive/bigsk1.com` instead of broken folder from URL.
+
 ### Extracting Data from Step Results
 
 Use `extract` to pull specific fields from tool output:
@@ -1681,6 +1708,7 @@ crawl_url → stash.save → stash.remember → canvas
 - [x] Step-defined `extract` rules support
 - [x] Nested path resolution for variables (e.g., `${article.url}`)
 - [x] URL extraction from query (handles bare domains like `bigsk1.com`)
+- [x] **Variable transforms** - Derive variables from others (e.g., `domain` from URL) ⭐ NEW
 
 ### Phase 3: WebUI Integration ✅ COMPLETE
 - [x] Import WorkflowLoader and PipelineExecutor in `orchestrator_v2.py`

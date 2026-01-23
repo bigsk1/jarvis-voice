@@ -127,6 +127,65 @@ curl -X PUT http://localhost:8890/api/pages/page_20241201_143022 \
 curl -X DELETE http://localhost:8890/api/pages/page_20241201_143022
 ```
 
+### Download Page ⭐ NEW (Jan 2026)
+
+Export a page as JSON or Markdown:
+
+```bash
+# Download as JSON (default)
+curl http://localhost:8890/api/pages/page_20241201_143022/download
+
+# Download as Markdown with frontmatter
+curl "http://localhost:8890/api/pages/page_20241201_143022/download?format=markdown"
+```
+
+Markdown format includes frontmatter:
+```markdown
+---
+title: My Research Page
+id: page_20241201_143022
+created: 2024-12-01T14:30:22
+updated: 2024-12-01T15:45:00
+tags: ["research", "reference"]
+pinned: false
+---
+
+## Content here...
+```
+
+### Upload/Import Page ⭐ NEW (Jan 2026)
+
+Import a page from JSON:
+
+```bash
+# Create new page
+curl -X POST http://localhost:8890/api/pages/upload \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Imported Page",
+    "content": "## Imported Content\n\nHello world!",
+    "tags": ["imported"]
+  }'
+
+# Force new page even if ID exists
+curl -X POST http://localhost:8890/api/pages/upload \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "page_20241201_143022",
+    "title": "Re-imported",
+    "content": "...",
+    "force_new": true
+  }'
+```
+
+Response:
+```json
+{
+  "action": "created",  // or "updated" if ID matched
+  "page": { ... }
+}
+```
+
 ## Tool Usage
 
 ### Actions
@@ -200,15 +259,29 @@ Professional dark UI with:
 - **Search** - Full-text search (Ctrl+K)
 
 ### Folder Organization
-Pages are automatically grouped into folders based on their title prefix:
+Pages are automatically grouped into folders based on their title using `/` as separator:
 - `Phone Calls/2025-12-14...` → 📁 **Phone Calls** folder
-- `System Prompt Suggestion...` → 📁 **System Prompt Suggestion** folder
+- `Workflows/Archive/bigsk1.com` → 📁 **Workflows/Archive** folder (nested!)
+- `System Prompt Suggestion...` → No folder (no `/` in title)
+
+**Important:** Titles with URLs (containing `://`) are NOT treated as folders:
+- `Archive: https://bigsk1.com` → NOT a folder (URL detected)
+- `Workflows/Archive/bigsk1.com` → Proper folder structure ✅
 
 **Folder features:**
 - Click folder to expand/collapse
 - Shows page count badge
 - Auto-expands when active page is inside
 - Folders sorted alphabetically, always at top
+- Supports nested folders (e.g., `Workflows/Archive/page`)
+
+**Workflow Organization:**
+Workflows create canvas pages with folder structure:
+| Workflow | Canvas Title Pattern |
+|----------|---------------------|
+| `/archive` | `Workflows/Archive/{domain}` |
+| `/research` | `Workflows/Research/{topic}` |
+| `/crypto` | `Workflows/Crypto/{date}` |
 
 ### Page View
 - **Markdown rendering** - Headers, lists, tables, blockquotes
@@ -306,7 +379,14 @@ Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq", "Canv
 
 ## Future Enhancements
 
-### Recently Added (Dec 2025)
+### Recently Added (Jan 2026)
+
+- [x] **Download/Upload API** - Export pages as JSON/Markdown, import from JSON
+- [x] **Nested folders** - Support `Workflows/Archive/page` structure
+- [x] **URL-aware folders** - Titles with `://` don't create broken folders
+- [x] **Workflow organization** - Workflows create pages in `Workflows/{type}/` folders
+
+### Previously Added (Dec 2025)
 
 - [x] **Folder organization** - Auto-group pages by title prefix
 - [x] **Print support** - Browser print dialog with clean output
@@ -555,6 +635,6 @@ The canvas tool now supports reading pages back:
 
 ---
 
-**Version:** 1.2  
-**Last Updated:** 2026-01-18
+**Version:** 1.3  
+**Last Updated:** 2026-01-22
 
