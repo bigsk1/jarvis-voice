@@ -349,6 +349,7 @@ body {
 
 /* Chat area */
 .chat-container {
+  position: relative;  /* For token counter positioning */
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -363,6 +364,54 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+}
+
+/* Token Counter (bottom right of chat area) */
+.token-counter {
+  position: absolute;
+  bottom: 90px;  /* Above input area */
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  z-index: 10;
+  transition: opacity 0.2s ease;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.token-counter:hover {
+  opacity: 1;
+}
+
+.token-count {
+  color: var(--text-secondary);
+}
+
+.token-cost {
+  color: var(--accent-primary);
+  margin-left: var(--space-xs);
+}
+
+.token-cost:empty {
+  display: none;
+}
+
+/* Context warning - approaching limit */
+.token-counter.warning .token-count {
+  color: var(--warning);
+}
+
+.token-counter.danger .token-count {
+  color: var(--error);
 }
 
 /* Messages */

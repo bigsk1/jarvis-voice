@@ -252,10 +252,92 @@ OpenCode build (turn 1) + verification (turn 2) + retry (turn 3) = 3 × ~6K = ~1
 3. ✅ Consider adding a "lite" mode if you add 10+ more tools
 
 ### If You Hit Limits on Local Mode:
-1. **Reduce multi-turn chains**: Accomplish tasks in fewer turns
-2. **Shorten system prompt**: Focus on essential instructions only
-3. **Split tool sets**: Create focused tool subsets for specific use cases
-4. **Upgrade model**: Use Qwen variants with larger context (128K)
+1. **Use Workflows** (see below) - Bypass baseline entirely!
+2. **Reduce multi-turn chains**: Accomplish tasks in fewer turns
+3. **Shorten system prompt**: Focus on essential instructions only
+4. **Split tool sets**: Create focused tool subsets for specific use cases
+5. **Upgrade model**: Use Qwen variants with larger context (128K)
+
+---
+
+## 🚀 Workflows: Zero-Baseline Execution
+
+> **Game-changer for local models**: Workflows bypass the entire baseline overhead!
+
+### The Problem with Normal LLM Routing
+
+Every normal chat requires loading:
+```
+System Prompt:      ~5,000 tokens
+Tool Definitions:  ~30,000 tokens
+MCP Descriptions:   ~1,000 tokens
+───────────────────────────────────
+TOTAL BASELINE:    ~35,000 tokens
+```
+
+For a 32K context model, this **already exceeds** the limit before you even ask a question!
+
+### The Workflow Solution
+
+Workflows execute tools **deterministically** - no LLM routing overhead:
+
+```
+Normal LLM Chat:    35,000+ tokens baseline
+Workflow:                 0 tokens baseline*
+───────────────────────────────────────────
+Savings:               99%+ reduction!
+```
+
+*LLM tokens only used for optional `llm_prompt` parameter filling
+
+### Real Example: `/quick_note` Workflow
+
+```bash
+# This workflow: get_time → remember → canvas
+./orchestrator/orchestrator_v2.py cloud "/note buy milk"
+
+# Token usage comparison:
+Normal LLM routing: ~35,583 tokens
+Workflow execution:     ~244 tokens  ← 99.3% savings!
+```
+
+### Why Workflows Bypass Baseline
+
+| Component | Normal Chat | Workflow |
+|-----------|-------------|----------|
+| System prompt | Required | **Skipped** |
+| 57 tool definitions | Required | **Skipped** |
+| MCP server info | Required | **Skipped** |
+| LLM routing decision | Required | **Skipped** (deterministic) |
+| Tool execution | Via LLM | **Direct execution** |
+
+### Impact on Local Models
+
+| Model Context | Normal Chat Feasibility | With Workflows |
+|---------------|------------------------|----------------|
+| 8K (small) | ❌ Impossible (35K > 8K) | ✅ Works perfectly |
+| 32K (Qwen3) | ⚠️ Overflow risk | ✅ 99%+ headroom |
+| 128K (large) | ✅ Works | ✅ Even more headroom |
+
+### When to Use Workflows vs Normal Chat
+
+| Use Case | Recommendation |
+|----------|----------------|
+| Simple Q&A | Normal chat (needs LLM reasoning) |
+| Multi-tool tasks with known steps | **Workflow** (deterministic, efficient) |
+| Complex research needing judgment | Normal chat (needs LLM decisions) |
+| Repetitive tasks (daily reports, backups) | **Workflow** (reliable, cheap) |
+| Local model with limited context | **Workflow** (essential!) |
+
+### Creating Workflows
+
+See: `docs/WORKFLOW_ORCHESTRATION.md` and `data/workflows/AGENTS.md`
+
+```bash
+# Quick test
+./orchestrator/orchestrator_v2.py cloud "/note test"
+./orchestrator/orchestrator_v2.py local "/note test"  # Works even on 8K models!
+```
 
 ---
 
@@ -287,7 +369,11 @@ These are added PER CONVERSATION and vary by task.
 
 ---
 
-**Last Updated**: November 15, 2025  
-**Branch**: `opencode-plugins`  
+**Last Updated**: January 23, 2026  
 **Measured By**: `bin/measure-baseline-tokens`
+
+### Recent Updates
+- Added workflow token efficiency section (99%+ savings vs normal chat)
+- Documented workflow bypass of system prompt and tool definitions
+- Added local model guidance for using workflows
 

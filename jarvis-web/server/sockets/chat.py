@@ -592,6 +592,9 @@ class ChatHandler:
                     save_data['vision_analysis'] = vision_result
                 if stash_info:
                     save_data['stash'] = stash_info
+                # Include token usage for tracking
+                if result.get('usage'):
+                    save_data['usage'] = result['usage']
                 store.add_message(
                     conversation_id, 
                     'assistant', 

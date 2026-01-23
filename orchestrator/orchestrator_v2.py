@@ -986,13 +986,19 @@ Your BEST EFFORT response:"""
             )
             
             # Return in standard orchestrator response format
-            return {
+            response = {
                 "ok": result.get("ok", False),
                 "speech": result.get("speech", "Workflow complete."),
                 "data": result.get("data", {}),
                 "tools_used": result.get("tools_used", []),
                 "workflow_executed": workflow.get("id")
             }
+            
+            # Include usage tracking if available (from LLM calls in workflow)
+            if result.get("usage"):
+                response["usage"] = result["usage"]
+            
+            return response
             
         except Exception as e:
             # If workflow execution fails, log but don't crash - fall back to normal routing

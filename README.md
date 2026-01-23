@@ -849,6 +849,17 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 - **Retry Logic**: Automatic retries with configurable limits
 - **Bypass Intelligence**: Workflows skip intelligence layer (deterministic = no routing to learn)
 
+### Token Efficiency
+
+Workflows bypass the entire LLM routing overhead, making them ideal for local models with limited context:
+
+| Execution Method | Orchestration Tokens | Savings |
+|-----------------|---------------------|---------|
+| Normal LLM Chat | ~35,000 tokens (system prompt + 57 tool definitions) | - |
+| Workflow | ~0-500 tokens (only if using `llm_prompt`) | **99%+** |
+
+For a 32K context local model, normal LLM routing exceeds the limit before you even ask a question. Workflows execute the same multi-tool tasks with near-zero token overhead.
+
 ### API Access
 
 ```bash

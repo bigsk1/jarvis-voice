@@ -104,6 +104,11 @@ class JarvisApp {
       
       // Reload tools list
       await this._loadToolsList();
+      
+      // Update token counter context window for new mode
+      if (window.chatUI) {
+        await window.chatUI.refreshContextWindow(data.mode);
+      }
     });
     
     this.socket.on('response', (data) => {
@@ -177,11 +182,16 @@ class JarvisApp {
     }
     
     // Mode selector
-    this.modeSelect.addEventListener('change', (e) => {
+    this.modeSelect.addEventListener('change', async (e) => {
       const newMode = e.target.value;
       this.socket.setMode(newMode);
       // Suggest refresh for clean state (embeddings, caches, etc. are mode-specific)
       Utils.toast(`Switched to ${newMode} mode. Refresh page for cleanest state.`, 'info', 5000);
+      
+      // Update token counter context window for new mode
+      if (window.chatUI) {
+        await window.chatUI.refreshContextWindow(newMode);
+      }
     });
     
     // Audio toggle (enable/disable TTS)
@@ -1343,6 +1353,10 @@ class JarvisApp {
     // Clear and rebuild chat
     this.chat.clearChat();
     
+    // Calculate cumulative token usage from historical messages
+    let cumulativeTokens = { input: 0, output: 0, total: 0 };
+    let cumulativeCost = 0;
+    
     // Add each message
     for (const msg of conversation.messages || []) {
       if (msg.role === 'user') {
@@ -1358,7 +1372,21 @@ class JarvisApp {
           msg.tools_used || [],
           msg.data || {}
         );
+        
+        // Sum up token usage from saved data
+        const usage = msg.data?.usage;
+        if (usage) {
+          cumulativeTokens.input += usage.input_tokens || 0;
+          cumulativeTokens.output += usage.output_tokens || 0;
+          cumulativeTokens.total += usage.total_tokens || (usage.input_tokens || 0) + (usage.output_tokens || 0);
+          cumulativeCost += usage.cost_usd || 0;
+        }
       }
+    }
+    
+    // Restore token counter state if we have historical data
+    if (cumulativeTokens.total > 0) {
+      this.chat.restoreTokenCounter(cumulativeTokens, cumulativeCost);
     }
     
     // Update history UI
@@ -1442,6 +1470,12 @@ class JarvisApp {
         
         Utils.toast('Settings saved!', 'success');
         this.settingsModal.classList.remove('active');
+        
+        // Refresh token counter context window for new provider/model
+        if (window.chatUI) {
+          const newMode = document.getElementById('setting-mode').value;
+          await window.chatUI.refreshContextWindow(newMode);
+        }
       } else {
         Utils.toast('Failed to save settings', 'error');
       }

@@ -122,8 +122,22 @@ def measure_baseline(mode='cloud'):
             print(f"   Context window: {context_window:,} tokens")
         elif provider == "openai":
             model = get_config_value("OPENAI_MODEL", "gpt-4o")
-            context_window = 128000  # GPT-4o
+            # gpt-5.1-chat-latest has 400k context
+            if "5.1-chat-latest" in model.lower():
+                context_window = 400000
+            else:
+                context_window = 128000  # GPT-4o
             print(f"🧠 MODEL CAPACITY (OpenAI)")
+            print(f"   Model: {model}")
+            print(f"   Context window: {context_window:,} tokens")
+        elif provider == "xai":
+            model = get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+            # grok-4-fast models have 2M context, grok-4 has 256k
+            if "fast" in model.lower():
+                context_window = 2000000  # 2M context for grok-4-fast models
+            else:
+                context_window = 256000  # 256k for grok-4
+            print(f"🧠 MODEL CAPACITY (xAI)")
             print(f"   Model: {model}")
             print(f"   Context window: {context_window:,} tokens")
         else:

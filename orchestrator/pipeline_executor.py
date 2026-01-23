@@ -41,6 +41,44 @@ class PipelineExecutor:
         self.provider = provider or self._create_provider()
         self.logger = ToolLogger()
         load_config(mode)
+        
+        # Track cumulative token usage for this workflow execution
+        self._total_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cost_usd": 0.0
+        }
+    
+    def _chat_with_usage(self, message: str, system_prompt: str = None, max_tokens: int = 1024) -> str:
+        """
+        Chat with the LLM and track token usage.
+        Uses chat_with_tools() with empty tools to get usage data.
+        """
+        if not self.provider:
+            return ""
+        
+        try:
+            # Use chat_with_tools with empty tool list to get usage info
+            messages = [{"role": "user", "content": message}]
+            text, _, usage_info, _ = self.provider.chat_with_tools(
+                messages=messages,
+                tools=[],  # No tools - just chat
+                system_prompt=system_prompt
+            )
+            
+            # Accumulate usage
+            if usage_info:
+                self._total_usage["input_tokens"] += usage_info.get("input_tokens", 0)
+                self._total_usage["output_tokens"] += usage_info.get("output_tokens", 0)
+                self._total_usage["total_tokens"] += usage_info.get("total_tokens", 0)
+                self._total_usage["cost_usd"] += usage_info.get("cost_usd", 0)
+            
+            return text or ""
+        except Exception as e:
+            # Fallback to regular chat if chat_with_tools fails
+            print(f"Warning: chat_with_usage failed, falling back: {e}", file=sys.stderr)
+            return self.provider.chat(message, system_prompt, max_tokens) if self.provider else ""
     
     def _create_provider(self):
         """Create LLM provider for parameter filling and validation."""
@@ -51,15 +89,15 @@ class PipelineExecutor:
             config = {}
             if provider_type == "openai":
                 config["api_key"] = get_config_value("OPENAI_API_KEY")
-                config["model"] = get_config_value("OPENAI_MODEL", "gpt-4o")
+                config["model"] = get_config_value("OPENAI_MODEL", "gpt-5.1-chat-latest")
             elif provider_type == "anthropic":
                 config["api_key"] = get_config_value("ANTHROPIC_API_KEY")
-                config["model"] = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+                config["model"] = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
             elif provider_type == "xai":
                 config["api_key"] = get_config_value("XAI_API_KEY")
-                config["model"] = get_config_value("XAI_MODEL", "grok-3-mini")
+                config["model"] = get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
             elif provider_type == "ollama":
-                config["model"] = get_config_value("OLLAMA_MODEL", "llama3.2")
+                config["model"] = get_config_value("OLLAMA_MODEL", "qwen3:14b")
                 config["base_url"] = get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
             
             return create_provider(provider_type, **config)
@@ -77,6 +115,9 @@ class PipelineExecutor:
             query: Original user query
             status_callback: Optional callback for status updates (e.g., "Step 2: crawl_url")
         
+        Note: Token usage is tracked across all LLM calls (parameter filling, validation)
+              and returned in the response['usage'] field.
+        
         Returns:
             Same format as Orchestrator.process() for compatibility:
             {
@@ -86,6 +127,14 @@ class PipelineExecutor:
                 "tools_used": [...]
             }
         """
+        # Reset usage tracking for this workflow
+        self._total_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cost_usd": 0.0
+        }
+        
         workflow_id = workflow.get("id", "unknown")
         workflow_name = workflow.get("name", workflow_id)
         steps = workflow.get("steps", [])
@@ -774,8 +823,8 @@ class PipelineExecutor:
             user_message = f"{prompt}\n\nContent to validate:\n{content_preview}"
             system_prompt = "You are validating content quality. Respond with only 'YES' or 'NO'."
             
-            # chat() returns a string, not a dict
-            response = self.provider.chat(user_message, system_prompt=system_prompt)
+            # Use _chat_with_usage to track token usage
+            response = self._chat_with_usage(user_message, system_prompt=system_prompt)
             answer = response.strip().upper() if isinstance(response, str) else ""
             
             return answer.startswith("YES")
@@ -798,8 +847,8 @@ class PipelineExecutor:
         try:
             system_prompt = "Decide if this action should be taken. Respond with only 'YES' or 'NO'."
             
-            # chat() returns a string, not a dict
-            response = self.provider.chat(prompt, system_prompt=system_prompt)
+            # Use _chat_with_usage to track token usage
+            response = self._chat_with_usage(prompt, system_prompt=system_prompt)
             answer = response.strip().upper() if isinstance(response, str) else ""
             
             return answer.startswith("YES")
@@ -849,8 +898,8 @@ class PipelineExecutor:
             else:
                 system_prompt = "Generate content based on the instruction. Be comprehensive and well-structured."
             
-            # chat() returns a string, not a dict
-            response = self.provider.chat(prompt, system_prompt=system_prompt)
+            # Use _chat_with_usage to track token usage
+            response = self._chat_with_usage(prompt, system_prompt=system_prompt)
             content = response.strip() if isinstance(response, str) else ""
             
             # Return appropriate parameter names based on tool
@@ -896,7 +945,8 @@ class PipelineExecutor:
                 "results": results,
                 "variables": {k: v for k, v in variables.items() if not k.startswith("_")}
             },
-            "tools_used": list(dict.fromkeys(tools_used))  # Preserve order, remove duplicates
+            "tools_used": list(dict.fromkeys(tools_used)),  # Preserve order, remove duplicates
+            "usage": self._total_usage if self._total_usage.get("total_tokens", 0) > 0 else None
         }
         
         # Log workflow execution
@@ -934,7 +984,8 @@ class PipelineExecutor:
                 "reason": f"Step {failed_step.get('step')} ({failed_step.get('tool')}) failed",
                 "results": results
             },
-            "tools_used": tools_used
+            "tools_used": tools_used,
+            "usage": self._total_usage if self._total_usage.get("total_tokens", 0) > 0 else None
         }
         
         # Log aborted workflow execution

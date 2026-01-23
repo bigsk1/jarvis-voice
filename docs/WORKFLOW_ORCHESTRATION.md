@@ -2,7 +2,7 @@
 
 > **Status**: ✅ Implemented  
 > **Purpose**: Structured multi-tool workflow execution without hardcoded Python logic  
-> **Last Updated**: January 22, 2026
+> **Last Updated**: January 23, 2026
 
 ---
 
@@ -27,6 +27,70 @@ Jarvis has two ways to handle multi-tool tasks:
 1. **`status_recap.py`** (560 lines) - Calls 8-10 tools via Python subprocess because LLM couldn't reliably gather all data
 2. **`deep_memory_search.py`** (610 lines) - Searches 6 data sources with custom Python because LLM missed sources
 3. **`deep_research.md` prompt** (180 lines) - Detailed instructions LLM still doesn't follow consistently
+
+---
+
+## 🚀 Token Efficiency: The Hidden Superpower
+
+> **TL;DR**: Workflows bypass the entire LLM routing overhead, reducing token usage from ~25,000+ to near-zero for orchestration.
+
+### Normal LLM Chat vs Workflows
+
+| Aspect | Normal LLM Chat | Workflow |
+|--------|----------------|----------|
+| System prompt | ~5,000 tokens | **0 tokens** |
+| Tool definitions (57 tools) | ~30,000 tokens | **0 tokens** |
+| MCP server descriptions | ~1,000 tokens | **0 tokens** |
+| Tool selection decision | ~500 tokens per turn | **0 tokens** |
+| Multi-turn context | Accumulates | **0 tokens** |
+| **Total orchestration overhead** | **~35,000+ tokens** | **~0-500 tokens** |
+
+### Real-World Example: `/quick_note`
+
+```
+Workflow: get_time → remember → canvas
+
+Normal LLM routing would cost:
+  System prompt:     5,245 tokens
+  Tool definitions: 29,838 tokens
+  Query + response:    500 tokens
+  ─────────────────────────────────
+  TOTAL:            35,583 tokens
+
+Workflow actually costs:
+  LLM orchestration:     0 tokens  (deterministic)
+  Parameter filling:   244 tokens  (if using llm_prompt)
+  ─────────────────────────────────
+  TOTAL:               244 tokens  ✅ 99.3% savings!
+```
+
+### Why This Matters for Local Models
+
+| Context Window | Normal Chat Baseline | With Workflows |
+|----------------|---------------------|----------------|
+| 32K (Qwen3) | 35K tokens = **OVERFLOW** | 244 tokens = **0.8%** |
+| 8K (small models) | 35K tokens = **IMPOSSIBLE** | 244 tokens = **3%** |
+| 128K (Claude) | 35K tokens = 27% | 244 tokens = **0.2%** |
+
+**For local models with limited context windows, workflows are the ONLY way to execute complex multi-tool tasks reliably.**
+
+### What Uses LLM Tokens in Workflows?
+
+Only these optional features use LLM:
+
+1. **`llm_prompt`** - Dynamic parameter generation
+2. **Content validation** - Quality checks on results
+3. **Conditional decisions** - `llm_decide` for branching
+
+If your workflow doesn't use these features, it uses **0 LLM tokens** for orchestration - pure deterministic execution.
+
+### Token Tracking in WebUI
+
+The WebUI token counter shows:
+- **Normal chat**: Full token usage (system prompt + tools + conversation)
+- **Workflows**: Only LLM tokens used for parameter filling/validation
+
+A workflow showing "0 tokens" means it executed entirely deterministically - no LLM overhead at all!
 
 ---
 

@@ -197,12 +197,71 @@ class ChatUI {
     this.autocompleteEl = null;
     this.selectedSuggestionIndex = -1;
     
+    // Token/cost tracking state
+    this.tokenCounterEl = document.getElementById('tokenCounter');
+    this.tokenCountEl = document.getElementById('tokenCount');
+    this.tokenCostEl = document.getElementById('tokenCost');
+    this.cumulativeTokens = { input: 0, output: 0, total: 0 };
+    this.cumulativeCost = 0;
+    this.contextWindow = 2000000;  // Default to xAI's 2M, updated from server
+    this.llmProvider = 'xai';      // Default, updated from server
+    
     this._setupEventListeners();
     this._setupSocketListeners();
     this._setupVoiceRecording();
     this._setupImageUpload();
     this._setupAutocomplete();
     this._setupEnhanceButton();
+    this.refreshContextWindow();  // Get actual context window for current model
+  }
+  
+  /**
+   * Fetch/refresh context window size for current model
+   * Called on init and when settings change
+   * @param {string} mode - Optional mode override ('cloud' or 'local')
+   */
+  async refreshContextWindow(mode = null) {
+    try {
+      // Use /api/settings which returns EFFECTIVE settings (with UI overrides)
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        const settings = data.settings || {};
+        
+        // Get effective provider from settings (includes UI overrides)
+        const provider = settings.llm?.provider?.value || 'xai';
+        const currentMode = settings.mode || mode || 'cloud';
+        
+        // Set context window based on LLM provider (not TTS)
+        if (provider === 'xai') {
+          // grok-4-fast models have 2M context
+          this.contextWindow = 2000000;
+        } else if (provider === 'anthropic') {
+          this.contextWindow = 200000;
+        } else if (provider === 'openai') {
+          this.contextWindow = 128000;
+        } else if (provider === 'ollama') {
+          // Local models - check for configured context window
+          // Try to get from system config as a fallback
+          try {
+            const sysRes = await fetch(`/api/settings/system?mode=${currentMode}`);
+            if (sysRes.ok) {
+              const sysConfig = await sysRes.json();
+              this.contextWindow = parseInt(sysConfig.OLLAMA_CONTEXT_WINDOW) || 32768;
+            } else {
+              this.contextWindow = 32768;
+            }
+          } catch {
+            this.contextWindow = 32768;
+          }
+        }
+        
+        this.llmProvider = provider;  // Store for display
+        console.log('[Chat] LLM Provider:', provider, '| Context window:', this.contextWindow.toLocaleString(), 'tokens');
+      }
+    } catch (err) {
+      console.warn('[Chat] Could not fetch context window:', err);
+    }
   }
 
   /**
@@ -851,6 +910,11 @@ class ChatUI {
       this.addAssistantMessage(data.text, data.tools_used, data);
       this.isProcessing = false;
       this.updateSendButton();
+      
+      // Update token counter if usage data available
+      if (data.usage) {
+        this._updateTokenCounter(data.usage);
+      }
     });
     
     socket.on('error', (data) => {
@@ -1523,6 +1587,125 @@ class ChatUI {
   }
 
   /**
+   * Update token counter display
+   * @param {Object} usage - {input_tokens, output_tokens, total_tokens, cost_usd}
+   */
+  _updateTokenCounter(usage) {
+    if (!this.tokenCounterEl) return;
+    
+    // Accumulate tokens
+    const inputTokens = usage.input_tokens || 0;
+    const outputTokens = usage.output_tokens || 0;
+    const totalTokens = usage.total_tokens || (inputTokens + outputTokens);
+    const cost = usage.cost_usd || 0;
+    
+    this.cumulativeTokens.input += inputTokens;
+    this.cumulativeTokens.output += outputTokens;
+    this.cumulativeTokens.total += totalTokens;
+    this.cumulativeCost += cost;
+    
+    // Format token count
+    const tokenStr = this.cumulativeTokens.total.toLocaleString();
+    this.tokenCountEl.textContent = `${tokenStr} tokens`;
+    
+    // Show cost only for cloud mode (cost > 0)
+    if (this.cumulativeCost > 0) {
+      // Format cost nicely
+      const costStr = this.cumulativeCost < 0.01 
+        ? `$${this.cumulativeCost.toFixed(4)}` 
+        : `$${this.cumulativeCost.toFixed(2)}`;
+      this.tokenCostEl.textContent = costStr;
+    } else {
+      this.tokenCostEl.textContent = '';
+    }
+    
+    // Show the counter
+    this.tokenCounterEl.style.display = 'flex';
+    
+    // Add warning classes based on context usage
+    const usagePercent = (this.cumulativeTokens.total / this.contextWindow) * 100;
+    this.tokenCounterEl.classList.remove('warning', 'danger');
+    
+    // Build tooltip with provider info
+    const providerInfo = this.llmProvider ? ` (${this.llmProvider.toUpperCase()})` : '';
+    
+    if (usagePercent > 80) {
+      this.tokenCounterEl.classList.add('danger');
+      this.tokenCounterEl.title = `⚠️ ${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
+    } else if (usagePercent > 50) {
+      this.tokenCounterEl.classList.add('warning');
+      this.tokenCounterEl.title = `${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
+    } else {
+      this.tokenCounterEl.title = `${usagePercent.toFixed(1)}% of ${this.contextWindow.toLocaleString()} token context${providerInfo}`;
+    }
+  }
+
+  /**
+   * Reset token counter (for new chat)
+   */
+  _resetTokenCounter() {
+    this.cumulativeTokens = { input: 0, output: 0, total: 0 };
+    this.cumulativeCost = 0;
+    
+    if (this.tokenCounterEl) {
+      this.tokenCounterEl.style.display = 'none';
+      this.tokenCounterEl.classList.remove('warning', 'danger');
+    }
+    if (this.tokenCountEl) {
+      this.tokenCountEl.textContent = '0 tokens';
+    }
+    if (this.tokenCostEl) {
+      this.tokenCostEl.textContent = '';
+    }
+  }
+
+  /**
+   * Restore token counter from historical data (when loading a conversation)
+   * @param {Object} tokens - {input, output, total}
+   * @param {number} cost - cumulative cost in USD
+   */
+  restoreTokenCounter(tokens, cost) {
+    if (!this.tokenCounterEl) return;
+    
+    // Set cumulative values
+    this.cumulativeTokens = { ...tokens };
+    this.cumulativeCost = cost || 0;
+    
+    // Format and display
+    const tokenStr = this.cumulativeTokens.total.toLocaleString();
+    this.tokenCountEl.textContent = `${tokenStr} tokens`;
+    
+    // Show cost only for cloud mode (cost > 0)
+    if (this.cumulativeCost > 0) {
+      const costStr = this.cumulativeCost < 0.01 
+        ? `$${this.cumulativeCost.toFixed(4)}` 
+        : `$${this.cumulativeCost.toFixed(2)}`;
+      this.tokenCostEl.textContent = costStr;
+    } else {
+      this.tokenCostEl.textContent = '';
+    }
+    
+    // Show the counter
+    this.tokenCounterEl.style.display = 'flex';
+    
+    // Update warning classes
+    const usagePercent = (this.cumulativeTokens.total / this.contextWindow) * 100;
+    this.tokenCounterEl.classList.remove('warning', 'danger');
+    
+    const providerInfo = this.llmProvider ? ` (${this.llmProvider.toUpperCase()})` : '';
+    
+    if (usagePercent > 80) {
+      this.tokenCounterEl.classList.add('danger');
+      this.tokenCounterEl.title = `⚠️ ${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
+    } else if (usagePercent > 50) {
+      this.tokenCounterEl.classList.add('warning');
+      this.tokenCounterEl.title = `${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
+    } else {
+      this.tokenCounterEl.title = `${usagePercent.toFixed(1)}% of ${this.contextWindow.toLocaleString()} token context${providerInfo}`;
+    }
+  }
+
+  /**
    * Clear chat history
    */
   clearChat() {
@@ -1531,6 +1714,9 @@ class ChatUI {
     messages.forEach((msg, index) => {
       if (index > 0) msg.remove();
     });
+    
+    // Reset token counter for new chat
+    this._resetTokenCounter();
   }
 }
 
