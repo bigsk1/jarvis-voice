@@ -117,10 +117,10 @@ class WorkflowLoader:
                 best_match = workflow
         
         # Require minimum score to match
-        # 100 = explicit command (always allowed)
+        # 100+ = explicit command (always allowed, score = 100 + command length)
         # 50 = pattern match (only if patterns allowed)
         # 30 = keyword match (only if patterns allowed)
-        if best_score >= 100:  # Explicit command
+        if best_score >= 100:  # Explicit command (100 + length)
             return best_match
         elif best_score >= 10 and check_patterns:  # Pattern/keyword match
             return best_match
@@ -132,7 +132,7 @@ class WorkflowLoader:
         Score how well a query matches a workflow's triggers.
         
         Scoring:
-        - Explicit command match: 100 points (always checked)
+        - Explicit command match: 100 + len(command) points (longer = better match)
         - Pattern match: 50 points (only if check_patterns=True)
         - All keywords match: 30 points (only if check_patterns=True)
         - Partial keywords: 10 points per keyword (only if check_patterns=True)
@@ -149,13 +149,18 @@ class WorkflowLoader:
         score = 0
         
         # 1. Check explicit commands (ALWAYS checked, highest priority)
+        # Score by length so longer/more specific commands win
+        # e.g., /status-visual (14 chars) beats /status (7 chars)
         for explicit in triggers.get("explicit", []):
-            if query_lower.startswith(explicit.lower()):
-                return 100  # Definite match
+            explicit_lower = explicit.lower()
+            if query_lower.startswith(explicit_lower):
+                # Add length to base score so longer matches win
+                match_score = 100 + len(explicit_lower)
+                score = max(score, match_score)
         
-        # If explicit_only mode, stop here
-        if not check_patterns:
-            return 0
+        # If explicit match found or explicit_only mode, return now
+        if score >= 100 or not check_patterns:
+            return score
         
         # 2. Check patterns (only if patterns allowed)
         for pattern in triggers.get("patterns", []):
