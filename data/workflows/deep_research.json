@@ -138,8 +138,8 @@
       "tool": "canvas",
       "action": "create",
       "params": {
-        "title": "Research: ${topic}",
-        "tags": ["research", "${topic}"]
+        "title": "Workflows/Research/${topic}",
+        "tags": ["research", "workflow", "${topic}"]
       },
       "llm_prompt": "Create a comprehensive research summary about '${topic}' using these articles:\n\n${validated_articles}\n\nInclude:\n- Executive summary (2-3 sentences with specific findings)\n- Key findings with specific facts, dates, and quotes from the articles\n- Sources used (list the actual URLs)\n- Reference to stash ${space_id} for full articles\n- Open questions for further research",
       "required": true,

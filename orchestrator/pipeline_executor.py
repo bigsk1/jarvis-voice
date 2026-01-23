@@ -597,6 +597,7 @@ class PipelineExecutor:
         - {"from": "query", "extract": "main_subject"}
         - {"from": "query", "extract": "main_subject", "default": "vps2"}
         - {"from": "static", "value": "some fixed value"}
+        - {"from": "url", "transform": "domain"}  # Derive from another variable
         """
         variables = {
             "query": query,
@@ -607,6 +608,8 @@ class PipelineExecutor:
         }
         
         var_defs = workflow.get("variables", {})
+        
+        # First pass: extract variables from query/static
         for var_name, var_def in var_defs.items():
             if not isinstance(var_def, dict):
                 continue
@@ -634,9 +637,55 @@ class PipelineExecutor:
                 variables[var_name] = extracted_value
             elif default_value is not None:
                 variables[var_name] = default_value
-            # Note: Don't set to None if no value - preserve any existing variable
+        
+        # Second pass: apply transforms that reference other variables
+        for var_name, var_def in var_defs.items():
+            if not isinstance(var_def, dict):
+                continue
+            
+            transform = var_def.get("transform")
+            source = var_def.get("from", "query")
+            default_value = var_def.get("default")
+            
+            if transform and source in variables:
+                source_value = variables.get(source, "")
+                transformed = self._apply_transform(source_value, transform)
+                if transformed:
+                    variables[var_name] = transformed
+                elif default_value is not None:
+                    variables[var_name] = default_value
         
         return variables
+    
+    def _apply_transform(self, value: str, transform: str) -> Optional[str]:
+        """Apply a transformation to a value."""
+        if not value:
+            return None
+        
+        if transform == "domain":
+            # Extract domain from URL
+            return self._extract_domain_from_url(value)
+        elif transform == "lowercase":
+            return value.lower()
+        elif transform == "uppercase":
+            return value.upper()
+        elif transform == "strip":
+            return value.strip()
+        
+        return value
+    
+    def _extract_domain_from_url(self, url: str) -> Optional[str]:
+        """Extract domain from a URL (e.g., 'https://www.bigsk1.com/page' -> 'bigsk1.com')."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            domain = parsed.netloc or parsed.path.split('/')[0]
+            # Remove www. prefix
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            return domain if domain else None
+        except Exception:
+            return None
     
     def _extract_url_from_text(self, text: str) -> Optional[str]:
         """Extract a URL from text, adding https:// if needed."""

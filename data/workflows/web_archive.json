@@ -19,6 +19,7 @@
   
   "variables": {
     "url": {"from": "query", "extract": "url"},
+    "url_domain": {"from": "url", "transform": "domain"},
     "topic": {"from": "query", "extract": "main_subject"}
   },
   
@@ -88,8 +89,8 @@
       "tool": "canvas",
       "action": "create",
       "params": {
-        "title": "Archive: ${article.url}",
-        "tags": ["archive", "${topic}"]
+        "title": "Workflows/Archive/${url_domain}",
+        "tags": ["archive", "workflow", "${topic}"]
       },
       "llm_prompt": "Create a well-formatted summary of this archived webpage.\n\nSource URL: ${article.url}\nStash reference: ${stash_ref}\nDate archived: ${timestamp}\n\nArticle content to summarize:\n${article.content}\n\nGenerate a markdown summary with:\n- Title/source\n- Key points (3-5 bullets summarizing the main content)\n- Stash reference for full content\n- Archive date",
       "required": true,

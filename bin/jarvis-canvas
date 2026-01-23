@@ -1456,19 +1456,39 @@ HTML_TEMPLATE = '''
         }
 
         // Extract folder from title (e.g., "Phone Calls/2025-12-14" → "Phone Calls")
+        // Handles nested folders: "Workflows/Archive/bigsk1.com" → "Workflows/Archive"
+        // Ignores URLs: "Archive: https://example.com" → null (no folder)
         function getFolder(title) {
-            if (title && title.includes('/')) {
-                return title.split('/')[0].trim();
+            if (!title || !title.includes('/')) {
+                return null;
+            }
+            
+            // Skip if title contains a URL (http:// or https://)
+            if (title.includes('://')) {
+                return null;
+            }
+            
+            // Return everything except the last segment as the folder path
+            const parts = title.split('/');
+            if (parts.length >= 2) {
+                return parts.slice(0, -1).join('/').trim();
             }
             return null;
         }
 
-        // Get display title (without folder prefix)
+        // Get display title (last segment after folder path)
         function getDisplayTitle(title) {
-            if (title && title.includes('/')) {
-                return title.split('/').slice(1).join('/').trim();
+            if (!title || !title.includes('/')) {
+                return title;
             }
-            return title;
+            
+            // Skip if title contains a URL
+            if (title.includes('://')) {
+                return title;
+            }
+            
+            const parts = title.split('/');
+            return parts[parts.length - 1].trim();
         }
 
         // Track expanded folders
@@ -1908,6 +1928,112 @@ def delete_page(page_id):
     if delete_page_file(page_id):
         return jsonify({"success": True})
     return jsonify({"error": "Page not found"}), 404
+
+
+@app.route('/api/pages/<page_id>/download', methods=['GET'])
+def download_page(page_id):
+    """
+    Download a page as JSON or Markdown.
+    
+    Query params:
+        format: 'json' (default) or 'markdown'
+    """
+    filepath = CANVAS_DIR / f"{page_id}.json"
+    if not filepath.exists():
+        return jsonify({"error": "Page not found"}), 404
+    
+    with open(filepath) as f:
+        page = json.load(f)
+    
+    export_format = request.args.get('format', 'json')
+    
+    if export_format == 'markdown':
+        # Export as Markdown with frontmatter
+        frontmatter = f"""---
+title: {page.get('title', 'Untitled')}
+id: {page.get('id', '')}
+created: {page.get('created', '')}
+updated: {page.get('updated', '')}
+tags: {json.dumps(page.get('tags', []))}
+pinned: {page.get('pinned', False)}
+---
+
+"""
+        content = frontmatter + page.get('content', '')
+        filename = f"{page.get('title', 'page').replace('/', '_')}.md"
+        
+        from flask import Response
+        return Response(
+            content,
+            mimetype='text/markdown',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
+    else:
+        # Export as JSON
+        filename = f"{page_id}.json"
+        from flask import Response
+        return Response(
+            json.dumps(page, indent=2),
+            mimetype='application/json',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
+
+
+@app.route('/api/pages/upload', methods=['POST'])
+def upload_page():
+    """
+    Upload/import a page from JSON.
+    
+    Accepts JSON body with page data. If 'id' is provided and exists, 
+    it will be treated as an update. Otherwise creates a new page.
+    
+    Set 'force_new': true to always create a new page even if ID matches.
+    """
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+    
+    if not data.get('title'):
+        return jsonify({"error": "Title is required"}), 400
+    
+    force_new = data.pop('force_new', False)
+    existing_id = data.get('id')
+    
+    # Check if page with this ID exists
+    if existing_id and not force_new:
+        existing_path = CANVAS_DIR / f"{existing_id}.json"
+        if existing_path.exists():
+            # Update existing page
+            with open(existing_path) as f:
+                existing = json.load(f)
+            
+            existing['title'] = data.get('title', existing.get('title'))
+            existing['content'] = data.get('content', existing.get('content', ''))
+            existing['tags'] = data.get('tags', existing.get('tags', []))
+            existing['pinned'] = data.get('pinned', existing.get('pinned', False))
+            existing['updated'] = datetime.now().isoformat()
+            
+            save_page(existing)
+            return jsonify({"action": "updated", "page": existing})
+    
+    # Create new page
+    now = datetime.now()
+    page_id = f"page_{now.strftime('%Y%m%d_%H%M%S')}"
+    
+    page = {
+        'id': page_id,
+        'title': data.get('title'),
+        'content': data.get('content', ''),
+        'tags': data.get('tags', []),
+        'pinned': data.get('pinned', False),
+        'created': now.isoformat(),
+        'updated': now.isoformat(),
+        'source_query': data.get('source_query')
+    }
+    
+    save_page(page)
+    return jsonify({"action": "created", "page": page}), 201
 
 
 # ============================================================================
