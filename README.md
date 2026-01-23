@@ -7,7 +7,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ## ✨ Key Features
 
-### Intelligence & Self-Learning ⭐ ENHANCED
+### Intelligence & Self-Learning
 - **Intelligence Layer**: Self-learning system that improves over time
   - Learns from every interaction (what worked, what didn't)
   - **Positive constraints**: "Use mcp_fetch for server status checks"
@@ -124,7 +124,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ![jarvis-web](docs/images/jarvis-web.png)
 
-### Web Interface ⭐ ENHANCED
+### Web Interface
 - **Jarvis Web UI v2.0** - Full-featured chat interface at localhost:5001
   - Real-time WebSocket communication with tool streaming
   - Mode switching (cloud/local) with per-mode settings
@@ -146,7 +146,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ![jarvis-tui](docs/images/jarvis-tui.png)
 
-### Developer Experience ⭐ ENHANCED
+### Developer Experience
 - **Command Dashboard TUI**: Interactive terminal UI with 70+ commands
   - Browse, search, and run any Jarvis command from one place
   - Organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
@@ -170,7 +170,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Jarvis saves research results, code snippets, comparisons
   - Beautiful dark UI with Markdown rendering
   - Search, pin, edit, delete pages
-  - Mobile responsive: hamburger menu at ≤730px ⭐ ENHANCED
+  - Mobile responsive: hamburger menu at ≤730px
   - Launch: `./bin/jarvis-canvas`
 
 ![jarvis-canvas](docs/images/jarvis-canvas.png)
@@ -261,14 +261,14 @@ jarvis-voice/
 │   ├── say.sh / say-local.sh # Text-to-speech
 │   ├── jarvis-api            # Proactive API server (port 8880)
 │   ├── jarvis-services       # Background services daemon
-│   ├── jarvis-dashboard      # Command Dashboard TUI ⭐
-│   ├── jarvis-web            # Web UI launcher (port 5001) ⭐
-│   ├── jarvis-canvas         # Canvas viewer (port 8090) ⭐
-│   ├── jarvis-memory         # Memory Browser UI (port 5002) ⭐
-│   ├── jarvis-intelligence   # Intelligence Dashboard (port 5003) ⭐
-│   ├── jarvis-feedback       # Feedback system CLI ⭐
-│   ├── build-tool            # Dynamic tool builder ⭐
-│   ├── evolve-prompts        # Prompt evolution system ⭐
+│   ├── jarvis-dashboard      # Command Dashboard TUI
+│   ├── jarvis-web            # Web UI launcher (port 5001)
+│   ├── jarvis-canvas         # Canvas viewer (port 8090)
+│   ├── jarvis-memory         # Memory Browser UI (port 5002)
+│   ├── jarvis-intelligence   # Intelligence Dashboard (port 5003)
+│   ├── jarvis-feedback       # Feedback system CLI
+│   ├── build-tool            # Dynamic tool builder
+│   ├── evolve-prompts        # Prompt evolution system
 │   ├── manage-tools.py       # Enable/disable tools
 │   ├── sync-memory-db.py     # Manual database sync
 │   ├── sync_tools.py         # Sync tools to LLM context
@@ -280,12 +280,12 @@ jarvis-voice/
 │   ├── config_loader.py      # Configuration management
 │   ├── memory_db.py          # SQLite memory system
 │   ├── llm_provider.py       # LLM provider abstraction (xAI/Anthropic/OpenAI/Ollama)
-│   ├── intelligence.py       # Self-learning system ⭐
-│   ├── intelligence_hooks.py # Experience recording ⭐
-│   ├── tool_builder.py       # Dynamic tool creation ⭐
-│   ├── prompt_evolution.py   # Self-evolving prompts ⭐
-│   ├── prompt_versioning.py  # Prompt A/B testing ⭐
-│   ├── stash_helper.py       # Artifact storage system ⭐
+│   ├── intelligence.py       # Self-learning system
+│   ├── intelligence_hooks.py # Experience recording
+│   ├── tool_builder.py       # Dynamic tool creation
+│   ├── prompt_evolution.py   # Self-evolving prompts
+│   ├── prompt_versioning.py  # Prompt A/B testing
+│   ├── stash_helper.py       # Artifact storage system
 │   ├── embeddings.py         # Embedding management
 │   ├── feedback.py           # LLM self-critique
 │   ├── status_updater.py     # Voice status updates
@@ -299,10 +299,10 @@ jarvis-voice/
 │   ├── router_v2.py          # LLM-based routing
 │   ├── executor.py           # Tool execution engine
 │   ├── tool_schema.py        # Tool discovery & validation
-│   ├── workflow_loader.py    # Workflow JSON loader ⭐
-│   └── pipeline_executor.py  # Deterministic pipeline execution ⭐
+│   ├── workflow_loader.py    # Workflow JSON loader
+│   └── pipeline_executor.py  # Deterministic pipeline execution
 ├── skills/                   # Tool scripts (53+)
-│   ├── auto-tools/           # Auto-generated tools ⭐
+│   ├── auto-tools/           # Auto-generated tools
 │   │   ├── docker_control.*  # Docker management
 │   │   ├── network_tools.*   # Network diagnostics
 │   │   ├── system_monitor.*  # System resources
@@ -311,17 +311,17 @@ jarvis-voice/
 │   ├── ssh_remote.py         # Remote SSH execution
 │   ├── docker_control.py     # Docker/compose management
 │   ├── deep_memory_search.py # Multi-source search
-│   ├── generate_image.py     # AI image generation (Gemini) ⭐
-│   ├── generate_music.py     # AI music (ElevenLabs) ⭐
-│   ├── analyze_image.py      # Vision analysis ⭐
-│   ├── phone_call.py         # AI phone calls (Vapi.ai) ⭐
-│   ├── spotify.py            # Spotify music control ⭐
-│   ├── canvas.py             # Canvas page management ⭐
-│   ├── stash.py              # Artifact storage ⭐
-│   ├── pdf_create.py         # PDF generation ⭐
-│   ├── printer.py            # CUPS printing ⭐
-│   ├── calculator.py         # Advanced math ⭐
-│   ├── weather.py            # Weather forecasts ⭐
+│   ├── generate_image.py     # AI image generation (Gemini)
+│   ├── generate_music.py     # AI music (ElevenLabs)
+│   ├── analyze_image.py      # Vision analysis
+│   ├── phone_call.py         # AI phone calls (Vapi.ai)
+│   ├── spotify.py            # Spotify music control
+│   ├── canvas.py             # Canvas page management
+│   ├── stash.py              # Artifact storage
+│   ├── pdf_create.py         # PDF generation
+│   ├── printer.py            # CUPS printing
+│   ├── calculator.py         # Advanced math
+│   ├── weather.py            # Weather forecasts
 │   ├── remember.py / recall.py / forget.py  # Memory tools
 │   ├── search_memory.py      # FTS5 keyword search
 │   ├── semantic_recall.py    # AI semantic search
@@ -336,7 +336,7 @@ jarvis-voice/
 │   ├── local.env             # Local mode settings (gitignored)
 │   ├── cloud.env.example     # Template (safe for git)
 │   ├── local.env.example     # Template (safe for git)
-│   ├── ssh.json              # SSH host config (gitignored) ⭐
+│   ├── ssh.json              # SSH host config (gitignored)
 │   ├── contacts.json         # Contact book (gitignored)
 │   ├── webhook_registry.json # Named webhooks
 │   └── mcp-servers.json      # MCP server config
@@ -345,33 +345,33 @@ jarvis-voice/
 │   ├── jarvis_memory_local.db # Local mode DB (nomic 768-dim)
 │   ├── jarvis_intelligence.db # Intelligence layer (cloud)
 │   ├── jarvis_intelligence_local.db # Intelligence layer (local)
-│   ├── workflows/            # Workflow JSON definitions ⭐
+│   ├── workflows/            # Workflow JSON definitions
 │   │   ├── web_archive.json  # /archive command
 │   │   ├── deep_research.json # /research command
 │   │   ├── quick_note.json   # /note command
 │   │   └── server_health_check.json # /health command
-│   ├── canvas/               # Canvas pages (Markdown) ⭐
-│   ├── stash/                # Artifact storage (7-day TTL) ⭐
-│   ├── generated_images/     # AI-generated images ⭐
-│   ├── generated_music/      # AI-generated music ⭐
+│   ├── canvas/               # Canvas pages (Markdown)
+│   ├── stash/                # Artifact storage (7-day TTL)
+│   ├── generated_images/     # AI-generated images
+│   ├── generated_music/      # AI-generated music
 │   ├── web_conversations/    # Web UI chat history
 │   └── backups/              # Database backups
 ├── logs/                     # Execution logs
 │   ├── tools/                # Tool call logs (JSONL)
-│   ├── llm/                  # LLM call logs (JSONL) ⭐
+│   ├── llm/                  # LLM call logs (JSONL)
 │   ├── opencode/             # OpenCode session logs
 │   ├── api/                  # API server logs
 │   ├── services/             # Background services logs
-│   ├── intelligence/         # Intelligence layer logs ⭐
-│   └── tool-builder/         # Tool builder reports ⭐
-├── jarvis-web/               # Web UI (Flask + WebSocket) ⭐
+│   ├── intelligence/         # Intelligence layer logs
+│   └── tool-builder/         # Tool builder reports
+├── jarvis-web/               # Web UI (Flask + WebSocket)
 │   ├── client/               # Frontend (HTML/CSS/JS)
 │   ├── server/               # Backend (Flask routes)
 │   └── data/prompts/         # @prompt templates
-├── jarvis-intelligence/      # Intelligence Dashboard ⭐
+├── jarvis-intelligence/      # Intelligence Dashboard
 │   ├── client/               # Frontend (HTML/CSS/JS)
 │   └── server/               # Backend (Flask routes)
-├── jarvis-memory/            # Memory Browser UI ⭐
+├── jarvis-memory/            # Memory Browser UI
 │   ├── client/               # Frontend (HTML/CSS/JS)
 │   └── server/               # Backend (Flask routes)
 ├── jarvis-monitor/           # Remote Monitoring Agent
@@ -380,10 +380,10 @@ jarvis-voice/
 │   ├── docker-compose.yml    # Compose config
 │   └── README.md             # Agent documentation
 ├── jarvis-intel/             # Private knowledge base (gitignored)
-├── services/                 # Background services ⭐
+├── services/                 # Background services
 │   ├── api/                  # Proactive API server
 │   └── background/           # Auto-resolve, reminders
-├── monitoring/               # Grafana + Prometheus + Loki ⭐
+├── monitoring/               # Grafana + Prometheus + Loki
 │   ├── grafana/              # Dashboard configs
 │   ├── prometheus/           # Metrics collection
 │   └── loki/                 # Log aggregation
@@ -396,8 +396,8 @@ jarvis-voice/
 ├── docs/                     # Documentation (60+ files)
 │   ├── api/                  # Proactive API docs
 │   ├── service/              # Background services docs
-│   ├── phone/                # AI phone calls (Vapi.ai) ⭐
-│   ├── spotify/              # Spotify integration ⭐
+│   ├── phone/                # AI phone calls (Vapi.ai)
+│   ├── spotify/              # Spotify integration
 │   ├── ssh/                  # SSH remote tool
 │   ├── docker-tool/          # Docker control
 │   ├── opencode/             # OpenCode integration
@@ -501,7 +501,7 @@ source ~/jarvis-venv/bin/activate
 
 Say **"Hey Jarvis"** to wake it up!
 
-### 5. Start All Services (Recommended) ⭐
+### 5. Start All Services (Recommended)
 
 Start everything with one command using tmux sessions (make sure they are all setup first):
 
@@ -1308,7 +1308,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Cross-UI navigation: 🧠 Memory and 📊 Intelligence links in all dashboard headers
   - Launch: `./bin/jarvis-memory` (localhost:5002)
 - ✅ **Canvas Mobile Responsive** - Hamburger menu and slide-out sidebar at ≤730px
-- ✅ **Jarvis Web UI v2.0** - Full-featured web interface ⭐ ENHANCED
+- ✅ **Jarvis Web UI v2.0** - Full-featured web interface
   - **Audio playback controls**: Speaker button with pause/resume/stop
   - **Music playback**: ElevenLabs generated music plays inline
   - **New @prompts**: `@generate_music`, `@email`, `@daily` with context-first injection
@@ -1330,7 +1330,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Auto-saves to stash + memory for cross-session recall
   - Multi-tool workflows: generate → email, generate → print, generate → canvas
   - See: `skills/generate_image.py`
-- ✅ **Stash + Memory Architecture** - Unified artifact workflow ⭐ ENHANCED
+- ✅ **Stash + Memory Architecture** - Unified artifact workflow
   - **Stash** = Workshop (temporary files, 7-day TTL, `stash://` references)
   - **Memory** = Index (permanent entries pointing to stash locations)
   - `safe_resolve_file()` gracefully handles expired stash with fallbacks
@@ -1464,11 +1464,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ MCP server support (with snake_case enforcement)
 - ✅ Auto-save intelligence
 - ✅ Conversation history
-
-**In Progress:**
-- Voice mode improvements
-- Additional n8n workflow integrations
-- Performance optimization for local models
 
 **Planned (Advanced AI - See `docs/ADVANCED_AI_TECHNIQUES.md`):**
 - ✅ **Phase 3: Self-Evolving Prompts** - COMPLETE! Auto-improve prompts, A/B testing, rollback
