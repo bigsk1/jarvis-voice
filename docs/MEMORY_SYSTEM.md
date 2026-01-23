@@ -64,7 +64,7 @@ Legacy fuzzy keyword search (SQL LIKE substring matching).
 
 **Note**: `recall` is kept for backward compatibility. Use `search_memory` for better performance.
 
-### `search_memory` ⭐ NEW: FTS5 Full-Text Search
+### `search_memory` : FTS5 Full-Text Search
 **Industry-standard full-text search with BM25 ranking** (10-100x faster than SQL LIKE).
 ```bash
 # Implementation: SQLite FTS5 with BM25 relevance ranking

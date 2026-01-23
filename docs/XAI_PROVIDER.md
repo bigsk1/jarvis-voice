@@ -119,7 +119,7 @@ Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic
 - Structured outputs
 - Works perfectly with Jarvis's tool registry
 
-### 5. **Built-in Live Search** ⭐ NEW
+### 5. **Built-in Live Search** 
 
 Enable Grok's native web search via `XAI_SEARCH=true`:
 
@@ -501,7 +501,7 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 ✅ **Automatic caching** (90% discount)  
 ✅ **Reasoning mode** at no extra cost  
 ✅ **Native function calling**  
-✅ **Built-in live search** (XAI_SEARCH=true) ⭐ NEW  
+✅ **Built-in live search** (XAI_SEARCH=true)   
 ✅ **Drop-in replacement** (no code changes)  
 
 **Monthly Savings**: $60-80 vs Claude, $25-35 vs GPT (for typical usage)

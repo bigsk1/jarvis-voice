@@ -16,7 +16,7 @@ Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks,
 - **[API Quick Start](API_QUICK_START.md)** - Legacy endpoint reference
 - **[Test API Guide](TEST_API.md)** - Testing examples and validation
 
-### Core APIs ⭐ NEW (January 2026)
+### Core APIs  (January 2026)
 
 | API | Documentation | Description |
 |-----|---------------|-------------|

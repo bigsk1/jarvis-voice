@@ -613,7 +613,7 @@ Use `check-intelligence-health.py` to validate:
                              │
                              ▼
               ┌──────────────────────────────────┐
-              │  4. INTELLIGENCE LAYER INIT      │  ⭐ NEW
+              │  4. INTELLIGENCE LAYER INIT      │  
               │  (automatic on first use)        │
               │                                  │
               │  • Creates intelligence.db       │
@@ -653,7 +653,7 @@ Note: Intelligence sync is MANUAL (run when switching modes)
 - `docs/EMBEDDING_HEALTH_CHECKS.md` - Detailed health check guide
 - `docs/DUAL_DATABASE_SYSTEM.md` - Why we have separate databases
 - `docs/TOOL_RAG_STRATEGY.md` - How tool sync enables Tool RAG
-- `docs/INTELLIGENCE_LAYER.md` - Self-learning system details ⭐ NEW
+- `docs/INTELLIGENCE_LAYER.md` - Self-learning system details 
 - `docs/TESTING.md` - Test script patterns with sync
 
 ---

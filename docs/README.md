@@ -13,15 +13,15 @@
 
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.0** (workflow tooltips, prompt tooltips, server logs) ⭐ ENHANCED
-- **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) ⭐ NEW
+- **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) 
 - **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence) ⭐ ENHANCED
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
-- **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) ⭐ NEW
-- **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) ⭐ NEW
+- **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
+- **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
 - **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization** ⭐ ENHANCED)
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
-- **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results) ⭐ NEW
-- **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) ⭐ NEW
+- **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results) 
+- **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) 
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
 - **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - Modular webhook system (email, n8n, external APIs with auth)
@@ -31,7 +31,7 @@
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools
 - **[status-tool/README.md](status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 
-### Document Processing ⭐ NEW
+### Document Processing 
 - **PDF Read Tool** (`skills/pdf_read.py`) - 📄 **PDF reading and manipulation**
   - Extract text from PDFs (with page ranges)
   - Extract embedded images to stash
@@ -58,7 +58,7 @@
 - **Maintenance Jobs** - Decay, anomaly detection, meta-cognition via API or CLI
 
 ### Web Crawling & Scraping
-- **[crawl4ai/README.md](crawl4ai/README.md)** - 🕷️ **Crawl4AI Integration** ⭐ NEW
+- **[crawl4ai/README.md](crawl4ai/README.md)** - 🕷️ **Crawl4AI Integration** 
   - `crawl_url` - Extract markdown from any webpage (stealth mode, JS wait)
   - `screenshot_url` - Full-page capture + vision AI analysis
   - Bypasses anti-bot measures via screenshot + vision
@@ -78,7 +78,7 @@
 # Local mode (Ollama)
 ./jarvis-local
 
-# Command Dashboard TUI (all commands in one place!) ⭐ NEW
+# Command Dashboard TUI (all commands in one place!) 
 ./bin/jarvis-dashboard   # Or: jarvis-d (if alias set)
 
 # Run tests
@@ -111,8 +111,8 @@
 | Document | Purpose |
 |----------|---------|
 | **MEMORY_SYSTEM.md** | Memory database architecture and tools |
-| **DEEP_MEMORY_SEARCH.md** | 🔍 **Deep search across ALL data sources** (memory, conversations, intel, canvas, stash) ⭐ NEW |
-| **USER_PROFILE_SYSTEM.md** | User profile management (intel + dynamic memories) ⭐ NEW |
+| **DEEP_MEMORY_SEARCH.md** | 🔍 **Deep search across ALL data sources** (memory, conversations, intel, canvas, stash)  |
+| **USER_PROFILE_SYSTEM.md** | User profile management (intel + dynamic memories)  |
 | **SEARCH_FALLBACK_SYSTEM.md** | Multi-tier search fallbacks (AND→OR→LIKE) |
 | **FTS5_SEARCH_SYSTEM.md** | FTS5 full-text search with BM25 ranking |
 | **DUAL_DATABASE_SYSTEM.md** | Cloud/local database with auto-sync |
@@ -126,10 +126,10 @@
 |----------|---------|
 | **WORKFLOW_ORCHESTRATION.md** | 🔄 **Workflow system** - Deterministic multi-tool pipelines ⭐ IMPLEMENTED |
 | **[../data/workflows/AGENTS.md](../data/workflows/AGENTS.md)** | 📖 **Workflow building guide** - Tool outputs, extract rules, testing |
-| **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval ⭐ NEW |
-| **TOOL_RAG_IMPLEMENTATION_SUMMARY.md** | Tool RAG implementation details ⭐ NEW |
-| **TOOL_RAG_TROUBLESHOOTING.md** | Tool RAG debugging guide ⭐ NEW |
-| **TEST_SCRIPT_TOOL_RAG_FIX.md** | Test script integration fixes ⭐ NEW |
+| **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval  |
+| **TOOL_RAG_IMPLEMENTATION_SUMMARY.md** | Tool RAG implementation details  |
+| **TOOL_RAG_TROUBLESHOOTING.md** | Tool RAG debugging guide  |
+| **TEST_SCRIPT_TOOL_RAG_FIX.md** | Test script integration fixes  |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
 | **TOOL_MANAGEMENT.md** | Enable/disable tools |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |
@@ -148,7 +148,7 @@
 ### Testing & Analysis
 | Document | Purpose |
 |----------|---------|
-| **COMPREHENSIVE_TESTING.md** | Burn test suite for all features ⭐ NEW |
+| **COMPREHENSIVE_TESTING.md** | Burn test suite for all features  |
 | **TESTING.md** | Comprehensive testing guide |
 | **BASELINE_TOKEN_USAGE.md** | Token usage tracking |
 | **../tests/README.md** | Test suite overview |
@@ -157,8 +157,8 @@
 | Document | Purpose |
 |----------|---------|
 | **JARVIS_WORKFLOW.md** | Complete workflow with visual flowcharts |
-| **AUTO_CONTEXT_SYSTEM.md** | Short-term conversation memory ⭐ NEW |
-| **CONVERSATION_STATE_ARCHITECTURE.md** | State management between cycles ⭐ NEW |
+| **AUTO_CONTEXT_SYSTEM.md** | Short-term conversation memory  |
+| **CONVERSATION_STATE_ARCHITECTURE.md** | State management between cycles  |
 | **api/READY_TO_USE.md** | Proactive API (Phase 1 COMPLETE) - Webhook system for alerts |
 | **api/PROACTIVE_ASSISTANT_SYSTEM.md** | Full architecture |
 
@@ -183,7 +183,7 @@
 | Document | Purpose |
 |----------|---------|
 | **BLINKO_INTEGRATION_IDEAS.md** | 🆕 **Blinko note-taking integration** - Exploration of AI RAG note system integration with Jarvis |
-| **WEBHOOK_SYSTEM.md** | **Modular webhook system** - Email, n8n, external APIs with auth examples ⭐ NEW |
+| **WEBHOOK_SYSTEM.md** | **Modular webhook system** - Email, n8n, external APIs with auth examples  |
 | **n8n/docs/GOOGLE_CALENDAR_SYNC.md** | Bidirectional Google Calendar sync (reminders ↔ events) |
 | **n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md** | Email tool and webhook registry details |
 | **n8n/docs/N8N_INTEGRATION.md** | n8n setup and workflow management |
@@ -194,8 +194,8 @@
 |----------|---------|
 | **INTELLIGENCE_LAYER.md** | Self-learning system (Phase 1.5 - COMPLETE) ⭐ ENHANCED |
 | **ADVANCED_AI_TECHNIQUES.md** | 🚀 **AGI Roadmap** - Self-evolving prompts, tool builder, parallel subagents ⭐ ENHANCED |
-| **TOOL_BUILDER.md** | 🔧 **Dynamic Tool Creation** - Autonomous tool building with safety checks ⭐ NEW |
-| **JARVIS_PLAYGROUND.md** | 🎮 **Playground Design** - Self-play, Docker, VM workspace, Carvis twin ⭐ NEW |
+| **TOOL_BUILDER.md** | 🔧 **Dynamic Tool Creation** - Autonomous tool building with safety checks  |
+| **JARVIS_PLAYGROUND.md** | 🎮 **Playground Design** - Self-play, Docker, VM workspace, Carvis twin  |
 | **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
 | **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Real-time feedback during tasks |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
@@ -203,12 +203,12 @@
 ### Developer Tools
 | Document | Purpose |
 |----------|---------|
-| **Command Dashboard** | TUI for all Jarvis commands - `./bin/jarvis-dashboard` ⭐ NEW |
-| **Memory Browser** | Web UI for memories/intel/conversations - `./bin/jarvis-memory` (localhost:5002) ⭐ NEW |
-| **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8090) ⭐ NEW |
-| **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag ⭐ NEW |
-| **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check cloud` ⭐ NEW |
-| **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."` ⭐ NEW |
+| **Command Dashboard** | TUI for all Jarvis commands - `./bin/jarvis-dashboard`  |
+| **Memory Browser** | Web UI for memories/intel/conversations - `./bin/jarvis-memory` (localhost:5002)  |
+| **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8090)  |
+| **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag  |
+| **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check cloud`  |
+| **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."`  |
 
 **Intelligence Features (Phase 1.5):**
 - Insight tracking (times_applied, times_helpful, times_failed)
@@ -298,7 +298,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-01-23:**
-- ✅ **Token/Cost Tracking in WebUI** - Real-time token usage and cost display ⭐ NEW
+- ✅ **Token/Cost Tracking in WebUI** - Real-time token usage and cost display 
   - Floating counter shows cumulative tokens + estimated USD cost
   - Context-aware: correct window for xAI (2M), Anthropic (200K), OpenAI (128K/400K)
   - Warning states at 50%/80% context usage with provider tooltip
@@ -358,7 +358,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Dashboard API Commands** - 27 API commands (was 6) for testing all endpoints
 
 **2026-01-15:**
-- ✅ **Stock Price Tool** - Stock, futures, and commodity prices via yfinance ⭐ NEW
+- ✅ **Stock Price Tool** - Stock, futures, and commodity prices via yfinance 
   - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
   - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
   - Forex pairs: EURUSD=X, USDJPY=X, etc.
@@ -399,7 +399,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Prompt System Enhancements** - Context-first injection, new prompts (email, daily, music)
 
 **2025-12-21:**
-- ✅ **Intelligence Dashboard** - Visual dashboard for self-learning system ⭐ NEW
+- ✅ **Intelligence Dashboard** - Visual dashboard for self-learning system 
   - **Experience sorting**: Date, Turns (complexity), Tool Count
   - **Experience filtering**: Success/Failed, Tool Count (none/single/multi), Specific Tool dropdown
   - **Insight sorting**: Times Applied, Times Helpful, Has Preferred/Avoided Tools, Confidence, Recently Updated
@@ -411,7 +411,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - **Mobile responsive** at ≤730px: hamburger menu, slide-out sidebar
   - Launch: `./bin/jarvis-intelligence` (localhost:5003)
   - See: `jarvis-intelligence/README.md`
-- ✅ **Memory Browser UI** - Web interface for memory management ⭐ NEW
+- ✅ **Memory Browser UI** - Web interface for memory management 
   - **View/search/edit/delete** memories from `knowledge_base`
   - **FTS5 search** for fast keyword lookups (no LLM required)
   - **Intel file manager**: create, edit, upload, delete, ingest `.md`/`.txt` files
@@ -461,7 +461,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: `docs/JARVIS_WEB_UI.md`
 
 **2025-12-16:**
-- ✅ **Google Gemini Image Generation** - AI image generation with Gemini 3 Pro ⭐ NEW
+- ✅ **Google Gemini Image Generation** - AI image generation with Gemini 3 Pro 
   - "Generate an infographic about bitcoin history"
   - "Create a cute robot dog" → saves to stash + memory
   - Supports: aspect ratios, styles, negative prompts
@@ -486,7 +486,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Multi-tool: "Generate an image and email it to Andrew"
 
 **2025-12-15:**
-- ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls on your behalf ⭐ NEW
+- ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls on your behalf 
   - Multiple personas (Jarvis, James/professional, Jay/casual, Samantha/female)
   - Custom Vapi dashboard assistants with variable injection (`{{owner}}`, `{{task}}`)
   - Voicemail detection (hangup, leave message, or disabled)
@@ -494,7 +494,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Auto-save transcripts to Canvas and memory
   - Contact management (save phone numbers by name)
   - See: `docs/phone/PHONE_CALLS.md`
-- ✅ **Spotify Integration** - Full music playback control ⭐ NEW
+- ✅ **Spotify Integration** - Full music playback control 
   - Play playlists, albums, artists, songs by voice
   - Searches your library first, then public Spotify
   - Multi-device support (Fire TV, Echo, phone, desktop)
@@ -518,24 +518,24 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Consistent pattern: {PROVIDER}_MODEL across all providers
 
 **2025-12-11:**
-- ✅ **Stash System** - Artifact storage for multi-step workflows ⭐ NEW
+- ✅ **Stash System** - Artifact storage for multi-step workflows 
   - Temporary file/image/data storage across tool calls
   - URL downloads with SSRF protection (blocks private IPs)
   - Content-type validation, file size limits, quota management
   - Workflow pattern: `stash.save()` → `pdf_create()` → `printer.print()`
   - See: `docs/STASH_SYSTEM.md`
-- ✅ **PDF Create Tool** - Generate PDF documents ⭐ NEW
+- ✅ **PDF Create Tool** - Generate PDF documents 
   - Create PDFs from text, images, or stash files
   - Basic markdown header support (# ## ###)
   - Image centering and scaling
   - Saves back to stash for printing/emailing
   - See: `skills/pdf_create.py`
-- ✅ **Printer Tool** - Print from stash, files, or text ⭐ NEW
+- ✅ **Printer Tool** - Print from stash, files, or text 
   - CUPS integration for network printers
   - Color/grayscale, compact mode, quality settings
   - Print from file paths, stash refs, or Canvas pages
   - See: `skills/printer.py`
-- ✅ **Speaker Volume Tool** - Control system audio ⭐ NEW
+- ✅ **Speaker Volume Tool** - Control system audio 
   - Get/set/adjust speaker volume via amixer
   - Uses OUT_DEV from cloud.env/local.env
   - See: `skills/speaker_volume.py`
@@ -545,7 +545,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - opencode, pdf_create, stash descriptions updated
 
 **2025-12-06:**
-- ✅ **Network Tools** - Comprehensive network diagnostics ⭐ NEW
+- ✅ **Network Tools** - Comprehensive network diagnostics 
   - Ping with full statistics (min/avg/max latency, packet loss)
   - DNS lookup and resolution
   - Port connectivity checks with latency measurement
@@ -553,7 +553,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Traceroute (cross-platform: Linux/Windows/Mac)
   - Internet connectivity testing
   - See: `skills/auto-tools/network_tools.py`
-- ✅ **System Monitor** - Real-time system resource monitoring ⭐ NEW
+- ✅ **System Monitor** - Real-time system resource monitoring 
   - CPU usage (total + per-core percentages)
   - Memory stats (RAM + swap with GB conversions)
   - Disk usage for all mount points
@@ -561,7 +561,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Network I/O statistics (bytes sent/received, errors, drops)
   - System uptime with boot time
   - See: `skills/auto-tools/system_monitor.py`
-- ✅ **Text Summarizer** - Text processing and analysis ⭐ NEW
+- ✅ **Text Summarizer** - Text processing and analysis 
   - Extractive summarization (sentence ranking)
   - Keyword extraction with stopword filtering
   - Word/character/sentence/paragraph counting
@@ -604,7 +604,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Grafana Dashboard Updates** - Mode dropdown for feedback/evolution
   - Toggle between cloud/local data in dashboards
   - All logs now include `mode` field for filtering
-- ✅ **Canvas System** - Visual knowledge viewer for rich content ⭐ NEW
+- ✅ **Canvas System** - Visual knowledge viewer for rich content 
   - Beautiful dark-themed web UI at localhost:8890
   - Jarvis saves research results, comparisons, code snippets
   - Markdown rendering with syntax highlighting
@@ -613,14 +613,14 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Live reload when new content added
   - Launch: `./bin/jarvis-canvas`
   - See: `docs/CANVAS_SYSTEM.md`
-- ✅ **Calculator Tool** - Advanced math, statistics, unit conversions ⭐ NEW
+- ✅ **Calculator Tool** - Advanced math, statistics, unit conversions 
   - Arithmetic, percentages (15% of 200)
   - Statistics (mean, median, stdev, variance)
   - Unit conversions (5 miles to km, 100°F to °C, 500 GB to TB)
   - Trigonometry, logarithms, factorials
   - Constants (pi, e, tau)
   - See: `skills/calculator.py`
-- ✅ **Feedback System** - LLM self-critique and grading ⭐ NEW
+- ✅ **Feedback System** - LLM self-critique and grading 
   - `--feedback` flag on orchestrator for per-query feedback
   - `./bin/jarvis-feedback` standalone script (run, batch, summary, issues)
   - Cross-LLM grading (FEEDBACK_PROVIDER/FEEDBACK_MODEL)
@@ -636,7 +636,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Fixed SQL queries and log paths
 
 **2025-11-29:**
-- ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands ⭐ NEW
+- ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands 
   - 60+ commands organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
   - Search/filter commands with `/` key
   - Tab-based navigation by category

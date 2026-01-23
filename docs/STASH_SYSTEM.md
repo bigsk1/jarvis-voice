@@ -530,7 +530,7 @@ Delete spaces (single or expired).
 
 ---
 
-### 3.9 `stash.remember` ⭐ NEW (January 2026)
+### 3.9 `stash.remember`  (January 2026)
 
 Save a stash artifact to permanent memory with one tool call. Bridges stash (temporary) to memory (permanent).
 
@@ -927,7 +927,7 @@ Stash is not just a tool API—it's Jarvis's **internal artifact system**.
 > Internal services can write to stash directly using the same directory convention 
 > and `meta.json` schema. The tool API is a public façade over that.
 
-### 5.6 Memory + Stash Architecture ⭐ NEW
+### 5.6 Memory + Stash Architecture 
 
 **Key Insight**: Stash is the **workshop**, Memory is the **index**.
 
@@ -1010,7 +1010,7 @@ else:
 | `send_email` | ✅ Resolves | N/A | ✅ |
 | `canvas` | N/A | ✅ Already | N/A |
 
-### 5.7 The `stash.remember` Bridge ⭐ NEW
+### 5.7 The `stash.remember` Bridge 
 
 **Problem**: Stash artifacts are temporary (7-day TTL), but users want to persist important findings.
 
@@ -1089,7 +1089,7 @@ This metadata enables:
 - **Graceful degradation**: If stash expires, memory still has content
 - **Auditing**: Track which tools created which artifacts
 
-### 5.8 Inter-Tool Calling Pattern ⭐ NEW
+### 5.8 Inter-Tool Calling Pattern 
 
 Some tools need to call other tools internally. This is done via subprocess.
 
@@ -1291,7 +1291,7 @@ This means costs are separate from your orchestrator tool call budget.
 
 ---
 
-## 11. Stash FastAPI ⭐ NEW (Jan 2026)
+## 11. Stash FastAPI  (Jan 2026)
 
 Read-only API for external integrations, scripts, and programmatic access at **port 8880**.
 
@@ -1382,7 +1382,7 @@ See: `docs/api/STASH.md` for full API documentation.
 - [Tool Calling System](TOOL_CALLING_SYSTEM.md) - Inter-tool calling patterns ⭐ ENHANCED
 - [Stash API](api/STASH.md) - FastAPI documentation
 - [Canvas API](api/CANVAS.md) - FastAPI documentation
-- **PDF Read Tool** (`skills/pdf_read.py`) - PDF extraction, used by `stash.remember` ⭐ NEW
+- **PDF Read Tool** (`skills/pdf_read.py`) - PDF extraction, used by `stash.remember` 
 
 ---
 

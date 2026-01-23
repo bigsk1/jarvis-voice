@@ -358,9 +358,9 @@ location /api/alerts {
 ```
 code-examples/
 ├── python/
-│   ├── ubiquiti_camera_webhook.py       ⭐ NEW - Camera webhooks
-│   ├── process_monitor.py               ⭐ NEW - Service monitoring
-│   ├── disk_space_smart_monitor.py      ⭐ NEW - Disk monitoring
+│   ├── ubiquiti_camera_webhook.py        - Camera webhooks
+│   ├── process_monitor.py                - Service monitoring
+│   ├── disk_space_smart_monitor.py       - Disk monitoring
 │   ├── monitor_service.py               - URL monitoring
 │   ├── docker_container_monitor.py      - Container monitoring
 │   └── basic_alert.py                   - Simple alert

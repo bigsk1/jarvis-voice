@@ -197,7 +197,7 @@ docs/
 │   ├── XAI_PROVIDER.md (xAI Grok - RECOMMENDED)
 │   └── METADATA_SYSTEM.md
 │
-├── System Understanding (Keep) ⭐ NEW
+├── System Understanding (Keep) 
 │   ├── AUTO_CONTEXT_SYSTEM.md (NEW - Nov 2025)
 │   ├── CONVERSATION_STATE_ARCHITECTURE.md (NEW - Nov 2025)
 │

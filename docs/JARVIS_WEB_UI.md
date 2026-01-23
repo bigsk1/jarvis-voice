@@ -63,7 +63,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Status TTS | ✅ | Status updates play as TTS when audio enabled |
 | **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send |
 | **Mode-aware STT** | ✅ | Cloud=OpenAI Whisper, Local=faster-whisper |
-| **Audio playback controls** | ✅ | Speaker button with pause/resume/stop, progress animation ⭐ NEW |
+| **Audio playback controls** | ✅ | Speaker button with pause/resume/stop, progress animation  |
 | Wake word | ⏳ | Planned - browser-based VAD |
 
 ### Phase 4: Advanced - COMPLETE ✅
@@ -114,12 +114,12 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| **Server Logs Panel** | ✅ | Real-time log streaming at bottom of UI ⭐ NEW |
-| **LLM call logs** | ✅ | Model, tokens, cost, duration, tool called ⭐ NEW |
-| **Tool call logs** | ✅ | Tool name, duration, success/error, result preview ⭐ NEW |
-| **Source toggles** | ✅ | Enable/disable LLM, Tools, OpenCode, Feedback ⭐ NEW |
-| **Expandable details** | ✅ | Click entry to see full parsed JSON ⭐ NEW |
-| **Resizable panel** | ✅ | Drag to resize, state persisted ⭐ NEW |
+| **Server Logs Panel** | ✅ | Real-time log streaming at bottom of UI  |
+| **LLM call logs** | ✅ | Model, tokens, cost, duration, tool called  |
+| **Tool call logs** | ✅ | Tool name, duration, success/error, result preview  |
+| **Source toggles** | ✅ | Enable/disable LLM, Tools, OpenCode, Feedback  |
+| **Expandable details** | ✅ | Click entry to see full parsed JSON  |
+| **Resizable panel** | ✅ | Drag to resize, state persisted  |
 
 ---
 
@@ -817,9 +817,9 @@ Type `@` in the chat input to see available prompts. Prompts inject methodology/
 | `@explain` | ELI5-style explanations |
 | `@step_by_step` | Step-by-step instruction format |
 | `@debug` | Debugging methodology |
-| `@generate_music` | ElevenLabs music generation best practices ⭐ NEW |
-| `@email` | Professional email composition with send_email tool format ⭐ NEW |
-| `@daily` | Daily briefing (time, weather, reminders, crypto prices) ⭐ NEW |
+| `@generate_music` | ElevenLabs music generation best practices  |
+| `@email` | Professional email composition with send_email tool format  |
+| `@daily` | Daily briefing (time, weather, reminders, crypto prices)  |
 
 **Context-First Injection (v2.0):**
 Prompts are injected **BEFORE** the user's message to provide context first:
@@ -1053,13 +1053,13 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 - [x] Browser notifications - Notifications API integration
 - [x] Notification panel - View/acknowledge alerts & reminders
 - [x] Local audio fix - Now serves from audio/local/tts too
-- [x] **Audio playback controls** - Speaker button with pause/resume/stop ⭐ NEW
-- [x] **Progress animation** - Visual pulse during playback ⭐ NEW
-- [x] **Smart auto-hide** - 10s after audio ends, instant on new message ⭐ NEW
-- [x] **ElevenLabs music generation** - `generate_music` tool with stash integration ⭐ NEW
-- [x] **Music playback in web UI** - Generated music plays inline ⭐ NEW
-- [x] **@prompts system** - Context-first injection for LLM guidance ⭐ NEW
-- [x] **deep_memory_search tool** - Multi-source search across all data ⭐ NEW
+- [x] **Audio playback controls** - Speaker button with pause/resume/stop 
+- [x] **Progress animation** - Visual pulse during playback 
+- [x] **Smart auto-hide** - 10s after audio ends, instant on new message 
+- [x] **ElevenLabs music generation** - `generate_music` tool with stash integration 
+- [x] **Music playback in web UI** - Generated music plays inline 
+- [x] **@prompts system** - Context-first injection for LLM guidance 
+- [x] **deep_memory_search tool** - Multi-source search across all data 
 - [x] **Image upload** - Drag-drop/paste/click, auto-resize to 1024px
 - [x] **Mode-aware vision** - Cloud=Grok/Claude, Local=llava
 - [x] **Expand details button** - Show full LLM response, tool results
@@ -1070,20 +1070,20 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 - [x] **analyze_image tool** - Analyze URLs, files, stash refs with SSRF protection
 - [x] **generate_image memory fix** - Now saves source + metadata for semantic recall
 - [x] **Safe URL downloads** - Uses stash_helper's safe_download + sanitize_filename
-- [x] **Slash commands** - `/canvas`, `/search`, `/recall`, `/detailed`, etc. ⭐ NEW
-- [x] **@prompts system** - `@research`, `@quick`, `@compare`, etc. ⭐ NEW
-- [x] **Command autocomplete** - Type `/` or `@` for suggestions ⭐ NEW
-- [x] **✨ Enhance with AI** - Transform rough input into optimal prompts ⭐ NEW
-- [x] **Tool exclusion** - Commands can exclude tools to force native search ⭐ NEW
+- [x] **Slash commands** - `/canvas`, `/search`, `/recall`, `/detailed`, etc. 
+- [x] **@prompts system** - `@research`, `@quick`, `@compare`, etc. 
+- [x] **Command autocomplete** - Type `/` or `@` for suggestions 
+- [x] **✨ Enhance with AI** - Transform rough input into optimal prompts 
+- [x] **Tool exclusion** - Commands can exclude tools to force native search 
 - [x] **Canvas command** - `/canvas` researches + saves to Canvas viewer
-- [x] **Conversation quick filter** - Filter by title in sidebar ⭐ NEW
-- [x] **Deep search modal** - Search all message content with highlighted snippets ⭐ NEW
-- [x] **Export conversations** - JSON and Markdown formats ⭐ NEW
+- [x] **Conversation quick filter** - Filter by title in sidebar 
+- [x] **Deep search modal** - Search all message content with highlighted snippets 
+- [x] **Export conversations** - JSON and Markdown formats 
 - [x] **Import conversations** - Restore from JSON files
-- [x] **Server Logs Panel** - Real-time streaming at bottom of UI ⭐ NEW
-- [x] **LLM + Tool logs** - Parsed, color-coded, expandable details ⭐ NEW
-- [x] **Log source toggles** - Enable/disable LLM, Tools, OpenCode, Feedback ⭐ NEW
-- [x] **Resizable log panel** - Drag to resize, state persisted in localStorage ⭐ NEW
+- [x] **Server Logs Panel** - Real-time streaming at bottom of UI 
+- [x] **LLM + Tool logs** - Parsed, color-coded, expandable details 
+- [x] **Log source toggles** - Enable/disable LLM, Tools, OpenCode, Feedback 
+- [x] **Resizable log panel** - Drag to resize, state persisted in localStorage 
 
 ---
 

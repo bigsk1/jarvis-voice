@@ -127,7 +127,7 @@ curl -X PUT http://localhost:8890/api/pages/page_20241201_143022 \
 curl -X DELETE http://localhost:8890/api/pages/page_20241201_143022
 ```
 
-### Download Page ⭐ NEW (Jan 2026)
+### Download Page  (Jan 2026)
 
 Export a page as JSON or Markdown:
 
@@ -153,7 +153,7 @@ pinned: false
 ## Content here...
 ```
 
-### Upload/Import Page ⭐ NEW (Jan 2026)
+### Upload/Import Page  (Jan 2026)
 
 Import a page from JSON:
 
@@ -197,7 +197,7 @@ Response:
 | `delete` | Remove page | `page_id` |
 | `list` | Show all pages | None |
 | `open` | Get canvas URL | None |
-| `read` | Get page content ⭐ NEW | `page_id` or `search` |
+| `read` | Get page content  | `page_id` or `search` |
 
 ### Example Tool Calls
 
@@ -531,7 +531,7 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 | `skills/canvas.py` | Tool implementation |
 | `skills/canvas.tool.json` | Tool definition |
 | `data/canvas/*.json` | Page storage |
-| `api/routes/canvas.py` | FastAPI routes ⭐ NEW |
+| `api/routes/canvas.py` | FastAPI routes  |
 | `docs/CANVAS_SYSTEM.md` | This documentation |
 
 ---
@@ -558,7 +558,7 @@ POST/PUT/DELETE http://localhost:8890/api/pages/{id}
 - Canvas tool (`skills/canvas.py`) for create/update/delete
 - Canvas web viewer (localhost:8890)
 
-### 2. Jarvis FastAPI (Port 8880) ⭐ NEW (Jan 2026)
+### 2. Jarvis FastAPI (Port 8880)  (Jan 2026)
 Read-only API for external integrations, scripts, and programmatic access.
 
 ```bash
@@ -607,7 +607,7 @@ See: `docs/api/CANVAS.md` for full FastAPI documentation.
 
 ---
 
-## Tool Read Action ⭐ NEW (Jan 2026)
+## Tool Read Action  (Jan 2026)
 
 The canvas tool now supports reading pages back:
 

@@ -66,7 +66,7 @@ docs/
 ✅ Background services (3 daemons)
 ✅ Docker monitoring agent (remote servers)
 ✅ URL-based auto-resolve (web services)
-✅ Agent-based auto-resolve (containers, services) ⭐ NEW
+✅ Agent-based auto-resolve (containers, services) 
 ✅ TTS notifications with specific item names
 ✅ Voice commands ("clear all alerts")
 ✅ 10+ ready-to-use code examples
@@ -81,7 +81,7 @@ Self-healing daemon checks URL every 60s
 Service up → Auto-resolves → TTS notification
 ```
 
-**2. Agent-Based** (for containers/services) ⭐ NEW:
+**2. Agent-Based** (for containers/services) :
 ```
 Container stops → Agent sends alert
 Container starts → Agent calls /resolve API
@@ -96,9 +96,9 @@ Jarvis speaks: "Boss, good news! kokoro-cpu is back up"
 - `basic_alert.py` - Simple alert
 - `monitor_service.py` - URL monitoring
 - `docker_container_monitor.py` - Container monitoring
-- `ubiquiti_camera_webhook.py` ⭐ NEW - Camera webhooks
-- `process_monitor.py` ⭐ NEW - Service monitoring
-- `disk_space_smart_monitor.py` ⭐ NEW - Disk monitoring
+- `ubiquiti_camera_webhook.py`  - Camera webhooks
+- `process_monitor.py`  - Service monitoring
+- `disk_space_smart_monitor.py`  - Disk monitoring
 
 ### Docker
 - Universal monitoring agent (updated with auto-resolve)

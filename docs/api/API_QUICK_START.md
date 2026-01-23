@@ -268,7 +268,7 @@ GET /api/health
 GET /api/status
 ```
 
-### Intelligence (Self-Learning) ⭐ NEW
+### Intelligence (Self-Learning) 
 
 The intelligence API provides access to Jarvis's self-learning system.
 

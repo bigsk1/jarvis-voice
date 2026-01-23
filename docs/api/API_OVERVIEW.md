@@ -204,13 +204,13 @@ curl http://localhost:8880/api/alerts
 ✅ Insight tracking (times_applied, helpful/failed)
 ✅ Maintenance jobs (decay, anomaly, meta-cognition)
 ✅ Meta-knowledge table & API
-✅ Reflection queue management (list, cancel) ⭐ NEW
-✅ Memory API (CRUD, keyword search, semantic search) ⭐ NEW
-✅ Query/Chat API (programmatic Jarvis access) ⭐ NEW
-✅ Conversations API (read-only history access) ⭐ NEW
-✅ Stash API (read-only artifacts access) ⭐ NEW
-✅ Canvas API (read-only pages access) ⭐ NEW
-✅ Dark mode Swagger UI ⭐ NEW
+✅ Reflection queue management (list, cancel) 
+✅ Memory API (CRUD, keyword search, semantic search) 
+✅ Query/Chat API (programmatic Jarvis access) 
+✅ Conversations API (read-only history access) 
+✅ Stash API (read-only artifacts access) 
+✅ Canvas API (read-only pages access) 
+✅ Dark mode Swagger UI 
 
 ---
 
@@ -551,7 +551,7 @@ POST /api/intelligence/maintenance/all
 | **Anomaly** | Flags experiences with unusually high turns or failures | Weekly or on-demand |
 | **Meta-Cognition** | Detects blind spots, over-generalization, learning issues | Weekly for health check |
 
-### Memory ⭐ NEW
+### Memory 
 
 ```bash
 # === CRUD Operations ===
@@ -610,7 +610,7 @@ POST /api/memory/rebuild-fts
 - `fact` - General knowledge
 - `location` - Places, addresses
 
-### Query/Chat ⭐ NEW
+### Query/Chat 
 
 Programmatically send queries to Jarvis (for n8n, scripts, integrations).
 
@@ -645,7 +645,7 @@ GET /api/query/quick?q=What+is+the+weather&mode=cloud
 - `cloud` - Uses xAI/Anthropic/OpenAI (faster, smarter)
 - `local` - Uses Ollama (private, offline)
 
-### Conversations ⭐ NEW
+### Conversations 
 
 Read-only access to conversation history (stored in database).
 
@@ -671,7 +671,7 @@ GET /api/conversations/sessions
 
 See [CONVERSATIONS.md](./CONVERSATIONS.md) for detailed documentation.
 
-### Stash ⭐ NEW
+### Stash 
 
 Read-only access to stashed artifacts (images, PDFs, music, etc.).
 
@@ -705,7 +705,7 @@ GET /api/stash/space/{space_id}/file/{file_id}/download
 
 See [STASH.md](./STASH.md) for detailed documentation.
 
-### Canvas ⭐ NEW
+### Canvas 
 
 Read-only access to canvas pages (markdown documents with embedded images).
 
@@ -736,7 +736,7 @@ GET /api/canvas/{page_id}
 
 See [CANVAS.md](./CANVAS.md) for detailed documentation.
 
-### Prices ⭐ NEW
+### Prices 
 
 Direct price retrieval without LLM routing - fast, free, silent. Perfect for n8n workflows.
 
@@ -775,7 +775,7 @@ GET /api/prices/batch?stocks=TSLA,GC=F&crypto=BTC,SOL
 
 See [PRICES.md](./PRICES.md) for detailed documentation.
 
-### Config ⭐ NEW
+### Config 
 
 Serve configuration files to external systems (n8n workflows).
 

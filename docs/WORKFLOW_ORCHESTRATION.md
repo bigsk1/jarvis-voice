@@ -230,7 +230,7 @@ Restart WebUI, then type `/mycommand topic` in chat. The workflow appears in `/`
 - `url` = `https://bigsk1.com`
 - `topic` = `bigsk1.com`
 
-### Variable Transforms ⭐ NEW
+### Variable Transforms 
 
 Derive variables from other variables using `transform`:
 
@@ -1772,7 +1772,7 @@ crawl_url → stash.save → stash.remember → canvas
 - [x] Step-defined `extract` rules support
 - [x] Nested path resolution for variables (e.g., `${article.url}`)
 - [x] URL extraction from query (handles bare domains like `bigsk1.com`)
-- [x] **Variable transforms** - Derive variables from others (e.g., `domain` from URL) ⭐ NEW
+- [x] **Variable transforms** - Derive variables from others (e.g., `domain` from URL) 
 
 ### Phase 3: WebUI Integration ✅ COMPLETE
 - [x] Import WorkflowLoader and PipelineExecutor in `orchestrator_v2.py`

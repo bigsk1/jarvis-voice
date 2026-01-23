@@ -9,7 +9,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 ## 🎯 Current Status (January 21, 2026)
 
 **Production Ready** ✅
-- **Workflow Orchestration System** - Deterministic multi-tool pipelines ⭐ NEW
+- **Workflow Orchestration System** - Deterministic multi-tool pipelines 
   - Explicit triggers: `/archive`, `/research`, `/note`, `/health`
   - Pipeline executor bypasses LLM routing for predictable, repeatable execution
   - Variable system with query extraction, step results, nested paths
@@ -226,9 +226,9 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - **Audio playback controls**: Speaker button with pause/resume/stop
   - **Music generation**: ElevenLabs music plays inline in chat
   - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
-  - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines ⭐ NEW
-  - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions ⭐ NEW
-  - **Prompt hover tooltips**: Hover over `@` suggestions to see key points ⭐ NEW
+  - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines 
+  - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions 
+  - **Prompt hover tooltips**: Hover over `@` suggestions to see key points 
   - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
   - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
@@ -1082,11 +1082,11 @@ LIMIT 7;"
 **Proactive System:**
 - `docs/api/` - **Proactive API** documentation (webhooks, alerts, monitoring)
 - `docs/api/API_OVERVIEW.md` - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Conversations) ⭐ ENHANCED
-- `docs/api/WORKFLOWS.md` - **Workflows API** (list, execute, history) ⭐ NEW
+- `docs/api/WORKFLOWS.md` - **Workflows API** (list, execute, history) 
 - `docs/service/` - **Background Services** documentation (daemons, auto-resolve)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
 
-**Workflow Orchestration:** ⭐ NEW
+**Workflow Orchestration:** 
 - `docs/WORKFLOW_ORCHESTRATION.md` - **Full workflow system** (pipelines, variables, validation)
 - `docs/api/WORKFLOWS.md` - **Workflows API** (programmatic execution)
 - `data/workflows/AGENTS.md` - Workflow building guide
