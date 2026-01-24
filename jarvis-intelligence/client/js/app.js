@@ -10,13 +10,18 @@ let currentExpSort = 'date';  // date, turns, tools
 let currentExpToolFilter = null;  // null = all, specific tool name
 let currentExpToolCountFilter = 'all';  // all, none, single, multi
 let currentInsightSort = 'applied';  // applied, preferred, avoided, confidence, updated
+let currentFeedbackDays = 7;  // 7, 30, 90
+let currentFeedbackRating = 'all';  // all, issues (1-3), good (4-5)
 let experiencesData = [];
 let allExperiencesData = [];  // Keep unfiltered copy for tool list
 let insightsData = [];
 let allInsightsData = [];  // Keep unfiltered copy
+let feedbackData = [];
+let allFeedbackData = [];
 let statsData = null;
 let selectedExperienceId = null;
 let selectedInsightId = null;
+let selectedFeedback = null;
 
 // ============================================================================
 // Initialization
@@ -53,6 +58,26 @@ function setupEventListeners() {
   // Confidence filters
   document.querySelectorAll('.filter-item[data-confidence]').forEach(item => {
     item.addEventListener('click', () => handleConfidenceFilterClick(item));
+  });
+  
+  // Feedback rating filters
+  document.querySelectorAll('.filter-item[data-rating]').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.filter-item[data-rating]').forEach(f => f.classList.remove('active'));
+      item.classList.add('active');
+      currentFeedbackRating = item.dataset.rating;
+      loadFeedback();
+    });
+  });
+  
+  // Feedback days filters
+  document.querySelectorAll('.filter-item[data-days]').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.filter-item[data-days]').forEach(f => f.classList.remove('active'));
+      item.classList.add('active');
+      currentFeedbackDays = parseInt(item.dataset.days);
+      loadFeedback();
+    });
   });
   
   // Experience sort selector
@@ -249,6 +274,9 @@ async function loadCurrentTab() {
       break;
     case 'insights':
       await loadInsights();
+      break;
+    case 'feedback':
+      await loadFeedback();
       break;
     case 'reflection':
       await loadReflectionQueue();
@@ -452,6 +480,199 @@ function getPreferredToolCount(insight) {
 
 function getAvoidedToolCount(insight) {
   return parseToolsField(insight.avoided_tools).length;
+}
+
+// ============================================================================
+// Feedback
+// ============================================================================
+
+async function loadFeedback() {
+  const container = document.getElementById('feedbackList');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  
+  try {
+    // Build options based on filters
+    const options = {
+      days: currentFeedbackDays,
+      limit: 200
+    };
+    
+    if (currentFeedbackRating === 'issues') {
+      options.rating_max = 3;
+    } else if (currentFeedbackRating === 'good') {
+      options.rating_min = 4;
+    }
+    
+    const [feedbackResult, statsResult] = await Promise.all([
+      api.listFeedback(options),
+      api.getFeedbackStats(currentFeedbackDays)
+    ]);
+    
+    allFeedbackData = feedbackResult.feedback || [];
+    feedbackData = [...allFeedbackData];
+    
+    // Update stats display
+    const stats = statsResult.stats || {};
+    document.getElementById('fbAvgRating').textContent = stats.avg_rating?.toFixed(1) || '-';
+    document.getElementById('fbTotalCount').textContent = stats.total || 0;
+    
+    const issueCount = (stats.by_rating?.[1] || 0) + (stats.by_rating?.[2] || 0) + (stats.by_rating?.[3] || 0);
+    const issueRate = stats.total > 0 ? Math.round((issueCount / stats.total) * 100) : 0;
+    document.getElementById('fbIssueRate').textContent = `${issueRate}%`;
+    
+    // Update filter counts
+    const goodCount = (stats.by_rating?.[4] || 0) + (stats.by_rating?.[5] || 0);
+    document.getElementById('fbAllCount').textContent = stats.total || 0;
+    document.getElementById('fbIssuesCount').textContent = issueCount;
+    document.getElementById('fbGoodCount').textContent = goodCount;
+    
+    renderFeedback();
+  } catch (error) {
+    container.innerHTML = `<div class="error">Failed to load feedback: ${error.message}</div>`;
+  }
+}
+
+function renderFeedback() {
+  const container = document.getElementById('feedbackList');
+  
+  if (feedbackData.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <span class="empty-icon">📊</span>
+        <p>No feedback found for this period</p>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = feedbackData.map((fb, index) => {
+    const rating = fb.rating || 0;
+    const ratingStars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+    const ratingClass = `rating-${rating}`;
+    const tools = Array.isArray(fb.tools_used) ? fb.tools_used : [];
+    const timestamp = fb.timestamp ? new Date(fb.timestamp).toLocaleString() : '';
+    const query = fb.query || 'No query';
+    const summary = fb.summary || 'No summary';
+    
+    return `
+      <div class="feedback-card" data-index="${index}">
+        <div class="feedback-card-header">
+          <div class="feedback-rating ${ratingClass}">
+            <span>${ratingStars}</span>
+            <span>${rating}/5</span>
+          </div>
+          <span class="feedback-meta">${timestamp}</span>
+        </div>
+        <div class="feedback-query">${escapeHtml(query)}</div>
+        <div class="feedback-summary">${escapeHtml(summary)}</div>
+        ${tools.length > 0 ? `
+          <div class="feedback-tools">
+            ${tools.map(t => `<span class="feedback-tool-badge">${escapeHtml(t)}</span>`).join('')}
+          </div>
+        ` : ''}
+        <div class="feedback-meta">
+          <span>📍 ${fb.mode || 'unknown'}</span>
+          ${fb.issues?.length > 0 ? `<span>⚠️ ${fb.issues.length} issue(s)</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // Add click handlers
+  container.querySelectorAll('.feedback-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const index = parseInt(card.dataset.index);
+      showFeedbackModal(feedbackData[index]);
+    });
+  });
+}
+
+function showFeedbackModal(feedback) {
+  selectedFeedback = feedback;
+  
+  const modal = document.getElementById('feedbackModal');
+  const body = document.getElementById('feedbackModalBody');
+  
+  const rating = feedback.rating || 0;
+  const ratingStars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+  const ratingClass = rating <= 3 ? 'rating-issues' : 'rating-good';
+  
+  let issuesHtml = '';
+  if (feedback.issues && feedback.issues.length > 0) {
+    issuesHtml = `
+      <div class="feedback-detail-section">
+        <h4>⚠️ Issues (${feedback.issues.length})</h4>
+        ${feedback.issues.map(issue => `
+          <div class="feedback-issue">
+            <div class="feedback-issue-category">${escapeHtml(issue.category || 'other')}</div>
+            <div class="feedback-issue-description">${escapeHtml(issue.description || '')}</div>
+            ${issue.suggestion ? `<div class="feedback-issue-suggestion">💡 ${escapeHtml(issue.suggestion)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+  
+  let toolRatingsHtml = '';
+  if (feedback.tool_ratings && Object.keys(feedback.tool_ratings).length > 0) {
+    toolRatingsHtml = `
+      <div class="feedback-detail-section">
+        <h4>🛠️ Tool Ratings</h4>
+        ${Object.entries(feedback.tool_ratings).map(([tool, data]) => `
+          <div class="feedback-tool-rating">
+            <strong>${escapeHtml(tool)}</strong>: ${data.rating}/5
+            ${data.note ? ` - ${escapeHtml(data.note)}` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+  
+  body.innerHTML = `
+    <div class="feedback-detail-section">
+      <h4>📝 Query</h4>
+      <div class="feedback-query" style="white-space: normal;">${escapeHtml(feedback.query || 'N/A')}</div>
+    </div>
+    
+    <div class="feedback-detail-section">
+      <h4>📊 Rating</h4>
+      <div class="feedback-rating ${ratingClass}" style="font-size: 1.5rem;">
+        ${ratingStars} (${rating}/5)
+      </div>
+    </div>
+    
+    <div class="feedback-detail-section">
+      <h4>📋 Summary</h4>
+      <p>${escapeHtml(feedback.summary || 'No summary')}</p>
+    </div>
+    
+    ${feedback.positive ? `
+      <div class="feedback-detail-section">
+        <h4>✅ Positive</h4>
+        <div class="feedback-positive">${escapeHtml(feedback.positive)}</div>
+      </div>
+    ` : ''}
+    
+    ${issuesHtml}
+    ${toolRatingsHtml}
+    
+    <div class="feedback-detail-section">
+      <h4>💬 Response</h4>
+      <div class="feedback-response-preview">${escapeHtml(feedback.final_speech || feedback.raw_llm_response || 'N/A')}</div>
+    </div>
+    
+    <div class="feedback-detail-section">
+      <h4>ℹ️ Metadata</h4>
+      <div class="feedback-meta" style="flex-direction: column; gap: var(--space-xs);">
+        <span>🕐 ${feedback.timestamp ? new Date(feedback.timestamp).toLocaleString() : 'N/A'}</span>
+        <span>📍 Mode: ${feedback.mode || 'unknown'}</span>
+        <span>🤖 Feedback by: ${feedback.feedback_model || 'unknown'}</span>
+        <span>🔑 Session: ${feedback.session_id || 'N/A'}</span>
+      </div>
+    </div>
+  `;
+  
+  modal.classList.add('active');
 }
 
 async function loadReflectionQueue() {
@@ -1369,6 +1590,7 @@ function switchTab(tab) {
   // Update sidebar filters visibility
   document.getElementById('experienceFilters').style.display = tab === 'experiences' ? 'block' : 'none';
   document.getElementById('insightFilters').style.display = tab === 'insights' ? 'block' : 'none';
+  document.getElementById('feedbackFilters').style.display = tab === 'feedback' ? 'block' : 'none';
   
   // Show/hide experience sort selector
   const expSortContainer = document.getElementById('expSortContainer');
@@ -1403,6 +1625,7 @@ function switchTab(tab) {
   const placeholders = {
     experiences: 'Search experiences...',
     insights: 'Search insights...',
+    feedback: 'Search feedback...',
     reflection: 'Search reflection queue...',
     stats: 'Search...'
   };

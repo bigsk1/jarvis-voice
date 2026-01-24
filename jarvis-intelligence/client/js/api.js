@@ -192,6 +192,29 @@ class IntelligenceAPI {
   async checkHealth() {
     return this.fetch('/api/maintenance/health');
   }
+  
+  // =========================================================================
+  // Feedback
+  // =========================================================================
+  
+  async listFeedback(options = {}) {
+    const params = new URLSearchParams();
+    if (options.days) params.set('days', options.days);
+    if (options.rating_max) params.set('rating_max', options.rating_max);
+    if (options.rating_min) params.set('rating_min', options.rating_min);
+    if (options.limit) params.set('limit', options.limit);
+    
+    const query = params.toString();
+    return this.fetch(`/api/feedback${query ? '?' + query : ''}`);
+  }
+  
+  async getFeedbackStats(days = 30) {
+    return this.fetch(`/api/feedback/stats?days=${days}`);
+  }
+  
+  async getFeedbackFiles() {
+    return this.fetch('/api/feedback/files');
+  }
 }
 
 // Global API instance

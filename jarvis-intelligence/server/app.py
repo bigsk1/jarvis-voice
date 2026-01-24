@@ -22,6 +22,7 @@ from .routes.experiences import experiences_bp
 from .routes.insights import insights_bp
 from .routes.stats import stats_bp
 from .routes.maintenance import maintenance_bp
+from .routes.feedback import feedback_bp
 
 # Create Flask app
 app = Flask(__name__,
@@ -36,6 +37,7 @@ app.register_blueprint(experiences_bp)
 app.register_blueprint(insights_bp)
 app.register_blueprint(stats_bp)
 app.register_blueprint(maintenance_bp)
+app.register_blueprint(feedback_bp)
 
 
 # =============================================================================
