@@ -79,6 +79,10 @@ class LLMLogger:
             "total_tokens": usage_info.get("total_tokens") if usage_info else None,
             "cost_usd": usage_info.get("cost_usd") if usage_info else None,
             
+            # xAI native search usage (web_search, x_search)
+            "xai_search_calls": sum(usage_info.get("server_side_tools", {}).values()) if usage_info else 0,
+            "xai_search_tools": list(usage_info.get("server_side_tools", {}).keys()) if usage_info and usage_info.get("server_side_tools") else None,
+            
             "response": {
                 "type": "tool_call" if tool_call else ("text" if response_text else "error"),
                 "text_preview": response_text[:200] if response_text else None,
