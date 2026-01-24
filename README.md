@@ -157,6 +157,7 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Insight sorting (applied, helpful, preferred/avoided tools, confidence)
   - 5-tier confidence: Elite (96%+), High (85-95%), Good (75-84%), Medium (50-74%), Low (0-49%)
   - Tool performance showing ALL tools with prefer/avoid stats
+  - **NEW: Feedback tab** - View all feedback logs with rating/time filters, expandable details, no terminal needed
   - Mobile responsive: hamburger menu at ≤730px
   - Launch: `./bin/jarvis-intelligence`
 - **Memory Browser UI**: Web interface for memory management at localhost:5002
@@ -1227,6 +1228,11 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI
+  - Filter by rating (All, Issues 1-3, Good 4-5) and time range (7, 30, 90 days)
+  - Stats bar with average rating, total count, and issue rate percentage
+  - Expandable feedback cards with detailed issues, suggestions, tool ratings
+  - No more terminal/log file browsing required
 - ✅ **Workflow Orchestration System** - Deterministic multi-tool pipelines ⭐ MAJOR
   - **Explicit command triggers**: `/archive`, `/research`, `/note`, `/health`
   - **Pipeline executor**: Executes workflow steps deterministically (bypasses LLM tool selection)
@@ -1492,6 +1498,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.24 (January 2026)  
+**Current Version:** v2.27 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Workflow Orchestration System (deterministic pipelines, WebUI hover tooltips)
+**Latest Features:** Feedback Tab in Intelligence Dashboard (view all feedback logs in UI)

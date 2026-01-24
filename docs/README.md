@@ -53,6 +53,7 @@
   - 5-tier confidence filtering (Elite 96%+, High 85-95%, Good 75-84%, Medium 50-74%, Low 0-49%)
   - Differentiated confidence bars (green for DO, red for DON'T)
   - Tool performance showing ALL tools with prefer/avoid counts
+  - **NEW: Feedback tab** - View all feedback logs with rating/time filters, expandable details
 - **Conversation Audit v2** - Deep drill-down into LLM decisions and tool calls
 - **API Intelligence Endpoints** - `/api/intelligence/*` for stats, health, maintenance jobs
 - **Maintenance Jobs** - Decay, anomaly detection, meta-cognition via API or CLI
@@ -296,6 +297,21 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-01-24:**
+- ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI ⭐ NEW
+  - 📊 New "Feedback" tab at http://localhost:5003
+  - Filter by rating (All, Issues 1-3, Good 4-5) and time range (7, 30, 90 days)
+  - Stats bar shows average rating, total count, and issue rate percentage
+  - Feedback cards display rating stars, query, summary, tool badges
+  - Click cards to expand detailed modal with:
+    - Positive comments and detailed issues with suggestions
+    - Tool-specific ratings with individual scores
+    - Response preview and metadata (session, message ID, duration)
+  - Search feedback by query text
+  - No more terminal/log file browsing required
+  - API endpoints: `/api/feedback`, `/api/feedback/stats`, `/api/feedback/files`
+  - See: `jarvis-intelligence/README.md`
 
 **2026-01-23:**
 - ✅ **Manual Feedback in WebUI** - Trigger LLM-as-QA feedback from the web interface ⭐ NEW
@@ -824,6 +840,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-23 (v2.26)  
-**Latest:** Manual Feedback in WebUI + Token/Cost Tracking  
+**Last Updated:** 2026-01-24 (v2.27)  
+**Latest:** Feedback Tab in Intelligence Dashboard (view all feedback logs without terminal)  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
