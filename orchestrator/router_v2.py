@@ -419,19 +419,29 @@ RESPONSE STYLE: {response_style.upper()}
 
 """
         
-        # Check for native search capabilities
+        # Check for native search/tool capabilities
         native_search_note = ""
         xai_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
+        xai_code_exec = get_config_value("XAI_CODE_EXECUTION", "true").lower() == "true"
         anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
         provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "")
         
         if xai_search and provider_type == "xai":
-            native_search_note = """
-NATIVE SEARCH ENABLED:
-You have built-in real-time web/X search. For current info, news, prices, events:
-- Use your NATIVE SEARCH (automatic) - DO NOT use mcp_fetch, brave_search, or other external search tools
-- Your search results are grounded and cited automatically
-- Only use external tools when native search is insufficient or for non-search tasks
+            # Build xAI capabilities note
+            capabilities = []
+            capabilities.append("- NATIVE WEB/X SEARCH: Use for current info, news, prices - DO NOT use brave_search or mcp_fetch")
+            
+            if xai_code_exec:
+                capabilities.append("""- NATIVE CODE EXECUTION: You have a Python REPL (numpy, pandas, sympy, scipy, matplotlib).
+  For complex math, data analysis, or verification: write and run Python code directly.
+  Can chain with search: "search for data, then analyze programmatically"
+  DO NOT use calculator tool - use code execution for any math beyond trivial""")
+            
+            native_search_note = f"""
+NATIVE SERVER-SIDE TOOLS ENABLED:
+{chr(10).join(capabilities)}
+- Results are grounded and cited automatically
+- Only use external tools when native capabilities are insufficient
 """
         elif anthropic_search and provider_type == "anthropic":
             native_search_note = """
