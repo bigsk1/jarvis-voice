@@ -461,12 +461,19 @@ class XAIProvider(LLMProvider):
         """Simple chat using xAI SDK with web/X search tools."""
         try:
             from xai_sdk.chat import user, system as sys_msg
-            from xai_sdk.tools import web_search, x_search
+            from xai_sdk.tools import web_search, x_search, code_execution
             
-            # Create chat with search tools
+            # Create chat with xAI server-side tools:
+            # - web_search: Real-time web search with optional image analysis
+            # - x_search: Deep X/Twitter search with optional image/video analysis
+            # - code_execution: Python REPL for math, data analysis, plotting
             chat = self.xai_client.chat.create(
                 model=self.model,
-                tools=[web_search(), x_search()],
+                tools=[
+                    web_search(enable_image_understanding=True),
+                    x_search(enable_image_understanding=True, enable_video_understanding=True),
+                    code_execution(),
+                ],
             )
             
             # Add system prompt if provided
@@ -623,10 +630,18 @@ class XAIProvider(LLMProvider):
         
         try:
             from xai_sdk.chat import user, system as sys_msg, assistant
-            from xai_sdk.tools import web_search, x_search, get_tool_call_type, chat_pb2
+            from xai_sdk.tools import web_search, x_search, code_execution, get_tool_call_type, chat_pb2
             
-            # Build xAI SDK tools list: server-side search + client-side custom tools
-            xai_tools = [web_search(), x_search()]
+            # Build xAI SDK tools list: server-side tools + client-side custom tools
+            # Server-side tools (executed by xAI automatically):
+            # - web_search: Real-time web search with image understanding
+            # - x_search: X/Twitter search with image/video understanding
+            # - code_execution: Python REPL for math, data analysis, plotting
+            xai_tools = [
+                web_search(enable_image_understanding=True),
+                x_search(enable_image_understanding=True, enable_video_understanding=True),
+                code_execution(),
+            ]
             
             # Convert our tools to xAI SDK Protocol Buffer format
             for tool in tools:
