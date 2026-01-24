@@ -455,11 +455,9 @@ If real-time data was needed and no tools were used, rate poorly."""
             rating = feedback.get("rating")
             has_error = feedback.get("raw_response", "").startswith("Error:") or feedback.get("error")
             
-            # Log feedback for evolution system
-            # Rating scale is 1-5, so ratings < 5 (i.e., 1-4) are logged for evolution
-            # Rating 5 = perfect, 4 = minor issues, 3 = some issues, 2 = significant, 1 = major
-            if has_error or rating is None or rating < 5 or os.environ.get('JARVIS_FEEDBACK_ALWAYS_LOG'):
-                self._log_feedback(feedback)
+            # Always log feedback - it's valuable for analysis and evolution
+            # Rating scale is 1-5: 5 = perfect, 4 = minor issues, 3 = some issues, 2 = significant, 1 = major
+            self._log_feedback(feedback)
             
             # Record usage in prompt versioning system for evolution tracking
             # Pass feedback to enable per-tool attribution when multiple tools used

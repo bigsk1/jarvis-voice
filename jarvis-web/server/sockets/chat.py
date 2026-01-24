@@ -74,6 +74,12 @@ class ChatHandler:
             # Image data for vision requests
             image_data = data.get('image')  # {base64, url, filename}
             
+            # Feedback request - either from toggle or --feedback flag in message
+            request_feedback = data.get('request_feedback', False)
+            if '--feedback' in message:
+                request_feedback = True
+                message = message.replace('--feedback', '').strip()
+            
             # Prompt metadata from @prompt system (workflows are handled by orchestrator)
             prompt_meta = {
                 'system_instruction': data.get('system_instruction'),
@@ -136,7 +142,8 @@ class ChatHandler:
                 message_id,
                 conversation_id,
                 image_data,
-                prompt_meta
+                prompt_meta,
+                request_feedback
             )
         
         @self.socketio.on('conversation:load')
@@ -433,12 +440,13 @@ class ChatHandler:
     
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
-                         prompt_meta: dict = None):
-        """Process a chat message through the orchestrator (with optional vision and prompt metadata)"""
+                         prompt_meta: dict = None, request_feedback: bool = False):
+        """Process a chat message through the orchestrator (with optional vision, prompt metadata, and feedback)"""
         start_time = time.time()
         prompt_meta = prompt_meta or {}
         prompt_info = f", prompt={prompt_meta.get('prompt_name')}" if prompt_meta.get('prompt_name') else ""
-        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{prompt_info})")
+        feedback_info = f", request_feedback={request_feedback}" if request_feedback else ""
+        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{prompt_info}{feedback_info})")
         
         try:
             # Debug image data
@@ -678,6 +686,43 @@ class ChatHandler:
                 'audio_url': audio_url
             }, room=session_id)
             
+            # Collect feedback if requested (runs async after main response)
+            # Skip if orchestrator already collected feedback (random 10% case)
+            already_has_feedback = result.get('feedback') is not None
+            print(f"[CHAT] Feedback check: request_feedback={request_feedback}, ok={result.get('ok', True)}, already_has_feedback={already_has_feedback}")
+            
+            if request_feedback and result.get('ok', True) and not already_has_feedback:
+                print(f"[CHAT] Starting async feedback collection for message {message_id[:8]}...")
+                self.socketio.start_background_task(
+                    self._collect_feedback_async,
+                    session_id,
+                    message,
+                    mode,
+                    message_id,
+                    conversation_id,
+                    result,
+                    tools_used,
+                    orchestrator
+                )
+            elif already_has_feedback and request_feedback:
+                # Orchestrator already collected feedback (random trigger), emit that result
+                print(f"[CHAT] Using orchestrator's feedback (random trigger)")
+                feedback = result.get('feedback', {})
+                self.socketio.emit('feedback:start', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'status': 'complete'  # Already done
+                }, room=session_id)
+                self.socketio.emit('feedback:complete', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'rating': feedback.get('rating'),
+                    'suggestions': feedback.get('suggestions', []),
+                    'analysis': feedback.get('analysis', ''),
+                    'duration_ms': 0,  # Already collected
+                    'success': True
+                }, room=session_id)
+            
         except Exception as e:
             error_msg = str(e)
             print(f"[CHAT] ERROR: {error_msg}")
@@ -689,6 +734,161 @@ class ChatHandler:
                 'error': error_msg,
                 'traceback': traceback.format_exc()
             }, room=session_id)
+    
+    def _collect_feedback_async(self, session_id: str, query: str, mode: str,
+                                 message_id: str, conversation_id: str, 
+                                 result: dict, tools_used: list, orchestrator):
+        """Collect feedback asynchronously after main response is sent"""
+        import time as time_module
+        start_time = time_module.time()
+        
+        print(f"[FEEDBACK] ====== ASYNC FEEDBACK STARTING ======")
+        print(f"[FEEDBACK] session_id={session_id[:8]}, message_id={message_id[:8]}, mode={mode}")
+        
+        try:
+            # Emit feedback:start event so UI can show the card
+            # Use namespace='/' explicitly for default namespace
+            print(f"[FEEDBACK] Emitting feedback:start to room {session_id}...")
+            self.socketio.emit('feedback:start', {
+                'message_id': message_id,
+                'conversation_id': conversation_id,
+                'status': 'analyzing'
+            }, room=session_id, namespace='/')
+            print(f"[FEEDBACK] feedback:start emitted successfully")
+        except Exception as emit_err:
+            print(f"[FEEDBACK] ERROR emitting feedback:start: {emit_err}")
+        
+        try:
+            from feedback import FeedbackCollector
+            from config_loader import get_config_value, load_config
+            
+            # Ensure config is loaded for the right mode
+            load_config(mode)
+            print(f"[FEEDBACK] Config loaded for mode={mode}")
+            
+            collector = FeedbackCollector(mode)
+            
+            # Get tools used
+            if isinstance(tools_used, str):
+                tools_used = [tools_used]
+            
+            num_tools = len(orchestrator.registry.list_tools())
+            
+            # Get system prompt from router
+            system_prompt = orchestrator.router.system_prompt if hasattr(orchestrator.router, 'system_prompt') else None
+            
+            # Get tool descriptions for relevant tools
+            tool_descriptions = {}
+            relevant_tools = set(tools_used)
+            query_lower = query.lower()
+            if "time" in query_lower:
+                relevant_tools.add("get_time")
+            if "weather" in query_lower:
+                relevant_tools.add("weather")
+            if "bitcoin" in query_lower or "crypto" in query_lower or "price" in query_lower:
+                relevant_tools.add("crypto_price")
+            if "memory" in query_lower or "remember" in query_lower:
+                relevant_tools.update(["semantic_recall", "search_memory", "remember"])
+            
+            for tool_name in relevant_tools:
+                try:
+                    tool = orchestrator.registry.get_tool(tool_name)
+                    if tool:
+                        tool_descriptions[tool_name] = tool.description
+                except:
+                    pass
+            
+            # Build config context
+            response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
+            style_explanations = {
+                'casual': 'Short voice-friendly output. URLs are REMOVED, search results summarized to ~25 words.',
+                'auto': 'Smart mode. Search tools get condensed (no URLs), complex tools keep full details.',
+                'detailed': 'FULL LLM response preserved. URLs ARE INCLUDED. Verbose output is EXPECTED and CORRECT.'
+            }
+            style_explanation = style_explanations.get(response_style, 'Unknown style')
+            
+            config_context = f"""
+Auto-Context: {'Enabled' if orchestrator.auto_context_enabled else 'Disabled'}
+Response Style: {response_style}
+  → Style Behavior: {style_explanation}
+Tools Available: {num_tools}
+Mode: {mode}
+"""
+            
+            # Force logging for manually triggered feedback
+            import os
+            os.environ['JARVIS_FEEDBACK_ALWAYS_LOG'] = '1'
+            
+            # Collect feedback
+            feedback = collector.collect(
+                query=query,
+                result=result,
+                tools_used=tools_used,
+                num_tools=num_tools,
+                system_prompt=system_prompt,
+                tool_descriptions=tool_descriptions,
+                intelligence_insights=result.get("intelligence_context", ""),
+                config_context=config_context,
+                session_id=orchestrator.session_id
+            )
+            
+            # Clean up env var
+            os.environ.pop('JARVIS_FEEDBACK_ALWAYS_LOG', None)
+            
+            duration_ms = int((time_module.time() - start_time) * 1000)
+            
+            # Debug: show what we got back
+            print(f"[FEEDBACK] Raw feedback keys: {list(feedback.keys())}")
+            print(f"[FEEDBACK] Feedback data: rating={feedback.get('rating')}, summary_len={len(feedback.get('summary', ''))}, positive_len={len(feedback.get('positive', ''))}, issues_count={len(feedback.get('issues', []))}")
+            
+            # Extract all feedback fields
+            rating = feedback.get('rating')
+            summary = feedback.get('summary', '')
+            positive = feedback.get('positive', '')
+            issues = feedback.get('issues', [])
+            suggestions = feedback.get('suggestions', issues)  # Fallback to issues
+            tool_ratings = feedback.get('tool_ratings', {})
+            analysis = feedback.get('analysis', '')
+            
+            print(f"[FEEDBACK] Completed: rating={rating}/5, issues={len(issues)}, duration={duration_ms}ms")
+            
+            # Emit feedback:complete event with all fields
+            print(f"[FEEDBACK] Emitting feedback:complete to room {session_id}...")
+            try:
+                self.socketio.emit('feedback:complete', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'rating': rating,
+                    'summary': summary,
+                    'positive': positive,
+                    'issues': issues,
+                    'suggestions': suggestions,
+                    'tool_ratings': tool_ratings,
+                    'analysis': analysis,
+                    'duration_ms': duration_ms,
+                    'success': True
+                }, room=session_id, namespace='/')
+                print(f"[FEEDBACK] feedback:complete emitted successfully!")
+            except Exception as emit_err:
+                print(f"[FEEDBACK] ERROR emitting feedback:complete: {emit_err}")
+            
+        except Exception as e:
+            import traceback as tb
+            duration_ms = int((time_module.time() - start_time) * 1000)
+            print(f"[FEEDBACK] ERROR: {e}")
+            print(f"[FEEDBACK] Traceback:\n{tb.format_exc()}")
+            
+            # Emit error state
+            try:
+                self.socketio.emit('feedback:complete', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'error': str(e),
+                    'duration_ms': duration_ms,
+                    'success': False
+                }, room=session_id, namespace='/')
+            except Exception as emit_err:
+                print(f"[FEEDBACK] ERROR emitting feedback:complete: {emit_err}")
     
     def _generate_tts(self, text: str, mode: str = None) -> str:
         """Generate TTS audio and return URL - mode-aware"""

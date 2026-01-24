@@ -787,6 +787,90 @@ body {
   }
 }
 
+/* 📊 Feedback button */
+.feedback-btn {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.feedback-btn:hover {
+  background: var(--bg-hover);
+  transform: scale(1.1);
+  opacity: 1;
+}
+
+.feedback-btn.active {
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  border-color: rgba(139, 92, 246, 0.5);
+  opacity: 1;
+}
+
+.feedback-btn.active:hover {
+  background: rgba(139, 92, 246, 0.3);
+}
+
+/* Feedback badge on user message */
+.badge-feedback {
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75em;
+}
+
+/* Feedback tool card - purple accent */
+.tool-card.feedback {
+  border-left: 3px solid rgba(139, 92, 246, 0.5);
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(139, 92, 246, 0.05) 100%);
+}
+
+.tool-card.feedback .tool-card-title::before {
+  content: '' !important;  /* Override default icon, we use 📊 in title text */
+}
+
+.tool-card.feedback.pending .tool-card-status {
+  color: #a78bfa;
+}
+
+.tool-card.feedback.success {
+  border-left-color: rgba(139, 92, 246, 0.7);
+}
+
+.tool-card.feedback.success:hover {
+  box-shadow: 
+    -2px 0 8px rgba(139, 92, 246, 0.15),
+    var(--shadow-depth-md);
+}
+
+.tool-card.feedback .tool-card-body {
+  font-family: var(--font-primary);
+  font-size: var(--text-sm);
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.tool-card.feedback .tool-card-body ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.tool-card.feedback .tool-card-body li {
+  margin: 4px 0;
+}
+
+/* Expand indicator for feedback cards */
+.tool-card.feedback .expand-indicator {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.tool-card.feedback:not(.expanded) .expand-indicator {
+  transform: rotate(-90deg);
+}
+
 /* 🔊 Speaker button (audio playback control) */
 .speaker-btn {
   position: relative;

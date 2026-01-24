@@ -121,6 +121,17 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Expandable details** | ✅ | Click entry to see full parsed JSON  |
 | **Resizable panel** | ✅ | Drag to resize, state persisted  |
 
+### Phase 8: Manual Feedback - COMPLETE ✅
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Feedback toggle** | ✅ | 📊 button to enable LLM feedback analysis |
+| **`--feedback` inline** | ✅ | Type `--feedback` in message to trigger |
+| **Feedback card** | ✅ | Purple tool card shows rating, summary, issues |
+| **Expand/collapse** | ✅ | Click header to toggle details |
+| **Toast notification** | ✅ | 6-second toast with rating summary |
+| **Always logged** | ✅ | Manual feedback always saved to logs |
+
 ---
 
 ## 🏗️ Architecture
@@ -296,6 +307,26 @@ socket.on('chat:response', {
     data: { weather: {...} },
     tools_used: ['weather'],
     audio_url: '/api/audio/tts_123.mp3'
+});
+
+// Feedback analysis started
+socket.on('feedback:start', {
+    message_id: 'msg_456',
+    conversation_id: 'conv_123',
+    status: 'analyzing'
+});
+
+// Feedback analysis complete
+socket.on('feedback:complete', {
+    message_id: 'msg_456',
+    conversation_id: 'conv_123',
+    rating: 5,
+    summary: 'Task completed efficiently',
+    positive: 'Correct tool selection',
+    issues: [],
+    tool_ratings: { get_time: { rating: 5, note: 'Worked correctly' } },
+    duration_ms: 3200,
+    success: true
 });
 ```
 
@@ -1001,6 +1032,48 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 
 ---
 
+### Manual Feedback Analysis (NEW)
+
+Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
+
+**Two Ways to Trigger:**
+
+1. **📊 Toggle Button** - Click the feedback button (next to ✨ Enhance) to enable for all messages
+2. **`--feedback` Inline** - Add `--feedback` anywhere in your message
+
+**What Happens:**
+1. Your query processes normally (tool calls, response)
+2. After response, async feedback collection starts
+3. A purple "Feedback Analysis" card appears
+4. Card shows rating (1-5 stars), summary, issues, tool ratings
+5. Toast notification appears with quick summary
+
+**Feedback Card Contents:**
+
+| Section | Description |
+|---------|-------------|
+| **Rating** | 1-5 stars with color coding (green=good, yellow=ok, red=bad) |
+| **Summary** | One-line description of what happened |
+| **What went well** | Positive aspects of the response |
+| **Issues** | Problems found (with category: system_prompt, tool_description, etc.) |
+| **Tool Performance** | Per-tool ratings if multiple tools were used |
+
+**Click to Expand/Collapse:**
+- Card starts expanded to show all details
+- Click header (with ▼ indicator) to collapse/expand
+
+**Always Logged:**
+- Manual feedback is ALWAYS logged to `logs/feedback/feedback-YYYY-MM-DD.jsonl`
+- Unlike random feedback which only logs issues (rating < 5)
+
+**Use Cases:**
+- Verify tool selection is correct
+- Debug why a specific query behaved unexpectedly
+- Check if system prompt rules are being followed
+- Validate tool descriptions are accurate
+
+---
+
 ## 📋 TODO / Gaps
 
 ### High Priority (Do First)
@@ -1084,6 +1157,10 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 - [x] **LLM + Tool logs** - Parsed, color-coded, expandable details 
 - [x] **Log source toggles** - Enable/disable LLM, Tools, OpenCode, Feedback 
 - [x] **Resizable log panel** - Drag to resize, state persisted in localStorage 
+- [x] **Manual Feedback Analysis** - 📊 button + `--feedback` inline trigger 
+- [x] **Feedback Card** - Purple tool card with rating, summary, issues, tool ratings 
+- [x] **Feedback Toast** - 6-second notification with rating summary 
+- [x] **Always-log manual feedback** - Manual triggers always saved to logs 
 
 ---
 
@@ -1344,4 +1421,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*  
 *v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*  
 *v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*  
-*v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*
+*v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*  
+*v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*

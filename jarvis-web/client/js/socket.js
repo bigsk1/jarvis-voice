@@ -100,6 +100,17 @@ class JarvisSocket {
       this._emit('status', data);
     });
 
+    // Feedback events (async analysis after response)
+    this.socket.on('feedback:start', (data) => {
+      console.log('[Socket] feedback:start received:', data);
+      this._emit('feedbackStart', data);
+    });
+
+    this.socket.on('feedback:complete', (data) => {
+      console.log('[Socket] feedback:complete received:', data);
+      this._emit('feedbackComplete', data);
+    });
+
     this.socket.on('mode:changed', (data) => {
       this.mode = data.mode;
       Utils.storage.set('mode', data.mode);
@@ -129,8 +140,9 @@ class JarvisSocket {
    * @param {string} message - The message text
    * @param {Object} imageData - Optional image data {base64, url, filename}
    * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name}
+   * @param {boolean} requestFeedback - Whether to request feedback analysis after response
    */
-  sendMessage(message, imageData = null, promptMeta = null) {
+  sendMessage(message, imageData = null, promptMeta = null, requestFeedback = false) {
     if (!this.connected) {
       console.error('[Socket] Not connected');
       return false;
@@ -155,6 +167,11 @@ class JarvisSocket {
       if (promptMeta.prompt_name) {
         payload.prompt_name = promptMeta.prompt_name;
       }
+    }
+    
+    // Include feedback request if enabled
+    if (requestFeedback) {
+      payload.request_feedback = true;
     }
 
     this.socket.emit('chat:send', payload);

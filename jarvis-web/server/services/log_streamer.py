@@ -59,7 +59,7 @@ class LogStreamer:
         },
         'feedback': {
             'pattern': 'logs/feedback/feedback-{date}.jsonl',
-            'enabled': False,  # Enable on demand
+            'enabled': True,  # Enable by default for WebUI feedback feature
             'parse': '_parse_feedback_entry'
         }
     }

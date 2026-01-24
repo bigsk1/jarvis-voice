@@ -86,7 +86,46 @@ This creates a feedback loop for continuous improvement without manual debugging
 
 ## Usage Methods
 
-### Method 1: `--feedback` Flag (Quick Debugging)
+### Method 1: WebUI Manual Feedback (NEW - 2026-01-23)
+
+Trigger feedback directly from the Web UI:
+
+**Option A: Toggle Button**
+1. Click the 📊 button (next to ✨ Enhance)
+2. Button turns purple when enabled
+3. All subsequent messages will trigger feedback analysis
+
+**Option B: Inline Flag**
+1. Add `--feedback` anywhere in your message
+2. Example: "What's the current price of bitcoin? --feedback"
+
+**What Happens:**
+```
+User sends message
+    ↓
+Normal processing (tools, response)
+    ↓
+Response shown to user
+    ↓
+Async feedback collection starts (purple card appears)
+    ↓
+Card updates with rating, summary, issues
+    ↓
+Toast notification (6 seconds)
+```
+
+**Feedback Card Shows:**
+- Rating (1-5 stars with color coding)
+- Summary (one-line description)
+- What went well (positive feedback)
+- Issues (with category tags)
+- Tool Performance (per-tool ratings)
+
+**Click to expand/collapse** - Cards start expanded, click header to toggle.
+
+**Always logged** - Manual feedback is ALWAYS saved to `logs/feedback/`, unlike random feedback which only logs issues.
+
+### Method 2: `--feedback` Flag (CLI)
 
 Add `--feedback` to any orchestrator command:
 

@@ -298,6 +298,15 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-01-23:**
+- ✅ **Manual Feedback in WebUI** - Trigger LLM-as-QA feedback from the web interface ⭐ NEW
+  - 📊 Toggle button enables feedback for all messages
+  - `--feedback` inline flag for per-message trigger
+  - Purple feedback card shows rating (1-5), summary, issues, tool ratings
+  - Click to expand/collapse feedback details
+  - 6-second toast notification with rating summary
+  - Manual feedback ALWAYS logged (overrides rating < 5 filter)
+  - WebSocket events: `feedback:start`, `feedback:complete`
+  - See: `docs/JARVIS_WEB_UI.md`, `docs/FEEDBACK_SYSTEM.md`
 - ✅ **Token/Cost Tracking in WebUI** - Real-time token usage and cost display 
   - Floating counter shows cumulative tokens + estimated USD cost
   - Context-aware: correct window for xAI (2M), Anthropic (200K), OpenAI (128K/400K)
@@ -815,6 +824,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-23 (v2.25)  
-**Latest:** Token/Cost Tracking in WebUI + Workflow token efficiency documentation  
+**Last Updated:** 2026-01-23 (v2.26)  
+**Latest:** Manual Feedback in WebUI + Token/Cost Tracking  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

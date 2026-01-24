@@ -199,6 +199,18 @@ body::after {
   border-left: 3px solid rgba(239, 68, 68, 0.5);
 }
 
+/* Feedback tool cards - purple accent */
+.tool-card.feedback {
+  border-left: 3px solid rgba(139, 92, 246, 0.5);
+}
+
+.tool-card.feedback:hover {
+  border-left-color: rgba(139, 92, 246, 0.7);
+  box-shadow: 
+    -2px 0 8px rgba(139, 92, 246, 0.1),
+    var(--shadow-depth-md);
+}
+
 
 /* ============================================
    INPUT FIELD - SUBTLE FOCUS GLOW

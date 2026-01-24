@@ -184,6 +184,10 @@ class ChatUI {
     this.pendingTools = {};
     this.isProcessing = false;
     
+    // Feedback toggle state
+    this.feedbackEnabled = false;
+    this.pendingFeedback = null;  // {message_id, status}
+    
     // Voice recording state
     this.mediaRecorder = null;
     this.audioChunks = [];
@@ -925,6 +929,21 @@ class ChatUI {
       this.isProcessing = false;
       this.updateSendButton();
     });
+    
+    // Feedback events (async analysis after response)
+    socket.on('feedbackStart', (data) => {
+      console.log('[Chat] ====== FEEDBACK START EVENT RECEIVED ======');
+      console.log('[Chat] Feedback analysis started:', data.message_id);
+      this.pendingFeedback = { message_id: data.message_id, status: 'analyzing' };
+      this._showFeedbackCard('analyzing');
+    });
+    
+    socket.on('feedbackComplete', (data) => {
+      console.log('[Chat] ====== FEEDBACK COMPLETE EVENT RECEIVED ======');
+      console.log('[Chat] Feedback complete:', data);
+      this.pendingFeedback = null;
+      this._updateFeedbackCard(data);
+    });
   }
 
   /**
@@ -1080,12 +1099,19 @@ class ChatUI {
    * Send a message (with optional attached image)
    */
   sendMessage() {
-    const rawMessage = this.inputField.value.trim();
+    let rawMessage = this.inputField.value.trim();
     const hasImage = this.attachedImage !== null;
     
     // Need either message or image
     if (!rawMessage && !hasImage) return;
     if (this.isProcessing) return;
+    
+    // Check for --feedback flag in message
+    let requestFeedback = this.feedbackEnabled;
+    if (rawMessage.includes('--feedback')) {
+      requestFeedback = true;
+      rawMessage = rawMessage.replace('--feedback', '').trim();
+    }
     
     // Stop any currently playing audio (new message = new audio coming)
     if (window.jarvisApp && window.jarvisApp.stopAudioPlayback) {
@@ -1098,11 +1124,14 @@ class ChatUI {
     // Parse workflows and prompts
     const parsed = window.commandSystem.parseInput(rawMessage);
     
-    // Build display message (show original with decorations)
-    let displayMessage = rawMessage;
+    // Build display message (show original with decorations, show feedback badge if enabled)
+    let displayMessage = this.inputField.value.trim();  // Use original for display
     let activeBadge = '';
     if (parsed.workflow || parsed.prompt) {
       activeBadge = window.commandSystem.getActiveDisplay(parsed);
+    }
+    if (requestFeedback) {
+      activeBadge += (activeBadge ? ' ' : '') + '<span class="badge badge-feedback">📊</span>';
     }
     
     // Add user message to UI (with image if attached)
@@ -1112,7 +1141,7 @@ class ChatUI {
     this.inputField.value = '';
     Utils.autoResize(this.inputField);
     
-    // Send via socket (include image data and prompt metadata)
+    // Send via socket (include image data, prompt metadata, and feedback request)
     this.isProcessing = true;
     this.updateSendButton();
     this.pendingTools = {};
@@ -1121,7 +1150,7 @@ class ChatUI {
     window.jarvisSocket.sendMessage(parsed.message || rawMessage, this.attachedImage, {
       system_instruction: parsed.instruction,
       prompt_name: parsed.prompt
-    });
+    }, requestFeedback);
     
     // Clear attached image after sending
     this.clearAttachedImage();
@@ -1147,7 +1176,8 @@ class ChatUI {
     
     let badgeHtml = '';
     if (activeBadge) {
-      badgeHtml = `<div class="command-badge">${Utils.escapeHtml(activeBadge)}</div>`;
+      // Don't escape - activeBadge may contain valid HTML (like feedback badge)
+      badgeHtml = `<div class="command-badge">${activeBadge}</div>`;
     }
     
     messageEl.innerHTML = `
@@ -1608,6 +1638,196 @@ class ChatUI {
         <pre class="tool-card-body">${Utils.escapeHtml(summary)}</pre>
       </div>
     `;
+  }
+
+  /**
+   * Show feedback card in analyzing state
+   */
+  _showFeedbackCard(status = 'analyzing') {
+    // Remove existing feedback card if any
+    const existingCard = document.getElementById('feedback-card');
+    if (existingCard) {
+      console.log('[Chat] Removing existing feedback card');
+      existingCard.remove();
+    }
+    
+    // Find the last assistant message to append feedback to
+    const messages = this.messagesContainer.querySelectorAll('.message.assistant:not(.thinking-message)');
+    console.log('[Chat] Found', messages.length, 'assistant messages');
+    const lastMessage = messages[messages.length - 1];
+    
+    if (!lastMessage) {
+      console.warn('[Chat] No assistant message found for feedback card');
+      return;
+    }
+    console.log('[Chat] Last message element:', lastMessage.className);
+    
+    const cardHtml = `<div id="feedback-card" class="tool-card feedback pending expanded" style="margin-top: 12px;">
+        <div class="tool-card-header" style="cursor: pointer;">
+          <span class="expand-indicator" style="margin-right: 6px; transition: transform 0.2s;">▼</span>
+          <span class="tool-card-title">📊 Feedback Analysis</span>
+          <span class="tool-card-status">⏳ Analyzing...</span>
+        </div>
+        <div class="tool-card-body">Evaluating response quality, tool selection, and suggestions for improvement...</div>
+      </div>`;
+    
+    const cardEl = document.createElement('div');
+    cardEl.innerHTML = cardHtml;
+    
+    // Append to the last assistant message's bubble or after tool cards
+    const toolCards = lastMessage.querySelector('.tool-cards');
+    // Use firstElementChild instead of firstChild to skip whitespace text nodes
+    const feedbackCard = cardEl.firstElementChild;
+    
+    if (!feedbackCard) {
+      console.error('[Chat] Failed to create feedback card element');
+      return;
+    }
+    
+    if (toolCards) {
+      console.log('[Chat] Appending feedback card to .tool-cards');
+      toolCards.appendChild(feedbackCard);
+    } else {
+      const bubble = lastMessage.querySelector('.message-bubble');
+      if (bubble) {
+        console.log('[Chat] Appending feedback card to .message-bubble');
+        bubble.appendChild(feedbackCard);
+      } else {
+        console.log('[Chat] Appending feedback card directly to lastMessage');
+        lastMessage.appendChild(feedbackCard);
+      }
+    }
+    
+    // Verify card was added
+    const verifyCard = document.getElementById('feedback-card');
+    console.log('[Chat] Feedback card in DOM:', !!verifyCard, verifyCard?.parentElement?.className);
+    
+    Utils.scrollToBottom(this.messagesContainer);
+  }
+
+  /**
+   * Update feedback card with results
+   */
+  _updateFeedbackCard(data) {
+    console.log('[Chat] _updateFeedbackCard called');
+    const card = document.getElementById('feedback-card');
+    console.log('[Chat] Feedback card found:', !!card);
+    if (!card) {
+      // Card doesn't exist, create it and retry
+      console.log('[Chat] Card not found, creating and retrying...');
+      this._showFeedbackCard();
+      setTimeout(() => this._updateFeedbackCard(data), 100);
+      return;
+    }
+    
+    // Update status
+    card.classList.remove('pending');
+    card.classList.add(data.success ? 'success' : 'error');
+    
+    const statusEl = card.querySelector('.tool-card-status');
+    const bodyEl = card.querySelector('.tool-card-body');
+    
+    if (data.success) {
+      const duration = data.duration_ms ? Utils.formatDuration(data.duration_ms) : '';
+      statusEl.textContent = `✅ ${duration}`;
+      
+      // Build feedback display
+      let feedbackHtml = '';
+      
+      // Rating with stars
+      if (data.rating != null) {
+        const ratingColor = data.rating >= 5 ? 'var(--success)' : data.rating >= 4 ? 'var(--warning)' : 'var(--error)';
+        const stars = '⭐'.repeat(data.rating) + '☆'.repeat(5 - data.rating);
+        feedbackHtml += `<div style="font-size: 1.1em; margin-bottom: 8px;"><strong>Rating:</strong> <span style="color: ${ratingColor}">${stars} (${data.rating}/5)</span></div>`;
+      }
+      
+      // Summary
+      if (data.summary) {
+        feedbackHtml += `<div style="margin-bottom: 8px;"><strong>Summary:</strong> ${Utils.escapeHtml(data.summary)}</div>`;
+      }
+      
+      // Positive feedback
+      if (data.positive) {
+        feedbackHtml += `<div style="margin-bottom: 8px; color: var(--success);"><strong>✅ What went well:</strong> ${Utils.escapeHtml(data.positive)}</div>`;
+      }
+      
+      // Issues/Suggestions (if any)
+      const issues = data.issues || data.suggestions || [];
+      if (issues.length > 0) {
+        feedbackHtml += '<div style="margin-bottom: 8px;"><strong>⚠️ Issues:</strong><ul style="margin: 4px 0 0 16px; padding: 0; list-style: none;">';
+        for (const issue of issues) {
+          // Issues can be objects with description, or plain strings
+          const issueText = typeof issue === 'object' 
+            ? (issue.description || issue.suggestion || JSON.stringify(issue))
+            : issue;
+          const category = issue.category ? `[${issue.category}] ` : '';
+          feedbackHtml += `<li style="margin: 4px 0;">• ${Utils.escapeHtml(category)}${Utils.escapeHtml(issueText)}</li>`;
+        }
+        feedbackHtml += '</ul></div>';
+      }
+      
+      // Tool ratings
+      if (data.tool_ratings && Object.keys(data.tool_ratings).length > 0) {
+        feedbackHtml += '<div><strong>Tool Performance:</strong><ul style="margin: 4px 0 0 16px; padding: 0; list-style: none;">';
+        for (const [tool, info] of Object.entries(data.tool_ratings)) {
+          const toolRating = info.rating || 5;
+          const toolStars = '⭐'.repeat(toolRating);
+          const note = info.note ? ` - ${Utils.escapeHtml(info.note)}` : '';
+          feedbackHtml += `<li style="margin: 2px 0;"><code>${Utils.escapeHtml(tool)}</code>: ${toolStars}${note}</li>`;
+        }
+        feedbackHtml += '</ul></div>';
+      }
+      
+      if (!feedbackHtml) {
+        feedbackHtml = '✅ Perfect execution - no issues found.';
+      }
+      
+      bodyEl.innerHTML = feedbackHtml;
+      
+      // Card starts expanded (set in HTML), add click handler for collapse/expand
+      const header = card.querySelector('.tool-card-header');
+      const expandIndicator = card.querySelector('.expand-indicator');
+      if (header && !header.dataset.clickHandlerSet) {
+        header.dataset.clickHandlerSet = 'true';
+        header.addEventListener('click', () => {
+          const isExpanded = card.classList.toggle('expanded');
+          if (expandIndicator) {
+            expandIndicator.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)';
+          }
+        });
+      }
+      
+      // Show toast with summary (longer duration: 6 seconds)
+      const issueCount = issues.length;
+      const toastMsg = issueCount > 0 
+        ? `📊 Feedback: ${data.rating}/5 - ${issueCount} issue(s) found`
+        : `📊 Feedback: ${data.rating}/5 - Perfect! ✅`;
+      Utils.toast(toastMsg, data.rating >= 4 ? 'success' : 'warning', 6000);
+    } else {
+      statusEl.textContent = '❌ Failed';
+      bodyEl.textContent = `Error: ${data.error || 'Unknown error'}`;
+      Utils.toast('Feedback analysis failed', 'error');
+    }
+  }
+
+  /**
+   * Toggle feedback mode
+   */
+  toggleFeedback() {
+    this.feedbackEnabled = !this.feedbackEnabled;
+    
+    // Update button state
+    const feedbackBtn = document.getElementById('feedbackBtn');
+    if (feedbackBtn) {
+      feedbackBtn.classList.toggle('active', this.feedbackEnabled);
+      feedbackBtn.title = this.feedbackEnabled ? 'Feedback ON - Click to disable' : 'Feedback OFF - Click to enable';
+    }
+    
+    Utils.toast(
+      this.feedbackEnabled ? '📊 Feedback enabled for next message' : '📊 Feedback disabled',
+      'info',
+      2000
+    );
   }
 
   /**
