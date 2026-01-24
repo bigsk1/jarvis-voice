@@ -457,23 +457,34 @@ class XAIProvider(LLMProvider):
             print(f"xAI API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     
+    def _build_xai_server_tools(self):
+        """Build list of xAI server-side tools based on config."""
+        from xai_sdk.tools import web_search, x_search, code_execution
+        
+        # Read config for fine-grained control
+        enable_code = os.environ.get('XAI_CODE_EXECUTION', 'true').lower() == 'true'
+        enable_image = os.environ.get('XAI_IMAGE_UNDERSTANDING', 'true').lower() == 'true'
+        enable_video = os.environ.get('XAI_VIDEO_UNDERSTANDING', 'true').lower() == 'true'
+        
+        tools = [
+            web_search(enable_image_understanding=enable_image),
+            x_search(enable_image_understanding=enable_image, enable_video_understanding=enable_video),
+        ]
+        
+        if enable_code:
+            tools.append(code_execution())
+        
+        return tools
+    
     def _chat_with_xai_sdk(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
-        """Simple chat using xAI SDK with web/X search tools."""
+        """Simple chat using xAI SDK with server-side tools."""
         try:
             from xai_sdk.chat import user, system as sys_msg
-            from xai_sdk.tools import web_search, x_search, code_execution
             
-            # Create chat with xAI server-side tools:
-            # - web_search: Real-time web search with optional image analysis
-            # - x_search: Deep X/Twitter search with optional image/video analysis
-            # - code_execution: Python REPL for math, data analysis, plotting
+            # Create chat with xAI server-side tools (configurable)
             chat = self.xai_client.chat.create(
                 model=self.model,
-                tools=[
-                    web_search(enable_image_understanding=True),
-                    x_search(enable_image_understanding=True, enable_video_understanding=True),
-                    code_execution(),
-                ],
+                tools=self._build_xai_server_tools(),
             )
             
             # Add system prompt if provided
@@ -630,20 +641,12 @@ class XAIProvider(LLMProvider):
         
         try:
             from xai_sdk.chat import user, system as sys_msg, assistant
-            from xai_sdk.tools import web_search, x_search, code_execution, get_tool_call_type, chat_pb2
+            from xai_sdk.tools import get_tool_call_type, chat_pb2
             
-            # Build xAI SDK tools list: server-side tools + client-side custom tools
-            # Server-side tools (executed by xAI automatically):
-            # - web_search: Real-time web search with image understanding
-            # - x_search: X/Twitter search with image/video understanding
-            # - code_execution: Python REPL for math, data analysis, plotting
-            xai_tools = [
-                web_search(enable_image_understanding=True),
-                x_search(enable_image_understanding=True, enable_video_understanding=True),
-                code_execution(),
-            ]
+            # Build xAI SDK tools list: server-side tools (configurable) + client-side custom tools
+            xai_tools = self._build_xai_server_tools()
             
-            # Convert our tools to xAI SDK Protocol Buffer format
+            # Convert our custom tools to xAI SDK Protocol Buffer format
             for tool in tools:
                 xai_tool = self._convert_tool_to_xai_sdk(tool)
                 xai_tools.append(xai_tool)
