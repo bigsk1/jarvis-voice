@@ -742,19 +742,13 @@ class ChatHandler:
         import time as time_module
         start_time = time_module.time()
         
-        print(f"[FEEDBACK] ====== ASYNC FEEDBACK STARTING ======")
-        print(f"[FEEDBACK] session_id={session_id[:8]}, message_id={message_id[:8]}, mode={mode}")
-        
         try:
             # Emit feedback:start event so UI can show the card
-            # Use namespace='/' explicitly for default namespace
-            print(f"[FEEDBACK] Emitting feedback:start to room {session_id}...")
             self.socketio.emit('feedback:start', {
                 'message_id': message_id,
                 'conversation_id': conversation_id,
                 'status': 'analyzing'
             }, room=session_id, namespace='/')
-            print(f"[FEEDBACK] feedback:start emitted successfully")
         except Exception as emit_err:
             print(f"[FEEDBACK] ERROR emitting feedback:start: {emit_err}")
         
@@ -764,7 +758,6 @@ class ChatHandler:
             
             # Ensure config is loaded for the right mode
             load_config(mode)
-            print(f"[FEEDBACK] Config loaded for mode={mode}")
             
             collector = FeedbackCollector(mode)
             
@@ -837,10 +830,6 @@ Mode: {mode}
             
             duration_ms = int((time_module.time() - start_time) * 1000)
             
-            # Debug: show what we got back
-            print(f"[FEEDBACK] Raw feedback keys: {list(feedback.keys())}")
-            print(f"[FEEDBACK] Feedback data: rating={feedback.get('rating')}, summary_len={len(feedback.get('summary', ''))}, positive_len={len(feedback.get('positive', ''))}, issues_count={len(feedback.get('issues', []))}")
-            
             # Extract all feedback fields
             rating = feedback.get('rating')
             summary = feedback.get('summary', '')
@@ -853,7 +842,6 @@ Mode: {mode}
             print(f"[FEEDBACK] Completed: rating={rating}/5, issues={len(issues)}, duration={duration_ms}ms")
             
             # Emit feedback:complete event with all fields
-            print(f"[FEEDBACK] Emitting feedback:complete to room {session_id}...")
             try:
                 self.socketio.emit('feedback:complete', {
                     'message_id': message_id,
@@ -868,7 +856,6 @@ Mode: {mode}
                     'duration_ms': duration_ms,
                     'success': True
                 }, room=session_id, namespace='/')
-                print(f"[FEEDBACK] feedback:complete emitted successfully!")
             except Exception as emit_err:
                 print(f"[FEEDBACK] ERROR emitting feedback:complete: {emit_err}")
             
@@ -876,7 +863,6 @@ Mode: {mode}
             import traceback as tb
             duration_ms = int((time_module.time() - start_time) * 1000)
             print(f"[FEEDBACK] ERROR: {e}")
-            print(f"[FEEDBACK] Traceback:\n{tb.format_exc()}")
             
             # Emit error state
             try:

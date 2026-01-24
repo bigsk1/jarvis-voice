@@ -932,15 +932,11 @@ class ChatUI {
     
     // Feedback events (async analysis after response)
     socket.on('feedbackStart', (data) => {
-      console.log('[Chat] ====== FEEDBACK START EVENT RECEIVED ======');
-      console.log('[Chat] Feedback analysis started:', data.message_id);
       this.pendingFeedback = { message_id: data.message_id, status: 'analyzing' };
       this._showFeedbackCard('analyzing');
     });
     
     socket.on('feedbackComplete', (data) => {
-      console.log('[Chat] ====== FEEDBACK COMPLETE EVENT RECEIVED ======');
-      console.log('[Chat] Feedback complete:', data);
       this.pendingFeedback = null;
       this._updateFeedbackCard(data);
     });
@@ -1647,20 +1643,16 @@ class ChatUI {
     // Remove existing feedback card if any
     const existingCard = document.getElementById('feedback-card');
     if (existingCard) {
-      console.log('[Chat] Removing existing feedback card');
       existingCard.remove();
     }
     
     // Find the last assistant message to append feedback to
     const messages = this.messagesContainer.querySelectorAll('.message.assistant:not(.thinking-message)');
-    console.log('[Chat] Found', messages.length, 'assistant messages');
     const lastMessage = messages[messages.length - 1];
     
     if (!lastMessage) {
-      console.warn('[Chat] No assistant message found for feedback card');
       return;
     }
-    console.log('[Chat] Last message element:', lastMessage.className);
     
     const cardHtml = `<div id="feedback-card" class="tool-card feedback pending expanded" style="margin-top: 12px;">
         <div class="tool-card-header" style="cursor: pointer;">
@@ -1685,22 +1677,15 @@ class ChatUI {
     }
     
     if (toolCards) {
-      console.log('[Chat] Appending feedback card to .tool-cards');
       toolCards.appendChild(feedbackCard);
     } else {
       const bubble = lastMessage.querySelector('.message-bubble');
       if (bubble) {
-        console.log('[Chat] Appending feedback card to .message-bubble');
         bubble.appendChild(feedbackCard);
       } else {
-        console.log('[Chat] Appending feedback card directly to lastMessage');
         lastMessage.appendChild(feedbackCard);
       }
     }
-    
-    // Verify card was added
-    const verifyCard = document.getElementById('feedback-card');
-    console.log('[Chat] Feedback card in DOM:', !!verifyCard, verifyCard?.parentElement?.className);
     
     Utils.scrollToBottom(this.messagesContainer);
   }
@@ -1709,12 +1694,9 @@ class ChatUI {
    * Update feedback card with results
    */
   _updateFeedbackCard(data) {
-    console.log('[Chat] _updateFeedbackCard called');
     const card = document.getElementById('feedback-card');
-    console.log('[Chat] Feedback card found:', !!card);
     if (!card) {
       // Card doesn't exist, create it and retry
-      console.log('[Chat] Card not found, creating and retrying...');
       this._showFeedbackCard();
       setTimeout(() => this._updateFeedbackCard(data), 100);
       return;

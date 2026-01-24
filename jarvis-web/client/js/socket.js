@@ -102,12 +102,10 @@ class JarvisSocket {
 
     // Feedback events (async analysis after response)
     this.socket.on('feedback:start', (data) => {
-      console.log('[Socket] feedback:start received:', data);
       this._emit('feedbackStart', data);
     });
-
+    
     this.socket.on('feedback:complete', (data) => {
-      console.log('[Socket] feedback:complete received:', data);
       this._emit('feedbackComplete', data);
     });
 
