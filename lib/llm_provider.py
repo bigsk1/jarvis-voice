@@ -387,7 +387,7 @@ class AnthropicProvider(LLMProvider):
 
 class XAIProvider(LLMProvider):
     """
-    xAI (Grok) provider using OpenAI-compatible SDK with reasoning support.
+    xAI (Grok) provider with hybrid SDK support.
     
     Features:
     - 2M context window for grok-4-fast and grok-4-1-fast models
@@ -396,15 +396,19 @@ class XAIProvider(LLMProvider):
     - Native function calling (OpenAI-compatible)
     - Reasoning mode support (grok-*-reasoning-* models)
     - Structured outputs
-    - Live Search: Real-time web/X data when XAI_SEARCH=true (auto mode)
+    - Live Search: When XAI_SEARCH=true, uses xAI SDK Agent Tools API
+      for real-time web/X search (server-side tools)
     """
     
     def __init__(self, api_key: str, model: str = "grok-4-1-fast-non-reasoning-latest"):
-        """Initialize xAI provider using OpenAI SDK."""
+        """Initialize xAI provider with hybrid SDK support."""
         try:
             from openai import OpenAI
         except ImportError:
             raise ImportError("openai package not installed. Run: pip install openai")
+        
+        # Store API key for xAI SDK usage
+        self.api_key = api_key
         
         # xAI uses OpenAI-compatible API with custom base URL
         self.client = OpenAI(
@@ -415,15 +419,28 @@ class XAIProvider(LLMProvider):
         self.is_reasoning_model = "reasoning" in model.lower()
         
         # Check if live search is enabled (XAI_SEARCH=true in cloud.env)
-        # When enabled, Grok can search web/X in real-time for current info
+        # When enabled, uses xAI SDK with Agent Tools API for web/X search
         from config_loader import get_config_value
         self.enable_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
         
-        if self.enable_search and os.environ.get('JARVIS_DEBUG'):
-            print(f"DEBUG: xAI Live Search enabled (mode=auto)", file=sys.stderr)
+        # Initialize xAI SDK client if search is enabled
+        self.xai_client = None
+        if self.enable_search:
+            try:
+                from xai_sdk import Client as XAIClient
+                self.xai_client = XAIClient(api_key=api_key)
+                if os.environ.get('JARVIS_DEBUG'):
+                    print(f"DEBUG: xAI Agent Tools API enabled (web_search + x_search)", file=sys.stderr)
+            except ImportError:
+                print("WARNING: xai-sdk not installed, falling back to OpenAI SDK without search", file=sys.stderr)
+                self.enable_search = False
     
     def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
-        """Simple chat without tools. Supports live search when XAI_SEARCH=true."""
+        """Simple chat without tools. Uses xAI SDK Agent Tools when XAI_SEARCH=true."""
+        if self.enable_search and self.xai_client:
+            return self._chat_with_xai_sdk(message, system_prompt, max_tokens)
+        
+        # Standard OpenAI SDK path (no search)
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -434,20 +451,37 @@ class XAIProvider(LLMProvider):
             if max_tokens:
                 params["max_tokens"] = max_tokens
             
-            # Add live search if enabled (Grok searches web/X in auto mode)
-            if self.enable_search:
-                params["extra_body"] = {
-                    "search_parameters": {
-                        "mode": "auto",
-                        "max_results": 8,
-                        "return_citations": True
-                    }
-                }
-            
             response = self.client.chat.completions.create(**params)
             return response.choices[0].message.content or ""
         except Exception as e:
             print(f"xAI API error: {e}", file=sys.stderr)
+            return f"Error: {str(e)}"
+    
+    def _chat_with_xai_sdk(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
+        """Simple chat using xAI SDK with web/X search tools."""
+        try:
+            from xai_sdk.chat import user, system as sys_msg
+            from xai_sdk.tools import web_search, x_search
+            
+            # Create chat with search tools
+            chat = self.xai_client.chat.create(
+                model=self.model,
+                tools=[web_search(), x_search()],
+            )
+            
+            # Add system prompt if provided
+            if system_prompt:
+                chat.append(sys_msg(system_prompt))
+            
+            # Add user message
+            chat.append(user(message))
+            
+            # Get response (non-streaming for simple chat)
+            response = chat.sample()
+            
+            return response.content or ""
+        except Exception as e:
+            print(f"xAI SDK error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     
     def chat_with_tools(
@@ -460,14 +494,29 @@ class XAIProvider(LLMProvider):
         """
         Send chat with xAI function calling and optional reasoning mode.
         
-        xAI's reasoning models (grok-*-reasoning-*) support extended thinking
-        similar to Anthropic's thinking mode.
+        When XAI_SEARCH=true, uses xAI SDK Agent Tools API which combines:
+        - Server-side tools: web_search, x_search (executed by xAI automatically)
+        - Client-side tools: Our custom tools (returned as tool_calls for us to execute)
         
         Returns:
             Tuple of (text_response, tool_call, usage_info, thinking)
             - usage_info contains token counts and cost estimates
             - thinking contains reasoning text for reasoning models
         """
+        if self.enable_search and self.xai_client:
+            return self._chat_with_tools_xai_sdk(messages, tools, system_prompt, enable_thinking)
+        
+        # Standard OpenAI SDK path (no search)
+        return self._chat_with_tools_openai_sdk(messages, tools, system_prompt, enable_thinking)
+    
+    def _chat_with_tools_openai_sdk(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict[str, Any]],
+        system_prompt: Optional[str] = None,
+        enable_thinking: bool = False
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+        """Standard chat with tools using OpenAI SDK (no search)."""
         # Add system message if provided
         full_messages = []
         if system_prompt:
@@ -487,17 +536,6 @@ class XAIProvider(LLMProvider):
                 request_params["tools"] = tools
                 request_params["tool_choice"] = "auto"
             
-            # Add live search if enabled (Grok searches web/X in auto mode)
-            # This allows Grok to ground responses with real-time data
-            if self.enable_search:
-                request_params["extra_body"] = {
-                    "search_parameters": {
-                        "mode": "auto",
-                        "max_results": 8,
-                        "return_citations": True
-                    }
-                }
-            
             response = self.client.chat.completions.create(**request_params)
             
             message = response.choices[0].message
@@ -505,8 +543,6 @@ class XAIProvider(LLMProvider):
             # Extract reasoning/thinking for reasoning models
             thinking_text = None
             if self.is_reasoning_model and enable_thinking:
-                # xAI reasoning models include thinking in a separate field
-                # Check for reasoning content in response
                 if hasattr(message, 'reasoning_content'):
                     thinking_text = message.reasoning_content
                 elif hasattr(response, 'reasoning'):
@@ -535,9 +571,132 @@ class XAIProvider(LLMProvider):
             return message.content, None, usage_info, thinking_text
             
         except Exception as e:
-            import sys
             print(f"xAI API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None, None, None
+    
+    def _convert_tool_to_xai_sdk(self, tool: Dict[str, Any]):
+        """Convert OpenAI-format tool to xAI SDK Protocol Buffer format."""
+        from xai_sdk.tools import chat_pb2
+        
+        xai_tool = chat_pb2.Tool()
+        
+        # Handle OpenAI format: {"type": "function", "function": {...}}
+        if tool.get("type") == "function":
+            func_def = tool.get("function", {})
+        else:
+            # Handle Anthropic format: {"name": "...", "description": "...", "input_schema": {...}}
+            func_def = tool
+        
+        xai_tool.function.name = func_def.get("name", "")
+        xai_tool.function.description = func_def.get("description", "")
+        
+        # Parameters can be in "parameters" (OpenAI) or "input_schema" (Anthropic)
+        params = func_def.get("parameters") or func_def.get("input_schema", {})
+        if params:
+            xai_tool.function.parameters = json.dumps(params)
+        
+        return xai_tool
+    
+    def _chat_with_tools_xai_sdk(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict[str, Any]],
+        system_prompt: Optional[str] = None,
+        enable_thinking: bool = False
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+        """
+        Chat with tools using xAI SDK Agent Tools API.
+        
+        Combines server-side search tools (web_search, x_search) with our client-side tools.
+        The model decides when to use search vs our tools.
+        Server-side tools are executed automatically by xAI.
+        Client-side tools are returned for us to execute.
+        """
+        try:
+            from xai_sdk.chat import user, system as sys_msg, assistant
+            from xai_sdk.tools import web_search, x_search, get_tool_call_type
+            
+            # Build xAI SDK tools list: server-side search + client-side custom tools
+            xai_tools = [web_search(), x_search()]
+            
+            # Convert our tools to xAI SDK Protocol Buffer format
+            for tool in tools:
+                xai_tool = self._convert_tool_to_xai_sdk(tool)
+                xai_tools.append(xai_tool)
+            
+            # Create chat with mixed tools
+            chat = self.xai_client.chat.create(
+                model=self.model,
+                tools=xai_tools,
+            )
+            
+            # Add system prompt if provided
+            if system_prompt:
+                chat.append(sys_msg(system_prompt))
+            
+            # Add conversation history
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role == "user":
+                    chat.append(user(content))
+                elif role == "assistant":
+                    chat.append(assistant(content))
+            
+            # Get response (non-streaming for now)
+            response = chat.sample()
+            
+            # Extract usage info
+            usage_info = None
+            if hasattr(response, 'usage') and response.usage:
+                from cost_estimator import estimate_cost
+                input_tokens = getattr(response.usage, 'prompt_tokens', 0) or getattr(response.usage, 'prompt_text_tokens', 0) or 0
+                output_tokens = getattr(response.usage, 'completion_tokens', 0) or 0
+                
+                usage_info = estimate_cost(
+                    provider="xai",
+                    model=self.model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens
+                )
+                
+                # Add search tool usage info if available
+                if hasattr(response, 'server_side_tool_usage'):
+                    usage_info['server_side_tools'] = response.server_side_tool_usage
+            
+            # Check for client-side tool calls (our custom tools)
+            # Server-side tools (web_search, x_search) are handled automatically by xAI
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                for tc in response.tool_calls:
+                    tool_type = get_tool_call_type(tc)
+                    
+                    # Only return client-side tool calls for us to execute
+                    if tool_type == "client_side_tool":
+                        return None, {
+                            "name": tc.function.name,
+                            "arguments": json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments
+                        }, usage_info, None
+            
+            # No client-side tool calls - return the response
+            # (may include results from server-side search tools)
+            content = response.content or ""
+            
+            # Include citations if available
+            if hasattr(response, 'citations') and response.citations:
+                # Append citations to response for transparency
+                citations_text = "\n\nSources:\n" + "\n".join(f"- {url}" for url in response.citations[:5])
+                content += citations_text
+            
+            return content, None, usage_info, None
+            
+        except Exception as e:
+            import traceback
+            print(f"xAI SDK error: {e}", file=sys.stderr)
+            if os.environ.get('JARVIS_DEBUG'):
+                traceback.print_exc()
+            # Fallback to OpenAI SDK without search
+            print("Falling back to OpenAI SDK without search", file=sys.stderr)
+            return self._chat_with_tools_openai_sdk(messages, tools, system_prompt, enable_thinking)
 
 
 class OllamaProvider(LLMProvider):

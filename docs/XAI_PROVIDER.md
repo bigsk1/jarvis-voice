@@ -119,40 +119,65 @@ Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic
 - Structured outputs
 - Works perfectly with Jarvis's tool registry
 
-### 5. **Built-in Live Search** 
+### 5. **Built-in Live Search (Agent Tools API)** 
 
-Enable Grok's native web search via `XAI_SEARCH=true`:
+Enable Grok's native web/X search via `XAI_SEARCH=true`:
 
 ```bash
 # In config/cloud.env
 XAI_SEARCH=true   # Enable live search (default: true)
 ```
 
-**How It Works**:
-- Grok searches web + X posts **internally** via `search_parameters`
-- Auto mode: Only searches when query needs real-time data
-- Returns synthesized answers with citations
-- **No external tool calls** - cleaner context, faster responses
+**How It Works** (Updated January 2026):
+- Uses xAI's **Agent Tools API** with `web_search` and `x_search` server-side tools
+- Model autonomously decides when to search (query analysis)
+- Server-side tools execute automatically on xAI servers
+- Returns synthesized answers with citations from web + X posts
+- **Hybrid approach**: Combines with your custom client-side tools seamlessly
+
+**Architecture**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   xAI Agent Tools API                        │
+├─────────────────────────────────────────────────────────────┤
+│  Server-Side Tools (executed by xAI):                       │
+│    • web_search - Real-time web search + browsing           │
+│    • x_search - X/Twitter search (keyword, semantic, user)  │
+│                                                             │
+│  Client-Side Tools (your custom tools):                     │
+│    • crypto_price, weather, get_time, etc.                  │
+│    • Returned as tool_calls for Jarvis to execute           │
+└─────────────────────────────────────────────────────────────┘
+```
 
 **Benefits**:
-- Eliminates endless Brave Search tool loops
-- No JSON results cluttering context window
-- Real-time data with proper citations
-- Works transparently with existing tools
+- Real-time web and X post data with citations
+- Model decides: use search OR your tools (not both unless needed)
+- No external Brave Search tool calls for current events
+- Cleaner context (search handled server-side)
+- Works transparently alongside all existing Jarvis tools
 
 **Example**:
 ```
+Query: "What are people saying on X about Grok 4?"
+
+Response includes:
+  • Synthesized answer from X posts
+  • Citations: https://x.com/i/status/...
+  • No external tool calls!
+
 Query: "What's the current Bitcoin price?"
 
-Before (external tools):
-  → Router → Brave Search → JSON → Parse → Answer (6+ tool calls)
-
-After (native search):
-  → Grok searches internally → Synthesized answer with citations
-  → No tool calls, instant response!
+Response uses:
+  • crypto_price tool (more accurate for prices)
+  • Model decides best tool for the job
 ```
 
-**Cost**: Standard token pricing (search results count as input tokens)
+**Requirements**:
+- xai-sdk >= 1.5.0 (automatically installed)
+- Supports Grok 4 models (grok-4, grok-4-fast, grok-4-1-fast)
+
+**Cost**: Standard token pricing + search tool invocations (see xAI pricing)
 
 ### 6. **Image Generation**
 
@@ -512,8 +537,8 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 
 ---
 
-**Last Updated**: 2025-12-12  
-**Version**: 1.1 (Added native web search support)
+**Last Updated**: 2026-01-23  
+**Version**: 1.2 (Migrated to xAI Agent Tools API for web/X search)
 
 **See Also**:
 - [AGENTS.md](../AGENTS.md) - Coding guidelines
