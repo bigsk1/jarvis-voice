@@ -350,7 +350,8 @@ Mode: {self.mode}
             "cost_usd": 0.0,
             "cache_creation_tokens": 0,
             "cache_read_tokens": 0,
-            "cache_savings_usd": 0.0
+            "cache_savings_usd": 0.0,
+            "server_side_tools": {}  # Track xAI native search usage
         }
         
         # Track thinking from first turn (for display)
@@ -401,6 +402,10 @@ Mode: {self.mode}
                     total_usage["cache_read_tokens"] += usage["cache_read_tokens"]
                 if usage.get("cache_savings_usd"):
                     total_usage["cache_savings_usd"] += usage["cache_savings_usd"]
+                # Accumulate xAI server-side tools usage
+                if usage.get("server_side_tools"):
+                    for tool_name, count in usage["server_side_tools"].items():
+                        total_usage["server_side_tools"][tool_name] = total_usage["server_side_tools"].get(tool_name, 0) + count
             
             # Capture thinking from first turn (for display)
             if turn_num == 0 and route.get("thinking") and not first_thinking:
@@ -624,6 +629,14 @@ Mode: {self.mode}
                 # Add token info to response if available (cloud only)
                 if token_info:
                     response["usage"] = token_info
+                    
+                    # Log xAI native search summary if used
+                    if total_usage.get("server_side_tools"):
+                        server_tools = total_usage["server_side_tools"]
+                        total_searches = sum(server_tools.values())
+                        tool_summary = ", ".join(f"{k.replace('SERVER_SIDE_TOOL_', '').lower()}={v}" for k, v in server_tools.items())
+                        if sys.stdout.isatty():
+                            print(f"🔍 xAI native search: {total_searches} call(s) [{tool_summary}]")
                 
                 # Add thinking to response if available
                 if first_thinking:

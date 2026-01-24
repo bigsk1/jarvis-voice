@@ -633,6 +633,13 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Provider returned: tool_call={tool_call is not None}, usage={usage_info is not None}, thinking={thinking is not None}", file=sys.stderr)
             
+            # Log xAI server-side tool usage (native search)
+            if usage_info and usage_info.get('server_side_tools'):
+                server_tools = usage_info['server_side_tools']
+                tool_list = [f"{k.replace('SERVER_SIDE_TOOL_', '').lower()}({v}x)" for k, v in server_tools.items() if v > 0]
+                if tool_list:
+                    logger.info(f"[xAI SEARCH] Native search used: {', '.join(tool_list)}")
+            
             # Tool was called
             if tool_call:
                 response = {

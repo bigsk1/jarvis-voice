@@ -611,10 +611,19 @@ class XAIProvider(LLMProvider):
         The model decides when to use search vs our tools.
         Server-side tools are executed automatically by xAI.
         Client-side tools are returned for us to execute.
+        
+        Note: xAI SDK doesn't support client-side tool results in multi-turn conversations.
+        If messages contain tool results, we fall back to OpenAI SDK for full tool support.
         """
+        # Check if messages contain tool results (xAI SDK doesn't support this)
+        has_tool_results = any(msg.get("role") == "tool" for msg in messages)
+        if has_tool_results:
+            # Fall back to OpenAI SDK for multi-turn tool conversations
+            return self._chat_with_tools_openai_sdk(messages, tools, system_prompt, enable_thinking)
+        
         try:
             from xai_sdk.chat import user, system as sys_msg, assistant
-            from xai_sdk.tools import web_search, x_search, get_tool_call_type
+            from xai_sdk.tools import web_search, x_search, get_tool_call_type, chat_pb2
             
             # Build xAI SDK tools list: server-side search + client-side custom tools
             xai_tools = [web_search(), x_search()]
@@ -634,13 +643,15 @@ class XAIProvider(LLMProvider):
             if system_prompt:
                 chat.append(sys_msg(system_prompt))
             
-            # Add conversation history
+            # Add conversation history (only user/assistant, tool results handled by fallback)
             for msg in messages:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
+                
                 if role == "user":
                     chat.append(user(content))
                 elif role == "assistant":
+                    # Simple assistant message (no tool_calls since we'd have fallen back)
                     chat.append(assistant(content))
             
             # Get response (non-streaming for now)
