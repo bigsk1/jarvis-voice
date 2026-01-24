@@ -435,7 +435,7 @@ RESPONSE STYLE: {response_style.upper()}
                 capabilities.append("""- NATIVE CODE EXECUTION: You have a Python REPL (numpy, pandas, sympy, scipy, matplotlib).
   For complex math, data analysis, or verification: write and run Python code directly.
   Can chain with search: "search for data, then analyze programmatically"
-  DO NOT use calculator tool - use code execution for any math beyond trivial""")
+  Use code execution for any math beyond trivial""")
             
             native_search_note = f"""
 NATIVE SERVER-SIDE TOOLS ENABLED:
