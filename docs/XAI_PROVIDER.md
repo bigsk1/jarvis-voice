@@ -119,9 +119,9 @@ Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic
 - Structured outputs
 - Works perfectly with Jarvis's tool registry
 
-### 5. **Built-in Live Search (Agent Tools API)** 
+### 5. **Built-in Server-Side Tools (Agent Tools API)** 
 
-Enable Grok's native web/X search via `XAI_SEARCH=true`:
+Enable Grok's native tools via `XAI_SEARCH=true`:
 
 ```bash
 # In config/cloud.env
@@ -129,23 +129,31 @@ XAI_SEARCH=true   # Enable live search (default: true)
 ```
 
 **How It Works** (Updated January 2026):
-- Uses xAI's **Agent Tools API** with `web_search` and `x_search` server-side tools
-- Model autonomously decides when to search (query analysis)
-- Server-side tools execute automatically on xAI servers
+- Uses xAI's **Agent Tools API** with server-side tools
+- Model autonomously decides when to use each tool
+- Server-side tools execute automatically on xAI servers (no round-trip!)
 - Returns synthesized answers with citations from web + X posts
 - **Hybrid approach**: Combines with your custom client-side tools seamlessly
+
+**Server-Side Tools Available**:
+| Tool | Description | Features |
+|------|-------------|----------|
+| `web_search` | Real-time web search + browsing | Image understanding enabled |
+| `x_search` | X/Twitter search (keyword, semantic, user) | Image + video understanding |
+| `code_execution` | Python REPL for math, data analysis, plotting | numpy, pandas, sympy, matplotlib |
 
 **Architecture**:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                   xAI Agent Tools API                        │
 ├─────────────────────────────────────────────────────────────┤
-│  Server-Side Tools (executed by xAI):                       │
-│    • web_search - Real-time web search + browsing           │
-│    • x_search - X/Twitter search (keyword, semantic, user)  │
+│  Server-Side Tools (executed by xAI automatically):         │
+│    • web_search - Web search with image understanding       │
+│    • x_search - X search with image/video understanding     │
+│    • code_execution - Python REPL for math/analysis         │
 │                                                             │
 │  Client-Side Tools (your custom tools):                     │
-│    • crypto_price, weather, get_time, etc.                  │
+│    • crypto_price, weather, spotify, etc.                   │
 │    • Returned as tool_calls for Jarvis to execute           │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -537,8 +545,8 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 
 ---
 
-**Last Updated**: 2026-01-23  
-**Version**: 1.2 (Migrated to xAI Agent Tools API for web/X search)
+**Last Updated**: 2026-01-24  
+**Version**: 1.3 (Added code_execution + image/video understanding)
 
 **See Also**:
 - [AGENTS.md](../AGENTS.md) - Coding guidelines
