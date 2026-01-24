@@ -175,6 +175,11 @@ def get_system_config():
             # Image
             'IMAGE_TOOL_PROVIDER': get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),
             
+            # Feedback/Evolution System
+            'FEEDBACK_RANDOM_ENABLED': get_jarvis_setting('FEEDBACK_RANDOM_ENABLED', 'false'),
+            'FEEDBACK_RANDOM_CHANCE': get_jarvis_setting('FEEDBACK_RANDOM_CHANCE', '0.0'),
+            'FEEDBACK_PROVIDER': get_jarvis_setting('FEEDBACK_PROVIDER', 'anthropic'),
+            
             # System
             'JARVIS_TIMEZONE': get_jarvis_setting('JARVIS_TIMEZONE', 'America/Los_Angeles'),
         }

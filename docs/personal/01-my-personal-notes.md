@@ -971,8 +971,13 @@ If tool is made need to update timeouts in executor.py
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
 ```
 
-
-
+```bash
+./bin/validate-system-prompt                          # Basic review
+./bin/validate-system-prompt --tools                  # Include all tools
+./bin/validate-system-prompt --dry-run --tools        # Show what LLM sees (no API)
+./bin/validate-system-prompt --simulate "task"        # Simulate specific task
+./bin/validate-system-prompt --focus "canvas"         # Focus on area
+```
 
 
 

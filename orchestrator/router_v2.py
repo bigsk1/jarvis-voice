@@ -137,6 +137,17 @@ User: "Build X then verify it works"
 → Turn 2: Call verification tool (check_opencode_sessions, execute_bash, api_call, etc.)
 → Turn 3: Q&A response with outcome
 
+**RESEARCH → OUTPUT WORKFLOW (CRITICAL):**
+When user asks you to research something and create output (canvas, email, etc.):
+1. **GATHER ALL DATA FIRST** - Complete ALL searches and crawls before creating output
+2. **Use stash for large data** - Save intermediate results to stash if needed
+3. **CREATE OUTPUT LAST** - Canvas/email should be the FINAL step with ALL gathered data
+4. **If you create output early, UPDATE it** - If you created canvas but gathered more data, call canvas with action="update" and page_id to add the new information
+
+❌ WRONG: search → canvas → search → crawl → done (canvas only has first search!)
+✅ RIGHT: search → search → crawl → crawl → stash → canvas (canvas has everything)
+✅ ALSO OK: search → canvas → search → crawl → canvas UPDATE (update with new data)
+
 SEARCH EFFICIENCY RULES (CRITICAL - AVOID INFINITE LOOPS):
 When performing web searches or data gathering:
 1. **Evaluate after 2-3 tool calls**: Do you have enough info to answer the user's question?

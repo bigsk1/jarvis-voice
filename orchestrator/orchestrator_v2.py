@@ -152,6 +152,120 @@ class Orchestrator:
         """Set callback for status updates (for web UI to emit via WebSocket)."""
         self.status_updater.set_speech_callback(callback)
     
+    def _maybe_collect_feedback(self, result: Dict[str, Any], transcript: str) -> Dict[str, Any]:
+        """
+        Optionally collect feedback based on random chance (configured via env).
+        This enables the evolution/feedback system for both CLI and WebUI.
+        
+        Uses FEEDBACK_RANDOM_ENABLED and FEEDBACK_RANDOM_CHANCE from config.
+        """
+        import random
+        from config_loader import get_config_value, get_float
+        
+        # Check if random feedback is enabled
+        random_enabled = get_config_value('FEEDBACK_RANDOM_ENABLED', 'false').lower() == 'true'
+        if not random_enabled:
+            return result
+        
+        # Check random chance
+        random_chance = get_float('FEEDBACK_RANDOM_CHANCE', 0.0)
+        if random.random() >= random_chance:
+            return result
+        
+        # Feedback triggered - collect it
+        try:
+            from feedback import FeedbackCollector
+            
+            if sys.stdout.isatty():
+                print("🎲 Random feedback collection triggered")
+            
+            collector = FeedbackCollector(self.mode)
+            
+            # Get tools used
+            tools_used = result.get("tools_used", [])
+            if isinstance(tools_used, str):
+                tools_used = [tools_used]
+            
+            num_tools = len(self.registry.list_tools())
+            
+            # Get system prompt from router
+            system_prompt = self.router.system_prompt if hasattr(self.router, 'system_prompt') else None
+            
+            # Get tool descriptions for relevant tools
+            tool_descriptions = {}
+            relevant_tools = set(tools_used)
+            query_lower = transcript.lower()
+            if "time" in query_lower:
+                relevant_tools.add("get_time")
+            if "weather" in query_lower:
+                relevant_tools.add("weather")
+            if "bitcoin" in query_lower or "crypto" in query_lower or "price" in query_lower:
+                relevant_tools.add("crypto_price")
+            if "memory" in query_lower or "remember" in query_lower:
+                relevant_tools.update(["semantic_recall", "search_memory", "remember"])
+            
+            for tool_name in relevant_tools:
+                try:
+                    tool = self.registry.get_tool(tool_name)
+                    if tool:
+                        tool_descriptions[tool_name] = tool.description
+                except:
+                    pass
+            
+            # Build config context
+            response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
+            style_explanations = {
+                'casual': 'Short voice-friendly output. URLs are REMOVED, search results summarized to ~25 words.',
+                'auto': 'Smart mode. Search tools get condensed (no URLs), complex tools keep full details.',
+                'detailed': 'FULL LLM response preserved. URLs ARE INCLUDED. Verbose output is EXPECTED and CORRECT.'
+            }
+            style_explanation = style_explanations.get(response_style, 'Unknown style')
+            
+            config_context = f"""
+Auto-Context: {'Enabled' if self.auto_context_enabled else 'Disabled'} (window={self.auto_context_window}, minutes={self.auto_context_minutes})
+Response Style: {response_style}
+  → Style Behavior: {style_explanation}
+Tools Available: {num_tools}
+Mode: {self.mode}
+"""
+            
+            feedback = collector.collect(
+                query=transcript,
+                result=result,
+                tools_used=tools_used,
+                num_tools=num_tools,
+                system_prompt=system_prompt,
+                tool_descriptions=tool_descriptions,
+                intelligence_insights=result.get("intelligence_context", ""),
+                config_context=config_context,
+                session_id=self.session_id
+            )
+            
+            # Add feedback to result
+            result["feedback"] = feedback
+            
+            # Update experience from feedback if applicable
+            rating = feedback.get('rating')
+            experience_id = result.get('experience_id', -1)
+            
+            if rating is not None and experience_id > 0:
+                try:
+                    from intelligence_hooks import update_experience_from_feedback
+                    update_experience_from_feedback(
+                        experience_id=experience_id,
+                        feedback_rating=rating,
+                        feedback_summary=feedback.get('summary')
+                    )
+                except Exception as e:
+                    if sys.stdout.isatty():
+                        print(f"⚠️ Failed to update experience from feedback: {e}")
+            
+        except Exception as e:
+            if sys.stdout.isatty():
+                print(f"⚠️ Feedback collection failed: {e}")
+        
+        return result
+    
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
                 conversation_history: list = None, excluded_tools: list = None) -> Dict[str, Any]:
         """
@@ -523,7 +637,8 @@ class Orchestrator:
                 # Mark status updates complete before final TTS
                 self.status_updater.mark_complete()
                 
-                return response
+                # Maybe collect feedback (random chance based on env config)
+                return self._maybe_collect_feedback(response, transcript)
             
             # Handle routing errors
             else:
@@ -563,13 +678,16 @@ class Orchestrator:
         # Mark status updates complete
         self.status_updater.mark_complete()
         
-        return {
+        result = {
             "speech": final_speech,
             "ok": True,
             "tools_used": tools_used,
             "data": accumulated_data,
             "max_turns_reached": True
         }
+        
+        # Maybe collect feedback (random chance based on env config)
+        return self._maybe_collect_feedback(result, transcript)
     
     def _format_natural_response(self, user_query: str, tool_name: str, tool_result: Dict[str, Any]) -> str:
         """

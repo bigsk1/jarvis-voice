@@ -985,6 +985,22 @@ class JarvisApp {
           </div>
           
           <div class="config-section">
+            <div class="config-section-title">🔄 Feedback/Evolution</div>
+            <div class="config-item">
+              <span class="config-label">FEEDBACK_RANDOM_ENABLED</span>
+              <span class="config-value ${c.FEEDBACK_RANDOM_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.FEEDBACK_RANDOM_ENABLED}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">FEEDBACK_RANDOM_CHANCE</span>
+              <span class="config-value">${c.FEEDBACK_RANDOM_CHANCE} (${Math.round(parseFloat(c.FEEDBACK_RANDOM_CHANCE || 0) * 100)}%)</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">FEEDBACK_PROVIDER</span>
+              <span class="config-value">${c.FEEDBACK_PROVIDER}</span>
+            </div>
+          </div>
+          
+          <div class="config-section">
             <div class="config-section-title">🌍 System</div>
             <div class="config-item">
               <span class="config-label">JARVIS_TIMEZONE</span>

@@ -1,0 +1,391 @@
+#!/usr/bin/env python3
+"""
+System Prompt Validator - Comprehensive Analysis
+
+Extracts and analyzes EVERYTHING the LLM receives:
+- Full dynamic system prompt (with time prefix, style notes, native search)
+- All tool definitions (skills + MCP tools)
+- MCP server instructions
+- Intelligence layer biases (if enabled)
+
+Asks an LLM to review for clarity, contradictions, and potential issues.
+
+Usage:
+  ./bin/validate-system-prompt                          # Full review
+  ./bin/validate-system-prompt --tools                  # Include all tools
+  ./bin/validate-system-prompt --focus "canvas"         # Focus on area
+  ./bin/validate-system-prompt --simulate "check btc"   # Simulate a task
+  ./bin/validate-system-prompt --dry-run                # Show what LLM sees (no API call)
+"""
+
+import os
+import sys
+import argparse
+import json
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+# Add lib to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from config_loader import load_config, get_config_value
+from llm_provider import create_provider
+
+LOG_DIR = Path(__file__).parent.parent / 'logs' / 'validate-system-prompt'
+
+
+def setup_logging():
+    """Ensure log directory exists."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    return LOG_DIR / f"validation-{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+
+
+def get_full_system_prompt(mode='cloud'):
+    """
+    Get the COMPLETE system prompt as the LLM would see it.
+    Includes time prefix, style notes, native search notes, and base prompt.
+    """
+    # Load config for the mode
+    load_config(mode)
+    
+    # Get timezone
+    tz_str = get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles")
+    try:
+        timezone = ZoneInfo(tz_str)
+    except:
+        timezone = ZoneInfo("America/Los_Angeles")
+    
+    now = datetime.now(timezone)
+    
+    # Get response style
+    response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
+    
+    # Build style note
+    if response_style == 'detailed':
+        style_note = """
+RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
+- Output will be DISPLAYED, not spoken through TTS
+- Markdown formatting IS allowed (links, bold, lists)
+- Full URLs with markdown links ARE allowed: [Title](https://...)
+- No word limit - provide comprehensive information
+- The VOICE OUTPUT RULES section does NOT apply in detailed mode
+"""
+    else:
+        style_note = f"""
+RESPONSE STYLE: {response_style.upper()}
+- Keep voice output concise (35-75 words depending on complexity)
+- Tool confirmations: brief (35 words max)
+- Q&A/informational: more room (75 words max)
+- No URLs for speech unless critical
+"""
+    
+    # Check native search
+    native_search_note = ""
+    xai_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
+    anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
+    provider_type = get_config_value("LLM_PROVIDER", "")
+    
+    if xai_search and provider_type == "xai":
+        native_search_note = """
+NATIVE SEARCH ENABLED:
+You have built-in real-time web/X search. For current info, news, prices, events:
+- Use your NATIVE SEARCH (automatic) - DO NOT use external search tools
+- Your search results are grounded and cited automatically
+"""
+    elif anthropic_search and provider_type == "anthropic":
+        native_search_note = """
+NATIVE SEARCH ENABLED:
+You have built-in web search capability. For current info:
+- Use your NATIVE SEARCH - DO NOT use external search tools
+"""
+    
+    # Build time prefix
+    time_prefix = f"""CURRENT DATE/TIME: {now.strftime('%A, %B %d, %Y at %I:%M %p %Z')}
+When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
+{native_search_note}{style_note}"""
+    
+    # Get base prompt from router_v2.py
+    router_path = Path(__file__).parent.parent / 'orchestrator' / 'router_v2.py'
+    content = router_path.read_text()
+    
+    start_marker = '_system_prompt_base = """'
+    end_marker = '"""'
+    
+    start = content.find(start_marker)
+    if start == -1:
+        return None, "Could not find _system_prompt_base"
+    
+    start += len(start_marker)
+    end = content.find(end_marker, start)
+    if end == -1:
+        return None, "Could not find end of system prompt"
+    
+    base_prompt = content[start:end].strip()
+    
+    # Combine
+    full_prompt = time_prefix + base_prompt
+    
+    return full_prompt, None
+
+
+def get_enabled_mcp_servers():
+    """Get list of enabled MCP servers from config with descriptions."""
+    enabled = {}
+    mcp_config = Path(__file__).parent.parent / 'config' / 'mcp-servers.json'
+    
+    if mcp_config.exists():
+        try:
+            with open(mcp_config) as f:
+                config = json.load(f)
+                for server_name, server_config in config.get('mcpServers', {}).items():
+                    if server_config.get('enabled', True):
+                        enabled[server_name] = server_config.get('description', 'No description')
+        except:
+            pass
+    
+    return enabled
+
+
+def get_all_tool_definitions():
+    """Load ALL tool definitions (skills + enabled MCP tools)."""
+    tools = []
+    
+    # 1. Local skills
+    skills_dir = Path(__file__).parent.parent / 'skills'
+    for json_file in skills_dir.glob('**/*.tool.json'):
+        try:
+            with open(json_file) as f:
+                tool = json.load(f)
+                if tool.get('enabled', True):
+                    tools.append({
+                        'source': 'skill',
+                        'name': tool.get('name'),
+                        'description': tool.get('description', ''),
+                        'parameters': tool.get('parameters', {}).get('properties', {}),
+                        'file': str(json_file.relative_to(skills_dir.parent))
+                    })
+        except Exception as e:
+            pass
+    
+    # 2. MCP servers from config (tools are loaded at runtime from Docker)
+    enabled_servers = get_enabled_mcp_servers()
+    for server_name, description in enabled_servers.items():
+        tools.append({
+            'source': f'mcp:{server_name}',
+            'name': f'mcp_{server_name}_*',  # Placeholder - actual tools loaded at runtime
+            'description': description,
+            'parameters': {},
+            'file': 'config/mcp-servers.json',
+            'note': 'MCP server - specific tools loaded at runtime'
+        })
+    
+    # Note: Cursor IDE MCP tools (cursor-ide-browser, etc.) are excluded
+    # as they're for IDE use only, not Jarvis runtime
+    
+    return tools
+
+
+def get_mcp_server_instructions():
+    """Get MCP server-level instructions."""
+    instructions = {}
+    mcp_config = Path(__file__).parent.parent / '.cursor' / 'mcp.json'
+    
+    if mcp_config.exists():
+        try:
+            with open(mcp_config) as f:
+                config = json.load(f)
+                for server_name, server_config in config.get('mcpServers', {}).items():
+                    if 'instructions' in server_config:
+                        instructions[server_name] = server_config['instructions']
+        except:
+            pass
+    
+    return instructions
+
+
+def validate_prompt(provider, system_prompt: str, tools: list, mcp_instructions: dict, focus: str = None, simulate_task: str = None):
+    """Ask LLM to validate the complete prompt setup."""
+    
+    # Build comprehensive review prompt
+    review_prompt = f"""You are an expert AI prompt engineer. Analyze this COMPLETE system configuration for a voice assistant called "Jarvis".
+
+## FULL SYSTEM PROMPT (exactly what the LLM sees):
+```
+{system_prompt}
+```
+
+## TOOL DEFINITIONS ({len(tools)} tools):
+"""
+    
+    # Add tools (summarized to avoid token explosion)
+    for tool in tools[:30]:  # First 30
+        params = ', '.join(tool.get('parameters', {}).keys())
+        review_prompt += f"\n### {tool['name']} [{tool['source']}]\n"
+        review_prompt += f"Description: {tool['description'][:300]}...\n" if len(tool.get('description', '')) > 300 else f"Description: {tool.get('description', 'N/A')}\n"
+        review_prompt += f"Parameters: {params}\n"
+    
+    if len(tools) > 30:
+        review_prompt += f"\n... and {len(tools) - 30} more tools\n"
+    
+    # Add MCP instructions
+    if mcp_instructions:
+        review_prompt += "\n## MCP SERVER INSTRUCTIONS:\n"
+        for server, instr in mcp_instructions.items():
+            review_prompt += f"\n### {server}:\n{instr[:500]}...\n" if len(instr) > 500 else f"\n### {server}:\n{instr}\n"
+    
+    # Add focus area
+    if focus:
+        review_prompt += f"\n## FOCUS AREA: Pay special attention to: {focus}\n"
+    
+    # Add task simulation
+    if simulate_task:
+        review_prompt += f"""
+## TASK SIMULATION:
+Imagine a user says: "{simulate_task}"
+
+Walk through EXACTLY how you would interpret this given the system prompt and tools:
+1. What intent would you detect?
+2. Which tools would you consider?
+3. In what order would you call them?
+4. Any confusion or ambiguity in the instructions?
+"""
+    
+    review_prompt += """
+
+## ANALYSIS REQUESTED:
+
+1. **CONTRADICTIONS** - Any rules that conflict with each other? Quote the exact text.
+
+2. **AMBIGUITIES** - Where might the LLM be unsure what to do? Specific scenarios.
+
+3. **TOOL SELECTION GAPS** - When might it be unclear which tool to use?
+
+4. **WORKFLOW ISSUES** - Are multi-step task sequences clear? Research → output? Memory → action?
+
+5. **MISSING EDGE CASES** - Important scenarios not covered?
+
+6. **TOP 3 SPECIFIC FIXES** - Exact text changes you'd recommend (before/after)
+
+Be concise but SPECIFIC. Quote exact problematic text. This is a real production system.
+"""
+    
+    response = provider.chat(
+        message=review_prompt,
+        system_prompt="You are an expert AI prompt engineer. Be brutally honest and specific. Quote exact text that's problematic.",
+        max_tokens=4000
+    )
+    
+    return response if isinstance(response, str) else str(response)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Comprehensive System Prompt Validator')
+    parser.add_argument('--mode', '-m', choices=['cloud', 'local'], default='cloud')
+    parser.add_argument('--tools', '-t', action='store_true', help='Include all tool definitions')
+    parser.add_argument('--focus', '-f', help='Focus on specific area')
+    parser.add_argument('--simulate', '-s', help='Simulate a specific task')
+    parser.add_argument('--provider', '-p', default='anthropic', help='LLM provider for review')
+    parser.add_argument('--dry-run', '-d', action='store_true', help='Show what LLM sees without API call')
+    parser.add_argument('--no-log', action='store_true', help='Skip logging')
+    args = parser.parse_args()
+    
+    load_config(args.mode)
+    
+    print("🔍 Comprehensive System Prompt Validator")
+    print("=" * 60)
+    
+    # Setup logging
+    log_file = None
+    if not args.no_log:
+        log_file = setup_logging()
+        print(f"📝 Logging to: {log_file}")
+    
+    # Get full system prompt
+    system_prompt, error = get_full_system_prompt(args.mode)
+    if error:
+        print(f"❌ {error}")
+        return 1
+    
+    print(f"✅ System prompt: {len(system_prompt)} chars (full dynamic prompt)")
+    
+    # Get tools
+    tools = []
+    if args.tools:
+        tools = get_all_tool_definitions()
+        print(f"✅ Tools: {len(tools)} total ({len([t for t in tools if t['source'] == 'skill'])} skills, {len([t for t in tools if t['source'].startswith('mcp')])} MCP)")
+    
+    # Get MCP instructions
+    mcp_instructions = get_mcp_server_instructions()
+    if mcp_instructions:
+        print(f"✅ MCP server instructions: {len(mcp_instructions)} servers")
+    
+    # Dry run - just show what LLM would see
+    if args.dry_run:
+        print("\n" + "=" * 60)
+        print("DRY RUN - What the LLM receives:")
+        print("=" * 60)
+        print("\n## SYSTEM PROMPT:\n")
+        print(system_prompt[:3000] + "..." if len(system_prompt) > 3000 else system_prompt)
+        
+        if tools:
+            print(f"\n## TOOLS ({len(tools)}):\n")
+            for t in tools[:10]:
+                print(f"  - {t['name']}: {t['description'][:80]}...")
+            if len(tools) > 10:
+                print(f"  ... and {len(tools) - 10} more")
+        
+        if args.simulate:
+            print(f"\n## SIMULATED TASK: {args.simulate}")
+        
+        return 0
+    
+    # Create provider
+    print(f"🤖 Using {args.provider} for review...")
+    
+    if args.provider == "anthropic":
+        provider = create_provider("anthropic",
+            api_key=get_config_value("ANTHROPIC_API_KEY"),
+            model="claude-sonnet-4-20250514"
+        )
+    elif args.provider == "xai":
+        provider = create_provider("xai",
+            api_key=get_config_value("XAI_API_KEY"),
+            model="grok-3-mini"
+        )
+    else:
+        print(f"❌ Unknown provider: {args.provider}")
+        return 1
+    
+    # Run validation
+    focus_msg = f" (focus: {args.focus})" if args.focus else ""
+    sim_msg = f" (simulating: {args.simulate})" if args.simulate else ""
+    print(f"\n⏳ Analyzing{focus_msg}{sim_msg}...")
+    print("-" * 60)
+    
+    result = validate_prompt(provider, system_prompt, tools, mcp_instructions, args.focus, args.simulate)
+    
+    print(result)
+    print("-" * 60)
+    
+    # Save log
+    if log_file:
+        with open(log_file, 'w') as f:
+            f.write(f"# System Prompt Validation - {datetime.now().isoformat()}\n\n")
+            f.write(f"**Mode:** {args.mode}\n")
+            f.write(f"**Provider:** {args.provider}\n")
+            f.write(f"**Focus:** {args.focus or 'None'}\n")
+            f.write(f"**Simulate:** {args.simulate or 'None'}\n")
+            f.write(f"**Tools included:** {len(tools)}\n\n")
+            f.write("## Analysis Result\n\n")
+            f.write(result)
+            f.write("\n\n---\n\n## System Prompt (for reference)\n\n```\n")
+            f.write(system_prompt[:5000])
+            f.write("\n```\n")
+        print(f"\n📝 Saved to: {log_file}")
+    
+    print("✅ Validation complete")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

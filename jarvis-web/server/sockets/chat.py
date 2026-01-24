@@ -588,15 +588,30 @@ class ChatHandler:
                         }, room=session_id)
                         emit_index += 1
             else:
-                # Normal orchestrator results - data keyed by tool name
-                for tool in tools_used:
+                # Normal orchestrator results - tools_used may have duplicates
+                # Track how many times each tool has been seen to create unique IDs
+                tool_counts = {}
+                for idx, tool in enumerate(tools_used):
+                    # Get result - accumulated_data may be a list for repeated tools
                     tool_result = data.get(tool, {})
+                    
+                    # If result is a list, get the specific iteration
+                    tool_idx = tool_counts.get(tool, 0)
+                    if isinstance(tool_result, list):
+                        if tool_idx < len(tool_result):
+                            tool_result = tool_result[tool_idx]
+                        else:
+                            tool_result = tool_result[-1] if tool_result else {}
+                    
+                    tool_counts[tool] = tool_idx + 1
+                    
                     self.socketio.emit('tool:complete', {
                         'tool': tool,
                         'result': tool_result,
                         'duration_ms': duration_ms // max(len(tools_used), 1),
                         'success': True,
-                        'message_id': message_id
+                        'message_id': message_id,
+                        'workflow_step': idx  # Use overall index for unique ID
                     }, room=session_id)
             
             # Save assistant response to conversation
