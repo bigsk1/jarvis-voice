@@ -4,9 +4,9 @@ System Prompt Validator - Comprehensive Analysis
 
 Extracts and analyzes EVERYTHING the LLM receives:
 - Full dynamic system prompt (with time prefix, style notes, native search)
-- All tool definitions (skills + MCP tools)
-- MCP server instructions
-- Intelligence layer biases (if enabled)
+- All tool definitions (skills + MCP tools) from actual ToolRegistry
+- Intelligence layer insights context
+- Known intentional patterns (to avoid false positives)
 
 Asks an LLM to review for clarity, contradictions, and potential issues.
 
@@ -16,6 +16,10 @@ Usage:
   ./bin/validate-system-prompt --focus "canvas"         # Focus on area
   ./bin/validate-system-prompt --simulate "check btc"   # Simulate a task
   ./bin/validate-system-prompt --dry-run                # Show what LLM sees (no API call)
+  ./bin/validate-system-prompt --compare                # Compare to previous validation
+  
+  # Debug specific observed behavior:
+  ./bin/validate-system-prompt --tools --issue "Jarvis used canvas first, then search twice, then canvas again - only last canvas had data"
 """
 
 import os
@@ -26,18 +30,61 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-# Add lib to path
+# Add lib and orchestrator to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'orchestrator'))
 from config_loader import load_config, get_config_value
 from llm_provider import create_provider
 
 LOG_DIR = Path(__file__).parent.parent / 'logs' / 'validate-system-prompt'
+
+# Known intentional patterns that validators might flag but are by design
+KNOWN_PATTERNS = """
+## KNOWN INTENTIONAL PATTERNS (Do NOT flag these as issues):
+
+1. **Memory tool fallback (MAX 2 attempts)**: The system allows trying semantic_recall then search_memory 
+   (or vice versa) if first returns no results. This is LIMITED to 2 attempts by design - NOT a violation
+   of "avoid redundant calls" since they use different search strategies.
+
+2. **Canvas update exception**: After canvas create, task is normally complete. However, if a crucial 
+   new source is discovered AFTER canvas creation, ONE update is allowed. This is intentional flexibility.
+
+3. **stash vs canvas distinction**: These serve DIFFERENT purposes:
+   - stash = temporary workspace for intermediate data (7-day TTL)
+   - canvas = persistent output for final results
+   This is NOT overlap - they're complementary.
+
+4. **deep_memory_search**: This is a SEPARATE specialized tool for cross-source search. It's NOT part
+   of the memory-first cascade. Used for "find everything about X across all data sources."
+
+5. **Native search when enabled**: When XAI_SEARCH=true or ANTHROPIC_SEARCH=true, the system has
+   built-in search and should NOT use external search tools. This is provider-specific capability.
+
+6. **Ghost tools**: Certain tools (GHOST_TOOLS in config) are always available regardless of semantic
+   retrieval. This ensures critical tools like get_time, remember are never missed.
+
+7. **Research workflow flexibility**: "2-4 diverse sources" is guidance, not a hard rule. Stop criteria
+   include: repeated results, multiple 403 errors, or sufficient info to answer.
+"""
 
 
 def setup_logging():
     """Ensure log directory exists."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     return LOG_DIR / f"validation-{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+
+
+def get_previous_validation():
+    """Get the most recent validation log for comparison."""
+    if not LOG_DIR.exists():
+        return None
+    
+    logs = sorted(LOG_DIR.glob("validation-*.md"), reverse=True)
+    if len(logs) < 2:
+        return None
+    
+    # Return second most recent (skip current one being created)
+    return logs[1] if logs else None
 
 
 def get_full_system_prompt(mode='cloud'):
@@ -79,18 +126,21 @@ RESPONSE STYLE: {response_style.upper()}
 - No URLs for speech unless critical
 """
     
-    # Check native search
+    # Check native search - include xAI code_execution if enabled
     native_search_note = ""
     xai_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
+    xai_code_exec = get_config_value("XAI_CODE_EXECUTION", "true").lower() == "true"
     anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
     provider_type = get_config_value("LLM_PROVIDER", "")
     
     if xai_search and provider_type == "xai":
-        native_search_note = """
-NATIVE SEARCH ENABLED:
-You have built-in real-time web/X search. For current info, news, prices, events:
-- Use your NATIVE SEARCH (automatic) - DO NOT use external search tools
-- Your search results are grounded and cited automatically
+        capabilities = ["- NATIVE WEB/X SEARCH: Use for current info, news, prices - DO NOT use external search tools"]
+        if xai_code_exec:
+            capabilities.append("- NATIVE CODE EXECUTION: Python REPL for complex math, data analysis")
+        native_search_note = f"""
+NATIVE SERVER-SIDE TOOLS ENABLED:
+{chr(10).join(capabilities)}
+- Results are grounded and cited automatically
 """
     elif anthropic_search and provider_type == "anthropic":
         native_search_note = """
@@ -128,88 +178,123 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
     return full_prompt, None
 
 
-def get_enabled_mcp_servers():
-    """Get list of enabled MCP servers from config with descriptions."""
-    enabled = {}
-    mcp_config = Path(__file__).parent.parent / 'config' / 'mcp-servers.json'
-    
-    if mcp_config.exists():
-        try:
-            with open(mcp_config) as f:
-                config = json.load(f)
-                for server_name, server_config in config.get('mcpServers', {}).items():
-                    if server_config.get('enabled', True):
-                        enabled[server_name] = server_config.get('description', 'No description')
-        except:
-            pass
-    
-    return enabled
-
-
-def get_all_tool_definitions():
-    """Load ALL tool definitions (skills + enabled MCP tools)."""
+def get_actual_tools(mode='cloud'):
+    """
+    Load ACTUAL tools from ToolRegistry - exactly what the LLM would see.
+    This includes both local skills and discovered MCP tools.
+    """
     tools = []
     
-    # 1. Local skills
-    skills_dir = Path(__file__).parent.parent / 'skills'
-    for json_file in skills_dir.glob('**/*.tool.json'):
-        try:
-            with open(json_file) as f:
-                tool = json.load(f)
-                if tool.get('enabled', True):
-                    tools.append({
-                        'source': 'skill',
-                        'name': tool.get('name'),
-                        'description': tool.get('description', ''),
-                        'parameters': tool.get('parameters', {}).get('properties', {}),
-                        'file': str(json_file.relative_to(skills_dir.parent))
-                    })
-        except Exception as e:
-            pass
-    
-    # 2. MCP servers from config (tools are loaded at runtime from Docker)
-    enabled_servers = get_enabled_mcp_servers()
-    for server_name, description in enabled_servers.items():
-        tools.append({
-            'source': f'mcp:{server_name}',
-            'name': f'mcp_{server_name}_*',  # Placeholder - actual tools loaded at runtime
-            'description': description,
-            'parameters': {},
-            'file': 'config/mcp-servers.json',
-            'note': 'MCP server - specific tools loaded at runtime'
-        })
-    
-    # Note: Cursor IDE MCP tools (cursor-ide-browser, etc.) are excluded
-    # as they're for IDE use only, not Jarvis runtime
+    try:
+        from tool_schema import get_tool_registry
+        registry = get_tool_registry(mode=mode)
+        
+        # list_tools() returns names, use get_tool() to get actual tool objects
+        for tool_name in registry.list_tools():
+            tool = registry.get_tool(tool_name)
+            if tool:
+                tool_info = {
+                    'name': tool.name,
+                    'description': tool.description or '',
+                    'source': 'mcp' if tool.name.startswith('mcp_') else 'skill',
+                    'parameters': {}
+                }
+                
+                # Extract parameter names from schema
+                if hasattr(tool, 'parameters') and tool.parameters:
+                    props = tool.parameters.get('properties', {})
+                    tool_info['parameters'] = {k: v.get('type', 'any') for k, v in props.items()}
+                
+                tools.append(tool_info)
+            
+    except Exception as e:
+        print(f"⚠️  Could not load from ToolRegistry: {e}")
+        print("    Falling back to file-based tool loading...")
+        
+        # Fallback: load from files
+        skills_dir = Path(__file__).parent.parent / 'skills'
+        for json_file in skills_dir.glob('**/*.tool.json'):
+            try:
+                with open(json_file) as f:
+                    tool = json.load(f)
+                    if tool.get('enabled', True):
+                        tools.append({
+                            'source': 'skill',
+                            'name': tool.get('name'),
+                            'description': tool.get('description', ''),
+                            'parameters': {k: v.get('type', 'any') for k, v in tool.get('parameters', {}).get('properties', {}).items()}
+                        })
+            except:
+                pass
     
     return tools
 
 
-def get_mcp_server_instructions():
-    """Get MCP server-level instructions."""
-    instructions = {}
-    mcp_config = Path(__file__).parent.parent / '.cursor' / 'mcp.json'
-    
-    if mcp_config.exists():
-        try:
-            with open(mcp_config) as f:
-                config = json.load(f)
-                for server_name, server_config in config.get('mcpServers', {}).items():
-                    if 'instructions' in server_config:
-                        instructions[server_name] = server_config['instructions']
-        except:
-            pass
-    
-    return instructions
+def get_ghost_tools():
+    """Get list of ghost tools that are always available."""
+    ghost_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time')
+    return [t.strip() for t in ghost_str.split(',')]
 
 
-def validate_prompt(provider, system_prompt: str, tools: list, mcp_instructions: dict, focus: str = None, simulate_task: str = None):
+def get_intelligence_context_example():
+    """Get an example of what intelligence insights might look like when injected."""
+    return """
+## INTELLIGENCE LAYER CONTEXT (Example of what gets injected):
+
+When queries are processed, learned insights may be prepended like:
+```
+=== LEARNED INSIGHTS (confidence: 0.85) ===
+Based on similar past interactions:
+- For status/health queries: prefer using direct fetch tools over search
+- When user asks about "my server": check memory first for stored server info
+- Multi-step research tasks: gather all data before creating canvas output
+=== END INSIGHTS ===
+```
+
+These insights are generated from past successful interactions and guide tool selection.
+"""
+
+
+def validate_prompt(provider, system_prompt: str, tools: list, ghost_tools: list, 
+                   focus: str = None, simulate_task: str = None, compare_to: str = None,
+                   issue: str = None):
     """Ask LLM to validate the complete prompt setup."""
     
     # Build comprehensive review prompt
-    review_prompt = f"""You are an expert AI prompt engineer. Analyze this COMPLETE system configuration for a voice assistant called "Jarvis".
+    if issue:
+        # Issue-focused debugging mode
+        review_prompt = f"""IMPORTANT CONTEXT:
+- You are a PROMPT ENGINEER debugging why another AI called "Jarvis" behaved incorrectly
+- The rules below (voice limits, no markdown, etc.) are for JARVIS, NOT for you
+- You are NOT Jarvis. You are analyzing Jarvis's instructions to find bugs.
+- This is a NON-INTERACTIVE SCRIPT. There is NO back-and-forth. You cannot ask questions.
+- Your output goes to a log file. Use markdown, long format, whatever is needed.
 
-## FULL SYSTEM PROMPT (exactly what the LLM sees):
+## OBSERVED ISSUE:
+**{issue}**
+
+Your task: Analyze the system prompt and tool definitions to explain WHY Jarvis behaved this way.
+Look for:
+1. **Ambiguous guidance** - Rules that could be interpreted multiple ways
+2. **Contradictory instructions** - Rules that conflict and caused wrong prioritization
+3. **Missing guidance** - Gaps that left Jarvis to guess
+4. **Tool order confusion** - Unclear sequencing rules for multi-step workflows
+5. **Loop/repeat triggers** - Why the same tool might have been called multiple times
+
+{KNOWN_PATTERNS}"""
+    else:
+        review_prompt = f"""IMPORTANT CONTEXT:
+- You are a PROMPT ENGINEER reviewing a system prompt for ANOTHER AI called "Jarvis"
+- The rules below (voice limits, no markdown, etc.) are for JARVIS, NOT for you
+- You are NOT Jarvis. You are analyzing Jarvis's instructions.
+- This is a NON-INTERACTIVE SCRIPT. There is NO back-and-forth. You cannot ask questions.
+- Your output goes to a log file. Use markdown, long format, whatever is needed for a good audit.
+
+Your task: Analyze the system prompt below and find issues that could cause Jarvis to behave incorrectly.
+
+{KNOWN_PATTERNS}
+
+## FULL SYSTEM PROMPT FOR JARVIS (this is what you're analyzing, NOT your instructions):
 ```
 {system_prompt}
 ```
@@ -218,20 +303,22 @@ def validate_prompt(provider, system_prompt: str, tools: list, mcp_instructions:
 """
     
     # Add tools (summarized to avoid token explosion)
-    for tool in tools[:30]:  # First 30
-        params = ', '.join(tool.get('parameters', {}).keys())
+    for tool in tools[:40]:  # First 40
+        params = ', '.join(f"{k}:{v}" for k, v in tool.get('parameters', {}).items())
         review_prompt += f"\n### {tool['name']} [{tool['source']}]\n"
-        review_prompt += f"Description: {tool['description'][:300]}...\n" if len(tool.get('description', '')) > 300 else f"Description: {tool.get('description', 'N/A')}\n"
-        review_prompt += f"Parameters: {params}\n"
+        desc = tool.get('description', 'N/A')
+        review_prompt += f"Description: {desc[:400]}...\n" if len(desc) > 400 else f"Description: {desc}\n"
+        if params:
+            review_prompt += f"Parameters: {params}\n"
     
-    if len(tools) > 30:
-        review_prompt += f"\n... and {len(tools) - 30} more tools\n"
+    if len(tools) > 40:
+        review_prompt += f"\n... and {len(tools) - 40} more tools\n"
     
-    # Add MCP instructions
-    if mcp_instructions:
-        review_prompt += "\n## MCP SERVER INSTRUCTIONS:\n"
-        for server, instr in mcp_instructions.items():
-            review_prompt += f"\n### {server}:\n{instr[:500]}...\n" if len(instr) > 500 else f"\n### {server}:\n{instr}\n"
+    # Add ghost tools
+    review_prompt += f"\n## GHOST TOOLS (always available regardless of query):\n{', '.join(ghost_tools)}\n"
+    
+    # Add intelligence context
+    review_prompt += get_intelligence_context_example()
     
     # Add focus area
     if focus:
@@ -247,31 +334,100 @@ Walk through EXACTLY how you would interpret this given the system prompt and to
 1. What intent would you detect?
 2. Which tools would you consider?
 3. In what order would you call them?
-4. Any confusion or ambiguity in the instructions?
+4. What could go wrong or be confusing?
 """
     
-    review_prompt += """
+    # Add comparison context
+    if compare_to:
+        review_prompt += f"""
+## PREVIOUS VALIDATION ISSUES:
+The previous validation found these issues. Check if they're still present or resolved:
+```
+{compare_to[:2000]}
+```
+"""
+    
+    # Different analysis request for issue-based debugging vs general validation
+    if issue:
+        review_prompt += f"""
+
+## ISSUE TO DIAGNOSE:
+**{issue}**
 
 ## ANALYSIS REQUESTED:
 
-1. **CONTRADICTIONS** - Any rules that conflict with each other? Quote the exact text.
+Provide a ROOT CAUSE ANALYSIS explaining why Jarvis behaved this way:
 
-2. **AMBIGUITIES** - Where might the LLM be unsure what to do? Specific scenarios.
+### 1. MOST LIKELY CAUSE
+What rule(s) in the system prompt most likely caused this exact behavior?
+Quote the specific text and explain the misinterpretation.
 
-3. **TOOL SELECTION GAPS** - When might it be unclear which tool to use?
+### 2. TOOL SELECTION ANALYSIS
+Given the tools available, trace through why each tool was called in that order.
+- Was there ambiguity about which tool to use first?
+- Did a rule cause repeated calls to the same tool?
+- Were there missing stop conditions?
 
-4. **WORKFLOW ISSUES** - Are multi-step task sequences clear? Research → output? Memory → action?
+### 3. CONTRIBUTING FACTORS
+What other rules might have contributed to the confusion?
 
-5. **MISSING EDGE CASES** - Important scenarios not covered?
+### 4. RECOMMENDED FIX
+Provide specific text changes to prevent this issue:
+```diff
+- old text
++ new text
+```
 
-6. **TOP 3 SPECIFIC FIXES** - Exact text changes you'd recommend (before/after)
+### 5. TEST CASE
+Suggest a test scenario to verify the fix works.
 
-Be concise but SPECIFIC. Quote exact problematic text. This is a real production system.
+Be forensic and precise. Quote exact system prompt text that led to this behavior.
+
+DO NOT ask clarifying questions. DO NOT ask about output length or format. START YOUR ANALYSIS NOW with "## 1. MOST LIKELY CAUSE".
 """
+        system_msg = "You are debugging a specific observed behavior. IMPORTANT: Do NOT ask ANY questions about scope, length, or format. Start immediately with your root cause analysis. Begin with '## 1. MOST LIKELY CAUSE'."
+    else:
+        review_prompt += """
+
+## ANALYSIS REQUESTED:
+
+Analyze the COMPLETE system prompt and ALL tool definitions provided above. DO NOT ask which sections to analyze - analyze everything.
+
+Categorize findings by severity:
+
+### CRITICAL (Will cause failures or wrong behavior)
+- Any rules that directly contradict each other
+- Missing guidance that will cause tool selection failures
+
+### WARNING (May cause suboptimal behavior)  
+- Ambiguous guidance that could confuse the LLM
+- Edge cases not covered
+
+### INFO (Minor improvements)
+- Style/clarity suggestions
+- Nice-to-haves
+
+For each finding:
+1. Quote the exact problematic text
+2. Explain WHY it's a problem with a concrete example
+3. Suggest a specific fix (before/after)
+
+Remember: Check KNOWN PATTERNS section first - don't flag intentional designs as issues!
+
+OUTPUT FORMAT:
+- CRITICAL issues: Quote problematic text, explain, suggest fix
+- WARNING issues: Brief description with key quote
+- INFO issues: One-liner each
+- Target length: 2000-4000 words total
+- DO NOT ask about output length or format - just use this format
+
+Be concise but SPECIFIC. This is a real production system. START YOUR ANALYSIS NOW.
+"""
+        system_msg = "You are an expert AI prompt engineer performing a system prompt audit. IMPORTANT: Do NOT ask ANY questions. Do NOT ask about output length, format, or scope. Just analyze and provide findings using the format specified. Start immediately with '## CRITICAL' section."
     
     response = provider.chat(
         message=review_prompt,
-        system_prompt="You are an expert AI prompt engineer. Be brutally honest and specific. Quote exact text that's problematic.",
+        system_prompt=system_msg,
         max_tokens=4000
     )
     
@@ -282,11 +438,15 @@ def main():
     parser = argparse.ArgumentParser(description='Comprehensive System Prompt Validator')
     parser.add_argument('--mode', '-m', choices=['cloud', 'local'], default='cloud')
     parser.add_argument('--tools', '-t', action='store_true', help='Include all tool definitions')
-    parser.add_argument('--focus', '-f', help='Focus on specific area')
+    parser.add_argument('--focus', '-f', help='Focus on specific area (e.g., canvas, memory, research)')
     parser.add_argument('--simulate', '-s', help='Simulate a specific task')
-    parser.add_argument('--provider', '-p', default='anthropic', help='LLM provider for review')
+    parser.add_argument('--provider', '-p', default='anthropic', choices=['anthropic', 'xai', 'openai'],
+                       help='LLM provider for review')
     parser.add_argument('--dry-run', '-d', action='store_true', help='Show what LLM sees without API call')
+    parser.add_argument('--compare', '-c', action='store_true', help='Compare to previous validation')
+    parser.add_argument('--issue', '-i', help='Describe a specific observed issue to debug (e.g., "Jarvis called canvas before search")')
     parser.add_argument('--no-log', action='store_true', help='Skip logging')
+    parser.add_argument('--full-prompt', action='store_true', help='Save full prompt in log (not truncated)')
     args = parser.parse_args()
     
     load_config(args.mode)
@@ -308,16 +468,31 @@ def main():
     
     print(f"✅ System prompt: {len(system_prompt)} chars (full dynamic prompt)")
     
-    # Get tools
+    # Get tools from actual registry
     tools = []
+    ghost_tools = get_ghost_tools()
     if args.tools:
-        tools = get_all_tool_definitions()
-        print(f"✅ Tools: {len(tools)} total ({len([t for t in tools if t['source'] == 'skill'])} skills, {len([t for t in tools if t['source'].startswith('mcp')])} MCP)")
+        tools = get_actual_tools(args.mode)
+        skill_count = len([t for t in tools if t['source'] == 'skill'])
+        mcp_count = len([t for t in tools if t['source'] == 'mcp'])
+        print(f"✅ Tools: {len(tools)} total ({skill_count} skills, {mcp_count} MCP)")
+        print(f"✅ Ghost tools: {', '.join(ghost_tools)}")
     
-    # Get MCP instructions
-    mcp_instructions = get_mcp_server_instructions()
-    if mcp_instructions:
-        print(f"✅ MCP server instructions: {len(mcp_instructions)} servers")
+    # Get previous validation for comparison
+    compare_content = None
+    if args.compare:
+        prev_log = get_previous_validation()
+        if prev_log:
+            try:
+                compare_content = prev_log.read_text()
+                # Extract just the analysis section
+                if "## Analysis Result" in compare_content:
+                    compare_content = compare_content.split("## Analysis Result")[1].split("---")[0]
+                print(f"✅ Comparing to: {prev_log.name}")
+            except:
+                print("⚠️  Could not read previous validation")
+        else:
+            print("⚠️  No previous validation found for comparison")
     
     # Dry run - just show what LLM would see
     if args.dry_run:
@@ -325,17 +500,24 @@ def main():
         print("DRY RUN - What the LLM receives:")
         print("=" * 60)
         print("\n## SYSTEM PROMPT:\n")
-        print(system_prompt[:3000] + "..." if len(system_prompt) > 3000 else system_prompt)
+        print(system_prompt[:4000] + "\n..." if len(system_prompt) > 4000 else system_prompt)
         
         if tools:
             print(f"\n## TOOLS ({len(tools)}):\n")
-            for t in tools[:10]:
-                print(f"  - {t['name']}: {t['description'][:80]}...")
-            if len(tools) > 10:
-                print(f"  ... and {len(tools) - 10} more")
+            for t in tools[:15]:
+                params = ', '.join(t.get('parameters', {}).keys())
+                print(f"  - {t['name']} [{t['source']}]: {t['description'][:60]}... | params: {params}")
+            if len(tools) > 15:
+                print(f"  ... and {len(tools) - 15} more")
+        
+        print(f"\n## GHOST TOOLS: {', '.join(ghost_tools)}")
+        print(f"\n## KNOWN PATTERNS: {len(KNOWN_PATTERNS.split('**'))-1} documented")
         
         if args.simulate:
             print(f"\n## SIMULATED TASK: {args.simulate}")
+        
+        if args.issue:
+            print(f"\n## ISSUE TO DEBUG: {args.issue}")
         
         return 0
     
@@ -345,12 +527,17 @@ def main():
     if args.provider == "anthropic":
         provider = create_provider("anthropic",
             api_key=get_config_value("ANTHROPIC_API_KEY"),
-            model="claude-sonnet-4-20250514"
+            model="claude-sonnet-4-5-20250929"
         )
     elif args.provider == "xai":
         provider = create_provider("xai",
             api_key=get_config_value("XAI_API_KEY"),
-            model="grok-3-mini"
+            model="grok-4-1-fast-non-reasoning-latest"
+        )
+    elif args.provider == "openai":
+        provider = create_provider("openai",
+            api_key=get_config_value("OPENAI_API_KEY"),
+            model=get_config_value("OPENAI_MODEL", "gpt-5.1-2025-11-13")
         )
     else:
         print(f"❌ Unknown provider: {args.provider}")
@@ -359,10 +546,15 @@ def main():
     # Run validation
     focus_msg = f" (focus: {args.focus})" if args.focus else ""
     sim_msg = f" (simulating: {args.simulate})" if args.simulate else ""
-    print(f"\n⏳ Analyzing{focus_msg}{sim_msg}...")
+    compare_msg = " (comparing to previous)" if compare_content else ""
+    issue_msg = f" (debugging: {args.issue[:50]}...)" if args.issue and len(args.issue) > 50 else f" (debugging: {args.issue})" if args.issue else ""
+    print(f"\n⏳ Analyzing{focus_msg}{sim_msg}{compare_msg}{issue_msg}...")
     print("-" * 60)
     
-    result = validate_prompt(provider, system_prompt, tools, mcp_instructions, args.focus, args.simulate)
+    result = validate_prompt(
+        provider, system_prompt, tools, ghost_tools,
+        args.focus, args.simulate, compare_content, args.issue
+    )
     
     print(result)
     print("-" * 60)
@@ -375,12 +567,27 @@ def main():
             f.write(f"**Provider:** {args.provider}\n")
             f.write(f"**Focus:** {args.focus or 'None'}\n")
             f.write(f"**Simulate:** {args.simulate or 'None'}\n")
-            f.write(f"**Tools included:** {len(tools)}\n\n")
+            if args.issue:
+                f.write(f"**Issue being debugged:** {args.issue}\n")
+            f.write(f"**Tools included:** {len(tools)}\n")
+            f.write(f"**Ghost tools:** {', '.join(ghost_tools)}\n")
+            f.write(f"**Compared to previous:** {'Yes' if compare_content else 'No'}\n\n")
             f.write("## Analysis Result\n\n")
             f.write(result)
             f.write("\n\n---\n\n## System Prompt (for reference)\n\n```\n")
-            f.write(system_prompt[:5000])
+            # Save full or truncated based on flag
+            if args.full_prompt:
+                f.write(system_prompt)
+            else:
+                f.write(system_prompt[:8000])
+                if len(system_prompt) > 8000:
+                    f.write(f"\n... (truncated, {len(system_prompt) - 8000} more chars)")
             f.write("\n```\n")
+            
+            # Add known patterns reference
+            f.write("\n\n## Known Patterns (not flagged as issues)\n\n")
+            f.write(KNOWN_PATTERNS)
+        
         print(f"\n📝 Saved to: {log_file}")
     
     print("✅ Validation complete")

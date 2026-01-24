@@ -425,11 +425,13 @@ Mode: {self.mode}
                 if last_tool_call and last_tool_call == current_call:
                     if sys.stdout.isatty():
                         print(f"⚠️  Duplicate tool call detected: {tool_name}")
-                        print(f"   Forcing Q&A mode to prevent redundant execution")
+                        print(f"   Forcing Q&A mode to synthesize results")
                     
-                    # Force Q&A mode with summary of what was done
-                    tools_summary = ', '.join(set(tools_used))
-                    final_speech = f"I've completed the task using {len(set(tools_used))} tool(s): {tools_summary}."
+                    # Generate intelligent summary using accumulated data (not just tool list!)
+                    # This ensures the user gets actual research results, not just "I used tools"
+                    final_speech = self._synthesize_duplicate_prevented_response(
+                        transcript, tools_used, accumulated_data, conversation_context
+                    )
                     
                     self._log_conversation(transcript, final_speech, tools_used, success=True)
                     
@@ -702,6 +704,89 @@ Mode: {self.mode}
         # Maybe collect feedback (random chance based on env config)
         return self._maybe_collect_feedback(result, transcript)
     
+    def _synthesize_duplicate_prevented_response(
+        self, 
+        user_query: str, 
+        tools_used: list, 
+        accumulated_data: dict,
+        conversation_context: list
+    ) -> str:
+        """
+        Synthesize a proper response when duplicate tool detection triggers.
+        
+        Instead of just saying "I used X tools", actually summarize the research
+        results and answer the user's question using the accumulated data.
+        
+        Args:
+            user_query: Original user request
+            tools_used: List of tools that were executed
+            accumulated_data: Results from all tools
+            conversation_context: Full conversation history with results
+            
+        Returns:
+            Synthesized speech response that actually answers the user's question
+        """
+        try:
+            # Extract useful data from accumulated results
+            extracted_data = self._extract_useful_data(accumulated_data)
+            
+            # Check for canvas content in conversation context (research may be there)
+            canvas_content = ""
+            for ctx in conversation_context:
+                if ctx.get("tool") == "canvas":
+                    result = ctx.get("result", {})
+                    canvas_content = result.get("data", {}).get("content", "")[:2000]
+                    if canvas_content:
+                        break
+            
+            # Use LLM to synthesize a proper answer
+            context = f"""User asked: "{user_query}"
+
+Tools executed: {', '.join(set(tools_used))}
+
+GATHERED DATA:
+{extracted_data}
+
+{f"CANVAS CONTENT (research results):{chr(10)}{canvas_content}" if canvas_content else ""}
+
+IMPORTANT: The task completed but tried to call a duplicate tool. 
+You MUST synthesize a proper answer using the data above.
+
+CRITICAL RULES:
+1. MAX 75 WORDS - but ACTUALLY ANSWER the user's question
+2. If you found relevant info (camera models, prices, specs, comparisons) - INCLUDE IT
+3. Reference the Canvas page if detailed results were saved there
+4. DO NOT say "I used tools" or mention tool counts - just answer!
+5. If data is in Canvas, say "I've saved the full comparison to Canvas. Here's the summary: ..."
+
+GOOD EXAMPLES:
+- "I've saved the camera comparison to Canvas. Top picks: Reolink E1 Pro at $45 (4MP, local storage), Wyze Cam V3 at $35 (night vision, SD card), and Eufy 2K at $50 (no subscription, HomeKit). All wired power with free local recording."
+- "Research complete and saved to Canvas. Based on reviews, the best no-subscription cameras are..."
+
+BAD EXAMPLES:
+- "I've completed the task using 2 tools: canvas, brave_search" (WRONG - answer the question!)
+- "Task done." (WRONG - provide actual findings!)
+
+Your synthesized response:"""
+            
+            response = self.router.provider.chat(
+                context, 
+                system_prompt="Synthesize research results into a helpful answer. MAX 75 words. Answer the user's actual question using the data provided."
+            )
+            return response.strip()
+            
+        except Exception as e:
+            # Fallback: still try to be useful
+            if sys.stdout.isatty():
+                print(f"⚠️ Failed to synthesize duplicate response: {e}", file=sys.stderr)
+            
+            # Better fallback than just "I used X tools"
+            if "canvas" in [t.lower() for t in tools_used]:
+                return "Research complete and saved to Canvas. Check the Canvas page for full details on your request."
+            else:
+                tools_summary = ', '.join(set(tools_used))
+                return f"Task completed using {tools_summary}. Please check the results above."
+
     def _format_natural_response(self, user_query: str, tool_name: str, tool_result: Dict[str, Any]) -> str:
         """
         Use LLM to format tool results into natural conversational speech.

@@ -1518,7 +1518,7 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
             provider = create_provider(
                 'xai',
                 api_key=get_config_value('XAI_API_KEY'),
-                model=get_config_value('XAI_MODEL', 'grok-3-fast-beta')
+                model=get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
             )
         elif provider_type == 'anthropic':
             provider = create_provider(

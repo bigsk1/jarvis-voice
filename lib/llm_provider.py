@@ -77,7 +77,11 @@ class OpenAIProvider(LLMProvider):
         try:
             params = {"model": self.model, "messages": messages}
             if max_tokens:
-                params["max_tokens"] = max_tokens
+                # Newer OpenAI models (gpt-5.x, o1, o3, etc.) use max_completion_tokens
+                if self.model.startswith(('gpt-5', 'o1', 'o3')):
+                    params["max_completion_tokens"] = max_tokens
+                else:
+                    params["max_tokens"] = max_tokens
             response = self.client.chat.completions.create(**params)
             return response.choices[0].message.content or ""
         except Exception as e:
