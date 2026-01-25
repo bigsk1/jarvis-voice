@@ -80,6 +80,8 @@ data/canvas
 # Cursor chat history files
 cursor_*.md
 *.cursor.*
+.cursor/mcp.json
+.cursor/mcp copy.json
 
 # OpenCode sessions and logs
 logs/opencode/
