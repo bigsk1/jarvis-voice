@@ -166,8 +166,8 @@
       "tool": "canvas",
       "action": "create",
       "params": {
-        "title": "Daily Status - ${date}",
-        "tags": ["status", "daily", "workflow", "visual"]
+        "title": "Workflows/Daily Status/${date}",
+        "tags": ["status", "daily", "workflow", "visual", "${date}"]
       },
       "llm_prompt": "Create a clean, well-formatted status report. If an image was generated, include it at the top with: ![Status Dashboard](${image_ref})\n\nData to include:\nDate: ${date} (${day_of_week})\nTime: ${timestamp}\n\n## Weather (${location}):\n- Temperature: ${temperature}°F (feels like ${feels_like}°F)\n- Condition: ${condition}\n- Humidity: ${humidity}%\n- Wind: ${wind_speed} mph\n\n## Crypto:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n\n## Stocks:\n- TSLA: $${tsla_price} (${tsla_change}% today)\n- Gold: $${gold_price} (${gold_change}% today)\n\n## Alerts: ${alert_count} pending\n${alerts}\n\n## Reminders: ${reminder_count} upcoming\n${reminders}\n\n## System Health:\n- CPU: ${cpu_percent}%\n- RAM: ${memory_percent}% (${memory_used_gb}/${memory_total_gb} GB)\n- Uptime: ${uptime}\n\nFormat with emojis (🌤️ Weather, 📈 Crypto, 📊 Stocks, 🚨 Alerts, ⏰ Reminders, 💻 System). Add green/red indicators for changes.",
       "required": true,

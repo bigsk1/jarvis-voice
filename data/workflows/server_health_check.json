@@ -66,7 +66,7 @@
       "tool": "canvas",
       "action": "create",
       "params": {
-        "title": "Health Check: ${host}",
+        "title": "Workflows/Health Check/${host}",
         "tags": ["health", "server", "${host}"]
       },
       "llm_prompt": "Create a server health report from this SSH output.\n\nHost: ${host}\nChecked at: ${check_time} at ${check_hour}\nStash reference: ${stash_ref}\n\nRaw Output:\n${ssh_output}\n\nFormat as markdown with:\n- Server Status (up/healthy or issues)\n- Uptime\n- Memory Usage (used/total, percentage)\n- Disk Usage (used/total, percentage)\n- Load Average (1/5/15 min)\n- Top memory-consuming processes\n- Any concerns or recommendations",
