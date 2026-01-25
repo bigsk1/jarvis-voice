@@ -749,6 +749,7 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 | `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, canvas |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/health [host]` | SSH health check (default: vps2) | ssh_remote |
+| `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel, search_memory |
 
 ### Workflow Features
 
@@ -990,7 +991,8 @@ LIMIT 7;"
 
 **Proactive System:**
 - [`docs/api/`](docs/api/) - **Proactive API** documentation (webhooks, alerts, monitoring)
-- [`docs/api/API_OVERVIEW.md`](docs/api/API_OVERVIEW.md) - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Conversations) ⭐ ENHANCED
+- [`docs/api/API_OVERVIEW.md`](docs/api/API_OVERVIEW.md) - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Intel, Conversations) ⭐ ENHANCED
+- [`docs/api/INTEL.md`](docs/api/INTEL.md) - **Intel API** (CRUD for jarvis-intel files, ingestion, stats)
 - [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (list, execute, history) 
 - [`docs/service/`](docs/service/) - **Background Services** documentation (daemons, auto-resolve)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
@@ -1229,6 +1231,11 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Intel API** - Full CRUD for jarvis-intel knowledge files
+  - `GET /api/intel/stats`, `GET /api/intel`, `POST /api/intel`, `PUT/DELETE /api/intel/{filename}`
+  - Auto-ingest option, sync/async ingestion modes
+  - See: [`docs/api/INTEL.md`](docs/api/INTEL.md)
+- ✅ **URL Ingest Workflow** - `/url_ingest <url>` to crawl any URL, create intel file, ingest to memory for RAG
 - ✅ **System Prompt Validator** - LLM-powered debugging tool for prompt engineering
   - `./bin/validate-system-prompt --tools --issue "..."` - Root cause analysis for unexpected Jarvis behavior
   - Supports Anthropic, xAI, OpenAI providers
@@ -1506,6 +1513,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.28 (January 2026)  
+**Current Version:** v2.29 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** System Prompt Validator with --issue flag for debugging unexpected behavior
+**Latest Features:** Intel API for programmatic knowledge file management + URL Ingest workflow

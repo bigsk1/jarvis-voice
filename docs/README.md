@@ -14,7 +14,7 @@
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.0** (workflow tooltips, prompt tooltips, server logs) ⭐ ENHANCED
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) 
-- **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence) ⭐ ENHANCED
+- **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel) ⭐ ENHANCED
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
@@ -160,6 +160,7 @@
 | **JARVIS_WORKFLOW.md** | Complete workflow with visual flowcharts |
 | **AUTO_CONTEXT_SYSTEM.md** | Short-term conversation memory  |
 | **CONVERSATION_STATE_ARCHITECTURE.md** | State management between cycles  |
+| **[api/INTEL.md](api/INTEL.md)** | 🆕 **Intel API** - CRUD operations for jarvis-intel files |
 | **api/READY_TO_USE.md** | Proactive API (Phase 1 COMPLETE) - Webhook system for alerts |
 | **api/PROACTIVE_ASSISTANT_SYSTEM.md** | Full architecture |
 
@@ -300,6 +301,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-01-25:**
+- ✅ **Intel API** - Programmatic access to jarvis-intel knowledge files ⭐ NEW
+  - CRUD operations for intel files (create, read, update, delete)
+  - `GET /api/intel/stats` - Folder statistics (total files, facts, size)
+  - `GET /api/intel` - List all files with ingestion stats
+  - `POST /api/intel` - Create intel file with optional auto-ingest
+  - `PUT /api/intel/{filename}` - Update file, re-ingest to memory
+  - `DELETE /api/intel/{filename}` - Delete file and associated memories
+  - `POST /api/intel/ingest` - Manual ingestion (sync or async mode)
+  - See: [`docs/api/INTEL.md`](api/INTEL.md)
+- ✅ **URL Ingest Workflow** - `/url_ingest <url>` to crawl, summarize, and ingest URLs to memory
 - ✅ **System Prompt Validator** - LLM-powered debugging tool for prompt engineering ⭐ NEW
   - `./bin/validate-system-prompt --tools` - Comprehensive prompt audit
   - `--issue` flag for targeted debugging: `--issue "Jarvis called canvas before search"`
@@ -859,6 +870,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-25 (v2.28)  
-**Latest:** System Prompt Validator with --issue flag for debugging unexpected Jarvis behavior  
+**Last Updated:** 2026-01-25 (v2.29)  
+**Latest:** Intel API for programmatic knowledge file management + URL Ingest workflow  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

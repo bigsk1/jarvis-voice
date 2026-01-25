@@ -210,12 +210,13 @@ curl http://localhost:8880/api/alerts
 ✅ Conversations API (read-only history access) 
 ✅ Stash API (read-only artifacts access) 
 ✅ Canvas API (read-only pages access) 
+✅ Intel API (CRUD for knowledge files) 
 ✅ Dark mode Swagger UI 
 
 ---
 
 **Status**: Production Ready ✅  
-**Last Updated**: January 17, 2026
+**Last Updated**: January 25, 2026
 
 See [READY_TO_USE.md](READY_TO_USE.md) for detailed setup instructions.
 
@@ -735,6 +736,59 @@ GET /api/canvas/{page_id}
 ```
 
 See [CANVAS.md](./CANVAS.md) for detailed documentation.
+
+### Intel (Knowledge Files) 
+
+CRUD operations for `jarvis-intel/` knowledge files with ingestion support.
+
+```bash
+# === Statistics ===
+
+# Get intel folder stats
+GET /api/intel/stats
+# Returns: total_files, total_size, total_facts_ingested, pending files
+
+# === CRUD Operations ===
+
+# List all intel files
+GET /api/intel
+GET /api/intel?include_stats=true   # Include fact counts
+
+# Create intel file
+POST /api/intel
+Body: {
+  "filename": "my-notes.md",
+  "content": "# My Notes\n\n## Facts\n- Key: Value",
+  "auto_ingest": true  # Optional: ingest immediately
+}
+
+# Get file content
+GET /api/intel/{filename}
+
+# Update file (re-ingests if auto_ingest=true)
+PUT /api/intel/{filename}
+Body: {
+  "content": "Updated content",
+  "auto_ingest": true
+}
+
+# Delete file and its memories
+DELETE /api/intel/{filename}
+
+# === Ingestion ===
+
+# Trigger manual ingestion
+POST /api/intel/ingest?async_mode=true   # Background
+POST /api/intel/ingest?async_mode=false  # Wait for completion
+```
+
+**Use Cases:**
+- Automated knowledge import from external systems
+- Webhook-triggered intel updates
+- Batch import scripts
+- Programmatic RAG content management
+
+See [INTEL.md](./INTEL.md) for detailed documentation.
 
 ### Prices 
 
