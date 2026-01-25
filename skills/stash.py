@@ -310,9 +310,36 @@ def action_save(args: dict) -> dict:
         if not url:
             raise ValueError("url is required for kind='url'")
         result = stash_file.save_from_url(url, name, on_conflict, tags, tool_origin)
+    
+    elif kind == 'file':
+        file_path = args.get('file_path')
+        if not file_path:
+            raise ValueError("file_path is required for kind='file'")
+        
+        from pathlib import Path
+        src_path = Path(file_path)
+        
+        if not src_path.exists():
+            raise ValueError(f"File not found: {file_path}")
+        
+        # Security: only allow files from /tmp or project directories
+        allowed_prefixes = ['/tmp', str(Path(__file__).parent.parent)]
+        if not any(str(src_path).startswith(prefix) for prefix in allowed_prefixes):
+            raise ValueError(f"File path not allowed: {file_path}")
+        
+        # Read file and save as binary
+        with open(src_path, 'rb') as f:
+            data = f.read()
+        
+        # Use original filename if no name provided
+        if not name:
+            name = src_path.name
+        
+        result = stash_file.save_binary(data, name, args.get('mime_type'), 
+                                        on_conflict, tags, tool_origin)
         
     else:
-        raise ValueError(f"Unknown kind: {kind}. Use: text, json, base64, url")
+        raise ValueError(f"Unknown kind: {kind}. Use: text, json, base64, url, file")
     
     size_str = format_size(result['size_bytes'])
     

@@ -35,8 +35,12 @@
       },
       "kind": {
         "type": "string",
-        "description": "Content type for save: text, json, base64, or url",
-        "enum": ["text", "json", "base64", "url"]
+        "description": "Content type for save: text, json, base64, url, or file (copy local file)",
+        "enum": ["text", "json", "base64", "url", "file"]
+      },
+      "file_path": {
+        "type": "string",
+        "description": "Path to local file (for kind=file). Security: only /tmp and project directories allowed."
       },
       "text": {
         "type": "string",

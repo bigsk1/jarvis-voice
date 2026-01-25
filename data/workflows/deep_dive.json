@@ -1,9 +1,9 @@
 {
   "id": "deep_dive",
   "name": "Deep Dive Page Analysis",
-  "description": "Crawl a URL or search a topic, create comprehensive canvas summary with pros/cons, key details, and purchase links.",
+  "description": "Screenshot and crawl a URL, create comprehensive canvas summary with visual, pros/cons, key details, and purchase links.",
   "enabled": true,
-  "version": "1.1",
+  "version": "1.2",
   
   "triggers": {
     "patterns": [
@@ -18,7 +18,8 @@
   
   "variables": {
     "topic": {"from": "query", "extract": "main_subject"},
-    "url": {"from": "query", "extract": "url"}
+    "url": {"from": "query", "extract": "url"},
+    "url_domain": {"from": "url", "transform": "domain"}
   },
   
   "tool_defaults": {
@@ -26,6 +27,10 @@
       "stealth": true,
       "wait_for_js": true,
       "exclude_tags": ["nav", "footer", "aside", "script", "style"]
+    },
+    "screenshot_url": {
+      "wait": 3,
+      "analyze": true
     }
   },
   
@@ -35,14 +40,54 @@
       "tool": "stash",
       "action": "open_space",
       "params": {
-        "labels": ["deep-dive", "${topic}"]
+        "labels": ["deep-dive", "${url_domain}"]
       },
-      "output_var": "space_id",
+      "output_var": "space",
+      "extract": {
+        "space_id": "space_id"
+      },
       "required": true,
       "description": "Create workspace for artifacts"
     },
     {
       "step": 2,
+      "tool": "screenshot_url",
+      "params": {
+        "url": "${url}",
+        "analyze": true,
+        "question": "Describe this page. What is being shown? Is this a product page, article, service, or something else? Note any prices, ratings, or key visual elements.",
+        "wait": 3
+      },
+      "output_var": "screenshot",
+      "extract": {
+        "screenshot_path": "screenshot_path",
+        "vision_analysis": "analysis"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Capture and analyze page visually"
+    },
+    {
+      "step": 3,
+      "tool": "stash",
+      "action": "save",
+      "params": {
+        "space_id": "${space_id}",
+        "kind": "file",
+        "file_path": "${screenshot_path}",
+        "name": "screenshot.jpg",
+        "tags": ["screenshot", "visual", "${url_domain}"]
+      },
+      "output_var": "screenshot_stash",
+      "extract": {
+        "screenshot_ref": "ref"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Save screenshot to stash"
+    },
+    {
+      "step": 4,
       "tool": "crawl_url",
       "params": {
         "url": "${url}"
@@ -74,7 +119,7 @@
       "description": "Crawl page content"
     },
     {
-      "step": 3,
+      "step": 5,
       "tool": "stash",
       "action": "save",
       "params": {
@@ -82,7 +127,7 @@
         "kind": "text",
         "text": "${content}",
         "name": "page_content.md",
-        "tags": ["content", "crawl", "${topic}"]
+        "tags": ["content", "crawl", "${url_domain}"]
       },
       "output_var": "content_stash",
       "extract": {
@@ -92,7 +137,7 @@
       "description": "Save page content to stash"
     },
     {
-      "step": 4,
+      "step": 6,
       "tool": "text_summarizer",
       "params": {
         "text": "${content}",
@@ -105,20 +150,20 @@
       "description": "Extract key topics"
     },
     {
-      "step": 5,
+      "step": 7,
       "tool": "canvas",
       "action": "create",
       "params": {
-        "title": "Deep Dive/${topic}",
-        "tags": ["deep-dive", "analysis", "${topic}"]
+        "title": "Workflows/Deep Dive/${url_domain}",
+        "tags": ["deep-dive", "analysis", "${url_domain}"]
       },
-      "llm_prompt": "Create a comprehensive, print-ready canvas page analyzing this webpage.\n\n**Page URL:** ${crawled_url}\n**Page Title:** ${title}\n**Keywords:** ${keywords_result.keywords}\n\n**Full Page Content:**\n${content}\n\n---\n\n**Generate a well-formatted markdown summary with these sections:**\n\n1. **Header** - Page title and a brief 1-2 sentence overview\n\n2. **Quick Facts** - Key details at a glance (price if shown, ratings, availability, dates, etc.)\n\n3. **What This Is** - 2-3 sentences explaining what this page/product/service is about\n\n4. **Key Highlights** - 5-7 bullet points of the most important/interesting information\n\n5. **Pros & Cons** (if applicable - for products/services)\n   - ✅ Pros: list benefits\n   - ❌ Cons: list drawbacks or concerns\n\n6. **Notable Links** - Any important links for purchase, more info, or related items (format as clickable markdown links)\n\n7. **Bottom Line** - 1-2 sentence verdict or summary\n\n8. **References**\n   - Source URL: ${crawled_url}\n   - Full content: ${content_ref}\n   - Analyzed: ${timestamp}\n\nMake it visually clean and scannable - good for printing or quick reference.",
+      "llm_prompt": "Create a comprehensive, print-ready canvas page analyzing this webpage.\n\n**Page URL:** ${crawled_url}\n**Page Title:** ${title}\n**Keywords:** ${keywords_result.keywords}\n\n**Visual Analysis (from screenshot):**\n${vision_analysis}\n\n**Screenshot stash reference:** ${screenshot_ref}\n\n**Full Page Content:**\n${content}\n\n---\n\n**Generate a well-formatted markdown summary with these sections:**\n\n1. **Header with Screenshot** - If screenshot_ref is available, include: ![Page Screenshot](${screenshot_ref}) at the top. Then the page title and a brief 1-2 sentence overview.\n\n2. **Quick Facts** - Key details at a glance (price if shown, ratings, availability, dates, etc.)\n\n3. **What This Is** - 2-3 sentences explaining what this page/product/service is about\n\n4. **Key Highlights** - 5-7 bullet points of the most important/interesting information\n\n5. **Pros & Cons** (if applicable - for products/services)\n   - ✅ Pros: list benefits\n   - ❌ Cons: list drawbacks or concerns\n\n6. **Notable Links** - Any important links for purchase, more info, or related items (format as clickable markdown links)\n\n7. **Bottom Line** - 1-2 sentence verdict or summary\n\n8. **References**\n   - Source URL: ${crawled_url}\n   - Screenshot: ${screenshot_ref}\n   - Full content: ${content_ref}\n   - Analyzed: ${timestamp}\n\nMake it visually clean and scannable - good for printing or quick reference.",
       "required": true,
       "description": "Create comprehensive canvas summary"
     }
   ],
   
-  "success_speech": "Deep dive complete. I analyzed the page and created a canvas summary with pros, cons, and key details.",
+  "success_speech": "Deep dive complete. I captured a screenshot, analyzed the page, and created a canvas summary with pros, cons, and key details.",
   "partial_speech": "Partial analysis complete. Some steps had issues but I created what I could.",
   "abort_speech": "I couldn't complete the deep dive. The page may be blocked or inaccessible."
 }
