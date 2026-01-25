@@ -43,6 +43,7 @@ This folder contains JSON workflow definitions that the orchestrator can execute
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, keywords, canvas study notes |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
+| `deep_dive.json` | `/deep-dive <topic or url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons, links |
 
 ## Variables
 
