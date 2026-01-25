@@ -1,0 +1,103 @@
+{
+  "id": "youtube_research",
+  "name": "YouTube Research Workflow",
+  "description": "Download YouTube transcript, summarize, extract keywords, create study notes on canvas",
+  "enabled": true,
+  "version": "1.0",
+  
+  "triggers": {
+    "explicit": ["/youtube_research", "/yt-research", "/study-video"],
+    "patterns": [
+      "research this youtube video",
+      "study this video",
+      "get notes from youtube"
+    ],
+    "keywords": []
+  },
+  
+  "variables": {
+    "url": {"from": "query", "extract": "url"},
+    "user_notes": {"from": "query", "extract": "remainder", "default": ""}
+  },
+  
+  "steps": [
+    {
+      "step": 1,
+      "tool": "youtube_transcript",
+      "params": {
+        "url": "${url}"
+      },
+      "output_var": "transcript_result",
+      "extract": {
+        "video_title": "video_title",
+        "space_id": "space_id",
+        "md_filename": "md_filename",
+        "md_stash_ref": "md_stash_ref",
+        "transcript_length": "transcript_length"
+      },
+      "required": true,
+      "description": "Download YouTube transcript to stash"
+    },
+    {
+      "step": 2,
+      "tool": "stash",
+      "action": "read",
+      "params": {
+        "space_id": "${space_id}",
+        "file_id": "${md_filename}"
+      },
+      "output_var": "stash_read_result",
+      "extract": {
+        "transcript_content": "content"
+      },
+      "required": true,
+      "description": "Read transcript content from stash"
+    },
+    {
+      "step": 3,
+      "tool": "text_summarizer",
+      "params": {
+        "text": "${transcript_content}",
+        "operation": "summarize",
+        "num_sentences": 5
+      },
+      "output_var": "summary_result",
+      "extract": {
+        "summary": "summary"
+      },
+      "required": true,
+      "description": "Summarize transcript"
+    },
+    {
+      "step": 4,
+      "tool": "text_summarizer",
+      "params": {
+        "text": "${transcript_content}",
+        "operation": "keywords",
+        "top_n": 15
+      },
+      "output_var": "keywords_result",
+      "extract": {
+        "keywords": "keywords"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Extract keywords"
+    },
+    {
+      "step": 5,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Workflows/YouTube/${video_title}",
+        "tags": ["youtube", "research", "workflow", "study-notes"]
+      },
+      "llm_prompt": "Create comprehensive study notes for this YouTube video.\n\nVideo Title: ${video_title}\nURL: ${url}\nStash Reference: ${md_stash_ref}\nTranscript Length: ${transcript_length} characters\n\nExtracted Summary:\n${summary}\n\nTop Keywords:\n${keywords}\n\nUser Notes/Instructions: ${user_notes}\n\nFull Transcript:\n${transcript_content}\n\nCreate well-structured study notes in markdown with:\n1. **Video Info** - title, clickable link to video\n2. **Summary** - 2-3 sentence executive summary\n3. **Key Points** - 5-7 bullet points of main insights\n4. **Topics** - formatted keywords/topics covered\n5. **Detailed Notes** - deeper breakdown of important sections from the transcript\n6. **References** - stash link (${md_stash_ref}) for full transcript\n7. **Review Questions** - 3-5 questions based on the content\n\nKeep it well-formatted and scannable. Use the user's notes/instructions if provided to focus on specific aspects.",
+      "required": true,
+      "description": "Create canvas study notes"
+    }
+  ],
+  
+  "success_speech": "YouTube research complete. I downloaded the transcript for ${video_title}, summarized it, and created study notes on canvas.",
+  "abort_speech": "Failed to complete YouTube research. The video may not have transcripts available."
+}

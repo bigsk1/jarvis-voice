@@ -336,6 +336,91 @@ PYEOF
 ```
 Note: The LLM will generate a text description for the image, NOT ASCII art.
 
+### youtube_transcript
+```python
+# Params: url="https://youtube.com/watch?v=..."
+{
+  "ok": true,
+  "data": {
+    "video_title": "Video Title Here",
+    "srt_filename": "Video_Title_Here_transcript.srt",
+    "md_filename": "Video_Title_Here_transcript.md",
+    "srt_saved": true,
+    "md_saved": true,
+    "srt_stash_ref": "stash://space_.../f_abc123",
+    "md_stash_ref": "stash://space_.../f_def456",
+    "space_id": "space_20260124_...",
+    "transcript_length": 12345
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {
+  "video_title": "video_title",
+  "space_id": "space_id",
+  "md_filename": "md_filename",
+  "md_stash_ref": "md_stash_ref"
+}
+```
+**Note**: Tool auto-saves to stash. Use `stash` action `read` with `space_id` and `file_id: md_filename` to get transcript content.
+
+### text_summarizer
+```python
+# Params: text="...", operation="summarize", num_sentences=3
+{
+  "ok": true,
+  "data": {
+    "summary": "Extracted summary sentences..."
+  }
+}
+
+# Params: text="...", operation="keywords", top_n=10
+{
+  "ok": true,
+  "data": {
+    "keywords": [
+      {"keyword": "python", "frequency": 15},
+      {"keyword": "machine", "frequency": 12}
+    ]
+  }
+}
+
+# Params: text="...", operation="count"
+{
+  "ok": true,
+  "data": {
+    "statistics": {
+      "words": 500,
+      "characters_with_spaces": 3000,
+      "sentences": 25,
+      "paragraphs": 5
+    }
+  }
+}
+
+# Params: text="...", operation="sentiment"
+{
+  "ok": true,
+  "data": {
+    "sentiment": {
+      "sentiment": "positive",
+      "confidence": 0.75,
+      "positive_words": 10,
+      "negative_words": 3
+    }
+  }
+}
+```
+**Extract rules (for summarize):**
+```json
+"extract": {"summary": "summary"}
+```
+**Extract rules (for keywords):**
+```json
+"extract": {"keywords": "keywords"}
+```
+
 ---
 
 ## Step 3: Workflow JSON Structure
@@ -535,6 +620,7 @@ cat "$(ls /home/boss/jarvis-voice/data/canvas/page_* | tail -1)"
 | `daily_status.json` | `/status` | Static variables, nested extracts, multi-tool dashboard |
 | `daily_status_visual.json` | `/status-visual` | generate_image with data, image_ref in canvas |
 | `crypto_market_report.json` | `/crypto [coins]` | Multiple crypto_price calls, LLM formatting |
+| `youtube_research.json` | `/youtube_research <url> [notes]` | youtube_transcript, stash read, text_summarizer, canvas |
 
 ---
 

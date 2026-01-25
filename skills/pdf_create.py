@@ -12,7 +12,7 @@ This tool reads from stash and writes back to stash, enabling workflows like:
 import sys
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -232,7 +232,7 @@ def action_create(args: Dict) -> Dict:
         'hash_sha256': file_hash,
         'tags': ['pdf', 'generated'],
         'tool_origin': 'pdf_create',
-        'created_at': datetime.utcnow().isoformat() + 'Z'
+        'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
     }
     space._meta['files'].append(file_meta)
     space._save_meta()

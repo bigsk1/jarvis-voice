@@ -1043,7 +1043,7 @@ Mode: {mode}
         
         Returns stash info dict or None on failure.
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
         from pathlib import Path
         import base64
         import shutil
@@ -1100,7 +1100,7 @@ Mode: {mode}
                 'hash_sha256': file_hash,
                 'tags': ['user_upload', 'vision_analyzed'],
                 'tool_origin': 'web_upload',
-                'created_at': datetime.utcnow().isoformat() + 'Z',
+                'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z',
                 'vision_analysis': vision_analysis[:500]  # Store truncated analysis
             }
             

@@ -41,6 +41,7 @@ This folder contains JSON workflow definitions that the orchestrator can execute
 | `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, system health dashboard |
 | `daily_status_visual.json` | `/status-visual` | Same as /status but with AI-generated dashboard image |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
+| `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, keywords, canvas study notes |
 
 ## Variables
 

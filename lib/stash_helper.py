@@ -15,7 +15,7 @@ import re
 import shutil
 import socket
 import ipaddress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from urllib.parse import urlparse
@@ -308,7 +308,7 @@ def sanitize_filename(name: str) -> str:
 
 def generate_file_id(name: str) -> str:
     """Generate a unique file ID based on name and timestamp."""
-    timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')
     hash_input = f"{name}_{timestamp}"
     short_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:12]
     return f"f_{short_hash}"
@@ -316,7 +316,7 @@ def generate_file_id(name: str) -> str:
 
 def generate_space_id() -> str:
     """Generate a unique space ID."""
-    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
     random_suffix = hashlib.sha256(os.urandom(16)).hexdigest()[:8]
     return f"space_{timestamp}_{random_suffix}"
 
@@ -373,7 +373,7 @@ class StashSpace:
         self.space_path.mkdir(parents=True, exist_ok=True)
         
         # Initialize metadata
-        now = datetime.utcnow().isoformat() + 'Z'
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
         self._meta = {
             'space_id': self.space_id,
             'created_at': now,
@@ -392,7 +392,7 @@ class StashSpace:
     def touch(self):
         """Update last_used_at timestamp."""
         if self.exists:
-            self._meta['last_used_at'] = datetime.utcnow().isoformat() + 'Z'
+            self._meta['last_used_at'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
             self._save_meta()
     
     def update(self, ttl_days: int = None, pinned: bool = None, 
@@ -411,7 +411,7 @@ class StashSpace:
         if labels is not None:
             self._meta['labels'] = labels
         
-        self._meta['last_used_at'] = datetime.utcnow().isoformat() + 'Z'
+        self._meta['last_used_at'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
         self._save_meta()
         
         return self._meta
@@ -449,7 +449,7 @@ class StashSpace:
         )
         expiry = last_used + timedelta(days=ttl_days)
         
-        return datetime.utcnow() > expiry
+        return datetime.now(timezone.utc).replace(tzinfo=None) > expiry
     
     def delete(self) -> int:
         """Delete the space and return freed bytes."""
@@ -574,7 +574,7 @@ class StashFile:
             else:
                 # Generate name from content type
                 ext = mimetypes.guess_extension(content_type) or ''
-                name = f"download_{datetime.utcnow().strftime('%H%M%S')}{ext}"
+                name = f"download_{datetime.now(timezone.utc).strftime('%H%M%S')}{ext}"
         
         # Save the data
         result = self._save_data(data, name, content_type, on_conflict, tags, tool_origin)
@@ -623,7 +623,7 @@ class StashFile:
             f.write(data)
         
         # Create file metadata
-        now = datetime.utcnow().isoformat() + 'Z'
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
         file_meta = {
             'file_id': file_id,
             'name': name,

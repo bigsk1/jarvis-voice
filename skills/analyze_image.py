@@ -17,7 +17,7 @@ import base64
 import requests
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add lib to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
@@ -478,7 +478,7 @@ def _stash_image(image_data: dict, analysis: str, mode: str) -> Optional[dict]:
     """Save image to stash for future access."""
     try:
         from stash_helper import open_space
-        from datetime import datetime
+        from datetime import datetime, timezone
         import hashlib
         
         # Create stash space
@@ -517,7 +517,7 @@ def _stash_image(image_data: dict, analysis: str, mode: str) -> Optional[dict]:
             'hash_sha256': file_hash,
             'tags': ['analyzed', 'downloaded'],
             'tool_origin': 'analyze_image',
-            'created_at': datetime.utcnow().isoformat() + 'Z',
+            'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z',
             'vision_analysis': analysis[:500],
             'original_url': image_data.get('original_path', '')
         }
