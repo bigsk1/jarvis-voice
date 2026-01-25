@@ -3,7 +3,7 @@
   "name": "Deep Dive Page Analysis",
   "description": "Screenshot and crawl a URL, create comprehensive canvas summary with visual, pros/cons, key details, and purchase links.",
   "enabled": true,
-  "version": "1.2",
+  "version": "1.3",
   
   "triggers": {
     "patterns": [
@@ -55,7 +55,7 @@
       "params": {
         "url": "${url}",
         "analyze": true,
-        "question": "Describe this page. What is being shown? Is this a product page, article, service, or something else? Note any prices, ratings, or key visual elements.",
+        "question": "Describe this page in detail. What is being shown? Is this a product page, article, service, or something else? Note any prices, ratings, key features, pros/cons, or important visual elements. Be thorough - this may be the only data source if the page blocks crawling.",
         "wait": 3
       },
       "output_var": "screenshot",
@@ -63,8 +63,7 @@
         "screenshot_path": "screenshot_path",
         "vision_analysis": "analysis"
       },
-      "required": false,
-      "on_fail": "continue",
+      "required": true,
       "description": "Capture and analyze page visually"
     },
     {
@@ -82,8 +81,7 @@
       "extract": {
         "screenshot_ref": "ref"
       },
-      "required": false,
-      "on_fail": "continue",
+      "required": true,
       "description": "Save screenshot to stash"
     },
     {
@@ -115,8 +113,9 @@
         "max_attempts": 2,
         "fallback_tools": ["mcp_fetch_fetch"]
       },
-      "required": true,
-      "description": "Crawl page content"
+      "required": false,
+      "on_fail": "continue",
+      "description": "Crawl page content (optional - vision analysis is primary)"
     },
     {
       "step": 5,
@@ -133,7 +132,8 @@
       "extract": {
         "content_ref": "ref"
       },
-      "required": true,
+      "required": false,
+      "on_fail": "continue",
       "description": "Save page content to stash"
     },
     {
@@ -157,13 +157,13 @@
         "title": "Workflows/Deep Dive/${url_domain}",
         "tags": ["deep-dive", "analysis", "${url_domain}"]
       },
-      "llm_prompt": "Create a comprehensive, print-ready canvas page analyzing this webpage.\n\n**Page URL:** ${crawled_url}\n**Page Title:** ${title}\n**Keywords:** ${keywords_result.keywords}\n\n**Visual Analysis (from screenshot):**\n${vision_analysis}\n\n**Screenshot stash reference:** ${screenshot_ref}\n\n**Full Page Content:**\n${content}\n\n---\n\n**Generate a well-formatted markdown summary with these sections:**\n\n1. **Header with Screenshot** - If screenshot_ref is available, include: ![Page Screenshot](${screenshot_ref}) at the top. Then the page title and a brief 1-2 sentence overview.\n\n2. **Quick Facts** - Key details at a glance (price if shown, ratings, availability, dates, etc.)\n\n3. **What This Is** - 2-3 sentences explaining what this page/product/service is about\n\n4. **Key Highlights** - 5-7 bullet points of the most important/interesting information\n\n5. **Pros & Cons** (if applicable - for products/services)\n   - ✅ Pros: list benefits\n   - ❌ Cons: list drawbacks or concerns\n\n6. **Notable Links** - Any important links for purchase, more info, or related items (format as clickable markdown links)\n\n7. **Bottom Line** - 1-2 sentence verdict or summary\n\n8. **References**\n   - Source URL: ${crawled_url}\n   - Screenshot: ${screenshot_ref}\n   - Full content: ${content_ref}\n   - Analyzed: ${timestamp}\n\nMake it visually clean and scannable - good for printing or quick reference.",
+      "llm_prompt": "Create a comprehensive, print-ready canvas page analyzing this webpage.\n\nINPUT DATA:\n- Target URL: ${url}\n- Page Title (if crawled): ${title}\n- Screenshot Reference: ${screenshot_ref}\n- Content Reference: ${content_ref}\n\nVISUAL ANALYSIS (PRIMARY SOURCE - from AI vision of screenshot):\n${vision_analysis}\n\nCRAWLED TEXT CONTENT (may be empty if site blocked crawling):\n${content}\n\n---\n\nGENERATE A MARKDOWN SUMMARY with these sections. Use the ACTUAL VALUES from the input data above - do not output placeholder syntax like ${var}.\n\n1. **[Page Title from vision analysis or title field]**\n\n   ![Screenshot](${screenshot_ref})\n   \n   Brief 1-2 sentence overview of what this page is.\n\n2. **Quick Facts**\n   - Type: [product/service/article/pricing/etc]\n   - Price: [if shown]\n   - Rating: [if shown]\n   - Other key stats\n\n3. **What This Is**\n   2-3 sentences explaining what this page/product/service is about.\n\n4. **Key Highlights**\n   5-7 bullet points of the most important information.\n\n5. **Pros & Cons** (if applicable)\n   - ✅ Pros: list benefits\n   - ❌ Cons: list drawbacks\n\n6. **Notable Links**\n   Any important links mentioned (format as markdown links if URLs are visible).\n\n7. **Bottom Line**\n   1-2 sentence verdict or summary.\n\n8. **References**\n   - Source: [write the actual URL from Target URL above]\n   - Screenshot: [write the actual screenshot_ref value]\n   - Content: [write the actual content_ref value, or 'Crawl blocked' if empty]\n   - Analyzed: ${timestamp}\n\nIMPORTANT: Replace all placeholders with actual values. The vision analysis contains the most reliable information - prioritize it over crawled content.",
       "required": true,
       "description": "Create comprehensive canvas summary"
     }
   ],
   
   "success_speech": "Deep dive complete. I captured a screenshot, analyzed the page, and created a canvas summary with pros, cons, and key details.",
-  "partial_speech": "Partial analysis complete. Some steps had issues but I created what I could.",
+  "partial_speech": "Partial analysis complete. Screenshot captured but crawling was blocked - summary based on visual analysis.",
   "abort_speech": "I couldn't complete the deep dive. The page may be blocked or inaccessible."
 }
