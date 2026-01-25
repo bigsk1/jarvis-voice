@@ -21,6 +21,7 @@ Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks,
 | API | Documentation | Description |
 |-----|---------------|-------------|
 | **Memory** | [MEMORY.md](MEMORY.md) | CRUD, search (keyword/semantic), categories |
+| **Intel** | [INTEL.md](INTEL.md) | Knowledge base file management (jarvis-intel/) |
 | **Query** | [QUERY.md](QUERY.md) | Send queries to Jarvis programmatically |
 | **Workflows** | [WORKFLOWS.md](WORKFLOWS.md) | Execute multi-tool pipelines (e.g., /crypto, /archive) |
 | **Conversations** | [CONVERSATIONS.md](CONVERSATIONS.md) | Browse conversation history |
@@ -35,6 +36,15 @@ GET  /api/memory              # List memories
 POST /api/memory              # Create memory
 GET  /api/memory/search/keyword?q=flask    # Keyword search
 GET  /api/memory/search/semantic?q=where+is+my+app  # Semantic search
+
+# Intel (Knowledge Base Files)
+GET  /api/intel               # List intel files
+GET  /api/intel/stats         # Folder statistics
+POST /api/intel               # Create intel file
+GET  /api/intel/{filename}    # Read file content
+PUT  /api/intel/{filename}    # Update file
+DELETE /api/intel/{filename}  # Delete file + memories
+POST /api/intel/ingest        # Trigger ingestion
 
 # Query
 POST /api/query               # Full query with options
@@ -135,6 +145,7 @@ Interactive API documentation available at:
 |------|------|
 | **Complete Reference** | [API Overview](API_OVERVIEW.md) |
 | **Memory Operations** | [Memory API](MEMORY.md) |
+| **Intel Files** | [Intel API](INTEL.md) |
 | **Query Jarvis** | [Query API](QUERY.md) |
 | **Workflow Pipelines** | [Workflows API](WORKFLOWS.md) |
 | **Code Examples** | [code-examples/](code-examples/) |
@@ -148,6 +159,7 @@ Interactive API documentation available at:
 
 ### v2.0 (January 2026)
 - Added Memory API (CRUD, keyword/semantic search)
+- Added Intel API (knowledge base file management)
 - Added Query/Chat API (programmatic Jarvis queries)
 - Added Conversations API (history browsing)
 - Added Stash API (artifact access)
