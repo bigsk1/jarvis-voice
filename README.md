@@ -457,7 +457,7 @@ cp config/local.env.example config/local.env
 nano config/local.env  # Adjust Ollama endpoint
 ```
 
-See `config/README.md` and `docs/XAI_PROVIDER.md` for detailed configuration options.
+See [`config/README.md`](config/README.md) and [`docs/XAI_PROVIDER.md`](docs/XAI_PROVIDER.md) for detailed configuration options.
 
 ### 3. Install Dependencies
 
@@ -687,11 +687,12 @@ Turn 3: Q&A response → "Flask API running on port 8091"
 
 **Features:**
 - Multi-turn orchestration (chains tools automatically)
+- Workflows (pre-determinded tools structure)
 - Error recovery with retries
 - Timeout handling
 - Cost tracking (cloud mode)
 - Metadata logging
-- Permission system
+- Permission system - for tools not implemented fully
 
 ### Managing Tools (Enable/Disable)
 
@@ -722,7 +723,7 @@ Control which tools are loaded to optimize context window and performance:
 - Disable experimental/buggy tools without deleting code
 - All tools auto-discovered on startup (only enabled ones load)
 
-See `docs/TOOL_MANAGEMENT.md` for details.
+See [`docs/TOOL_MANAGEMENT.md`](docs/TOOL_MANAGEMENT.md) for details.
 
 ---
 
@@ -782,9 +783,9 @@ curl http://localhost:8880/api/workflows/history | jq
 ```
 
 See:
-- `docs/WORKFLOW_ORCHESTRATION.md` - Full workflow system documentation
-- `docs/api/WORKFLOWS.md` - Workflows API reference
-- `data/workflows/` - Workflow JSON definitions
+- [`docs/WORKFLOW_ORCHESTRATION.md`](docs/WORKFLOW_ORCHESTRATION.md) - Full workflow system documentation
+- [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - Workflows API reference
+- [`data/workflows/`](data/workflows/) - Workflow JSON definitions
 
 ---
 
@@ -819,7 +820,7 @@ SEMANTIC_SIMILARITY_THRESHOLD=0.40  # Default: 0.40 (balanced)
 - **Keyword/Entity searches** (1-3 words, technical terms): Use `search_memory` → FTS5
 - **Natural language questions** (4+ words, conceptual): Use `semantic_recall` → Embeddings
 
-See `docs/FTS5_SEARCH_SYSTEM.md` and `docs/SEMANTIC_THRESHOLD_TUNING.md` for details.
+See [`docs/FTS5_SEARCH_SYSTEM.md`](docs/FTS5_SEARCH_SYSTEM.md) and [`docs/SEMANTIC_THRESHOLD_TUNING.md`](docs/SEMANTIC_THRESHOLD_TUNING.md) for details.
 
 ### Auto-Save Memory
 
@@ -887,7 +888,7 @@ When a new query comes in:
 5. Track which insights were applied
 6. Update helpful/failed counts after interaction
 
-See `docs/INTELLIGENCE_LAYER.md` for details.
+See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md) for details.
 
 
 ---
@@ -927,7 +928,7 @@ OPENCODE_BASE_URL="http://localhost:4096"
 
 **Workspace:** All OpenCode projects go to `~/jarvis-workspace/projects/`
 
-See `docs/opencode/OPENCODE.md` for details.
+See [`docs/opencode/OPENCODE.md`](docs/opencode/OPENCODE.md) for details.
 
 ---
 
@@ -948,7 +949,7 @@ Jarvis uses separate databases for cloud and local modes:
 - Uses nomic-embed-text (768 dimensions)
 - Optimized for Ollama models
 
-**Auto-Sync**: On startup, newer memories are synced between databases with re-embedded vectors for the target mode's model. See `docs/DUAL_DATABASE_SYSTEM.md`.
+**Auto-Sync**: On startup, newer memories are synced between databases with re-embedded vectors for the target mode's model. See [`docs/DUAL_DATABASE_SYSTEM.md`](docs/DUAL_DATABASE_SYSTEM.md).
 
 **Tables**:
 - `knowledge_base` - Facts, preferences, embeddings
@@ -983,61 +984,61 @@ LIMIT 7;"
 ### Key Documents
 
 **Getting Started:**
-- `config/README.md` - Configuration guide
-- `docs/QUICKSTART.md` - Quick setup guide
-- `docs/TOOL_CALLING_SYSTEM.md` - How tools work
+- [`config/README.md`](config/README.md) - Configuration guide
+- [`docs/QUICKSTART.md`](docs/QUICKSTART.md) - Quick setup guide
+- [`docs/TOOL_CALLING_SYSTEM.md`](docs/TOOL_CALLING_SYSTEM.md) - How tools work
 
 **Proactive System:**
-- `docs/api/` - **Proactive API** documentation (webhooks, alerts, monitoring)
-- `docs/api/API_OVERVIEW.md` - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Conversations) ⭐ ENHANCED
-- `docs/api/WORKFLOWS.md` - **Workflows API** (list, execute, history) 
-- `docs/service/` - **Background Services** documentation (daemons, auto-resolve)
+- [`docs/api/`](docs/api/) - **Proactive API** documentation (webhooks, alerts, monitoring)
+- [`docs/api/API_OVERVIEW.md`](docs/api/API_OVERVIEW.md) - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Conversations) ⭐ ENHANCED
+- [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (list, execute, history) 
+- [`docs/service/`](docs/service/) - **Background Services** documentation (daemons, auto-resolve)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
 
 **Workflow Orchestration:** 
-- `docs/WORKFLOW_ORCHESTRATION.md` - **Full workflow system** (pipelines, variables, validation)
-- `docs/api/WORKFLOWS.md` - **Workflows API** (programmatic execution)
-- `data/workflows/AGENTS.md` - Workflow building guide
-- `data/workflows/README.md` - Workflow recipes reference
+- [`docs/WORKFLOW_ORCHESTRATION.md`](docs/WORKFLOW_ORCHESTRATION.md) - **Full workflow system** (pipelines, variables, validation)
+- [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (programmatic execution)
+- [`data/workflows/AGENTS.md`](data/workflows/AGENTS.md) - Workflow building guide
+- [`data/workflows/README.md`](data/workflows/README.md) - Workflow recipes reference
 
 **Core System:**
-- `docs/phone/PHONE_CALLS.md` - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts)
-- `docs/spotify/SPOTIFY.md` - **Spotify Integration** (playback control, search, multi-device)
-- `docs/STASH_SYSTEM.md` - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
-- `docs/INTELLIGENCE_LAYER.md` - **Self-learning system** (Phase 1: positive/negative constraints)
-- `docs/AUTO_CONTEXT_SYSTEM.md` - Short-term conversation memory
-- `docs/JARVIS_WORKFLOW.md` - Complete request flow with examples
-- `docs/TOOL_CALLING_SYSTEM.md` - How tool routing works
+- [`docs/phone/PHONE_CALLS.md`](docs/phone/PHONE_CALLS.md) - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts)
+- [`docs/spotify/SPOTIFY.md`](docs/spotify/SPOTIFY.md) - **Spotify Integration** (playback control, search, multi-device)
+- [`docs/STASH_SYSTEM.md`](docs/STASH_SYSTEM.md) - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
+- [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md) - **Self-learning system** (Phase 1: positive/negative constraints)
+- [`docs/AUTO_CONTEXT_SYSTEM.md`](docs/AUTO_CONTEXT_SYSTEM.md) - Short-term conversation memory
+- [`docs/JARVIS_WORKFLOW.md`](docs/JARVIS_WORKFLOW.md) - Complete request flow with examples
+- [`docs/TOOL_CALLING_SYSTEM.md`](docs/TOOL_CALLING_SYSTEM.md) - How tool routing works
 
 **Monitoring & Dashboards:**
-- `monitoring/README.md` - Grafana + Prometheus + Loki stack
+- [`monitoring/README.md`](monitoring/README.md) - Grafana + Prometheus + Loki stack
 - **Grafana Dashboards:**
   - `Jarvis Intelligence Layer` - Self-learning metrics, insights, confidence
   - `Jarvis - Conversation Audit v2` - Deep drill-down into LLM decisions
   - Plus: LLM Performance, Tool Analysis, API Performance
 
 **Memory System (Updated Nov 2025):**
-- `docs/FTS5_SEARCH_SYSTEM.md` - **NEW**: FTS5 full-text search with BM25 ranking
-- `docs/DUAL_DATABASE_SYSTEM.md` - Cloud/local DB architecture with auto-sync
-- `docs/SEMANTIC_THRESHOLD_TUNING.md` - How to tune similarity threshold
-- `docs/MEMORY_SYSTEM.md` - Memory & knowledge base overview
-- `docs/MEMORY_SYSTEM_TUNING.md` - Memory system optimization
-- `docs/MEMORY_INTELLIGENCE_FIXES.md` - Auto-save improvements
+- [`docs/FTS5_SEARCH_SYSTEM.md`](docs/FTS5_SEARCH_SYSTEM.md) - **NEW**: FTS5 full-text search with BM25 ranking
+- [`docs/DUAL_DATABASE_SYSTEM.md`](docs/DUAL_DATABASE_SYSTEM.md) - Cloud/local DB architecture with auto-sync
+- [`docs/SEMANTIC_THRESHOLD_TUNING.md`](docs/SEMANTIC_THRESHOLD_TUNING.md) - How to tune similarity threshold
+- [`docs/MEMORY_SYSTEM.md`](docs/MEMORY_SYSTEM.md) - Memory & knowledge base overview
+- [`docs/MEMORY_SYSTEM_TUNING.md`](docs/MEMORY_SYSTEM_TUNING.md) - Memory system optimization
+- [`docs/MEMORY_INTELLIGENCE_FIXES.md`](docs/MEMORY_INTELLIGENCE_FIXES.md) - Auto-save improvements
 
 **Tool Management:**
-- `docs/TOOL_MANAGEMENT.md` - Enable/disable tools, create profiles
-- `docs/TOOL_CALLING_SYSTEM.md` - How tool system works
+- [`docs/TOOL_MANAGEMENT.md`](docs/TOOL_MANAGEMENT.md) - Enable/disable tools, create profiles
+- [`docs/TOOL_CALLING_SYSTEM.md`](docs/TOOL_CALLING_SYSTEM.md) - How tool system works
 
 **Features:**
-- `docs/opencode/OPENCODE.md` - OpenCode integration
-- `docs/MULTI_TURN_ORCHESTRATION.md` - How tool chaining works
-- `docs/METADATA_SYSTEM.md` - Cost tracking & metadata
+- [`docs/opencode/OPENCODE.md`](docs/opencode/OPENCODE.md) - OpenCode integration
+- [`docs/MULTI_TURN_ORCHESTRATION.md`](docs/MULTI_TURN_ORCHESTRATION.md) - How tool chaining works
+- [`docs/METADATA_SYSTEM.md`](docs/METADATA_SYSTEM.md) - Cost tracking & metadata
 
 **Advanced:**
-- `docs/opencode/OPENCODE_API_REFERENCE.md` - Full OpenCode API
-- `docs/opencode/OPENCODE_AGENTS.md` - Agent system architecture
-- `docs/MCP_QUICKSTART.md` - MCP server integration
-- `docs/ERROR_RECOVERY.md` - Error handling
+- [`docs/opencode/OPENCODE_API_REFERENCE.md`](docs/opencode/OPENCODE_API_REFERENCE.md) - Full OpenCode API
+- [`docs/opencode/OPENCODE_AGENTS.md`](docs/opencode/OPENCODE_AGENTS.md) - Agent system architecture
+- [`docs/mcp/MCP_QUICKSTART.md`](docs/mcp/MCP_QUICKSTART.md) - MCP server integration
+- [`docs/ERROR_RECOVERY.md`](docs/ERROR_RECOVERY.md) - Error handling
 
 **Testing:**
 - `tests/integration/compare-models.sh` - Model comparison framework
@@ -1123,7 +1124,7 @@ The tool will be auto-discovered!
 
 ### Tool Builder
 
-- [Tool Builder](docs/TOOL_BUILDER.md) - Automatically create new tools when capability gaps are detected in feedback or you want a new tool.
+- [Tool Builder](docs/TOOL_BUILDER.md) - Automatically create new tools when capability gaps are detected in feedback or you want a new tool
 
 
 ```bash
@@ -1232,7 +1233,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - `./bin/validate-system-prompt --tools --issue "..."` - Root cause analysis for unexpected Jarvis behavior
   - Supports Anthropic, xAI, OpenAI providers
   - Outputs recommended fixes with diff format
-  - See: `docs/SYSTEM_PROMPT_VALIDATOR.md`
+  - See: [`docs/SYSTEM_PROMPT_VALIDATOR.md`](docs/SYSTEM_PROMPT_VALIDATOR.md)
 - ✅ **Meta-Response Fix** - Synthesizes actual answers instead of "I used X tools"
 - ✅ **System Prompt Improvements** - Memory-first exceptions, redundancy rule clarification, music playback guidance
 - ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI
@@ -1249,7 +1250,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **WebUI integration**: Hover tooltips for workflows/prompts, tool cards, server logs
   - **Replaced /commands**: Workflows are the new standard for multi-tool tasks
   - Pre-built workflows: web_archive, deep_research, quick_note, server_health_check
-  - See: `docs/WORKFLOW_ORCHESTRATION.md`, `data/workflows/`
+  - See: [`docs/WORKFLOW_ORCHESTRATION.md`](docs/WORKFLOW_ORCHESTRATION.md), [`data/workflows/`](data/workflows/)
 - ✅ **Comprehensive FastAPI Expansion** - Full programmatic access ⭐ MAJOR
   - Memory API (CRUD, keyword/semantic search, stats)
   - Query/Chat API (POST /api/query/quick)
@@ -1274,12 +1275,12 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Optional AI-generated dashboard image (Gemini)
   - Native grounding search for news when enabled
   - Direct speech mode prevents LLM price mangling
-  - See: `docs/status-tool/README.md`
+  - See: [`docs/status-tool/README.md`](docs/status-tool/README.md)
 - ✅ **Tool Builder v2.0** - Network/proxy auto-fix enhancement
   - Auto-detects network errors during tool verification
   - Injects proxy configuration instructions on retry
   - Three proxy patterns: requests proxies, env vars, http_client
-  - See: `docs/TOOL_BUILDER.md`
+  - See: [`docs/TOOL_BUILDER.md`](docs/TOOL_BUILDER.md)
 
 **Completed (December 2025):**
 - ✅ **Deep Memory Search** - Multi-source search across all Jarvis data repositories
@@ -1335,7 +1336,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **Export/Import**: Download as JSON/Markdown, restore from JSON
   - **Image upload**: Drag-drop/paste/click with vision analysis
   - Real-time WebSocket chat with tool streaming
-  - See: `docs/JARVIS_WEB_UI.md`
+  - See: [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
 - ✅ **AI Image Generation (Gemini 3 Pro)** - High-quality image generation
   - "Generate a bitcoin infographic with current price" → Gemini creates with real data
   - Aspect ratios (1:1, 16:9, 9:16, 3:4, etc.), styles, negative prompts
@@ -1356,7 +1357,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Sync mode (wait 60s for result) or async mode (check later)
   - Auto-save transcripts to Canvas (`Phone Calls/` folder) and memory
   - Contact book: "Save Andrew's number as +15551234567"
-  - See: `docs/phone/PHONE_CALLS.md`
+  - See: [`docs/phone/PHONE_CALLS.md`](docs/phone/PHONE_CALLS.md)
 - ✅ **Spotify Integration** - Full music playback control
   - "Play my Chill Vibes playlist", "Skip", "What's playing?", "Pause"
   - Searches your saved playlists/library first, then public Spotify
@@ -1364,7 +1365,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Queue songs, shuffle, repeat, volume control
   - Share currently playing via email with album art and Spotify link
   - OAuth setup via `./bin/spotify-auth`
-  - See: `docs/spotify/SPOTIFY.md`
+  - See: [`docs/spotify/SPOTIFY.md`](docs/spotify/SPOTIFY.md)
 - ✅ **Native Web Search** - Built-in real-time search for cloud providers
   - `XAI_SEARCH=true`: Grok live search (web + X posts, auto mode)
   - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations
@@ -1388,7 +1389,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Random feedback collection (`FEEDBACK_RANDOM_ENABLED=true`)
   - `./bin/evolve-prompts check cloud` - See what needs improvement
   - `./bin/evolve-prompts auto cloud` - Generate and deploy
-  - See: `docs/ADVANCED_AI_TECHNIQUES.md`
+  - See: [`docs/ADVANCED_AI_TECHNIQUES.md`](docs/ADVANCED_AI_TECHNIQUES.md)
 - ✅ **Dynamic Tool Builder** - Autonomous tool creation ⭐ MAJOR
   - Creates new tools when capability gaps detected
   - **Duplicate detection** - Checks ALL existing tools (local + MCP + auto-tools)
@@ -1398,7 +1399,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Dependency gating (new packages require human approval)
   - Full audit trail with report cards + Grafana dashboard
   - `./bin/build-tool --mode cloud build "Check URL accessibility"`
-  - See: `docs/TOOL_BUILDER.md`
+  - See: [`docs/TOOL_BUILDER.md`](docs/TOOL_BUILDER.md)
 - ✅ **Canvas System** - Visual knowledge viewer
   - Beautiful dark web UI at localhost:8890
   - Jarvis saves research, comparisons, code to visual pages
@@ -1478,7 +1479,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ Auto-save intelligence
 - ✅ Conversation history
 
-**Planned (Advanced AI - See `docs/ADVANCED_AI_TECHNIQUES.md`):**
+**Planned (Advanced AI - See [`docs/ADVANCED_AI_TECHNIQUES.md`](docs/ADVANCED_AI_TECHNIQUES.md)):**
 - ✅ **Phase 3: Self-Evolving Prompts** - COMPLETE! Auto-improve prompts, A/B testing, rollback
 - ✅ **Phase 4: Dynamic Tool Creation** - COMPLETE! In-house tool builder with safety checks
 - **Phase 5: Parallel Subagents** - Concurrent execution for multi-part queries (3x speedup)
