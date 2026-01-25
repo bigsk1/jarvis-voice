@@ -36,16 +36,27 @@ db = MemoryDB()  # Auto-selects based on mode - NEVER hardcode paths!
 # local → data/jarvis_memory_local.db
 ```
 
-## Python 3.12+ 
+## Python 3.12+ Type Annotations
 
-IMPORTANT! Make sure to use modern python 3.12 modernized type annotations when coding. 
+Use modern Python 3.12 type annotations. Do NOT import `List`, `Dict`, `Optional`, `Set`, `Tuple` from typing.
 
-### Before (deprecated Python 3.8 style)
-from typing import List, Dict, Optional
-def foo(items: List[str], data: Optional[Dict[str, Any]]) -> None:
+```python
+# ❌ Deprecated (Python 3.8 style)
+from typing import List, Dict, Optional, Tuple
+def foo(items: List[str], data: Optional[Dict[str, Any]]) -> Tuple[str, int]:
 
-### After (modern Python 3.12 style)
-def foo(items: list[str], data: dict[str, Any] | None) -> None:
+# ✅ Modern (Python 3.12 style)
+def foo(items: list[str], data: dict[str, Any] | None) -> tuple[str, int]:
+```
+
+Quick reference:
+- `List[X]` → `list[X]`
+- `Dict[K, V]` → `dict[K, V]`
+- `Set[X]` → `set[X]`
+- `Tuple[X, Y]` → `tuple[X, Y]`
+- `Optional[X]` → `X | None`
+- `Union[X, Y]` → `X | Y`
+- `Any` still requires: `from typing import Any`
 
 ## Tool Development
 
