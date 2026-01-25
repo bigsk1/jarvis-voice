@@ -128,9 +128,46 @@ def extract_facts_from_content(content: str, filename: str) -> list[dict[str, st
     return facts
 
 
+def run_async_ingest():
+    """Spawn ingestion as background process and return immediately."""
+    import subprocess
+    
+    script_path = Path(__file__).resolve()
+    
+    # Start subprocess with --sync flag to run actual ingestion
+    subprocess.Popen(
+        ['python3', str(script_path), '--sync'],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True  # Detach from parent process
+    )
+    
+    return_success(
+        "Intel ingestion started in background. Facts will be available shortly.",
+        {"async": True, "status": "started"}
+    )
+    return 0
+
+
 def main():
     """Ingest intel files from jarvis-intel/ folder."""
     try:
+        # Parse arguments
+        args = {}
+        if len(sys.argv) > 1:
+            if sys.argv[1] == '--sync':
+                # Called by async subprocess - run synchronously
+                pass
+            else:
+                try:
+                    args = json.loads(sys.argv[1])
+                except json.JSONDecodeError:
+                    pass
+        
+        # Check for async mode
+        if args.get('async', False):
+            return run_async_ingest()
+        
         # Get project root
         project_root = Path(__file__).parent.parent
         intel_dir = project_root / "jarvis-intel"

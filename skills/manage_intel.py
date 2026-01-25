@@ -233,9 +233,9 @@ def main():
         if action not in ['create', 'read', 'update', 'delete', 'list']:
             raise ValueError(f"Invalid action: {action}")
         
-        # Get project paths
-        project_root = Path(__file__).parent.parent
-        intel_dir = project_root / 'jarvis-intel'
+        # Get project paths (resolve to handle symlinks and .. in path)
+        project_root = Path(__file__).parent.parent.resolve()
+        intel_dir = (project_root / 'jarvis-intel').resolve()
         
         if not intel_dir.exists():
             raise ValueError("jarvis-intel/ directory not found")

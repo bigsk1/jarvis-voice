@@ -101,18 +101,16 @@
     {
       "step": 5,
       "tool": "ingest_intel",
-      "params": {},
-      "output_var": "ingest_result",
-      "extract": {
-        "new_files": "new_files",
-        "total_facts": "total_facts"
+      "params": {
+        "async": true
       },
+      "output_var": "ingest_result",
       "required": false,
       "on_fail": "continue",
-      "description": "Ingest intel files to memory (may take time for large files)"
+      "description": "Start async ingestion (returns immediately)"
     }
   ],
 
-  "success_speech": "URL ingested successfully. I fetched ${url_domain}, created an intel file with ${total_facts} facts, and added them to my knowledge base. You can now ask me questions about it.",
+  "success_speech": "URL ingested. I fetched ${url_domain} and created an intel file. Facts are being added to memory in the background - you can ask questions about it shortly.",
   "abort_speech": "Failed to ingest URL. The page may be inaccessible or have content restrictions."
 }
