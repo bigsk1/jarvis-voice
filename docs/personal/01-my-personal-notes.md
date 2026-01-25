@@ -972,11 +972,36 @@ If tool is made need to update timeouts in executor.py
 ```
 
 ```bash
-./bin/validate-system-prompt                          # Basic review
-./bin/validate-system-prompt --tools                  # Include all tools
-./bin/validate-system-prompt --dry-run --tools        # Show what LLM sees (no API)
-./bin/validate-system-prompt --simulate "task"        # Simulate specific task
-./bin/validate-system-prompt --focus "canvas"         # Focus on area
+# Basic validation
+./bin/validate-system-prompt --tools
+
+# Focus on a specific area
+./bin/validate-system-prompt --tools --focus "canvas workflow"
+
+# Simulate a task and check for issues
+./bin/validate-system-prompt --tools --simulate "research wifi cameras and save to canvas"
+
+# Compare to previous validation (track improvements)
+./bin/validate-system-prompt --tools --compare
+
+# Dry run - see what the validator sees
+./bin/validate-system-prompt --tools --dry-run
+
+# Use xAI instead of Anthropic
+./bin/validate-system-prompt --tools --provider xai
+
+# Save full prompt in log
+./bin/validate-system-prompt --tools --full-prompt
+
+
+# Debug specific observed behavior
+./bin/validate-system-prompt --tools --provider xai --issue "Jarvis used canvas first, then mcp brave search twice, then canvas again - only last canvas had data"
+
+# Combine with focus for even more targeted analysis
+./bin/validate-system-prompt --tools --issue "search_memory called 3 times in a row for same query" --focus memory
+
+# Dry run to see what will be analyzed
+./bin/validate-system-prompt --tools --issue "Jarvis stopped responding after list_reminders" --dry-run
 ```
 
 

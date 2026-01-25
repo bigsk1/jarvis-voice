@@ -210,6 +210,7 @@
 | **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag  |
 | **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check cloud`  |
 | **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."`  |
+| **[Prompt Validator](SYSTEM_PROMPT_VALIDATOR.md)** | Debug unexpected behavior - `./bin/validate-system-prompt --issue "..."` ⭐ NEW |
 
 **Intelligence Features (Phase 1.5):**
 - Insight tracking (times_applied, times_helpful, times_failed)
@@ -297,6 +298,24 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-01-25:**
+- ✅ **System Prompt Validator** - LLM-powered debugging tool for prompt engineering ⭐ NEW
+  - `./bin/validate-system-prompt --tools` - Comprehensive prompt audit
+  - `--issue` flag for targeted debugging: `--issue "Jarvis called canvas before search"`
+  - Root cause analysis: traces exact rules that caused unexpected behavior
+  - Supports Anthropic, xAI, OpenAI providers
+  - Outputs recommended fixes with diff format
+  - See: `docs/SYSTEM_PROMPT_VALIDATOR.md`
+- ✅ **Meta-Response Fix** - Jarvis now synthesizes actual answers when duplicate tool calls detected
+  - No more "I've completed the task using X tool(s)" responses
+  - Orchestrator extracts and summarizes accumulated research data
+- ✅ **System Prompt Improvements** - Refined rules based on validator feedback
+  - Memory-first exceptions for live-state queries (reminders, alerts, time)
+  - Redundancy rule clarified with multi-step workflow exceptions
+  - Music playback guidance updated for Spotify and ElevenLabs tools
+  - crawl_url explicitly allowed when native search is enabled
+- ✅ **OpenAI API Fix** - max_completion_tokens for gpt-5.x/o1/o3 models
 
 **2026-01-24:**
 - ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI ⭐ NEW
@@ -840,6 +859,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-24 (v2.27)  
-**Latest:** Feedback Tab in Intelligence Dashboard (view all feedback logs without terminal)  
+**Last Updated:** 2026-01-25 (v2.28)  
+**Latest:** System Prompt Validator with --issue flag for debugging unexpected Jarvis behavior  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

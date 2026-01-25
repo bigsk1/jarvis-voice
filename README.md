@@ -1228,6 +1228,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **System Prompt Validator** - LLM-powered debugging tool for prompt engineering
+  - `./bin/validate-system-prompt --tools --issue "..."` - Root cause analysis for unexpected Jarvis behavior
+  - Supports Anthropic, xAI, OpenAI providers
+  - Outputs recommended fixes with diff format
+  - See: `docs/SYSTEM_PROMPT_VALIDATOR.md`
+- ✅ **Meta-Response Fix** - Synthesizes actual answers instead of "I used X tools"
+- ✅ **System Prompt Improvements** - Memory-first exceptions, redundancy rule clarification, music playback guidance
 - ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI
   - Filter by rating (All, Issues 1-3, Good 4-5) and time range (7, 30, 90 days)
   - Stats bar with average rating, total count, and issue rate percentage
@@ -1498,6 +1505,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.27 (January 2026)  
+**Current Version:** v2.28 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Feedback Tab in Intelligence Dashboard (view all feedback logs in UI)
+**Latest Features:** System Prompt Validator with --issue flag for debugging unexpected behavior
