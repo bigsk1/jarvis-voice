@@ -421,6 +421,59 @@ Note: The LLM will generate a text description for the image, NOT ASCII art.
 "extract": {"keywords": "keywords"}
 ```
 
+### manage_intel
+```python
+# Params: action="create", path="topic-name.md", content="...", auto_ingest=true
+{
+  "ok": true,
+  "data": {
+    "file": "topic-name.md",
+    "size_bytes": 1234,
+    "created": true,
+    "ingest": {
+      "ingested": true,
+      "new_files": 1,
+      "total_facts": 15
+    }
+  }
+}
+
+# Params: action="list"
+{
+  "ok": true,
+  "data": {
+    "files": [{"path": "file1.md", "size_bytes": 500}, ...],
+    "count": 5
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"intel_file": "file", "facts_added": "ingest.total_facts"}
+```
+**Note**: Use `auto_ingest: true` to automatically add facts to memory after creating/updating the intel file.
+
+### search_memory
+```python
+# Params: query="collection xai", limit=5
+{
+  "ok": true,
+  "data": {
+    "query": "collection xai",
+    "count": 3,
+    "results": [
+      {"id": 123, "key": "xAI Collections - file", "value": "A file is...", "category": "technical"},
+      ...
+    ]
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"found_count": "count", "found_items": "results"}
+```
+**Note**: Useful as a final verification step to confirm ingestion worked.
+
 ---
 
 ## Step 3: Workflow JSON Structure
@@ -621,6 +674,7 @@ cat "$(ls /home/boss/jarvis-voice/data/canvas/page_* | tail -1)"
 | `daily_status_visual.json` | `/status-visual` | generate_image with data, image_ref in canvas |
 | `crypto_market_report.json` | `/crypto [coins]` | Multiple crypto_price calls, LLM formatting |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | youtube_transcript, stash read, text_summarizer, canvas |
+| `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
 
 ---
 

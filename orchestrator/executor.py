@@ -129,6 +129,8 @@ class ToolExecutor:
                 timeout = 30  # Weather API can be slow with proxy fallback
             elif tool_name == "status_recap":
                 timeout = 180  # 3 minutes - calls multiple tools including generate_image
+            elif tool_name == "crawl_url":
+                timeout = 90  # 90 seconds - web scraping with JS wait can be slow
             else:
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
             
