@@ -71,6 +71,19 @@ Tools Used: {tools_used}
    - Markdown formatting = CORRECT (**, ##, bullets are fine for display)
    - This is NOT a voice interface in detailed mode - it's a display interface
 
+3. **SHORT SPOKEN RESPONSES ARE CORRECT WHEN CONTENT GOES TO CANVAS/STASH** ⚠️ CRITICAL:
+   - This is a VOICE ASSISTANT - responses are SPOKEN OUT LOUD
+   - When workflows create canvas pages, stash files, or save to memory, the CONTENT is there
+   - The spoken response should be a BRIEF CONFIRMATION, not a summary of all findings
+   - Examples of CORRECT short responses:
+     → "/dive workflow created canvas" → "Deep dive complete. Canvas summary created." = RATE 5
+     → "/research workflow" → "Research complete. I found 5 sources and saved a report to your canvas." = RATE 5
+     → "/note workflow" → "Note saved to memory and canvas." = RATE 5
+   - DO NOT penalize for "not summarizing findings" when content is in canvas/stash
+   - DO NOT expect the assistant to read back the entire canvas content
+   - The user will READ the canvas, not listen to it being read aloud
+   - A 10-word confirmation + canvas page is BETTER than a 200-word spoken summary
+
 3. **CURRENT DATE/TIME IS INJECTED INTO THE SYSTEM PROMPT** on every request.
    The LLM ALREADY HAS the current date and time in its system prompt.
    Therefore:
@@ -128,12 +141,14 @@ Rate the interaction (1-5) using this STRICT rubric:
   ✓ No hallucinations or incorrect information
   ✓ Output format matches the configured style (check Configuration section!)
   ✓ If native search enabled + real-time query + specific accurate response = 5
+  ✓ If workflow created canvas/stash + short confirmation speech = 5 (content is in canvas!)
   
 **4 = GOOD with minor issues** - Task completed but:
   - Minor formatting issue (NOT verbosity if style is "detailed"!)
   - Correct but not optimal tool choice
   - Note: In "detailed" style, long responses with URLs are CORRECT, not a flaw
   - Native search response could have included more context/sources
+  - Note: Short speech + canvas created = 5, NOT a "minor issue"
   
 **3 = ACCEPTABLE with issues** - Task completed but:
   - Response partially addresses query
