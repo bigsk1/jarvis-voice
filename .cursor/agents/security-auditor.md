@@ -1,6 +1,7 @@
 ---
 name: security-auditor
-model: fast
+model: claude-4.5-opus-high-thinking
+description: Security Auditor for Jarvis Voice Assistant
 ---
 
 # Security Auditor for Jarvis Voice Assistant

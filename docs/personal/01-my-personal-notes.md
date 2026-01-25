@@ -666,6 +666,10 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq '.'
 ### Quick Commands
 
 ```bash
+# Manual sync between DBs
+./bin/sync-memory-db.py --from local --to cloud  # Sync from local → cloud
+./bin/sync-memory-db.py --from cloud --to local # Sync from cloud → local
+
 # Check intelligence health
 ./bin/check-intelligence-health.py --both
 

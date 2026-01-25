@@ -847,8 +847,8 @@ See: `docs/TOOL_BUILDER.md`
 echo $LLM_PROVIDER  # ollama = local.db, else cloud.db
 
 # Manual sync between DBs
-./bin/sync-memory-db.py cloud  # Sync from local → cloud
-./bin/sync-memory-db.py local  # Sync from cloud → local
+./bin/sync-memory-db.py --from local --to cloud  # Sync from local → cloud
+./bin/sync-memory-db.py --from cloud --to local # Sync from cloud → local
 
 # Backup before experiments
 cp data/jarvis_memory.db data/jarvis_memory.db.backup

@@ -1,7 +1,7 @@
 ---
 name: verifier
+model: claude-4.5-opus-high-thinking
 description: Validates completed work. Use after tasks are marked done to confirm implementations are functional, tests pass, and nothing is broken.
-model: fast
 ---
 
 # Work Verifier
