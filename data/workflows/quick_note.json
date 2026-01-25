@@ -2,7 +2,7 @@
   "id": "quick_note",
   "name": "Quick Note",
   "description": "Quickly save a note to memory and canvas",
-  "version": "1.0",
+  "version": "1.1",
   "enabled": true,
   
   "triggers": {
@@ -12,7 +12,8 @@
   },
   
   "variables": {
-    "content": "The note content from the user's message"
+    "content": {"from": "query", "extract": "main_subject"},
+    "note_title": {"from": "query", "extract": "first_words", "max_words": 4}
   },
   
   "steps": [
@@ -22,8 +23,9 @@
       "params": {},
       "output_var": "time_result",
       "extract": {
-        "timestamp": "time",
-        "date": "date"
+        "timestamp": "time_12h",
+        "date": "date",
+        "date_formatted": "date_formatted"
       },
       "required": true,
       "description": "Get current timestamp"
@@ -32,7 +34,7 @@
       "step": 2,
       "tool": "remember",
       "params": {
-        "key": "note_${date}",
+        "key": "note_${date}_${timestamp}",
         "value": "${content}",
         "category": "notes",
         "importance": 5
@@ -49,12 +51,12 @@
       "tool": "canvas",
       "action": "create",
       "params": {
-        "title": "Note - ${date}",
-        "tags": ["note", "quick"]
+        "title": "Notes/${date}/${note_title}",
+        "tags": ["note", "quick", "${date}"]
       },
-      "llm_prompt": "Format this note nicely:\n\n${content}\n\nAdd:\n- Timestamp: ${timestamp}\n- Any relevant tags or categories\n- Keep it concise",
+      "llm_prompt": "Format this note as a clean, readable canvas page.\n\nNOTE CONTENT:\n${content}\n\nMETADATA:\n- Date: ${date_formatted}\n- Time: ${timestamp}\n- Memory ID: ${memory_id}\n\nCreate a well-formatted markdown note with:\n1. A clear title based on the note content\n2. The note content, formatted nicely\n3. Any action items or key points highlighted\n4. A footer with the timestamp\n\nKeep it concise and scannable.",
       "required": true,
-      "description": "Create canvas page"
+      "description": "Create canvas page in Notes folder"
     }
   ],
   
