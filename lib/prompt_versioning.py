@@ -13,13 +13,12 @@ import os
 import sys
 import json
 import sqlite3
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, asdict
+from datetime import datetime
+from typing import Any
+from dataclasses import dataclass
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
-from config_loader import load_config, get_config_value
 
 
 @dataclass
@@ -30,18 +29,18 @@ class PromptVersion:
     component_type: str
     version: int
     content: str
-    parent_version_id: Optional[int]
+    parent_version_id: int | None
     created_at: str
     created_by: str
     times_used: int
     total_rating_sum: float
     is_active: bool
     is_archived: bool
-    trigger_feedback_ids: Optional[str]
-    change_summary: Optional[str]
+    trigger_feedback_ids: str | None
+    change_summary: str | None
     
     @property
-    def avg_rating(self) -> Optional[float]:
+    def avg_rating(self) -> float | None:
         if self.times_used > 0:
             return self.total_rating_sum / self.times_used
         return None
@@ -115,7 +114,7 @@ class PromptVersionDB:
     
     # ==================== Version Operations ====================
     
-    def get_active_version(self, component: str) -> Optional[PromptVersion]:
+    def get_active_version(self, component: str) -> PromptVersion | None:
         """Get the currently active version for a component."""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -133,7 +132,7 @@ class PromptVersionDB:
             return PromptVersion(**dict(row))
         return None
     
-    def get_version(self, version_id: int) -> Optional[PromptVersion]:
+    def get_version(self, version_id: int) -> PromptVersion | None:
         """Get a specific version by ID."""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -146,7 +145,7 @@ class PromptVersionDB:
             return PromptVersion(**dict(row))
         return None
     
-    def get_version_history(self, component: str, limit: int = 10) -> List[PromptVersion]:
+    def get_version_history(self, component: str, limit: int = 10) -> list[PromptVersion]:
         """Get version history for a component."""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -170,7 +169,7 @@ class PromptVersionDB:
         content: str,
         created_by: str = 'auto_evolution',
         parent_version_id: int = None,
-        trigger_feedback_ids: List[str] = None,
+        trigger_feedback_ids: list[str] = None,
         change_summary: str = None,
         activate: bool = False
     ) -> PromptVersion:
@@ -283,10 +282,10 @@ class PromptVersionDB:
         conn.commit()
         conn.close()
     
-    def get_performance_stats(self, component: str, days: int = 30) -> Dict[str, Any]:
+    def get_performance_stats(self, component: str, days: int = 30) -> dict[str, Any]:
         """Get performance statistics for a component."""
         conn = self._get_conn()
-        cursor = conn.cursor()
+        conn.cursor()
         
         active = self.get_active_version(component)
         if not active:
@@ -330,7 +329,7 @@ class PromptVersionDB:
         conn.close()
         return backup_id
     
-    def rollback(self, component: str, to_version: int = None) -> Tuple[bool, str]:
+    def rollback(self, component: str, to_version: int = None) -> tuple[bool, str]:
         """Rollback to a previous version."""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -384,7 +383,7 @@ class PromptVersionDB:
         from_version_id: int = None,
         to_version_id: int = None,
         trigger_type: str = None,
-        trigger_details: Dict = None,
+        trigger_details: dict = None,
         status: str = 'success',
         notes: str = None
     ):
@@ -406,7 +405,7 @@ class PromptVersionDB:
         conn.commit()
         conn.close()
     
-    def get_evolution_log(self, component: str = None, limit: int = 20) -> List[Dict]:
+    def get_evolution_log(self, component: str = None, limit: int = 20) -> list[dict]:
         """Get evolution log entries."""
         conn = self._get_conn()
         cursor = conn.cursor()
@@ -430,7 +429,7 @@ class PromptVersionDB:
     
     # ==================== Evolution Candidates ====================
     
-    def get_all_components(self) -> List[str]:
+    def get_all_components(self) -> list[str]:
         """Get list of all tracked components."""
         conn = self._get_conn()
         cursor = conn.cursor()

@@ -6,7 +6,7 @@ Python wrapper for OpenCode HTTP API.
 
 import json
 import time
-from typing import Dict, Any, Optional, List
+from typing import Any
 import requests
 from opencode_logger import OpenCodeLogger
 
@@ -14,7 +14,7 @@ from opencode_logger import OpenCodeLogger
 class OpenCodeClient:
     """Client for communicating with OpenCode server."""
 
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: str | None = None):
         """
         Initialize OpenCode client.
         
@@ -62,7 +62,7 @@ class OpenCodeClient:
                 return False
         return False
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """Check OpenCode server health."""
         try:
             response = requests.get(f"{self.base_url}/config", timeout=5)
@@ -82,7 +82,7 @@ class OpenCodeClient:
         except Exception as e:
             return {"healthy": False, "status": "error", "error": str(e)}
 
-    def create_session(self, title: str = "Jarvis Session") -> Dict[str, Any]:
+    def create_session(self, title: str = "Jarvis Session") -> dict[str, Any]:
         """Create a new OpenCode session."""
         response = requests.post(
             f"{self.base_url}/session", json={"title": title}, timeout=self.timeout
@@ -90,7 +90,7 @@ class OpenCodeClient:
         response.raise_for_status()
         return response.json()
 
-    def get_session(self, session_id: str) -> Dict[str, Any]:
+    def get_session(self, session_id: str) -> dict[str, Any]:
         """Get session information."""
         response = requests.get(
             f"{self.base_url}/session/{session_id}", timeout=self.timeout
@@ -98,7 +98,7 @@ class OpenCodeClient:
         response.raise_for_status()
         return response.json()
 
-    def list_sessions(self) -> List[Dict[str, Any]]:
+    def list_sessions(self) -> list[dict[str, Any]]:
         """List all sessions."""
         response = requests.get(f"{self.base_url}/session", timeout=self.timeout)
         response.raise_for_status()
@@ -108,10 +108,10 @@ class OpenCodeClient:
         self,
         session_id: str,
         message: str,
-        provider_id: Optional[str] = None,
-        model_id: Optional[str] = None,
+        provider_id: str | None = None,
+        model_id: str | None = None,
         no_reply: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Send a message to an OpenCode session."""
         # Use configured defaults if not specified
         if provider_id is None:
@@ -119,7 +119,7 @@ class OpenCodeClient:
         if model_id is None:
             model_id = self.default_model_id
         
-        payload: Dict[str, Any] = {"parts": [{"type": "text", "text": message}]}
+        payload: dict[str, Any] = {"parts": [{"type": "text", "text": message}]}
 
         if no_reply:
             payload["noReply"] = True
@@ -137,11 +137,11 @@ class OpenCodeClient:
     def execute_task(
         self,
         task: str,
-        session_id: Optional[str] = None,
-        model: Optional[Dict[str, str]] = None,
-        context: Optional[Dict[str, Any]] = None,
+        session_id: str | None = None,
+        model: dict[str, str] | None = None,
+        context: dict[str, Any] | None = None,
         agent_mode: str = "build"  # "build" or "plan"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute a task via OpenCode."""
         start_time = time.time()
         task_type = context.get("task_type", "general") if context else "general"
@@ -316,7 +316,7 @@ All file operations must be within this directory. DO NOT access `/home/boss/jar
             )
             return {"ok": False, "error": str(e)}
 
-    def get_providers(self) -> Dict[str, Any]:
+    def get_providers(self) -> dict[str, Any]:
         """Get available LLM providers and models."""
         response = requests.get(
             f"{self.base_url}/config/providers", timeout=self.timeout

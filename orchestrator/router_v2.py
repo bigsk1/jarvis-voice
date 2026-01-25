@@ -5,7 +5,7 @@ Uses native tool calling from OpenAI/Anthropic/Ollama to intelligently route req
 """
 import os
 import sys
-from typing import Dict, Any, Optional
+from typing import Any
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -525,7 +525,7 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
         else:
             raise ValueError(f"Unknown LLM provider: {provider_type}")
     
-    def route(self, transcript: str, excluded_tools: list = None) -> Dict[str, Any]:
+    def route(self, transcript: str, excluded_tools: list = None) -> dict[str, Any]:
         """
         Use LLM to determine intent and route appropriately.
         
@@ -763,7 +763,7 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
                 "confidence": 0.0
             }
     
-    def _detect_opencode_mode(self, query: str, response: Dict) -> Dict:
+    def _detect_opencode_mode(self, query: str, response: dict) -> dict:
         """
         Detect if OpenCode should use 'plan' or 'build' mode based on query intent.
         

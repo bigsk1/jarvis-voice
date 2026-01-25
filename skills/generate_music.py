@@ -18,7 +18,6 @@ Configure via ELEVENLABS_API_KEY in cloud.env
 """
 
 import sys
-import os
 import json
 import requests
 from pathlib import Path

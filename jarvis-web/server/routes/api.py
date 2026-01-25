@@ -720,7 +720,6 @@ def speech_to_text():
     try:
         from ..config import load_jarvis_config, get_jarvis_setting
         import tempfile
-        import subprocess
         
         # Get mode from form data or settings
         if not mode:
@@ -842,7 +841,6 @@ def _transcribe_local(audio_path: str) -> str:
 def _convert_to_wav(input_path: str) -> str:
     """Convert audio file to WAV format using ffmpeg"""
     import subprocess
-    import tempfile
     
     # If already wav, return as-is
     if input_path.lower().endswith('.wav'):
@@ -1442,7 +1440,6 @@ def enhance_prompt():
     Takes a rough user query and transforms it into an optimal prompt
     using full knowledge of Jarvis capabilities, tools, and best practices.
     """
-    import json
     
     data = request.get_json() or {}
     user_input = data.get('input', '').strip()

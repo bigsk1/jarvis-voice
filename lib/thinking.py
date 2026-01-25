@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def should_enable_thinking() -> bool:
     return env_value in ("true", "1", "yes", "on")
 
 
-def get_thinking_config(provider: str, model: str) -> Optional[Dict[str, Any]]:
+def get_thinking_config(provider: str, model: str) -> dict[str, Any] | None:
     """
     Get thinking configuration for a specific provider/model.
     
@@ -109,7 +109,7 @@ def get_thinking_config(provider: str, model: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def extract_thinking(response: Any, provider: str) -> Optional[str]:
+def extract_thinking(response: Any, provider: str) -> str | None:
     """
     Extract thinking content from LLM response.
     
@@ -182,7 +182,7 @@ def extract_thinking(response: Any, provider: str) -> Optional[str]:
 def log_thinking(
     query: str,
     thinking: str,
-    decision: Dict[str, Any],
+    decision: dict[str, Any],
     provider: str,
     model: str
 ) -> None:
@@ -283,7 +283,7 @@ Think step-by-step before deciding.
 
 # Thinking analysis helpers
 
-def analyze_thinking_logs(date: str = None) -> Dict[str, Any]:
+def analyze_thinking_logs(date: str = None) -> dict[str, Any]:
     """
     Analyze thinking logs to find patterns.
     

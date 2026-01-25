@@ -20,7 +20,6 @@ import subprocess
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
@@ -31,7 +30,7 @@ from config_loader import load_config
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 
-def parse_date_filter(date_filter: str) -> Optional[datetime]:
+def parse_date_filter(date_filter: str) -> datetime | None:
     """Convert date filter string to datetime object."""
     if not date_filter:
         return None
@@ -54,8 +53,8 @@ def parse_date_filter(date_filter: str) -> Optional[datetime]:
             return None
 
 
-def ripgrep_search(query: str, paths: List[str], file_globs: List[str] = None, 
-                   case_sensitive: bool = False, no_ignore: bool = False) -> List[Dict]:
+def ripgrep_search(query: str, paths: list[str], file_globs: list[str] = None, 
+                   case_sensitive: bool = False, no_ignore: bool = False) -> list[dict]:
     """
     Search files using ripgrep with JSON output.
     
@@ -133,7 +132,7 @@ def ripgrep_search(query: str, paths: List[str], file_globs: List[str] = None,
     return results
 
 
-def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = None) -> List[Dict]:
+def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = None) -> list[dict]:
     """Search memory database using existing methods."""
     results = []
     
@@ -183,13 +182,13 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
                 results.append(mem)
         
         db.close()
-    except Exception as e:
+    except Exception:
         pass
     
     return results[:limit]
 
 
-def search_terminal_conversations(query: str, limit: int, date_filter: datetime = None) -> List[Dict]:
+def search_terminal_conversations(query: str, limit: int, date_filter: datetime = None) -> list[dict]:
     """Search terminal/voice conversation history from database."""
     results = []
     
@@ -211,13 +210,13 @@ def search_terminal_conversations(query: str, limit: int, date_filter: datetime 
             conv['_source_display'] = 'Terminal/Voice Conversation'
             results.append(conv)
             
-    except Exception as e:
+    except Exception:
         pass
     
     return results[:limit]
 
 
-def search_web_conversations(query: str, limit: int, date_filter: datetime = None) -> List[Dict]:
+def search_web_conversations(query: str, limit: int, date_filter: datetime = None) -> list[dict]:
     """Search web UI conversation JSON files using ripgrep."""
     results = []
     web_conv_dir = PROJECT_ROOT / 'data' / 'web_conversations'
@@ -284,7 +283,7 @@ def search_web_conversations(query: str, limit: int, date_filter: datetime = Non
     return results[:limit]
 
 
-def search_intel_folder(query: str, limit: int) -> List[Dict]:
+def search_intel_folder(query: str, limit: int) -> list[dict]:
     """Search intel folder markdown files using ripgrep."""
     results = []
     intel_dir = PROJECT_ROOT / 'jarvis-intel'
@@ -329,7 +328,7 @@ def search_intel_folder(query: str, limit: int) -> List[Dict]:
     return results
 
 
-def search_canvas_pages(query: str, limit: int, date_filter: datetime = None) -> List[Dict]:
+def search_canvas_pages(query: str, limit: int, date_filter: datetime = None) -> list[dict]:
     """Search canvas page content and tags using ripgrep."""
     results = []
     canvas_dir = PROJECT_ROOT / 'data' / 'canvas'
@@ -384,7 +383,7 @@ def search_canvas_pages(query: str, limit: int, date_filter: datetime = None) ->
     return results[:limit]
 
 
-def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) -> List[Dict]:
+def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) -> list[dict]:
     """Search stash space metadata AND file contents."""
     results = []
     stash_dir = PROJECT_ROOT / 'data' / 'stash'
@@ -464,7 +463,7 @@ def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) ->
     return results[:limit]
 
 
-def deduplicate_results(results: List[Dict]) -> List[Dict]:
+def deduplicate_results(results: list[dict]) -> list[dict]:
     """
     Remove duplicates where same data appears in multiple sources.
     E.g., intel file content that's also in memory.

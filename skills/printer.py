@@ -12,7 +12,6 @@ import json
 import subprocess
 import tempfile
 import re
-import glob
 from datetime import datetime
 from pathlib import Path
 

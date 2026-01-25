@@ -138,7 +138,6 @@ async def custom_swagger_ui():
     )
 
 # Inject dark mode CSS
-from fastapi import Request
 from fastapi.responses import HTMLResponse
 
 @app.get("/docs/dark", include_in_schema=False)

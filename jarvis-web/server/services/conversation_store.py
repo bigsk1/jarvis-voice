@@ -3,10 +3,8 @@ Conversation Storage Service
 Saves and loads chat conversations
 """
 import json
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 import uuid
 
 # Store conversations in data directory
@@ -22,7 +20,7 @@ class ConversationStore:
         self._index_file = self.conversations_dir / 'index.json'
         self._index = self._load_index()
     
-    def _load_index(self) -> Dict:
+    def _load_index(self) -> dict:
         """Load conversation index"""
         if self._index_file.exists():
             try:
@@ -37,7 +35,7 @@ class ConversationStore:
         with open(self._index_file, 'w') as f:
             json.dump(self._index, f, indent=2)
     
-    def create_conversation(self, title: str = None) -> Dict:
+    def create_conversation(self, title: str = None) -> dict:
         """Create a new conversation"""
         conv_id = str(uuid.uuid4())[:8]
         timestamp = datetime.now().isoformat()
@@ -67,7 +65,7 @@ class ConversationStore:
         
         return conversation
     
-    def get_conversation(self, conv_id: str) -> Optional[Dict]:
+    def get_conversation(self, conv_id: str) -> dict | None:
         """Get a conversation by ID"""
         conv_file = self.conversations_dir / f'{conv_id}.json'
         if conv_file.exists():
@@ -76,7 +74,7 @@ class ConversationStore:
         return None
     
     def add_message(self, conv_id: str, role: str, content: str, 
-                    data: Dict = None, tools_used: List[str] = None) -> Dict:
+                    data: dict = None, tools_used: list[str] = None) -> dict:
         """Add a message to a conversation"""
         conversation = self.get_conversation(conv_id)
         if not conversation:
@@ -115,7 +113,7 @@ class ConversationStore:
         
         return message
     
-    def list_conversations(self, limit: int = 50) -> List[Dict]:
+    def list_conversations(self, limit: int = 50) -> list[dict]:
         """List recent conversations"""
         # Sort by updated_at descending
         convs = sorted(
@@ -156,7 +154,7 @@ class ConversationStore:
 
 
 # Singleton instance
-_store: Optional[ConversationStore] = None
+_store: ConversationStore | None = None
 
 
 def get_conversation_store() -> ConversationStore:

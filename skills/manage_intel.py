@@ -17,7 +17,7 @@ import sys
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any
 import subprocess
 
 # Add lib to path
@@ -59,7 +59,7 @@ def validate_path(path: str, intel_dir: Path) -> Path:
     return full_path
 
 
-def create_intel_file(intel_dir: Path, path: str, content: str) -> Dict[str, Any]:
+def create_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any]:
     """Create a new intel file."""
     file_path = validate_path(path, intel_dir)
     
@@ -84,7 +84,7 @@ def create_intel_file(intel_dir: Path, path: str, content: str) -> Dict[str, Any
     }
 
 
-def read_intel_file(intel_dir: Path, path: str) -> Dict[str, Any]:
+def read_intel_file(intel_dir: Path, path: str) -> dict[str, Any]:
     """Read an intel file."""
     file_path = validate_path(path, intel_dir)
     
@@ -101,7 +101,7 @@ def read_intel_file(intel_dir: Path, path: str) -> Dict[str, Any]:
     }
 
 
-def update_intel_file(intel_dir: Path, path: str, content: str) -> Dict[str, Any]:
+def update_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any]:
     """Update an existing intel file."""
     file_path = validate_path(path, intel_dir)
     
@@ -122,7 +122,7 @@ def update_intel_file(intel_dir: Path, path: str, content: str) -> Dict[str, Any
     }
 
 
-def delete_intel_file(intel_dir: Path, path: str, db: MemoryDB) -> Dict[str, Any]:
+def delete_intel_file(intel_dir: Path, path: str, db: MemoryDB) -> dict[str, Any]:
     """
     Delete an intel file and remove its facts from memory.
     """
@@ -156,7 +156,7 @@ def delete_intel_file(intel_dir: Path, path: str, db: MemoryDB) -> Dict[str, Any
     }
 
 
-def list_intel_files(intel_dir: Path, pattern: str = "*") -> Dict[str, Any]:
+def list_intel_files(intel_dir: Path, pattern: str = "*") -> dict[str, Any]:
     """List intel files (excluding README.md)."""
     md_files = list(intel_dir.glob(f"**/{pattern}.md"))
     txt_files = list(intel_dir.glob(f"**/{pattern}.txt"))
@@ -180,7 +180,7 @@ def list_intel_files(intel_dir: Path, pattern: str = "*") -> Dict[str, Any]:
     }
 
 
-def auto_ingest(project_root: Path) -> Dict[str, Any]:
+def auto_ingest(project_root: Path) -> dict[str, Any]:
     """Run ingest_intel tool to update memory."""
     ingest_script = project_root / 'skills' / 'ingest_intel.py'
     

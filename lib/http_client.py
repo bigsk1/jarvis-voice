@@ -22,7 +22,6 @@ Config:
 import sys
 import os
 import logging
-from typing import Optional, Dict, Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -36,7 +35,7 @@ from config_loader import get_config_value
 logger = logging.getLogger(__name__)
 
 
-def get_proxy_config() -> Optional[Dict[str, str]]:
+def get_proxy_config() -> dict[str, str] | None:
     """
     Get proxy configuration from environment.
     
@@ -226,7 +225,6 @@ def delete(url: str, **kwargs) -> requests.Response:
 
 # Test function
 if __name__ == "__main__":
-    import json
     
     # Load config
     from config_loader import load_config

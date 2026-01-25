@@ -5,7 +5,6 @@ Run this once to upgrade existing databases.
 """
 
 import sqlite3
-import sys
 from pathlib import Path
 
 def migrate_database(db_path: Path):

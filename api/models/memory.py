@@ -1,8 +1,7 @@
 """Memory API models"""
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Any
 from enum import Enum
 
 
@@ -24,8 +23,8 @@ class MemoryCreate(BaseModel):
     key: str = Field(..., description="What this memory is about (identifier)")
     value: str = Field(..., description="The information to remember")
     importance: int = Field(5, ge=1, le=10, description="Importance level 1-10 (higher = more important)")
-    source: Optional[str] = Field(None, description="Where this information came from")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata (tags, expiration, etc.)")
+    source: str | None = Field(None, description="Where this information came from")
+    metadata: dict[str, Any] | None = Field(None, description="Additional metadata (tags, expiration, etc.)")
     generate_embedding: bool = Field(True, description="Generate vector embedding for semantic search")
 
     class Config:
@@ -43,8 +42,8 @@ class MemoryCreate(BaseModel):
 
 class MemoryUpdate(BaseModel):
     """Request to update a memory"""
-    value: Optional[str] = Field(None, description="New value")
-    importance: Optional[int] = Field(None, ge=1, le=10, description="New importance level")
+    value: str | None = Field(None, description="New value")
+    importance: int | None = Field(None, ge=1, le=10, description="New importance level")
     
     class Config:
         json_schema_extra = {
@@ -62,28 +61,28 @@ class Memory(BaseModel):
     key: str
     value: str
     importance: int
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-    source: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-    relevance: Optional[float] = Field(None, description="Search relevance score (if from search)")
-    similarity: Optional[float] = Field(None, description="Semantic similarity score (if from semantic search)")
+    created_at: str | None = None
+    updated_at: str | None = None
+    source: str | None = None
+    metadata: dict[str, Any] | None = None
+    relevance: float | None = Field(None, description="Search relevance score (if from search)")
+    similarity: float | None = Field(None, description="Semantic similarity score (if from semantic search)")
 
 
 class MemoryResponse(BaseModel):
     """Standard memory API response"""
     ok: bool
-    message: Optional[str] = None
-    memory_id: Optional[int] = None
-    memory: Optional[Memory] = None
-    memories: Optional[List[Memory]] = None
-    count: Optional[int] = None
+    message: str | None = None
+    memory_id: int | None = None
+    memory: Memory | None = None
+    memories: list[Memory] | None = None
+    count: int | None = None
 
 
 class MemorySearchRequest(BaseModel):
     """Request for memory search"""
     query: str = Field(..., description="Search query")
-    category: Optional[str] = Field(None, description="Filter by category")
+    category: str | None = Field(None, description="Filter by category")
     limit: int = Field(10, ge=1, le=100, description="Maximum results")
 
 

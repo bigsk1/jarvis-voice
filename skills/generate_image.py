@@ -18,7 +18,6 @@ Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
 """
 
 import sys
-import os
 import json
 import base64
 import requests
@@ -383,7 +382,6 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
 
 def save_to_stash(image_data: dict, prompt: str) -> dict:
     """Save generated image to stash for use with other tools."""
-    import subprocess
     
     # Generate a filename from the prompt
     safe_prompt = "".join(c if c.isalnum() or c in ' -_' else '' for c in prompt[:40])
@@ -523,7 +521,7 @@ def main():
                         "type": "image"
                     }
                 )
-            except Exception as mem_err:
+            except Exception:
                 pass  # Don't fail the tool if memory save fails
         
         # Build response

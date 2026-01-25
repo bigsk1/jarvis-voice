@@ -2,8 +2,6 @@
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
-from typing import Optional
-import os
 import json
 from pathlib import Path
 
@@ -17,7 +15,7 @@ router = APIRouter(prefix="/api/stash", tags=["stash"])
 STASH_DIR = Path(__file__).parent.parent.parent / "data" / "stash"
 
 
-def get_space_meta(space_id: str) -> Optional[dict]:
+def get_space_meta(space_id: str) -> dict | None:
     """Load meta.json for a space"""
     meta_path = STASH_DIR / space_id / "meta.json"
     if not meta_path.exists():
@@ -134,9 +132,9 @@ async def get_stash_stats():
 async def list_spaces(
     limit: int = Query(50, ge=1, le=200, description="Max results"),
     offset: int = Query(0, ge=0, description="Skip N results"),
-    label: Optional[str] = Query(None, description="Filter by label"),
-    pinned: Optional[bool] = Query(None, description="Filter by pinned status"),
-    tool: Optional[str] = Query(None, description="Filter by tool_origin")
+    label: str | None = Query(None, description="Filter by label"),
+    pinned: bool | None = Query(None, description="Filter by pinned status"),
+    tool: str | None = Query(None, description="Filter by tool_origin")
 ):
     """
     List stash spaces with pagination and filters.

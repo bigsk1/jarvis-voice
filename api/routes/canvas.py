@@ -4,8 +4,6 @@ Canvas API routes - Read-only access to canvas pages.
 import os
 import json
 import re
-from typing import Optional, List
-from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from ..models.canvas import (
     CanvasPage, CanvasPageFull, CanvasPageResponse,
@@ -28,7 +26,7 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
-def _extract_embedded_images(content: str) -> List[str]:
+def _extract_embedded_images(content: str) -> list[str]:
     """Extract stash:// references from markdown content."""
     # Match ![title](stash://...) patterns
     pattern = r'!\[.*?\]\(stash://([^)]+)\)'
@@ -36,7 +34,7 @@ def _extract_embedded_images(content: str) -> List[str]:
     return [f"stash://{m}" for m in matches]
 
 
-def _load_page(filepath: str) -> Optional[dict]:
+def _load_page(filepath: str) -> dict | None:
     """Load a canvas page from JSON file."""
     try:
         with open(filepath, 'r') as f:
@@ -45,7 +43,7 @@ def _load_page(filepath: str) -> Optional[dict]:
         return None
 
 
-def _get_all_pages() -> List[tuple]:
+def _get_all_pages() -> list[tuple]:
     """Get all canvas pages as (filepath, data) tuples."""
     if not os.path.exists(CANVAS_DIR):
         return []
@@ -167,9 +165,9 @@ async def get_canvas_stats():
 async def list_pages(
     limit: int = Query(50, ge=1, le=200, description="Max results"),
     offset: int = Query(0, ge=0, description="Skip N results"),
-    tag: Optional[str] = Query(None, description="Filter by tag"),
-    tool: Optional[str] = Query(None, description="Filter by source_tool"),
-    search: Optional[str] = Query(None, description="Search in title/content")
+    tag: str | None = Query(None, description="Filter by tag"),
+    tool: str | None = Query(None, description="Filter by source_tool"),
+    search: str | None = Query(None, description="Search in title/content")
 ):
     """
     List canvas pages with optional filtering.

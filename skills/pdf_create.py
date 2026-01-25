@@ -13,8 +13,6 @@ import sys
 import os
 import json
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
-from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -106,7 +104,7 @@ class JarvisPDF(FPDF):
         self.ln(10)
 
 
-def create_simple_pdf(title: str, content_items: List[Dict], output_path: str) -> str:
+def create_simple_pdf(title: str, content_items: list[dict], output_path: str) -> str:
     """
     Create a simple PDF with mixed content.
     
@@ -135,14 +133,14 @@ def create_simple_pdf(title: str, content_items: List[Dict], output_path: str) -
     return output_path
 
 
-def action_create(args: Dict) -> Dict:
+def action_create(args: dict) -> dict:
     """Create a PDF from stash files."""
     space_id = args.get('space_id')
     files = args.get('files', [])
     text = args.get('text', '')
     title = args.get('title', 'Jarvis Document')
     output_name = args.get('output_name', f'document_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf')
-    template = args.get('template', 'simple')
+    args.get('template', 'simple')
     
     if not files and not text:
         raise ValueError("Provide 'files' (stash file_ids) or 'text' content")
@@ -208,7 +206,7 @@ def action_create(args: Dict) -> Dict:
     create_simple_pdf(title, content_items, output_path)
     
     # Register in stash metadata
-    stash_file = StashFile(space)
+    StashFile(space)
     
     # Get file size
     file_size = os.path.getsize(output_path)
@@ -270,7 +268,7 @@ def action_create(args: Dict) -> Dict:
     }
 
 
-def action_from_text(args: Dict) -> Dict:
+def action_from_text(args: dict) -> dict:
     """Create a PDF from plain text (convenience action)."""
     text = args.get('text')
     title = args.get('title', 'Document')

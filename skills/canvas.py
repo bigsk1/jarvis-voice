@@ -15,14 +15,11 @@ Output: { "ok": bool, "speech": str, "data": dict }
 import sys
 import os
 import json
-import subprocess
-import webbrowser
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 
 # Constants
 CANVAS_URL = "http://localhost:8890"
@@ -42,7 +39,7 @@ def check_canvas_health() -> bool:
         return False
 
 
-def api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
+def api_request(method: str, endpoint: str, data: dict | None = None) -> dict[str, Any]:
     """Make API request to canvas server."""
     import urllib.request
     import urllib.error
@@ -69,7 +66,7 @@ def api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Dict
         return {"error": f"Connection failed: {e.reason}"}
 
 
-def save_to_memory(page: Dict[str, Any]) -> None:
+def save_to_memory(page: dict[str, Any]) -> None:
     """Save page reference to Jarvis memory."""
     try:
         from memory_db import MemoryDB
@@ -114,8 +111,8 @@ def remove_from_memory(page_id: str) -> None:
         pass  # Non-fatal
 
 
-def create_page(title: str, content: str, tags: List[str] = None, 
-                source_query: str = None, pinned: bool = False) -> Dict[str, Any]:
+def create_page(title: str, content: str, tags: list[str] = None, 
+                source_query: str = None, pinned: bool = False) -> dict[str, Any]:
     """Create a new canvas page."""
     
     # Check if server is running
@@ -163,7 +160,7 @@ def create_page(title: str, content: str, tags: List[str] = None,
 
 
 def update_page(page_id: str, title: str = None, content: str = None, 
-                tags: List[str] = None, pinned: bool = None) -> Dict[str, Any]:
+                tags: list[str] = None, pinned: bool = None) -> dict[str, Any]:
     """Update an existing canvas page."""
     
     if not check_canvas_health():
@@ -202,7 +199,7 @@ def update_page(page_id: str, title: str = None, content: str = None,
     }
 
 
-def delete_page(page_id: str) -> Dict[str, Any]:
+def delete_page(page_id: str) -> dict[str, Any]:
     """Delete a canvas page."""
     
     if not check_canvas_health():
@@ -231,7 +228,7 @@ def delete_page(page_id: str) -> Dict[str, Any]:
     }
 
 
-def list_pages(limit: int = 10) -> Dict[str, Any]:
+def list_pages(limit: int = 10) -> dict[str, Any]:
     """List all canvas pages."""
     
     if not check_canvas_health():
@@ -278,7 +275,7 @@ def list_pages(limit: int = 10) -> Dict[str, Any]:
     }
 
 
-def open_canvas() -> Dict[str, Any]:
+def open_canvas() -> dict[str, Any]:
     """Return the canvas URL (user opens browser manually)."""
     
     health = check_canvas_health()
@@ -300,7 +297,7 @@ def open_canvas() -> Dict[str, Any]:
     }
 
 
-def read_page(page_id: str = None, search: str = None) -> Dict[str, Any]:
+def read_page(page_id: str = None, search: str = None) -> dict[str, Any]:
     """Read a canvas page content. Can find by ID or search by title/content.
     
     Useful for:

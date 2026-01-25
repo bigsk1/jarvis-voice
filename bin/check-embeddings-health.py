@@ -14,7 +14,6 @@ Expected dimensions:
 """
 
 import sys
-import os
 import json
 import pickle
 from pathlib import Path

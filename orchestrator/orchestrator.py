@@ -8,7 +8,7 @@ This is the "brain" that sits between STT and TTS.
 import os
 import sys
 import json
-from typing import Dict, Any
+from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -35,7 +35,7 @@ class Orchestrator:
         else:
             self.qa_script = os.path.join(self.project_root, "bin", "question-local.sh")
     
-    def process(self, transcript: str) -> Dict[str, Any]:
+    def process(self, transcript: str) -> dict[str, Any]:
         """
         Process a user transcript and return speech response.
         

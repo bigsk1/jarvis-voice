@@ -7,11 +7,9 @@ Run once to create the schema, safe to run multiple times.
 import os
 import sys
 import sqlite3
-from datetime import datetime
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
 
 def get_db_path(mode: str = None) -> str:
     """Get database path based on mode."""

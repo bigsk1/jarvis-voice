@@ -6,7 +6,6 @@ Executes bash commands with safety checks.
 import sys
 import json
 import subprocess
-import shlex
 
 
 # Dangerous command patterns to block

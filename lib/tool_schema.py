@@ -6,7 +6,7 @@ Universal tool definition that works across all LLM providers.
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 
 class ToolSchema:
@@ -16,9 +16,9 @@ class ToolSchema:
         self,
         name: str,
         description: str,
-        parameters: Dict[str, Any],
+        parameters: dict[str, Any],
         script_path: str,
-        permissions: Optional[Dict[str, Any]] = None
+        permissions: dict[str, Any] | None = None
     ):
         """
         Initialize a tool schema.
@@ -49,7 +49,7 @@ class ToolSchema:
             "auto_approve": True
         }
     
-    def to_openai_format(self) -> Dict[str, Any]:
+    def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI function calling format."""
         return {
             "type": "function",
@@ -60,7 +60,7 @@ class ToolSchema:
             }
         }
     
-    def to_anthropic_format(self) -> Dict[str, Any]:
+    def to_anthropic_format(self) -> dict[str, Any]:
         """Convert to Anthropic tool calling format."""
         return {
             "name": self.name,
@@ -145,7 +145,7 @@ Parameters:
 class ToolRegistry:
     """Registry of all available tools (local + MCP)."""
     
-    def __init__(self, skills_dir: str, mcp_config_path: Optional[str] = None):
+    def __init__(self, skills_dir: str, mcp_config_path: str | None = None):
         """
         Initialize tool registry.
         
@@ -155,8 +155,8 @@ class ToolRegistry:
         """
         self.skills_dir = Path(skills_dir)
         self.mcp_config_path = mcp_config_path
-        self.tools: Dict[str, ToolSchema] = {}
-        self.mcp_clients: Dict[str, Any] = {}
+        self.tools: dict[str, ToolSchema] = {}
+        self.mcp_clients: dict[str, Any] = {}
         self.mcp_manager = None
         
         # Discover MCP tools FIRST (before local tools)
@@ -212,19 +212,19 @@ class ToolRegistry:
                 if verbose:
                     print(f"✗ Failed to load tool {tool_file}: {e}")
     
-    def get_tool(self, name: str) -> Optional[ToolSchema]:
+    def get_tool(self, name: str) -> ToolSchema | None:
         """Get tool by name."""
         return self.tools.get(name)
     
-    def list_tools(self) -> List[str]:
+    def list_tools(self) -> list[str]:
         """List all tool names."""
         return list(self.tools.keys())
     
-    def to_openai_format(self) -> List[Dict[str, Any]]:
+    def to_openai_format(self) -> list[dict[str, Any]]:
         """Get all tools in OpenAI format."""
         return [tool.to_openai_format() for tool in self.tools.values()]
     
-    def to_anthropic_format(self) -> List[Dict[str, Any]]:
+    def to_anthropic_format(self) -> list[dict[str, Any]]:
         """Get all tools in Anthropic format."""
         return [tool.to_anthropic_format() for tool in self.tools.values()]
     
@@ -378,7 +378,7 @@ class ToolRegistry:
             return parts[0], parts[1]
         return None, None
 
-    def find_tools(self, query: str, limit: int = 5) -> List[ToolSchema]:
+    def find_tools(self, query: str, limit: int = 5) -> list[ToolSchema]:
         """
         Find relevant tools for a user query using vector search.
         Always includes GHOST_TOOLS (configured core tools).
@@ -449,8 +449,8 @@ class ToolRegistry:
 # SINGLETON PATTERN - Prevents duplicate MCP containers
 # ============================================================================
 
-_tool_registry_instance: Optional[ToolRegistry] = None
-_tool_registry_mode: Optional[str] = None
+_tool_registry_instance: ToolRegistry | None = None
+_tool_registry_mode: str | None = None
 
 
 def get_tool_registry(skills_dir: str = None, mcp_config_path: str = None, mode: str = None) -> ToolRegistry:

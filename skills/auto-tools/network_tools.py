@@ -10,11 +10,10 @@ import time
 import subprocess
 import platform
 import re
-from urllib.parse import urlparse
-from typing import Dict, Any, Optional
+from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 
 try:
     import requests
@@ -140,7 +139,7 @@ def traceroute(host, max_hops=30, timeout=2):
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
-def check_http(url: str, method: str = 'GET', timeout: int = 10, follow_redirects: bool = True) -> Dict[str, Any]:
+def check_http(url: str, method: str = 'GET', timeout: int = 10, follow_redirects: bool = True) -> dict[str, Any]:
     """Check HTTP/HTTPS endpoint status and response time."""
     if not REQUESTS_AVAILABLE:
         return {

@@ -16,11 +16,9 @@ Usage:
 """
 
 import sys
-import os
 import json
 import pickle
 from pathlib import Path
-from datetime import datetime, timedelta
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
@@ -210,7 +208,7 @@ def check_intelligence_health(mode='cloud'):
         stale_reflections = cursor.fetchone()[0]
         if stale_reflections > 0:
             result['warnings'].append(f"{stale_reflections} reflections pending for > 1 hour")
-    except Exception as e:
+    except Exception:
         pass  # Ignore if column doesn't exist
     
     # Check insight quality
@@ -227,7 +225,7 @@ def check_intelligence_health(mode='cloud'):
         low_conf = cursor.fetchone()[0]
         if low_conf > 0:
             result['warnings'].append(f"{low_conf} insights have very low confidence (<0.2) - consider pruning")
-    except Exception as e:
+    except Exception:
         pass
     
     # Check constraint types
@@ -242,7 +240,7 @@ def check_intelligence_health(mode='cloud'):
         constraints = {row['constraint_type'] or 'positive': row['count'] for row in cursor.fetchall()}
         result['stats']['positive_constraints'] = constraints.get('positive', 0)
         result['stats']['negative_constraints'] = constraints.get('negative', 0)
-    except Exception as e:
+    except Exception:
         pass
     
     # Check enabled status

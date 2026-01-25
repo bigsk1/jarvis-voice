@@ -1,15 +1,15 @@
 """Query/Chat API models"""
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 
 class QueryRequest(BaseModel):
     """Request to query Jarvis"""
     query: str = Field(..., description="The question or command for Jarvis")
     mode: str = Field("cloud", description="LLM mode: 'cloud' or 'local'")
-    session_id: Optional[str] = Field(None, description="Optional session ID for conversation continuity")
-    context: Optional[Dict[str, Any]] = Field(None, description="Additional context to include")
+    session_id: str | None = Field(None, description="Optional session ID for conversation continuity")
+    context: dict[str, Any] | None = Field(None, description="Additional context to include")
 
     class Config:
         json_schema_extra = {
@@ -38,18 +38,18 @@ class QuickQueryRequest(BaseModel):
 class ToolUsed(BaseModel):
     """Information about a tool that was used"""
     name: str
-    arguments: Optional[Dict[str, Any]] = None
+    arguments: dict[str, Any] | None = None
     result_ok: bool = True
 
 
 class QueryResponse(BaseModel):
     """Response from Jarvis query"""
     ok: bool
-    speech: Optional[str] = Field(None, description="Spoken response (for TTS)")
-    response: Optional[str] = Field(None, description="Full text response")
-    tools_used: Optional[List[str]] = Field(None, description="List of tools that were called")
-    session_id: Optional[str] = Field(None, description="Session ID for follow-up queries")
-    error: Optional[str] = None
+    speech: str | None = Field(None, description="Spoken response (for TTS)")
+    response: str | None = Field(None, description="Full text response")
+    tools_used: list[str] | None = Field(None, description="List of tools that were called")
+    session_id: str | None = Field(None, description="Session ID for follow-up queries")
+    error: str | None = None
     
     class Config:
         json_schema_extra = {

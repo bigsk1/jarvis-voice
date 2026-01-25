@@ -14,13 +14,14 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Callable
+from typing import Any
+from collections.abc import Callable
 from datetime import datetime
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
-from llm_provider import create_provider, LLMProvider
+from llm_provider import create_provider
 from tool_logger import ToolLogger
 
 
@@ -105,8 +106,8 @@ class PipelineExecutor:
             print(f"Warning: Could not create LLM provider: {e}", file=sys.stderr)
             return None
     
-    def execute(self, workflow: Dict, query: str, 
-                status_callback: Callable[[str], None] = None) -> Dict[str, Any]:
+    def execute(self, workflow: dict, query: str, 
+                status_callback: Callable[[str], None] = None) -> dict[str, Any]:
         """
         Execute a workflow pipeline.
         
@@ -240,9 +241,9 @@ class PipelineExecutor:
         return self._build_success_response(workflow, results, variables, tools_used, 
                                             start_time=start_time, query=query)
     
-    def _execute_single(self, step: Dict, tool_name: str, action: str,
-                        tool_defaults: Dict, variables: Dict,
-                        validation_policy: Dict) -> Dict[str, Any]:
+    def _execute_single(self, step: dict, tool_name: str, action: str,
+                        tool_defaults: dict, variables: dict,
+                        validation_policy: dict) -> dict[str, Any]:
         """Execute a single step (not for_each)."""
         
         # Resolve parameters
@@ -268,10 +269,10 @@ class PipelineExecutor:
         
         return result
     
-    def _execute_for_each(self, step: Dict, tool_name: str, action: str,
-                          tool_defaults: Dict, variables: Dict,
-                          validation_policy: Dict,
-                          current_retries: int, max_retries: int) -> Dict[str, Any]:
+    def _execute_for_each(self, step: dict, tool_name: str, action: str,
+                          tool_defaults: dict, variables: dict,
+                          validation_policy: dict,
+                          current_retries: int, max_retries: int) -> dict[str, Any]:
         """Execute a for_each step with retry logic."""
         
         # Get items to iterate
@@ -290,7 +291,7 @@ class PipelineExecutor:
         validated_outputs = []
         retries = 0
         required_success = step.get("required_success_count", 1)
-        max_attempts = step.get("retry", {}).get("max_attempts", 1)
+        step.get("retry", {}).get("max_attempts", 1)
         
         item_index = 0
         while item_index < len(items) and len(validated_outputs) < required_success:
@@ -350,7 +351,7 @@ class PipelineExecutor:
             "abort": abort
         }
     
-    def _resolve_params(self, step: Dict, tool_defaults: Dict, variables: Dict) -> Dict:
+    def _resolve_params(self, step: dict, tool_defaults: dict, variables: dict) -> dict:
         """
         Resolve parameters with layering: step > tool_defaults > variables.
         """
@@ -367,7 +368,7 @@ class PipelineExecutor:
         
         return params
     
-    def _resolve_variable(self, expr: Any, variables: Dict) -> Any:
+    def _resolve_variable(self, expr: Any, variables: dict) -> Any:
         """
         Resolve a variable expression like ${topic} or ${search_results.urls[:5]}.
         Also handles embedded variables in strings and arrays.
@@ -426,7 +427,7 @@ class PipelineExecutor:
         # Simple path like "topic" or "search_results.urls"
         return self._get_nested_value(variables, path)
     
-    def _get_nested_value(self, data: Dict, path: str) -> Any:
+    def _get_nested_value(self, data: dict, path: str) -> Any:
         """Get a nested value from a dict using dot notation."""
         parts = path.split(".")
         current = data
@@ -442,7 +443,7 @@ class PipelineExecutor:
         
         return current
     
-    def _apply_output_transforms(self, step: Dict, result: Dict, variables: Dict, 
+    def _apply_output_transforms(self, step: dict, result: dict, variables: dict, 
                                     tool_name: str, action: str) -> None:
         """
         Apply output transformations to extract useful data from step results.
@@ -520,7 +521,7 @@ class PipelineExecutor:
         tool_lower = tool_name.lower()
         return any(ind in tool_lower for ind in search_indicators)
     
-    def _extract_by_path(self, data: Dict, path: str) -> Any:
+    def _extract_by_path(self, data: dict, path: str) -> Any:
         """
         Extract a value from nested data using dot notation or special syntax.
         
@@ -549,7 +550,7 @@ class PipelineExecutor:
         # Convert to nested format for _get_nested_value
         return self._get_nested_value(data, path)
     
-    def _format_articles_for_llm(self, articles: List[Dict]) -> str:
+    def _format_articles_for_llm(self, articles: list[dict]) -> str:
         """Format validated articles for LLM consumption."""
         if not articles:
             return "[No articles gathered]"
@@ -578,7 +579,7 @@ class PipelineExecutor:
         
         return "\n\n---\n\n".join(formatted)
     
-    def _extract_urls_from_search(self, search_data: Dict) -> List[str]:
+    def _extract_urls_from_search(self, search_data: dict) -> list[str]:
         """
         Extract URLs from search results (handles MCP and native formats).
         """
@@ -615,7 +616,7 @@ class PipelineExecutor:
         
         return urls
     
-    def _extract_topic(self, query: str, workflow: Dict) -> str:
+    def _extract_topic(self, query: str, workflow: dict) -> str:
         """Extract the main topic from the query."""
         # Remove explicit command prefix
         for explicit in workflow.get("triggers", {}).get("explicit", []):
@@ -637,7 +638,7 @@ class PipelineExecutor:
         # Return the whole query as topic
         return query
     
-    def _extract_workflow_variables(self, query: str, workflow: Dict, topic: str) -> Dict[str, Any]:
+    def _extract_workflow_variables(self, query: str, workflow: dict, topic: str) -> dict[str, Any]:
         """
         Extract workflow-defined variables from the query.
         
@@ -712,7 +713,7 @@ class PipelineExecutor:
         
         return variables
     
-    def _apply_transform(self, value: str, transform: str) -> Optional[str]:
+    def _apply_transform(self, value: str, transform: str) -> str | None:
         """Apply a transformation to a value."""
         if not value:
             return None
@@ -729,7 +730,7 @@ class PipelineExecutor:
         
         return value
     
-    def _extract_domain_from_url(self, url: str) -> Optional[str]:
+    def _extract_domain_from_url(self, url: str) -> str | None:
         """Extract domain from a URL (e.g., 'https://www.bigsk1.com/page' -> 'bigsk1.com')."""
         try:
             from urllib.parse import urlparse
@@ -742,7 +743,7 @@ class PipelineExecutor:
         except Exception:
             return None
     
-    def _extract_url_from_text(self, text: str) -> Optional[str]:
+    def _extract_url_from_text(self, text: str) -> str | None:
         """Extract a URL from text, adding https:// if needed."""
         # Try to find a URL with protocol
         url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
@@ -762,7 +763,7 @@ class PipelineExecutor:
         
         return None
     
-    def _validate_result(self, result: Dict, step: Dict, variables: Dict) -> bool:
+    def _validate_result(self, result: dict, step: dict, variables: dict) -> bool:
         """Validate step result using configured validation."""
         validation = step.get("validation", {})
         
@@ -811,7 +812,7 @@ class PipelineExecutor:
         
         return True
     
-    def _llm_validate(self, content: str, prompt_template: str, variables: Dict) -> bool:
+    def _llm_validate(self, content: str, prompt_template: str, variables: dict) -> bool:
         """Use LLM to validate content."""
         if not self.provider:
             return True  # Skip LLM validation if no provider
@@ -838,7 +839,7 @@ class PipelineExecutor:
             print(f"LLM validation error: {e}", file=sys.stderr)
             return True  # Default to valid on error
     
-    def _llm_should_execute(self, step: Dict, variables: Dict) -> bool:
+    def _llm_should_execute(self, step: dict, variables: dict) -> bool:
         """Use LLM to decide if a step should execute."""
         if not self.provider:
             return True
@@ -861,7 +862,7 @@ class PipelineExecutor:
         except Exception:
             return True
     
-    def _llm_fill_params(self, step: Dict, variables: Dict) -> Dict:
+    def _llm_fill_params(self, step: dict, variables: dict) -> dict:
         """Use LLM to fill in parameters based on llm_prompt."""
         if not self.provider:
             return {}
@@ -929,9 +930,9 @@ class PipelineExecutor:
             print(f"LLM param fill error: {e}", file=sys.stderr)
             return {}
     
-    def _build_success_response(self, workflow: Dict, results: List[Dict],
-                                 variables: Dict, tools_used: List[str],
-                                 start_time: float = None, query: str = None) -> Dict[str, Any]:
+    def _build_success_response(self, workflow: dict, results: list[dict],
+                                 variables: dict, tools_used: list[str],
+                                 start_time: float = None, query: str = None) -> dict[str, Any]:
         """Build success response and log workflow execution."""
         # Count successful articles
         article_count = len(variables.get("validated_articles", []))
@@ -975,9 +976,9 @@ class PipelineExecutor:
         
         return response
     
-    def _build_abort_response(self, workflow: Dict, failed_step: Dict,
-                               results: List[Dict], variables: Dict,
-                               start_time: float = None, query: str = None) -> Dict[str, Any]:
+    def _build_abort_response(self, workflow: dict, failed_step: dict,
+                               results: list[dict], variables: dict,
+                               start_time: float = None, query: str = None) -> dict[str, Any]:
         """Build abort response and log workflow abortion."""
         speech_template = workflow.get("abort_speech", "Workflow aborted.")
         speech = speech_template

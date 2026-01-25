@@ -2,7 +2,6 @@
 Configuration loader for Jarvis Web UI
 Loads web-specific config and integrates with main Jarvis config
 """
-import os
 import sys
 import json
 from pathlib import Path
@@ -118,7 +117,7 @@ def load_jarvis_config(mode: str = 'cloud'):
     This allows web app to use the same settings as terminal mode
     """
     try:
-        from config_loader import load_config, get_config_value
+        from config_loader import load_config
         load_config(mode)
         return True
     except Exception as e:

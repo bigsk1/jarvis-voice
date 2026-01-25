@@ -3,11 +3,10 @@
 Tool Call Logger
 Tracks all tool executions for debugging and auditing.
 """
-import os
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
 
 class ToolLogger:
@@ -35,13 +34,13 @@ class ToolLogger:
     def log_tool_call(
         self,
         tool_name: str,
-        arguments: Dict[str, Any],
-        result: Dict[str, Any],
+        arguments: dict[str, Any],
+        result: dict[str, Any],
         duration_ms: float,
-        user_query: Optional[str] = None,
+        user_query: str | None = None,
         mode: str = "cloud",
-        workflow_id: Optional[str] = None,
-        workflow_step: Optional[int] = None
+        workflow_id: str | None = None,
+        workflow_step: int | None = None
     ):
         """
         Log a tool execution.
@@ -86,7 +85,7 @@ class ToolLogger:
         workflow_id: str,
         workflow_name: str,
         user_query: str,
-        result: Dict[str, Any],
+        result: dict[str, Any],
         duration_ms: float,
         steps_completed: int,
         tools_used: list,
@@ -157,7 +156,7 @@ class ToolLogger:
         
         return logs[-limit:][::-1]
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get statistics about tool usage."""
         if not self.log_file.exists():
             return {"total_calls": 0, "tools": {}}

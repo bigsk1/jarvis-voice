@@ -10,11 +10,9 @@ import sys
 import os
 import json
 import sqlite3
-from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
 
 def main():

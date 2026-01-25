@@ -1,7 +1,6 @@
 """Direct price lookup API - bypasses LLM for efficiency"""
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
 import sys
 import json
 import subprocess
@@ -81,8 +80,8 @@ async def get_crypto_price(symbol: str):
 
 @router.get("/batch")
 async def get_batch_prices(
-    stocks: Optional[str] = Query(None, description="Comma-separated stock symbols (e.g., TSLA,AAPL,GC=F)"),
-    crypto: Optional[str] = Query(None, description="Comma-separated crypto symbols (e.g., BTC,SOL)")
+    stocks: str | None = Query(None, description="Comma-separated stock symbols (e.g., TSLA,AAPL,GC=F)"),
+    crypto: str | None = Query(None, description="Comma-separated crypto symbols (e.g., BTC,SOL)")
 ):
     """
     Get multiple prices in one call (no LLM routing).

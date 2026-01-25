@@ -12,14 +12,14 @@ import json
 import glob
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_config_value
-from prompt_versioning import PromptVersionDB, EVOLUTION_CONFIG, PromptVersion
+from prompt_versioning import PromptVersionDB, EVOLUTION_CONFIG
 
 
 # ==================== Logging Setup ====================
@@ -43,7 +43,7 @@ def setup_evolution_logger():
     
     return logger
 
-def log_evolution_event(event_type: str, data: Dict[str, Any]):
+def log_evolution_event(event_type: str, data: dict[str, Any]):
     """Log an evolution event in JSONL format for Grafana/Loki."""
     logger = setup_evolution_logger()
     
@@ -64,9 +64,9 @@ class FeedbackSummary:
     total_count: int
     low_rating_count: int
     avg_rating: float
-    feedback_ids: List[str]
-    common_issues: List[str]
-    suggestions: List[str]
+    feedback_ids: list[str]
+    common_issues: list[str]
+    suggestions: list[str]
 
 
 @dataclass 
@@ -76,7 +76,7 @@ class EvolutionCandidate:
     original_content: str
     proposed_content: str
     change_summary: str
-    trigger_feedback_ids: List[str]
+    trigger_feedback_ids: list[str]
     confidence: float
 
 
@@ -98,7 +98,7 @@ class PromptEvolutionEngine:
     
     # ==================== Feedback Analysis ====================
     
-    def load_feedback(self, days: int = None) -> List[Dict]:
+    def load_feedback(self, days: int = None) -> list[dict]:
         """Load feedback from log files."""
         if days is None:
             days = EVOLUTION_CONFIG['window_days']
@@ -130,7 +130,7 @@ class PromptEvolutionEngine:
         
         return feedback_entries
     
-    def analyze_feedback_by_component(self, feedback: List[Dict]) -> Dict[str, FeedbackSummary]:
+    def analyze_feedback_by_component(self, feedback: list[dict]) -> dict[str, FeedbackSummary]:
         """Analyze feedback grouped by component (tools used).
         
         Uses per-tool ratings when available for accurate attribution.
@@ -225,7 +225,7 @@ class PromptEvolutionEngine:
         
         return summaries
     
-    def get_evolution_candidates(self) -> List[FeedbackSummary]:
+    def get_evolution_candidates(self) -> list[FeedbackSummary]:
         """Get components that are candidates for evolution (excludes MCP tools)."""
         feedback = self.load_feedback()
         summaries = self.analyze_feedback_by_component(feedback)
@@ -245,7 +245,7 @@ class PromptEvolutionEngine:
         candidates.sort(key=lambda x: x.low_rating_count, reverse=True)
         return candidates
     
-    def get_mcp_issues(self) -> List[FeedbackSummary]:
+    def get_mcp_issues(self) -> list[FeedbackSummary]:
         """Get MCP tools with poor performance (candidates for replacement)."""
         feedback = self.load_feedback()
         summaries = self.analyze_feedback_by_component(feedback)
@@ -267,13 +267,13 @@ class PromptEvolutionEngine:
     
     # ==================== Evolution Generation ====================
     
-    def get_current_content(self, component: str) -> Optional[str]:
+    def get_current_content(self, component: str) -> str | None:
         """Get current content for a component."""
         if component == 'system_prompt':
             # Get system prompt from recent feedback logs (they capture it)
             feedback = self.load_feedback(days=7)
             for entry in reversed(feedback):  # Most recent first
-                fb = entry.get('feedback', entry)
+                entry.get('feedback', entry)
                 # Look for system prompt in the feedback entry
                 if 'system_prompt' in str(entry):
                     # The feedback logs capture excerpts of system prompt
@@ -307,7 +307,7 @@ For specific improvements, check feedback logs for exact issues reported."""
         
         return None
     
-    def generate_improvement(self, summary: FeedbackSummary) -> Optional[EvolutionCandidate]:
+    def generate_improvement(self, summary: FeedbackSummary) -> EvolutionCandidate | None:
         """Generate an improved prompt using the feedback LLM."""
         current_content = self.get_current_content(summary.component)
         if not current_content:
@@ -416,7 +416,7 @@ OUTPUT FORMAT (JSON):
 
 Only output the JSON, nothing else."""
     
-    def _parse_improvement_response(self, response: str, original: str) -> Optional[Dict]:
+    def _parse_improvement_response(self, response: str, original: str) -> dict | None:
         """Parse the LLM improvement response."""
         try:
             # Try to extract JSON from response
@@ -439,7 +439,7 @@ Only output the JSON, nothing else."""
     
     # ==================== Verification ====================
     
-    def verify_candidate(self, candidate: EvolutionCandidate) -> Tuple[bool, List[str]]:
+    def verify_candidate(self, candidate: EvolutionCandidate) -> tuple[bool, list[str]]:
         """Verify a candidate is valid before deployment."""
         errors = []
         warnings = []
@@ -482,7 +482,7 @@ Only output the JSON, nothing else."""
     
     # ==================== Deployment ====================
     
-    def deploy_candidate(self, candidate: EvolutionCandidate, activate: bool = True) -> Tuple[bool, str]:
+    def deploy_candidate(self, candidate: EvolutionCandidate, activate: bool = True) -> tuple[bool, str]:
         """Deploy an evolution candidate."""
         
         # System prompt requires manual update - save suggestion only
@@ -697,7 +697,7 @@ Only output the JSON, nothing else."""
     
     # ==================== Degradation Detection ====================
     
-    def check_degradation(self) -> List[Dict]:
+    def check_degradation(self) -> list[dict]:
         """Check for performance degradation in active prompts."""
         degraded = []
         
@@ -736,7 +736,7 @@ Only output the JSON, nothing else."""
         
         return degraded
     
-    def auto_rollback_degraded(self) -> List[str]:
+    def auto_rollback_degraded(self) -> list[str]:
         """Automatically rollback critically degraded prompts."""
         degraded = self.check_degradation()
         rolled_back = []
@@ -887,7 +887,7 @@ def run_evolution_check(mode: str = 'cloud', auto_deploy: bool = False, dry_run:
     print("="*60)
 
 
-def detect_capability_gaps(feedback: List[Dict]) -> List[Dict]:
+def detect_capability_gaps(feedback: list[dict]) -> list[dict]:
     """
     Detect capability gaps from feedback - issues suggesting a missing tool.
     

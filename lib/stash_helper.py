@@ -17,7 +17,7 @@ import socket
 import ipaddress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any
 from urllib.parse import urlparse
 import mimetypes
 
@@ -138,7 +138,7 @@ def validate_url(url: str) -> str:
     return url
 
 
-def safe_download(url: str, max_size: int = None) -> Tuple[bytes, str, str]:
+def safe_download(url: str, max_size: int = None) -> tuple[bytes, str, str]:
     """
     Safely download content from a URL with SSRF protection.
     
@@ -345,7 +345,7 @@ class StashSpace:
         return self.space_path.exists() and self.meta_path.exists()
     
     @property
-    def meta(self) -> Dict:
+    def meta(self) -> dict:
         if self._meta is None:
             self._load_meta()
         return self._meta
@@ -363,8 +363,8 @@ class StashSpace:
         with open(self.meta_path, 'w') as f:
             json.dump(self._meta, f, indent=2)
     
-    def create(self, labels: List[str] = None, scope: str = 'session', 
-               ttl_days: int = None, owner: str = 'jarvis') -> Dict:
+    def create(self, labels: list[str] = None, scope: str = 'session', 
+               ttl_days: int = None, owner: str = 'jarvis') -> dict:
         """Create a new space."""
         if self.exists:
             raise ValueError(f"Space {self.space_id} already exists")
@@ -396,7 +396,7 @@ class StashSpace:
             self._save_meta()
     
     def update(self, ttl_days: int = None, pinned: bool = None, 
-               labels: List[str] = None) -> Dict:
+               labels: list[str] = None) -> dict:
         """Update space metadata."""
         if not self.exists:
             raise ValueError(f"Space {self.space_id} does not exist")
@@ -416,7 +416,7 @@ class StashSpace:
         
         return self._meta
     
-    def info(self) -> Dict:
+    def info(self) -> dict:
         """Get space info summary."""
         if not self.exists:
             raise ValueError(f"Space {self.space_id} does not exist")
@@ -482,14 +482,14 @@ class StashFile:
         self.name = name
         self._file_meta = None
     
-    def _find_by_id(self) -> Optional[Dict]:
+    def _find_by_id(self) -> dict | None:
         """Find file metadata by file_id."""
         for f in self.space.meta.get('files', []):
             if f.get('file_id') == self.file_id:
                 return f
         return None
     
-    def _find_by_name(self) -> Optional[Dict]:
+    def _find_by_name(self) -> dict | None:
         """Find file metadata by name."""
         for f in self.space.meta.get('files', []):
             if f.get('name') == self.name:
@@ -505,7 +505,7 @@ class StashFile:
         return False
     
     @property
-    def meta(self) -> Optional[Dict]:
+    def meta(self) -> dict | None:
         if self._file_meta is None:
             if self.file_id:
                 self._file_meta = self._find_by_id()
@@ -514,26 +514,26 @@ class StashFile:
         return self._file_meta
     
     @property
-    def path(self) -> Optional[Path]:
+    def path(self) -> Path | None:
         if self.meta:
             return self.space.space_path / self.meta.get('stored_name')
         return None
     
     def save_text(self, content: str, name: str, on_conflict: str = 'error',
-                  tags: List[str] = None, tool_origin: str = None) -> Dict:
+                  tags: list[str] = None, tool_origin: str = None) -> dict:
         """Save text content to a file."""
         data = content.encode('utf-8')
         return self._save_data(data, name, 'text/plain', on_conflict, tags, tool_origin)
     
     def save_json(self, content: Any, name: str, on_conflict: str = 'error',
-                  tags: List[str] = None, tool_origin: str = None) -> Dict:
+                  tags: list[str] = None, tool_origin: str = None) -> dict:
         """Save JSON content to a file."""
         data = json.dumps(content, indent=2).encode('utf-8')
         return self._save_data(data, name, 'application/json', on_conflict, tags, tool_origin)
     
     def save_binary(self, data: bytes, name: str, mime_type: str = None,
-                    on_conflict: str = 'error', tags: List[str] = None,
-                    tool_origin: str = None) -> Dict:
+                    on_conflict: str = 'error', tags: list[str] = None,
+                    tool_origin: str = None) -> dict:
         """Save binary data to a file."""
         if mime_type is None:
             mime_type, _ = mimetypes.guess_type(name)
@@ -541,7 +541,7 @@ class StashFile:
         return self._save_data(data, name, mime_type, on_conflict, tags, tool_origin)
     
     def save_from_url(self, url: str, name: str = None, on_conflict: str = 'error',
-                      tags: List[str] = None, tool_origin: str = None) -> Dict:
+                      tags: list[str] = None, tool_origin: str = None) -> dict:
         """
         Download content from URL and save to stash.
         
@@ -587,7 +587,7 @@ class StashFile:
         return result
     
     def _save_data(self, data: bytes, name: str, mime_type: str,
-                   on_conflict: str, tags: List[str], tool_origin: str) -> Dict:
+                   on_conflict: str, tags: list[str], tool_origin: str) -> dict:
         """Internal method to save data."""
         sanitized_name = sanitize_filename(name)
         
@@ -661,7 +661,7 @@ class StashFile:
             'hash_sha256': file_hash
         }
     
-    def read(self, mode: str = 'auto') -> Dict:
+    def read(self, mode: str = 'auto') -> dict:
         """Read file content or get path."""
         if not self.meta:
             raise ValueError(f"File not found")
@@ -703,8 +703,8 @@ class StashFile:
 # High-Level API
 # ============================================================================
 
-def open_space(space_id: str = None, labels: List[str] = None,
-               scope: str = 'session', ttl_days: int = None) -> Tuple[StashSpace, bool]:
+def open_space(space_id: str = None, labels: list[str] = None,
+               scope: str = 'session', ttl_days: int = None) -> tuple[StashSpace, bool]:
     """
     Open or create a stash space.
     
@@ -736,7 +736,7 @@ def get_space(space_id: str) -> StashSpace:
     return space
 
 
-def list_spaces() -> List[Dict]:
+def list_spaces() -> list[dict]:
     """List all stash spaces."""
     stash_dir = get_stash_dir()
     if not stash_dir.exists():
@@ -755,7 +755,7 @@ def list_spaces() -> List[Dict]:
     return sorted(spaces, key=lambda x: x.get('last_used_at', ''), reverse=True)
 
 
-def cleanup_expired() -> Dict:
+def cleanup_expired() -> dict:
     """Clean up expired spaces."""
     stash_dir = get_stash_dir()
     if not stash_dir.exists():
@@ -777,7 +777,7 @@ def cleanup_expired() -> Dict:
     return {'deleted_spaces': deleted, 'freed_bytes': freed}
 
 
-def parse_stash_ref(ref: str) -> Tuple[str, str]:
+def parse_stash_ref(ref: str) -> tuple[str, str]:
     """Parse a stash:// reference into (space_id, file_id)."""
     if not ref.startswith('stash://'):
         raise ValueError(f"Invalid stash reference: {ref}")
@@ -820,7 +820,7 @@ def resolve_file_path(space_id: str = None, file_id: str = None,
 
 
 def safe_resolve_file(stash_ref: str = None, file_path: str = None, 
-                      fallback_paths: List[str] = None) -> Dict[str, Any]:
+                      fallback_paths: list[str] = None) -> dict[str, Any]:
     """
     Safely resolve a file from stash or path, handling expired/missing stash gracefully.
     
@@ -898,7 +898,7 @@ def safe_resolve_file(stash_ref: str = None, file_path: str = None,
     return result
 
 
-def extract_filename_from_stash_ref(stash_ref: str) -> Optional[str]:
+def extract_filename_from_stash_ref(stash_ref: str) -> str | None:
     """Extract filename from a stash reference for fallback lookups."""
     if not stash_ref:
         return None

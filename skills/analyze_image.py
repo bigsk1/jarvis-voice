@@ -11,13 +11,11 @@ Returns vision model analysis of the image content.
 """
 
 import sys
-import os
 import json
 import base64
 import requests
 from pathlib import Path
-from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime
 
 # Add lib to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
@@ -112,7 +110,7 @@ def analyze_image(
         }
 
 
-def _resolve_image(image: str) -> Optional[dict]:
+def _resolve_image(image: str) -> dict | None:
     """
     Resolve image source to base64 data.
     
@@ -136,7 +134,7 @@ def _resolve_image(image: str) -> Optional[dict]:
     return _load_from_file(image)
 
 
-def _load_from_url(url: str) -> Optional[dict]:
+def _load_from_url(url: str) -> dict | None:
     """Download image from URL safely with SSRF protection."""
     try:
         # Use stash_helper's safe_download which includes:
@@ -177,7 +175,7 @@ def _load_from_url(url: str) -> Optional[dict]:
         return None
 
 
-def _load_from_file(path: str) -> Optional[dict]:
+def _load_from_file(path: str) -> dict | None:
     """Load image from local file path."""
     try:
         # Expand user home directory
@@ -212,7 +210,7 @@ def _load_from_file(path: str) -> Optional[dict]:
         return None
 
 
-def _load_from_stash(stash_ref: str) -> Optional[dict]:
+def _load_from_stash(stash_ref: str) -> dict | None:
     """Load image from stash reference."""
     try:
         # Parse stash://space_id/file_id
@@ -278,7 +276,7 @@ def _load_from_stash(stash_ref: str) -> Optional[dict]:
         return None
 
 
-def _analyze_with_vision(image_base64: str, question: str, mode: str) -> Optional[str]:
+def _analyze_with_vision(image_base64: str, question: str, mode: str) -> str | None:
     """Perform vision analysis using configured model."""
     
     if mode == 'local':
@@ -287,7 +285,7 @@ def _analyze_with_vision(image_base64: str, question: str, mode: str) -> Optiona
         return _vision_cloud(image_base64, question)
 
 
-def _vision_ollama(image_base64: str, question: str) -> Optional[str]:
+def _vision_ollama(image_base64: str, question: str) -> str | None:
     """Use Ollama vision model (llava, etc)."""
     try:
         base_url = get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
@@ -316,7 +314,7 @@ def _vision_ollama(image_base64: str, question: str) -> Optional[str]:
         return None
 
 
-def _vision_cloud(image_base64: str, question: str) -> Optional[str]:
+def _vision_cloud(image_base64: str, question: str) -> str | None:
     """Use cloud vision model (xAI Grok, Anthropic Claude, OpenAI GPT-4V)."""
     provider = get_config_value('LLM_PROVIDER', 'xai')
     vision_model = get_config_value('VISION_MODEL', '')
@@ -334,7 +332,7 @@ def _vision_cloud(image_base64: str, question: str) -> Optional[str]:
         return _vision_xai(image_base64, question, vision_model)
 
 
-def _vision_xai(image_base64: str, question: str, model: str = None) -> Optional[str]:
+def _vision_xai(image_base64: str, question: str, model: str = None) -> str | None:
     """Use xAI Grok for vision."""
     try:
         api_key = get_config_value('XAI_API_KEY', '')
@@ -380,7 +378,7 @@ def _vision_xai(image_base64: str, question: str, model: str = None) -> Optional
         return None
 
 
-def _vision_anthropic(image_base64: str, question: str, model: str = None) -> Optional[str]:
+def _vision_anthropic(image_base64: str, question: str, model: str = None) -> str | None:
     """Use Anthropic Claude for vision."""
     try:
         api_key = get_config_value('ANTHROPIC_API_KEY', '')
@@ -428,7 +426,7 @@ def _vision_anthropic(image_base64: str, question: str, model: str = None) -> Op
         return None
 
 
-def _vision_openai(image_base64: str, question: str, model: str = None) -> Optional[str]:
+def _vision_openai(image_base64: str, question: str, model: str = None) -> str | None:
     """Use OpenAI GPT-4V for vision."""
     try:
         api_key = get_config_value('OPENAI_API_KEY', '')
@@ -474,7 +472,7 @@ def _vision_openai(image_base64: str, question: str, model: str = None) -> Optio
         return None
 
 
-def _stash_image(image_data: dict, analysis: str, mode: str) -> Optional[dict]:
+def _stash_image(image_data: dict, analysis: str, mode: str) -> dict | None:
     """Save image to stash for future access."""
     try:
         from stash_helper import open_space

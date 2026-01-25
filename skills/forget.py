@@ -39,8 +39,8 @@ def main():
             
             # Take the best match (first result)
             memory_id = memories[0].get('id')
-            matched_key = memories[0].get('key', 'unknown')
-            matched_value = memories[0].get('value', '')[:50]
+            memories[0].get('key', 'unknown')
+            memories[0].get('value', '')[:50]
         
         if not memory_id:
             result = {

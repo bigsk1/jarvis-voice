@@ -7,7 +7,6 @@ import sys
 import json
 import argparse
 from pathlib import Path
-from typing import List
 
 # Colors for output
 GREEN = '\033[92m'

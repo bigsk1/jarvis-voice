@@ -102,7 +102,7 @@ def main():
             context=context,
             agent_mode=agent_mode  # Use "build" for actual work, "plan" for analysis
         )
-        elapsed = time.time() - start_time
+        time.time() - start_time
 
         if not result["ok"]:
             return_error(f"OpenCode execution failed: {result.get('error')}")

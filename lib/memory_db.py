@@ -8,9 +8,7 @@ import sqlite3
 import json
 import os
 import pickle
-from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
 
 
 class MemoryDB:
@@ -169,7 +167,7 @@ class MemoryDB:
                 embedding_vector = get_embedding(text)
                 # Serialize vector as blob
                 embedding_blob = pickle.dumps(embedding_vector)
-            except Exception as e:
+            except Exception:
                 # Silently fail - memory still gets stored without embedding
                 pass
         
@@ -200,7 +198,7 @@ class MemoryDB:
             self.conn.commit()
             return cursor.lastrowid
     
-    def recall(self, query: str, category: str = None, limit: int = 5) -> List[Dict]:
+    def recall(self, query: str, category: str = None, limit: int = 5) -> list[dict]:
         """
         Search memories by query.
         
@@ -275,7 +273,7 @@ class MemoryDB:
         self.conn.commit()
         return cursor.rowcount > 0
     
-    def search_memory(self, query: str, limit: int = 10) -> List[Dict]:
+    def search_memory(self, query: str, limit: int = 10) -> list[dict]:
         """
         Full-text search using FTS5 with BM25 ranking.
         Much faster and more accurate than SQL LIKE.
@@ -289,7 +287,7 @@ class MemoryDB:
         """
         return self.fts_search(query, limit=limit)
     
-    def fts_search(self, query: str, limit: int = 10) -> List[Dict]:
+    def fts_search(self, query: str, limit: int = 10) -> list[dict]:
         """
         Full-text search with BM25 ranking (industry-standard relevance).
         
@@ -316,7 +314,7 @@ class MemoryDB:
         """
         cursor = self.conn.cursor()
         
-        def _try_fts_query(fts_query: str) -> List[Dict]:
+        def _try_fts_query(fts_query: str) -> list[dict]:
             """Internal helper to execute FTS query."""
             try:
                 results = cursor.execute("""
@@ -382,7 +380,7 @@ class MemoryDB:
         
         return results
     
-    def get_all_memories(self, category: str = None) -> List[Dict]:
+    def get_all_memories(self, category: str = None) -> list[dict]:
         """Get all stored memories, optionally filtered by category."""
         cursor = self.conn.cursor()
         
@@ -398,7 +396,7 @@ class MemoryDB:
         
         return [dict(row) for row in results]
     
-    def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = None) -> List[Dict]:
+    def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = None) -> list[dict]:
         """
         Semantic search using vector embeddings with smart fallback.
         Finds memories similar in meaning, not just keywords.
@@ -469,14 +467,14 @@ class MemoryDB:
             
             return scored_memories[:limit]
             
-        except Exception as e:
+        except Exception:
             # If embedding generation fails, fall back to FTS5
             return self.fts_search(query, limit=limit)
     
     # ========== Conversation History ==========
     
     def log_conversation(self, user_query: str, jarvis_response: str, 
-                        tools_used: List[str] = None, session_id: str = None,
+                        tools_used: list[str] = None, session_id: str = None,
                         success: bool = True, metadata: dict = None) -> int:
         """
         Log a conversation exchange with optional metadata.
@@ -505,7 +503,7 @@ class MemoryDB:
         self.conn.commit()
         return cursor.lastrowid
     
-    def get_recent_conversations(self, limit: int = 10, session_id: str = None) -> List[Dict]:
+    def get_recent_conversations(self, limit: int = 10, session_id: str = None) -> list[dict]:
         """Get recent conversation history."""
         cursor = self.conn.cursor()
         
@@ -525,7 +523,7 @@ class MemoryDB:
         
         return [dict(row) for row in results]
     
-    def search_conversations(self, query: str, limit: int = 5) -> List[Dict]:
+    def search_conversations(self, query: str, limit: int = 5) -> list[dict]:
         """Search conversation history."""
         cursor = self.conn.cursor()
         
@@ -549,7 +547,7 @@ class MemoryDB:
         """, (key, value))
         self.conn.commit()
     
-    def get_preference(self, key: str, default: str = None) -> Optional[str]:
+    def get_preference(self, key: str, default: str = None) -> str | None:
         """Get a user preference."""
         cursor = self.conn.cursor()
         result = cursor.execute(
@@ -617,7 +615,7 @@ class MemoryDB:
         
         self.conn.commit()
     
-    def search_tools(self, query: str, limit: int = 5, threshold: float = 0.0) -> List[Dict]:
+    def search_tools(self, query: str, limit: int = 5, threshold: float = 0.0) -> list[dict]:
         """
         Semantically search for relevant tools.
         
@@ -709,7 +707,7 @@ class MemoryDB:
             
             return [dict(row) for row in results]
 
-    def get_tool_definition(self, name: str) -> Optional[Dict]:
+    def get_tool_definition(self, name: str) -> dict | None:
         """Get specific tool definition by name."""
         cursor = self.conn.cursor()
         result = cursor.execute(
@@ -721,7 +719,7 @@ class MemoryDB:
             return dict(result)
         return None
 
-    def get_enabled_tool_names(self) -> List[str]:
+    def get_enabled_tool_names(self) -> list[str]:
         """
         Get list of all enabled tool names.
         Used for filtering insights to only recommend available tools.

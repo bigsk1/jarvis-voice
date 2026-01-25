@@ -16,21 +16,20 @@ import json
 import base64
 import requests
 import subprocess
-from typing import Dict, Any, Optional
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
 from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
-    StashFile, StashSpace, get_stash_dir
+    StashFile
 )
 
 # Tool locations for calling other tools
 SKILLS_DIR = os.path.dirname(__file__)
 
 
-def call_tool(tool_name: str, args: Dict = None, timeout: int = 60) -> Dict:
+def call_tool(tool_name: str, args: dict = None, timeout: int = 60) -> dict:
     """
     Call another Jarvis tool and return its result.
     Used for calling pdf_read to extract text from PDFs.
@@ -61,7 +60,7 @@ def call_tool(tool_name: str, args: Dict = None, timeout: int = 60) -> Dict:
         return {"ok": False, "error": str(e)}
 
 
-def extract_pdf_text(file_path: str) -> Optional[str]:
+def extract_pdf_text(file_path: str) -> str | None:
     """
     Extract text from a PDF file using pdf_read tool.
     
@@ -78,7 +77,7 @@ def extract_pdf_text(file_path: str) -> Optional[str]:
     return None
 
 
-def summarize_content_with_llm(content: str, file_name: str, max_length: int = 500) -> Optional[str]:
+def summarize_content_with_llm(content: str, file_name: str, max_length: int = 500) -> str | None:
     """
     Summarize content using configured LLM provider.
     
@@ -214,7 +213,7 @@ def format_size(bytes_size: int) -> str:
         return f"{bytes_size / (1024 * 1024 * 1024):.1f}GB"
 
 
-def action_open_space(args: Dict) -> Dict:
+def action_open_space(args: dict) -> dict:
     """Create or resume a stash space."""
     space_id = args.get('space_id')
     labels = args.get('labels', [])
@@ -245,7 +244,7 @@ def action_open_space(args: Dict) -> Dict:
     }
 
 
-def action_info(args: Dict) -> Dict:
+def action_info(args: dict) -> dict:
     """Get space metadata summary."""
     space_id = args.get('space_id')
     if not space_id:
@@ -266,7 +265,7 @@ def action_info(args: Dict) -> Dict:
     }
 
 
-def action_save(args: Dict) -> Dict:
+def action_save(args: dict) -> dict:
     """Save content to stash."""
     space_id = args.get('space_id')
     name = args.get('name')
@@ -327,7 +326,7 @@ def action_save(args: Dict) -> Dict:
     }
 
 
-def action_list(args: Dict) -> Dict:
+def action_list(args: dict) -> dict:
     """List files in a space."""
     space_id = args.get('space_id')
     
@@ -368,7 +367,7 @@ def action_list(args: Dict) -> Dict:
         }
 
 
-def action_read(args: Dict) -> Dict:
+def action_read(args: dict) -> dict:
     """Read file content or get path."""
     space_id = args.get('space_id')
     file_id = args.get('file_id')
@@ -403,7 +402,7 @@ def action_read(args: Dict) -> Dict:
     }
 
 
-def action_update(args: Dict) -> Dict:
+def action_update(args: dict) -> dict:
     """Update space metadata (TTL, pinned, labels)."""
     space_id = args.get('space_id')
     if not space_id:
@@ -434,10 +433,10 @@ def action_update(args: Dict) -> Dict:
     }
 
 
-def action_cleanup(args: Dict) -> Dict:
+def action_cleanup(args: dict) -> dict:
     """Clean up spaces."""
     space_id = args.get('space_id')
-    mode = args.get('mode', 'expired_only')
+    args.get('mode', 'expired_only')
     
     if space_id:
         # Delete specific space
@@ -467,7 +466,7 @@ def action_cleanup(args: Dict) -> Dict:
         }
 
 
-def action_remember(args: Dict) -> Dict:
+def action_remember(args: dict) -> dict:
     """
     Save stash artifact to persistent memory.
     

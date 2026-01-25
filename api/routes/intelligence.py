@@ -555,7 +555,6 @@ async def get_meta_knowledge():
     """Get recent meta-knowledge findings (blind spots, over-generalizations, etc.)."""
     try:
         from intelligence import get_intelligence_layer
-        import sqlite3
         
         intel = get_intelligence_layer()
         if not intel:

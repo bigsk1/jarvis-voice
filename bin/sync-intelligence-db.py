@@ -23,7 +23,6 @@ Usage:
 
 import sys
 import os
-import json
 import sqlite3
 import pickle
 import shutil
@@ -33,7 +32,7 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 from embeddings import get_embedding
 
 # ANSI colors

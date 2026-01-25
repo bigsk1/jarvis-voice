@@ -35,14 +35,14 @@ import sqlite3
 import pickle
 import hashlib
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 from pathlib import Path
 import numpy as np
 import logging
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
-from config_loader import load_config, get_config_value, get_float, get_int
+from config_loader import load_config, get_float, get_int
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class IntelligenceLogger:
         date_str = datetime.now().strftime("%Y-%m-%d")
         return self.log_dir / f"intelligence-{date_str}.jsonl"
     
-    def log(self, event_type: str, data: Dict[str, Any]):
+    def log(self, event_type: str, data: dict[str, Any]):
         """Log an intelligence event."""
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -74,7 +74,7 @@ class IntelligenceLogger:
         except Exception as e:
             logger.warning(f"Failed to write intelligence log: {e}")
     
-    def log_experience_recorded(self, exp_id: int, query: str, tools: List[str], success: bool):
+    def log_experience_recorded(self, exp_id: int, query: str, tools: list[str], success: bool):
         """Log when an experience is recorded."""
         self.log("experience_recorded", {
             "experience_id": exp_id,
@@ -98,7 +98,7 @@ class IntelligenceLogger:
             "prompt_length": len(prompt)
         })
     
-    def log_reflection_response(self, exp_id: int, response: Dict[str, Any], provider: str, model: str):
+    def log_reflection_response(self, exp_id: int, response: dict[str, Any], provider: str, model: str):
         """Log the reflection response from LLM."""
         self.log("reflection_response", {
             "experience_id": exp_id,
@@ -128,7 +128,7 @@ class IntelligenceLogger:
             "reason": reason
         })
     
-    def log_anomaly_detected(self, experience_id: int, anomaly_type: str, details: Dict[str, Any]):
+    def log_anomaly_detected(self, experience_id: int, anomaly_type: str, details: dict[str, Any]):
         """Log when an anomaly is detected in an experience."""
         self.log("anomaly_detected", {
             "experience_id": experience_id,
@@ -147,7 +147,7 @@ class IntelligenceLogger:
             "confidence": confidence
         })
     
-    def log_maintenance_run(self, job_type: str, stats: Dict[str, Any]):
+    def log_maintenance_run(self, job_type: str, stats: dict[str, Any]):
         """Log when a maintenance job runs."""
         self.log("maintenance_run", {
             "job_type": job_type,
@@ -172,7 +172,7 @@ class IntelligenceLogger:
             "new_confidence": new_confidence
         })
     
-    def log_insights_applied(self, query: str, insights: List[Dict], biases: Dict[str, float]):
+    def log_insights_applied(self, query: str, insights: list[dict], biases: dict[str, float]):
         """Log when insights are applied to routing."""
         self.log("insights_applied", {
             "query": query[:200],
@@ -408,7 +408,7 @@ class IntelligenceLayer:
     # EMBEDDING UTILITIES
     # ============================================
     
-    def _get_embedding(self, text: str) -> Optional[np.ndarray]:
+    def _get_embedding(self, text: str) -> np.ndarray | None:
         """Get embedding for text, with caching."""
         if not text or not text.strip():
             return None
@@ -450,7 +450,7 @@ class IntelligenceLayer:
             return None
         return pickle.dumps(embedding)
     
-    def _deserialize_embedding(self, blob: bytes) -> Optional[np.ndarray]:
+    def _deserialize_embedding(self, blob: bytes) -> np.ndarray | None:
         """Deserialize numpy array from database.
         
         Handles both JSON format (newer) and pickle format (older).
@@ -473,10 +473,10 @@ class IntelligenceLayer:
     async def record_experience(
         self,
         query: str,
-        tools_used: List[str],
-        outcome: Dict[str, Any],
-        context: Optional[Dict[str, Any]] = None,
-        user_signals: Optional[Dict[str, Any]] = None
+        tools_used: list[str],
+        outcome: dict[str, Any],
+        context: dict[str, Any] | None = None,
+        user_signals: dict[str, Any] | None = None
     ) -> int:
         """
         Record a complete experience for later reflection.
@@ -567,9 +567,9 @@ class IntelligenceLayer:
     def _describe_outcome(
         self,
         query: str,
-        tools_used: List[str],
-        outcome: Dict[str, Any],
-        user_signals: Dict[str, Any]
+        tools_used: list[str],
+        outcome: dict[str, Any],
+        user_signals: dict[str, Any]
     ) -> str:
         """Create a rich natural language description of what happened."""
         parts = []
@@ -601,8 +601,8 @@ class IntelligenceLayer:
     
     def _infer_satisfaction(
         self,
-        outcome: Dict[str, Any],
-        user_signals: Dict[str, Any]
+        outcome: dict[str, Any],
+        user_signals: dict[str, Any]
     ) -> bool:
         """Infer whether the user was satisfied."""
         # Positive signals
@@ -618,9 +618,9 @@ class IntelligenceLayer:
     
     def _calculate_learning_priority(
         self,
-        outcome: Dict[str, Any],
-        user_signals: Dict[str, Any],
-        tools_used: List[str]
+        outcome: dict[str, Any],
+        user_signals: dict[str, Any],
+        tools_used: list[str]
     ) -> float:
         """
         Calculate how valuable this experience is for learning.
@@ -663,7 +663,7 @@ class IntelligenceLayer:
         self,
         experience_id: int,
         use_sequential_thinking: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Deeply reflect on an experience to extract insights.
         
@@ -690,7 +690,7 @@ class IntelligenceLayer:
         
         # Determine if this was a suboptimal experience
         tools_list = json.loads(exp['tools_used'])
-        was_suboptimal = (
+        (
             len(tools_list) > 1 or 
             not exp['outcome_success'] or 
             exp['had_to_retry'] or 
@@ -878,7 +878,7 @@ Example for FACTUAL (should NOT be stored here):
         self,
         prompt: str,
         use_sequential_thinking: bool = True
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Use sequential thinking MCP or direct LLM for deep reflection.
         """
@@ -896,7 +896,7 @@ Example for FACTUAL (should NOT be stored here):
             logger.error(f"Reflection failed: {e}")
             return None
     
-    async def _call_sequential_thinking(self, prompt: str) -> Optional[Dict[str, Any]]:
+    async def _call_sequential_thinking(self, prompt: str) -> dict[str, Any] | None:
         """Call the sequential thinking MCP server for structured reasoning.
         
         NOTE: Sequential thinking MCP is optional - falls back to direct LLM if unavailable.
@@ -922,7 +922,7 @@ Example for FACTUAL (should NOT be stored here):
         #     logger.warning(f"Sequential thinking unavailable: {e}")
         # return None
     
-    async def _direct_llm_reflection(self, prompt: str) -> Optional[Dict[str, Any]]:
+    async def _direct_llm_reflection(self, prompt: str) -> dict[str, Any] | None:
         """Direct LLM call for reflection when sequential thinking unavailable."""
         try:
             from llm_provider import create_provider
@@ -988,7 +988,7 @@ Example for FACTUAL (should NOT be stored here):
         
         return None
     
-    def _parse_reflection_output(self, output: Any) -> Optional[Dict[str, Any]]:
+    def _parse_reflection_output(self, output: Any) -> dict[str, Any] | None:
         """Parse reflection output, handling various formats."""
         if isinstance(output, dict):
             return output
@@ -1011,7 +1011,7 @@ Example for FACTUAL (should NOT be stored here):
     
     async def _store_insight(
         self,
-        reflection: Dict[str, Any],
+        reflection: dict[str, Any],
         experience: sqlite3.Row
     ) -> int:
         """Store a new insight or update existing similar insight.
@@ -1178,7 +1178,7 @@ Example for FACTUAL (should NOT be stored here):
         self,
         embedding: np.ndarray,
         threshold: float = 0.8
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Find insights similar to the given embedding."""
         if embedding is None:
             return []
@@ -1209,7 +1209,7 @@ Example for FACTUAL (should NOT be stored here):
         self,
         query: str,
         top_k: int = 5
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get insights relevant to a query.
         
@@ -1263,7 +1263,7 @@ Example for FACTUAL (should NOT be stored here):
         relevant.sort(key=lambda x: x['relevance'], reverse=True)
         return relevant[:top_k]
     
-    async def get_tool_biases(self, query: str) -> Dict[str, float]:
+    async def get_tool_biases(self, query: str) -> dict[str, float]:
         """
         Get tool preference biases based on learned insights.
         
@@ -1412,7 +1412,7 @@ Example for FACTUAL (should NOT be stored here):
     # META-COGNITION
     # ============================================
     
-    async def evaluate_learning_quality(self) -> Dict[str, Any]:
+    async def evaluate_learning_quality(self) -> dict[str, Any]:
         """
         Meta-cognition: evaluate how well the learning process is working.
         """
@@ -1487,7 +1487,7 @@ Example for FACTUAL (should NOT be stored here):
     # MAINTENANCE JOBS (Decay, Anomaly, Meta-Cognition)
     # ============================================
     
-    async def run_decay_job(self, force: bool = False) -> Dict[str, Any]:
+    async def run_decay_job(self, force: bool = False) -> dict[str, Any]:
         """
         Apply confidence decay to stale/unused insights.
         
@@ -1628,7 +1628,7 @@ Example for FACTUAL (should NOT be stored here):
         intel_log.log_maintenance_run('decay_job', stats)
         return stats
     
-    async def run_anomaly_detection(self) -> Dict[str, Any]:
+    async def run_anomaly_detection(self) -> dict[str, Any]:
         """
         Detect anomalous experiences that might indicate issues.
         
@@ -1720,7 +1720,7 @@ Example for FACTUAL (should NOT be stored here):
         intel_log.log_maintenance_run('anomaly_detection', stats)
         return stats
     
-    async def run_meta_cognition(self) -> Dict[str, Any]:
+    async def run_meta_cognition(self) -> dict[str, Any]:
         """
         Higher-level reflection on the learning process itself.
         
@@ -1896,7 +1896,7 @@ Example for FACTUAL (should NOT be stored here):
         intel_log.log_maintenance_run('meta_cognition', stats)
         return stats
     
-    async def run_all_maintenance(self, force: bool = False) -> Dict[str, Any]:
+    async def run_all_maintenance(self, force: bool = False) -> dict[str, Any]:
         """Run all maintenance jobs and return combined results.
         
         Args:
@@ -1920,7 +1920,7 @@ Example for FACTUAL (should NOT be stored here):
             self.conn.close()
             self.conn = None
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get intelligence layer statistics."""
         cursor = self.conn.cursor()
         

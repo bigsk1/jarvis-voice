@@ -2,8 +2,7 @@
 Settings Manager Service
 Handles safe reading/writing of Jarvis settings with web overrides
 """
-import os
-from typing import Dict, List, Optional, Any
+from typing import Any
 from ..config import (
     get_web_setting, save_web_config, load_web_config,
     get_jarvis_setting, load_jarvis_config
@@ -132,7 +131,7 @@ class SettingsManager:
         self._ensure_jarvis_config()
         return get_jarvis_setting(setting, default)
     
-    def get_settings_for_ui(self) -> Dict[str, Any]:
+    def get_settings_for_ui(self) -> dict[str, Any]:
         """Get all settings formatted for the UI"""
         self._ensure_jarvis_config()
         web_config = load_web_config()
@@ -236,14 +235,14 @@ class SettingsManager:
             return models[0]['id']
         return ''
     
-    def _get_api_key_status(self) -> Dict[str, bool]:
+    def _get_api_key_status(self) -> dict[str, bool]:
         """Check which API keys are configured"""
         self._ensure_jarvis_config()
         keys = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 
                 'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY']
         return {key: bool(get_jarvis_setting(key, '')) for key in keys}
     
-    def get_settings_with_status(self) -> Dict[str, dict]:
+    def get_settings_with_status(self) -> dict[str, dict]:
         """Return settings with configured status (for backward compat)"""
         self._ensure_jarvis_config()
         
@@ -276,7 +275,7 @@ class SettingsManager:
         """Return web UI specific settings"""
         return load_web_config()
     
-    def save_web_overrides(self, overrides: Dict[str, Any]) -> bool:
+    def save_web_overrides(self, overrides: dict[str, Any]) -> bool:
         """Save web UI overrides (per-mode for LLM/image)"""
         config = load_web_config()
         
@@ -364,7 +363,7 @@ class SettingsManager:
 
 
 # Singleton instance
-_settings_manager: Optional[SettingsManager] = None
+_settings_manager: SettingsManager | None = None
 
 
 def get_settings_manager(mode: str = None) -> SettingsManager:

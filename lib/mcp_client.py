@@ -14,7 +14,7 @@ import time
 import re
 import queue
 import requests
-from typing import Dict, Any, List, Optional, Union
+from typing import Any, Union
 from threading import Lock, Thread, Event
 
 
@@ -25,7 +25,7 @@ class MCPClient:
     MAX_RESTART_ATTEMPTS = 3
     RESTART_COOLDOWN_SECONDS = 60  # After max restarts, wait before allowing more
     
-    def __init__(self, name: str, command: str, args: List[str], env: Optional[Dict[str, str]] = None):
+    def __init__(self, name: str, command: str, args: list[str], env: dict[str, str] | None = None):
         """
         Initialize MCP client.
         
@@ -137,7 +137,7 @@ class MCPClient:
         # Initialize the MCP connection
         self._initialize()
     
-    def _expand_args(self) -> List[str]:
+    def _expand_args(self) -> list[str]:
         """
         Expand ${VAR_NAME} syntax in args from environment variables.
         
@@ -159,7 +159,7 @@ class MCPClient:
                 expanded.append(arg)
         return expanded
     
-    def _build_env_with_substitution(self) -> Dict[str, str]:
+    def _build_env_with_substitution(self) -> dict[str, str]:
         """
         Build environment dict with variable substitution.
         
@@ -207,7 +207,7 @@ class MCPClient:
         """Initialize MCP connection with handshake (optional, some servers don't need it)."""
         try:
             # Send initialize request with short timeout
-            result = self._send_request("initialize", {
+            self._send_request("initialize", {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
@@ -219,12 +219,12 @@ class MCPClient:
             # Send initialized notification
             self._send_notification("notifications/initialized")
             
-        except Exception as e:
+        except Exception:
             # Many MCP servers work without explicit initialization
             # Just log and continue
             pass
     
-    def _send_notification(self, method: str, params: Optional[Dict] = None):
+    def _send_notification(self, method: str, params: dict | None = None):
         """Send JSON-RPC notification (no response expected)."""
         with self.lock:
             notification = {
@@ -239,7 +239,7 @@ class MCPClient:
             self.process.stdin.write(notification_json)
             self.process.stdin.flush()
     
-    def _send_request(self, method: str, params: Optional[Dict] = None) -> Any:
+    def _send_request(self, method: str, params: dict | None = None) -> Any:
         """
         Send JSON-RPC request to MCP server.
         
@@ -318,7 +318,7 @@ class MCPClient:
             
             raise Exception("Did not receive response from MCP server after multiple attempts")
     
-    def list_tools(self) -> List[Dict[str, Any]]:
+    def list_tools(self) -> list[dict[str, Any]]:
         """
         List available tools from MCP server.
         
@@ -337,7 +337,7 @@ class MCPClient:
             print(f"Error listing tools from MCP server {self.name}: {e}", file=sys.stderr)
             return []
     
-    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Call a tool on the MCP server.
         
@@ -434,7 +434,7 @@ class MCPRemoteClient:
         → Only MY_API_KEY is substituted, nothing else is exposed
     """
     
-    def __init__(self, name: str, url: str, transport_type: str, headers: Optional[Dict[str, str]] = None):
+    def __init__(self, name: str, url: str, transport_type: str, headers: dict[str, str] | None = None):
         """
         Initialize remote MCP client.
         
@@ -529,7 +529,7 @@ class MCPRemoteClient:
                 print(f"[MCP DEBUG] SSE listener error: {e}", file=sys.stderr)
             self._sse_response_queue.put({"error": str(e)})
     
-    def _handle_sse_event(self, event_type: Optional[str], data: str):
+    def _handle_sse_event(self, event_type: str | None, data: str):
         """Handle incoming SSE event."""
         if os.environ.get("MCP_DEBUG"):
             print(f"[MCP DEBUG] SSE event: {event_type} - {data[:200]}", file=sys.stderr)
@@ -613,7 +613,7 @@ class MCPRemoteClient:
     def _initialize_mcp(self):
         """Send MCP initialization handshake (for SSE transport)."""
         try:
-            result = self._send_request("initialize", {
+            self._send_request("initialize", {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
@@ -629,7 +629,7 @@ class MCPRemoteClient:
             if os.environ.get("MCP_DEBUG"):
                 print(f"[MCP DEBUG] MCP init failed (may be ok): {e}", file=sys.stderr)
     
-    def _send_notification(self, method: str, params: Optional[Dict] = None):
+    def _send_notification(self, method: str, params: dict | None = None):
         """Send JSON-RPC notification (no response expected)."""
         notification = {
             "jsonrpc": "2.0",
@@ -640,7 +640,7 @@ class MCPRemoteClient:
         
         self._post_message(notification)
     
-    def _send_request(self, method: str, params: Optional[Dict] = None) -> Any:
+    def _send_request(self, method: str, params: dict | None = None) -> Any:
         """Send JSON-RPC request and wait for response."""
         with self.lock:
             if not self._initialized and method != "initialize":
@@ -663,7 +663,7 @@ class MCPRemoteClient:
             else:
                 return self._send_http_request(request)
     
-    def _send_sse_request(self, request: Dict, retry_count: int = 0) -> Any:
+    def _send_sse_request(self, request: dict, retry_count: int = 0) -> Any:
         """Send request via SSE transport (POST to endpoint, receive via stream)."""
         if not self._sse_endpoint:
             raise Exception(f"SSE endpoint not established for {self.name}")
@@ -720,7 +720,7 @@ class MCPRemoteClient:
         # Restart
         self._start_sse()
     
-    def _wait_for_sse_response(self, request: Dict) -> Any:
+    def _wait_for_sse_response(self, request: dict) -> Any:
         """Wait for response from SSE stream after sending a request."""
         try:
             result = self._sse_response_queue.get(timeout=30)
@@ -738,7 +738,7 @@ class MCPRemoteClient:
         
         return None
     
-    def _send_http_request(self, request: Dict) -> Any:
+    def _send_http_request(self, request: dict) -> Any:
         """
         Send request via Streamable HTTP transport.
         
@@ -787,14 +787,13 @@ class MCPRemoteClient:
         
         return result.get("result")
     
-    def _parse_sse_response(self, response) -> Dict:
+    def _parse_sse_response(self, response) -> dict:
         """
         Parse SSE (Server-Sent Events) response from Streamable HTTP.
         
         The response may contain multiple events, we want the final JSON-RPC result.
         """
         result = None
-        event_type = None
         event_data = []
         
         for line in response.iter_lines(decode_unicode=True):
@@ -802,7 +801,7 @@ class MCPRemoteClient:
                 continue
             
             if line.startswith('event:'):
-                event_type = line[6:].strip()
+                line[6:].strip()
             elif line.startswith('data:'):
                 event_data.append(line[5:].strip())
             elif line == '':
@@ -817,7 +816,6 @@ class MCPRemoteClient:
                     except json.JSONDecodeError:
                         pass
                     event_data = []
-                    event_type = None
         
         # Handle any remaining data
         if event_data:
@@ -834,7 +832,7 @@ class MCPRemoteClient:
         
         return result
     
-    def _post_message(self, message: Dict):
+    def _post_message(self, message: dict):
         """Post a message without waiting for response."""
         if self.transport_type == "sse" and self._sse_endpoint:
             endpoint = self._sse_endpoint
@@ -863,7 +861,7 @@ class MCPRemoteClient:
         self._sse_connected.clear()
         self._tools_cache = None
     
-    def list_tools(self) -> List[Dict[str, Any]]:
+    def list_tools(self) -> list[dict[str, Any]]:
         """List available tools from remote MCP server."""
         if self._tools_cache:
             return self._tools_cache
@@ -877,7 +875,7 @@ class MCPRemoteClient:
             print(f"Error listing tools from remote MCP server {self.name}: {e}", file=sys.stderr)
             return []
     
-    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Call a tool on the remote MCP server."""
         try:
             result = self._send_request("tools/call", {
@@ -950,7 +948,7 @@ class MCPManager:
             config_path: Path to MCP servers config JSON
         """
         self.config_path = config_path
-        self.servers: Dict[str, Union[MCPClient, MCPRemoteClient]] = {}
+        self.servers: dict[str, Union[MCPClient, MCPRemoteClient]] = {}
         self._load_config()
     
     def _load_config(self):
@@ -1034,7 +1032,7 @@ class MCPManager:
             else:
                 print(f"Warning: MCP server '{name}' has unknown config (need 'command' or 'type'+'url')", file=sys.stderr)
     
-    def _substitute_env_vars(self, data: Dict[str, str]) -> Dict[str, str]:
+    def _substitute_env_vars(self, data: dict[str, str]) -> dict[str, str]:
         """
         Substitute ${VAR_NAME} placeholders with environment variable values.
         
@@ -1067,11 +1065,11 @@ class MCPManager:
                 result[key] = str(value)
         return result
     
-    def get_server(self, name: str) -> Optional[MCPClient]:
+    def get_server(self, name: str) -> MCPClient | None:
         """Get MCP server by name."""
         return self.servers.get(name)
     
-    def list_all_tools(self) -> Dict[str, List[Dict[str, Any]]]:
+    def list_all_tools(self) -> dict[str, list[dict[str, Any]]]:
         """List tools from all MCP servers."""
         all_tools = {}
         for name, server in self.servers.items():

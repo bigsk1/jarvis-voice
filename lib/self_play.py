@@ -15,7 +15,7 @@ import random
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
 from collections import defaultdict
 from dataclasses import dataclass, asdict
 
@@ -129,10 +129,10 @@ class QueryResult:
     query: str
     category: str
     response: str
-    tools_used: List[str]
+    tools_used: list[str]
     duration_ms: float
     ok: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -140,8 +140,8 @@ class FeedbackResult:
     """Result of feedback grading."""
     rating: int
     summary: str
-    tool_ratings: Dict[str, Dict[str, Any]]
-    issues: List[Dict[str, Any]]
+    tool_ratings: dict[str, dict[str, Any]]
+    issues: list[dict[str, Any]]
 
 
 @dataclass 
@@ -149,7 +149,7 @@ class ToolGap:
     """Identified gap where a dedicated tool would help."""
     pattern: str
     query_count: int
-    example_queries: List[str]
+    example_queries: list[str]
     suggestion: str
 
 
@@ -162,10 +162,10 @@ class SessionSummary:
     total_queries: int
     avg_rating: float
     low_ratings: int
-    tool_gaps: List[ToolGap]
+    tool_gaps: list[ToolGap]
     evolution_triggered: bool
     duration_seconds: float
-    results: List[Dict[str, Any]]
+    results: list[dict[str, Any]]
 
 
 class SelfPlayEngine:
@@ -178,7 +178,7 @@ class SelfPlayEngine:
         self.logs_dir = self.project_root / "logs" / "self-play"
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         
-    def generate_queries(self, num_queries: int, categories: Optional[List[str]] = None) -> List[Dict[str, str]]:
+    def generate_queries(self, num_queries: int, categories: list[str] | None = None) -> list[dict[str, str]]:
         """
         Generate novel queries using LLM.
         
@@ -364,7 +364,7 @@ Generate {count} queries:"""
                 error=str(e),
             )
     
-    def collect_feedback(self, query_result: QueryResult) -> Optional[FeedbackResult]:
+    def collect_feedback(self, query_result: QueryResult) -> FeedbackResult | None:
         """
         Collect feedback on a query result using the feedback system.
         
@@ -440,7 +440,7 @@ Generate {count} queries:"""
                     if tool.name in relevant_tools:
                         tool_descriptions[tool.name] = tool.description
                         
-            except Exception as e:
+            except Exception:
                 # Fallback - still collect feedback without tool descriptions
                 pass
             
@@ -467,7 +467,7 @@ Generate {count} queries:"""
             print(f"Warning: Feedback collection failed: {e}", file=sys.stderr)
             return None
     
-    def analyze_tool_gaps(self, results: List[Dict[str, Any]]) -> List[ToolGap]:
+    def analyze_tool_gaps(self, results: list[dict[str, Any]]) -> list[ToolGap]:
         """
         Analyze results to find tool gaps.
         
@@ -505,7 +505,7 @@ Generate {count} queries:"""
     def run_session(
         self,
         num_queries: int = 50,
-        categories: Optional[List[str]] = None,
+        categories: list[str] | None = None,
         silent: bool = True,
         collect_feedback: bool = True,
         progress_callback=None,
@@ -626,7 +626,7 @@ Generate {count} queries:"""
                 model=get_config_value("OPENAI_MODEL", "gpt-4o"),
             )
     
-    def _log_result(self, session_id: str, result: Dict[str, Any]):
+    def _log_result(self, session_id: str, result: dict[str, Any]):
         """Log a single result to JSONL file."""
         log_file = self.logs_dir / f"self-play-{datetime.now().strftime('%Y-%m-%d')}.jsonl"
         
@@ -687,7 +687,7 @@ Generate {count} queries:"""
         
         return False
     
-    def get_latest_session(self) -> Optional[Dict[str, Any]]:
+    def get_latest_session(self) -> dict[str, Any] | None:
         """Get the most recent session summary."""
         session_files = sorted(self.logs_dir.glob("session-*.json"), reverse=True)
         
@@ -696,7 +696,7 @@ Generate {count} queries:"""
                 return json.load(f)
         return None
     
-    def list_sessions(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def list_sessions(self, limit: int = 10) -> list[dict[str, Any]]:
         """List recent session summaries."""
         session_files = sorted(self.logs_dir.glob("session-*.json"), reverse=True)[:limit]
         

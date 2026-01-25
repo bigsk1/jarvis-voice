@@ -5,7 +5,7 @@ import json
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any
 import sys
 
 # Add lib to path
@@ -43,12 +43,12 @@ class AlertManager:
     def create_alert(self, 
                      title: str,
                      source: str,
-                     description: Optional[str] = None,
+                     description: str | None = None,
                      severity: str = "medium",
-                     auto_resolve_url: Optional[str] = None,
+                     auto_resolve_url: str | None = None,
                      auto_resolve_check_interval: int = 300,
-                     metadata: Optional[Dict[str, Any]] = None,
-                     related_intel_file: Optional[str] = None,
+                     metadata: dict[str, Any] | None = None,
+                     related_intel_file: str | None = None,
                      speak_immediately: bool = True) -> int:
         """Create a new alert
         
@@ -130,7 +130,7 @@ class AlertManager:
         
         return alert_id
     
-    def get_alert(self, alert_id: int) -> Optional[Dict[str, Any]]:
+    def get_alert(self, alert_id: int) -> dict[str, Any] | None:
         """Get single alert by ID"""
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
@@ -147,10 +147,10 @@ class AlertManager:
         return None
     
     def list_alerts(self, 
-                    status: Optional[str] = None,
-                    severity: Optional[str] = None,
-                    source: Optional[str] = None,
-                    limit: int = 100) -> List[Dict[str, Any]]:
+                    status: str | None = None,
+                    severity: str | None = None,
+                    source: str | None = None,
+                    limit: int = 100) -> list[dict[str, Any]]:
         """List alerts with optional filters"""
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
@@ -199,8 +199,8 @@ class AlertManager:
         return success
     
     def acknowledge_all(self, 
-                       status: Optional[str] = None,
-                       severity: Optional[str] = None) -> int:
+                       status: str | None = None,
+                       severity: str | None = None) -> int:
         """Acknowledge multiple alerts
         
         Args:
@@ -324,7 +324,7 @@ class AlertManager:
             
             return False
             
-        except Exception as e:
+        except Exception:
             # Connection failed - not resolved
             return False
     

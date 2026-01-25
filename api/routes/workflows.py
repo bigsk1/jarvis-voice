@@ -6,7 +6,6 @@ import os
 import json
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'orchestrator'))
@@ -23,7 +22,7 @@ from api.models.workflows import (
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 
-def get_workflow_logs(limit: int = 20, workflow_id: Optional[str] = None, days: int = 7) -> list:
+def get_workflow_logs(limit: int = 20, workflow_id: str | None = None, days: int = 7) -> list:
     """Get recent workflow execution logs from JSONL files."""
     logs_dir = Path(__file__).parent.parent.parent / "logs"
     workflow_logs = []
@@ -74,7 +73,7 @@ async def list_workflows():
     try:
         from workflow_loader import WorkflowLoader
         
-        loader = WorkflowLoader(explicit_only=True)
+        WorkflowLoader(explicit_only=True)
         workflows_dir = Path(__file__).parent.parent.parent / "data" / "workflows"
         
         workflows = []
@@ -100,7 +99,7 @@ async def list_workflows():
                     version=wf.get("version"),
                     tools_used=tools_used
                 ))
-            except Exception as e:
+            except Exception:
                 continue
         
         return WorkflowListResponse(
@@ -115,7 +114,7 @@ async def list_workflows():
 @router.get("/history", response_model=WorkflowHistoryResponse)
 async def get_workflow_history(
     limit: int = 20,
-    workflow_id: Optional[str] = None,
+    workflow_id: str | None = None,
     days: int = 7
 ):
     """

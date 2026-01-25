@@ -7,7 +7,7 @@ import os
 import sys
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Any
 from datetime import datetime
 
 # Add lib to path
@@ -115,7 +115,7 @@ class Orchestrator:
         try:
             from auto_sync_memory import auto_sync_on_startup
             auto_sync_on_startup(mode, verbose=False)
-        except Exception as e:
+        except Exception:
             # Non-critical - continue if sync fails
             pass
         
@@ -152,7 +152,7 @@ class Orchestrator:
         """Set callback for status updates (for web UI to emit via WebSocket)."""
         self.status_updater.set_speech_callback(callback)
     
-    def _maybe_collect_feedback(self, result: Dict[str, Any], transcript: str) -> Dict[str, Any]:
+    def _maybe_collect_feedback(self, result: dict[str, Any], transcript: str) -> dict[str, Any]:
         """
         Optionally collect feedback based on random chance (configured via env).
         This enables the evolution/feedback system for both CLI and WebUI.
@@ -267,7 +267,7 @@ Mode: {self.mode}
         return result
     
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
-                conversation_history: list = None, excluded_tools: list = None) -> Dict[str, Any]:
+                conversation_history: list = None, excluded_tools: list = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
         Supports multi-turn tool execution until task is complete.
@@ -787,7 +787,7 @@ Your synthesized response:"""
                 tools_summary = ', '.join(set(tools_used))
                 return f"Task completed using {tools_summary}. Please check the results above."
 
-    def _format_natural_response(self, user_query: str, tool_name: str, tool_result: Dict[str, Any]) -> str:
+    def _format_natural_response(self, user_query: str, tool_name: str, tool_result: dict[str, Any]) -> str:
         """
         Use LLM to format tool results into natural conversational speech.
         
@@ -1175,7 +1175,7 @@ Your BEST EFFORT response:"""
         
         return "\n".join(context_lines)
     
-    def _try_workflow(self, transcript: str) -> Dict[str, Any] | None:
+    def _try_workflow(self, transcript: str) -> dict[str, Any] | None:
         """
         Check if transcript matches an explicit workflow command.
         
@@ -1188,7 +1188,7 @@ Your BEST EFFORT response:"""
             if not workflow:
                 return None
             
-            workflow_name = workflow.get("name", workflow.get("id"))
+            workflow.get("name", workflow.get("id"))
             
             # Status callback to use the existing status updater
             def status_callback(msg: str):
@@ -1409,7 +1409,7 @@ Your BEST EFFORT response:"""
         
         return "\n".join(context_parts)
     
-    def _get_learning_insights(self, transcript: str, available_tools: List[str] = None) -> Tuple[str, List[Dict]]:
+    def _get_learning_insights(self, transcript: str, available_tools: list[str] = None) -> tuple[str, list[dict]]:
         """
         Get learned insights to inform routing decisions.
         

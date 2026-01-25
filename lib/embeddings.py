@@ -5,12 +5,10 @@ Supports:
 - OpenAI text-embedding-3-small (cloud mode)
 - Ollama nomic-embed-text (local mode)
 """
-import os
-from typing import List
 from config_loader import get_config_value
 
 
-def get_embedding(text: str, provider: str = None) -> List[float]:
+def get_embedding(text: str, provider: str = None) -> list[float]:
     """
     Generate embedding vector for text using configured provider.
     
@@ -33,7 +31,7 @@ def get_embedding(text: str, provider: str = None) -> List[float]:
         return _get_openai_embedding(text)
 
 
-def _get_openai_embedding(text: str) -> List[float]:
+def _get_openai_embedding(text: str) -> list[float]:
     """Generate embedding using OpenAI with fallback to simple hash-based embedding."""
     try:
         from openai import OpenAI
@@ -65,7 +63,7 @@ def _get_openai_embedding(text: str) -> List[float]:
         return _get_fallback_embedding(text, dimensions=1536)
 
 
-def _get_fallback_embedding(text: str, dimensions: int = 1536) -> List[float]:
+def _get_fallback_embedding(text: str, dimensions: int = 1536) -> list[float]:
     """
     Fallback embedding using deterministic hash-based approach.
     Not semantically meaningful, but allows system to continue functioning.
@@ -107,7 +105,7 @@ def _get_fallback_embedding(text: str, dimensions: int = 1536) -> List[float]:
     return embedding
 
 
-def _get_ollama_embedding(text: str) -> List[float]:
+def _get_ollama_embedding(text: str) -> list[float]:
     """Generate embedding using Ollama with nomic-embed-text, with fallback."""
     try:
         import requests
@@ -143,7 +141,7 @@ def _get_ollama_embedding(text: str) -> List[float]:
         return _get_fallback_embedding(text, dimensions=768)
 
 
-def get_embeddings_batch(texts: List[str], provider: str = None) -> List[List[float]]:
+def get_embeddings_batch(texts: list[str], provider: str = None) -> list[list[float]]:
     """
     Generate embeddings for multiple texts (more efficient when supported).
     
@@ -166,7 +164,7 @@ def get_embeddings_batch(texts: List[str], provider: str = None) -> List[List[fl
         return _get_openai_embeddings_batch(texts)
 
 
-def _get_openai_embeddings_batch(texts: List[str]) -> List[List[float]]:
+def _get_openai_embeddings_batch(texts: list[str]) -> list[list[float]]:
     """Generate embeddings batch using OpenAI."""
     try:
         from openai import OpenAI
@@ -188,7 +186,7 @@ def _get_openai_embeddings_batch(texts: List[str]) -> List[List[float]]:
     return [item.embedding for item in response.data]
 
 
-def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     """
     Calculate cosine similarity between two vectors.
     

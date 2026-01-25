@@ -4,15 +4,12 @@ Auto-sync memory databases between modes.
 Called at startup to ensure both databases are current.
 """
 
-import os
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config_loader import get_config_value
 
 def should_sync(source_db: Path, target_db: Path) -> bool:
     """Check if target DB needs syncing from source."""
@@ -72,7 +69,6 @@ def auto_sync_on_startup(current_mode: str, verbose: bool = False):
     
     try:
         # Import and run sync
-        from pathlib import Path
         import subprocess
         
         sync_script = project_root / 'bin' / 'sync-memory-db.py'

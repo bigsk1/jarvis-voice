@@ -3,11 +3,10 @@
 LLM Call Logger
 Tracks all LLM API calls for cost monitoring, debugging, and performance analysis.
 """
-import os
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any
 
 
 class LLMLogger:
@@ -37,15 +36,15 @@ class LLMLogger:
         provider: str,
         model: str,
         prompt_type: str,  # "routing", "chat", "tool_selection", etc.
-        messages: List[Dict[str, str]],
-        response_text: Optional[str],
-        tool_call: Optional[Dict[str, Any]],
-        usage_info: Optional[Dict[str, Any]],
-        thinking: Optional[str],
+        messages: list[dict[str, str]],
+        response_text: str | None,
+        tool_call: dict[str, Any] | None,
+        usage_info: dict[str, Any] | None,
+        thinking: str | None,
         duration_ms: float,
         mode: str = "cloud",
-        user_query: Optional[str] = None,
-        error: Optional[str] = None
+        user_query: str | None = None,
+        error: str | None = None
     ):
         """
         Log an LLM API call.
@@ -142,7 +141,7 @@ class LLMLogger:
         
         return logs[-limit:][::-1]
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get statistics about LLM usage."""
         if not self.log_file.exists():
             return {

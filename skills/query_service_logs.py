@@ -9,16 +9,14 @@ Output: { "ok": bool, "speech": str, "data": dict }
 import sys
 import os
 import json
-from pathlib import Path
-from datetime import datetime
-from typing import Dict, Any, List
+from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from service_logger import ServiceLogger
 
 
-def get_service_logs(service_name: str, event_type: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+def get_service_logs(service_name: str, event_type: str = None, limit: int = 20) -> list[dict[str, Any]]:
     """Get logs for a specific service."""
     logger = ServiceLogger(service_name)
     
@@ -28,7 +26,7 @@ def get_service_logs(service_name: str, event_type: str = None, limit: int = 20)
         return logger.get_recent_logs(limit)
 
 
-def get_service_stats(service_name: str) -> Dict[str, Any]:
+def get_service_stats(service_name: str) -> dict[str, Any]:
     """Get statistics for a service."""
     logger = ServiceLogger(service_name)
     return logger.get_stats()
@@ -105,7 +103,7 @@ def main():
         sys.exit(1)
 
 
-def build_speech_response(service: str, data: Dict[str, Any], event_type: str, show_stats: bool) -> str:
+def build_speech_response(service: str, data: dict[str, Any], event_type: str, show_stats: bool) -> str:
     """Build human-readable speech response."""
     
     if show_stats:

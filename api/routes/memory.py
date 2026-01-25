@@ -1,7 +1,6 @@
 """Memory API endpoints - CRUD and search for Jarvis memories"""
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
 import sys
 from pathlib import Path
 
@@ -9,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 
 from api.models.memory import (
     MemoryCreate, MemoryUpdate, Memory, MemoryResponse,
-    MemorySearchRequest, SemanticSearchRequest
+    SemanticSearchRequest
 )
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -157,7 +156,7 @@ async def rebuild_fts_index():
 @router.get("/search/keyword", response_model=MemoryResponse)
 async def search_memories_keyword(
     q: str = Query(..., description="Search query"),
-    category: Optional[str] = Query(None, description="Filter by category"),
+    category: str | None = Query(None, description="Filter by category"),
     limit: int = Query(10, ge=1, le=100, description="Maximum results")
 ):
     """
@@ -284,7 +283,7 @@ async def create_memory(memory: MemoryCreate):
 @router.get("", response_model=MemoryResponse)
 @router.get("/", response_model=MemoryResponse, include_in_schema=False)
 async def list_memories(
-    category: Optional[str] = Query(None, description="Filter by category"),
+    category: str | None = Query(None, description="Filter by category"),
     limit: int = Query(100, ge=1, le=500, description="Maximum results")
 ):
     """

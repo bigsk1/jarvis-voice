@@ -11,13 +11,11 @@ Usage:
 
 import sys
 import os
-from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value, get_float
 from memory_db import get_memory_db
-from tool_schema import ToolRegistry
 
 def debug_tool_rag(mode: str, query: str):
     """Debug tool retrieval for a query."""

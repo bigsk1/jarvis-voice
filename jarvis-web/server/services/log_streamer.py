@@ -2,13 +2,12 @@
 Log Streamer Service - Tails multiple JSONL log files and streams to WebSocket clients.
 """
 
-import os
 import json
 import time
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Callable, Optional
+from collections.abc import Callable
 from dataclasses import dataclass, asdict
 
 # Get project root
@@ -73,14 +72,14 @@ class LogStreamer:
         """
         self.callback = callback
         self._running = False
-        self._threads: Dict[str, threading.Thread] = {}
-        self._file_positions: Dict[str, int] = {}
-        self._enabled_sources: Dict[str, bool] = {
+        self._threads: dict[str, threading.Thread] = {}
+        self._file_positions: dict[str, int] = {}
+        self._enabled_sources: dict[str, bool] = {
             source: config['enabled'] 
             for source, config in self.LOG_SOURCES.items()
         }
     
-    def start(self, sources: Optional[List[str]] = None):
+    def start(self, sources: list[str] | None = None):
         """Start tailing log files."""
         if self._running:
             return
@@ -114,7 +113,7 @@ class LogStreamer:
         if source in self.LOG_SOURCES:
             self._enabled_sources[source] = enabled
     
-    def get_enabled_sources(self) -> Dict[str, bool]:
+    def get_enabled_sources(self) -> dict[str, bool]:
         """Get current enabled state of all sources."""
         return self._enabled_sources.copy()
     
@@ -195,7 +194,7 @@ class LogStreamer:
                 print(f"[LOG_STREAMER] Error tailing {source}: {e}")
                 time.sleep(2)
     
-    def _parse_llm_entry(self, line: str, source: str) -> Optional[LogEntry]:
+    def _parse_llm_entry(self, line: str, source: str) -> LogEntry | None:
         """Parse LLM call log entry."""
         try:
             data = json.loads(line)
@@ -255,7 +254,7 @@ class LogStreamer:
         except json.JSONDecodeError:
             return None
     
-    def _parse_tool_entry(self, line: str, source: str) -> Optional[LogEntry]:
+    def _parse_tool_entry(self, line: str, source: str) -> LogEntry | None:
         """Parse tool call log entry."""
         try:
             data = json.loads(line)
@@ -295,7 +294,7 @@ class LogStreamer:
         except json.JSONDecodeError:
             return None
     
-    def _parse_workflow_entry(self, line: str, source: str) -> Optional[LogEntry]:
+    def _parse_workflow_entry(self, line: str, source: str) -> LogEntry | None:
         """Parse workflow execution log entry."""
         try:
             data = json.loads(line)
@@ -340,7 +339,7 @@ class LogStreamer:
         except json.JSONDecodeError:
             return None
     
-    def _parse_opencode_entry(self, line: str, source: str) -> Optional[LogEntry]:
+    def _parse_opencode_entry(self, line: str, source: str) -> LogEntry | None:
         """Parse OpenCode session log entry."""
         try:
             data = json.loads(line)
@@ -378,7 +377,7 @@ class LogStreamer:
         except json.JSONDecodeError:
             return None
     
-    def _parse_feedback_entry(self, line: str, source: str) -> Optional[LogEntry]:
+    def _parse_feedback_entry(self, line: str, source: str) -> LogEntry | None:
         """Parse feedback log entry."""
         try:
             data = json.loads(line)
@@ -410,7 +409,7 @@ class LogStreamer:
 
 
 # Singleton instance for the app
-_streamer_instance: Optional[LogStreamer] = None
+_streamer_instance: LogStreamer | None = None
 
 
 def get_log_streamer(callback: Callable[[LogEntry], None]) -> LogStreamer:

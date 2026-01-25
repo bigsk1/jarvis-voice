@@ -4,7 +4,7 @@ import sqlite3
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any
 import sys
 
 # Add lib to path
@@ -37,11 +37,11 @@ class ReminderManager:
     def create_reminder(self,
                        title: str,
                        trigger_time: str,
-                       description: Optional[str] = None,
-                       related_intel_file: Optional[str] = None,
-                       callback_url: Optional[str] = None,
-                       recurrence_rule: Optional[str] = None,
-                       metadata: Optional[Dict[str, Any]] = None) -> int:
+                       description: str | None = None,
+                       related_intel_file: str | None = None,
+                       callback_url: str | None = None,
+                       recurrence_rule: str | None = None,
+                       metadata: dict[str, Any] | None = None) -> int:
         """Create a new reminder
         
         Args:
@@ -79,7 +79,7 @@ class ReminderManager:
         
         return reminder_id
     
-    def get_reminder(self, reminder_id: int) -> Optional[Dict[str, Any]]:
+    def get_reminder(self, reminder_id: int) -> dict[str, Any] | None:
         """Get single reminder by ID"""
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
@@ -96,8 +96,8 @@ class ReminderManager:
         return None
     
     def list_reminders(self,
-                      status: Optional[str] = None,
-                      limit: int = 100) -> List[Dict[str, Any]]:
+                      status: str | None = None,
+                      limit: int = 100) -> list[dict[str, Any]]:
         """List reminders with optional filters"""
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
@@ -153,7 +153,7 @@ class ReminderManager:
         
         return success
     
-    def acknowledge_all(self, status: Optional[str] = None) -> int:
+    def acknowledge_all(self, status: str | None = None) -> int:
         """Acknowledge all reminders matching filter
         
         Args:
@@ -186,11 +186,11 @@ class ReminderManager:
                        reminder_id: int,
                        title: str,
                        trigger_time: str,
-                       description: Optional[str] = None,
-                       related_intel_file: Optional[str] = None,
-                       callback_url: Optional[str] = None,
-                       recurrence_rule: Optional[str] = None,
-                       metadata: Optional[Dict[str, Any]] = None) -> bool:
+                       description: str | None = None,
+                       related_intel_file: str | None = None,
+                       callback_url: str | None = None,
+                       recurrence_rule: str | None = None,
+                       metadata: dict[str, Any] | None = None) -> bool:
         """Update an existing reminder
         
         Args:
@@ -233,7 +233,7 @@ class ReminderManager:
         
         return success
     
-    def find_by_gcal_event_id(self, gcal_event_id: str) -> Optional[Dict[str, Any]]:
+    def find_by_gcal_event_id(self, gcal_event_id: str) -> dict[str, Any] | None:
         """Find reminder by Google Calendar event ID
         
         Searches metadata JSON for gcal_event_id field.

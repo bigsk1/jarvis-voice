@@ -3,11 +3,10 @@
 Service Logger
 Tracks all background service actions for debugging and Jarvis awareness.
 """
-import os
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any
 
 
 class ServiceLogger:
@@ -38,7 +37,7 @@ class ServiceLogger:
         # Also keep a human-readable log
         self.text_log_file = self.log_dir / f"{service_name}-{today}.log"
     
-    def log_startup(self, mode: str, config: Dict[str, Any] = None):
+    def log_startup(self, mode: str, config: dict[str, Any] = None):
         """Log service startup."""
         log_entry = {
             "timestamp": datetime.now().isoformat(),
@@ -49,7 +48,7 @@ class ServiceLogger:
         }
         self._write_log(log_entry, f"Service started in {mode} mode")
     
-    def log_action(self, action: str, details: Dict[str, Any], success: bool = True):
+    def log_action(self, action: str, details: dict[str, Any], success: bool = True):
         """
         Log a service action.
         
@@ -82,7 +81,7 @@ class ServiceLogger:
         
         self._write_log(log_entry, msg)
     
-    def log_error(self, error: str, details: Dict[str, Any] = None):
+    def log_error(self, error: str, details: dict[str, Any] = None):
         """Log an error."""
         log_entry = {
             "timestamp": datetime.now().isoformat(),
@@ -93,7 +92,7 @@ class ServiceLogger:
         }
         self._write_log(log_entry, f"❌ ERROR: {error}")
     
-    def log_check(self, found: int, details: Dict[str, Any] = None):
+    def log_check(self, found: int, details: dict[str, Any] = None):
         """Log a periodic check."""
         log_entry = {
             "timestamp": datetime.now().isoformat(),
@@ -111,7 +110,7 @@ class ServiceLogger:
             # Still write JSON log for auditing, but not text log
             self._write_json_log(log_entry)
     
-    def log_shutdown(self, stats: Dict[str, Any] = None):
+    def log_shutdown(self, stats: dict[str, Any] = None):
         """Log service shutdown."""
         log_entry = {
             "timestamp": datetime.now().isoformat(),
@@ -121,12 +120,12 @@ class ServiceLogger:
         }
         self._write_log(log_entry, f"Service stopped. Stats: {stats}")
     
-    def _write_log(self, log_entry: Dict[str, Any], text_message: str):
+    def _write_log(self, log_entry: dict[str, Any], text_message: str):
         """Write to both JSON and text logs."""
         self._write_json_log(log_entry)
         self._write_text_log(text_message)
     
-    def _write_json_log(self, log_entry: Dict[str, Any]):
+    def _write_json_log(self, log_entry: dict[str, Any]):
         """Write JSON log entry."""
         with open(self.log_file, 'a') as f:
             f.write(json.dumps(log_entry) + '\n')
@@ -137,7 +136,7 @@ class ServiceLogger:
         with open(self.text_log_file, 'a') as f:
             f.write(f"[{timestamp}] {message}\n")
     
-    def get_recent_logs(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_recent_logs(self, limit: int = 50) -> list[dict[str, Any]]:
         """Get recent log entries."""
         if not self.log_file.exists():
             return []
@@ -151,7 +150,7 @@ class ServiceLogger:
         # Return most recent first
         return logs[-limit:][::-1]
     
-    def get_logs_by_event(self, event: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_logs_by_event(self, event: str, limit: int = 50) -> list[dict[str, Any]]:
         """Get logs for a specific event type."""
         if not self.log_file.exists():
             return []
@@ -166,11 +165,11 @@ class ServiceLogger:
         
         return logs[-limit:][::-1]
     
-    def get_error_logs(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_error_logs(self, limit: int = 20) -> list[dict[str, Any]]:
         """Get recent error logs."""
         return self.get_logs_by_event("error", limit)
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get statistics about service actions."""
         if not self.log_file.exists():
             return {

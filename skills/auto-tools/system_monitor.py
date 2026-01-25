@@ -6,11 +6,11 @@ Provides CPU, memory, disk, process, network, and uptime information.
 import sys
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 
 try:
     import psutil

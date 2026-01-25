@@ -1,7 +1,6 @@
 """Reminder API endpoints"""
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
 import sys
 from pathlib import Path
 
@@ -43,7 +42,7 @@ async def create_reminder(reminder: ReminderCreate):
 @router.get("", response_model=ReminderResponse)
 @router.get("/", response_model=ReminderResponse, include_in_schema=False)
 async def list_reminders(
-    status: Optional[ReminderStatus] = Query(None, description="Filter by status"),
+    status: ReminderStatus | None = Query(None, description="Filter by status"),
     limit: int = Query(100, description="Maximum number of results")
 ):
     """List reminders"""
@@ -102,7 +101,7 @@ async def acknowledge_reminder(reminder_id: int):
 
 @router.post("/acknowledge-all", response_model=ReminderResponse)
 async def acknowledge_all_reminders(
-    status: Optional[ReminderStatus] = Query(None, description="Filter by status (default: triggered)")
+    status: ReminderStatus | None = Query(None, description="Filter by status (default: triggered)")
 ):
     """Acknowledge all reminders matching filter
     
@@ -172,7 +171,7 @@ async def cancel_reminder_by_gcal_id(gcal_event_id: str):
     if not reminder:
         raise HTTPException(status_code=404, detail=f"No reminder found with gcal_event_id: {gcal_event_id}")
     
-    success = reminder_manager.cancel_reminder(reminder['id'])
+    reminder_manager.cancel_reminder(reminder['id'])
     
     return ReminderResponse(
         ok=True,
@@ -191,7 +190,7 @@ async def update_reminder_by_gcal_id(gcal_event_id: str, reminder: ReminderCreat
         raise HTTPException(status_code=404, detail=f"No reminder found with gcal_event_id: {gcal_event_id}")
     
     try:
-        success = reminder_manager.update_reminder(
+        reminder_manager.update_reminder(
             reminder_id=existing['id'],
             title=reminder.title,
             description=reminder.description,

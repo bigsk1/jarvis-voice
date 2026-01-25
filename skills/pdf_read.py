@@ -12,17 +12,14 @@ Complements pdf_create for full PDF workflow support.
 import sys
 import os
 import json
-import io
 from datetime import datetime
-from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
 from stash_helper import (
-    get_space, open_space, StashFile, resolve_file_path, safe_resolve_file,
-    parse_stash_ref
+    get_space, open_space, StashFile, resolve_file_path, safe_resolve_file
 )
 
 try:
@@ -42,7 +39,7 @@ def format_size(bytes_size: int) -> str:
         return f"{bytes_size / (1024 * 1024):.1f}MB"
 
 
-def resolve_pdf_path(args: Dict) -> str:
+def resolve_pdf_path(args: dict) -> str:
     """Resolve PDF path from stash_ref, space_id+file_id, or file_path."""
     stash_ref = args.get('stash_ref')
     space_id = args.get('space_id')
@@ -64,7 +61,7 @@ def resolve_pdf_path(args: Dict) -> str:
     raise ValueError("Provide stash_ref, space_id+file_id, or file_path")
 
 
-def action_info(args: Dict) -> Dict:
+def action_info(args: dict) -> dict:
     """Get PDF metadata and info."""
     if not HAS_PYMUPDF:
         raise ImportError("pymupdf required: pip install pymupdf")
@@ -97,7 +94,7 @@ def action_info(args: Dict) -> Dict:
     }
 
 
-def action_extract_text(args: Dict) -> Dict:
+def action_extract_text(args: dict) -> dict:
     """Extract text from PDF pages."""
     if not HAS_PYMUPDF:
         raise ImportError("pymupdf required: pip install pymupdf")
@@ -167,7 +164,7 @@ def action_extract_text(args: Dict) -> Dict:
     }
 
 
-def action_extract_images(args: Dict) -> Dict:
+def action_extract_images(args: dict) -> dict:
     """Extract images from PDF."""
     if not HAS_PYMUPDF:
         raise ImportError("pymupdf required: pip install pymupdf")
@@ -238,7 +235,7 @@ def action_extract_images(args: Dict) -> Dict:
                         "height": height,
                         "stash_ref": save_result['ref']
                     })
-                except Exception as e:
+                except Exception:
                     continue
     
     doc.close()
@@ -254,7 +251,7 @@ def action_extract_images(args: Dict) -> Dict:
     }
 
 
-def action_merge(args: Dict) -> Dict:
+def action_merge(args: dict) -> dict:
     """Merge multiple PDFs into one."""
     if not HAS_PYMUPDF:
         raise ImportError("pymupdf required: pip install pymupdf")
@@ -317,7 +314,7 @@ def action_merge(args: Dict) -> Dict:
     }
 
 
-def action_split(args: Dict) -> Dict:
+def action_split(args: dict) -> dict:
     """Split PDF into separate files."""
     if not HAS_PYMUPDF:
         raise ImportError("pymupdf required: pip install pymupdf")
@@ -415,7 +412,7 @@ def action_split(args: Dict) -> Dict:
     }
 
 
-def action_to_images(args: Dict) -> Dict:
+def action_to_images(args: dict) -> dict:
     """Convert PDF pages to images."""
     if not HAS_PYMUPDF:
         raise ImportError("pymupdf required: pip install pymupdf")
@@ -492,7 +489,7 @@ def action_to_images(args: Dict) -> Dict:
     }
 
 
-def action_search(args: Dict) -> Dict:
+def action_search(args: dict) -> dict:
     """Search for text in PDF."""
     if not HAS_PYMUPDF:
         raise ImportError("pymupdf required: pip install pymupdf")

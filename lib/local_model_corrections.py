@@ -4,7 +4,7 @@ Smart corrections for local LLM outputs.
 Fixes common formatting issues without breaking legitimate use cases.
 """
 import re
-from typing import Dict, Any
+from typing import Any
 
 
 def normalize_tool_name(tool_name: str) -> str:
@@ -115,7 +115,7 @@ def smart_url_fix(url: str) -> str:
     return f"https://{url}"
 
 
-def correct_tool_call(tool_call: Dict[str, Any], strict_mode: bool = False) -> Dict[str, Any]:
+def correct_tool_call(tool_call: dict[str, Any], strict_mode: bool = False) -> dict[str, Any]:
     """
     Apply smart corrections to tool calls from local LLMs.
     
@@ -149,7 +149,7 @@ def correct_tool_call(tool_call: Dict[str, Any], strict_mode: bool = False) -> D
     return corrected
 
 
-def validate_corrections(original: Dict[str, Any], corrected: Dict[str, Any]) -> Dict[str, str]:
+def validate_corrections(original: dict[str, Any], corrected: dict[str, Any]) -> dict[str, str]:
     """
     Show what corrections were made (useful for debugging/logging).
     

@@ -1,6 +1,6 @@
 """Query/Chat API endpoints - Send queries to Jarvis programmatically"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 import sys
 import os
 from pathlib import Path

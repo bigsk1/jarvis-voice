@@ -10,9 +10,7 @@ Falls back to static phrases if LLM unavailable or fails.
 
 import os
 import sys
-import json
 import requests
-from typing import Optional, Dict, Any
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
@@ -95,9 +93,9 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
     def summarize(
         self, 
         context: str, 
-        tool_name: Optional[str] = None,
+        tool_name: str | None = None,
         event_type: str = 'progress'
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Generate a 5-8 word status summary.
         
@@ -131,7 +129,7 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
             print(f"[StatusLLM] Error: {e}", file=sys.stderr)
             return None
     
-    def _build_prompt(self, context: str, tool_name: Optional[str], event_type: str) -> str:
+    def _build_prompt(self, context: str, tool_name: str | None, event_type: str) -> str:
         """Build the prompt for summarization."""
         # Truncate context to avoid large prompts
         context = context[:500] if context else "Working on task"
@@ -151,7 +149,7 @@ Current state:
 
 Generate a natural 5-8 word status update:"""
     
-    def _call_openai_compatible(self, prompt: str) -> Optional[str]:
+    def _call_openai_compatible(self, prompt: str) -> str | None:
         """Call OpenAI-compatible API (OpenAI, xAI)."""
         headers = {
             'Authorization': f'Bearer {self.api_key}',
@@ -180,7 +178,7 @@ Generate a natural 5-8 word status update:"""
         content = result['choices'][0]['message']['content']
         return self._clean_response(content)
     
-    def _call_anthropic(self, prompt: str) -> Optional[str]:
+    def _call_anthropic(self, prompt: str) -> str | None:
         """Call Anthropic API."""
         headers = {
             'x-api-key': self.api_key,
@@ -209,7 +207,7 @@ Generate a natural 5-8 word status update:"""
         content = result['content'][0]['text']
         return self._clean_response(content)
     
-    def _call_ollama(self, prompt: str) -> Optional[str]:
+    def _call_ollama(self, prompt: str) -> str | None:
         """Call local Ollama API."""
         payload = {
             'model': self.model,
@@ -232,7 +230,7 @@ Generate a natural 5-8 word status update:"""
         content = result.get('response', '')
         return self._clean_response(content)
     
-    def _clean_response(self, content: str) -> Optional[str]:
+    def _clean_response(self, content: str) -> str | None:
         """Clean up LLM response for TTS."""
         if not content:
             return None
@@ -266,7 +264,7 @@ Generate a natural 5-8 word status update:"""
 
 
 # Singleton instance
-_instance: Optional[StatusSummarizer] = None
+_instance: StatusSummarizer | None = None
 
 
 def get_status_summarizer() -> StatusSummarizer:
@@ -279,9 +277,9 @@ def get_status_summarizer() -> StatusSummarizer:
 
 def summarize_status(
     context: str, 
-    tool_name: Optional[str] = None,
+    tool_name: str | None = None,
     event_type: str = 'progress'
-) -> Optional[str]:
+) -> str | None:
     """Convenience function for status summarization."""
     return get_status_summarizer().summarize(context, tool_name, event_type)
 

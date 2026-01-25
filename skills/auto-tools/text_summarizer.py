@@ -7,16 +7,16 @@ import os
 import json
 import re
 from collections import Counter
-from typing import Dict, List, Any
+from typing import Any
 
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 
-def count_stats(text: str) -> Dict[str, int]:
+def count_stats(text: str) -> dict[str, int]:
     """Count words, characters, sentences, and paragraphs."""
     # Remove extra whitespace
-    text_clean = ' '.join(text.split())
+    ' '.join(text.split())
     
     # Count characters (with and without spaces)
     chars_with_spaces = len(text)
@@ -42,7 +42,7 @@ def count_stats(text: str) -> Dict[str, int]:
         "paragraphs": paragraph_count
     }
 
-def extract_keywords(text: str, top_n: int = 10) -> List[Dict[str, Any]]:
+def extract_keywords(text: str, top_n: int = 10) -> list[dict[str, Any]]:
     """Extract keywords using frequency analysis with stopword filtering."""
     # Basic stopwords list
     stopwords = set([
@@ -66,7 +66,7 @@ def extract_keywords(text: str, top_n: int = 10) -> List[Dict[str, Any]]:
     
     return [{"keyword": word, "frequency": count} for word, count in top_keywords]
 
-def basic_sentiment(text: str) -> Dict[str, Any]:
+def basic_sentiment(text: str) -> dict[str, Any]:
     """Basic sentiment analysis using keyword matching."""
     text_lower = text.lower()
     

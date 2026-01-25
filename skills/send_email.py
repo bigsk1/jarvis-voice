@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 from stash_helper import safe_resolve_file, extract_filename_from_stash_ref
 
 # Rate limit storage (simple file-based)

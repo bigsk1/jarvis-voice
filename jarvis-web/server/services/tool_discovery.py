@@ -5,7 +5,6 @@ Auto-loads tools from skills/*.tool.json AND memory_db (includes MCP tools)
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 from ..config import SKILLS_PATH, JARVIS_ROOT, get_web_setting
 
 
@@ -14,7 +13,7 @@ class ToolDiscoveryService:
     
     def __init__(self, skills_path: Path = None):
         self.skills_path = skills_path or SKILLS_PATH
-        self.tools: Dict[str, dict] = {}
+        self.tools: dict[str, dict] = {}
         self._load_tools()
     
     def _load_tools(self):
@@ -86,13 +85,13 @@ class ToolDiscoveryService:
         except Exception as e:
             print(f"[ToolDiscovery] Error loading MCP tools from db: {e}")
     
-    def get_tools(self, include_blocked: bool = True) -> List[dict]:
+    def get_tools(self, include_blocked: bool = True) -> list[dict]:
         """Return all tools as a list"""
         if include_blocked:
             return list(self.tools.values())
         return [t for t in self.tools.values() if not t.get('blocked')]
     
-    def get_tool(self, name: str) -> Optional[dict]:
+    def get_tool(self, name: str) -> dict | None:
         """Get a specific tool by name"""
         return self.tools.get(name)
     
@@ -102,15 +101,15 @@ class ToolDiscoveryService:
             return len(self.tools)
         return len([t for t in self.tools.values() if not t.get('blocked')])
     
-    def get_mcp_tools(self) -> List[dict]:
+    def get_mcp_tools(self) -> list[dict]:
         """Return only MCP tools"""
         return [t for t in self.tools.values() if t.get('source') == 'mcp']
     
-    def get_local_tools(self) -> List[dict]:
+    def get_local_tools(self) -> list[dict]:
         """Return only local tools"""
         return [t for t in self.tools.values() if t.get('source') == 'local']
     
-    def get_blocked_tools(self) -> List[dict]:
+    def get_blocked_tools(self) -> list[dict]:
         """Return only blocked tools"""
         return [t for t in self.tools.values() if t.get('blocked')]
     
@@ -118,7 +117,7 @@ class ToolDiscoveryService:
         """Reload tools"""
         self._load_tools()
     
-    def get_tools_summary(self) -> List[dict]:
+    def get_tools_summary(self) -> list[dict]:
         """Return simplified tool list for UI"""
         return [
             {
@@ -144,7 +143,7 @@ class ToolDiscoveryService:
 
 
 # Singleton instance
-_tool_service: Optional[ToolDiscoveryService] = None
+_tool_service: ToolDiscoveryService | None = None
 
 
 def get_tool_service() -> ToolDiscoveryService:

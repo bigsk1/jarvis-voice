@@ -3,11 +3,10 @@
 OpenCode Activity Logger
 Captures detailed OpenCode session activity for troubleshooting and monitoring.
 """
-import os
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
 
 class OpenCodeLogger:
@@ -37,8 +36,8 @@ class OpenCodeLogger:
         session_id: str,
         task: str,
         task_type: str = "general",
-        model: Optional[Dict[str, str]] = None,
-        context: Optional[Dict[str, Any]] = None
+        model: dict[str, str] | None = None,
+        context: dict[str, Any] | None = None
     ):
         """Log when an OpenCode session starts."""
         log_entry = {
@@ -74,8 +73,8 @@ class OpenCodeLogger:
     def log_message_received(
         self,
         session_id: str,
-        response: Dict[str, Any],
-        duration_ms: Optional[float] = None
+        response: dict[str, Any],
+        duration_ms: float | None = None
     ):
         """Log responses received from OpenCode."""
         # Extract key info from response
@@ -122,8 +121,8 @@ class OpenCodeLogger:
         self,
         session_id: str,
         success: bool,
-        result_summary: Optional[str] = None,
-        error: Optional[str] = None
+        result_summary: str | None = None,
+        error: str | None = None
     ):
         """Log when an OpenCode session completes."""
         log_entry = {
@@ -138,10 +137,10 @@ class OpenCodeLogger:
     
     def log_error(
         self,
-        session_id: Optional[str],
+        session_id: str | None,
         error_type: str,
         error_message: str,
-        context: Optional[Dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ):
         """Log errors during OpenCode operations."""
         log_entry = {
@@ -154,7 +153,7 @@ class OpenCodeLogger:
         }
         self._write_log(log_entry)
     
-    def _write_log(self, entry: Dict[str, Any]):
+    def _write_log(self, entry: dict[str, Any]):
         """Write log entry to file."""
         with open(self.log_file, 'a') as f:
             f.write(json.dumps(entry) + '\n')

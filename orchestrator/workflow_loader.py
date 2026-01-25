@@ -11,10 +11,7 @@ as an alternative to free-form LLM routing.
 import os
 import sys
 import json
-import re
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-from datetime import datetime
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -40,7 +37,7 @@ class WorkflowLoader:
             self.workflows_dir = project_root / "data" / "workflows"
         
         self.explicit_only = explicit_only
-        self.workflows: Dict[str, Dict] = {}
+        self.workflows: dict[str, dict] = {}
         self._load_workflows()
     
     def _load_workflows(self):
@@ -78,7 +75,7 @@ class WorkflowLoader:
             except Exception as e:
                 print(f"Warning: Error loading {path.name}: {e}", file=sys.stderr)
     
-    def match(self, query: str, allow_patterns: bool = None) -> Optional[Dict]:
+    def match(self, query: str, allow_patterns: bool = None) -> dict | None:
         """
         Match query against workflow triggers.
         
@@ -127,7 +124,7 @@ class WorkflowLoader:
         
         return None
     
-    def _score_match(self, query_lower: str, workflow: Dict, check_patterns: bool = True) -> int:
+    def _score_match(self, query_lower: str, workflow: dict, check_patterns: bool = True) -> int:
         """
         Score how well a query matches a workflow's triggers.
         
@@ -184,7 +181,7 @@ class WorkflowLoader:
         
         return score
     
-    def get_workflow(self, workflow_id: str) -> Optional[Dict]:
+    def get_workflow(self, workflow_id: str) -> dict | None:
         """
         Get a workflow by ID.
         
@@ -196,7 +193,7 @@ class WorkflowLoader:
         """
         return self.workflows.get(workflow_id)
     
-    def list_workflows(self) -> List[Dict]:
+    def list_workflows(self) -> list[dict]:
         """
         List all enabled workflows.
         
@@ -218,7 +215,7 @@ class WorkflowLoader:
         """Hot-reload workflows (for development)."""
         self._load_workflows()
     
-    def validate_workflow(self, workflow: Dict) -> List[str]:
+    def validate_workflow(self, workflow: dict) -> list[str]:
         """
         Validate a workflow definition.
         

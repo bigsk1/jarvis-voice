@@ -12,13 +12,13 @@ import time
 import threading
 import subprocess
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime
+from typing import Any
+from collections.abc import Callable
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
-from config_loader import get_config_value, get_int, get_float
-from status_phrases import StatusPhrases, get_phrase
+from config_loader import get_config_value, get_int
+from status_phrases import StatusPhrases
 from status_llm import StatusSummarizer
 
 
@@ -34,7 +34,7 @@ class StatusUpdater:
     - Error deduplication
     """
     
-    def __init__(self, mode: str = 'cloud', speech_callback: Optional[Callable[[str], None]] = None):
+    def __init__(self, mode: str = 'cloud', speech_callback: Callable[[str], None] | None = None):
         """
         Initialize status updater.
         
@@ -57,11 +57,11 @@ class StatusUpdater:
         self.last_update_time: float = 0
         self.task_complete: bool = False
         self.task_start_time: float = 0
-        self.current_tool: Optional[str] = None
+        self.current_tool: str | None = None
         self.turn_number: int = 0
         
         # Error tracking
-        self.recent_errors: List[tuple] = []  # [(error_key, timestamp), ...]
+        self.recent_errors: list[tuple] = []  # [(error_key, timestamp), ...]
         self.error_cooldown = 30  # Don't repeat same error within 30s
         self.spoken_errors_count = 0
         self.max_spoken_errors = 2  # Max errors to speak per task
@@ -78,11 +78,11 @@ class StatusUpdater:
         self.summarizer = StatusSummarizer()
         
         # Background update thread (for long tasks)
-        self._background_thread: Optional[threading.Thread] = None
+        self._background_thread: threading.Thread | None = None
         self._stop_background = threading.Event()
         
         # Store last tool context for dynamic summaries
-        self._last_context: Optional[str] = None
+        self._last_context: str | None = None
     
     def reset(self):
         """Reset for new task."""
@@ -109,10 +109,10 @@ class StatusUpdater:
     def update(
         self,
         category: str = 'progress',
-        tool_name: Optional[str] = None,
+        tool_name: str | None = None,
         priority: str = 'normal',
-        custom_message: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        custom_message: str | None = None,
+        context: dict[str, Any] | None = None
     ) -> bool:
         """
         Queue a status update.
@@ -190,7 +190,7 @@ class StatusUpdater:
         self,
         context: str,
         category: str = 'progress',
-        tool_name: Optional[str] = None,
+        tool_name: str | None = None,
         priority: str = 'normal'
     ) -> bool:
         """
@@ -216,7 +216,7 @@ class StatusUpdater:
     def update_error(
         self,
         error_type: str = 'retry',
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
         is_server_error: bool = False
     ) -> bool:
         """
@@ -288,7 +288,7 @@ class StatusUpdater:
         msg = re.sub(r'[a-f0-9-]{36}', 'UUID', msg)
         return msg[:100]  # Truncate
     
-    def _build_minimal_context(self, tool_name: Optional[str], category: str, context: Optional[Dict[str, Any]]) -> str:
+    def _build_minimal_context(self, tool_name: str | None, category: str, context: dict[str, Any] | None) -> str:
         """Build minimal context for LLM when no explicit context is set."""
         parts = []
         
@@ -403,16 +403,16 @@ class StatusUpdater:
             # Log but don't crash
             print(f"[StatusUpdater] TTS error: {e}", file=sys.stderr)
     
-    def set_speech_callback(self, callback: Optional[Callable[[str], None]]):
+    def set_speech_callback(self, callback: Callable[[str], None] | None):
         """Set or clear the speech callback for web/external TTS."""
         self.speech_callback = callback
     
     def start_background_updates(
         self,
-        tool_name: Optional[str] = None,
+        tool_name: str | None = None,
         category: str = 'progress',
-        interval_override: Optional[int] = None,
-        session_id: Optional[str] = None
+        interval_override: int | None = None,
+        session_id: str | None = None
     ):
         """
         Start background thread that emits periodic updates.
@@ -462,7 +462,7 @@ class StatusUpdater:
         self._background_thread = threading.Thread(target=background_loop, daemon=True)
         self._background_thread.start()
     
-    def _poll_opencode_session(self, session_id: str) -> Optional[str]:
+    def _poll_opencode_session(self, session_id: str) -> str | None:
         """
         Poll OpenCode session for current progress.
         
@@ -511,7 +511,7 @@ class StatusUpdater:
             
             return '\n'.join(context_parts) if context_parts else None
             
-        except Exception as e:
+        except Exception:
             # Silently fail - just use static phrases
             return None
     
@@ -536,7 +536,7 @@ class StatusUpdater:
 
 
 # Singleton instance
-_instance: Optional[StatusUpdater] = None
+_instance: StatusUpdater | None = None
 
 
 def get_status_updater(mode: str = 'cloud') -> StatusUpdater:
@@ -549,9 +549,9 @@ def get_status_updater(mode: str = 'cloud') -> StatusUpdater:
 
 def status_update(
     category: str = 'progress',
-    tool_name: Optional[str] = None,
+    tool_name: str | None = None,
     priority: str = 'normal',
-    custom_message: Optional[str] = None
+    custom_message: str | None = None
 ) -> bool:
     """Convenience function for status update."""
     updater = get_status_updater()

@@ -5,8 +5,6 @@ Polls jarvis-api for alerts and reminders, broadcasts to connected web clients.
 
 import requests
 import time
-from datetime import datetime
-from typing import Dict, List, Set, Optional
 from dataclasses import dataclass, field
 
 # Polling interval in seconds
@@ -21,21 +19,21 @@ class ProactiveService:
     """Service to poll jarvis-api and track notification state"""
     
     # Track which items we've already notified about
-    notified_alerts: Set[int] = field(default_factory=set)
-    notified_reminders: Set[int] = field(default_factory=set)
+    notified_alerts: set[int] = field(default_factory=set)
+    notified_reminders: set[int] = field(default_factory=set)
     
     # Last check timestamps
     last_alert_check: float = 0
     last_reminder_check: float = 0
     
     # Callback for broadcasting
-    broadcast_callback: Optional[callable] = None
+    broadcast_callback: callable | None = None
     
     def set_broadcast_callback(self, callback: callable):
         """Set the callback used to broadcast to WebSocket clients"""
         self.broadcast_callback = callback
     
-    def check_alerts(self) -> List[Dict]:
+    def check_alerts(self) -> list[dict]:
         """Check for new pending alerts"""
         try:
             response = requests.get(
@@ -58,7 +56,7 @@ class ProactiveService:
                 
                 return new_alerts
             
-        except requests.RequestException as e:
+        except requests.RequestException:
             # API not running is expected sometimes
             pass
         except Exception as e:
@@ -66,7 +64,7 @@ class ProactiveService:
         
         return []
     
-    def check_reminders(self) -> List[Dict]:
+    def check_reminders(self) -> list[dict]:
         """Check for triggered reminders"""
         try:
             response = requests.get(
@@ -89,7 +87,7 @@ class ProactiveService:
                 
                 return new_reminders
             
-        except requests.RequestException as e:
+        except requests.RequestException:
             # API not running is expected sometimes
             pass
         except Exception as e:
@@ -126,7 +124,7 @@ class ProactiveService:
             print(f"[Proactive] Error acknowledging reminder {reminder_id}: {e}")
         return False
     
-    def get_pending_counts(self) -> Dict:
+    def get_pending_counts(self) -> dict:
         """Get counts of pending alerts/reminders"""
         alerts_count = 0
         reminders_count = 0
@@ -160,7 +158,7 @@ class ProactiveService:
             'reminders': reminders_count
         }
     
-    def poll_and_notify(self) -> Dict:
+    def poll_and_notify(self) -> dict:
         """
         Main polling function - check for new alerts/reminders and broadcast.
         Returns dict with new items found.

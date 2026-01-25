@@ -9,7 +9,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -46,7 +46,7 @@ class ToolExecutor:
         # Initialize logger
         self.logger = get_logger(mode)
     
-    def execute(self, tool_name: str, args: Dict[str, Any], skip_permission_check: bool = False) -> Dict[str, Any]:
+    def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False) -> dict[str, Any]:
         """
         Execute a tool/skill with permission checking.
         
@@ -217,7 +217,7 @@ class ToolExecutor:
             )
             return output
     
-    def _execute_mcp_tool(self, tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_mcp_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         """
         Execute an MCP tool.
         

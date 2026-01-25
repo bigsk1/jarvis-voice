@@ -12,7 +12,6 @@ Requires: VAPI_API_KEY in config
 """
 
 import sys
-import os
 import json
 import time
 import requests
@@ -866,7 +865,7 @@ def save_call_to_memory(recipient: str, task: str, summary: str, transcript: str
             importance=7  # Moderately important - can be recalled
         )
         return True
-    except Exception as e:
+    except Exception:
         # Don't fail the call if memory save fails
         return False
 

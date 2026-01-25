@@ -22,7 +22,6 @@ import os
 import json
 import sqlite3
 from datetime import datetime, timezone
-from typing import List, Dict, Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))

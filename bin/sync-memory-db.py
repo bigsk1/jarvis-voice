@@ -54,7 +54,7 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
     
     # Load target mode config (for embeddings) BEFORE importing embeddings
     # Temporarily set provider to ensure correct embedding model
-    old_provider = os.environ.get('LLM_PROVIDER')
+    os.environ.get('LLM_PROVIDER')
     if target_mode == 'local':
         os.environ['LLM_PROVIDER'] = 'ollama'
     else:
@@ -115,7 +115,7 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
     errors = 0
     
     for memory in memories:
-        mem_id = memory['id']
+        memory['id']
         category = memory['category']
         key = memory['key']
         value = memory['value']

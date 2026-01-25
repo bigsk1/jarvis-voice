@@ -1,11 +1,9 @@
 """Conversations API endpoints - Read-only access to conversation history"""
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
 import sys
 import json
 from pathlib import Path
-from datetime import datetime, timedelta
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 
@@ -59,9 +57,9 @@ def row_to_conversation(row) -> Conversation:
 async def list_conversations(
     limit: int = Query(50, ge=1, le=500, description="Results per page"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    session_id: Optional[str] = Query(None, description="Filter by session ID"),
-    success: Optional[bool] = Query(None, description="Filter by success status"),
-    tool: Optional[str] = Query(None, description="Filter by tool used")
+    session_id: str | None = Query(None, description="Filter by session ID"),
+    success: bool | None = Query(None, description="Filter by success status"),
+    tool: str | None = Query(None, description="Filter by tool used")
 ):
     """
     List recent conversations with pagination.

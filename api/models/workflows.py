@@ -1,18 +1,17 @@
 """Workflow API models"""
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Any
 
 
 class WorkflowInfo(BaseModel):
     """Basic workflow information"""
     id: str = Field(..., description="Workflow ID (e.g., 'crypto_market_report')")
     name: str = Field(..., description="Human-readable name")
-    description: Optional[str] = Field(None, description="What this workflow does")
+    description: str | None = Field(None, description="What this workflow does")
     trigger: str = Field(..., description="Command trigger (e.g., '/crypto')")
-    version: Optional[str] = Field(None, description="Workflow version")
-    tools_used: List[str] = Field(default_factory=list, description="Tools used by this workflow")
+    version: str | None = Field(None, description="Workflow version")
+    tools_used: list[str] = Field(default_factory=list, description="Tools used by this workflow")
     
     class Config:
         json_schema_extra = {
@@ -29,7 +28,7 @@ class WorkflowInfo(BaseModel):
 
 class WorkflowExecuteRequest(BaseModel):
     """Request to execute a workflow"""
-    query: Optional[str] = Field(None, description="Optional query/parameters (e.g., 'ethereum xrp' for /crypto)")
+    query: str | None = Field(None, description="Optional query/parameters (e.g., 'ethereum xrp' for /crypto)")
     mode: str = Field("cloud", description="LLM mode: 'cloud' or 'local'")
     
     class Config:
@@ -45,13 +44,13 @@ class WorkflowExecuteResponse(BaseModel):
     """Response from workflow execution"""
     ok: bool
     workflow_id: str
-    speech: Optional[str] = Field(None, description="Final speech response")
-    tools_used: List[str] = Field(default_factory=list, description="Tools that were executed")
+    speech: str | None = Field(None, description="Final speech response")
+    tools_used: list[str] = Field(default_factory=list, description="Tools that were executed")
     steps_completed: int = Field(0, description="Number of steps completed")
-    duration_ms: Optional[float] = Field(None, description="Execution time in milliseconds")
-    data: Optional[Dict[str, Any]] = Field(None, description="Accumulated data from steps")
-    usage: Optional[Dict[str, Any]] = Field(None, description="LLM token usage from workflow")
-    error: Optional[str] = None
+    duration_ms: float | None = Field(None, description="Execution time in milliseconds")
+    data: dict[str, Any] | None = Field(None, description="Accumulated data from steps")
+    usage: dict[str, Any] | None = Field(None, description="LLM token usage from workflow")
+    error: str | None = None
     
     class Config:
         json_schema_extra = {
@@ -71,12 +70,12 @@ class WorkflowExecution(BaseModel):
     """Historical workflow execution record"""
     timestamp: str
     workflow_id: str
-    workflow_name: Optional[str] = None
-    user_query: Optional[str] = None
+    workflow_name: str | None = None
+    user_query: str | None = None
     ok: bool
-    speech: Optional[str] = None
+    speech: str | None = None
     steps_completed: int = 0
-    tools_used: List[str] = Field(default_factory=list)
+    tools_used: list[str] = Field(default_factory=list)
     duration_ms: float = 0
     
     class Config:
@@ -97,13 +96,13 @@ class WorkflowExecution(BaseModel):
 
 class WorkflowListResponse(BaseModel):
     """List of available workflows"""
-    workflows: List[WorkflowInfo]
+    workflows: list[WorkflowInfo]
     count: int
 
 
 class WorkflowHistoryResponse(BaseModel):
     """Workflow execution history"""
-    executions: List[WorkflowExecution]
+    executions: list[WorkflowExecution]
     count: int
     success_count: int
     failure_count: int

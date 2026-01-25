@@ -1,14 +1,13 @@
 """Alert API endpoints"""
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
 import sys
 from pathlib import Path
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from api.models.alert import AlertCreate, AlertUpdate, Alert, AlertResponse, AlertSeverity, AlertStatus
+from api.models.alert import AlertCreate, Alert, AlertResponse, AlertSeverity, AlertStatus
 from api.managers.alert_manager import AlertManager
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
@@ -103,9 +102,9 @@ async def create_alert(alert: AlertCreate):
 @router.get("", response_model=AlertResponse)
 @router.get("/", response_model=AlertResponse, include_in_schema=False)
 async def list_alerts(
-    status: Optional[AlertStatus] = Query(None, description="Filter by status"),
-    severity: Optional[AlertSeverity] = Query(None, description="Filter by severity"),
-    source: Optional[str] = Query(None, description="Filter by source"),
+    status: AlertStatus | None = Query(None, description="Filter by status"),
+    severity: AlertSeverity | None = Query(None, description="Filter by severity"),
+    source: str | None = Query(None, description="Filter by source"),
     limit: int = Query(100, description="Maximum number of results")
 ):
     """List alerts with optional filters"""
@@ -169,8 +168,8 @@ async def resolve_alert(alert_id: int):
 
 @router.post("/acknowledge-all", response_model=AlertResponse)
 async def acknowledge_all_alerts(
-    status: Optional[AlertStatus] = Query(None, description="Filter by status (default: pending)"),
-    severity: Optional[AlertSeverity] = Query(None, description="Filter by severity")
+    status: AlertStatus | None = Query(None, description="Filter by status (default: pending)"),
+    severity: AlertSeverity | None = Query(None, description="Filter by severity")
 ):
     """Acknowledge multiple alerts at once
     

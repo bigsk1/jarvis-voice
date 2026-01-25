@@ -36,6 +36,17 @@ db = MemoryDB()  # Auto-selects based on mode - NEVER hardcode paths!
 # local → data/jarvis_memory_local.db
 ```
 
+## Python 3.12+ 
+
+IMPORTANT! Make sure to use modern python 3.12 modernized type annotations when coding. 
+
+### Before (deprecated Python 3.8 style)
+from typing import List, Dict, Optional
+def foo(items: List[str], data: Optional[Dict[str, Any]]) -> None:
+
+### After (modern Python 3.12 style)
+def foo(items: list[str], data: dict[str, Any] | None) -> None:
+
 ## Tool Development
 
 ### Output Format (Required)

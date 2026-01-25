@@ -19,7 +19,7 @@ import os
 import sys
 import json
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any
 from pathlib import Path
 
 # Add lib to path if needed
@@ -316,15 +316,15 @@ class FeedbackCollector:
     def collect(
         self,
         query: str,
-        result: Dict[str, Any],
+        result: dict[str, Any],
         tools_used: list = None,
         num_tools: int = 0,
         system_prompt: str = None,
-        tool_descriptions: Dict[str, str] = None,
+        tool_descriptions: dict[str, str] = None,
         intelligence_insights: str = None,
         config_context: str = None,
         session_id: str = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Collect feedback from LLM about the completed task.
         
@@ -453,7 +453,7 @@ If real-time data was needed and no tools were used, rate poorly."""
             # Log feedback if there are issues (rating < 5) or always if configured
             # Also log if there was an error (rating is None or has raw_response error)
             rating = feedback.get("rating")
-            has_error = feedback.get("raw_response", "").startswith("Error:") or feedback.get("error")
+            feedback.get("raw_response", "").startswith("Error:") or feedback.get("error")
             
             # Always log feedback - it's valuable for analysis and evolution
             # Rating scale is 1-5: 5 = perfect, 4 = minor issues, 3 = some issues, 2 = significant, 1 = major
@@ -477,7 +477,7 @@ If real-time data was needed and no tools were used, rate poorly."""
             self._log_feedback(error_feedback)
             return error_feedback
     
-    def _parse_feedback(self, response: str) -> Dict[str, Any]:
+    def _parse_feedback(self, response: str) -> dict[str, Any]:
         """Parse LLM response into structured feedback."""
         # Try to extract JSON from response
         try:
@@ -505,7 +505,7 @@ If real-time data was needed and no tools were used, rate poorly."""
                 "raw_response": response
             }
     
-    def _log_feedback(self, feedback: Dict[str, Any]) -> None:
+    def _log_feedback(self, feedback: dict[str, Any]) -> None:
         """Log feedback to JSONL file."""
         date_str = datetime.now().strftime("%Y-%m-%d")
         log_file = self.log_dir / f"feedback-{date_str}.jsonl"
@@ -548,7 +548,7 @@ If real-time data was needed and no tools were used, rate poorly."""
             if EVOLUTION_CONFIG.get('auto_evolve_enabled', False):
                 self._maybe_trigger_auto_evolution()
                 
-        except Exception as e:
+        except Exception:
             # Don't fail feedback collection if versioning fails
             pass
     
@@ -597,7 +597,7 @@ If real-time data was needed and no tools were used, rate poorly."""
                 import sys as _sys
                 print(f"🧬 Auto-evolution triggered ({count} feedback entries)", file=_sys.stderr)
                 
-        except Exception as e:
+        except Exception:
             # Don't fail if auto-evolution check fails
             pass
     
@@ -621,7 +621,7 @@ If real-time data was needed and no tools were used, rate poorly."""
         
         return feedback
     
-    def get_issues_summary(self, days: int = 7) -> Dict[str, Any]:
+    def get_issues_summary(self, days: int = 7) -> dict[str, Any]:
         """Summarize issues from recent feedback."""
         feedback = self.get_recent_feedback(days)
         

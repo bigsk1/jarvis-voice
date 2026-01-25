@@ -1,20 +1,18 @@
 """Conversation API models"""
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Any
-from datetime import datetime
+from pydantic import BaseModel
 
 
 class Conversation(BaseModel):
     """A single conversation record"""
     id: int
     timestamp: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
     user_query: str
-    jarvis_response: Optional[str] = None
-    tools_used: Optional[List[str]] = None
+    jarvis_response: str | None = None
+    tools_used: list[str] | None = None
     success: bool = True
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
     
     class Config:
         json_schema_extra = {
@@ -34,13 +32,13 @@ class Conversation(BaseModel):
 class ConversationResponse(BaseModel):
     """Response wrapper for conversation endpoints"""
     ok: bool = True
-    message: Optional[str] = None
-    conversation: Optional[Conversation] = None
-    conversations: Optional[List[Conversation]] = None
-    count: Optional[int] = None
-    total: Optional[int] = None
-    page: Optional[int] = None
-    pages: Optional[int] = None
+    message: str | None = None
+    conversation: Conversation | None = None
+    conversations: list[Conversation] | None = None
+    count: int | None = None
+    total: int | None = None
+    page: int | None = None
+    pages: int | None = None
 
 
 class ConversationStats(BaseModel):

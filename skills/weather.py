@@ -14,7 +14,7 @@ import sys
 import os
 import json
 from datetime import datetime
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 # Add lib to path for config_loader and http_client
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -64,7 +64,7 @@ def normalize_location(location: str) -> str:
 # PROVIDER IMPLEMENTATIONS
 # ============================================================================
 
-def geocode_location(location: str, api_key: str) -> Optional[Tuple[float, float, str, str]]:
+def geocode_location(location: str, api_key: str) -> tuple[float, float, str, str] | None:
     """
     Use OpenWeatherMap Geocoding API to get coordinates for a location.
     
@@ -122,7 +122,7 @@ def geocode_location(location: str, api_key: str) -> Optional[Tuple[float, float
     return None
 
 
-def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> Tuple[Dict[str, Any], str]:
+def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> tuple[dict[str, Any], str]:
     """
     Fetch weather from OpenWeatherMap API.
     
@@ -242,7 +242,7 @@ def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> Tuple[D
     return data, speech
 
 
-def fetch_wttr(location: str, forecast: bool) -> Tuple[Dict[str, Any], str]:
+def fetch_wttr(location: str, forecast: bool) -> tuple[dict[str, Any], str]:
     """
     Fetch weather from wttr.in (no API key required).
     Fallback provider with basic data.
@@ -394,7 +394,7 @@ def main():
         return 1
 
 
-def return_success(speech: str, data: Optional[Dict] = None):
+def return_success(speech: str, data: dict | None = None):
     """Return success response."""
     result = {
         "ok": True,
@@ -405,7 +405,7 @@ def return_success(speech: str, data: Optional[Dict] = None):
     print(json.dumps(result))
 
 
-def return_error(speech: str, data: Optional[Dict] = None):
+def return_error(speech: str, data: dict | None = None):
     """Return error response."""
     result = {
         "ok": False,

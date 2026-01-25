@@ -3,7 +3,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import subprocess
-import sys
 from pathlib import Path
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])

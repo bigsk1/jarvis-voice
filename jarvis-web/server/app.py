@@ -2,7 +2,6 @@
 Jarvis Web UI - Main Application
 Flask + SocketIO server for the web chat interface
 """
-import os
 import sys
 from pathlib import Path
 from flask import Flask, send_from_directory
@@ -106,7 +105,7 @@ def run_server(host: str = None, port: int = None, mode: str = 'cloud', debug: b
     global _startup_mode
     _startup_mode = mode  # Store for session defaults
     
-    config = load_web_config()
+    load_web_config()
     
     host = host or get_web_setting('server.host', '0.0.0.0')
     port = port or get_web_setting('server.port', 5001)

@@ -6,7 +6,7 @@ Determines intent and routes to appropriate handler (QA, tool, skill, etc.)
 import os
 import sys
 import json
-from typing import Dict, Any, Optional
+from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -23,7 +23,7 @@ class IntentRouter:
         self.OPENAI_MODEL = get_config_value("OPENAI_MODEL", "gpt-4o-mini")
         self.api_key = get_config_value("OPENAI_API_KEY", "")
         
-    def route(self, transcript: str) -> Dict[str, Any]:
+    def route(self, transcript: str) -> dict[str, Any]:
         """
         Determine intent from transcript.
         

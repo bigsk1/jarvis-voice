@@ -21,7 +21,7 @@ import json
 import asyncio
 import logging
 import concurrent.futures
-from typing import Dict, Any, List, Optional
+from typing import Any
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -38,7 +38,7 @@ def _run_async(coro):
     """
     try:
         # Check if there's already a running event loop (e.g., FastAPI)
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         # Already in async context - run in thread to avoid blocking
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(asyncio.run, coro)
@@ -87,9 +87,9 @@ def _get_intel():
 
 def record_interaction(
     query: str,
-    tools_used: List[str],
-    result: Dict[str, Any],
-    conversation_context: Optional[List[Dict]] = None
+    tools_used: list[str],
+    result: dict[str, Any],
+    conversation_context: list[dict] | None = None
 ) -> int:
     """
     Record an interaction as an experience for learning.
@@ -243,9 +243,9 @@ def update_experience_from_feedback(
 
 def _infer_user_signals(
     query: str,
-    result: Dict[str, Any],
-    conversation_context: Optional[List[Dict]]
-) -> Dict[str, bool]:
+    result: dict[str, Any],
+    conversation_context: list[dict] | None
+) -> dict[str, bool]:
     """Infer user satisfaction signals from available data."""
     signals = {
         'thanked': False,
@@ -286,7 +286,7 @@ def _infer_user_signals(
 # ROUTING INSIGHTS (Before routing)
 # ============================================
 
-def get_routing_insights(query: str) -> Dict[str, Any]:
+def get_routing_insights(query: str) -> dict[str, Any]:
     """
     Get learned insights to inform routing decisions.
     
@@ -349,7 +349,7 @@ def get_routing_insights(query: str) -> Dict[str, Any]:
         return {'tool_biases': {}, 'insights': [], 'confidence': 0.0}
 
 
-def format_insights_for_prompt(insights: Dict[str, Any], available_tools: List[str] = None) -> str:
+def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[str] = None) -> str:
     """
     Format insights as context for the routing prompt.
     
@@ -464,9 +464,9 @@ def format_insights_for_prompt(insights: Dict[str, Any], available_tools: List[s
 # ============================================
 
 def track_insight_outcomes(
-    insights: List[Dict[str, Any]],
-    tools_used: List[str],
-    result: Dict[str, Any]
+    insights: list[dict[str, Any]],
+    tools_used: list[str],
+    result: dict[str, Any]
 ) -> int:
     """
     Track whether applied insights were helpful based on interaction outcome.
@@ -524,8 +524,8 @@ def track_insight_outcomes(
 
 
 def _evaluate_insight_helpfulness(
-    insight: Dict[str, Any],
-    tools_used: List[str],
+    insight: dict[str, Any],
+    tools_used: list[str],
     outcome_success: bool
 ) -> bool:
     """
@@ -615,7 +615,7 @@ def trigger_reflection(batch_size: int = 3) -> int:
         return 0
 
 
-def get_learning_stats() -> Dict[str, Any]:
+def get_learning_stats() -> dict[str, Any]:
     """Get current learning statistics."""
     intel = _get_intel()
     if not intel:
@@ -628,7 +628,7 @@ def get_learning_stats() -> Dict[str, Any]:
 # META-COGNITION (Periodic evaluation)
 # ============================================
 
-def evaluate_learning() -> Dict[str, Any]:
+def evaluate_learning() -> dict[str, Any]:
     """
     Evaluate the quality of the learning process.
     
@@ -650,7 +650,7 @@ def evaluate_learning() -> Dict[str, Any]:
 # MAINTENANCE JOBS
 # ============================================
 
-def run_decay_job(force: bool = False) -> Dict[str, Any]:
+def run_decay_job(force: bool = False) -> dict[str, Any]:
     """
     Run the confidence decay job.
     
@@ -676,7 +676,7 @@ def run_decay_job(force: bool = False) -> Dict[str, Any]:
         return {'status': 'error', 'error': str(e)}
 
 
-def run_anomaly_detection() -> Dict[str, Any]:
+def run_anomaly_detection() -> dict[str, Any]:
     """
     Run anomaly detection on recent experiences.
     
@@ -697,7 +697,7 @@ def run_anomaly_detection() -> Dict[str, Any]:
         return {'status': 'error', 'error': str(e)}
 
 
-def run_meta_cognition() -> Dict[str, Any]:
+def run_meta_cognition() -> dict[str, Any]:
     """
     Run meta-cognition analysis.
     
@@ -720,7 +720,7 @@ def run_meta_cognition() -> Dict[str, Any]:
         return {'status': 'error', 'error': str(e)}
 
 
-def run_all_maintenance(force: bool = False) -> Dict[str, Any]:
+def run_all_maintenance(force: bool = False) -> dict[str, Any]:
     """
     Run all maintenance jobs (decay, anomaly, meta-cognition).
     

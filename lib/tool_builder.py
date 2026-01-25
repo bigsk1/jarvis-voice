@@ -20,7 +20,6 @@ import subprocess
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, asdict
 
 # Add lib to path
@@ -100,13 +99,13 @@ AVAILABLE_PACKAGES = {
 class ToolBuildResult:
     """Result of a tool build attempt."""
     success: bool
-    tool_name: Optional[str] = None
-    tool_path: Optional[str] = None
+    tool_name: str | None = None
+    tool_path: str | None = None
     status: str = "unknown"  # created, pending_review, failed
     message: str = ""
-    report_card: Optional[Dict] = None
+    report_card: dict | None = None
     retries_used: int = 0
-    needs_packages: List[str] = None
+    needs_packages: list[str] = None
     
     def __post_init__(self):
         if self.needs_packages is None:
@@ -124,25 +123,25 @@ class ToolReportCard:
     # Why it was created
     gap_description: str
     purpose: str
-    feedback_ids: List[str]
-    evolution_ids: List[str]
+    feedback_ids: list[str]
+    evolution_ids: list[str]
     
     # What it does
-    capabilities: List[str]
-    parameters: Dict[str, str]
+    capabilities: list[str]
+    parameters: dict[str, str]
     
     # Verification
     verification_passed: bool
     verification_output: str
-    test_input_used: Dict
+    test_input_used: dict
     test_output: str
     
     # Dependencies
-    packages_required: List[str]
-    packages_new: List[str]  # Packages that needed install
+    packages_required: list[str]
+    packages_new: list[str]  # Packages that needed install
     
     # MCP check
-    mcp_alternatives_checked: List[str]
+    mcp_alternatives_checked: list[str]
     mcp_overlap_reason: str  # Why we built instead of using MCP
     
     # LLM details
@@ -152,7 +151,7 @@ class ToolReportCard:
     
     # API Key requirements (optional - have defaults so must be last)
     requires_api_key: bool = False
-    suggested_env_var: Optional[str] = None
+    suggested_env_var: str | None = None
 
 
 TOOL_TEMPLATE = '''#!/usr/bin/env python3
@@ -686,7 +685,7 @@ class ToolBuilder:
         self.provider_type = provider_type
         self.model = model or "default"
     
-    def get_mcp_tools(self) -> List[str]:
+    def get_mcp_tools(self) -> list[str]:
         """Get list of available MCP tools for overlap checking."""
         mcp_tools = []
         try:
@@ -701,7 +700,7 @@ class ToolBuilder:
             pass
         return mcp_tools
     
-    def get_existing_tools(self) -> List[str]:
+    def get_existing_tools(self) -> list[str]:
         """Get ALL existing tools (local + MCP + auto-tools) for duplicate checking."""
         existing_tools = []
         try:
@@ -746,7 +745,7 @@ class ToolBuilder:
         return f"Search for current documentation and API examples for: {gap_description}. " \
                f"Include authentication methods, required parameters, and example requests."
     
-    def research_via_jarvis(self, question: str, timeout: int = 180) -> Optional[str]:
+    def research_via_jarvis(self, question: str, timeout: int = 180) -> str | None:
         """
         Ask Jarvis to research something for tool building (Ouroboros pattern).
         
@@ -760,7 +759,6 @@ class ToolBuilder:
         import time
         
         orchestrator_path = Path(__file__).parent.parent / "orchestrator" / "orchestrator_v2.py"
-        research_log_dir = LOGS_DIR
         
         if not orchestrator_path.exists():
             return None
@@ -865,7 +863,7 @@ class ToolBuilder:
             self._log_research(log_entry)
             return f"Research error: {str(e)}"
     
-    def _log_research(self, log_entry: Dict):
+    def _log_research(self, log_entry: dict):
         """Log Ouroboros research interactions for monitoring."""
         log_file = LOGS_DIR / f"ouroboros-research-{datetime.now().strftime('%Y-%m-%d')}.jsonl"
         try:
@@ -877,8 +875,8 @@ class ToolBuilder:
     def build_tool(
         self,
         gap_description: str,
-        feedback_ids: List[str] = None,
-        evolution_ids: List[str] = None,
+        feedback_ids: list[str] = None,
+        evolution_ids: list[str] = None,
         feedback_context: str = "",
         max_retries: int = 3,
         enable_research: bool = True
@@ -928,7 +926,6 @@ class ToolBuilder:
         
         retries = 0
         last_error = ""
-        needs_proxy = False
         
         while retries < max_retries:
             try:
@@ -938,7 +935,6 @@ class ToolBuilder:
                     
                     # Detect network/connection errors and add proxy instructions
                     if self._is_network_error(last_error):
-                        needs_proxy = True
                         error_context += self._get_proxy_fix_instructions()
                     
                     prompt += error_context
@@ -1000,7 +996,7 @@ class ToolBuilder:
             message="Unknown error"
         )
     
-    def _parse_llm_response(self, response: str) -> Dict:
+    def _parse_llm_response(self, response: str) -> dict:
         """Parse LLM response, handling markdown code blocks and common issues."""
         original = response
         
@@ -1093,7 +1089,7 @@ class ToolBuilder:
         
         return text
     
-    def _extract_python_code_field(self, text: str) -> Tuple[Optional[str], str]:
+    def _extract_python_code_field(self, text: str) -> tuple[str | None, str]:
         """
         Extract python_code field separately to handle unescaped newlines.
         Returns (extracted_code, text_with_placeholder) or (None, original_text).
@@ -1158,11 +1154,11 @@ class ToolBuilder:
     
     def _create_tool(
         self,
-        spec: Dict,
+        spec: dict,
         gap_description: str,
-        feedback_ids: List[str],
-        evolution_ids: List[str],
-        existing_tools: List[str],
+        feedback_ids: list[str],
+        evolution_ids: list[str],
+        existing_tools: list[str],
         retries: int
     ) -> ToolBuildResult:
         """Create the tool files and verify."""
@@ -1302,7 +1298,7 @@ class ToolBuilder:
             needs_packages=new_packages
         )
     
-    def _verify_tool(self, py_path: Path, test_input: Dict) -> Tuple[bool, str, str]:
+    def _verify_tool(self, py_path: Path, test_input: dict) -> tuple[bool, str, str]:
         """Verify the tool works."""
         
         # 1. Syntax check
@@ -1465,7 +1461,7 @@ CRITICAL: Call load_config() and setup proxy BEFORE making any network requests!
             f.write(json.dumps(log_entry) + "\n")
 
 
-def list_pending_tools() -> List[Dict]:
+def list_pending_tools() -> list[dict]:
     """List tools pending human review."""
     pending = []
     for json_path in PENDING_DIR.glob("*.tool.json"):

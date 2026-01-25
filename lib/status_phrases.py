@@ -10,7 +10,7 @@ import json
 import random
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any
 
 
 class StatusPhrases:
@@ -31,7 +31,7 @@ class StatusPhrases:
         'multi_turn': 'progress'
     }
     
-    def __init__(self, config_path: Optional[str] = None, mode: Optional[str] = None):
+    def __init__(self, config_path: str | None = None, mode: str | None = None):
         """
         Initialize phrase selector.
         
@@ -70,15 +70,15 @@ class StatusPhrases:
         self.tool_specific = self.config.get('tool_specific', {})
         
         # Track recently used phrases to avoid repetition
-        self._recent_phrases: List[str] = []
+        self._recent_phrases: list[str] = []
         self._max_recent = 5
     
     def get_phrase(
         self, 
         category: str, 
-        tool_name: Optional[str] = None, 
+        tool_name: str | None = None, 
         style: str = 'casual',
-        context: Optional[Dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> str:
         """
         Get a random phrase for the given category.
@@ -115,7 +115,7 @@ class StatusPhrases:
         
         return phrase
     
-    def _get_category_phrase(self, category: str, style: str) -> Optional[str]:
+    def _get_category_phrase(self, category: str, style: str) -> str | None:
         """Get phrase from category pools based on style and settings."""
         if category not in self.categories:
             return None
@@ -123,7 +123,7 @@ class StatusPhrases:
         cat = self.categories[category]
         
         # Build pool based on settings and style
-        pool: List[str] = []
+        pool: list[str] = []
         
         # Base pool
         if style == 'detailed' and 'detailed' in cat:
@@ -143,7 +143,7 @@ class StatusPhrases:
         
         return self._select_random(pool) if pool else None
     
-    def _select_random(self, phrases: List[str]) -> Optional[str]:
+    def _select_random(self, phrases: list[str]) -> str | None:
         """Select random phrase, avoiding recent repetition."""
         if not phrases:
             return None
@@ -167,7 +167,7 @@ class StatusPhrases:
         """Reset recent phrase tracking (e.g., new task)."""
         self._recent_phrases.clear()
     
-    def _load_config(self, path: Path) -> Dict[str, Any]:
+    def _load_config(self, path: Path) -> dict[str, Any]:
         """Load config, return defaults if missing."""
         try:
             with open(path, 'r') as f:
@@ -179,7 +179,7 @@ class StatusPhrases:
             print(f"[StatusPhrases] Invalid JSON in {path}: {e}, using defaults")
             return self._default_config()
     
-    def _default_config(self) -> Dict[str, Any]:
+    def _default_config(self) -> dict[str, Any]:
         """Minimal default if config file missing."""
         return {
             'settings': {
@@ -212,7 +212,7 @@ class StatusPhrases:
             'tool_specific': {}
         }
     
-    def get_settings(self) -> Dict[str, Any]:
+    def get_settings(self) -> dict[str, Any]:
         """Get current settings."""
         return self.settings.copy()
     
@@ -220,17 +220,17 @@ class StatusPhrases:
         """Update settings at runtime."""
         self.settings.update(kwargs)
     
-    def list_categories(self) -> List[str]:
+    def list_categories(self) -> list[str]:
         """List available categories."""
         return list(self.categories.keys())
     
-    def list_tool_overrides(self) -> List[str]:
+    def list_tool_overrides(self) -> list[str]:
         """List tools with specific overrides."""
         return [k for k in self.tool_specific.keys() if not k.startswith('_')]
 
 
 # Singleton instance for easy access
-_instance: Optional[StatusPhrases] = None
+_instance: StatusPhrases | None = None
 
 
 def get_phrases() -> StatusPhrases:
@@ -241,7 +241,7 @@ def get_phrases() -> StatusPhrases:
     return _instance
 
 
-def get_phrase(category: str, tool_name: Optional[str] = None, style: str = 'casual') -> str:
+def get_phrase(category: str, tool_name: str | None = None, style: str = 'casual') -> str:
     """Convenience function to get a phrase."""
     return get_phrases().get_phrase(category, tool_name, style)
 

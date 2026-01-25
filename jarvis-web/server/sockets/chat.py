@@ -174,7 +174,6 @@ class ChatHandler:
         @self.socketio.on('chat:cancel')
         def handle_chat_cancel(data):
             """Cancel current processing (placeholder)"""
-            session_id = request.sid
             emit('chat:cancelled', {
                 'conversation_id': data.get('conversation_id')
             })
@@ -354,7 +353,6 @@ class ChatHandler:
             """Enable/disable specific log sources"""
             sources = data.get('sources', {})  # {source: enabled}
             
-            from ..services.log_streamer import get_log_streamer
             
             # Get or create streamer
             streamer = self._get_log_streamer()
@@ -860,7 +858,6 @@ Mode: {mode}
                 print(f"[FEEDBACK] ERROR emitting feedback:complete: {emit_err}")
             
         except Exception as e:
-            import traceback as tb
             duration_ms = int((time_module.time() - start_time) * 1000)
             print(f"[FEEDBACK] ERROR: {e}")
             
@@ -879,7 +876,6 @@ Mode: {mode}
     def _generate_tts(self, text: str, mode: str = None) -> str:
         """Generate TTS audio and return URL - mode-aware"""
         try:
-            import requests
             from datetime import datetime
             from ..config import load_jarvis_config, get_jarvis_setting
             from ..services.settings_manager import get_settings_manager
@@ -1045,7 +1041,6 @@ Mode: {mode}
         """
         from datetime import datetime, timezone
         from pathlib import Path
-        import base64
         import shutil
         
         try:
@@ -1058,7 +1053,6 @@ Mode: {mode}
                 return None
             
             # Find the uploaded image file
-            from ..config import get_jarvis_setting
             web_root = Path(__file__).parent.parent.parent
             uploads_path = web_root / 'data' / 'uploads' / image_filename
             
@@ -1159,8 +1153,7 @@ Mode: {mode}
         Process an image with a vision model.
         Returns the vision model's description/analysis.
         """
-        import requests
-        from ..config import get_jarvis_setting, load_jarvis_config
+        from ..config import load_jarvis_config
         
         # Load mode-specific config
         load_jarvis_config(mode)
@@ -1219,7 +1212,6 @@ Mode: {mode}
     
     def _vision_cloud(self, image_base64: str, prompt: str, mode: str) -> str:
         """Use cloud provider's vision model (Anthropic, xAI, OpenAI)"""
-        import requests
         from ..config import get_jarvis_setting
         
         provider = get_jarvis_setting('LLM_PROVIDER', 'xai')

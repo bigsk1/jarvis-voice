@@ -21,7 +21,6 @@ Run ./bin/spotify-auth first to authenticate.
 """
 
 import sys
-import os
 import json
 from pathlib import Path
 
@@ -468,7 +467,7 @@ def action_play(args: dict) -> dict:
                     "speech": f"Playing your {name} from saved playlists",
                     "data": {"uri": saved_uri, "type": "playlist", "source": "memory"}
                 }
-            except Exception as e:
+            except Exception:
                 pass  # Fall through to other search methods
         
         # Check for Spotify's personalized playlists (Discover Weekly, Daily Mix, Release Radar, etc.)
@@ -483,7 +482,7 @@ def action_play(args: dict) -> dict:
                         "speech": f"Playing {personalized['name']}",
                         "data": {"uri": personalized['uri'], "name": personalized['name'], "type": "personalized_playlist"}
                     }
-                except Exception as e:
+                except Exception:
                     pass  # Fall through to other search methods
         
         # Handle direct Spotify URIs (e.g., spotify:track:xxx, spotify:episode:xxx)

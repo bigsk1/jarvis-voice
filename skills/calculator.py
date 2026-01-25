@@ -13,7 +13,7 @@ import json
 import math
 import statistics
 import re
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -151,7 +151,7 @@ UNIT_CONVERSIONS = {
 }
 
 
-def find_unit_type(unit: str) -> Optional[Tuple[str, float]]:
+def find_unit_type(unit: str) -> tuple[str, float] | None:
     """Find which category a unit belongs to and its conversion factor."""
     unit_lower = unit.lower().strip()
     for category, units in UNIT_CONVERSIONS.items():
@@ -179,7 +179,7 @@ def convert_temperature(value: float, from_unit: str, to_unit: str) -> float:
         return celsius
 
 
-def convert_units(value: float, from_unit: str, to_unit: str) -> Tuple[float, str]:
+def convert_units(value: float, from_unit: str, to_unit: str) -> tuple[float, str]:
     """Convert between units. Returns (result, explanation)."""
     from_info = find_unit_type(from_unit)
     to_info = find_unit_type(to_unit)
@@ -204,7 +204,7 @@ def convert_units(value: float, from_unit: str, to_unit: str) -> Tuple[float, st
     return result, from_cat
 
 
-def parse_percentage(expr: str) -> Optional[Tuple[float, str, float]]:
+def parse_percentage(expr: str) -> tuple[float, str, float] | None:
     """Parse percentage expressions like '15% of 200' or 'what percent is 30 of 200'."""
     # "X% of Y"
     match = re.match(r'(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)', expr, re.IGNORECASE)
@@ -225,7 +225,7 @@ def parse_percentage(expr: str) -> Optional[Tuple[float, str, float]]:
     return None
 
 
-def parse_conversion(expr: str) -> Optional[Tuple[float, str, str]]:
+def parse_conversion(expr: str) -> tuple[float, str, str] | None:
     """Parse unit conversion expressions like '5 miles to km' or 'convert 100 f to c'."""
     patterns = [
         r'(?:convert\s+)?(\d+(?:\.\d+)?)\s*([a-zA-Z_]+)\s+(?:to|in|as)\s+([a-zA-Z_]+)',
@@ -245,7 +245,7 @@ def parse_conversion(expr: str) -> Optional[Tuple[float, str, str]]:
     return None
 
 
-def parse_statistics(expr: str) -> Optional[Tuple[str, list]]:
+def parse_statistics(expr: str) -> tuple[str, list] | None:
     """Parse statistics expressions like 'mean of 1,2,3,4,5' or 'stdev [1,2,3,4,5]'."""
     # Extract function name and numbers
     match = re.match(r'(mean|median|mode|stdev|variance|pstdev|pvariance|harmonic_mean|geometric_mean|average|avg)\s*(?:of\s*)?\[?([\d\s,.-]+)\]?', expr, re.IGNORECASE)
@@ -284,7 +284,7 @@ def safe_eval(expr: str) -> float:
         raise ValueError(f"Cannot evaluate expression: {e}")
 
 
-def calculate(expression: str, calc_type: str = 'auto') -> Dict[str, Any]:
+def calculate(expression: str, calc_type: str = 'auto') -> dict[str, Any]:
     """Main calculation function."""
     expr = expression.strip()
     result_data = {

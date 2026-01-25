@@ -6,7 +6,7 @@ Supports OpenAI, Anthropic, xAI (Grok), and Ollama with unified interface.
 import os
 import sys
 import json
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 from abc import ABC, abstractmethod
 
 
@@ -16,11 +16,11 @@ class LLMProvider(ABC):
     @abstractmethod
     def chat_with_tools(
         self,
-        messages: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         enable_thinking: bool = False
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat request with tool calling capability.
         
@@ -40,7 +40,7 @@ class LLMProvider(ABC):
         pass
     
     @abstractmethod
-    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
+    def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """
         Simple chat without tool calling.
         
@@ -67,7 +67,7 @@ class OpenAIProvider(LLMProvider):
         self.client = OpenAI(api_key=api_key)
         self.model = model
     
-    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
+    def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
         messages = []
         if system_prompt:
@@ -91,11 +91,11 @@ class OpenAIProvider(LLMProvider):
     
     def chat_with_tools(
         self,
-        messages: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         enable_thinking: bool = False
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with OpenAI function calling.
         
@@ -176,7 +176,7 @@ class AnthropicProvider(LLMProvider):
         if self.enable_search and os.environ.get('JARVIS_DEBUG'):
             print(f"DEBUG: Anthropic Web Search enabled", file=sys.stderr)
     
-    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
+    def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """
         Simple chat without tools.
         
@@ -212,11 +212,11 @@ class AnthropicProvider(LLMProvider):
     
     def chat_with_tools(
         self,
-        messages: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         enable_thinking: bool = False
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with Anthropic tool calling.
         
@@ -439,7 +439,7 @@ class XAIProvider(LLMProvider):
                 print("WARNING: xai-sdk not installed, falling back to OpenAI SDK without search", file=sys.stderr)
                 self.enable_search = False
     
-    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
+    def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools. Uses xAI SDK Agent Tools when XAI_SEARCH=true."""
         if self.enable_search and self.xai_client:
             return self._chat_with_xai_sdk(message, system_prompt, max_tokens)
@@ -480,7 +480,7 @@ class XAIProvider(LLMProvider):
         
         return tools
     
-    def _chat_with_xai_sdk(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
+    def _chat_with_xai_sdk(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat using xAI SDK with server-side tools."""
         try:
             from xai_sdk.chat import user, system as sys_msg
@@ -508,11 +508,11 @@ class XAIProvider(LLMProvider):
     
     def chat_with_tools(
         self,
-        messages: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         enable_thinking: bool = False
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with xAI function calling and optional reasoning mode.
         
@@ -533,11 +533,11 @@ class XAIProvider(LLMProvider):
     
     def _chat_with_tools_openai_sdk(
         self,
-        messages: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         enable_thinking: bool = False
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """Standard chat with tools using OpenAI SDK (no search)."""
         # Add system message if provided
         full_messages = []
@@ -596,7 +596,7 @@ class XAIProvider(LLMProvider):
             print(f"xAI API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None, None, None
     
-    def _convert_tool_to_xai_sdk(self, tool: Dict[str, Any]):
+    def _convert_tool_to_xai_sdk(self, tool: dict[str, Any]):
         """Convert OpenAI-format tool to xAI SDK Protocol Buffer format."""
         from xai_sdk.tools import chat_pb2
         
@@ -621,11 +621,11 @@ class XAIProvider(LLMProvider):
     
     def _chat_with_tools_xai_sdk(
         self,
-        messages: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         enable_thinking: bool = False
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Chat with tools using xAI SDK Agent Tools API.
         
@@ -645,7 +645,7 @@ class XAIProvider(LLMProvider):
         
         try:
             from xai_sdk.chat import user, system as sys_msg, assistant
-            from xai_sdk.tools import get_tool_call_type, chat_pb2
+            from xai_sdk.tools import get_tool_call_type
             
             # Build xAI SDK tools list: server-side tools (configurable) + client-side custom tools
             xai_tools = self._build_xai_server_tools()
@@ -740,7 +740,7 @@ class OllamaProvider(LLMProvider):
         self.base_url = base_url.rstrip('/')
         self.model = model
     
-    def chat(self, message: str, system_prompt: Optional[str] = None, max_tokens: int = None) -> str:
+    def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
         import requests
         
@@ -780,7 +780,7 @@ class OllamaProvider(LLMProvider):
             print(f"Ollama API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     
-    def _get_context_options(self) -> Dict[str, Any]:
+    def _get_context_options(self) -> dict[str, Any]:
         """Get context window options for the current model."""
         options = {}
         # Extended context for models that support it
@@ -793,7 +793,7 @@ class OllamaProvider(LLMProvider):
             options["num_ctx"] = context_window
         return options
     
-    def _convert_to_ollama_tools(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _convert_to_ollama_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Convert tools from Anthropic format to Ollama/OpenAI native format.
         
@@ -820,11 +820,11 @@ class OllamaProvider(LLMProvider):
     
     def chat_with_tools(
         self,
-        messages: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         enable_thinking: bool = False
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with Ollama using native tool calling API with structured prompting fallback.
         
@@ -959,11 +959,11 @@ class OllamaProvider(LLMProvider):
     
     def _chat_with_tools_structured(
         self,
-        messages: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
         enable_thinking: bool = False
-    ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Fallback: Send chat using structured prompting for models that don't support native tools.
         
@@ -1087,7 +1087,7 @@ CRITICAL RULES:
             print(f"Ollama API error (structured fallback): {e}", file=sys.stderr)
             return f"Error: {str(e)}", None, None, None
     
-    def _format_tools_for_prompt(self, tools: List[Dict[str, Any]]) -> str:
+    def _format_tools_for_prompt(self, tools: list[dict[str, Any]]) -> str:
         """Format tools as text for fallback structured prompting."""
         tool_descriptions = []
         for tool in tools:

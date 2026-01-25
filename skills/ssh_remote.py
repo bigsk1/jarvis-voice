@@ -14,7 +14,7 @@ import sys
 import os
 import json
 import time
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -35,7 +35,7 @@ except ImportError:
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 SSH_CONFIG_PATH = CONFIG_DIR / "ssh.json"
 
-def load_ssh_config() -> Dict[str, Any]:
+def load_ssh_config() -> dict[str, Any]:
     """Load SSH host configuration."""
     if not SSH_CONFIG_PATH.exists():
         raise FileNotFoundError(f"SSH config not found at {SSH_CONFIG_PATH}. Copy ssh.json.example to ssh.json")
@@ -43,7 +43,7 @@ def load_ssh_config() -> Dict[str, Any]:
     with open(SSH_CONFIG_PATH) as f:
         return json.load(f)
 
-def get_host_config(host_alias: str) -> Dict[str, Any]:
+def get_host_config(host_alias: str) -> dict[str, Any]:
     """Get configuration for a specific host."""
     config = load_ssh_config()
     hosts = config.get("hosts", {})
@@ -68,7 +68,7 @@ def get_host_config(host_alias: str) -> Dict[str, Any]:
         "connect_timeout": host_config.get("connect_timeout", defaults.get("connect_timeout", 10)),
     }
 
-def connect_ssh(host_config: Dict[str, Any]) -> paramiko.SSHClient:
+def connect_ssh(host_config: dict[str, Any]) -> paramiko.SSHClient:
     """Create SSH connection to host."""
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -104,7 +104,7 @@ def connect_ssh(host_config: Dict[str, Any]) -> paramiko.SSHClient:
     client.connect(**connect_kwargs)
     return client
 
-def truncate_output(output: str, limit: int, label: str = "output") -> Tuple[str, bool]:
+def truncate_output(output: str, limit: int, label: str = "output") -> tuple[str, bool]:
     """Truncate output to last N lines if too long."""
     lines = output.split('\n')
     if len(lines) > limit:
@@ -118,8 +118,8 @@ def run_command(
     timeout: int = 60,
     output_limit: int = 150,
     sudo: bool = False,
-    sudo_password: Optional[str] = None
-) -> Dict[str, Any]:
+    sudo_password: str | None = None
+) -> dict[str, Any]:
     """Execute a command on the remote host."""
     
     if sudo:
@@ -157,7 +157,7 @@ def run_command(
         "success": exit_code == 0
     }
 
-def list_hosts() -> Dict[str, Any]:
+def list_hosts() -> dict[str, Any]:
     """List all configured SSH hosts."""
     config = load_ssh_config()
     hosts = config.get("hosts", {})
@@ -177,7 +177,7 @@ def list_hosts() -> Dict[str, Any]:
         "data": {"hosts": host_list, "count": len(host_list)}
     }
 
-def test_connection(host_alias: str) -> Dict[str, Any]:
+def test_connection(host_alias: str) -> dict[str, Any]:
     """Test SSH connectivity to a host."""
     host_config = get_host_config(host_alias)
     client = None
@@ -214,8 +214,8 @@ def execute_command(
     host_alias: str,
     command: str,
     sudo: bool = False,
-    output_limit: Optional[int] = None
-) -> Dict[str, Any]:
+    output_limit: int | None = None
+) -> dict[str, Any]:
     """Execute a command on a remote host."""
     host_config = get_host_config(host_alias)
     client = None
@@ -274,7 +274,7 @@ def execute_command(
         if client:
             client.close()
 
-def apt_update(host_alias: str, upgrade: bool = True) -> Dict[str, Any]:
+def apt_update(host_alias: str, upgrade: bool = True) -> dict[str, Any]:
     """Run apt update (and optionally upgrade) on remote host."""
     host_config = get_host_config(host_alias)
     client = None
@@ -372,7 +372,7 @@ def apt_update(host_alias: str, upgrade: bool = True) -> Dict[str, Any]:
         if client:
             client.close()
 
-def multi_command(host_alias: str, commands: List[str], sudo: bool = False, stop_on_error: bool = True) -> Dict[str, Any]:
+def multi_command(host_alias: str, commands: list[str], sudo: bool = False, stop_on_error: bool = True) -> dict[str, Any]:
     """Execute multiple commands in sequence on a remote host."""
     host_config = get_host_config(host_alias)
     client = None

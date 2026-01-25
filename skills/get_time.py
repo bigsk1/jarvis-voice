@@ -232,7 +232,7 @@ def get_time_for_location(location: str = None, timezone: str = None):
                 now = datetime.now(tz)
             else:
                 now = datetime.now(tz)
-        except Exception as e:
+        except Exception:
             # Invalid timezone, fall back to local
             return {
                 "ok": False,

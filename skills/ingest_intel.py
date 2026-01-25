@@ -8,7 +8,7 @@ import sys
 import json
 import os
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 import hashlib
 
 # Add lib to path
@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from memory_db import MemoryDB
 
 
-def return_success(speech: str, data: Dict[str, Any] = None):
+def return_success(speech: str, data: dict[str, Any] = None):
     """Return success response."""
     print(json.dumps({
         "ok": True,
@@ -40,7 +40,7 @@ def get_file_hash(filepath: Path) -> str:
         return hashlib.md5(f.read()).hexdigest()
 
 
-def extract_facts_from_content(content: str, filename: str) -> List[Dict[str, str]]:
+def extract_facts_from_content(content: str, filename: str) -> list[dict[str, str]]:
     """
     Extract structured facts from file content.
     Uses simple heuristics to identify key information.
