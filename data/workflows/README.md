@@ -63,7 +63,8 @@ Two formats supported:
 "variables": {
   "topic": {"from": "query", "extract": "main_subject"},
   "url": {"from": "query", "extract": "url"},
-  "host": {"from": "query", "extract": "main_subject", "default": "vps2"}
+  "host": {"from": "query", "extract": "main_subject", "default": "vps2"},
+  "url_domain": {"from": "url", "transform": "domain"}
 }
 ```
 
@@ -71,6 +72,49 @@ Two formats supported:
 - `${topic}` - Simple variable
 - `${article.content}` - Nested path from previous step
 - `${urls[:5]}` - Array slice (first 5 items)
+- `${url_domain}` - Extracted domain from URL (e.g., "cursor.com")
+
+## Stash Kinds
+
+The `stash` tool supports these `kind` values:
+- `text` - Plain text content (use `text` param)
+- `json` - JSON object (use `json` param)  
+- `base64` - Binary data as base64 (use `data` param)
+- `url` - Download from URL (use `url` param)
+- `file` - Copy local file (use `file_path` param) - useful for screenshots
+
+## Canvas Folder Structure
+
+Use folder paths in canvas titles for organization:
+```json
+"params": {
+  "title": "Workflows/Deep Dive/${url_domain}",
+  "tags": ["workflow-type", "${url_domain}"]
+}
+```
+
+## Resilient Workflows
+
+For steps that may fail (e.g., crawling protected sites):
+```json
+{
+  "step": 4,
+  "tool": "crawl_url",
+  "params": {"url": "${url}"},
+  "required": false,
+  "on_fail": "continue",
+  "description": "Optional - continues if blocked"
+}
+```
+
+## LLM Prompts
+
+When using `llm_prompt` for canvas content, tell the LLM to use actual values:
+```
+IMPORTANT: Use the actual values from the input data above - do not output placeholder syntax like ${var}.
+```
+
+This prevents the LLM from echoing `${variable}` in its output.
 
 ## Extract Rules
 

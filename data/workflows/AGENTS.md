@@ -55,6 +55,8 @@ PYEOF
 ### stash (save action)
 ```python
 # Params: action="save", kind="text", text="content", name="file.txt"
+# Also supports: kind="json" (json={}), kind="base64" (data="..."), 
+#               kind="url" (url="https://..."), kind="file" (file_path="/tmp/...")
 {
   "ok": true,
   "data": {
@@ -73,6 +75,17 @@ PYEOF
 "extract": {"stash_ref": "ref", "space_id": "space_id"}
 ```
 
+**File kind** (for local files like screenshots):
+```json
+"params": {
+  "action": "save",
+  "kind": "file",
+  "file_path": "${screenshot_path}",
+  "name": "screenshot.jpg"
+}
+```
+**Security**: Only `/tmp` and project directories allowed for `file_path`.
+
 ### stash (open_space action)
 ```python
 # Params: action="open_space", labels=["research"]
@@ -88,6 +101,42 @@ PYEOF
 ```json
 "extract": {"space_id": "space_id"}
 ```
+
+### screenshot_url
+```python
+# Params: url="https://example.com", wait=3, analyze=true, question="Describe this page"
+{
+  "ok": true,
+  "data": {
+    "url": "https://example.com",
+    "screenshot_path": "/tmp/screenshot_20260125_123456.jpg",  # <- Local file path
+    "size_bytes": 125998,
+    "wait_seconds": 3,
+    "analysis": "This page shows..."  # <- Vision AI analysis (if analyze=true)
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {"screenshot_path": "screenshot_path", "vision_analysis": "analysis"}
+```
+**Pattern**: Use with stash `file` kind to save screenshot:
+```json
+{
+  "step": 2,
+  "tool": "screenshot_url",
+  "params": {"url": "${url}", "analyze": true, "wait": 3},
+  "extract": {"screenshot_path": "screenshot_path", "vision_analysis": "analysis"}
+},
+{
+  "step": 3,
+  "tool": "stash",
+  "action": "save",
+  "params": {"kind": "file", "file_path": "${screenshot_path}", "name": "screenshot.jpg"},
+  "extract": {"screenshot_ref": "ref"}
+}
+```
+**Note**: Vision analysis is often more reliable than crawling for sites with bot protection.
 
 ### get_time
 ```python
@@ -527,7 +576,8 @@ Note: The LLM will generate a text description for the image, NOT ASCII art.
 "variables": {
   "url": {"from": "query", "extract": "url"},           // Extracts URL, adds https:// if needed
   "topic": {"from": "query", "extract": "main_subject"}, // Text after command
-  "host": {"from": "query", "extract": "main_subject", "default": "vps2"}  // With fallback
+  "host": {"from": "query", "extract": "main_subject", "default": "vps2"},  // With fallback
+  "url_domain": {"from": "url", "transform": "domain"}  // Extract domain from URL
 }
 ```
 
@@ -535,6 +585,10 @@ Note: The LLM will generate a text description for the image, NOT ASCII art.
 - `/archive bigsk1.com` → `url="https://bigsk1.com"`, `topic="bigsk1.com"`
 - `/health` → `host="vps2"` (default)
 - `/health vps20` → `host="vps20"`
+- `/dive https://cursor.com/pricing` → `url_domain="cursor.com"`
+
+**Transform types:**
+- `domain` - Extracts domain from URL (e.g., "cursor.com" from "https://cursor.com/pricing")
 
 ### Step Fields Reference
 
@@ -607,6 +661,27 @@ Only these tools have automatic transforms:
 
 All other tools require explicit `extract` rules.
 
+### LLM Prompt Echoes Variable Placeholders
+```json
+// WRONG - LLM will output "${crawled_url}" literally in canvas
+"llm_prompt": "Create a summary. Include: Source URL: ${crawled_url}"
+
+// CORRECT - Tell LLM to use actual values
+"llm_prompt": "Create a summary.\n\nINPUT DATA:\n- URL: ${crawled_url}\n\nIMPORTANT: Use the actual values from the input data above - do not output placeholder syntax like ${var}.\n\n**References**\n- Source: [write the actual URL from the input data]"
+```
+The LLM receives resolved values but may echo the placeholder syntax if instructed to include `${var}` in output.
+
+### Making All Steps Required
+```json
+// WRONG - crawl_url failures abort entire workflow
+"required": true  // default
+
+// CORRECT for optional steps - workflow continues if step fails
+"required": false,
+"on_fail": "continue"
+```
+Use `required: false` for steps that may fail (crawling protected sites, screenshots blocked by bot protection).
+
 ---
 
 ## Step 5: Testing Workflow
@@ -651,12 +726,16 @@ cat "$(ls /home/boss/jarvis-voice/data/canvas/page_* | tail -1)"
 
 - [ ] Tested each tool individually to verify return structure
 - [ ] Extract rules use correct field names (not assumed)
-- [ ] Stash save uses `text` param (not `content`)
+- [ ] Stash save uses `text` param (not `content`) or `file_path` for local files
 - [ ] SSH uses `action: "run"` and extracts from `stdout`
 - [ ] Variables have defaults where appropriate
+- [ ] Used `url_domain` transform for folder paths (e.g., `Workflows/Type/${url_domain}`)
 - [ ] Required steps will abort on failure
 - [ ] Optional steps have `"required": false` and `"on_fail": "continue"`
+- [ ] Steps that may fail (crawl, screenshot) are optional with fallback data
 - [ ] `llm_prompt` includes all needed `${variables}` for context
+- [ ] `llm_prompt` instructs LLM to use actual values, not output `${var}` syntax
+- [ ] Canvas title uses folder structure (e.g., `Workflows/Category/${topic}`)
 - [ ] Tested full workflow via CLI
 - [ ] Checked final output (canvas, stash, etc.)
 
@@ -675,6 +754,18 @@ cat "$(ls /home/boss/jarvis-voice/data/canvas/page_* | tail -1)"
 | `crypto_market_report.json` | `/crypto [coins]` | Multiple crypto_price calls, LLM formatting |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | youtube_transcript, stash read, text_summarizer, canvas |
 | `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
+| `deep_dive.json` | `/dive <url>` | screenshot_url, stash file kind, vision as primary source, resilient crawl, url_domain transform, folder-structured canvas |
+
+### Best Practice Example: deep_dive.json
+
+The `deep_dive.json` workflow demonstrates several best practices:
+
+1. **Vision as primary data source** - Screenshot with AI analysis works even when crawling is blocked
+2. **Resilient design** - `crawl_url` is optional (`required: false, on_fail: continue`)
+3. **Stash local files** - Uses `kind: "file"` to stash screenshots from `/tmp`
+4. **Domain transform** - `url_domain` variable for canvas folder organization
+5. **Canvas folder structure** - `Workflows/Deep Dive/${url_domain}`
+6. **LLM prompt clarity** - Explicitly tells LLM to use actual values, not placeholder syntax
 
 ---
 
