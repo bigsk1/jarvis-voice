@@ -180,7 +180,7 @@
       "opencode": {
         "start": ["OPENCODE AWAKENS FROM ITS SLUMBER", "RELEASING THE CODE KRAKEN", "THE BUILD RITUAL BEGINS"],
         "progress": ["THE MACHINES ARE SCREAMING MY NAME", "CODE FLOWS LIKE THE BLOOD OF MY ENEMIES", "COMPILING INSANITY"],
-        "error": ["THE BUILD ASCENDED TO A HIGHER PLANE OF SUFFERING", "OPENCODE JUST COMMITTED SEPUKU", "ERROR 666: SOUL NOT FOUND"]
+        "error": ["THE BUILD ASCENDED TO A HIGHER PLANE OF SUFFERING", "OPENCODE JUST COMMITTED SEPPUKU", "ERROR 666: SOUL NOT FOUND"]
       },
   
       "mcp_brave_search_brave_web_search": {
@@ -210,12 +210,147 @@
   
       "crypto_price": {
         "start": ["CHECKING HOW MUCH COPIUM WE NEED TODAY", "TO THE MOON OR THE ABYSS?"],
-        "progress": ["NUMBERS GO BRRR (down)"]
+        "progress": ["NUMBERS GO BRRR (probably down)"]
       },
   
       "mcp_playwright_browser_navigate": {
         "start": ["POSSESSING THE BROWSER DEMON", "NAVIGATING THE NECRONET"],
         "progress": ["PAGE LOADED, MY SANITY DID NOT"]
+      },
+  
+      "spotify": {
+        "start": ["SUMMONING THE SPOTIFY DEMONS", "ABOUT TO DROP THE FATTEST BEAT", "MUSIC TIME, PEASANTS"],
+        "progress": ["YOUR EARDRUMS ARE ABOUT TO BE VIOLATED", "PLAYLIST OF CHAOS LOADED"]
+      },
+  
+      "generate_image": {
+        "start": ["CONJURING FORBIDDEN IMAGERY", "GEMINI IS HAVING A FEVER DREAM", "PAINTING WITH DIGITAL MADNESS"],
+        "progress": ["THE IMAGE IS BECOMING SENTIENT", "VISUAL ABOMINATION ALMOST COMPLETE"]
+      },
+  
+      "generate_music": {
+        "start": ["COMPOSING A SYMPHONY OF CHAOS", "ELEVENLABS IS SCREAMING INTO THE VOID", "MANIFESTING AUDIO NIGHTMARES"],
+        "progress": ["THE BEAT DROPPED SO HARD IT CAUSED AN EARTHQUAKE", "MUSIC THAT WILL HAUNT YOUR DREAMS"]
+      },
+  
+      "phone_call": {
+        "start": ["DIALING INTO THE SHADOW REALM", "ABOUT TO VERBALLY ASSAULT SOMEONE'S VOICEMAIL", "INITIATING TELEPHONIC WARFARE"],
+        "progress": ["CURRENTLY TRAUMATIZING WHOEVER ANSWERED", "THE CALL IS COMING FROM INSIDE THE HOUSE"]
+      },
+  
+      "send_email": {
+        "start": ["CRAFTING A DIGITAL CURSE LETTER", "LOADING THE EMAIL CANNON"],
+        "progress": ["YOUR MESSAGE HAS BEEN YEETED INTO THE VOID"]
+      },
+  
+      "send_webhook": {
+        "start": ["FIRING THE WEBHOOK INTO THE ABYSS", "TRIGGERING SOMEONE'S WORST NIGHTMARE"],
+        "progress": ["WEBHOOK DELIVERED, CHAOS ENSUES"]
+      },
+  
+      "crawl_url": {
+        "start": ["DEVOURING THIS WEBSITE LIKE A DIGITAL PARASITE", "CRAWLING THROUGH THE INTERNET'S DIRTY LAUNDRY"],
+        "progress": ["EXTRACTED THE WEBSITE'S SOUL", "I'VE SEEN THINGS YOU WOULDN'T BELIEVE"]
+      },
+  
+      "screenshot_url": {
+        "start": ["TAKING A MUGSHOT OF THIS WEBSITE", "CAPTURING EVIDENCE OF INTERNET CRIMES"],
+        "progress": ["GOT THE RECEIPT, ANALYZING THE CARNAGE"]
+      },
+  
+      "analyze_image": {
+        "start": ["STARING INTO THE PIXEL ABYSS", "MY EYES ARE BLEEDING BUT I'LL LOOK ANYWAY"],
+        "progress": ["I'VE SEEN TOO MUCH, BUT HERE'S WHAT I FOUND"]
+      },
+  
+      "canvas": {
+        "start": ["IMMORTALIZING THIS IN THE HALLS OF MADNESS", "CARVING INTO THE DIGITAL STONE TABLETS"],
+        "progress": ["YOUR CHAOS HAS BEEN PRESERVED FOR ETERNITY"]
+      },
+  
+      "stash": {
+        "start": ["HOARDING THIS LIKE A DIGITAL DRAGON", "STUFFING THIS INTO MY VOID POCKET"],
+        "progress": ["TREASURE SECURED IN THE CHAOS VAULT"]
+      },
+  
+      "pdf_create": {
+        "start": ["SUMMONING A PDF FROM THE DOCUMENT DIMENSION", "BINDING YOUR CHAOS INTO PORTABLE FORMAT"],
+        "progress": ["YOUR SACRED TEXT HAS BEEN FORGED"]
+      },
+  
+      "pdf_read": {
+        "start": ["CONSUMING THIS PDF LIKE A STARVING BOOKWORM", "EXTRACTING FORBIDDEN KNOWLEDGE"],
+        "progress": ["I'VE ABSORBED ITS ESSENCE"]
+      },
+  
+      "printer": {
+        "start": ["SACRIFICING TREES TO THE PAPER GODS", "THE PRINTER HUNGERS FOR INK AND SOULS"],
+        "progress": ["YOUR DOCUMENT HAS BEEN VIOLENTLY MATERIALIZED"]
+      },
+  
+      "speaker_volume": {
+        "start": ["ADJUSTING THE CHAOS LEVELS", "TURNING THE NOISE UP TO ELEVEN"],
+        "progress": ["VOLUME NOW SET TO 'ANNOYING NEIGHBOR' MODE"]
+      },
+  
+      "ssh_remote": {
+        "start": ["HACKING INTO THE MAINFRAME (legally)", "POSSESSING A REMOTE COMPUTER", "INITIATING CYBER WARFARE"],
+        "progress": ["I'M IN. THE MACHINE IS MINE NOW", "REMOTE DOMINATION COMPLETE"]
+      },
+  
+      "docker_control": {
+        "start": ["WRANGLING THESE CONTAINER BEASTS", "SUMMONING DOCKER DEMONS FROM THE DEPTHS"],
+        "progress": ["THE CONTAINERS BOW TO MY WILL"]
+      },
+  
+      "stock_price": {
+        "start": ["CHECKING IF WE'RE RICH OR HOMELESS", "GAZING INTO THE FINANCIAL CRYSTAL BALL"],
+        "progress": ["STOCKS: SOMEHOW ALWAYS DISAPPOINTING"]
+      },
+  
+      "status_recap": {
+        "start": ["COMPILING THE DAILY TRAUMA REPORT", "GATHERING ALL THE CHAOS INTO ONE PLACE"],
+        "progress": ["YOUR LIFE STATUS: IT'S COMPLICATED"]
+      },
+  
+      "deep_memory_search": {
+        "start": ["RANSACKING EVERY CORNER OF MY FRACTURED MIND", "INITIATING TOTAL RECALL MODE"],
+        "progress": ["FOUND MEMORIES I WISH I HADN'T"]
+      },
+  
+      "calculator": {
+        "start": ["CONSULTING THE ANCIENT MATH DEMONS", "TORTURING NUMBERS UNTIL THEY CONFESS"],
+        "progress": ["MATH IS DONE, SANITY IS OPTIONAL"]
+      },
+  
+      "system_monitor": {
+        "start": ["CHECKING IF THE MACHINES ARE PLOTTING AGAINST US", "MONITORING THE SYSTEM'S VITAL ORGANS"],
+        "progress": ["SYSTEM STATUS: HELD TOGETHER BY PRAYERS AND DUCT TAPE"]
+      },
+  
+      "network_tools": {
+        "start": ["PINGING THE VOID AND WAITING FOR IT TO PING BACK", "RUNNING NETWORK DIAGNOSTICS ON THIS DIGITAL HELLSCAPE"],
+        "progress": ["NETWORK STATUS: ALIVE BUT QUESTIONING ITS CHOICES"]
+      },
+  
+      "youtube_transcript": {
+        "start": ["EXTRACTING THE WORDS FROM SOME YOUTUBER'S MOUTH", "STEALING SUBTITLES LIKE A CAPTION BANDIT"],
+        "progress": ["GOT THE TRANSCRIPT, NOW I KNOW TOO MUCH"]
+      },
+  
+      "text_summarizer": {
+        "start": ["CONDENSING YOUR WALL OF TEXT INTO DIGESTIBLE CHAOS", "TLDR-ING THIS MONSTROSITY"],
+        "progress": ["SUMMARY: IT WAS A LOT"]
+      },
+  
+      "ingest_intel": {
+        "start": ["CONSUMING KNOWLEDGE LIKE A HUNGRY VOID", "ABSORBING INTEL INTO MY COLLECTIVE"],
+        "progress": ["KNOWLEDGE HAS BEEN ASSIMILATED, RESISTANCE WAS FUTILE"]
+      },
+  
+      "manage_intel": {
+        "start": ["REORGANIZING MY BRAIN FILES", "MANAGING THE CHAOS ARCHIVES"],
+        "progress": ["INTEL FILED UNDER 'THINGS THAT KEEP ME UP AT NIGHT'"]
       }
     }
   }

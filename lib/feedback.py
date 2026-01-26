@@ -59,7 +59,7 @@ Tools Used: {tools_used}
 ⚠️ IMPORTANT CONTEXT FOR GRADING:
 
 1. **RESPONSE STYLE DETERMINES OUTPUT FORMAT** - check Configuration section FIRST!
-   - If style is "casual" or "auto": Apply 25-word limit, no URLs, no markdown (voice output)
+   - If style is "casual" or "auto": Apply 25-100 word limit, no URLs, no markdown (voice output)
    - If style is "detailed": Output is for DISPLAY/READING, not voice synthesis
      → Markdown IS allowed (links, bold, lists)
      → Full URLs with markdown links ARE correct

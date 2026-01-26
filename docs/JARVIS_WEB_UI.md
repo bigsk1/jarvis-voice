@@ -59,7 +59,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Feature | Status | Details |
 |---------|--------|---------|
 | TTS playback | ✅ | Toggle audio, plays responses in browser |
-| Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro (via TTS_URL) |
+| Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS (via TTS_URL) |
 | Status TTS | ✅ | Status updates play as TTS when audio enabled |
 | **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send |
 | **Mode-aware STT** | ✅ | Cloud=OpenAI Whisper, Local=faster-whisper |
@@ -471,7 +471,7 @@ TTS provider is determined by the current mode's `.env` file:
 | Mode | Provider | Config |
 |------|----------|--------|
 | **Cloud** | ElevenLabs | `TTS_PROVIDER=elevenlabs` in cloud.env |
-| **Local** | Kokoro | `TTS_PROVIDER=kokoro` + `TTS_URL` in local.env |
+| **Local** | Kokoro or Qwen3-TTS | `TTS_PROVIDER=kokoro` or `TTS_PROVIDER=qwen3-tts` + `TTS_URL` in local.env |
 
 ```python
 # In api.py - mode-aware TTS
@@ -1230,7 +1230,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 ### TTS
 | Issue | Workaround |
 |-------|------------|
-| Local TTS fails silently | Check Kokoro server is running at TTS_URL |
+| Local TTS fails silently | Check Kokoro or Qwen3-TTS server is running at TTS_URL |
 | Audio doesn't play | Check browser autoplay policy, click somewhere first |
 | TTS too slow | Status updates have 1s delay by design |
 

@@ -900,15 +900,21 @@ Mode: {mode}
             # Route based on provider (not TTS_URL existence)
             if provider == 'kokoro':
                 # Local TTS via TTS_URL
-                tts_url = get_jarvis_setting('TTS_URL', '')
+                tts_url = get_jarvis_setting('KOKORO_TTS_URL', '') or get_jarvis_setting('TTS_URL', '')
                 if not tts_url:
                     print("[CHAT TTS] Kokoro provider but TTS_URL not set!")
                     return None
                 audio_path = self._local_tts(text, tts_dir, timestamp, tts_url)
+            elif provider == 'qwen3-tts':
+                # Qwen3-TTS (OpenAI-compatible API on local network)
+                audio_path = self._qwen3_tts(text, tts_dir, timestamp)
             elif provider == 'elevenlabs':
                 audio_path = self._elevenlabs_tts(text, tts_dir, timestamp)
+            elif provider == 'openai':
+                audio_path = self._openai_tts(text, tts_dir, timestamp)
             else:
-                # Default to OpenAI
+                # Unknown provider - try qwen3-tts as fallback for local network
+                print(f"[CHAT TTS] Unknown provider '{provider}', trying OpenAI TTS")
                 audio_path = self._openai_tts(text, tts_dir, timestamp)
             
             if audio_path and audio_path.exists():
@@ -926,8 +932,8 @@ Mode: {mode}
         import requests
         from ..config import get_jarvis_setting
         
-        voice = get_jarvis_setting('TTS_VOICE', 'af_nicole')
-        speed = float(get_jarvis_setting('TTS_SPEED', '1.0'))
+        voice = get_jarvis_setting('KOKORO_TTS_VOICE', '') or get_jarvis_setting('TTS_VOICE', 'af_nicole')
+        speed = float(get_jarvis_setting('KOKORO_TTS_SPEED', '') or get_jarvis_setting('TTS_SPEED', '1.0'))
         
         payload = {
             "model": "kokoro",
@@ -949,6 +955,46 @@ Mode: {mode}
                 return None
         except Exception as e:
             print(f"[CHAT] Local TTS failed: {e}")
+            return None
+    
+    def _qwen3_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
+        """Generate TTS using Qwen3-TTS API (OpenAI-compatible on local network)"""
+        import requests
+        from ..config import get_jarvis_setting
+        
+        tts_url = get_jarvis_setting('QWEN3_TTS_URL', '') or get_jarvis_setting('TTS_URL', '')
+        if not tts_url:
+            print("[CHAT TTS] Qwen3-TTS provider but QWEN3_TTS_URL not set!")
+            return None
+        
+        voice = get_jarvis_setting('QWEN3_TTS_VOICE', '') or get_jarvis_setting('TTS_VOICE', 'Jarvis')
+        speed = float(get_jarvis_setting('QWEN3_TTS_SPEED', '') or get_jarvis_setting('TTS_SPEED', '1.0'))
+        audio_format = get_jarvis_setting('QWEN3_TTS_FORMAT', 'mp3')
+        
+        print(f"[CHAT TTS] Qwen3-TTS: url={tts_url}, voice={voice}, format={audio_format}")
+        
+        payload = {
+            "model": "tts-1",
+            "input": text,
+            "voice": voice,
+            "speed": speed,
+            "response_format": audio_format
+        }
+        
+        try:
+            # Longer timeout for first-time voice builds (Qwen3 caches voices)
+            response = requests.post(tts_url, json=payload, timeout=60)
+            if response.status_code == 200:
+                ext = audio_format if audio_format != 'mp3' else 'mp3'
+                output_path = output_dir / f"tts_{timestamp}.{ext}"
+                with open(output_path, 'wb') as f:
+                    f.write(response.content)
+                return output_path
+            else:
+                print(f"[CHAT] Qwen3-TTS error: {response.status_code} - {response.text[:100]}")
+                return None
+        except Exception as e:
+            print(f"[CHAT] Qwen3-TTS failed: {e}")
             return None
     
     def _elevenlabs_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:

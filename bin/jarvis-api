@@ -280,7 +280,7 @@ echo -e "   Mode: ${BLUE}$MODE${NC}"
 echo -e "   Port: ${BLUE}$PORT${NC}"
 echo -e "   Docs: ${BLUE}http://localhost:$PORT/docs${NC}"
 if [ "$MODE" == "local" ]; then
-    echo -e "   TTS:  ${BLUE}say-local.sh${NC} (Kokoro - requires server at $TTS_URL)"
+    echo -e "   TTS:  ${BLUE}say-local.sh${NC} (Kokoro or Qwen3-TTS - requires server at $TTS_URL)"
 else
     echo -e "   TTS:  ${BLUE}say.sh${NC} (OpenAI)"
 fi

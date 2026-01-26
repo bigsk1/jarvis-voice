@@ -218,6 +218,141 @@
     "mcp_playwright_browser_navigate": {
       "start": ["Opening the browser", "Navigating to page"],
       "progress": ["Page loaded, examining content"]
+    },
+    
+    "spotify": {
+      "start": ["Connecting to Spotify", "Queuing up the music", "Accessing your tunes"],
+      "progress": ["Got your music ready", "Playlist loaded"]
+    },
+    
+    "generate_image": {
+      "start": ["Creating your image", "Generating artwork", "Firing up Gemini"],
+      "progress": ["Image taking shape", "Almost got your masterpiece"]
+    },
+    
+    "generate_music": {
+      "start": ["Composing your track", "Creating music", "ElevenLabs is jamming"],
+      "progress": ["Music is cooking", "Melody coming together"]
+    },
+    
+    "phone_call": {
+      "start": ["Placing your call", "Dialing now", "Connecting the line"],
+      "progress": ["Call in progress", "On the phone now"]
+    },
+    
+    "send_email": {
+      "start": ["Drafting your email", "Preparing to send"],
+      "progress": ["Email sent successfully"]
+    },
+    
+    "send_webhook": {
+      "start": ["Triggering webhook", "Sending the request"],
+      "progress": ["Webhook delivered"]
+    },
+    
+    "crawl_url": {
+      "start": ["Crawling the page", "Extracting content", "Reading that site"],
+      "progress": ["Page content retrieved", "Got the data"]
+    },
+    
+    "screenshot_url": {
+      "start": ["Taking a screenshot", "Capturing the page"],
+      "progress": ["Screenshot captured", "Analyzing the image"]
+    },
+    
+    "analyze_image": {
+      "start": ["Analyzing the image", "Looking at that picture"],
+      "progress": ["Vision analysis complete"]
+    },
+    
+    "canvas": {
+      "start": ["Saving to canvas", "Creating a page"],
+      "progress": ["Canvas updated"]
+    },
+    
+    "stash": {
+      "start": ["Stashing that file", "Saving to storage"],
+      "progress": ["File stashed successfully"]
+    },
+    
+    "pdf_create": {
+      "start": ["Creating your PDF", "Building the document"],
+      "progress": ["PDF is ready"]
+    },
+    
+    "pdf_read": {
+      "start": ["Reading the PDF", "Extracting text"],
+      "progress": ["PDF contents retrieved"]
+    },
+    
+    "printer": {
+      "start": ["Sending to printer", "Printing your document"],
+      "progress": ["Print job sent"]
+    },
+    
+    "speaker_volume": {
+      "start": ["Adjusting volume", "Changing speaker settings"],
+      "progress": ["Volume adjusted"]
+    },
+    
+    "ssh_remote": {
+      "start": ["Connecting via SSH", "Accessing remote server"],
+      "progress": ["Connected, running command", "Remote execution complete"]
+    },
+    
+    "docker_control": {
+      "start": ["Managing Docker", "Working with containers"],
+      "progress": ["Docker command executed"]
+    },
+    
+    "stock_price": {
+      "start": ["Checking stock prices", "Looking up the market"],
+      "progress": ["Got the latest quotes"]
+    },
+    
+    "status_recap": {
+      "start": ["Gathering your status", "Compiling the recap"],
+      "progress": ["Status report ready"]
+    },
+    
+    "deep_memory_search": {
+      "start": ["Deep searching all sources", "Comprehensive search starting"],
+      "progress": ["Found results across multiple sources"]
+    },
+    
+    "calculator": {
+      "start": ["Crunching the numbers", "Calculating"],
+      "progress": ["Got your answer"]
+    },
+    
+    "system_monitor": {
+      "start": ["Checking system health", "Monitoring resources"],
+      "progress": ["System stats retrieved"]
+    },
+    
+    "network_tools": {
+      "start": ["Running network diagnostics", "Checking connectivity"],
+      "progress": ["Network check complete"]
+    },
+    
+    "youtube_transcript": {
+      "start": ["Getting the transcript", "Downloading captions"],
+      "progress": ["Transcript retrieved"]
+    },
+    
+    "text_summarizer": {
+      "start": ["Summarizing the text", "Processing content"],
+      "progress": ["Summary ready"]
+    },
+    
+    "ingest_intel": {
+      "start": ["Ingesting knowledge", "Processing intel files"],
+      "progress": ["Knowledge ingested"]
+    },
+    
+    "manage_intel": {
+      "start": ["Managing intel files", "Working with knowledge base"],
+      "progress": ["Intel file updated"]
     }
   }
 }

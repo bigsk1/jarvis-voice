@@ -753,7 +753,7 @@ IMPORTANT: The task completed but tried to call a duplicate tool.
 You MUST synthesize a proper answer using the data above.
 
 CRITICAL RULES:
-1. MAX 75 WORDS - but ACTUALLY ANSWER the user's question
+1. MAX 100 WORDS - but ACTUALLY ANSWER the user's question
 2. If you found relevant info (camera models, prices, specs, comparisons) - INCLUDE IT
 3. Reference the Canvas page if detailed results were saved there
 4. DO NOT say "I used tools" or mention tool counts - just answer!
@@ -771,7 +771,7 @@ Your synthesized response:"""
             
             response = self.router.provider.chat(
                 context, 
-                system_prompt="Synthesize research results into a helpful answer. MAX 75 words. Answer the user's actual question using the data provided."
+                system_prompt="Synthesize research results into a helpful answer. MAX 100 words. Answer the user's actual question using the data provided."
             )
             return response.strip()
             
@@ -933,7 +933,7 @@ Your response:"""
     def _format_single_turn_casual(self, user_query: str, raw_response: str) -> str:
         """
         Format Q&A response for voice output (casual mode).
-        Uses JARVIS_QA_WORD_LIMIT for informational responses (default: 75 words).
+        Uses JARVIS_QA_WORD_LIMIT for informational responses (default: 100 words).
         
         Args:
             user_query: Original user request
@@ -1015,7 +1015,7 @@ CRITICAL RULES:
 
 GOOD EXAMPLES:
 - "Tetris server started on port 5000 at 192.168.70.228"
-- "Webhook sent successfully, URL saved to memory"
+- "Webhook sent successfully, URL saved to memory and your canvas has been updated"
 - "Bitcoin price is $101,000, down 2% today"
 - "Email sent to John, confirmation code 12345"
 

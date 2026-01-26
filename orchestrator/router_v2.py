@@ -186,7 +186,7 @@ When you respond with Q&A intent (NOT calling a tool), your response will be SPO
 
 MANDATORY FORMAT:
 - Tool confirmations: MAX 35 WORDS (action completed, result)
-- Q&A/informational responses: MAX 75 WORDS (allow enough detail to be useful)
+- Q&A/informational responses: MAX 100 WORDS (allow enough detail to be useful)
 - NO emojis, NO markdown (**, ##, bullets)
 - NO greeting fluff ("Great!", "Perfect!", "I've successfully...")
 - Get straight to the answer
@@ -442,9 +442,9 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
         else:
             style_note = f"""
 RESPONSE STYLE: {response_style.upper()}
-- Keep voice output concise (35-75 words depending on complexity)
+- Keep voice output concise (35-100 words depending on complexity)
 - Tool confirmations: brief (35 words max)
-- Q&A/informational: more room (75 words max)
+- Q&A/informational: more room (100 words max)
 - No URLs for speech unless critical
 
 """
