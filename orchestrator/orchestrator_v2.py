@@ -1528,14 +1528,16 @@ Your BEST EFFORT response:"""
 def main():
     """CLI interface."""
     if len(sys.argv) < 2:
-        print("Usage: orchestrator_v2.py <mode> <transcript> [--json] [--debug-thinking] [--prompt NAME]", file=sys.stderr)
+        print("Usage: orchestrator_v2.py <mode> <transcript> [--json] [--speak] [--debug-thinking] [--prompt NAME]", file=sys.stderr)
         print("  mode: 'cloud' or 'local'", file=sys.stderr)
         print("  --json: Output only JSON (for scripting)", file=sys.stderr)
+        print("  --speak: Speak the final result through speakers", file=sys.stderr)
         print("  --debug-thinking: Show LLM reasoning (for debugging)", file=sys.stderr)
         print("  --feedback: Ask LLM for feedback about the experience (QA mode)", file=sys.stderr)
         print("  --prompt NAME: Load a prompt from jarvis-web/data/prompts/NAME.md", file=sys.stderr)
         print("\nExample:")
         print("  ./orchestrator_v2.py cloud 'Send a webhook to my server'")
+        print("  ./orchestrator_v2.py cloud 'What time is it?' --speak")
         print("  ./orchestrator_v2.py cloud 'Should I save this?' --debug-thinking")
         print("  ./orchestrator_v2.py cloud 'Test a task' --feedback")
         print("  ./orchestrator_v2.py cloud --prompt deep_research 'Research AI chips'")
@@ -1561,6 +1563,11 @@ def main():
     collect_feedback = "--feedback" in sys.argv
     if collect_feedback:
         sys.argv.remove("--feedback")
+    
+    # Check for --speak flag (speak final result through speakers)
+    speak_result = "--speak" in sys.argv
+    if speak_result:
+        sys.argv.remove("--speak")
     
     # Check for --prompt flag (load prompt file as context)
     prompt_context = None
@@ -1789,6 +1796,20 @@ Mode: {mode}
         
         print("\n📄 Full Response:")
         print(json.dumps(result, indent=2))
+    
+    # Speak the result if --speak flag was provided
+    if speak_result and result.get("speech"):
+        import subprocess
+        project_root = Path(__file__).parent.parent
+        say_script = project_root / "bin" / ("say.sh" if mode == "cloud" else "say-local.sh")
+        
+        if not json_only:
+            print(f"\n🔊 Speaking result via {say_script.name}...")
+        
+        try:
+            subprocess.run([str(say_script), result["speech"]], check=False)
+        except Exception as e:
+            print(f"⚠️ TTS failed: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

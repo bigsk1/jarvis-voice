@@ -106,7 +106,18 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 ### Dual Mode Operation
 - **Cloud Mode**: **xAI Grok** (2M context, 10-15x cheaper!), Anthropic Claude, OpenAI GPT
-- **Local Mode**: Ollama (qwen3-coder, mistral-nemo) + faster-whisper + Kokoro TTS (free, offline)
+- **Local Mode**: Ollama (qwen3-coder, mistral-nemo) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
+
+### TTS Providers
+| Provider | Mode | Quality | Cost | Notes |
+|----------|------|---------|------|-------|
+| **ElevenLabs** | Cloud | Excellent | Paid | Best quality, expressive voices |
+| **Qwen3-TTS** | Both | Excellent | Free | 28 cloned voices (Jarvis, Samantha, etc.), local network |
+| **Kokoro** | Local | Good | Free | Lightweight, fast, Nicole+Sarah voices |
+| **OpenAI TTS** | Cloud | Good | Paid | alloy, echo, fable, onyx, nova, shimmer |
+
+Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. Qwen3-TTS uses OpenAI-compatible API.
+See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
 
 **Recommended Cloud Provider**: **xAI Grok-4-fast** ($0.20/$0.50 per 1M tokens, 2M context window, automatic caching with 90% discount)
 
@@ -495,6 +506,10 @@ source ~/jarvis-venv/bin/activate
 # CLI mode (no voice)
 ./orchestrator/orchestrator_v2.py cloud "What time is it?"
 ./orchestrator/orchestrator_v2.py local "What time is it?"
+
+# CLI mode with voice output (speaks result through speakers)
+./orchestrator/orchestrator_v2.py cloud "What time is it?" --speak
+./orchestrator/orchestrator_v2.py local "Turn up my volume" --speak
 
 # Command Dashboard (all commands in one TUI!)
 ./bin/jarvis-dashboard
@@ -988,6 +1003,7 @@ LIMIT 7;"
 - [`config/README.md`](config/README.md) - Configuration guide
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md) - Quick setup guide
 - [`docs/TOOL_CALLING_SYSTEM.md`](docs/TOOL_CALLING_SYSTEM.md) - How tools work
+- [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md) - **Qwen3-TTS** (28 cloned voices, local network)
 
 **Proactive System:**
 - [`docs/api/`](docs/api/) - **Proactive API** documentation (webhooks, alerts, monitoring)
@@ -1231,6 +1247,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Qwen3-TTS Integration** - Local network TTS with 28 cloned voices
+  - OpenAI-compatible API (free, fast, high quality)
+  - Custom voices: Jarvis, Paddington, Professor, Victoria, Samantha, and more
+  - Works in both cloud and local modes
+  - See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
+- ✅ **Orchestrator `--speak` Flag** - CLI voice output without wake word
+  - `./orchestrator/orchestrator_v2.py cloud "query" --speak`
+  - Uses appropriate TTS script based on mode
 - ✅ **Intel API** - Full CRUD for jarvis-intel knowledge files
   - `GET /api/intel/stats`, `GET /api/intel`, `POST /api/intel`, `PUT/DELETE /api/intel/{filename}`
   - Auto-ingest option, sync/async ingestion modes
@@ -1513,6 +1537,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.29 (January 2026)  
+**Current Version:** v2.30 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Intel API for programmatic knowledge file management + URL Ingest workflow
+**Latest Features:** Qwen3-TTS integration (28 cloned voices) + `--speak` flag for CLI voice output

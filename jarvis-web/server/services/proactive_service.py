@@ -6,6 +6,7 @@ Polls jarvis-api for alerts and reminders, broadcasts to connected web clients.
 import requests
 import time
 from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 # Polling interval in seconds
 POLL_INTERVAL = 10
@@ -27,9 +28,9 @@ class ProactiveService:
     last_reminder_check: float = 0
     
     # Callback for broadcasting
-    broadcast_callback: callable | None = None
+    broadcast_callback: Optional[Callable] = None
     
-    def set_broadcast_callback(self, callback: callable):
+    def set_broadcast_callback(self, callback: Callable):
         """Set the callback used to broadcast to WebSocket clients"""
         self.broadcast_callback = callback
     

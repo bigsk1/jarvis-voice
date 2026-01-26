@@ -1,10 +1,11 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Status Update TTS (Local/Kokoro)
-# Lightweight TTS for local mode - reuses existing Kokoro TTS config
+# Jarvis Voice Assistant - Status Update TTS (Local - Kokoro or Qwen3-TTS)
+# Lightweight TTS for local mode status messages
 #
 # Features:
 # - Audio caching: Repeated phrases play instantly (no TTS call)
 # - Silence padding: Helps speakers wake up before speech
+# - Dual provider support: Kokoro or Qwen3-TTS
 #
 # Usage: say-status-local.sh "message" [blocking]
 #   blocking: "true" (wait for playback) or "false" (background)
@@ -24,10 +25,13 @@ if [ -z "$TEXT" ]; then
     exit 1
 fi
 
+# Determine TTS provider (default to kokoro for backward compatibility)
+TTS_PROVIDER="${TTS_PROVIDER:-kokoro}"
+
 # ============================================================================
 # CACHING SYSTEM
 # ============================================================================
-# Cache key = hash of (text + voice settings) so changes invalidate cache
+# Cache key = hash of (text + voice settings + provider) so changes invalidate cache
 STATUS_CACHE_ENABLED="${STATUS_CACHE_ENABLED:-true}"
 CACHE_DIR="${HOME}/.cache/jarvis/status-tts-local"
 SILENCE_PAD_MS="${STATUS_SILENCE_PAD_MS:-250}"
@@ -37,11 +41,17 @@ if [ "$STATUS_CACHE_ENABLED" = "true" ]; then
     mkdir -p "$CACHE_DIR"
 fi
 
-# Generate cache key from text + voice settings
+# Generate cache key from text + voice settings + provider
 generate_cache_key() {
     local text="$1"
-    # Include voice settings in hash so cache invalidates if settings change
-    echo -n "${text}|${TTS_VOICE}|${TTS_SPEED}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
+        echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_FORMAT:-mp3}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    else
+        # Kokoro - use either new or legacy variable names
+        local voice="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
+        local speed="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
+        echo -n "${text}|kokoro|${voice}|${speed}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    fi
 }
 
 CACHE_KEY=$(generate_cache_key "$TEXT")
@@ -63,20 +73,70 @@ else
       | sed 's/[[:space:]]\+/ /g' \
       | sed 's/^ *//;s/ *$//')
 
-    # Build JSON and call Kokoro TTS (same as say-local.sh)
-    TTS_JSON=$(jq -n \
-      --arg voice "$TTS_VOICE" \
-      --arg input "$SANITIZED" \
-      --arg speed "$TTS_SPEED" \
-      '{voice:$voice, input:$input, speed:$speed}')
+    if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
+        # ============================================================================
+        # QWEN3-TTS (OpenAI-compatible voice cloning)
+        # ============================================================================
+        QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://192.168.70.226:8881/v1/audio/speech}"
+        QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE:-Jarvis}"
+        QWEN3_TTS_FORMAT="${QWEN3_TTS_FORMAT:-mp3}"
+        QWEN3_TTS_SPEED="${QWEN3_TTS_SPEED:-1.0}"
+        
+        # Build OpenAI-compatible TTS JSON
+        TTS_JSON=$(jq -n \
+          --arg model "tts-1" \
+          --arg voice "$QWEN3_TTS_VOICE" \
+          --arg input "$SANITIZED" \
+          --arg format "$QWEN3_TTS_FORMAT" \
+          --arg speed "$QWEN3_TTS_SPEED" \
+          '{model:$model, voice:$voice, input:$input, response_format:$format, speed:($speed|tonumber)}')
+        
+        # Call Qwen3-TTS API
+        TEMP_AUDIO="/tmp/jarvis-status-local-$$.${QWEN3_TTS_FORMAT}"
+        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_AUDIO" \
+          -X POST "$QWEN3_TTS_URL" \
+          -H "Content-Type: application/json" \
+          -d "$TTS_JSON")
+        
+        if [ "$HTTP_CODE" != "200" ]; then
+            echo "⚠️ Qwen3-TTS failed (HTTP $HTTP_CODE)" >&2
+            rm -f "$TEMP_AUDIO"
+            exit 1
+        fi
+        
+        # Convert to wav
+        ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+        rm -f "$TEMP_AUDIO"
+        
+    else
+        # ============================================================================
+        # KOKORO TTS (default)
+        # ============================================================================
+        # Support both new and legacy variable names
+        KOKORO_URL="${KOKORO_TTS_URL:-${TTS_URL:-}}"
+        KOKORO_VOICE="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
+        KOKORO_SPEED="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
+        
+        if [ -z "$KOKORO_URL" ]; then
+            echo "❌ TTS_URL or KOKORO_TTS_URL not set" >&2
+            exit 1
+        fi
+        
+        # Build Kokoro JSON
+        TTS_JSON=$(jq -n \
+          --arg voice "$KOKORO_VOICE" \
+          --arg input "$SANITIZED" \
+          --arg speed "$KOKORO_SPEED" \
+          '{voice:$voice, input:$input, speed:$speed}')
 
-    # Generate TTS audio via Kokoro
-    if ! curl -sS -X POST "$TTS_URL" \
-        -H "Content-Type: application/json" \
-        -d "$TTS_JSON" \
-        | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null; then
-        echo "⚠️ Local TTS generation failed" >&2
-        exit 1
+        # Generate TTS audio via Kokoro
+        if ! curl -sS -X POST "$KOKORO_URL" \
+            -H "Content-Type: application/json" \
+            -d "$TTS_JSON" \
+            | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null; then
+            echo "⚠️ Local TTS generation failed" >&2
+            exit 1
+        fi
     fi
 
     # Check if audio was generated

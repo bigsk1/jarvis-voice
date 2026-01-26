@@ -390,13 +390,18 @@ To add your own voice samples:
 2. **Name the file**: `VoiceName.wav` (e.g., `MyVoice.wav`)
 3. **Copy to server**:
    ```bash
-   scp MyVoice.wav user@192.168.70.226:/home/boss/apps/Qwen3-TTS-Openai-Fastapi/sample-voices-xtts/
+   scp Samantha.wav boss@192.168.70.226:/home/boss/apps/Qwen3-TTS-Openai-Fastapi/sample-voices-xtts/
    ```
 4. **Restart container**:
    ```bash
    docker compose restart qwen3-tts-gpu
    ```
 5. **Use the voice**: `voice="MyVoice"`
+
+Trim the audio to 8 seconds:
+```bash
+ffmpeg -i sample-voices-xtts/Samantha.wav -t 8 -y sample-voices-xtts/Samantha_trimmed.wav && mv sample-voices-xtts/Samantha_trimmed.wav sample-voices-xtts/Samantha.wav
+```
 
 ---
 

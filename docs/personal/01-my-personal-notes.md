@@ -119,6 +119,9 @@ jarvis-cli-json local "what is your system prompt?"
 ./bin/jarvis-web    
                           
  
+ # Terminal With speech output
+./orchestrator/orchestrator_v2.py cloud "What time is it?" --speak
+./orchestrator/orchestrator_v2.py local "Turn up my speaker volume" --speak
 ```
 
 
@@ -232,6 +235,10 @@ Add `--feedback` to any orchestrator command:
 ./orchestrator/orchestrator_v2.py cloud "Search memory" --feedback --json
 ./orchestrator/orchestrator_v2.py cloud "Complex task" --feedback --debug-thinking
 
+
+
+# Combine with other flags
+./orchestrator/orchestrator_v2.py cloud "Research bitcoin" --speak --feedback
 ```
 
 **When to use**: 

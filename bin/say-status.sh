@@ -47,6 +47,9 @@ generate_cache_key() {
     if [ "$TTS_PROVIDER" = "elevenlabs" ]; then
         # Include ElevenLabs settings in hash
         echo -n "${text}|elevenlabs|${ELEVENLABS_TTS_VOICE:-}|${ELEVENLABS_TTS_MODEL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    elif [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
+        # Include Qwen3-TTS settings in hash
+        echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_FORMAT:-mp3}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
         # Include OpenAI settings in hash
         echo -n "${text}|openai|${VOICE}|${TTS_MODEL}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
@@ -64,7 +67,42 @@ else
     # Cache miss - generate TTS
     OUTFILE="/tmp/jarvis-status-$$.wav"
 
-    if [ "$TTS_PROVIDER" = "elevenlabs" ]; then
+    if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
+        # ============================================================================
+        # QWEN3-TTS (Local network, OpenAI-compatible voice cloning)
+        # ============================================================================
+        QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://192.168.70.226:8881/v1/audio/speech}"
+        QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE:-Jarvis}"
+        QWEN3_TTS_FORMAT="${QWEN3_TTS_FORMAT:-mp3}"
+        QWEN3_TTS_SPEED="${QWEN3_TTS_SPEED:-1.0}"
+        
+        # Build OpenAI-compatible TTS JSON
+        TTS_JSON=$(jq -n \
+          --arg model "tts-1" \
+          --arg voice "$QWEN3_TTS_VOICE" \
+          --arg input "$TEXT" \
+          --arg format "$QWEN3_TTS_FORMAT" \
+          --arg speed "$QWEN3_TTS_SPEED" \
+          '{model:$model, voice:$voice, input:$input, response_format:$format, speed:($speed|tonumber)}')
+        
+        # Call Qwen3-TTS API
+        TEMP_AUDIO="/tmp/jarvis-status-$$.${QWEN3_TTS_FORMAT}"
+        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_AUDIO" \
+          -X POST "$QWEN3_TTS_URL" \
+          -H "Content-Type: application/json" \
+          -d "$TTS_JSON")
+        
+        if [ "$HTTP_CODE" != "200" ]; then
+            echo "⚠️ Qwen3-TTS failed (HTTP $HTTP_CODE)" >&2
+            rm -f "$TEMP_AUDIO"
+            exit 1
+        fi
+        
+        # Convert to wav
+        ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+        rm -f "$TEMP_AUDIO"
+        
+    elif [ "$TTS_PROVIDER" = "elevenlabs" ]; then
         # ============================================================================
         # ELEVENLABS TTS
         # ============================================================================

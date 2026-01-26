@@ -300,6 +300,19 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-01-26:**
+- ✅ **Qwen3-TTS Integration** - Local network TTS with 28 cloned voices ⭐ NEW
+  - OpenAI-compatible API running on local network (free, fast, high quality)
+  - Custom cloned voices: Jarvis, Paddington, Professor, Victoria, Samantha, and 23 more
+  - Works in both cloud and local modes as alternative to ElevenLabs/Kokoro
+  - `TTS_PROVIDER=qwen3-tts` in cloud.env or local.env
+  - See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
+- ✅ **Orchestrator `--speak` Flag** - Speak final result through local speakers
+  - `./orchestrator/orchestrator_v2.py cloud "What time is it?" --speak`
+  - Uses `say.sh` (cloud) or `say-local.sh` (local) for TTS
+  - Status updates were already playing; this adds final response speech
+  - Useful for CLI testing without wake word
+
 **2026-01-25:**
 - ✅ **Intel API** - Programmatic access to jarvis-intel knowledge files ⭐ NEW
   - CRUD operations for intel files (create, read, update, delete)
@@ -870,6 +883,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-25 (v2.29)  
-**Latest:** Intel API for programmatic knowledge file management + URL Ingest workflow  
+**Last Updated:** 2026-01-26 (v2.30)  
+**Latest:** Qwen3-TTS integration (28 cloned voices) + `--speak` flag for CLI testing  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
