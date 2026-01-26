@@ -14,7 +14,7 @@
 #   jarvis-api          - API server (port 8880) - does DB/evolution/tool-rag sync
 #   jarvis-services     - Background services - does DB/evolution/tool-rag sync  
 #   jarvis-web          - Web UI (port 5001)
-#   jarvis-canvas       - Canvas viewer (port 8090)
+#   jarvis-canvas       - Canvas viewer (port 8890)
 #   jarvis-memory       - Memory Browser UI (port 5002)
 #   jarvis-intelligence - Intelligence Dashboard (port 5003)
 #
@@ -61,15 +61,15 @@ declare -A PORTS=(
     ["api"]="8880"
     ["services"]=""
     ["web"]="5001"
-    ["canvas"]="8090"
+    ["canvas"]="8890"
     ["memory"]="5002"
     ["intelligence"]="5003"
 )
 
 # Health check endpoints
 declare -A HEALTH_ENDPOINTS=(
-    ["api"]="/health"
-    ["web"]="/api/health"
+    ["api"]="/api/health"
+    ["web"]="/api/status"
     ["canvas"]="/api/health"
     ["memory"]="/api/status"
     ["intelligence"]="/api/status"
@@ -217,7 +217,7 @@ start_ui_only() {
     success "UI services started!"
     echo ""
     echo "  Web UI:        http://localhost:5001"
-    echo "  Canvas:        http://localhost:8090"
+    echo "  Canvas:        http://localhost:8890"
     echo "  Memory:        http://localhost:5002"
     echo "  Intelligence:  http://localhost:5003"
     echo ""
@@ -275,7 +275,7 @@ start_all() {
     echo ""
     echo "  API:           http://localhost:8880"
     echo "  Web UI:        http://localhost:5001"
-    echo "  Canvas:        http://localhost:8090"
+    echo "  Canvas:        http://localhost:8890"
     echo "  Memory:        http://localhost:5002"
     echo "  Intelligence:  http://localhost:5003"
     echo ""
@@ -301,7 +301,7 @@ show_help() {
     echo "  jarvis-api          API server (port 8880) - does DB/evolution/tool-rag sync"
     echo "  jarvis-services     Background services - does DB/evolution/tool-rag sync"
     echo "  jarvis-web          Web UI (port 5001)"
-    echo "  jarvis-canvas       Canvas viewer (port 8090)"
+    echo "  jarvis-canvas       Canvas viewer (port 8890)"
     echo "  jarvis-memory       Memory Browser UI (port 5002)"
     echo "  jarvis-intelligence Intelligence Dashboard (port 5003)"
     echo ""

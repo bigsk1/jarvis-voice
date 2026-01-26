@@ -628,7 +628,7 @@ ollama pull nomic-embed-text
 
 ```bash
 # Check API is running
-curl http://192.168.70.228:8880/health
+curl http://192.168.70.228:8880/api/health
 
 # Test reminders endpoint
 curl http://192.168.70.228:8880/api/reminders | jq
@@ -835,13 +835,13 @@ docker inspect n8n | grep IPAddress
 ```bash
 # Check API is running
 sudo systemctl status jarvis-api.service
-curl http://localhost:8880/health
+curl http://localhost:8880/api/health
 
 # Check firewall
 sudo ufw allow 8880/tcp
 
 # Check from other machine
-curl http://192.168.70.228:8880/health
+curl http://192.168.70.228:8880/api/health
 ```
 
 ### Memory/Performance Issues
