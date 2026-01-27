@@ -191,9 +191,19 @@ def main():
         db = MemoryDB()
         
         # Track what we've already ingested (use file hash)
-        ingested_key = "intel_files_ingested"
-        existing_hashes = db.recall(query=ingested_key) or []
-        existing_hash_list = [h.get("value") for h in existing_hashes]
+        # Each file gets its own key: intel_hash_{filename}
+        # This avoids the remember() overwrite issue where all files shared one key
+        cursor = db.conn.cursor()
+        existing_hashes = cursor.execute("""
+            SELECT key, value FROM knowledge_base 
+            WHERE category = 'system' AND key LIKE 'intel_hash_%'
+        """).fetchall()
+        # Build dict: filename -> hash
+        existing_hash_map = {}
+        for row in existing_hashes:
+            # key format: intel_hash_filename.md, value format: hash
+            filename = row['key'].replace('intel_hash_', '')
+            existing_hash_map[filename] = row['value']
         
         total_facts = 0
         new_files = 0
@@ -203,8 +213,9 @@ def main():
         for filepath in files:
             file_hash = get_file_hash(filepath)
             
-            # Check if already ingested
-            if file_hash in existing_hash_list:
+            # Check if already ingested (same hash = unchanged file)
+            stored_hash = existing_hash_map.get(filepath.name)
+            if stored_hash == file_hash:
                 skipped_files += 1
                 continue
             
@@ -218,20 +229,11 @@ def main():
                 continue
             
             # Before adding new facts, check if this file was previously ingested
-            # If so, delete old facts from this source
-            existing_file_hash = None
-            for h in existing_hashes:
-                if h.get("value", "").endswith(f"|{filepath.name}"):
-                    existing_file_hash = h.get("value")
-                    # Delete old memories from this file
-                    cursor = db.conn.cursor()
-                    cursor.execute("DELETE FROM knowledge_base WHERE source LIKE ?", (f"intel/{filepath.name}",))
-                    db.conn.commit()
-                    # Also delete the old hash tracking
-                    cursor.execute("DELETE FROM knowledge_base WHERE category = 'system' AND key = ? AND value = ?", 
-                                 (ingested_key, existing_file_hash))
-                    db.conn.commit()
-                    break
+            # If so, delete old facts from this source (file was modified)
+            if stored_hash is not None and stored_hash != file_hash:
+                # File was modified - delete old memories from this file
+                cursor.execute("DELETE FROM knowledge_base WHERE source LIKE ?", (f"intel/{filepath.name}",))
+                db.conn.commit()
             
             # Save each fact to memory with metadata
             from datetime import datetime
@@ -257,12 +259,13 @@ def main():
                 )
                 total_facts += 1
             
-            # Mark file as ingested (store hash + filename)
+            # Mark file as ingested (unique key per file)
             db.remember(
                 category="system",
-                key=ingested_key,
-                value=f"{file_hash}|{filepath.name}",
-                importance=5
+                key=f"intel_hash_{filepath.name}",
+                value=file_hash,
+                importance=1,
+                generate_embedding=False  # No need for semantic search on hashes
             )
             
             new_files += 1

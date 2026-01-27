@@ -141,8 +141,8 @@ def delete_intel_file(intel_dir: Path, path: str, db: MemoryDB) -> dict[str, Any
     
     # Also remove hash tracking for this file
     cursor.execute(
-        "DELETE FROM knowledge_base WHERE category = 'system' AND key = 'intel_files_ingested' AND value LIKE ?",
-        (f"%|{filename}",)
+        "DELETE FROM knowledge_base WHERE category = 'system' AND key = ?",
+        (f"intel_hash_{filename}",)
     )
     db.conn.commit()
     
