@@ -205,6 +205,42 @@ def main():
             filename = row['key'].replace('intel_hash_', '')
             existing_hash_map[filename] = row['value']
         
+        # Clean up deleted files - remove facts for files that no longer exist
+        current_filenames = {f.name for f in files}
+        deleted_files = 0
+        deleted_facts = 0
+        
+        # Method 1: Clean up files with hash entries that no longer exist
+        for stored_filename in list(existing_hash_map.keys()):
+            if stored_filename not in current_filenames:
+                # File was deleted - remove its facts and hash
+                cursor.execute("DELETE FROM knowledge_base WHERE source LIKE ?", (f"intel/{stored_filename}",))
+                facts_removed = cursor.rowcount
+                cursor.execute("DELETE FROM knowledge_base WHERE category = 'system' AND key = ?", 
+                             (f"intel_hash_{stored_filename}",))
+                db.conn.commit()
+                deleted_files += 1
+                deleted_facts += facts_removed
+                del existing_hash_map[stored_filename]
+        
+        # Method 2: Clean up orphaned facts from files that were deleted before hash tracking
+        # Find all unique intel sources in DB and remove those that don't exist on disk
+        orphan_sources = cursor.execute("""
+            SELECT DISTINCT source FROM knowledge_base 
+            WHERE source LIKE 'intel/%' AND source NOT LIKE 'intel/README.md'
+        """).fetchall()
+        
+        for row in orphan_sources:
+            source = row['source']  # e.g., "intel/old-file.md"
+            filename = source.replace('intel/', '')
+            if filename not in current_filenames:
+                cursor.execute("DELETE FROM knowledge_base WHERE source = ?", (source,))
+                facts_removed = cursor.rowcount
+                if facts_removed > 0:
+                    deleted_files += 1
+                    deleted_facts += facts_removed
+        db.conn.commit()
+        
         total_facts = 0
         new_files = 0
         skipped_files = 0
@@ -272,18 +308,28 @@ def main():
             processed_files.append(filepath.name)
         
         # Build response
-        if new_files == 0:
-            speech = f"All {len(files)} intel files already ingested. Nothing new to add."
-        else:
-            speech = f"Ingested {new_files} intel file{'s' if new_files != 1 else ''}, extracted {total_facts} facts. "
-            if skipped_files > 0:
-                speech += f"Skipped {skipped_files} already-ingested file{'s' if skipped_files != 1 else ''}."
+        speech_parts = []
+        
+        if new_files > 0:
+            speech_parts.append(f"Ingested {new_files} intel file{'s' if new_files != 1 else ''}, extracted {total_facts} facts")
+        
+        if deleted_files > 0:
+            speech_parts.append(f"Cleaned up {deleted_files} deleted file{'s' if deleted_files != 1 else ''} ({deleted_facts} facts removed)")
+        
+        if skipped_files > 0 and new_files == 0 and deleted_files == 0:
+            speech_parts.append(f"All {len(files)} intel files already ingested. Nothing new to add")
+        elif skipped_files > 0:
+            speech_parts.append(f"Skipped {skipped_files} unchanged file{'s' if skipped_files != 1 else ''}")
+        
+        speech = ". ".join(speech_parts) + "." if speech_parts else "No intel files found."
         
         return_success(
             speech,
             {
                 "new_files": new_files,
                 "skipped_files": skipped_files,
+                "deleted_files": deleted_files,
+                "deleted_facts": deleted_facts,
                 "total_facts": total_facts,
                 "processed_files": processed_files
             }
