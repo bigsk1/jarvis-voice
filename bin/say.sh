@@ -20,14 +20,16 @@ mkdir -p "$OUTDIR"
 OUTFILE="$OUTDIR/tts-$(date +%F-%H%M%S).wav"
 
 # Determine TTS provider (default to openai for backward compatibility)
-TTS_PROVIDER="${TTS_PROVIDER:-openai}"
+# TTS_PROVIDER_OVERRIDE allows API calls to override the config file setting
+TTS_PROVIDER="${TTS_PROVIDER_OVERRIDE:-${TTS_PROVIDER:-openai}}"
 
 if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
     # ============================================================================
     # QWEN3-TTS (Local network, OpenAI-compatible voice cloning)
     # ============================================================================
     QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://192.168.70.226:8881/v1/audio/speech}"
-    QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE:-Jarvis}"
+    # QWEN3_TTS_VOICE_OVERRIDE allows API calls to specify a different voice
+    QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE_OVERRIDE:-${QWEN3_TTS_VOICE:-Jarvis}}"
     QWEN3_TTS_FORMAT="${QWEN3_TTS_FORMAT:-mp3}"
     QWEN3_TTS_SPEED="${QWEN3_TTS_SPEED:-1.0}"
     
@@ -63,7 +65,8 @@ elif [ "$TTS_PROVIDER" = "elevenlabs" ]; then
     # ELEVENLABS TTS
     # ============================================================================
     ELEVENLABS_API_KEY="${ELEVENLABS_API_KEY:-}"
-    ELEVENLABS_TTS_VOICE="${ELEVENLABS_TTS_VOICE:-pgCnBQgKPGkIP8fJuita}"
+    # ELEVENLABS_TTS_VOICE_OVERRIDE allows API calls to specify a different voice
+    ELEVENLABS_TTS_VOICE="${ELEVENLABS_TTS_VOICE_OVERRIDE:-${ELEVENLABS_TTS_VOICE:-pgCnBQgKPGkIP8fJuita}}"
     ELEVENLABS_TTS_MODEL="${ELEVENLABS_TTS_MODEL:-eleven_multilingual_v2}"
     
     if [ -z "$ELEVENLABS_API_KEY" ]; then
@@ -109,6 +112,9 @@ else
     # ============================================================================
     # OPENAI TTS (default)
     # ============================================================================
+    # OPENAI_VOICE_OVERRIDE allows API calls to specify a different voice
+    VOICE="${OPENAI_VOICE_OVERRIDE:-${VOICE:-alloy}}"
+    
     # Build TTS JSON safely with jq
     TTS_JSON=$(jq -n \
       --arg model "$TTS_MODEL" \

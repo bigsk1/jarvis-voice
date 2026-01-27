@@ -26,14 +26,16 @@ SANITIZED=$(printf "%s" "$TEXT" \
   | sed 's/^ *//;s/ *$//')
 
 # Determine TTS provider (default to kokoro for backward compatibility)
-TTS_PROVIDER="${TTS_PROVIDER:-kokoro}"
+# TTS_PROVIDER_OVERRIDE allows API calls to override the config file setting
+TTS_PROVIDER="${TTS_PROVIDER_OVERRIDE:-${TTS_PROVIDER:-kokoro}}"
 
 if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
     # ============================================================================
     # QWEN3-TTS (OpenAI-compatible voice cloning)
     # ============================================================================
     QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://192.168.70.226:8881/v1/audio/speech}"
-    QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE:-Jarvis}"
+    # QWEN3_TTS_VOICE_OVERRIDE allows API calls to specify a different voice
+    QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE_OVERRIDE:-${QWEN3_TTS_VOICE:-Jarvis}}"
     QWEN3_TTS_FORMAT="${QWEN3_TTS_FORMAT:-mp3}"
     QWEN3_TTS_SPEED="${QWEN3_TTS_SPEED:-1.0}"
     

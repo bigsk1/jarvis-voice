@@ -2,7 +2,9 @@
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 import subprocess
+import os
 from pathlib import Path
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
@@ -13,13 +15,29 @@ class SpeakRequest(BaseModel):
     """Request to speak a message"""
     message: str
     mode: str = "cloud"  # cloud or local
+    tts_provider: Optional[str] = None  # Override: openai, elevenlabs, qwen3-tts, kokoro
+    voice: Optional[str] = None  # Override voice for the provider
 
 @router.post("/speak")
 async def speak(request: SpeakRequest):
     """
     Proactively speak a message via TTS
     
-    Use this for urgent notifications or reminders
+    Use this for urgent notifications or reminders.
+    
+    Optional overrides allow different voices/providers per request:
+    - tts_provider: openai, elevenlabs, qwen3-tts, kokoro
+    - voice: Provider-specific voice name (e.g., "Samantha" for qwen3-tts)
+    
+    Example for Samantha's voice:
+    ```json
+    {
+      "message": "Hello from Samantha!",
+      "mode": "cloud",
+      "tts_provider": "qwen3-tts",
+      "voice": "Samantha"
+    }
+    ```
     """
     try:
         # Select appropriate TTS script
@@ -34,12 +52,36 @@ async def speak(request: SpeakRequest):
                 detail=f"TTS script not found: {say_script}"
             )
         
-        # Execute TTS
+        # Build environment with optional overrides
+        # Use *_OVERRIDE env vars so they take precedence AFTER config is loaded
+        env = os.environ.copy()
+        provider_used = env.get('TTS_PROVIDER', 'elevenlabs')
+        voice_used = None
+        
+        if request.tts_provider:
+            env['TTS_PROVIDER_OVERRIDE'] = request.tts_provider
+            provider_used = request.tts_provider
+        
+        if request.voice:
+            # Set the appropriate voice override env var based on provider
+            provider = request.tts_provider or env.get('TTS_PROVIDER', 'elevenlabs')
+            if provider == 'qwen3-tts':
+                env['QWEN3_TTS_VOICE_OVERRIDE'] = request.voice
+            elif provider == 'elevenlabs':
+                env['ELEVENLABS_TTS_VOICE_OVERRIDE'] = request.voice
+            elif provider == 'openai':
+                env['OPENAI_VOICE_OVERRIDE'] = request.voice
+            elif provider == 'kokoro':
+                env['KOKORO_TTS_VOICE_OVERRIDE'] = request.voice
+            voice_used = request.voice
+        
+        # Execute TTS with (possibly overridden) environment
         result = subprocess.run(
             [str(say_script), request.message],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
+            env=env
         )
         
         if result.returncode != 0:
@@ -52,7 +94,9 @@ async def speak(request: SpeakRequest):
         return {
             "ok": True,
             "message": "Spoken successfully",
-            "text": request.message
+            "text": request.message,
+            "provider": provider_used,
+            "voice": voice_used
         }
         
     except subprocess.TimeoutExpired:
@@ -62,14 +106,14 @@ async def speak(request: SpeakRequest):
 
 
 class AnnounceRequest(BaseModel):
-    """Simple announce request (CAAL-compatible)"""
+    """Simple announce request"""
     message: str
 
 
 @router.post("/announce")
 async def announce(request: AnnounceRequest):
     """
-    Simple announce endpoint (CAAL-compatible alias)
+    Simple announce endpoint
     
     This is a simpler version of /speak that:
     - Auto-detects mode from environment
