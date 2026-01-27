@@ -14,7 +14,8 @@
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.0** (workflow tooltips, prompt tooltips, server logs) ⭐ ENHANCED
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) 
-- **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel) ⭐ ENHANCED
+- **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice) ⭐ ENHANCED
+- **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support) ⭐ NEW
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
@@ -301,7 +302,20 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-01-26:**
-- ✅ **Qwen3-TTS Integration** - Local network TTS with 28 cloned voices ⭐ NEW
+- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2 ⭐ NEW
+  - `samantha` tool for real-time chat via OpenAI-compatible API
+  - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)
+  - Priority levels: urgent, normal, background
+  - Configurable timeout (30-300s) for quick vs complex tasks
+  - Fire-and-forget webhook option for Discord/Telegram posting
+  - See: `docs/vps2/JARVIS_SAMANTHA_INTEGRATION.md` (private)
+- ✅ **Voice API Multi-Agent Support** - Per-request TTS provider/voice override ⭐ NEW
+  - `/api/voice/speak` now accepts `tts_provider` and `voice` parameters
+  - Enables different agents to speak with distinct voices
+  - Jarvis uses ElevenLabs, Samantha uses Qwen3-TTS "Samantha" voice
+  - Backwards compatible - existing calls work unchanged
+  - See: [`docs/api/VOICES.md`](api/VOICES.md)
+- ✅ **Qwen3-TTS Integration** - Local network TTS with 28 cloned voices
   - OpenAI-compatible API running on local network (free, fast, high quality)
   - Custom cloned voices: Jarvis, Paddington, Professor, Victoria, Samantha, and 23 more
   - Works in both cloud and local modes as alternative to ElevenLabs/Kokoro
@@ -883,6 +897,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-26 (v2.30)  
-**Latest:** Qwen3-TTS integration (28 cloned voices) + `--speak` flag for CLI testing  
+**Last Updated:** 2026-01-26 (v2.31)  
+**Latest:** Samantha multi-agent integration + Voice API multi-agent support + Qwen3-TTS  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

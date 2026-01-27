@@ -1,6 +1,6 @@
 # Jarvis Tools & MCP Servers Inventory
 
-> Last updated: January 17, 2026
+> Last updated: January 26, 2026
 
 ---
 
@@ -34,12 +34,14 @@
 | `manage_intel` | Manage intel folder |
 | `opencode` | AI coding assistant (isolated workspace) |
 | `pdf_create` | Create PDF documents |
+| `pdf_read` | Read/extract text from PDFs, merge, split, search |
 | `phone_call` | Make phone calls |
 | `price_alert` | Manage price alerts for crypto/stocks/futures (n8n monitored) |
 | `printer` | Print documents |
 | `query_service_logs` | Query systemd service logs |
 | `recall` | Recall specific memory by key |
 | `remember` | Store new memories |
+| `samantha` | Contact Samantha AI assistant on VPS2 (multi-agent) |
 | `screenshot_url` | Screenshot web pages |
 | `search_conversations` | Search conversation history |
 | `search_memory` | FTS5 keyword search in memories |
@@ -61,17 +63,12 @@
 | Tool | Description |
 |------|-------------|
 | `docker_control` | Docker containers, compose, images, networks, exec, prune |
+| `generate_password` | Generate secure passwords with various options |
 | `network_tools` | Ping, DNS lookup, port scanning, HTTP/HTTPS checks, traceroute |
 | `status_recap` | Daily status briefing (weather, crypto, stocks, alerts, system, canvas) |
 | `system_monitor` | CPU, memory, disk, processes, network stats |
 | `text_summarizer` | Text summarization, keyword extraction, word/char counts |
 | `youtube_transcript` | Download YouTube transcripts as .srt/.md files |
-
-### 📝 Templates (Not Counted)
-
-| Tool | Description |
-|------|-------------|
-| `example_tool` | Template for creating new tools |
 
 ---
 
@@ -93,16 +90,6 @@
 | `sequentialthinking` | `mcp/sequentialthinking` | Step-by-step reasoning | Not needed currently |
 | `playwright` | `mcr.microsoft.com/playwright/mcp` | Browser automation | Heavy, use crawl_url instead |
 
----
-
-## 🔌 MCP Servers (Cursor IDE)
-
-> Config: `~/.cursor/mcp.json`
-
-| Server | Type | Description |
-|--------|------|-------------|
-| `context7` | HTTP (mcp.context7.com) | Library documentation lookup |
-| `grafana` | Docker (mcp/grafana) | Grafana dashboard/alerting integration |
 
 ---
 
@@ -131,10 +118,9 @@
 
 ## 📊 Stats
 
-- **Total Native Tools**: 51
-  - Core Skills (skills/): 45 enabled
-  - Auto-Tools (skills/auto-tools/): 6 enabled
-  - Templates: 1 (example_tool)
+- **Total Native Tools**: 53
+  - Core Skills (skills/): 46 enabled
+  - Auto-Tools (skills/auto-tools/): 7 enabled
 - **Total MCP Servers (Jarvis)**: 4
   - Enabled: 2
   - Disabled: 2

@@ -89,6 +89,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Custom webhook endpoints
   - OAuth2 handling and token refresh
   - See [`docs/n8n/docs/`](docs/n8n/docs/)
+- **Samantha Multi-Agent Integration**: Secondary AI assistant on remote VPS
+  - Real-time chat via `samantha` tool (OpenAI-compatible API)
+  - Fire-and-forget webhooks for Discord/Telegram posting
+  - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)
+  - **Multi-agent voice**: Samantha speaks with her own voice through Jarvis's speakers
+  - Priority levels (urgent/normal/background) and configurable timeouts
+  - Division of labor: Jarvis = local/home, Samantha = web/social
 
 
 ![memory-browser](docs/images/memory-browser.png)
@@ -118,6 +125,9 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
 
 Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. Qwen3-TTS uses OpenAI-compatible API.
 See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
+
+**Voice API** (`/api/voice/speak`): Supports per-request TTS provider/voice overrides for multi-agent voice identity.
+See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 
 **Recommended Cloud Provider**: **xAI Grok-4-fast** ($0.20/$0.50 per 1M tokens, 2M context window, automatic caching with 90% discount)
 
@@ -1247,6 +1257,15 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2
+  - `samantha` tool for real-time chat via OpenAI-compatible API
+  - Fire-and-forget webhooks for Discord/Telegram posting
+  - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)
+  - Priority levels (urgent/normal/background) and configurable timeouts
+- ✅ **Voice API Multi-Agent Support** - Per-request TTS provider/voice override
+  - `/api/voice/speak` accepts `tts_provider` and `voice` parameters
+  - Jarvis uses ElevenLabs, Samantha uses Qwen3-TTS "Samantha" voice
+  - See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 - ✅ **Qwen3-TTS Integration** - Local network TTS with 28 cloned voices
   - OpenAI-compatible API (free, fast, high quality)
   - Custom voices: Jarvis, Paddington, Professor, Victoria, Samantha, and more
@@ -1537,6 +1556,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.30 (January 2026)  
+**Current Version:** v2.31 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Qwen3-TTS integration (28 cloned voices) + `--speak` flag for CLI voice output
+**Latest Features:** Samantha multi-agent integration + Voice API multi-agent support + Qwen3-TTS (28 cloned voices)
