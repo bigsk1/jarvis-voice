@@ -1,0 +1,22 @@
+{
+  "name": "samantha",
+  "description": "Contact Samantha, a separate AI assistant on remote cloud VPS (vps2). ONLY use when user EXPLICITLY asks to 'ask Samantha', 'have Samantha do', 'tell Samantha', or 'check with Samantha'. She is like a remote colleague - has her own tools (Discord/Telegram posting, browser automation, cron scheduling) but NO access to Jarvis's local network, home systems, prices, weather, or memory. Never auto-delegate your tasks to her - user must specifically request Samantha by name.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "type": "string",
+        "description": "Task for Samantha. Include all context she needs - she cannot see your conversation history. Be specific about what response you want back."
+      },
+      "session": {
+        "type": "string",
+        "description": "Session ID for multi-turn context. 'jarvis' (default) = persistent memory across calls. Use unique ID like 'jarvis-research-jan26' for isolated one-off tasks.",
+        "default": "jarvis"
+      }
+    },
+    "required": ["message"]
+  },
+  "permissions": {
+    "network": true
+  }
+}
