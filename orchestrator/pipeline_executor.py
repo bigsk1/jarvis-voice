@@ -684,6 +684,17 @@ class PipelineExecutor:
                     extracted_value = self._extract_url_from_text(topic)
                 elif extract_type == "main_subject":
                     extracted_value = topic if topic and topic.strip() else None
+                elif extract_type == "first_words":
+                    # Extract first N words from topic for use in titles/keys
+                    max_words = var_def.get("max_words", 4)
+                    if topic and topic.strip():
+                        # Strip leading slash/command prefix if present
+                        clean_topic = topic.strip().lstrip('/')
+                        words = clean_topic.split()
+                        # Filter out empty words and join with underscore
+                        extracted_value = "_".join(w for w in words[:max_words] if w)
+                    else:
+                        extracted_value = None
                 else:
                     extracted_value = topic if topic and topic.strip() else None
             

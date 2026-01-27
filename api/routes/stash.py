@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 import json
+import re
 from pathlib import Path
 
 from api.models.stash import (
@@ -15,8 +16,29 @@ router = APIRouter(prefix="/api/stash", tags=["stash"])
 STASH_DIR = Path(__file__).parent.parent.parent / "data" / "stash"
 
 
+def normalize_space_id(space_id: str) -> str:
+    """
+    Normalize space_id to handle date format variations.
+    
+    LLMs sometimes reformat dates from 20260127 to 2026-01-27.
+    This normalizes both formats to the canonical no-dash format.
+    
+    Examples:
+        space_2026-01-27_095852_abc123 -> space_20260127_095852_abc123
+        space_20260127_095852_abc123 -> space_20260127_095852_abc123 (unchanged)
+    """
+    # Match space_YYYY-MM-DD_ pattern and convert to space_YYYYMMDD_
+    pattern = r'^(space_)(\d{4})-(\d{2})-(\d{2})(_.*)'
+    match = re.match(pattern, space_id)
+    if match:
+        return f"{match.group(1)}{match.group(2)}{match.group(3)}{match.group(4)}{match.group(5)}"
+    return space_id
+
+
 def get_space_meta(space_id: str) -> dict | None:
     """Load meta.json for a space"""
+    # Normalize space_id to handle LLM date reformatting
+    space_id = normalize_space_id(space_id)
     meta_path = STASH_DIR / space_id / "meta.json"
     if not meta_path.exists():
         return None
@@ -244,13 +266,15 @@ async def download_file(space_id: str, file_id: str):
     Returns the actual file content with appropriate mime type.
     """
     try:
-        meta = get_space_meta(space_id)
+        # Normalize space_id to handle LLM date reformatting
+        normalized_space_id = normalize_space_id(space_id)
+        meta = get_space_meta(normalized_space_id)
         if not meta:
             raise HTTPException(status_code=404, detail=f"Space {space_id} not found")
         
         for f in meta.get('files', []):
             if f['file_id'] == file_id:
-                file_path = STASH_DIR / space_id / f['stored_name']
+                file_path = STASH_DIR / normalized_space_id / f['stored_name']
                 if not file_path.exists():
                     raise HTTPException(status_code=404, detail="File not found on disk")
                 

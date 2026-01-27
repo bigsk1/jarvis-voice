@@ -777,6 +777,26 @@ def cleanup_expired() -> dict:
     return {'deleted_spaces': deleted, 'freed_bytes': freed}
 
 
+def normalize_space_id(space_id: str) -> str:
+    """
+    Normalize space_id to handle date format variations.
+    
+    LLMs sometimes reformat dates from 20260127 to 2026-01-27.
+    This normalizes both formats to the canonical no-dash format.
+    
+    Examples:
+        space_2026-01-27_095852_abc123 -> space_20260127_095852_abc123
+        space_20260127_095852_abc123 -> space_20260127_095852_abc123 (unchanged)
+    """
+    import re
+    # Match space_YYYY-MM-DD_ pattern and convert to space_YYYYMMDD_
+    pattern = r'^(space_)(\d{4})-(\d{2})-(\d{2})(_.*)'
+    match = re.match(pattern, space_id)
+    if match:
+        return f"{match.group(1)}{match.group(2)}{match.group(3)}{match.group(4)}{match.group(5)}"
+    return space_id
+
+
 def parse_stash_ref(ref: str) -> tuple[str, str]:
     """Parse a stash:// reference into (space_id, file_id)."""
     if not ref.startswith('stash://'):
@@ -786,7 +806,10 @@ def parse_stash_ref(ref: str) -> tuple[str, str]:
     if len(parts) != 2:
         raise ValueError(f"Invalid stash reference format: {ref}")
     
-    return parts[0], parts[1]
+    # Normalize space_id to handle LLM date reformatting
+    space_id = normalize_space_id(parts[0])
+    
+    return space_id, parts[1]
 
 
 def resolve_file_path(space_id: str = None, file_id: str = None,

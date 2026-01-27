@@ -256,7 +256,9 @@ async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest = N
             workflow = json.load(f)
         
         # Build transcript (trigger + optional query)
-        trigger = workflow.get("trigger", f"/{workflow_id}")
+        # Use first explicit trigger if available, otherwise fall back to /{workflow_id}
+        explicit_triggers = workflow.get("triggers", {}).get("explicit", [])
+        trigger = explicit_triggers[0] if explicit_triggers else workflow.get("trigger", f"/{workflow_id}")
         if request.query:
             transcript = f"{trigger} {request.query}"
         else:
