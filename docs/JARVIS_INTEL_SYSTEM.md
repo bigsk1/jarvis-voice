@@ -109,10 +109,13 @@ Now Jarvis and OpenCode know about your servers:
 ### File Processing
 
 1. **Scan folder** → Find all `.txt` and `.md` files (except README.md)
-2. **Extract facts** → Parse key-value pairs and structured data
-3. **Save to memory** → Store in MemoryDB with high importance (8/10)
-4. **Track ingestion** → MD5 hash prevents duplicate ingestion
-5. **Make available** → Jarvis and OpenCode can now access this info
+2. **Check hashes** → Compare file MD5 hashes against stored hashes
+3. **Clean up deleted** → Remove facts for files that no longer exist on disk
+4. **Skip unchanged** → Files with matching hashes are skipped
+5. **Extract facts** → Parse key-value pairs and structured data from new/modified files
+6. **Save to memory** → Store in MemoryDB with high importance (8/10)
+7. **Update hash** → Store new hash for tracking (unique key per file: `intel_hash_{filename}`)
+8. **Make available** → Jarvis and OpenCode can now access this info
 
 ### Fact Extraction Patterns
 
@@ -166,16 +169,21 @@ Facts are categorized by content:
 ### Check Ingested Files
 
 ```bash
-# Direct Python query
+# Direct SQL query to see tracked files and their hashes
+sqlite3 data/jarvis_memory.db "SELECT key, value FROM knowledge_base WHERE key LIKE 'intel_hash_%'"
+
+# Or via Python
 python3 -c "
 import sys
 sys.path.insert(0, 'lib')
 from memory_db import MemoryDB
 db = MemoryDB()
-results = db.recall('intel_files_ingested', limit=20)
+cursor = db.conn.cursor()
+results = cursor.execute(\"SELECT key, value FROM knowledge_base WHERE key LIKE 'intel_hash_%'\").fetchall()
 print('📁 Ingested files:')
 for r in results:
-    print(f'  • {r.get(\"value\")}')
+    filename = r['key'].replace('intel_hash_', '')
+    print(f'  • {filename} (hash: {r[\"value\"][:8]}...)')
 "
 ```
 
@@ -200,24 +208,33 @@ for r in results:
 
 ### Updating Information
 
-Simply edit the file and re-ingest:
+Simply edit the file and re-ingest - changes are automatically detected:
 
 ```bash
 # 1. Edit your intel file
 nano jarvis-intel/servers.md
 
-# 2. Delete the old hash (forces re-ingestion)
-python3 -c "
-import sys
-sys.path.insert(0, 'lib')
-from memory_db import MemoryDB
-db = MemoryDB()
-# Clear ingestion tracking for specific file
-# (This will be improved in future updates)
-"
-
-# 3. Re-ingest
+# 2. Re-ingest (automatically detects the changed file)
 ./orchestrator/orchestrator_v2.py cloud "Ingest intel files"
+```
+
+The system compares MD5 hashes and only re-ingests modified files. Old facts from the modified file are automatically deleted before adding the new facts.
+
+### Deleting Information
+
+When you delete an intel file, run ingest to clean up:
+
+```bash
+# 1. Delete the file
+rm jarvis-intel/old_servers.md
+
+# 2. Run ingest to clean up orphaned facts
+./orchestrator/orchestrator_v2.py cloud "Ingest intel files"
+```
+
+Response will show:
+```
+"Cleaned up 1 deleted file (15 facts removed). Skipped 4 unchanged files."
 ```
 
 ### Multiple Files
@@ -235,7 +252,7 @@ jarvis-intel/
 
 All files are processed together. Jarvis will report:
 ```
-"Ingested 5 intel files, extracted 42 facts. Skipped 0 already-ingested files."
+"Ingested 5 intel files, extracted 42 facts."
 ```
 
 ### Re-running (No Duplicates)
@@ -246,7 +263,15 @@ If you run "ingest intel files" again without changes:
 "All 5 intel files already ingested. Nothing new to add."
 ```
 
-The MD5 hash prevents duplicate entries.
+If files were modified or deleted:
+```
+"Ingested 2 intel files, extracted 18 facts. Cleaned up 1 deleted file (8 facts removed). Skipped 3 unchanged files."
+```
+
+Each file has a unique MD5 hash stored in the database (`intel_hash_{filename}`). This enables:
+- **Skip unchanged**: Files with matching hashes are not re-processed
+- **Re-ingest modified**: Files with different hashes get their old facts deleted and new facts added
+- **Clean up deleted**: Files that no longer exist have their facts removed from the database
 
 ---
 
@@ -295,8 +320,11 @@ else:
 ### Fixed Issues ✅
 1. **Memory error fixed** → Removed invalid `provider` parameter from `semantic_search()`
 2. **Tool working** → Ingest intel successfully processes files
-3. **Deduplication** → MD5 hash prevents re-ingesting same files
-4. **Integration** → OpenCode can access intel via memory context
+3. **Smart deduplication** → Per-file MD5 hash tracking (unique key per file)
+4. **Change detection** → Only modified files are re-ingested
+5. **Cleanup on delete** → Orphaned facts removed when files are deleted
+6. **Integration** → OpenCode can access intel via memory context
+7. **Cloud/Local mode** → Works correctly in both modes with separate databases
 
 ### Example Intel in System ✅
 
@@ -362,12 +390,29 @@ sudo systemctl restart opencode-jarvis
 **Fix**: Clear memory and re-ingest:
 ```bash
 # Backup first!
-cp data/memory.db data/memory.db.backup
+cp data/jarvis_memory.db data/jarvis_memory.db.backup
 
-# Clear and reingest
-rm data/memory.db
+# Clear intel facts and hashes
+sqlite3 data/jarvis_memory.db "DELETE FROM knowledge_base WHERE source LIKE 'intel/%'"
+sqlite3 data/jarvis_memory.db "DELETE FROM knowledge_base WHERE key LIKE 'intel_hash_%'"
+
+# Re-ingest
 ./orchestrator/orchestrator_v2.py cloud "Ingest intel files"
 ```
+
+### Cloud vs Local Mode
+
+The ingestion system works in both modes with separate databases:
+
+| Mode | Database | Command |
+|------|----------|---------|
+| Cloud | `data/jarvis_memory.db` | `./orchestrator/orchestrator_v2.py cloud "ingest intel"` |
+| Local | `data/jarvis_memory_local.db` | `./orchestrator/orchestrator_v2.py local "ingest intel"` |
+
+**Sync behavior**: If you use a sync script to copy data between databases:
+- Sync typically copies data **to** local but doesn't propagate deletions
+- Running ingest in local mode will clean up any orphaned facts in the local DB
+- Each database maintains independent hash tracking
 
 ---
 
@@ -400,8 +445,8 @@ rm data/memory.db
 
 ## 🚀 **Future Enhancements** (Optional)
 
-1. **Smart updates** → Detect file changes, only update modified facts
-2. **Delete tracking** → Remove facts when intel files are deleted
+1. ~~**Smart updates** → Detect file changes, only update modified facts~~ ✅ **IMPLEMENTED** (Jan 2026)
+2. ~~**Delete tracking** → Remove facts when intel files are deleted~~ ✅ **IMPLEMENTED** (Jan 2026)
 3. **LLM-powered extraction** → Use LLM to extract facts instead of regex
 4. **Confidence scores** → Track how certain Jarvis is about each fact
 5. **Expiration dates** → Auto-expire old infrastructure info
@@ -410,6 +455,6 @@ rm data/memory.db
 ---
 
 **Status**: ✅ Fully operational and tested  
-**Last Updated**: November 12, 2025  
+**Last Updated**: January 27, 2026  
 **Maintained by**: Jarvis development team
 
