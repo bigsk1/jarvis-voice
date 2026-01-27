@@ -24,23 +24,25 @@ import requests
 # Configuration - loaded from environment (no hardcoded URLs/tokens)
 SAMANTHA_URL = os.environ.get("SAMANTHA_URL", "https://your-vps.ts.net/v1/chat/completions")
 SAMANTHA_TOKEN = os.environ.get("SAMANTHA_GATEWAY_TOKEN", "")
-TIMEOUT_SECONDS = 120  # Samantha may need time for complex tasks
+DEFAULT_TIMEOUT = 120  # Default timeout, can be overridden per-call (30-300s)
 
 # For reference - Samantha's capabilities (she has different tools than Jarvis)
 # Discord/Telegram posting, browser automation, cron scheduling, file ops on VPS2
 # She does NOT have: local TTS, price APIs, memory DB, home automation, local network
 
 
-def call_samantha(message: str, session: str = "jarvis") -> dict:
+def call_samantha(message: str, session: str = "jarvis", priority: str = "normal", timeout: int = 120) -> dict:
     """
     Send a message to Samantha and get her response.
     
     Args:
         message: The message/task for Samantha
         session: Session ID for conversation context (default: 'jarvis')
+        priority: Task priority - 'urgent', 'normal', or 'background'
+        timeout: Request timeout in seconds (default: 120)
     
     Returns:
-        dict with 'ok', 'response', 'speech' keys
+        dict with 'ok', 'response', 'speech', 'priority' keys
     """
     if not SAMANTHA_TOKEN:
         return {
@@ -61,10 +63,18 @@ def call_samantha(message: str, session: str = "jarvis") -> dict:
         "Content-Type": "application/json"
     }
     
+    # Prepend priority hint to message if urgent (helps Samantha prioritize)
+    if priority == "urgent":
+        task_message = f"[URGENT - Jarvis needs this immediately] {message}"
+    elif priority == "background":
+        task_message = f"[Background task - low priority] {message}"
+    else:
+        task_message = message
+    
     payload = {
         "model": "clawdbot:main",
         "messages": [
-            {"role": "user", "content": message}
+            {"role": "user", "content": task_message}
         ],
         "user": session,  # Persistent session for multi-turn
         "stream": False   # Explicit non-streaming for cleaner response
@@ -75,7 +85,7 @@ def call_samantha(message: str, session: str = "jarvis") -> dict:
             SAMANTHA_URL,
             headers=headers,
             json=payload,
-            timeout=TIMEOUT_SECONDS
+            timeout=timeout  # Use caller-specified timeout
         )
         
         if response.status_code == 200:
@@ -104,6 +114,7 @@ def call_samantha(message: str, session: str = "jarvis") -> dict:
                     "speech": f"Samantha says: {speech}",
                     "model": data.get("model", "unknown"),
                     "session": session,
+                    "priority": priority,
                     "usage": data.get("usage", {}),  # Token usage if available
                     "note": "Response from remote VPS2 - Samantha has no access to Jarvis's local tools"
                 }
@@ -140,8 +151,8 @@ def call_samantha(message: str, session: str = "jarvis") -> dict:
     except requests.exceptions.Timeout:
         return {
             "ok": False,
-            "error": f"Samantha timed out after {TIMEOUT_SECONDS} seconds - task may be too complex",
-            "hint": "For long tasks, consider using the webhook instead"
+            "error": f"Samantha timed out after {timeout} seconds - task may be too complex",
+            "hint": "Try increasing timeout (up to 300s) or use webhook for very long tasks"
         }
     
     except requests.exceptions.ConnectionError as e:
@@ -179,6 +190,8 @@ def main():
     
     message = args.get("message", "")
     session = args.get("session", "jarvis")
+    priority = args.get("priority", "normal")
+    timeout = args.get("timeout", 120)
     
     if not message:
         print(json.dumps({
@@ -187,7 +200,14 @@ def main():
         }))
         sys.exit(1)
     
-    result = call_samantha(message, session)
+    # Validate priority
+    if priority not in ["urgent", "normal", "background"]:
+        priority = "normal"
+    
+    # Validate timeout (30-300 seconds)
+    timeout = max(30, min(300, int(timeout)))
+    
+    result = call_samantha(message, session, priority, timeout)
     print(json.dumps(result, indent=2))
 
 

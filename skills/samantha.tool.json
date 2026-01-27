@@ -12,6 +12,17 @@
         "type": "string",
         "description": "Session ID for multi-turn context. 'jarvis' (default) = persistent memory across calls. Use unique ID like 'jarvis-research-jan26' for isolated one-off tasks.",
         "default": "jarvis"
+      },
+      "priority": {
+        "type": "string",
+        "enum": ["urgent", "normal", "background"],
+        "description": "Task priority. 'urgent' = needs immediate attention, 'normal' = standard (default), 'background' = can wait/lower priority.",
+        "default": "normal"
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "Timeout in seconds. Quick tasks: 30-60s. Complex research: 120s (default). Very long tasks: up to 300s.",
+        "default": 120
       }
     },
     "required": ["message"]
