@@ -37,7 +37,10 @@ def call_samantha(message: str, session: str = "jarvis", priority: str = "normal
     
     Args:
         message: The message/task for Samantha
-        session: Session ID for conversation context (default: 'jarvis')
+        session: Session ID for conversation context. Use 'jarvis' (default) to continue
+                 previous conversations - Samantha remembers prior context. Use a unique
+                 ID like 'jarvis-research-jan26' for isolated tasks that shouldn't affect
+                 main conversation history. Same session = context retained.
         priority: Task priority - 'urgent', 'normal', or 'background'
         timeout: Request timeout in seconds (default: 120)
     

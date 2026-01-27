@@ -12,7 +12,7 @@
       },
       "session": {
         "type": "string",
-        "description": "Session ID for multi-turn context. 'jarvis' (default) = persistent memory across calls. Use unique ID like 'jarvis-research-jan26' for isolated one-off tasks.",
+        "description": "Session ID for conversation context. Use 'jarvis' (default) to continue previous conversations - Samantha will remember prior context. Use unique ID like 'jarvis-research-jan26' for isolated one-off tasks that shouldn't affect main conversation history. Same session = Samantha has context, different session = fresh start.",
         "default": "jarvis"
       },
       "priority": {
