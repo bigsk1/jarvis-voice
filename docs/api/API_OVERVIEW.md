@@ -737,6 +737,51 @@ GET /api/canvas/{page_id}
 
 See [CANVAS.md](./CANVAS.md) for detailed documentation.
 
+### Images (Cloudflare CDN) ⭐ NEW
+
+Upload images to Cloudflare Images CDN for permanent, public hosting.
+
+```bash
+# Upload image (file, URL, base64, or stash reference)
+POST /api/images
+{
+  "source": "https://example.com/image.jpg",
+  "source_type": "url",
+  "uploader": "jarvis",
+  "category": "status",
+  "prompt": "Dashboard visualization",
+  "tags": ["status", "generated"]
+}
+
+# Upload base64 (convenience endpoint)
+POST /api/images/base64
+{
+  "image": "data:image/png;base64,iVBORw0KGgo...",
+  "uploader": "samantha",
+  "category": "generated"
+}
+
+# Check credentials configured
+GET /api/images/health
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "url": "https://imagedelivery.net/xxx/jarvis/2026-01-27/status/dashboard_abc123/public",
+  "image_id": "jarvis/2026-01-27/status/dashboard_abc123",
+  "custom_path": "jarvis/2026-01-27/status/dashboard_abc123",
+  "uploader": "jarvis"
+}
+```
+
+**Path Organization:** `{uploader}/{date}/{category}/{filename}_{hash}`
+
+**⚠️ Privacy:** Uploaded images are publicly accessible. Do NOT upload screenshots, personal photos, or sensitive documents.
+
+See [IMAGES.md](./IMAGES.md) for detailed documentation.
+
 ### Intel (Knowledge Files) 
 
 CRUD operations for `jarvis-intel/` knowledge files with ingestion support.

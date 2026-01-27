@@ -96,6 +96,13 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - **Multi-agent voice**: Samantha speaks with her own voice through Jarvis's speakers
   - Priority levels (urgent/normal/background) and configurable timeouts
   - Division of labor: Jarvis = local/home, Samantha = web/social
+- **Cloudflare Images CDN**: Permanent image hosting for multi-agent workflows
+  - Upload from file, URL, base64, or stash reference
+  - Organized paths: `{uploader}/{date}/{category}/{filename}`
+  - Metadata storage (prompt, tags, provider) for tracking
+  - Enables Samantha to share generated images via permanent URLs
+  - API: `POST /api/images`, `POST /api/images/base64`
+  - See [`docs/api/IMAGES.md`](docs/api/IMAGES.md)
 
 
 ![memory-browser](docs/images/memory-browser.png)
@@ -1017,8 +1024,9 @@ LIMIT 7;"
 
 **Proactive System:**
 - [`docs/api/`](docs/api/) - **Proactive API** documentation (webhooks, alerts, monitoring)
-- [`docs/api/API_OVERVIEW.md`](docs/api/API_OVERVIEW.md) - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Intel, Conversations) ⭐ ENHANCED
+- [`docs/api/API_OVERVIEW.md`](docs/api/API_OVERVIEW.md) - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Intel, Images, Conversations) ⭐ ENHANCED
 - [`docs/api/INTEL.md`](docs/api/INTEL.md) - **Intel API** (CRUD for jarvis-intel files, ingestion, stats)
+- [`docs/api/IMAGES.md`](docs/api/IMAGES.md) - **Images API** (Cloudflare CDN upload, multi-agent image sharing) ⭐ NEW
 - [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (list, execute, history) 
 - [`docs/service/`](docs/service/) - **Background Services** documentation (daemons, auto-resolve)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
@@ -1257,6 +1265,11 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Cloudflare Images API** - Permanent CDN hosting for images
+  - Upload from file, URL, base64, or stash reference
+  - Organized paths with metadata tracking
+  - Multi-agent support for Samantha image sharing
+  - See: [`docs/api/IMAGES.md`](docs/api/IMAGES.md)
 - ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2
   - `samantha` tool for real-time chat via OpenAI-compatible API
   - Fire-and-forget webhooks for Discord/Telegram posting

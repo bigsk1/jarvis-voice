@@ -13,6 +13,7 @@ from .prices import router as prices_router
 from .config import router as config_router
 from .workflows import router as workflows_router
 from .intel import router as intel_router
+from .images import router as images_router
 
-__all__ = ['alerts_router', 'reminders_router', 'health_router', 'voice_router', 'memory_router', 'query_router', 'conversations_router', 'stash_router', 'canvas_router', 'prices_router', 'config_router', 'workflows_router', 'intel_router']
+__all__ = ['alerts_router', 'reminders_router', 'health_router', 'voice_router', 'memory_router', 'query_router', 'conversations_router', 'stash_router', 'canvas_router', 'prices_router', 'config_router', 'workflows_router', 'intel_router', 'images_router']
 

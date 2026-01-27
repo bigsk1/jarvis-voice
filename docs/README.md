@@ -21,7 +21,8 @@
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
 - **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization** ⭐ ENHANCED)
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
-- **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results) 
+- **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results)
+- **[api/IMAGES.md](api/IMAGES.md)** - 🖼️ **Cloudflare CDN Upload** (permanent image hosting, multi-agent sharing, metadata tracking) ⭐ NEW 
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) 
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
@@ -300,6 +301,17 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-01-27:**
+- ✅ **Cloudflare Images API** - Upload images to Cloudflare CDN for permanent hosting ⭐ NEW
+  - `POST /api/images` - Upload from file, URL, base64, or stash reference
+  - `POST /api/images/base64` - Convenience endpoint for generated images
+  - Organized paths: `{uploader}/{date}/{category}/{filename}_{hash}`
+  - Metadata storage: prompt, tags, provider, upload time
+  - Multi-agent support: Samantha can upload via API, get CDN URL for canvas
+  - Privacy warning: URLs are public - don't upload sensitive content
+  - Jarvis tool: `upload_cloudflare` for direct use in workflows
+  - See: [`docs/api/IMAGES.md`](api/IMAGES.md)
 
 **2026-01-26:**
 - ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2 ⭐ NEW
@@ -897,6 +909,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-26 (v2.31)  
-**Latest:** Samantha multi-agent integration + Voice API multi-agent support + Qwen3-TTS  
+**Last Updated:** 2026-01-27 (v2.32)  
+**Latest:** Cloudflare Images API + Samantha multi-agent integration + Voice API multi-agent support  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

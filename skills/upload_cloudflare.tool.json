@@ -1,0 +1,56 @@
+{
+  "enabled": true,
+  "name": "upload_cloudflare",
+  "description": "Upload an image to Cloudflare Images CDN. Returns a permanent, PUBLIC CDN URL. WARNING: Uploaded images are publicly accessible to anyone with the URL - do NOT upload screenshots, sensitive documents, personal photos, or anything containing private information. Use for: generated artwork, diagrams, status visuals, shareable content only.",
+  "script": "upload_cloudflare.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "Image source: file path, URL (https://...), base64 data, or stash reference (stash://space_id/file_id)"
+      },
+      "source_type": {
+        "type": "string",
+        "enum": ["auto", "file", "url", "base64", "stash"],
+        "description": "Source type. 'auto' (default) detects from source format.",
+        "default": "auto"
+      },
+      "uploader": {
+        "type": "string",
+        "description": "Who is uploading - used for path organization. Default: jarvis",
+        "default": "jarvis"
+      },
+      "category": {
+        "type": "string",
+        "description": "Category for path organization (status, generated, stash, etc). Auto-detected if not provided."
+      },
+      "prompt": {
+        "type": "string",
+        "description": "The prompt used to generate the image (stored as metadata, not public)"
+      },
+      "tags": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Tags for the image (stored as metadata, not public)"
+      },
+      "provider": {
+        "type": "string",
+        "description": "Image provider (gemini, openai, etc) - stored as metadata"
+      }
+    },
+    "required": ["source"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "test_input": {
+    "source": "https://via.placeholder.com/150",
+    "source_type": "url"
+  },
+  "expected_output_contains": ["ok"]
+}
