@@ -1,13 +1,14 @@
 """
-Canvas API routes - Read-only access to canvas pages.
+Canvas API routes - CRUD access to canvas pages.
 """
 import os
 import json
 import re
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from ..models.canvas import (
     CanvasPage, CanvasPageFull, CanvasPageResponse,
-    CanvasListResponse, CanvasStats
+    CanvasListResponse, CanvasStats, CanvasCreate, CanvasUpdate
 )
 
 router = APIRouter(prefix="/api/canvas", tags=["canvas"])
@@ -290,6 +291,153 @@ async def list_tools():
         "count": len(tools),
         "tools": tools
     }
+
+
+# ============================================================================
+# CREATE/UPDATE ENDPOINTS
+# ============================================================================
+
+@router.post("", response_model=CanvasPageResponse)
+@router.post("/", response_model=CanvasPageResponse, include_in_schema=False)
+async def create_page(data: CanvasCreate):
+    """
+    Create a new canvas page.
+    
+    **Example**:
+    ```json
+    {
+        "title": "Notes/2026-01-27/My Research",
+        "content": "# Research Notes\\n\\nFindings...",
+        "tags": ["research", "notes"],
+        "source_tool": "samantha"
+    }
+    ```
+    
+    Returns the created page with its ID.
+    """
+    # Ensure canvas directory exists
+    os.makedirs(CANVAS_DIR, exist_ok=True)
+    
+    # Generate page ID
+    now = datetime.now(timezone.utc)
+    page_id = f"page_{now.strftime('%Y%m%d_%H%M%S')}"
+    
+    # Build page data
+    page_data = {
+        "id": page_id,
+        "title": data.title,
+        "content": data.content,
+        "content_type": "markdown",
+        "tags": data.tags or [],
+        "source_tool": data.source_tool,
+        "created": now.isoformat().replace('+00:00', 'Z'),
+        "updated": now.isoformat().replace('+00:00', 'Z'),
+        "pinned": False
+    }
+    
+    # Save to file
+    filepath = os.path.join(CANVAS_DIR, f"{page_id}.json")
+    try:
+        with open(filepath, 'w') as f:
+            json.dump(page_data, f, indent=2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save page: {e}")
+    
+    return CanvasPageResponse(
+        ok=True,
+        page=_page_to_model(page_data, include_content=True, for_list=False)
+    )
+
+
+@router.put("/{page_id}", response_model=CanvasPageResponse)
+async def update_page(page_id: str, data: CanvasUpdate):
+    """
+    Update an existing canvas page.
+    
+    Only provided fields are updated; others remain unchanged.
+    
+    **Example**:
+    ```json
+    {
+        "content": "# Updated Content\\n\\nNew findings...",
+        "tags": ["research", "updated"]
+    }
+    ```
+    """
+    # Normalize page_id
+    if not page_id.startswith("page_"):
+        page_id = f"page_{page_id}"
+    
+    filename = f"{page_id}.json" if not page_id.endswith(".json") else page_id
+    filepath = os.path.join(CANVAS_DIR, filename)
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail=f"Page not found: {page_id}")
+    
+    # Load existing page
+    page_data = _load_page(filepath)
+    if not page_data:
+        raise HTTPException(status_code=500, detail="Failed to load page")
+    
+    # Update only provided fields
+    if data.title is not None:
+        page_data["title"] = data.title
+    if data.content is not None:
+        page_data["content"] = data.content
+    if data.tags is not None:
+        page_data["tags"] = data.tags
+    if data.pinned is not None:
+        page_data["pinned"] = data.pinned
+    
+    # Update timestamp
+    now = datetime.now(timezone.utc)
+    page_data["updated"] = now.isoformat().replace('+00:00', 'Z')
+    
+    # Save
+    try:
+        with open(filepath, 'w') as f:
+            json.dump(page_data, f, indent=2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save page: {e}")
+    
+    return CanvasPageResponse(
+        ok=True,
+        page=_page_to_model(page_data, include_content=True, for_list=False)
+    )
+
+
+@router.delete("/{page_id}", response_model=CanvasPageResponse)
+async def delete_page(page_id: str):
+    """
+    Delete a canvas page.
+    
+    Returns the deleted page data.
+    """
+    # Normalize page_id
+    if not page_id.startswith("page_"):
+        page_id = f"page_{page_id}"
+    
+    filename = f"{page_id}.json" if not page_id.endswith(".json") else page_id
+    filepath = os.path.join(CANVAS_DIR, filename)
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail=f"Page not found: {page_id}")
+    
+    # Load page data before deletion
+    page_data = _load_page(filepath)
+    if not page_data:
+        raise HTTPException(status_code=500, detail="Failed to load page")
+    
+    # Delete file
+    try:
+        os.remove(filepath)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete page: {e}")
+    
+    return CanvasPageResponse(
+        ok=True,
+        page=_page_to_model(page_data, include_content=False, for_list=False)
+    )
 
 
 # ============================================================================

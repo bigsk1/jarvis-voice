@@ -48,3 +48,19 @@ class CanvasStats(BaseModel):
     by_tag: dict[str, int] = Field(default_factory=dict)
     oldest_page: str | None = None
     newest_page: str | None = None
+
+
+class CanvasCreate(BaseModel):
+    """Request to create a canvas page."""
+    title: str = Field(..., description="Page title (can include folder path like 'Notes/2026-01-27/My Note')")
+    content: str = Field(..., description="Markdown content")
+    tags: list[str] = Field(default_factory=list, description="Optional tags")
+    source_tool: str | None = Field(None, description="Tool/source that created this page")
+
+
+class CanvasUpdate(BaseModel):
+    """Request to update a canvas page."""
+    title: str | None = Field(None, description="New title (optional)")
+    content: str | None = Field(None, description="New content (optional)")
+    tags: list[str] | None = Field(None, description="New tags (optional, replaces existing)")
+    pinned: bool | None = Field(None, description="Pin status (optional)")
