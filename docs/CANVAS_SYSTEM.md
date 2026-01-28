@@ -288,8 +288,20 @@ Workflows create canvas pages with folder structure:
 - **Syntax highlighting** - Code blocks with language detection
 - **Source query** - Shows what user asked
 - **Edit/Delete** - Modify or remove pages
-- **Pin toggle** - Keep important pages accessible
+- **Pin toggle** - Keep important pages accessible (also pins referenced stash images)
 - **Print button** - Print current page using browser print dialog (🖨️)
+
+### Pinning and Image Preservation
+
+When you **pin a canvas page**, any stash images referenced in that page are automatically pinned too. This prevents the images from being cleaned up by the stash TTL expiration (default 7 days).
+
+**How it works:**
+- Canvas pages embed images as `![img](stash://space_xxx/file.jpg)`
+- When you click the pin button, the canvas server extracts all `stash://` references
+- Each referenced stash space is automatically pinned (`pinned: true` in meta.json)
+- Pinned stash spaces never expire, so your images stay intact
+
+**Note:** Unpinning a page does NOT auto-unpin the stash spaces (to avoid breaking other pages that may reference them). To unpin stash spaces, use the stash tool directly.
 
 ### Print Support
 Click the 🖨️ button to print a page:

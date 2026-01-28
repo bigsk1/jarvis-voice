@@ -31,6 +31,69 @@ from flask import Flask, jsonify, request, render_template_string, send_from_dir
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from flask_cors import CORS
+import re
+
+
+def extract_stash_space_ids(content: str) -> set[str]:
+    """
+    Extract unique stash space IDs from markdown content.
+    
+    Matches stash:// URLs in markdown images/links:
+        ![img](stash://space_20260127_xxx/file.jpg)
+        [link](stash://space_20260127_xxx/doc.pdf)
+    
+    Returns set of space_ids (e.g., {'space_20260127_xxx', 'space_20260128_yyy'})
+    """
+    if not content:
+        return set()
+    
+    # Match stash://space_id/anything patterns
+    pattern = r'stash://([^/\s\)"\']+)'
+    matches = re.findall(pattern, content)
+    
+    # Normalize space IDs (handle date format variations)
+    normalized = set()
+    for space_id in matches:
+        normalized.add(normalize_space_id(space_id))
+    
+    return normalized
+
+
+def sync_stash_pins(content: str, pinned: bool):
+    """
+    Sync stash space pins based on canvas page pin status.
+    
+    When a canvas page is pinned, pin all referenced stash spaces
+    so their images won't be cleaned up by TTL expiration.
+    
+    Args:
+        content: Canvas page markdown content
+        pinned: Whether the page is being pinned (True) or unpinned (False)
+    
+    Note: We only AUTO-PIN spaces (when page pinned).
+          We don't auto-unpin to avoid breaking other pages that may reference the same space.
+    """
+    if not pinned:
+        # Don't auto-unpin - other pages might reference the same spaces
+        return
+    
+    space_ids = extract_stash_space_ids(content)
+    if not space_ids:
+        return
+    
+    try:
+        from stash_helper import StashSpace
+        
+        for space_id in space_ids:
+            try:
+                space = StashSpace(space_id, STASH_DIR)
+                if space.exists and not space.meta.get('pinned', False):
+                    space.update(pinned=True)
+                    print(f"📌 Auto-pinned stash space: {space_id}")
+            except Exception as e:
+                print(f"⚠️  Failed to pin stash space {space_id}: {e}")
+    except ImportError:
+        print("⚠️  stash_helper not available for pin sync")
 
 # Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -2130,6 +2193,10 @@ def create_page():
         "pinned": data.get('pinned', False)
     }
     
+    # Sync stash pins if page is created as pinned
+    if page.get('pinned', False):
+        sync_stash_pins(page.get('content', ''), pinned=True)
+    
     save_page(page)
     return jsonify(page), 201
 
@@ -2145,6 +2212,7 @@ def update_page(page_id):
         page = json.load(f)
     
     data = request.get_json()
+    old_pinned = page.get('pinned', False)
     
     # Update allowed fields
     if 'title' in data:
@@ -2157,6 +2225,13 @@ def update_page(page_id):
         page['pinned'] = data['pinned']
     
     page['updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"
+    
+    # Sync stash pins when page is pinned
+    # (auto-pins referenced stash spaces so images don't expire)
+    new_pinned = page.get('pinned', False)
+    if new_pinned and not old_pinned:
+        # Page was just pinned - sync stash spaces
+        sync_stash_pins(page.get('content', ''), pinned=True)
     
     save_page(page)
     return jsonify(page)

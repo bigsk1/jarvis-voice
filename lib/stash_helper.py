@@ -438,6 +438,7 @@ class StashSpace:
             'file_count': len(self.meta.get('files', []))
         }
     
+    @property
     def is_expired(self) -> bool:
         """Check if space has expired based on TTL."""
         if self.meta.get('pinned', False):
