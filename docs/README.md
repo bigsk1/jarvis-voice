@@ -302,8 +302,49 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-01-28:**
+- ✅ **Generated Images API** - Full management of local generated images ⭐ NEW
+  - `GET /api/generated-images` - List/search images with pagination
+  - `GET /api/generated-images/{name}` - Download image file
+  - `GET /api/generated-images/{name}/base64` - Get as base64
+  - `DELETE /api/generated-images/{name}` - Delete image
+  - `POST /api/generated-images/generate` - Generate new image with `upload_to_cdn` option
+  - `GET /api/generated-images/{name}/cdn-url` - Get/create CDN URL (uploads once, caches)
+  - `GET /api/generated-images/cdn-catalog` - List all uploaded images with URLs
+  - CDN catalog (`cdn_catalog.json`) tracks uploaded images for instant URL retrieval
+  - See: [`docs/api/GENERATED_IMAGES.md`](api/GENERATED_IMAGES.md)
+- ✅ **Image Gallery UI** - Browse generated images in jarvis-canvas ⭐ NEW
+  - New "🖼️ Gallery" link in Canvas header → `/gallery`
+  - Grid view with thumbnails, search, sort by date/name/size
+  - Lightbox for full-size viewing with keyboard navigation
+  - Download, Get CDN URL (🔗), and Delete buttons
+  - Responsive design for mobile/tablet
+- ✅ **Canvas Pin → Stash Pin Sync** - Image preservation ⭐ NEW
+  - When pinning a canvas page, automatically pins referenced stash spaces
+  - Prevents images from breaking when stash TTL expires
+  - Stash `is_expired` property fix for correct pinned space handling
+
 **2026-01-27:**
-- ✅ **Cloudflare Images API** - Upload images to Cloudflare CDN for permanent hosting ⭐ NEW
+- ✅ **Service Resilience** - Daemon crash prevention ⭐ ENHANCED
+  - Retry logic with exponential backoff for DB locks (reminder_scheduler, follow_up_daemon, self_healing_daemon)
+  - Self-healing daemon now monitors systemd services and sibling daemons
+  - PID + cmdline verification prevents false positives from PID reuse
+  - Graceful degradation on transient failures
+- ✅ **API Request Logging** - Track all API traffic ⭐ NEW
+  - `logs/api/access-YYYY-MM-DD.jsonl` and `errors-YYYY-MM-DD.jsonl`
+  - Configurable loopback filtering (internal vs external traffic)
+  - `jq` commands for live tailing, filtering, performance analysis
+  - See: [`docs/api/LOGGING.md`](api/LOGGING.md)
+- ✅ **Log Management** - Automated cleanup ⭐ NEW
+  - `bin/cleanup-logs` - Clean logs older than 60 days
+  - `bin/cleanup-audio` - Clean audio files older than 30 days
+  - `bin/cleanup-all` - Master script (logs, audio, images, stash)
+  - Cron automation documented in [`docs/service/README.md`](service/README.md)
+- ✅ **Workflow API Fixes** - Better LLM integration
+  - Auto-strip trigger prefixes from queries
+  - Required input validation with clear error messages
+  - `triggers` and `requires_input` fields in workflow list response
+- ✅ **Cloudflare Images API** - Upload images to Cloudflare CDN for permanent hosting
   - `POST /api/images` - Upload from file, URL, base64, or stash reference
   - `POST /api/images/base64` - Convenience endpoint for generated images
   - Organized paths: `{uploader}/{date}/{category}/{filename}_{hash}`
@@ -909,6 +950,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-27 (v2.32)  
-**Latest:** Cloudflare Images API + Samantha multi-agent integration + Voice API multi-agent support  
+**Last Updated:** 2026-01-28 (v2.33)  
+**Latest:** Generated Images API + Image Gallery UI + CDN Catalog + Service Resilience + Log Management  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

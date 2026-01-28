@@ -103,6 +103,16 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - Enables Samantha to share generated images via permanent URLs
   - API: `POST /api/images`, `POST /api/images/base64`
   - See [`docs/api/IMAGES.md`](docs/api/IMAGES.md)
+- **Generated Images API**: Full management of AI-generated images
+  - List, search, download, delete local images
+  - Generate new images with optional `upload_to_cdn` for one-step CDN URL
+  - CDN catalog (`cdn_catalog.json`) caches URLs - no re-uploads needed
+  - API: `/api/generated-images/*`
+  - See [`docs/api/GENERATED_IMAGES.md`](docs/api/GENERATED_IMAGES.md)
+- **Image Gallery UI**: Browse generated images in Canvas web UI
+  - Grid view with thumbnails, search, sort options
+  - Lightbox viewer, download, get CDN URL, delete
+  - Access via "🖼️ Gallery" link in Canvas header
 
 
 ![memory-browser](docs/images/memory-browser.png)
@@ -1265,6 +1275,23 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Generated Images API** - Full management of local generated images ⭐ NEW
+  - List, search, download, delete, generate images via API
+  - `upload_to_cdn` parameter for one-step generate + CDN upload
+  - CDN catalog caches URLs for instant retrieval (no re-uploads)
+  - Image Gallery UI in Canvas for visual browsing
+  - See: [`docs/api/GENERATED_IMAGES.md`](docs/api/GENERATED_IMAGES.md)
+- ✅ **Service Resilience** - Daemon crash prevention ⭐ ENHANCED
+  - Retry logic with exponential backoff for database locks
+  - Self-healing daemon monitors systemd services and sibling daemons
+  - PID + cmdline verification prevents false positives
+- ✅ **Log Management** - Automated cleanup for logs, audio, images, stash
+  - `cleanup-logs`, `cleanup-audio`, `cleanup-all` scripts
+  - API request logging with `jq` analysis commands
+  - See: [`docs/api/LOGGING.md`](docs/api/LOGGING.md)
+- ✅ **Canvas Pin → Stash Pin Sync** - Image preservation
+  - Pinning canvas page auto-pins referenced stash spaces
+  - Prevents image breakage from stash TTL expiration
 - ✅ **Cloudflare Images API** - Permanent CDN hosting for images
   - Upload from file, URL, base64, or stash reference
   - Organized paths with metadata tracking
@@ -1569,6 +1596,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Private project - Not licensed for public use.
 
 
-**Current Version:** v2.31 (January 2026)  
+**Current Version:** v2.33 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Samantha multi-agent integration + Voice API multi-agent support + Qwen3-TTS (28 cloned voices)
+**Latest Features:** Generated Images API + Image Gallery + CDN Catalog + Service Resilience + Log Management
