@@ -5,11 +5,13 @@ Unlike /api/images (Cloudflare uploads), these routes manage the local
 data/generated_images/ folder where AI-generated images are stored.
 
 Endpoints:
-- GET  /api/generated-images          - List all images
-- GET  /api/generated-images/{name}   - Get image file
+- GET  /api/generated-images              - List all images
+- GET  /api/generated-images/{name}       - Get image file
 - GET  /api/generated-images/{name}/base64 - Get image as base64
-- DELETE /api/generated-images/{name} - Delete image
-- POST /api/generated-images/generate - Generate new image
+- GET  /api/generated-images/{name}/cdn-url - Get/create CDN URL
+- DELETE /api/generated-images/{name}     - Delete image
+- POST /api/generated-images/generate     - Generate new image
+- GET  /api/generated-images/cdn-catalog  - List all CDN URLs
 """
 import sys
 import base64
@@ -40,6 +42,52 @@ GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 # Supported image extensions
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+
+# CDN catalog file - maps filenames to Cloudflare URLs
+CDN_CATALOG_FILE = GENERATED_IMAGES_DIR / "cdn_catalog.json"
+
+
+def load_cdn_catalog() -> dict:
+    """Load the CDN catalog from disk."""
+    if CDN_CATALOG_FILE.exists():
+        try:
+            return json.loads(CDN_CATALOG_FILE.read_text())
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+
+def save_cdn_catalog(catalog: dict) -> None:
+    """Save the CDN catalog to disk."""
+    CDN_CATALOG_FILE.write_text(json.dumps(catalog, indent=2))
+
+
+def get_cdn_url(filename: str) -> Optional[str]:
+    """Get cached CDN URL for a filename, or None if not uploaded."""
+    catalog = load_cdn_catalog()
+    entry = catalog.get(filename)
+    if entry:
+        return entry.get("url")
+    return None
+
+
+def set_cdn_url(filename: str, url: str, image_id: str = None) -> None:
+    """Store CDN URL for a filename."""
+    catalog = load_cdn_catalog()
+    catalog[filename] = {
+        "url": url,
+        "image_id": image_id,
+        "uploaded_at": datetime.now().isoformat()
+    }
+    save_cdn_catalog(catalog)
+
+
+def remove_cdn_url(filename: str) -> None:
+    """Remove CDN URL entry when image is deleted."""
+    catalog = load_cdn_catalog()
+    if filename in catalog:
+        del catalog[filename]
+        save_cdn_catalog(catalog)
 
 
 class ImageInfo(BaseModel):
@@ -74,6 +122,31 @@ class DeleteResponse(BaseModel):
     ok: bool
     deleted: Optional[str] = None
     error: Optional[str] = None
+
+
+class CdnUrlResponse(BaseModel):
+    """Response with CDN URL for an image."""
+    ok: bool = True
+    name: str
+    url: Optional[str] = None
+    cached: bool = False  # True if URL was already in catalog
+    image_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class CdnCatalogEntry(BaseModel):
+    """Entry in the CDN catalog."""
+    filename: str
+    url: str
+    image_id: Optional[str] = None
+    uploaded_at: str
+
+
+class CdnCatalogResponse(BaseModel):
+    """Response for CDN catalog listing."""
+    ok: bool = True
+    count: int
+    entries: list[CdnCatalogEntry]
 
 
 class GenerateRequest(BaseModel):
@@ -293,6 +366,131 @@ async def generate_image(request: GenerateRequest):
         return GenerateResponse(ok=False, error=str(e))
 
 
+@router.get("/cdn-catalog", response_model=CdnCatalogResponse)
+async def list_cdn_catalog():
+    """
+    List all images that have been uploaded to Cloudflare CDN.
+    
+    Returns the catalog of filename → CDN URL mappings.
+    Use this to check if an image has already been uploaded.
+    
+    **Example**:
+    ```bash
+    curl http://localhost:8880/api/generated-images/cdn-catalog
+    ```
+    """
+    catalog = load_cdn_catalog()
+    entries = []
+    
+    for filename, data in catalog.items():
+        entries.append(CdnCatalogEntry(
+            filename=filename,
+            url=data.get("url", ""),
+            image_id=data.get("image_id"),
+            uploaded_at=data.get("uploaded_at", "")
+        ))
+    
+    # Sort by upload date descending
+    entries.sort(key=lambda x: x.uploaded_at, reverse=True)
+    
+    return CdnCatalogResponse(
+        ok=True,
+        count=len(entries),
+        entries=entries
+    )
+
+
+@router.get("/{filename}/cdn-url", response_model=CdnUrlResponse)
+async def get_or_create_cdn_url(filename: str):
+    """
+    Get the Cloudflare CDN URL for an image.
+    
+    If the image hasn't been uploaded yet, it will be uploaded first.
+    Subsequent calls return the cached URL without re-uploading.
+    
+    **Example**:
+    ```bash
+    curl http://localhost:8880/api/generated-images/my_image.jpg/cdn-url
+    ```
+    
+    **Response (cached)**:
+    ```json
+    {
+      "ok": true,
+      "name": "my_image.jpg",
+      "url": "https://imagedelivery.net/xxx/yyy/public",
+      "cached": true
+    }
+    ```
+    
+    **Response (new upload)**:
+    ```json
+    {
+      "ok": true,
+      "name": "my_image.jpg", 
+      "url": "https://imagedelivery.net/xxx/yyy/public",
+      "cached": false,
+      "image_id": "yyy"
+    }
+    ```
+    """
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return CdnUrlResponse(ok=False, name=filename, error="Invalid filename")
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        return CdnUrlResponse(ok=False, name=filename, error="Image not found")
+    
+    # Check if already in catalog
+    existing_url = get_cdn_url(filename)
+    if existing_url:
+        catalog = load_cdn_catalog()
+        entry = catalog.get(filename, {})
+        return CdnUrlResponse(
+            ok=True,
+            name=filename,
+            url=existing_url,
+            cached=True,
+            image_id=entry.get("image_id")
+        )
+    
+    # Upload to Cloudflare
+    try:
+        from upload_cloudflare import upload_image as cf_upload
+        
+        result = cf_upload(
+            str(filepath),
+            "file",
+            uploader="gallery",
+            category="generated"
+        )
+        
+        if not result.get("ok"):
+            return CdnUrlResponse(
+                ok=False,
+                name=filename,
+                error=result.get("error", "Upload failed")
+            )
+        
+        url = result.get("url")
+        image_id = result.get("image_id")
+        
+        # Save to catalog
+        set_cdn_url(filename, url, image_id)
+        
+        return CdnUrlResponse(
+            ok=True,
+            name=filename,
+            url=url,
+            cached=False,
+            image_id=image_id
+        )
+        
+    except Exception as e:
+        return CdnUrlResponse(ok=False, name=filename, error=str(e))
+
+
 @router.get("/{filename}")
 async def get_generated_image(filename: str):
     """
@@ -391,6 +589,8 @@ async def delete_generated_image(filename: str):
     
     try:
         filepath.unlink()
+        # Also remove from CDN catalog if present
+        remove_cdn_url(filename)
         return DeleteResponse(ok=True, deleted=filename)
     except Exception as e:
         return DeleteResponse(ok=False, error=str(e))

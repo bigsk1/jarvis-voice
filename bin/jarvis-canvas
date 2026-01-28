@@ -2796,6 +2796,7 @@ GALLERY_TEMPLATE = '''
                 <span class="lightbox-filename" id="lightboxFilename"></span>
                 <div class="lightbox-actions">
                     <button class="btn btn-primary" onclick="downloadImage()">⬇️ Download</button>
+                    <button class="btn btn-secondary" onclick="getCdnUrlFromLightbox()" id="lightboxCdnBtn">🔗 Get URL</button>
                     <button class="btn btn-danger" onclick="deleteFromLightbox()">🗑️ Delete</button>
                 </div>
             </div>
@@ -2876,6 +2877,7 @@ GALLERY_TEMPLATE = '''
                         </div>
                         <div class="image-actions">
                             <button class="btn btn-primary" onclick="event.stopPropagation(); downloadByIndex(${index})">⬇️</button>
+                            <button class="btn btn-secondary" onclick="event.stopPropagation(); getCdnUrlByIndex(${index})" title="Get CDN URL">🔗</button>
                             <button class="btn btn-danger" onclick="event.stopPropagation(); deleteByIndex(${index})">🗑️</button>
                         </div>
                     </div>
@@ -2931,6 +2933,76 @@ GALLERY_TEMPLATE = '''
             }
         }
 
+        function getCdnUrlByIndex(index) {
+            if (index >= 0 && index < filteredImages.length) {
+                getCdnUrl(filteredImages[index].name);
+            }
+        }
+
+        async function getCdnUrl(filename) {
+            const btn = event ? event.target : null;
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳';
+            }
+            
+            try {
+                const response = await fetch(`/api/gallery/images/${encodeURIComponent(filename)}/cdn-url`);
+                const data = await response.json();
+                
+                if (data.ok && data.url) {
+                    // Copy to clipboard
+                    await navigator.clipboard.writeText(data.url);
+                    
+                    // Show success message
+                    const msg = data.cached ? 'URL copied (cached)' : 'Uploaded! URL copied';
+                    showToast(`✅ ${msg}`, 'success');
+                    
+                    // Also log to console for easy access
+                    console.log(`CDN URL for ${filename}:`, data.url);
+                } else {
+                    showToast(`❌ ${data.error || 'Failed to get URL'}`, 'error');
+                }
+            } catch (err) {
+                showToast(`❌ Error: ${err.message}`, 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🔗';
+                }
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                padding: 12px 24px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 500;
+                z-index: 10001;
+                animation: slideUp 0.3s ease;
+                ${type === 'success' ? 'background: #22c55e;' : ''}
+                ${type === 'error' ? 'background: #ef4444;' : ''}
+                ${type === 'info' ? 'background: #3b82f6;' : ''}
+            `;
+            
+            document.body.appendChild(toast);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toast.style.animation = 'slideDown 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
         function openLightbox(filename) {
             currentImage = filename;
             document.getElementById('lightboxImage').src = `/api/gallery/images/${encodeURIComponent(filename)}`;
@@ -2983,6 +3055,37 @@ GALLERY_TEMPLATE = '''
             if (currentImage) {
                 closeLightbox();
                 deleteImage(currentImage);
+            }
+        }
+
+        async function getCdnUrlFromLightbox() {
+            if (currentImage) {
+                const btn = document.getElementById('lightboxCdnBtn');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '⏳ Uploading...';
+                }
+                
+                try {
+                    const response = await fetch(`/api/gallery/images/${encodeURIComponent(currentImage)}/cdn-url`);
+                    const data = await response.json();
+                    
+                    if (data.ok && data.url) {
+                        await navigator.clipboard.writeText(data.url);
+                        const msg = data.cached ? 'URL copied!' : 'Uploaded & copied!';
+                        showToast(`✅ ${msg}`, 'success');
+                        console.log(`CDN URL for ${currentImage}:`, data.url);
+                    } else {
+                        showToast(`❌ ${data.error || 'Failed'}`, 'error');
+                    }
+                } catch (err) {
+                    showToast(`❌ ${err.message}`, 'error');
+                } finally {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '🔗 Get URL';
+                    }
+                }
             }
         }
 
@@ -3080,10 +3183,60 @@ def delete_gallery_image(filename):
     
     try:
         filepath.unlink()
+        # Also remove from CDN catalog if present
+        cdn_catalog = GENERATED_IMAGES_DIR / "cdn_catalog.json"
+        if cdn_catalog.exists():
+            try:
+                catalog = json.loads(cdn_catalog.read_text())
+                if filename in catalog:
+                    del catalog[filename]
+                    cdn_catalog.write_text(json.dumps(catalog, indent=2))
+            except:
+                pass
         print(f"🗑️  Deleted gallery image: {filename}")
         return jsonify({'ok': True, 'deleted': filename})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/gallery/images/<filename>/cdn-url')
+def get_cdn_url(filename):
+    """Get or create CDN URL for an image (uploads if needed)."""
+    import requests
+    
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename:
+        return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        return jsonify({'ok': False, 'error': 'Image not found'}), 404
+    
+    # Check local CDN catalog first
+    cdn_catalog = GENERATED_IMAGES_DIR / "cdn_catalog.json"
+    if cdn_catalog.exists():
+        try:
+            catalog = json.loads(cdn_catalog.read_text())
+            if filename in catalog:
+                entry = catalog[filename]
+                return jsonify({
+                    'ok': True,
+                    'name': filename,
+                    'url': entry.get('url'),
+                    'cached': True,
+                    'image_id': entry.get('image_id')
+                })
+        except:
+            pass
+    
+    # Not in catalog - call Jarvis API to upload
+    try:
+        api_url = f"http://localhost:8880/api/generated-images/{filename}/cdn-url"
+        response = requests.get(api_url, timeout=60)
+        data = response.json()
+        return jsonify(data)
+    except requests.exceptions.RequestException as e:
+        return jsonify({'ok': False, 'error': f'API error: {str(e)}'}), 500
 
 
 # ============================================================================
