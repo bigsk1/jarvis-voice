@@ -171,107 +171,23 @@ async def list_generated_images(
     )
 
 
-@router.get("/{filename}")
-async def get_generated_image(filename: str):
-    """
-    Get a generated image file.
+@router.get("/health")
+async def generated_images_health():
+    """Check generated images directory status."""
+    images, total_size = get_image_list()
     
-    Returns the image file directly (not base64).
+    # Check configured provider
+    provider = get_config_value("IMAGE_TOOL_PROVIDER", "gemini")
     
-    **Example**:
-    ```bash
-    curl http://localhost:8880/api/generated-images/my_image.jpg -o my_image.jpg
-    ```
-    """
-    # Security: prevent path traversal
-    if '..' in filename or '/' in filename or '\\' in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    
-    filepath = GENERATED_IMAGES_DIR / filename
-    if not filepath.exists():
-        raise HTTPException(status_code=404, detail="Image not found")
-    
-    return FileResponse(filepath)
-
-
-@router.get("/{filename}/base64", response_model=ImageBase64Response)
-async def get_generated_image_base64(filename: str):
-    """
-    Get a generated image as base64.
-    
-    Useful for APIs that need base64 encoded images.
-    
-    **Example**:
-    ```bash
-    curl http://localhost:8880/api/generated-images/my_image.jpg/base64
-    ```
-    
-    **Response**:
-    ```json
-    {
-      "ok": true,
-      "name": "my_image.jpg",
-      "base64": "data:image/jpeg;base64,/9j/4AAQ...",
-      "mime_type": "image/jpeg",
-      "size": 123456
+    return {
+        "ok": True,
+        "directory": str(GENERATED_IMAGES_DIR),
+        "exists": GENERATED_IMAGES_DIR.exists(),
+        "image_count": len(images),
+        "total_size": total_size,
+        "total_size_human": format_size(total_size),
+        "configured_provider": provider
     }
-    ```
-    """
-    # Security: prevent path traversal
-    if '..' in filename or '/' in filename or '\\' in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    
-    filepath = GENERATED_IMAGES_DIR / filename
-    if not filepath.exists():
-        raise HTTPException(status_code=404, detail="Image not found")
-    
-    # Determine mime type
-    ext = filepath.suffix.lower()
-    mime_types = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp'
-    }
-    mime_type = mime_types.get(ext, 'application/octet-stream')
-    
-    # Read and encode
-    data = filepath.read_bytes()
-    b64 = base64.b64encode(data).decode('utf-8')
-    
-    return ImageBase64Response(
-        ok=True,
-        name=filename,
-        base64=f"data:{mime_type};base64,{b64}",
-        mime_type=mime_type,
-        size=len(data)
-    )
-
-
-@router.delete("/{filename}", response_model=DeleteResponse)
-async def delete_generated_image(filename: str):
-    """
-    Delete a generated image.
-    
-    **Example**:
-    ```bash
-    curl -X DELETE http://localhost:8880/api/generated-images/my_image.jpg
-    ```
-    """
-    # Security: prevent path traversal
-    if '..' in filename or '/' in filename or '\\' in filename:
-        return DeleteResponse(ok=False, error="Invalid filename")
-    
-    filepath = GENERATED_IMAGES_DIR / filename
-    if not filepath.exists():
-        return DeleteResponse(ok=False, error="Image not found")
-    
-    try:
-        filepath.unlink()
-        return DeleteResponse(ok=True, deleted=filename)
-    except Exception as e:
-        return DeleteResponse(ok=False, error=str(e))
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -377,20 +293,104 @@ async def generate_image(request: GenerateRequest):
         return GenerateResponse(ok=False, error=str(e))
 
 
-@router.get("/health")
-async def generated_images_health():
-    """Check generated images directory status."""
-    images, total_size = get_image_list()
+@router.get("/{filename}")
+async def get_generated_image(filename: str):
+    """
+    Get a generated image file.
     
-    # Check configured provider
-    provider = get_config_value("IMAGE_TOOL_PROVIDER", "gemini")
+    Returns the image file directly (not base64).
     
-    return {
-        "ok": True,
-        "directory": str(GENERATED_IMAGES_DIR),
-        "exists": GENERATED_IMAGES_DIR.exists(),
-        "image_count": len(images),
-        "total_size": total_size,
-        "total_size_human": format_size(total_size),
-        "configured_provider": provider
+    **Example**:
+    ```bash
+    curl http://localhost:8880/api/generated-images/my_image.jpg -o my_image.jpg
+    ```
+    """
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename or '\\' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    return FileResponse(filepath)
+
+
+@router.get("/{filename}/base64", response_model=ImageBase64Response)
+async def get_generated_image_base64(filename: str):
+    """
+    Get a generated image as base64.
+    
+    Useful for APIs that need base64 encoded images.
+    
+    **Example**:
+    ```bash
+    curl http://localhost:8880/api/generated-images/my_image.jpg/base64
+    ```
+    
+    **Response**:
+    ```json
+    {
+      "ok": true,
+      "name": "my_image.jpg",
+      "base64": "data:image/jpeg;base64,/9j/4AAQ...",
+      "mime_type": "image/jpeg",
+      "size": 123456
     }
+    ```
+    """
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename or '\\' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    # Determine mime type
+    ext = filepath.suffix.lower()
+    mime_types = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp'
+    }
+    mime_type = mime_types.get(ext, 'application/octet-stream')
+    
+    # Read and encode
+    data = filepath.read_bytes()
+    b64 = base64.b64encode(data).decode('utf-8')
+    
+    return ImageBase64Response(
+        ok=True,
+        name=filename,
+        base64=f"data:{mime_type};base64,{b64}",
+        mime_type=mime_type,
+        size=len(data)
+    )
+
+
+@router.delete("/{filename}", response_model=DeleteResponse)
+async def delete_generated_image(filename: str):
+    """
+    Delete a generated image.
+    
+    **Example**:
+    ```bash
+    curl -X DELETE http://localhost:8880/api/generated-images/my_image.jpg
+    ```
+    """
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return DeleteResponse(ok=False, error="Invalid filename")
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        return DeleteResponse(ok=False, error="Image not found")
+    
+    try:
+        filepath.unlink()
+        return DeleteResponse(ok=True, deleted=filename)
+    except Exception as e:
+        return DeleteResponse(ok=False, error=str(e))
