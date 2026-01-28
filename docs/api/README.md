@@ -27,6 +27,8 @@ Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks,
 | **Conversations** | [CONVERSATIONS.md](CONVERSATIONS.md) | Browse conversation history |
 | **Stash** | [STASH.md](STASH.md) | Access stored artifacts and files |
 | **Canvas** | [CANVAS.md](CANVAS.md) | Browse visual knowledge pages |
+| **Generated Images** | [GENERATED_IMAGES.md](GENERATED_IMAGES.md) | List, download, delete, generate AI images |
+| **Images (CDN)** | [API_OVERVIEW.md#images](API_OVERVIEW.md) | Upload to Cloudflare CDN (public URLs) |
 
 ### Quick Reference - Core Endpoints
 
@@ -70,6 +72,15 @@ GET  /api/stash/{id}/files/{file_id}/content  # Download file
 GET  /api/canvas              # List canvas pages
 GET  /api/canvas/search?q=status  # Search pages
 GET  /api/canvas/{id}         # Get page with content
+
+# Generated Images (Local)
+GET  /api/generated-images              # List images
+GET  /api/generated-images?search=robot # Search by filename
+GET  /api/generated-images/{filename}   # Download image file
+GET  /api/generated-images/{filename}/base64  # Get as base64
+DELETE /api/generated-images/{filename} # Delete image
+POST /api/generated-images/generate     # Generate new image
+GET  /api/generated-images/health       # Status check
 ```
 
 ### Intelligence API
@@ -164,6 +175,7 @@ Interactive API documentation available at:
 - Added Conversations API (history browsing)
 - Added Stash API (artifact access)
 - Added Canvas API (knowledge pages)
+- Added Generated Images API (list, download, delete, generate)
 - Added Swagger dark mode (`/docs/dark`)
 - Added reflection management endpoints
 - Added maintenance trigger endpoint
