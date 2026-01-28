@@ -2951,14 +2951,19 @@ GALLERY_TEMPLATE = '''
                 const data = await response.json();
                 
                 if (data.ok && data.url) {
-                    // Copy to clipboard
-                    await navigator.clipboard.writeText(data.url);
+                    // Copy to clipboard (with fallback for non-HTTPS)
+                    const copied = await copyToClipboard(data.url);
                     
                     // Show success message
                     const msg = data.cached ? 'URL copied (cached)' : 'Uploaded! URL copied';
-                    showToast(`✅ ${msg}`, 'success');
+                    if (copied) {
+                        showToast(`✅ ${msg}`, 'success');
+                    } else {
+                        // Clipboard failed but URL is valid - show it
+                        showToast(`✅ ${data.cached ? 'Cached' : 'Uploaded'} - see console for URL`, 'success');
+                    }
                     
-                    // Also log to console for easy access
+                    // Always log to console for easy access
                     console.log(`CDN URL for ${filename}:`, data.url);
                 } else {
                     showToast(`❌ ${data.error || 'Failed to get URL'}`, 'error');
@@ -2970,6 +2975,34 @@ GALLERY_TEMPLATE = '''
                     btn.disabled = false;
                     btn.textContent = '🔗';
                 }
+            }
+        }
+
+        async function copyToClipboard(text) {
+            // Try modern API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (e) {
+                    // Fall through to fallback
+                }
+            }
+            
+            // Fallback for non-HTTPS contexts
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                const success = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                return success;
+            } catch (e) {
+                console.error('Clipboard fallback failed:', e);
+                return false;
             }
         }
 
@@ -3071,9 +3104,13 @@ GALLERY_TEMPLATE = '''
                     const data = await response.json();
                     
                     if (data.ok && data.url) {
-                        await navigator.clipboard.writeText(data.url);
+                        const copied = await copyToClipboard(data.url);
                         const msg = data.cached ? 'URL copied!' : 'Uploaded & copied!';
-                        showToast(`✅ ${msg}`, 'success');
+                        if (copied) {
+                            showToast(`✅ ${msg}`, 'success');
+                        } else {
+                            showToast(`✅ ${data.cached ? 'Cached' : 'Uploaded'} - see console`, 'success');
+                        }
                         console.log(`CDN URL for ${currentImage}:`, data.url);
                     } else {
                         showToast(`❌ ${data.error || 'Failed'}`, 'error');
