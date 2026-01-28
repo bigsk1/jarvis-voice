@@ -793,16 +793,20 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 | **LLM Routing** | Any query | LLM analyzes and selects | General questions, flexible tasks |
 | **Workflow Pipelines** | `/command` | Predefined in JSON recipe | Repeatable multi-step tasks |
 
-### Available Workflows
+### Available Workflows (10)
 
 | Command | Description | Tools Used |
 |---------|-------------|------------|
 | `/crypto [coins]` | Crypto prices, news, analysis, email report | get_time, crypto_price, brave_search, crawl_url, stash, canvas, send_email |
-| `/archive <url>` | Archive webpage to stash with Canvas summary | crawl_url, stash, remember, canvas |
-| `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, canvas |
+| `/archive <url>` | Archive webpage to stash with Canvas summary | crawl_url, stash, canvas |
+| `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, remember, canvas |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/health [host]` | SSH health check (default: vps2) | ssh_remote |
 | `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel, search_memory |
+| `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, stock_price, list_alerts, list_reminders, system_monitor, canvas |
+| `/status_visual` | Status briefing + AI-generated dashboard image | get_time, weather, crypto_price, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
+| `/deep_dive <url>` | Screenshot + crawl URL, comprehensive canvas summary | stash, screenshot_url, crawl_url, text_summarizer, canvas |
+| `/youtube <url>` | Download transcript, summarize, create study notes | youtube_transcript, stash, text_summarizer, canvas |
 
 ### Workflow Features
 

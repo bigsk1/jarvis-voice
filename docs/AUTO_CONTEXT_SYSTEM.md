@@ -1,8 +1,12 @@
-# Auto-Context System (Short-Term Conversation Memory)
+# Auto-Context System (Short-Term Conversation Memory for running in terminal mode)
 
 ## Overview
 
 The Auto-Context System gives Jarvis **automatic short-term memory** of recent conversations, enabling natural follow-up responses, self-learning from failures, and seamless multi-step workflows **without requiring explicit tool calls**.
+
+### NOTE about webui
+
+If only using Jarvis WEBUI then you can set AUTO_CONTEXT_ENABLED=false in .env because the webui keeps it's own conversation history in  jarvis-web/config/web_config.json and you can set the "history_limit": 20, to whatever you want. 
 
 ---
 
