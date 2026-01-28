@@ -109,10 +109,11 @@ A self-hosted, intelligent voice assistant with advanced tool calling, memory, a
   - CDN catalog (`cdn_catalog.json`) caches URLs - no re-uploads needed
   - API: `/api/generated-images/*`
   - See [`docs/api/GENERATED_IMAGES.md`](docs/api/GENERATED_IMAGES.md)
-- **Image Gallery UI**: Browse generated images in Canvas web UI
-  - Grid view with thumbnails, search, sort options
-  - Lightbox viewer, download, get CDN URL, delete
-  - Access via "🖼️ Gallery" link in Canvas header
+- **Feedback System**: LLM self-critique for continuous improvement
+  - Per-query feedback: `--feedback` flag on orchestrator
+  - Batch testing: `./bin/jarvis-feedback batch tests/queries.txt`
+  - Cross-model grading via `FEEDBACK_PROVIDER`/`FEEDBACK_MODEL`
+  - View issues: `./bin/jarvis-feedback issues --days 7`
 
 
 ![memory-browser](docs/images/memory-browser.png)
@@ -195,7 +196,7 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - Insight sorting (applied, helpful, preferred/avoided tools, confidence)
   - 5-tier confidence: Elite (96%+), High (85-95%), Good (75-84%), Medium (50-74%), Low (0-49%)
   - Tool performance showing ALL tools with prefer/avoid stats
-  - **NEW: Feedback tab** - View all feedback logs with rating/time filters, expandable details, no terminal needed
+  - **Feedback tab** - View all feedback logs with rating/time filters, expandable details, no terminal needed
   - Mobile responsive: hamburger menu at ≤730px
   - Launch: `./bin/jarvis-intelligence`
 - **Memory Browser UI**: Web interface for memory management at localhost:5002
@@ -214,11 +215,13 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 
 ![jarvis-canvas](docs/images/jarvis-canvas.png)
 
-- **Feedback System**: LLM self-critique for continuous improvement
-  - Per-query feedback: `--feedback` flag on orchestrator
-  - Batch testing: `./bin/jarvis-feedback batch tests/queries.txt`
-  - Cross-model grading via `FEEDBACK_PROVIDER`/`FEEDBACK_MODEL`
-  - View issues: `./bin/jarvis-feedback issues --days 7`
+- **Image Gallery UI**: Browse generated images in Canvas web UI
+  - Grid view with thumbnails, search, sort options
+  - Lightbox viewer, download, get CDN URL, delete
+  - Access via "🖼️ Gallery" link in Canvas header
+
+![jarvis-gallery](docs/images/jarvis-gallery.png)
+
 
 ### Speech Modes - Smart Adaptive Response System
 
@@ -638,7 +641,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (50+)
+### Available Skills (54+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -666,8 +669,11 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
 - `stock_price` - **Stock/futures prices**: stocks (TSLA, AAPL), futures (GC=F gold, SI=F silver), forex (EURUSD=X)
+- `price_alert` - **Price alerts**: Create crypto/stock alerts monitored by n8n (above/below thresholds)
 - `status_recap` - **Daily status**: aggregates weather, crypto, stocks, alerts, reminders, system health → Canvas + Stash
 - `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration
+- `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
+- `samantha` - **Multi-agent**: Chat with Samantha AI on VPS2, delegate tasks, fire-and-forget webhooks
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
 - `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune
@@ -691,9 +697,14 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
   - `stash://` references work across tools (printer, email, pdf_create, analyze_image)
 - `pdf_create` - **PDF generation**: create PDFs from stash files, images, or text
   - Now auto-saves to memory with stash reference for recall
+- `pdf_read` - **PDF reading**: extract text, images, merge, split, search PDFs
+  - Page range support, image extraction to stash, text search with context
 - `printer` - **Print output**: print from stash refs, file paths, or Canvas pages (CUPS)
   - Accepts `stash://space_xxx/file_id` references directly
 - `speaker_volume` - **Audio control**: get/set/adjust system speaker volume
+- `upload_cloudflare` - **CDN upload**: Upload images to Cloudflare for permanent public URLs
+  - Supports file, URL, base64, stash references
+  - Metadata tracking (prompt, tags, provider)
 
 **Development:**
 - `opencode` - Autonomous coding agent (builds apps, games, APIs)
@@ -1297,7 +1308,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Organized paths with metadata tracking
   - Multi-agent support for Samantha image sharing
   - See: [`docs/api/IMAGES.md`](docs/api/IMAGES.md)
-- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2
+- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS
   - `samantha` tool for real-time chat via OpenAI-compatible API
   - Fire-and-forget webhooks for Discord/Telegram posting
   - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)

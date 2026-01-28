@@ -75,6 +75,9 @@ You: "Save that code snippet to my canvas"
 
 None required. Canvas uses defaults.
 
+
+![Jarvis Gallery](images/jarvis-gallery.png)
+
 ## Image Gallery
 
 The canvas server includes an integrated image gallery for browsing generated images.
