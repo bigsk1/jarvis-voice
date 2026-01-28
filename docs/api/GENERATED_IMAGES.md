@@ -15,6 +15,8 @@ Unlike `/api/images` (Cloudflare CDN uploads), these routes manage the **local**
 | GET | `/{filename}/base64` | Get image as base64 |
 | DELETE | `/{filename}` | Delete image |
 | POST | `/generate` | Generate new image |
+| GET | `/{filename}/cdn-url` | Get/create CDN URL |
+| GET | `/cdn-catalog` | List all CDN URLs |
 | GET | `/health` | Check status |
 
 ---
@@ -115,6 +117,75 @@ curl -X DELETE http://localhost:8880/api/generated-images/my_image.jpg
   "error": "Image not found"
 }
 ```
+
+---
+
+## Get CDN URL
+
+Get a Cloudflare CDN URL for an image. Uploads to Cloudflare if not already uploaded, then caches the URL in `cdn_catalog.json` for instant retrieval.
+
+```bash
+curl http://localhost:8880/api/generated-images/my_image.jpg/cdn-url
+```
+
+**Response (first time - uploads):**
+```json
+{
+  "ok": true,
+  "name": "my_image.jpg",
+  "url": "https://imagedelivery.net/xxx/yyy/public",
+  "cached": false,
+  "image_id": "yyy"
+}
+```
+
+**Response (cached - instant):**
+```json
+{
+  "ok": true,
+  "name": "my_image.jpg",
+  "url": "https://imagedelivery.net/xxx/yyy/public",
+  "cached": true,
+  "image_id": "yyy"
+}
+```
+
+---
+
+## CDN Catalog
+
+List all images that have been uploaded to Cloudflare. This catalog is stored in `data/generated_images/cdn_catalog.json`.
+
+```bash
+curl http://localhost:8880/api/generated-images/cdn-catalog
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "count": 5,
+  "entries": [
+    {
+      "filename": "generated_robot_20260128.jpg",
+      "url": "https://imagedelivery.net/xxx/aaa/public",
+      "image_id": "aaa",
+      "uploaded_at": "2026-01-28T12:34:56"
+    },
+    {
+      "filename": "generated_sunset_20260127.jpg",
+      "url": "https://imagedelivery.net/xxx/bbb/public",
+      "image_id": "bbb",
+      "uploaded_at": "2026-01-27T10:00:00"
+    }
+  ]
+}
+```
+
+Use this to:
+- Check if an image has already been uploaded
+- Get URLs without re-uploading
+- Find images by their CDN URL or image_id
 
 ---
 
