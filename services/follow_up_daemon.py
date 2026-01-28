@@ -25,6 +25,33 @@ from memory_db import MemoryDB
 from service_logger import ServiceLogger
 
 
+def retry_on_db_lock(func, max_retries=5, base_delay=1.0):
+    """
+    Retry a function on database lock errors with exponential backoff.
+    
+    Args:
+        func: Callable to execute
+        max_retries: Maximum retry attempts (default 5)
+        base_delay: Base delay in seconds (default 1.0)
+    
+    Returns:
+        Result of func() or raises after max retries
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                last_error = e
+                delay = base_delay * (2 ** attempt)  # Exponential backoff: 1, 2, 4, 8, 16 seconds
+                print(f"    ⚠️  Database locked, retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(delay)
+            else:
+                raise
+    raise last_error
+
+
 # Follow-up schedules (minutes between reminders)
 FOLLOW_UP_SCHEDULE = {
     "critical": [15, 30, 60],
@@ -39,19 +66,22 @@ MAX_FOLLOW_UPS = 3
 
 def get_pending_alerts(db_path: str) -> List[Dict[str, Any]]:
     """Get all pending alerts that need follow-up."""
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    def _query():
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        alerts = cursor.execute("""
+            SELECT * FROM alerts 
+            WHERE status = 'pending'
+            AND follow_up_count < ?
+            ORDER BY severity DESC, created_at ASC
+        """, (MAX_FOLLOW_UPS,)).fetchall()
+        
+        conn.close()
+        return [dict(row) for row in alerts]
     
-    alerts = cursor.execute("""
-        SELECT * FROM alerts 
-        WHERE status = 'pending'
-        AND follow_up_count < ?
-        ORDER BY severity DESC, created_at ASC
-    """, (MAX_FOLLOW_UPS,)).fetchall()
-    
-    conn.close()
-    return [dict(row) for row in alerts]
+    return retry_on_db_lock(_query)
 
 
 def should_follow_up(alert: Dict[str, Any]) -> bool:
@@ -136,21 +166,24 @@ def speak_follow_up(alert: Dict[str, Any], mode: str, project_root: Path):
 
 def update_follow_up(db_path: str, alert_id: int):
     """Mark alert as followed up."""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    def _update():
+        conn = sqlite3.connect(db_path, timeout=30)
+        cursor = conn.cursor()
+        
+        now = datetime.now().isoformat()
+        
+        cursor.execute("""
+            UPDATE alerts
+            SET follow_up_count = follow_up_count + 1,
+                last_follow_up = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (now, now, alert_id))
+        
+        conn.commit()
+        conn.close()
     
-    now = datetime.now().isoformat()
-    
-    cursor.execute("""
-        UPDATE alerts
-        SET follow_up_count = follow_up_count + 1,
-            last_follow_up = ?,
-            updated_at = ?
-        WHERE id = ?
-    """, (now, now, alert_id))
-    
-    conn.commit()
-    conn.close()
+    retry_on_db_lock(_update)
 
 
 def main():
@@ -182,62 +215,82 @@ def main():
     
     check_count = 0
     total_follow_ups = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 10  # Only crash after 10 consecutive errors
     
     try:
         while True:
-            check_count += 1
-            
-            # Get pending alerts
-            pending_alerts = get_pending_alerts(db_path)
-            
-            logger.log_check(len(pending_alerts), {"pending_count": len(pending_alerts)})
-            
-            if len(pending_alerts) > 0:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Check #{check_count}: {len(pending_alerts)} pending alerts")
+            try:
+                check_count += 1
                 
-                for alert in pending_alerts:
-                    if should_follow_up(alert):
-                        alert_id = alert['id']
-                        title = alert['title']
-                        severity = alert['severity']
-                        follow_up_count = alert.get('follow_up_count', 0)
-                        
-                        print(f"  → Follow-up #{follow_up_count + 1} for alert {alert_id}: {title} ({severity})")
-                        
-                        try:
-                            # Speak alert
-                            speak_follow_up(alert, mode, project_root)
+                # Get pending alerts
+                pending_alerts = get_pending_alerts(db_path)
+                consecutive_errors = 0  # Reset on success
+                
+                logger.log_check(len(pending_alerts), {"pending_count": len(pending_alerts)})
+                
+                if len(pending_alerts) > 0:
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Check #{check_count}: {len(pending_alerts)} pending alerts")
+                    
+                    for alert in pending_alerts:
+                        if should_follow_up(alert):
+                            alert_id = alert['id']
+                            title = alert['title']
+                            severity = alert['severity']
+                            follow_up_count = alert.get('follow_up_count', 0)
                             
-                            # Update database
-                            update_follow_up(db_path, alert_id)
+                            print(f"  → Follow-up #{follow_up_count + 1} for alert {alert_id}: {title} ({severity})")
                             
-                            # Log action
-                            logger.log_action("follow_up", {
-                                "alert_id": alert_id,
-                                "title": title,
-                                "severity": severity,
-                                "follow_up_count": follow_up_count + 1
-                            }, success=True)
+                            try:
+                                # Speak alert
+                                speak_follow_up(alert, mode, project_root)
+                                
+                                # Update database
+                                update_follow_up(db_path, alert_id)
+                                
+                                # Log action
+                                logger.log_action("follow_up", {
+                                    "alert_id": alert_id,
+                                    "title": title,
+                                    "severity": severity,
+                                    "follow_up_count": follow_up_count + 1
+                                }, success=True)
+                                
+                                total_follow_ups += 1
                             
-                            total_follow_ups += 1
-                        
-                        except Exception as e:
-                            logger.log_error(f"Follow-up failed for alert {alert_id}", {
-                                "alert_id": alert_id,
-                                "error": str(e)
-                            })
-                            print(f"    ⚠️  Error: {e}")
-            
-            # Wait before next check
-            time.sleep(60)
+                            except Exception as e:
+                                logger.log_error(f"Follow-up failed for alert {alert_id}", {
+                                    "alert_id": alert_id,
+                                    "error": str(e)
+                                })
+                                print(f"    ⚠️  Error: {e}")
+                
+                # Wait before next check
+                time.sleep(60)
+                
+            except sqlite3.OperationalError as e:
+                consecutive_errors += 1
+                logger.log_error(f"Database error (attempt {consecutive_errors}): {e}")
+                print(f"\n⚠️  Database error: {e} (attempt {consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
+                if consecutive_errors >= max_consecutive_errors:
+                    print(f"\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
+                    logger.log_shutdown({"reason": "too_many_errors", "last_error": str(e)})
+                    sys.exit(1)
+                time.sleep(30)  # Wait longer after DB errors
+                
+            except Exception as e:
+                consecutive_errors += 1
+                logger.log_error(f"Unexpected error (attempt {consecutive_errors}): {e}")
+                print(f"\n⚠️  Error: {e} (attempt {consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
+                if consecutive_errors >= max_consecutive_errors:
+                    print(f"\n❌ Too many consecutive errors, shutting down", file=sys.stderr)
+                    logger.log_shutdown({"reason": "too_many_errors", "last_error": str(e)})
+                    sys.exit(1)
+                time.sleep(60)  # Continue checking after transient errors
     
     except KeyboardInterrupt:
         print("\n✋ Follow-Up Daemon stopped by user")
         logger.log_shutdown({"total_follow_ups": total_follow_ups, "checks": check_count})
-    except Exception as e:
-        logger.log_error(f"Fatal error: {e}")
-        print(f"\n❌ Follow-Up Daemon error: {e}", file=sys.stderr)
-        sys.exit(1)
 
 
 if __name__ == "__main__":

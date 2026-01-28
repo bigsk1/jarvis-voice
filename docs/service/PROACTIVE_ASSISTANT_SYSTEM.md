@@ -504,10 +504,10 @@ jarvis-voice/
 │       ├── auth.py                # API key auth (optional)
 │       └── cors.py                # CORS config
 │
-├── services/                      # NEW: Background services
+├── services/                      # Background services
 │   ├── __init__.py
 │   ├── follow_up_daemon.py        # Periodic alert follow-ups
-│   ├── self_healing_daemon.py     # Auto-resolve checks
+│   ├── self_healing_daemon.py     # Auto-resolve + systemd service monitoring
 │   └── reminder_scheduler.py      # Reminder triggers
 │
 ├── skills/                        # ENHANCED
@@ -597,8 +597,46 @@ jarvis-voice/
 - ✅ Implement escalation rules
 - ✅ Add "clear all alerts" command
 - ✅ Test auto-resolution flow
+- ✅ Add systemd service monitoring (January 2026)
+- ✅ Add database retry logic for all daemons (January 2026)
 
 **Deliverable**: Jarvis autonomously checks and resolves issues
+
+**Enhanced Self-Healing Features (January 2026):**
+
+The self-healing daemon now monitors two types of processes:
+
+**1. Systemd Services** (external services like unifi-protect-webhook):
+```python
+MONITORED_SYSTEMD_SERVICES = {
+    "unifi-protect-webhook": {"required": True, "restart": True},
+    "opencode-jarvis": {"required": False, "restart": True},  # Optional
+}
+SERVICE_GRACE_PERIOD = 90  # Avoid false alarms during reboots
+```
+
+**2. Sibling Daemons** (PID-based monitoring of other jarvis-services daemons):
+```python
+MONITORED_DAEMONS = {
+    "reminder_scheduler": {"pid_file": "logs/reminder_scheduler.pid", ...},
+    "follow_up_daemon": {"pid_file": "logs/follow_up_daemon.pid", ...},
+}
+DAEMON_GRACE_PERIOD = 60  # Shorter for local processes
+```
+
+PID monitoring verifies both that the PID exists AND that `/proc/PID/cmdline` matches the expected script name (prevents false positives from PID reuse).
+
+Features:
+- **Grace Period**: 60-90 seconds before alerting (prevents reboot false alarms)
+- **Optional Services**: `required: False` skips if not installed
+- **Auto-Restart**: Restarts crashed daemons or systemd services
+- **Verbal Alerts**: "Hey Boss, X has crashed. I'm restarting it now."
+- **Recovery Notification**: "X is back up and running."
+
+All daemons now include database resilience:
+- Retry on DB lock (5 attempts, exponential backoff)
+- 30-second connection timeout
+- Continue after transient errors (only exit after 10 consecutive failures)
 
 ### Phase 5: Tasks & Extensions (Week 5+)
 

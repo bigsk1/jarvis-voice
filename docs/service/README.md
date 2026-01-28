@@ -1,6 +1,6 @@
 # Jarvis Background Services - Documentation
 
-Proactive assistant services that run 24/7 to manage alerts, auto-resolve issues, and send reminders.
+Proactive assistant services that run 24/7 to manage alerts, auto-resolve issues, monitor systemd services, and send reminders.
 
 ---
 
@@ -23,26 +23,49 @@ Proactive assistant services that run 24/7 to manage alerts, auto-resolve issues
 Re-notifies about unacknowledged alerts
 
 **Intervals:**
-- First: 10 minutes
-- Second: 30 minutes  
-- Third: 60 minutes
+- Critical/High: 15 min, 30 min, 60 min
+- Medium: 30 min, 60 min, 120 min
+- Low: 60 min, 180 min, 360 min
 - Max: 3 follow-ups
 
 ### 2. Self-Healing Daemon
-Auto-resolves alerts by checking URLs
+Auto-resolves alerts and monitors systemd services
 
-**Features:**
+**Alert Auto-Resolution:**
 - Checks URLs every 60 seconds
 - Auto-resolves when service responds
 - TTS notification on recovery
+
+**Systemd Service Monitoring (NEW):**
+- Monitors: `jarvis-services`, `unifi-protect-webhook`, `opencode-jarvis` (optional)
+- 90 second grace period (avoids reboot false alarms)
+- Automatic restart attempts on failure
+- Verbal alerts: "Hey Boss, X has stopped. I'm attempting to restart it."
+- Recovery notifications when service comes back
 
 ### 3. Reminder Scheduler
 Triggers time-based reminders
 
 **Features:**
 - Checks every 60 seconds
-- Executes callback when time reached
-- Marks reminders as completed
+- Supports recurring reminders (daily, weekly, monthly)
+- TTS notification when triggered
+- Webhook callback support
+
+---
+
+## Resilience Features
+
+All three daemons include database resilience (added January 2026):
+
+| Feature | Description |
+|---------|-------------|
+| **Retry on DB Lock** | 5 retries with exponential backoff (1, 2, 4, 8, 16s) |
+| **Connection Timeout** | 30 second SQLite timeout for locks |
+| **Graceful Degradation** | Continues after transient errors instead of crashing |
+| **Consecutive Error Limit** | Only exits after 10 consecutive failures |
+
+This prevents daemons from crashing during database sync operations or heavy API usage.
 
 ---
 
@@ -72,11 +95,64 @@ tail -f logs/services/reminder_scheduler-$(date +%Y-%m-%d).log
 
 ---
 
+## Service & Daemon Monitoring
+
+The self-healing daemon monitors two types of processes:
+
+### 1. Systemd Services (external)
+
+```python
+# In services/self_healing_daemon.py
+MONITORED_SYSTEMD_SERVICES = {
+    "unifi-protect-webhook": {"required": True, "restart": True},
+    "opencode-jarvis": {"required": False, "restart": True},  # Optional
+}
+SERVICE_GRACE_PERIOD = 90  # seconds before alerting
+```
+
+**Configuration Options:**
+- `required: True` - Service must be installed, warns if missing
+- `required: False` - Skip if not installed (for optional services)
+- `restart: True` - Attempt automatic `systemctl restart` on failure
+
+### 2. Sibling Daemons (PID-based)
+
+Monitors the other daemons started by `bin/jarvis-services`:
+
+```python
+MONITORED_DAEMONS = {
+    "reminder_scheduler": {
+        "pid_file": "logs/reminder_scheduler.pid",
+        "script": "reminder_scheduler.py",
+        "restart": True,
+    },
+    "follow_up_daemon": {
+        "pid_file": "logs/follow_up_daemon.pid",
+        "script": "follow_up_daemon.py",
+        "restart": True,
+    },
+    # Note: Don't monitor self_healing_daemon - that's us!
+}
+DAEMON_GRACE_PERIOD = 60  # seconds before alerting
+```
+
+**How PID monitoring works:**
+1. Reads PID from file (e.g., `logs/reminder_scheduler.pid`)
+2. Checks if process exists (`kill -0 PID`)
+3. Verifies it's the RIGHT process by checking `/proc/PID/cmdline` contains the script name
+4. This prevents false positives from PID reuse
+
+**To add monitoring**, edit the appropriate dict and restart jarvis-services.
+
+---
+
 ## Key Features
 
 ✅ **No LLM Calls** - Services don't make expensive API calls
 ✅ **TTS Only** - Uses say.sh/say-local.sh for notifications (~$0.015/1K chars)
 ✅ **Safety Limits** - MAX_FOLLOW_UPS, MAX_CHECKS_PER_LOOP built-in
+✅ **Database Resilience** - Retry logic prevents crashes on DB locks
+✅ **Service Monitoring** - Watches and auto-restarts critical systemd services
 ✅ **Structured Logging** - JSON + text logs for debugging
 ✅ **Jarvis Awareness** - Can query logs via `query_service_logs` tool
 ✅ **Independent** - Runs separately from API and wake word
@@ -90,4 +166,8 @@ tail -f logs/services/reminder_scheduler-$(date +%Y-%m-%d).log
 **How It Works**: [Service Architecture FAQ](SERVICE_ARCHITECTURE_FAQ.md)
 
 **API Integration**: [docs/api/](../api/)
+
+---
+
+*Last Updated: January 2026*
 

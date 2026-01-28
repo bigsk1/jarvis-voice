@@ -217,27 +217,27 @@ echo -e "${GREEN}📡 Starting background services...${NC}"
 echo -e "   Mode: ${BLUE}$MODE${NC}"
 echo ""
 
-# Start follow-up daemon
+# Start follow-up daemon (with unbuffered output for real-time logging)
 echo -e "${BLUE}▶ Starting follow-up daemon...${NC}"
-nohup python3 "$FOLLOW_UP_SCRIPT" > "$PROJECT_ROOT/logs/follow_up_daemon.log" 2>&1 &
+nohup python3 -u "$FOLLOW_UP_SCRIPT" >> "$PROJECT_ROOT/logs/follow_up_daemon.log" 2>&1 &
 echo $! > "$FOLLOW_UP_PID"
 echo -e "${GREEN}  ✅ Follow-up daemon started (PID $(cat $FOLLOW_UP_PID))${NC}"
 
 # Wait a second between starts
 sleep 1
 
-# Start self-healing daemon
+# Start self-healing daemon (with unbuffered output for real-time logging)
 echo -e "${BLUE}▶ Starting self-healing daemon...${NC}"
-nohup python3 "$SELF_HEALING_SCRIPT" > "$PROJECT_ROOT/logs/self_healing_daemon.log" 2>&1 &
+nohup python3 -u "$SELF_HEALING_SCRIPT" >> "$PROJECT_ROOT/logs/self_healing_daemon.log" 2>&1 &
 echo $! > "$SELF_HEALING_PID"
 echo -e "${GREEN}  ✅ Self-healing daemon started (PID $(cat $SELF_HEALING_PID))${NC}"
 
 # Wait a second between starts
 sleep 1
 
-# Start reminder scheduler
+# Start reminder scheduler (with unbuffered output for real-time logging)
 echo -e "${BLUE}▶ Starting reminder scheduler...${NC}"
-nohup python3 "$REMINDER_SCRIPT" > "$PROJECT_ROOT/logs/reminder_scheduler.log" 2>&1 &
+nohup python3 -u "$REMINDER_SCRIPT" >> "$PROJECT_ROOT/logs/reminder_scheduler.log" 2>&1 &
 echo $! > "$REMINDER_PID"
 echo -e "${GREEN}  ✅ Reminder scheduler started (PID $(cat $REMINDER_PID))${NC}"
 
