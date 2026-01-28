@@ -323,54 +323,75 @@ Automatically disable unused tools after 7 days:
 
 ## Tool Roadmap & Brainstorm
 
-### Current Coverage
+### Current Coverage (54+ Tools)
 
-#### Local Tools (25)
-| Category | Tools | Status |
-|----------|-------|--------|
-| **Memory** | remember, recall, search_memory, semantic_recall, forget, update_memory | ✅ Complete |
-| **Conversations** | get_recent_conversations, search_conversations | ✅ Complete |
-| **Intelligence** | manage_intel, ingest_intel | ✅ Complete |
-| **Reminders/Alerts** | create_reminder, list_reminders, acknowledge_reminders, list_alerts, acknowledge_alerts | ✅ Complete |
-| **Development** | opencode, check_opencode_sessions, execute_bash, check_tool_logs, query_service_logs | ✅ Complete |
-| **Communication** | send_email, send_webhook | ✅ Partial |
-| **External APIs** | api_call, crypto_price, get_time | ✅ Partial |
+#### Local Tools by Category
 
-#### MCP Servers (6)
-| Server | Capability | Notes |
-|--------|------------|-------|
-| `brave_search` | Web search | Primary search |
-| `duckduckgo` | Web search | Backup/privacy (disabled) |
-| `fetch` | HTTP GET/POST | URL content retrieval (static HTML) |
-| `coingecko` | Crypto prices | Redundant with crypto_price tool (disabled) |
-| `sequentialthinking` | Deep reasoning | For complex reflection |
-| `playwright` | Browser automation | JS-heavy sites, forms, screenshots, PDFs |
+| Category | Tools | Count |
+|----------|-------|-------|
+| **Memory** | remember, recall, search_memory, semantic_recall, deep_memory_search, forget, update_memory | 7 |
+| **Conversations** | get_recent_conversations, search_conversations | 2 |
+| **Intelligence** | manage_intel, ingest_intel | 2 |
+| **Reminders/Alerts** | create_reminder, list_reminders, acknowledge_reminders, list_alerts, acknowledge_alerts, price_alert | 6 |
+| **Development** | opencode, check_opencode_sessions, execute_bash, check_tool_logs, query_service_logs | 5 |
+| **Communication** | send_email, send_webhook, phone_call, samantha | 4 |
+| **External APIs** | api_call, crypto_price, stock_price, weather, get_time | 5 |
+| **Media & Content** | spotify, generate_music, youtube_transcript, crawl_url, screenshot_url | 5 |
+| **Image & Vision** | generate_image, analyze_image, upload_cloudflare | 3 |
+| **Artifacts** | stash, canvas, pdf_create, pdf_read, printer | 5 |
+| **System** | speaker_volume, ssh_remote | 2 |
+| **Auto-Tools** | docker_control, network_tools, system_monitor, text_summarizer, status_recap, generate_password | 6 |
+| **Utility** | calculator | 1 |
+
+**Total: 54+ tools** (47 main + 7 auto-tools)
+
+#### MCP Servers (4 configured)
+
+| Server | Capability | Status | Notes |
+|--------|------------|--------|-------|
+| `brave_search` | Web search | ✅ Enabled | Primary search, Pro AI API |
+| `fetch` | HTTP GET/POST | ✅ Enabled | URL content retrieval (static HTML) |
+| `sequentialthinking` | Deep reasoning | ❌ Disabled | For complex reflection |
+| `playwright` | Browser automation | ❌ Disabled | JS-heavy sites, forms, screenshots, PDFs |
+
+---
+
+### Completed Tools (Previously on Roadmap)
+
+These tools from the original roadmap have been implemented:
+
+| Tool | Status | Implementation |
+|------|--------|----------------|
+| ✅ **weather** | Done 11-29-2025 | Local tool (OpenWeatherMap API) |
+| ✅ **calendar** | Done 11-26-2025 | n8n workflows (Google Calendar sync) |
+| ✅ **spotify** | Done | Local tool (Spotify Web API) |
+| ✅ **stock_price** | Done | Local tool (yfinance - stocks, futures, forex) |
+| ✅ **screenshot** | Done | `screenshot_url` - Full page capture with AI vision |
+| ✅ **image_generate** | Done | `generate_image` - Gemini 3 Pro with Search Grounding |
+| ✅ **pdf_extract** | Done | `pdf_read` - Text extraction, merge, split, search |
+| ✅ **youtube_transcript** | Done | `youtube_transcript` - Download video transcripts |
 
 ---
 
 ### Missing Tools - Priority List
 
-#### 🔴 HIGH PRIORITY (Most Requested)
+#### 🔴 HIGH PRIORITY (Most Useful)
 
 | Tool | Description | Implementation |
 |------|-------------|----------------|
-| **weather** | Current conditions, forecasts, alerts | MCP: `@modelcontextprotocol/weather` or n8n |
-| **calendar** | Google/Outlook calendar read/write | n8n workflow or MCP |
 | **slack_message** | Send Slack messages, read channels | n8n workflow (Slack node) |
-| **file_search** | Search files by name/content in workspace | Local tool (Python) |
+| **file_search** | Search files by name/content in workspace | Local tool (Python subprocess) |
 | **clipboard** | Read/write system clipboard | Local tool (pyperclip) |
-| **screenshot** | Capture screen/window | Local tool (PIL/mss) |
+| **blinko** | Note-taking sync with Blinko app | MCP server (in progress) |
 
 #### 🟡 MEDIUM PRIORITY (Nice to Have)
 
 | Tool | Description | Implementation |
 |------|-------------|----------------|
 | **todoist** | Task management (add, complete, list) | MCP or n8n |
-| **spotify** | Play/pause, queue, search music | n8n workflow (Spotify node) |
 | **youtube_search** | Search YouTube videos | MCP or n8n |
 | **github_issues** | Create/list GitHub issues & PRs | MCP: `@modelcontextprotocol/github` |
 | **translate** | Language translation | Local tool (googletrans) |
-| **stock_price** | Stock quotes and market data | MCP or n8n (Alpha Vantage) |
 | **rss_feed** | Read RSS/Atom feeds | Local tool (feedparser) |
 | **qr_code** | Generate/read QR codes | Local tool (qrcode/pyzbar) |
 
@@ -382,12 +403,11 @@ Automatically disable unused tools after 7 days:
 | **mqtt_publish** | IoT device messaging | Local tool (paho-mqtt) |
 | **sms_send** | Send SMS via Twilio | n8n workflow |
 | **discord_message** | Post to Discord channels | n8n workflow |
-| **image_generate** | AI image generation (DALL-E, Stable Diffusion) | n8n or API call |
-| **ocr_image** | Extract text from images | Local tool (pytesseract) |
-| **pdf_extract** | Read PDF content | Local tool (PyPDF2) |
 | **maps_directions** | Get directions, travel time | n8n (Google Maps node) |
 | **linear_issues** | Linear.app issue tracking | MCP: `@anthropics/linear-mcp` |
 | **notion** | Notion page read/write | MCP or n8n |
+
+> **Note:** OCR is handled by `analyze_image` tool which can extract text from images via vision models.
 
 ---
 
@@ -464,24 +484,18 @@ Best for: Complex integrations, visual design, auth handling
 
 ### Quick Win Tools (Easy to Add)
 
-These can be implemented in < 1 hour:
+These remaining tools can be implemented in < 1 hour:
 
-#### 1. Weather Tool  ( ADDED 11-29-2025)
-```python
-# skills/weather.py
-import requests
-API_KEY = os.environ.get('OPENWEATHER_API_KEY')
-url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}"
-```
-
-#### 2. File Search Tool
+#### 1. File Search Tool
 ```python
 # skills/file_search.py
 import subprocess
 result = subprocess.run(['find', path, '-name', pattern], capture_output=True)
+# Or use ripgrep for content search:
+result = subprocess.run(['rg', '-l', pattern, path], capture_output=True)
 ```
 
-#### 3. Clipboard Tool
+#### 2. Clipboard Tool
 ```python
 # skills/clipboard.py
 import pyperclip
@@ -489,7 +503,7 @@ content = pyperclip.paste()  # Read
 pyperclip.copy(text)         # Write
 ```
 
-#### 4. Translate Tool
+#### 3. Translate Tool
 ```python
 # skills/translate.py
 from googletrans import Translator
@@ -497,7 +511,7 @@ translator = Translator()
 result = translator.translate(text, dest=target_lang)
 ```
 
-#### 5. RSS Feed Tool
+#### 4. RSS Feed Tool
 ```python
 # skills/rss_feed.py
 import feedparser
@@ -507,29 +521,34 @@ entries = [{'title': e.title, 'link': e.link} for e in feed.entries[:10]]
 
 ---
 
-### Tool Categories We Excel At vs Need Help
+### Tool Categories - Current Status
 
-| Category | Current Status | Gap |
-|----------|----------------|-----|
-| **Memory & Context** | ⭐⭐⭐⭐⭐ | None - excellent |
-| **Development/Coding** | ⭐⭐⭐⭐⭐ | None - OpenCode is powerful |
-| **Web Search** | ⭐⭐⭐⭐ | Could add news aggregation |
-| **Communication** | ⭐⭐ | Need Slack, Discord, SMS |
-| **Productivity** | ⭐ | Need calendar, tasks, notes |
-| **Smart Home** | ⭐ | Need Home Assistant, MQTT |
-| **Media** | ⭐ | Need Spotify, YouTube |
-| **Finance** | ⭐⭐⭐ | Crypto good, need stocks |
-| **System/Local** | ⭐⭐ | Need clipboard, screenshots |
+| Category | Rating | Tools | Notes |
+|----------|--------|-------|-------|
+| **Memory & Context** | ⭐⭐⭐⭐⭐ | 7 tools + deep_memory_search | Excellent - FTS5, semantic, cross-source |
+| **Development/Coding** | ⭐⭐⭐⭐⭐ | opencode, execute_bash, ssh_remote, docker_control | OpenCode is powerful, SSH for remote |
+| **Web Search & Scraping** | ⭐⭐⭐⭐⭐ | brave_search, crawl_url, screenshot_url, fetch | Stealth scraping, vision analysis |
+| **Communication** | ⭐⭐⭐⭐ | send_email, phone_call, send_webhook, samantha | Missing: Slack, Discord |
+| **Productivity** | ⭐⭐⭐⭐ | calendar (n8n), reminders, alerts, canvas, stash | Missing: Todoist, Notion |
+| **Media** | ⭐⭐⭐⭐⭐ | spotify, generate_music, youtube_transcript | Full Spotify control, AI music |
+| **Finance** | ⭐⭐⭐⭐⭐ | crypto_price, stock_price, price_alert | Crypto, stocks, futures, forex, alerts |
+| **Image & Vision** | ⭐⭐⭐⭐⭐ | generate_image, analyze_image, upload_cloudflare | AI gen, vision, CDN upload |
+| **Documents** | ⭐⭐⭐⭐ | pdf_create, pdf_read, printer | Create, read, merge, split, print |
+| **System/Local** | ⭐⭐⭐ | speaker_volume, system_monitor, network_tools | Missing: clipboard |
+| **Smart Home** | ⭐ | (none) | Future: Home Assistant, MQTT |
 
 ---
 
 ### Recommended Next Steps
 
-1. **Add Weather** - Most common assistant request ( done 11-29-2025)
-2. **Add Calendar Integration** - n8n + Google Calendar ( done 11-26-2025)
-3. **Add Slack Integration** - n8n workflow for team comms
-4. **Add File Search** - Local tool for workspace search
-5. **Add Clipboard** - Quick data transfer
+1. ✅ ~~**Add Weather**~~ - Done 11-29-2025
+2. ✅ ~~**Add Calendar Integration**~~ - Done 11-26-2025
+3. ✅ ~~**Add Spotify**~~ - Done
+4. ✅ ~~**Add Stock Prices**~~ - Done
+5. **Add Slack Integration** - n8n workflow for team comms
+6. **Add File Search** - Local tool for workspace search
+7. **Add Clipboard** - Quick data transfer
+8. **Complete Blinko MCP** - Note-taking integration
 
 ### MCP Servers to Consider
 

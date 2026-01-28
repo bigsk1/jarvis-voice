@@ -673,7 +673,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `status_recap` - **Daily status**: aggregates weather, crypto, stocks, alerts, reminders, system health → Canvas + Stash
 - `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration
 - `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
-- `samantha` - **Multi-agent**: Chat with Samantha AI on VPS2, delegate tasks, fire-and-forget webhooks
+- `samantha` - **Multi-agent**: Chat with Samantha (moltbot) AI, delegate tasks, fire-and-forget webhooks
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
 - `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune
