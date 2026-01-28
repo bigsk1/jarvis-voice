@@ -217,6 +217,7 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
 | `transparent` | bool | false | Transparent background (OpenAI only, png/webp) |
 | `save` | bool | true | Save to disk and stash |
 | `mode` | string | "cloud" | "cloud" uses cloud.env, "local" uses local.env |
+| `upload_to_cdn` | bool | false | Upload to Cloudflare CDN and return public URL |
 
 ### Response
 
@@ -264,6 +265,28 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
     "provider": "openai",
     "transparent": true
   }'
+```
+
+**With CDN upload** (get public URL in one step):
+```bash
+curl -X POST http://localhost:8880/api/generated-images/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A cute robot dog playing in a park",
+    "upload_to_cdn": true
+  }'
+```
+
+Response includes `cdn_url` at the top level:
+```json
+{
+  "ok": true,
+  "cdn_url": "https://imagedelivery.net/xxx/yyy/public",
+  "data": {
+    "saved": { "filename": "..." },
+    "cdn": { "url": "...", "image_id": "..." }
+  }
+}
 ```
 
 **With grounding (Gemini - for real-time subjects):**

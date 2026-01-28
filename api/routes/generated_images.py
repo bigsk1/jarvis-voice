@@ -161,6 +161,7 @@ class GenerateRequest(BaseModel):
     transparent: bool = Field(False, description="Transparent background (OpenAI only, png/webp)")
     save: bool = Field(True, description="Save to disk and stash")
     mode: str = Field("cloud", description="'cloud' uses cloud.env, 'local' uses local.env")
+    upload_to_cdn: bool = Field(False, description="Upload to Cloudflare CDN and return public URL")
 
 
 class GenerateResponse(BaseModel):
@@ -169,6 +170,7 @@ class GenerateResponse(BaseModel):
     speech: Optional[str] = None
     error: Optional[str] = None
     data: Optional[dict] = None
+    cdn_url: Optional[str] = None  # Populated if upload_to_cdn=True
 
 
 def format_size(size_bytes: int) -> str:
@@ -282,16 +284,30 @@ async def generate_image(request: GenerateRequest):
       }'
     ```
     
-    **With OpenAI provider override**:
+    **With CDN upload** (get public URL in one step):
     ```json
     {
-      "prompt": "A logo with the text 'JARVIS'",
-      "provider": "openai",
-      "transparent": true
+      "prompt": "A cute robot dog playing in a park",
+      "upload_to_cdn": true
     }
     ```
     
-    **Response**:
+    **Response with CDN URL**:
+    ```json
+    {
+      "ok": true,
+      "speech": "Generated image with gemini: A cute robot dog...",
+      "cdn_url": "https://imagedelivery.net/xxx/yyy/public",
+      "data": {
+        "prompt": "A cute robot dog playing in a park",
+        "provider": "gemini",
+        "saved": { "filename": "generated_a_cute_robot_dog_20260128_123456.jpg" },
+        "cdn": { "url": "https://imagedelivery.net/xxx/yyy/public", "image_id": "yyy" }
+      }
+    }
+    ```
+    
+    **Response without CDN** (default):
     ```json
     {
       "ok": true,
@@ -351,11 +367,54 @@ async def generate_image(request: GenerateRequest):
         # Parse tool output
         try:
             output = json.loads(result.stdout)
+            
+            if not output.get("ok", False):
+                return GenerateResponse(
+                    ok=False,
+                    speech=output.get("speech"),
+                    error=output.get("error"),
+                    data=output.get("data")
+                )
+            
+            cdn_url = None
+            
+            # Upload to CDN if requested
+            if request.upload_to_cdn and output.get("data", {}).get("saved"):
+                saved_info = output["data"]["saved"]
+                filename = saved_info.get("filename")
+                filepath = saved_info.get("path")
+                
+                if filename and filepath:
+                    try:
+                        from upload_cloudflare import upload_image as cf_upload
+                        
+                        upload_result = cf_upload(
+                            str(PROJECT_ROOT / filepath),
+                            "file",
+                            uploader="api",
+                            category="generated"
+                        )
+                        
+                        if upload_result.get("ok"):
+                            cdn_url = upload_result.get("url")
+                            image_id = upload_result.get("image_id")
+                            # Save to catalog
+                            set_cdn_url(filename, cdn_url, image_id)
+                            # Add to output data
+                            output["data"]["cdn"] = {
+                                "url": cdn_url,
+                                "image_id": image_id
+                            }
+                    except Exception as e:
+                        # CDN upload failed but image was generated - still return success
+                        output["data"]["cdn_error"] = str(e)
+            
             return GenerateResponse(
-                ok=output.get("ok", False),
+                ok=True,
                 speech=output.get("speech"),
                 error=output.get("error"),
-                data=output.get("data")
+                data=output.get("data"),
+                cdn_url=cdn_url
             )
         except json.JSONDecodeError:
             return GenerateResponse(ok=False, error=f"Invalid tool output: {result.stdout[:200]}")
