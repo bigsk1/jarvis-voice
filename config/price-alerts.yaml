@@ -22,9 +22,9 @@ watchlist:
     enabled: true
     conditions:
     - type: above
-      value: 99000.0
+      value: 95000
       severity: high
-      message: BTC above $99,000
+      message: BTC above $95,000
     - type: below
       value: 85000
       severity: high
@@ -39,9 +39,9 @@ watchlist:
     enabled: true
     conditions:
     - type: above
-      value: 160
+      value: 128
       severity: high
-      message: Solana above $160
+      message: Solana above $128
     - type: below
       value: 110
       severity: high

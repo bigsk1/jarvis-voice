@@ -66,11 +66,14 @@ async def get_crypto_price(symbol: str):
     Get cryptocurrency price directly (no LLM routing).
     
     Examples:
-    - /api/prices/crypto/BTC
-    - /api/prices/crypto/SOL
-    - /api/prices/crypto/ETH
+    - /api/prices/crypto/BTC or /api/prices/crypto/btc
+    - /api/prices/crypto/SOL or /api/prices/crypto/solana
+    - /api/prices/crypto/ETH or /api/prices/crypto/ethereum
+    
+    Accepts both ticker symbols (BTC) and full names (bitcoin), case-insensitive.
     """
-    result = call_tool("crypto_price", {"symbol": symbol})
+    # Tool expects "coin" param, lowercase for COIN_MAP lookup
+    result = call_tool("crypto_price", {"coin": symbol.lower()})
     
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "Failed to get price"))
@@ -108,7 +111,7 @@ async def get_batch_prices(
         for symbol in crypto.split(","):
             symbol = symbol.strip()
             if symbol:
-                result = call_tool("crypto_price", {"symbol": symbol})
+                result = call_tool("crypto_price", {"coin": symbol.lower()})
                 if result.get("ok"):
                     results["crypto"][symbol] = {
                         "price": result["data"].get("price_usd"),

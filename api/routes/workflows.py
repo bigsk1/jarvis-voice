@@ -249,11 +249,50 @@ async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest = N
         workflows_dir = Path(__file__).parent.parent.parent / "data" / "workflows"
         wf_file = workflows_dir / f"{workflow_id}.json"
         
+        # If direct ID not found, search by trigger alias (e.g., "health" → "server_health_check")
         if not wf_file.exists():
-            raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
-        
-        with open(wf_file, 'r') as f:
-            workflow = json.load(f)
+            # Search all workflows for matching trigger
+            found_workflow = None
+            search_trigger = f"/{workflow_id}" if not workflow_id.startswith("/") else workflow_id
+            
+            for wf_path in workflows_dir.glob("*.json"):
+                try:
+                    with open(wf_path, 'r') as f:
+                        wf = json.load(f)
+                    triggers = wf.get("triggers", {}).get("explicit", [])
+                    # Check if search_trigger matches any explicit trigger
+                    if search_trigger in triggers or workflow_id in triggers:
+                        found_workflow = wf
+                        wf_file = wf_path
+                        break
+                    # Also check without leading slash
+                    if f"/{workflow_id}" in triggers:
+                        found_workflow = wf
+                        wf_file = wf_path
+                        break
+                except (json.JSONDecodeError, IOError):
+                    continue
+            
+            if not found_workflow:
+                # List available workflows and their triggers for helpful error
+                available = []
+                for wf_path in workflows_dir.glob("*.json"):
+                    try:
+                        with open(wf_path, 'r') as f:
+                            wf = json.load(f)
+                        if wf.get("enabled", True):
+                            triggers = wf.get("triggers", {}).get("explicit", [])
+                            available.append(f"{wf.get('id')} (triggers: {', '.join(triggers) or 'none'})")
+                    except:
+                        continue
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Workflow '{workflow_id}' not found. Available: {'; '.join(available[:5])}"
+                )
+            workflow = found_workflow
+        else:
+            with open(wf_file, 'r') as f:
+                workflow = json.load(f)
         
         # Build transcript (trigger + optional query)
         # Use first explicit trigger if available, otherwise fall back to /{workflow_id}
