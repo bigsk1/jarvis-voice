@@ -218,8 +218,17 @@ class PipelineExecutor:
                 if not step_result.get("ok") and step.get("required", True):
                     # Required step failed - abort by default unless explicitly told to continue
                     if step.get("on_fail") != "continue":
+                        # Include the failed step in results before aborting
+                        results.append({
+                            "step": step_num,
+                            "tool": tool_name,
+                            "ok": False,
+                            "data": step_result.get("data"),
+                            "error": step_result.get("error") or step_result.get("speech")
+                        })
                         return self._build_abort_response(workflow, step, results, variables,
-                                                          start_time=start_time, query=query)
+                                                          start_time=start_time, query=query,
+                                                          step_error=step_result.get("error") or step_result.get("speech"))
                 
                 # Store output
                 output_var = step.get("output_var")
@@ -989,7 +998,8 @@ class PipelineExecutor:
     
     def _build_abort_response(self, workflow: dict, failed_step: dict,
                                results: list[dict], variables: dict,
-                               start_time: float = None, query: str = None) -> dict[str, Any]:
+                               start_time: float = None, query: str = None,
+                               step_error: str = None) -> dict[str, Any]:
         """Build abort response and log workflow abortion."""
         speech_template = workflow.get("abort_speech", "Workflow aborted.")
         speech = speech_template
@@ -997,13 +1007,20 @@ class PipelineExecutor:
         
         tools_used = [r.get("tool") for r in results if r.get("tool")]
         
+        # Build detailed reason with error message
+        reason = f"Step {failed_step.get('step')} ({failed_step.get('tool')}) failed"
+        if step_error:
+            reason = f"{reason}: {step_error}"
+        
         response = {
             "ok": False,
             "speech": speech,
+            "error": step_error,  # Surface the actual error at top level
             "data": {
                 "workflow_id": workflow.get("id"),
                 "aborted_at_step": failed_step.get("step"),
-                "reason": f"Step {failed_step.get('step')} ({failed_step.get('tool')}) failed",
+                "failed_tool": failed_step.get("tool"),
+                "reason": reason,
                 "results": results
             },
             "tools_used": tools_used,
