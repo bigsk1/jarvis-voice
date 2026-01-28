@@ -1,0 +1,147 @@
+#!/bin/bash
+#
+# cleanup-logs - Remove old log files from Jarvis
+#
+# Usage:
+#   ./bin/cleanup-logs              # Delete logs older than 60 days
+#   ./bin/cleanup-logs --days 30    # Delete logs older than 30 days
+#   ./bin/cleanup-logs --dry-run    # Preview what would be deleted
+#
+# Log directories cleaned:
+#   - logs/api/           - API request logs
+#   - logs/services/      - Daemon logs (reminder, follow-up, self-healing)
+#   - logs/               - LLM calls, workflows, tools, intelligence, etc.
+#   - logs/opencode/      - OpenCode session logs
+#
+# NOT cleaned (preserved):
+#   - logs/*.pid          - PID files (needed for running daemons)
+#   - logs/baseline-*.json - Token baseline files
+#   - logs/test/          - Test logs (manually managed)
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+LOGS_DIR="$PROJECT_ROOT/logs"
+
+# Default retention: 60 days
+RETENTION_DAYS=60
+DRY_RUN=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --days)
+            RETENTION_DAYS="$2"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: cleanup-logs [--days N] [--dry-run]"
+            echo ""
+            echo "Options:"
+            echo "  --days N     Delete logs older than N days (default: 60)"
+            echo "  --dry-run    Preview what would be deleted without deleting"
+            echo ""
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+echo "🧹 Jarvis Log Cleanup"
+echo "   Retention: $RETENTION_DAYS days"
+echo "   Logs dir:  $LOGS_DIR"
+if $DRY_RUN; then
+    echo "   Mode:      DRY RUN (no files will be deleted)"
+fi
+echo ""
+
+# Count files before
+BEFORE_COUNT=$(find "$LOGS_DIR" -type f \( -name "*.log" -o -name "*.jsonl" -o -name "*.json" \) ! -name "*.pid" ! -name "baseline-*.json" 2>/dev/null | wc -l)
+BEFORE_SIZE=$(du -sh "$LOGS_DIR" 2>/dev/null | cut -f1)
+
+echo "📊 Before cleanup:"
+echo "   Files: $BEFORE_COUNT"
+echo "   Size:  $BEFORE_SIZE"
+echo ""
+
+# Find old files
+echo "🔍 Files older than $RETENTION_DAYS days:"
+
+# Patterns to clean (date-stamped logs)
+PATTERNS=(
+    "*.log"
+    "*.jsonl"
+)
+
+# Directories to scan
+DIRS=(
+    "$LOGS_DIR"
+    "$LOGS_DIR/api"
+    "$LOGS_DIR/services"
+    "$LOGS_DIR/opencode"
+    "$LOGS_DIR/tools"
+    "$LOGS_DIR/intelligence"
+    "$LOGS_DIR/thinking"
+    "$LOGS_DIR/feedback"
+    "$LOGS_DIR/evolution"
+    "$LOGS_DIR/tool-builder"
+    "$LOGS_DIR/self-play"
+    "$LOGS_DIR/validate-system-prompt"
+)
+
+TOTAL_DELETED=0
+TOTAL_BYTES=0
+
+for dir in "${DIRS[@]}"; do
+    if [[ -d "$dir" ]]; then
+        for pattern in "${PATTERNS[@]}"; do
+            # Find files older than retention days
+            while IFS= read -r file; do
+                if [[ -n "$file" ]]; then
+                    size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+                    TOTAL_BYTES=$((TOTAL_BYTES + size))
+                    TOTAL_DELETED=$((TOTAL_DELETED + 1))
+                    
+                    if $DRY_RUN; then
+                        echo "   Would delete: $file ($(numfmt --to=iec $size 2>/dev/null || echo "${size}B"))"
+                    else
+                        echo "   Deleting: $file"
+                        rm -f "$file"
+                    fi
+                fi
+            done < <(find "$dir" -maxdepth 1 -name "$pattern" -type f -mtime +$RETENTION_DAYS 2>/dev/null)
+        done
+    fi
+done
+
+echo ""
+
+if [[ $TOTAL_DELETED -eq 0 ]]; then
+    echo "✅ No files older than $RETENTION_DAYS days found. Nothing to clean."
+else
+    SIZE_HUMAN=$(numfmt --to=iec $TOTAL_BYTES 2>/dev/null || echo "${TOTAL_BYTES}B")
+    if $DRY_RUN; then
+        echo "📋 Would delete $TOTAL_DELETED files ($SIZE_HUMAN)"
+        echo ""
+        echo "Run without --dry-run to actually delete."
+    else
+        echo "✅ Deleted $TOTAL_DELETED files ($SIZE_HUMAN)"
+        
+        # Count after
+        AFTER_COUNT=$(find "$LOGS_DIR" -type f \( -name "*.log" -o -name "*.jsonl" -o -name "*.json" \) ! -name "*.pid" ! -name "baseline-*.json" 2>/dev/null | wc -l)
+        AFTER_SIZE=$(du -sh "$LOGS_DIR" 2>/dev/null | cut -f1)
+        
+        echo ""
+        echo "📊 After cleanup:"
+        echo "   Files: $AFTER_COUNT"
+        echo "   Size:  $AFTER_SIZE"
+    fi
+fi

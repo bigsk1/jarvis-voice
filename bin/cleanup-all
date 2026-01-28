@@ -1,0 +1,197 @@
+#!/bin/bash
+#
+# cleanup-all - Master cleanup script for Jarvis
+#
+# Runs all cleanup tasks with appropriate retention periods:
+#   - Logs: 60 days
+#   - Audio: 30 days  
+#   - Generated images: 90 days
+#   - Stash spaces: Uses built-in TTL (via Python)
+#
+# Usage:
+#   ./bin/cleanup-all              # Run all cleanups
+#   ./bin/cleanup-all --dry-run    # Preview what would be deleted
+#
+# For individual control:
+#   ./bin/cleanup-logs [--days N] [--dry-run]
+#   ./bin/cleanup-audio [--days N] [--dry-run]
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+DRY_RUN=""
+if [[ "$1" == "--dry-run" ]]; then
+    DRY_RUN="--dry-run"
+fi
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║             Jarvis Master Cleanup                            ║"
+echo "║                                                              ║"
+echo "║  Logs: 60 days | Audio: 30 days | Images: 90 days | Stash   ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+# 1. Cleanup logs (60 days)
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+"$SCRIPT_DIR/cleanup-logs" --days 60 $DRY_RUN
+echo ""
+
+# 2. Cleanup audio (30 days)
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+"$SCRIPT_DIR/cleanup-audio" --days 30 $DRY_RUN
+echo ""
+
+# 3. Cleanup generated images (90 days)
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+IMAGES_DIR="$PROJECT_ROOT/data/generated_images"
+RETENTION_DAYS=90
+
+echo "🖼️  Generated Images Cleanup"
+echo "   Retention: $RETENTION_DAYS days"
+echo "   Images dir: $IMAGES_DIR"
+if [[ -n "$DRY_RUN" ]]; then
+    echo "   Mode:      DRY RUN (no files will be deleted)"
+fi
+echo ""
+
+if [[ -d "$IMAGES_DIR" ]]; then
+    BEFORE_COUNT=$(find "$IMAGES_DIR" -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.webp" -o -name "*.gif" \) 2>/dev/null | wc -l)
+    BEFORE_SIZE=$(du -sh "$IMAGES_DIR" 2>/dev/null | cut -f1)
+    
+    echo "📊 Before cleanup:"
+    echo "   Files: $BEFORE_COUNT"
+    echo "   Size:  $BEFORE_SIZE"
+    echo ""
+    
+    # Find old image files
+    TOTAL_DELETED=0
+    TOTAL_BYTES=0
+    
+    while IFS= read -r file; do
+        if [[ -n "$file" ]]; then
+            size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+            TOTAL_BYTES=$((TOTAL_BYTES + size))
+            TOTAL_DELETED=$((TOTAL_DELETED + 1))
+            
+            if [[ -n "$DRY_RUN" ]]; then
+                if [[ $TOTAL_DELETED -le 10 ]]; then
+                    echo "   Would delete: $(basename "$file") ($(numfmt --to=iec $size 2>/dev/null || echo "${size}B"))"
+                fi
+            else
+                rm -f "$file"
+            fi
+        fi
+    done < <(find "$IMAGES_DIR" -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.webp" -o -name "*.gif" \) -mtime +$RETENTION_DAYS 2>/dev/null)
+    
+    echo ""
+    
+    if [[ $TOTAL_DELETED -eq 0 ]]; then
+        echo "✅ No images older than $RETENTION_DAYS days found."
+    else
+        SIZE_HUMAN=$(numfmt --to=iec $TOTAL_BYTES 2>/dev/null || echo "${TOTAL_BYTES}B")
+        if [[ -n "$DRY_RUN" ]]; then
+            [[ $TOTAL_DELETED -gt 10 ]] && echo "   ... and $((TOTAL_DELETED - 10)) more files"
+            echo ""
+            echo "📋 Would delete $TOTAL_DELETED images ($SIZE_HUMAN)"
+        else
+            echo "✅ Deleted $TOTAL_DELETED images ($SIZE_HUMAN)"
+            
+            AFTER_COUNT=$(find "$IMAGES_DIR" -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.webp" -o -name "*.gif" \) 2>/dev/null | wc -l)
+            AFTER_SIZE=$(du -sh "$IMAGES_DIR" 2>/dev/null | cut -f1)
+            
+            echo ""
+            echo "📊 After cleanup:"
+            echo "   Files: $AFTER_COUNT"
+            echo "   Size:  $AFTER_SIZE"
+        fi
+    fi
+else
+    echo "   (directory does not exist)"
+fi
+echo ""
+
+# 4. Cleanup stash expired spaces (uses built-in TTL)
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📦 Stash Spaces Cleanup (TTL-based)"
+STASH_DIR="$PROJECT_ROOT/data/stash"
+
+if [[ -d "$STASH_DIR" ]]; then
+    BEFORE_COUNT=$(find "$STASH_DIR" -maxdepth 1 -type d -name "space_*" 2>/dev/null | wc -l)
+    BEFORE_SIZE=$(du -sh "$STASH_DIR" 2>/dev/null | cut -f1)
+    
+    echo "   Stash dir: $STASH_DIR"
+    echo ""
+    echo "📊 Before cleanup:"
+    echo "   Spaces: $BEFORE_COUNT"
+    echo "   Size:   $BEFORE_SIZE"
+    echo ""
+    
+    if [[ -n "$DRY_RUN" ]]; then
+        # Just count expired for dry run
+        cd "$PROJECT_ROOT"
+        python3 -c "
+import sys
+sys.path.insert(0, 'lib')
+from stash_helper import list_spaces, get_space
+
+expired = []
+for s in list_spaces():
+    try:
+        space = get_space(s['space_id'])
+        if space.is_expired:
+            expired.append(s['space_id'])
+    except:
+        pass
+
+if expired:
+    print(f'📋 Would delete {len(expired)} expired space(s)')
+    for sid in expired[:5]:
+        print(f'   - {sid}')
+    if len(expired) > 5:
+        print(f'   ... and {len(expired)-5} more')
+else:
+    print('✅ No expired stash spaces found.')
+"
+    else
+        # Actually cleanup
+        cd "$PROJECT_ROOT"
+        python3 -c "
+import sys
+sys.path.insert(0, 'lib')
+from stash_helper import cleanup_expired
+
+result = cleanup_expired()
+deleted = result.get('deleted_spaces', 0)
+freed = result.get('freed_bytes', 0)
+
+if deleted > 0:
+    freed_str = f'{freed / (1024*1024):.1f}M' if freed > 1024*1024 else f'{freed / 1024:.1f}K' if freed > 1024 else f'{freed}B'
+    print(f'✅ Deleted {deleted} expired space(s), freed {freed_str}')
+else:
+    print('✅ No expired stash spaces found.')
+"
+        AFTER_COUNT=$(find "$STASH_DIR" -maxdepth 1 -type d -name "space_*" 2>/dev/null | wc -l)
+        AFTER_SIZE=$(du -sh "$STASH_DIR" 2>/dev/null | cut -f1)
+        
+        echo ""
+        echo "📊 After cleanup:"
+        echo "   Spaces: $AFTER_COUNT"
+        echo "   Size:   $AFTER_SIZE"
+    fi
+else
+    echo "   (stash directory does not exist)"
+fi
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🎉 Cleanup complete!"
+echo ""
+
+# Show overall disk usage
+echo "📊 Current disk usage:"
+du -sh "$PROJECT_ROOT/logs" "$PROJECT_ROOT/audio" "$PROJECT_ROOT/data/generated_images" "$PROJECT_ROOT/data/stash" 2>/dev/null | while read size dir; do
+    name=$(basename "$dir")
+    printf "   %-20s %s\n" "$name/" "$size"
+done

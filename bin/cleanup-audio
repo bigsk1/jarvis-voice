@@ -1,0 +1,160 @@
+#!/bin/bash
+#
+# cleanup-audio - Remove old audio files from Jarvis
+#
+# Usage:
+#   ./bin/cleanup-audio              # Delete audio older than 30 days
+#   ./bin/cleanup-audio --days 14    # Delete audio older than 14 days
+#   ./bin/cleanup-audio --dry-run    # Preview what would be deleted
+#
+# Directories cleaned:
+#   - audio/cloud/recordings/  - TTS output, QA recordings
+#   - audio/cloud/mic/         - Microphone recordings (cloud mode)
+#   - audio/local/tts/         - TTS output (local mode)
+#   - audio/local/mic/         - Microphone recordings (local mode)
+#   - audio/local/logs/        - QA log text files
+#
+# File types:
+#   - *.wav  - Audio recordings
+#   - *.mp3  - Compressed audio (if any)
+#   - *.txt  - QA log files in audio/local/logs/
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+AUDIO_DIR="$PROJECT_ROOT/audio"
+
+# Default retention: 30 days
+RETENTION_DAYS=30
+DRY_RUN=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --days)
+            RETENTION_DAYS="$2"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: cleanup-audio [--days N] [--dry-run]"
+            echo ""
+            echo "Options:"
+            echo "  --days N     Delete audio older than N days (default: 30)"
+            echo "  --dry-run    Preview what would be deleted without deleting"
+            echo ""
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+echo "🎵 Jarvis Audio Cleanup"
+echo "   Retention: $RETENTION_DAYS days"
+echo "   Audio dir: $AUDIO_DIR"
+if $DRY_RUN; then
+    echo "   Mode:      DRY RUN (no files will be deleted)"
+fi
+echo ""
+
+# Check if audio dir exists
+if [[ ! -d "$AUDIO_DIR" ]]; then
+    echo "⚠️  Audio directory not found: $AUDIO_DIR"
+    exit 0
+fi
+
+# Count files before
+BEFORE_COUNT=$(find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" -o -name "*.txt" \) 2>/dev/null | wc -l)
+BEFORE_SIZE=$(du -sh "$AUDIO_DIR" 2>/dev/null | cut -f1)
+
+echo "📊 Before cleanup:"
+echo "   Files: $BEFORE_COUNT"
+echo "   Size:  $BEFORE_SIZE"
+echo ""
+
+# Find old files
+echo "🔍 Files older than $RETENTION_DAYS days:"
+
+TOTAL_DELETED=0
+TOTAL_BYTES=0
+
+# Find and process old audio files
+while IFS= read -r file; do
+    if [[ -n "$file" ]]; then
+        size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+        TOTAL_BYTES=$((TOTAL_BYTES + size))
+        TOTAL_DELETED=$((TOTAL_DELETED + 1))
+        
+        # Show progress every 50 files in dry-run, or always when deleting
+        if $DRY_RUN; then
+            if [[ $((TOTAL_DELETED % 50)) -eq 1 ]] || [[ $TOTAL_DELETED -le 10 ]]; then
+                echo "   Would delete: $file ($(numfmt --to=iec $size 2>/dev/null || echo "${size}B"))"
+            fi
+        else
+            # Show every 100th file when actually deleting
+            if [[ $((TOTAL_DELETED % 100)) -eq 1 ]]; then
+                echo "   Deleting batch... ($TOTAL_DELETED files so far)"
+            fi
+            rm -f "$file"
+        fi
+    fi
+done < <(find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" \) -mtime +$RETENTION_DAYS 2>/dev/null)
+
+# Also clean up old QA log text files in audio/local/logs/
+while IFS= read -r file; do
+    if [[ -n "$file" ]]; then
+        size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+        TOTAL_BYTES=$((TOTAL_BYTES + size))
+        TOTAL_DELETED=$((TOTAL_DELETED + 1))
+        
+        if ! $DRY_RUN; then
+            rm -f "$file"
+        fi
+    fi
+done < <(find "$AUDIO_DIR/local/logs" -type f -name "*.txt" -mtime +$RETENTION_DAYS 2>/dev/null)
+
+# Clean up old text files in cloud directory too
+while IFS= read -r file; do
+    if [[ -n "$file" ]]; then
+        size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+        TOTAL_BYTES=$((TOTAL_BYTES + size))
+        TOTAL_DELETED=$((TOTAL_DELETED + 1))
+        
+        if ! $DRY_RUN; then
+            rm -f "$file"
+        fi
+    fi
+done < <(find "$AUDIO_DIR/cloud" -type f -name "*.txt" -mtime +$RETENTION_DAYS 2>/dev/null)
+
+echo ""
+
+if [[ $TOTAL_DELETED -eq 0 ]]; then
+    echo "✅ No files older than $RETENTION_DAYS days found. Nothing to clean."
+else
+    SIZE_HUMAN=$(numfmt --to=iec $TOTAL_BYTES 2>/dev/null || echo "${TOTAL_BYTES}B")
+    if $DRY_RUN; then
+        echo "   ... and $((TOTAL_DELETED - 10)) more files"
+        echo ""
+        echo "📋 Would delete $TOTAL_DELETED files ($SIZE_HUMAN)"
+        echo ""
+        echo "Run without --dry-run to actually delete."
+    else
+        echo "✅ Deleted $TOTAL_DELETED files ($SIZE_HUMAN)"
+        
+        # Count after
+        AFTER_COUNT=$(find "$AUDIO_DIR" -type f \( -name "*.wav" -o -name "*.mp3" -o -name "*.txt" \) 2>/dev/null | wc -l)
+        AFTER_SIZE=$(du -sh "$AUDIO_DIR" 2>/dev/null | cut -f1)
+        
+        echo ""
+        echo "📊 After cleanup:"
+        echo "   Files: $AFTER_COUNT"
+        echo "   Size:  $AFTER_SIZE"
+    fi
+fi

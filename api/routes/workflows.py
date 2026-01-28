@@ -91,11 +91,24 @@ async def list_workflows():
                     if tool and tool not in tools_used:
                         tools_used.append(tool)
                 
+                # Get explicit triggers
+                explicit_triggers = wf.get("triggers", {}).get("explicit", [])
+                primary_trigger = explicit_triggers[0] if explicit_triggers else f"/{wf_file.stem}"
+                
+                # Check if workflow requires input (has main_subject extraction)
+                variables = wf.get("variables", {})
+                requires_input = any(
+                    isinstance(v, dict) and v.get("extract") == "main_subject"
+                    for v in variables.values()
+                )
+                
                 workflows.append(WorkflowInfo(
                     id=wf.get("id", wf_file.stem),
                     name=wf.get("name", wf_file.stem),
                     description=wf.get("description"),
-                    trigger=wf.get("trigger", f"/{wf_file.stem}"),
+                    trigger=primary_trigger,
+                    triggers=explicit_triggers if explicit_triggers else [f"/{wf_file.stem}"],
+                    requires_input=requires_input,
                     version=wf.get("version"),
                     tools_used=tools_used
                 ))
@@ -194,11 +207,24 @@ async def get_workflow(workflow_id: str):
             if tool and tool not in tools_used:
                 tools_used.append(tool)
         
+        # Get explicit triggers
+        explicit_triggers = wf.get("triggers", {}).get("explicit", [])
+        primary_trigger = explicit_triggers[0] if explicit_triggers else f"/{workflow_id}"
+        
+        # Check if workflow requires input (has main_subject extraction)
+        variables = wf.get("variables", {})
+        requires_input = any(
+            isinstance(v, dict) and v.get("extract") == "main_subject"
+            for v in variables.values()
+        )
+        
         return WorkflowInfo(
             id=wf.get("id", workflow_id),
             name=wf.get("name", workflow_id),
             description=wf.get("description"),
-            trigger=wf.get("trigger", f"/{workflow_id}"),
+            trigger=primary_trigger,
+            triggers=explicit_triggers if explicit_triggers else [f"/{workflow_id}"],
+            requires_input=requires_input,
             version=wf.get("version"),
             tools_used=tools_used
         )
@@ -297,9 +323,36 @@ async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest = N
         # Build transcript (trigger + optional query)
         # Use first explicit trigger if available, otherwise fall back to /{workflow_id}
         explicit_triggers = workflow.get("triggers", {}).get("explicit", [])
-        trigger = explicit_triggers[0] if explicit_triggers else workflow.get("trigger", f"/{workflow_id}")
-        if request.query:
-            transcript = f"{trigger} {request.query}"
+        all_triggers = explicit_triggers + [f"/{workflow_id}"]
+        trigger = explicit_triggers[0] if explicit_triggers else f"/{workflow_id}"
+        
+        # Clean up query - remove trigger prefix if user accidentally included it
+        query = request.query.strip() if request.query else ""
+        for t in all_triggers:
+            if query.lower().startswith(t.lower()):
+                query = query[len(t):].strip()
+                break
+        
+        # Check if workflow requires a topic/query
+        variables = workflow.get("variables", {})
+        requires_topic = any(
+            isinstance(v, dict) and v.get("extract") == "main_subject" 
+            for v in variables.values()
+        )
+        
+        if requires_topic and not query:
+            # Return helpful error for workflows that need input
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": f"Workflow '{workflow_id}' requires a topic/query parameter",
+                    "hint": f"Example: POST /api/workflows/{workflow_id}/execute with body: {{\"query\": \"your topic here\"}}",
+                    "workflow_description": workflow.get("description", "")
+                }
+            )
+        
+        if query:
+            transcript = f"{trigger} {query}"
         else:
             transcript = trigger
         

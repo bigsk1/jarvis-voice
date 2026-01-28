@@ -1015,6 +1015,35 @@ If tool is made need to update timeouts in executor.py
 ./bin/validate-system-prompt --tools --issue "Jarvis stopped responding after list_reminders" --dry-run
 ```
 
+```bash
+TODAY=$(date +%Y-%m-%d)
+
+# Watch external requests live
+tail -f logs/api/access-$TODAY.jsonl | jq .
+
+# Count by endpoint
+cat logs/api/access-$TODAY.jsonl | jq -r '.path' | sort | uniq -c | sort -rn
+
+# Show Samantha requests (Tailscale 100.x)
+cat logs/api/access-$TODAY.jsonl | jq 'select(.client_ip | startswith("100."))'
+
+# View errors with request body
+cat logs/api/errors-$TODAY.jsonl | jq '{timestamp, path, status, request_body}'
+
+# Slow requests (>100ms)
+cat logs/api/access-$TODAY.jsonl | jq 'select(.duration_ms > 100)'
+
+# Preview what would be deleted
+./bin/cleanup-logs --dry-run
+
+# Delete logs older than 60 days (default)
+./bin/cleanup-logs
+
+# Custom retention
+./bin/cleanup-logs --days 30
+
+```
+
 
 
 

@@ -4,16 +4,123 @@ Jarvis Proactive Assistant API Server
 FastAPI server for webhooks, alerts, reminders, and proactive notifications
 """
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import sys
+import time
+import json
 from pathlib import Path
+from datetime import datetime
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router, stash_router, canvas_router, prices_router, config_router, workflows_router, intel_router, images_router
 from api.routes.intelligence import router as intelligence_router
+
+
+# ============================================================================
+# Request Logging Middleware
+# ============================================================================
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to log all API requests to logs/api/ directory.
+    
+    Logs:
+    - access.log: All requests (JSONL format)  
+    - errors.log: 4xx/5xx responses with details
+    
+    By default, skips logging loopback (127.0.0.1) access to reduce noise
+    from internal daemon polling. Errors from loopback are still logged.
+    """
+    
+    def __init__(self, app, logs_dir: Path = None, log_loopback: bool = False):
+        super().__init__(app)
+        self.logs_dir = logs_dir or Path(__file__).parent.parent / "logs" / "api"
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        self.log_loopback = log_loopback
+        
+        # Paths to skip detailed logging (health checks, metrics)
+        self.skip_paths = {"/api/health", "/metrics", "/api/status"}
+        
+        # IPs considered "internal" (loopback)
+        self.internal_ips = {"127.0.0.1", "::1", "localhost"}
+    
+    def _get_log_file(self, log_type: str) -> Path:
+        """Get log file path with date rotation."""
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        return self.logs_dir / f"{log_type}-{date_str}.jsonl"
+    
+    def _write_log(self, log_type: str, entry: dict):
+        """Write log entry to file."""
+        try:
+            log_file = self._get_log_file(log_type)
+            with open(log_file, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            print(f"⚠️  Failed to write {log_type} log: {e}")
+    
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        
+        # Get request info
+        method = request.method
+        path = request.url.path
+        query_string = str(request.url.query) if request.url.query else None
+        client_ip = request.client.host if request.client else "unknown"
+        
+        # Try to get request body for POST/PUT (for error logging)
+        body = None
+        if method in ("POST", "PUT", "PATCH") and path not in self.skip_paths:
+            try:
+                body_bytes = await request.body()
+                if body_bytes:
+                    body = body_bytes.decode("utf-8")[:2000]  # Limit to 2KB
+            except:
+                pass
+        
+        # Process request
+        response = None
+        error_detail = None
+        try:
+            response = await call_next(request)
+        except Exception as e:
+            error_detail = str(e)
+            raise
+        finally:
+            duration_ms = (time.time() - start_time) * 1000
+            status_code = response.status_code if response else 500
+            
+            # Build log entry
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "method": method,
+                "path": path,
+                "query": query_string,
+                "status": status_code,
+                "duration_ms": round(duration_ms, 2),
+                "client_ip": client_ip,
+            }
+            
+            # Skip access log for health checks and internal traffic
+            is_internal = client_ip in self.internal_ips
+            skip_access = path in self.skip_paths or (is_internal and not self.log_loopback)
+            
+            if not skip_access:
+                self._write_log("access", log_entry)
+            
+            # Log errors (4xx, 5xx) with more detail - ALWAYS log errors, even from loopback
+            if status_code >= 400:
+                error_entry = {
+                    **log_entry,
+                    "request_body": body[:500] if body else None,  # Truncate for errors
+                    "error": error_detail,
+                }
+                self._write_log("errors", error_entry)
+        
+        return response
 
 # Prometheus metrics
 try:
@@ -164,6 +271,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request logging middleware - logs to logs/api/
+# Set log_loopback=True to include internal daemon traffic
+app.add_middleware(RequestLoggingMiddleware, log_loopback=False)
+print("✅ Request logging enabled → logs/api/ (external only, errors always logged)")
 
 # Initialize Prometheus metrics FIRST (before routes)
 if PROMETHEUS_AVAILABLE:

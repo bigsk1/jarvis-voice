@@ -9,7 +9,9 @@ class WorkflowInfo(BaseModel):
     id: str = Field(..., description="Workflow ID (e.g., 'crypto_market_report')")
     name: str = Field(..., description="Human-readable name")
     description: str | None = Field(None, description="What this workflow does")
-    trigger: str = Field(..., description="Command trigger (e.g., '/crypto')")
+    trigger: str = Field(..., description="Primary command trigger (e.g., '/crypto')")
+    triggers: list[str] = Field(default_factory=list, description="All command triggers (e.g., ['/crypto', '/crypto-report'])")
+    requires_input: bool = Field(False, description="Whether workflow requires a query/topic parameter")
     version: str | None = Field(None, description="Workflow version")
     tools_used: list[str] = Field(default_factory=list, description="Tools used by this workflow")
     
@@ -20,6 +22,8 @@ class WorkflowInfo(BaseModel):
                 "name": "Crypto Market Report Workflow",
                 "description": "Get crypto prices, search news, analyze market, email report",
                 "trigger": "/crypto",
+                "triggers": ["/crypto"],
+                "requires_input": False,
                 "version": "1.1",
                 "tools_used": ["crypto_price", "mcp_brave_search_brave_web_search", "canvas", "send_email"]
             }

@@ -219,13 +219,36 @@ HTTP Status: 404
 
 ## Available Workflows
 
-| Workflow ID | Trigger | Description |
-|-------------|---------|-------------|
-| `crypto_market_report` | `/crypto [coins]` | Crypto prices, news, analysis, email report |
-| `web_archive` | `/archive <url>` | Archive webpage to stash with Canvas summary |
-| `deep_research` | `/research <topic>` | Multi-source research with Brave + crawling |
-| `quick_note` | `/note <text>` | Save note to memory + Canvas |
-| `server_health_check` | `/health [host]` | SSH health check (default: vps2) |
+| Workflow ID | Triggers | Description |
+|-------------|----------|-------------|
+| `crypto_market_report` | `/crypto` | Crypto prices, news, analysis, email report (default: BTC, SOL) |
+| `daily_status` | `/status`, `/daily`, `/briefing`, `/recap` | Weather, crypto, stocks, alerts, reminders, health → Canvas report |
+| `daily_status_visual` | `/status-visual`, `/status-image`, `/daily-visual` | Same as daily_status but with AI-generated dashboard image |
+| `deep_dive` | `/deep-dive`, `/dive` | Screenshot + crawl URL, create comprehensive Canvas summary with visual |
+| `deep_research` | `/research` | Multi-source research with Brave + crawling, validates sources |
+| `quick_note` | `/note`, `/quicknote`, `/remember-this` | Save note to memory + Canvas |
+| `server_health_check` | `/health`, `/server-check` | SSH health check using hosts from config/ssh.json |
+| `url_ingest` | `/url_ingest`, `/ingest_url`, `/learn_url` | Fetch URL, extract facts, create intel file, ingest to memory for RAG |
+| `web_archive` | `/archive` | Archive webpage to stash with Canvas summary |
+| `youtube_research` | `/youtube_research`, `/yt-research`, `/study-video` | Download transcript, summarize, create study notes on Canvas |
+
+**Note:** Workflows can be triggered via API using workflow ID or trigger alias:
+```bash
+# By workflow ID
+curl -X POST http://localhost:8880/api/workflows/server_health_check/execute
+
+# By trigger alias (also works!)
+curl -X POST http://localhost:8880/api/workflows/health/execute
+
+# With query parameter (for workflows that need input)
+curl -X POST http://localhost:8880/api/workflows/deep_research/execute \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Cursor CLI features"}'
+```
+
+**Important:** For workflows that require a topic (like `deep_research`, `web_archive`), pass the topic in the `query` field - do NOT include the trigger prefix:
+- ✅ Correct: `{"query": "Cursor CLI features"}`
+- ❌ Wrong: `{"query": "/research Cursor CLI features"}` (trigger prefix is added automatically)
 
 ---
 

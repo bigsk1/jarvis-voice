@@ -159,6 +159,127 @@ DAEMON_GRACE_PERIOD = 60  # seconds before alerting
 
 ---
 
+## Log Management
+
+All logs are stored in `logs/` with date-based filenames. **Default retention is 60 days.**
+
+### Log Directories
+
+| Directory | Contents | Size Range |
+|-----------|----------|------------|
+| `logs/` | LLM calls, workflows, baseline data | ~3MB/day (heavy use) |
+| `logs/api/` | API request logs (external only) | ~50KB/day |
+| `logs/services/` | Daemon logs (reminder, follow-up, self-healing) | ~500KB/day |
+| `logs/intelligence/` | Intelligence engine logs | Varies |
+| `logs/tools/` | Tool execution logs | Varies |
+| `logs/opencode/` | OpenCode session logs | Varies |
+
+### Cleanup Script
+
+```bash
+# Preview what would be deleted (dry run)
+./bin/cleanup-logs --dry-run
+
+# Delete logs older than 60 days (default)
+./bin/cleanup-logs
+
+# Custom retention (e.g., 30 days)
+./bin/cleanup-logs --days 30
+```
+
+### Quick Commands
+
+```bash
+# Check total log size
+du -sh logs/
+
+# Check by subdirectory
+du -sh logs/*
+
+# Count log files
+find logs -type f -name "*.log" -o -name "*.jsonl" | wc -l
+
+# Find large log files (>10MB)
+find logs -type f -size +10M
+
+# Oldest log files
+find logs -type f -name "*.jsonl" -printf '%T+ %p\n' | sort | head -10
+```
+
+### Automated Cleanup (Active)
+
+Weekly cleanup runs every Sunday at 3am via cron:
+
+```bash
+# Current crontab entry:
+0 3 * * 0 /home/boss/jarvis-voice/bin/cleanup-all >> /home/boss/jarvis-voice/logs/cleanup.log 2>&1
+```
+
+### Master Cleanup Script
+
+The `cleanup-all` script handles everything with appropriate retention:
+
+```bash
+# Run all cleanups
+./bin/cleanup-all
+
+# Preview what would be deleted
+./bin/cleanup-all --dry-run
+```
+
+**Retention periods:**
+
+| Directory | Retention | Purpose |
+|-----------|-----------|---------|
+| `logs/` | 60 days | LLM calls, services, API, tools |
+| `audio/` | 30 days | TTS output, mic recordings |
+| `data/generated_images/` | 90 days | AI-generated images |
+| `data/stash/` | 7 days (TTL) | Workflow artifacts, temporary storage |
+
+### Individual Cleanup Scripts
+
+```bash
+# Logs only
+./bin/cleanup-logs [--days N] [--dry-run]
+
+# Audio only
+./bin/cleanup-audio [--days N] [--dry-run]
+```
+
+### Stash vs Generated Images
+
+```
+generate_image tool
+       │
+       ├──► data/generated_images/   ← Long-term backup (90 days)
+       │
+       └──► data/stash/              ← Active workflows (7 days TTL)
+                                       Canvas uses stash:// refs
+```
+
+- **Stash** = short-term, for active workflows and canvas references
+- **Generated Images** = longer-term backup if you need to re-reference
+- Memory stores `stash://` refs; if expired, LLM knows artifact is gone
+
+### Files NOT Cleaned
+
+The cleanup script preserves:
+- `logs/*.pid` - PID files for running daemons
+- `logs/baseline-*.json` - Token baseline reference data
+- `logs/test/` - Test logs (manually managed)
+
+---
+
+## API Request Logging
+
+See [API Logging Documentation](../api/LOGGING.md) for detailed API request logging:
+- Log format and fields
+- `jq` analysis commands
+- Error investigation
+- Configuration options
+
+---
+
 ## Quick Links
 
 **Start Here**: [Proactive Assistant System](PROACTIVE_ASSISTANT_SYSTEM.md)

@@ -487,7 +487,7 @@ class ChatUI {
         <div class="autocomplete-item" data-index="${i}" data-type="${s.type}" data-name="${s.name}">
           <span class="autocomplete-icon">${s.icon}</span>
           <span class="autocomplete-name">${s.type === 'prompt' ? '@' : '/'}${s.name}</span>
-          <span class="autocomplete-desc">${Utils.truncate(s.description, 40)}</span>
+          <span class="autocomplete-desc">${Utils.truncate(s.description, 85)}</span>
           ${tooltipHtml}
         </div>
       `;
