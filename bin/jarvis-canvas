@@ -100,7 +100,9 @@ PROJECT_ROOT = Path(__file__).parent.parent
 CANVAS_DIR = PROJECT_ROOT / "data" / "canvas"
 STATIC_DIR = PROJECT_ROOT / "docs" / "images"
 STASH_DIR = PROJECT_ROOT / "data" / "stash"
+GENERATED_IMAGES_DIR = PROJECT_ROOT / "data" / "generated_images"
 CANVAS_DIR.mkdir(parents=True, exist_ok=True)
+GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
 CORS(app)
@@ -1388,6 +1390,9 @@ HTML_TEMPLATE = '''
                 <span id="pageCount">0 pages</span>
             </div>
             <div class="header-links">
+                <a href="/gallery" class="header-link" title="Image Gallery">
+                    🖼️ <span>Gallery</span>
+                </a>
                 <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;" title="Jarvis Web">
                     🤖 <span>Jarvis</span>
                 </a>
@@ -2352,6 +2357,718 @@ def upload_page():
 
 
 # ============================================================================
+# GALLERY
+# ============================================================================
+
+GALLERY_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis Gallery - Generated Images</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-tertiary: #252542;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --danger: #ef4444;
+            --danger-hover: #f87171;
+            --success: #22c55e;
+            --border: #333355;
+            --header-height: 60px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: var(--header-height);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .logo-icon img {
+            width: 28px;
+            height: 28px;
+        }
+
+        .header-stats {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .header-links {
+            display: flex;
+            gap: 12px;
+        }
+
+        .header-link {
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .header-link:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        /* Main content */
+        .main {
+            padding-top: calc(var(--header-height) + 24px);
+            padding: calc(var(--header-height) + 24px) 24px 24px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 200px;
+            max-width: 400px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .sort-select {
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            cursor: pointer;
+        }
+
+        /* Gallery grid */
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .image-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .image-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            border-color: var(--accent);
+        }
+
+        .image-wrapper {
+            position: relative;
+            aspect-ratio: 16/10;
+            background: var(--bg-tertiary);
+            cursor: pointer;
+        }
+
+        .image-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .image-info {
+            padding: 12px 16px;
+        }
+
+        .image-name {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            word-break: break-word;
+            line-height: 1.4;
+            max-height: 2.8em;
+            overflow: hidden;
+        }
+
+        .image-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .image-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        /* Lightbox */
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox-content {
+            max-width: 95%;
+            max-height: 90%;
+            position: relative;
+        }
+
+        .lightbox-content img {
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
+            border-radius: 8px;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 44px;
+            height: 44px;
+            background: var(--bg-secondary);
+            border: none;
+            border-radius: 50%;
+            color: var(--text-primary);
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 2001;
+        }
+
+        .lightbox-close:hover {
+            background: var(--danger);
+        }
+
+        .lightbox-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            padding: 16px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .lightbox-filename {
+            font-size: 0.9rem;
+            word-break: break-all;
+        }
+
+        .lightbox-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 12px 20px;
+            background: var(--success);
+            color: white;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            z-index: 3000;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+        }
+
+        .toast.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.error {
+            background: var(--danger);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                padding: 0 16px;
+            }
+            
+            .header-stats {
+                display: none;
+            }
+
+            .main {
+                padding: 80px 16px 16px;
+            }
+
+            .gallery {
+                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+                gap: 12px;
+            }
+
+            .image-info {
+                padding: 10px 12px;
+            }
+
+            .lightbox-info {
+                flex-direction: column;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon"><img src="/favicon.ico" alt="Jarvis"></div>
+            <span>Jarvis Gallery</span>
+        </div>
+        <div class="header-stats">
+            <span id="imageCount">0 images</span>
+            <span id="totalSize">0 MB</span>
+        </div>
+        <div class="header-links">
+            <a href="/" class="header-link" title="Back to Canvas">📝 Canvas</a>
+            <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;">🤖 Jarvis</a>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="controls">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search images..." oninput="filterImages()">
+            </div>
+            <select class="sort-select" id="sortSelect" onchange="sortImages()">
+                <option value="date-desc">Newest First</option>
+                <option value="date-asc">Oldest First</option>
+                <option value="name-asc">Name A-Z</option>
+                <option value="name-desc">Name Z-A</option>
+                <option value="size-desc">Largest First</option>
+                <option value="size-asc">Smallest First</option>
+            </select>
+            <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh</button>
+        </div>
+
+        <div class="gallery" id="gallery"></div>
+
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-state-icon">🖼️</div>
+            <h3>No images found</h3>
+            <p>Generated images will appear here</p>
+        </div>
+    </main>
+
+    <div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+        <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+        <div class="lightbox-content" onclick="event.stopPropagation()">
+            <img id="lightboxImage" src="" alt="">
+            <div class="lightbox-info">
+                <span class="lightbox-filename" id="lightboxFilename"></span>
+                <div class="lightbox-actions">
+                    <button class="btn btn-primary" onclick="downloadImage()">⬇️ Download</button>
+                    <button class="btn btn-danger" onclick="deleteFromLightbox()">🗑️ Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let images = [];
+        let filteredImages = [];
+        let currentImage = null;
+
+        async function fetchImages() {
+            try {
+                const response = await fetch('/api/gallery/images');
+                const data = await response.json();
+                images = data.images || [];
+                document.getElementById('imageCount').textContent = `${images.length} images`;
+                document.getElementById('totalSize').textContent = formatSize(data.total_size || 0);
+                filterImages();
+            } catch (err) {
+                console.error('Failed to fetch images:', err);
+                showToast('Failed to load images', 'error');
+            }
+        }
+
+        function filterImages() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            filteredImages = images.filter(img => 
+                img.name.toLowerCase().includes(search)
+            );
+            sortImages();
+        }
+
+        function sortImages() {
+            const sort = document.getElementById('sortSelect').value;
+            
+            filteredImages.sort((a, b) => {
+                switch (sort) {
+                    case 'date-desc': return new Date(b.modified) - new Date(a.modified);
+                    case 'date-asc': return new Date(a.modified) - new Date(b.modified);
+                    case 'name-asc': return a.name.localeCompare(b.name);
+                    case 'name-desc': return b.name.localeCompare(a.name);
+                    case 'size-desc': return b.size - a.size;
+                    case 'size-asc': return a.size - b.size;
+                    default: return 0;
+                }
+            });
+            
+            renderGallery();
+        }
+
+        function renderGallery() {
+            const gallery = document.getElementById('gallery');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (filteredImages.length === 0) {
+                gallery.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+            
+            emptyState.style.display = 'none';
+            
+            gallery.innerHTML = filteredImages.map(img => `
+                <div class="image-card">
+                    <div class="image-wrapper" onclick="openLightbox('${img.name}')">
+                        <img src="/api/gallery/images/${encodeURIComponent(img.name)}" 
+                             alt="${escapeHtml(img.name)}" 
+                             loading="lazy">
+                    </div>
+                    <div class="image-info">
+                        <div class="image-name" title="${escapeHtml(img.name)}">${escapeHtml(formatImageName(img.name))}</div>
+                        <div class="image-meta">
+                            <span>${formatDate(img.modified)}</span>
+                            <span>${formatSize(img.size)}</span>
+                        </div>
+                        <div class="image-actions">
+                            <button class="btn btn-primary" onclick="event.stopPropagation(); downloadDirect('${img.name}')">⬇️</button>
+                            <button class="btn btn-danger" onclick="event.stopPropagation(); deleteImage('${img.name}')">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function formatImageName(name) {
+            // Clean up generated image names for display
+            return name
+                .replace(/^generated_/, '')
+                .replace(/_\d{8}_\d{6}\.(jpg|jpeg|png|webp|gif)$/i, '')
+                .replace(/_/g, ' ')
+                .substring(0, 60) + (name.length > 60 ? '...' : '');
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric',
+                year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+            });
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function openLightbox(filename) {
+            currentImage = filename;
+            document.getElementById('lightboxImage').src = `/api/gallery/images/${encodeURIComponent(filename)}`;
+            document.getElementById('lightboxFilename').textContent = filename;
+            document.getElementById('lightbox').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox(event) {
+            if (event && event.target !== document.getElementById('lightbox')) return;
+            document.getElementById('lightbox').classList.remove('active');
+            document.body.style.overflow = '';
+            currentImage = null;
+        }
+
+        function downloadImage() {
+            if (currentImage) downloadDirect(currentImage);
+        }
+
+        function downloadDirect(filename) {
+            const a = document.createElement('a');
+            a.href = `/api/gallery/images/${encodeURIComponent(filename)}`;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        async function deleteImage(filename) {
+            if (!confirm(`Delete "${filename}"?\\n\\nThis cannot be undone.`)) return;
+            
+            try {
+                const response = await fetch(`/api/gallery/images/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showToast('Image deleted');
+                    refreshGallery();
+                } else {
+                    const data = await response.json();
+                    showToast(data.error || 'Failed to delete', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to delete image', 'error');
+            }
+        }
+
+        function deleteFromLightbox() {
+            if (currentImage) {
+                closeLightbox();
+                deleteImage(currentImage);
+            }
+        }
+
+        function refreshGallery() {
+            fetchImages();
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast active' + (type === 'error' ? ' error' : '');
+            setTimeout(() => toast.classList.remove('active'), 3000);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeLightbox();
+            if (e.key === 'ArrowRight' && currentImage) navigateImage(1);
+            if (e.key === 'ArrowLeft' && currentImage) navigateImage(-1);
+        });
+
+        function navigateImage(direction) {
+            const currentIndex = filteredImages.findIndex(img => img.name === currentImage);
+            if (currentIndex === -1) return;
+            
+            const newIndex = (currentIndex + direction + filteredImages.length) % filteredImages.length;
+            openLightbox(filteredImages[newIndex].name);
+        }
+
+        // Initialize
+        fetchImages();
+    </script>
+</body>
+</html>
+'''
+
+
+@app.route('/gallery')
+def gallery():
+    """Serve the image gallery UI."""
+    return render_template_string(GALLERY_TEMPLATE)
+
+
+@app.route('/api/gallery/images')
+def list_gallery_images():
+    """List all images in the generated_images directory."""
+    images = []
+    total_size = 0
+    
+    if GENERATED_IMAGES_DIR.exists():
+        for f in GENERATED_IMAGES_DIR.iterdir():
+            if f.is_file() and f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp'):
+                stat = f.stat()
+                images.append({
+                    'name': f.name,
+                    'size': stat.st_size,
+                    'modified': datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+                total_size += stat.st_size
+    
+    # Sort by modified date descending by default
+    images.sort(key=lambda x: x['modified'], reverse=True)
+    
+    return jsonify({
+        'images': images,
+        'count': len(images),
+        'total_size': total_size
+    })
+
+
+@app.route('/api/gallery/images/<filename>')
+def serve_gallery_image(filename):
+    """Serve an image from the gallery."""
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename:
+        abort(400, "Invalid filename")
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        abort(404, "Image not found")
+    
+    return send_file(filepath)
+
+
+@app.route('/api/gallery/images/<filename>', methods=['DELETE'])
+def delete_gallery_image(filename):
+    """Delete an image from the gallery."""
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        return jsonify({'error': 'Image not found'}), 404
+    
+    try:
+        filepath.unlink()
+        print(f"🗑️  Deleted gallery image: {filename}")
+        return jsonify({'ok': True, 'deleted': filename})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
 # MAIN
 # ============================================================================
 
@@ -2362,14 +3079,17 @@ def main():
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     args = parser.parse_args()
     
+    # Count images
+    image_count = len([f for f in GENERATED_IMAGES_DIR.iterdir() if f.is_file() and f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp')]) if GENERATED_IMAGES_DIR.exists() else 0
+    
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║                    🎨 Jarvis Canvas                           ║
-║                  Visual Knowledge Viewer                       ║
+║              Visual Knowledge Viewer + Gallery                 ║
 ╠═══════════════════════════════════════════════════════════════╣
-║  URL:    http://localhost:{args.port:<5}                            ║
-║  Data:   {str(CANVAS_DIR):<50} ║
-║  Pages:  {len(load_pages()):<5}                                          ║
+║  Canvas:  http://localhost:{args.port:<5}                           ║
+║  Gallery: http://localhost:{args.port}/gallery                      ║
+║  Pages:   {len(load_pages()):<5}  |  Images: {image_count:<5}                      ║
 ╚═══════════════════════════════════════════════════════════════╝
     """)
     

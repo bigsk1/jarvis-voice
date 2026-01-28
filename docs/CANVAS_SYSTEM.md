@@ -2,6 +2,8 @@
 
 A beautiful visual viewer for rich content that Jarvis can populate. Think of it as a personal wiki/knowledge canvas that Jarvis writes to when displaying complex information.
 
+**Includes:** Canvas Pages + Image Gallery
+
 ## Overview
 
 
@@ -72,6 +74,30 @@ You: "Save that code snippet to my canvas"
 ### Environment Variables
 
 None required. Canvas uses defaults.
+
+## Image Gallery
+
+The canvas server includes an integrated image gallery for browsing generated images.
+
+### Access
+- **URL:** `http://localhost:8890/gallery`
+- **Navigation:** Click "🖼️ Gallery" in canvas header, or "📝 Canvas" in gallery header
+
+### Features
+- **Thumbnail grid** with lazy loading
+- **Lightbox view** - click any image to enlarge
+- **Search** - filter by filename
+- **Sort** - by date, name, or size
+- **Download** - save images locally
+- **Delete** - remove unwanted images
+- **Keyboard shortcuts:**
+  - `Escape` - close lightbox
+  - `←` / `→` - navigate between images
+
+### Source Directory
+Images are served from: `data/generated_images/`
+
+This is where the `generate_image` tool saves AI-generated images.
 
 ## API Reference
 
