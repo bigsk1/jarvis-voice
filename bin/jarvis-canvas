@@ -2861,9 +2861,9 @@ GALLERY_TEMPLATE = '''
             
             emptyState.style.display = 'none';
             
-            gallery.innerHTML = filteredImages.map(img => `
-                <div class="image-card">
-                    <div class="image-wrapper" onclick="openLightbox('${img.name}')">
+            gallery.innerHTML = filteredImages.map((img, index) => `
+                <div class="image-card" data-index="${index}">
+                    <div class="image-wrapper" onclick="openLightboxByIndex(${index})">
                         <img src="/api/gallery/images/${encodeURIComponent(img.name)}" 
                              alt="${escapeHtml(img.name)}" 
                              loading="lazy">
@@ -2875,8 +2875,8 @@ GALLERY_TEMPLATE = '''
                             <span>${formatSize(img.size)}</span>
                         </div>
                         <div class="image-actions">
-                            <button class="btn btn-primary" onclick="event.stopPropagation(); downloadDirect('${img.name}')">⬇️</button>
-                            <button class="btn btn-danger" onclick="event.stopPropagation(); deleteImage('${img.name}')">🗑️</button>
+                            <button class="btn btn-primary" onclick="event.stopPropagation(); downloadByIndex(${index})">⬇️</button>
+                            <button class="btn btn-danger" onclick="event.stopPropagation(); deleteByIndex(${index})">🗑️</button>
                         </div>
                     </div>
                 </div>
@@ -2911,6 +2911,24 @@ GALLERY_TEMPLATE = '''
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        function openLightboxByIndex(index) {
+            if (index >= 0 && index < filteredImages.length) {
+                openLightbox(filteredImages[index].name);
+            }
+        }
+
+        function downloadByIndex(index) {
+            if (index >= 0 && index < filteredImages.length) {
+                downloadDirect(filteredImages[index].name);
+            }
+        }
+
+        function deleteByIndex(index) {
+            if (index >= 0 && index < filteredImages.length) {
+                deleteImage(filteredImages[index].name);
+            }
         }
 
         function openLightbox(filename) {
