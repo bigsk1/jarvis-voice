@@ -56,7 +56,7 @@ MONITORED_DAEMONS = {
     },
     "jarvis_api": {
         "pid_file": "logs/jarvis-api.pid",
-        "script": "uvicorn",  # API runs via uvicorn, not a .py script directly
+        "script": "server.py",  # API runs as python3 server.py
         "restart": False,  # DO NOT auto-restart - just notify
         "notify_only": True,  # Custom flag: only speak, don't try to restart
     },
