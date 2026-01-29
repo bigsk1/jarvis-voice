@@ -36,12 +36,19 @@ Auto-resolves alerts and monitors systemd services
 - Auto-resolves when service responds
 - TTS notification on recovery
 
-**Systemd Service Monitoring (NEW):**
-- Monitors: `jarvis-services`, `unifi-protect-webhook`, `opencode-jarvis` (optional)
+**Systemd Service Monitoring:**
+- Monitors: `unifi-protect-webhook`, `opencode-jarvis` (optional)
 - 90 second grace period (avoids reboot false alarms)
 - Automatic restart attempts on failure
 - Verbal alerts: "Hey Boss, X has stopped. I'm attempting to restart it."
 - Recovery notifications when service comes back
+
+**Sibling Daemon Monitoring:**
+- Monitors: `reminder_scheduler`, `follow_up_daemon`, `jarvis_api`
+- 60 second grace period
+- Auto-restart for daemons, notify-only for API
+- Verbal alerts when down, recovery notifications when back up
+- Single notification per event (not repeated)
 
 ### 3. Reminder Scheduler
 Triggers time-based reminders
@@ -131,16 +138,32 @@ MONITORED_DAEMONS = {
         "script": "follow_up_daemon.py",
         "restart": True,
     },
+    "jarvis_api": {
+        "pid_file": "logs/jarvis-api.pid",
+        "script": "server.py",
+        "restart": False,       # Do NOT auto-restart
+        "notify_only": True,    # Just speak notification
+    },
     # Note: Don't monitor self_healing_daemon - that's us!
 }
 DAEMON_GRACE_PERIOD = 60  # seconds before alerting
 ```
+
+**Configuration Options:**
+- `restart: True` - Attempt automatic restart on failure
+- `restart: False` - Don't auto-restart (manual intervention required)
+- `notify_only: True` - Only speak notification, no restart attempt (e.g., for the API)
 
 **How PID monitoring works:**
 1. Reads PID from file (e.g., `logs/reminder_scheduler.pid`)
 2. Checks if process exists (`kill -0 PID`)
 3. Verifies it's the RIGHT process by checking `/proc/PID/cmdline` contains the script name
 4. This prevents false positives from PID reuse
+
+**Notification Behavior:**
+- Notifications are sent **once** when a daemon goes down (after grace period)
+- A recovery notification is sent **once** when it comes back up
+- No repeated alerts - won't keep notifying every 60 seconds
 
 **To add monitoring**, edit the appropriate dict and restart jarvis-services.
 

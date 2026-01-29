@@ -228,6 +228,8 @@ grep "error\|failed" logs/services/*.log
 - `check`: Number of alerts with auto_resolve_url
 - `action: url_check`: URL check result (success/fail)
 - `action: auto_resolve`: Alert auto-resolved
+- `action: daemon_down`: Sibling daemon went down (with `will_restart` flag)
+- `action: daemon_restart`: Daemon restart attempted
 - `error`: URL check failed, network timeout
 - `shutdown`: Total alerts resolved
 
@@ -237,6 +239,14 @@ grep "error\|failed" logs/services/*.log
 [14:35:45] Check: Found 3 item(s)
 [14:35:45] URL check ✅ UP: https://example.com (alert 5)
 [14:35:46] Auto-resolved alert 5: Server Down
+```
+
+**Daemon Monitoring Example:**
+```
+[15:10:45] ⚠️  DAEMON DOWN: jarvis_api (grace period started, 60s)
+[15:11:45] ❌ DAEMON DOWN: jarvis_api (down for 60s)
+           ℹ️  Notify only - manual restart required
+[15:15:00] ✅ DAEMON RECOVERED: jarvis_api
 ```
 
 ### Reminder Scheduler
@@ -302,8 +312,19 @@ All errors are logged with:
 | Service | Common Errors | Logged Details |
 |---------|---------------|----------------|
 | Follow-up | TTS failure, DB update failed | alert_id, error message |
-| Self-healing | URL timeout, connection refused | alert_id, url, status_code |
+| Self-healing | URL timeout, connection refused, daemon down | alert_id, url, status_code, daemon name |
 | Reminder | TTS failure, callback failed | reminder_id, callback_url |
+
+### Daemon Down Notifications
+
+When the self-healing daemon detects a sibling daemon is down:
+
+| Event | Log Action | TTS Notification |
+|-------|------------|------------------|
+| Daemon down (after 60s grace) | `daemon_down` | Once: "Hey Boss, X appears to be down..." |
+| Daemon recovered | (logged) | Once: "X is back up and running." |
+
+**Note:** Notifications are sent **once per event**, not repeated every check cycle. The `daemon_alert_sent` flag prevents duplicate notifications.
 
 ### Recovery
 
