@@ -137,11 +137,58 @@ def main():
     if input_data.get("css_selector"):
         crawler_config["css_selector"] = input_data["css_selector"]
     
+    # =========================================================================
+    # Extraction Strategies (optional - enhances raw markdown with structured data)
+    # =========================================================================
+    extraction_strategy = None
+    extraction_type = input_data.get("extraction_type")
+    
+    if extraction_type == "llm":
+        # LLM-based extraction - uses OpenAI/etc on Crawl4AI server
+        extraction_strategy = {
+            "type": "LLMExtractionStrategy",
+            "params": {
+                "instruction": input_data.get("extraction_instruction", "Extract key information from this page"),
+            }
+        }
+        # Optional: structured schema
+        if input_data.get("extraction_schema"):
+            extraction_strategy["params"]["schema"] = input_data["extraction_schema"]
+        # Chunking for long pages
+        extraction_strategy["params"]["chunk_token_threshold"] = input_data.get("chunk_threshold", 4000)
+        
+    elif extraction_type == "cosine":
+        # Semantic similarity filtering - focuses on relevant content
+        extraction_strategy = {
+            "type": "CosineStrategy",
+            "params": {
+                "semantic_filter": input_data.get("semantic_filter", ""),
+                "word_count_threshold": input_data.get("word_count_threshold", 10),
+                "sim_threshold": input_data.get("similarity_threshold", 0.3),
+                "top_k": input_data.get("top_k", 5),
+            }
+        }
+        
+    elif extraction_type == "regex":
+        # Fast pattern-based extraction
+        extraction_strategy = {
+            "type": "RegexExtractionStrategy",
+            "params": {}
+        }
+        # Built-in patterns: email, phone, url, currency, date, etc.
+        if input_data.get("regex_patterns"):
+            extraction_strategy["params"]["patterns"] = input_data["regex_patterns"]
+        # Custom patterns
+        if input_data.get("custom_patterns"):
+            extraction_strategy["params"]["custom"] = input_data["custom_patterns"]
+    
     # Add configs to body
     if browser_config:
         body["browser_config"] = browser_config
     if crawler_config:
         body["crawler_config"] = crawler_config  # Correct key name!
+    if extraction_strategy:
+        body["extraction_strategy"] = extraction_strategy
     
     if input_data.get("screenshot"):
         body["screenshot"] = True
