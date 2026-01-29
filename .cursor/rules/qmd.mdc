@@ -1,0 +1,56 @@
+---
+alwaysApply: true
+---
+
+# QMD Search for Documentation
+
+This project has 148 markdown docs indexed with QMD (tobi/qmd). Use qmd BEFORE reading files manually - it's faster and finds relevant content across the entire docs/ folder.
+
+## When to Use QMD
+
+- Looking for how a feature works → `qmd search "feature name"`
+- Finding API endpoints → `qmd search "endpoint api"`
+- Understanding architecture → `qmd search "system architecture"`
+- Troubleshooting → `qmd search "error handling"`
+- Finding code examples → `qmd search "example python"`
+
+## Commands (in order of speed)
+
+```bash
+# 1. FAST keyword search (use first, 90% of the time)
+qmd search "canvas pin system" -n 5
+
+# 2. Get full document content after finding it
+qmd get "CANVAS_SYSTEM.md" --full
+
+# 3. Semantic search (when keywords don't match)
+qmd vsearch "how does jarvis remember things"
+
+# 4. List files in a section
+qmd ls jarvis-docs/api
+```
+
+## Key Indexed Sections
+
+- `/api` - REST API endpoints (port 8880)
+- `/mcp` - MCP server configs
+- `/n8n` - Workflow automation
+- `/opencode` - Coding agent
+- `/service` - systemd services
+- `INTELLIGENCE_LAYER.md` - Orchestration brain
+- `MEMORY_SYSTEM.md` - Memory architecture
+- `TOOL_MANAGEMENT.md` - 54+ tools list
+
+## Tips
+
+- Add `-n 10` for more results
+- Use `--full` with `qmd get` to see entire doc
+- Search terms are case-insensitive
+- Prefer qmd over grep/find for docs - it has rich context annotations
+
+## Why This Matters
+
+Reading docs directly wastes tokens. QMD finds the exact section needed:
+- 148 files × ~500 lines avg = 74,000 lines of docs
+- QMD search returns just the relevant snippets
+- Context annotations improve search relevance
