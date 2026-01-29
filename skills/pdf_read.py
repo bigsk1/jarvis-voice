@@ -46,8 +46,31 @@ def resolve_pdf_path(args: dict) -> str:
     file_id = args.get('file_id')
     file_path = args.get('file_path')
     
-    if file_path and os.path.exists(file_path):
-        return file_path
+    if file_path:
+        # SECURITY: Restrict file access to allowed directories
+        resolved = Path(file_path).expanduser().resolve()
+        ALLOWED_DIRS = [
+            Path('/home/boss/jarvis-voice/data').resolve(),
+            Path('/home/boss/jarvis-voice/stash').resolve(),
+            Path('/home/boss/Downloads').resolve(),
+            Path('/home/boss/Documents').resolve(),
+            Path('/tmp').resolve(),
+        ]
+        
+        file_allowed = False
+        for allowed in ALLOWED_DIRS:
+            try:
+                resolved.relative_to(allowed)
+                file_allowed = True
+                break
+            except ValueError:
+                continue
+        
+        if not file_allowed:
+            raise ValueError(f"File path not in allowed directories. Use stash_ref instead.")
+        
+        if resolved.exists():
+            return str(resolved)
     
     if stash_ref:
         result = safe_resolve_file(stash_ref=stash_ref)

@@ -18,11 +18,11 @@ This document tracks security vulnerabilities and hardening efforts for Jarvis V
 | 3 | `execute_bash.py` | 🔴 CRITICAL | Blocklist easily bypassed, uses `shell=True` | ✅ DONE |
 | 4 | Memory system | 🟠 HIGH | Content stored/recalled without sanitization | ✅ DONE |
 | 5 | Orchestrator | 🟠 HIGH | No input validation before LLM routing | ✅ DONE |
-| 6 | `screenshot_url.py` | 🟠 HIGH | No SSRF protection on URLs | ⬜ TODO |
-| 7 | `send_webhook.py` | 🟠 HIGH | Direct URL mode bypasses registry, no SSRF check | ⬜ TODO |
-| 8 | `analyze_image.py` | 🟡 MEDIUM | File path mode can read arbitrary local images | ⬜ TODO |
-| 9 | `pdf_read.py` | 🟡 MEDIUM | File path can read arbitrary PDFs | ⬜ TODO |
-| 10 | Vision prompts | 🟡 MEDIUM | `question` params passed unsanitized to LLM | ⬜ TODO |
+| 6 | `screenshot_url.py` | 🟠 HIGH | No SSRF protection on URLs | ✅ DONE |
+| 7 | `send_webhook.py` | 🟠 HIGH | Direct URL mode bypasses registry, no SSRF check | ✅ DONE |
+| 8 | `analyze_image.py` | 🟡 MEDIUM | File path mode can read arbitrary local images | ✅ DONE |
+| 9 | `pdf_read.py` | 🟡 MEDIUM | File path can read arbitrary PDFs | ✅ DONE |
+| 10 | Vision prompts | 🟡 MEDIUM | `question` params passed unsanitized to LLM | ✅ DONE |
 
 ---
 
@@ -242,25 +242,96 @@ if security_info.get("injection_detected"):
 
 ---
 
-### Fix 6: SSRF Protection for screenshot_url.py
+### Fix 6: SSRF Protection for screenshot_url.py ✅ IMPLEMENTED
 
 **File:** `skills/screenshot_url.py`
 
-**Change:** Add URL validation before screenshot.
+**Change:** Added `stash_helper.validate_url()` before sending URL to Crawl4AI.
+
+```python
+from stash_helper import validate_url, SecurityError
+try:
+    validate_url(url)
+except SecurityError as e:
+    return_error(f"URL blocked for security: {e}")
+```
 
 ---
 
-### Fix 7: SSRF Protection for send_webhook.py
+### Fix 7: SSRF Protection for send_webhook.py ✅ IMPLEMENTED
 
 **File:** `skills/send_webhook.py`
 
-**Change:** Validate URLs when using direct `url` parameter (not registry).
+**Change:** When using direct `url` (not a named webhook from registry), validate for SSRF.
+
+```python
+# Only validate direct URLs, not registry webhooks (which are pre-approved)
+if url and not webhook_name:
+    from stash_helper import validate_url, SecurityError
+    validate_url(resolved_url)
+```
+
+Named webhooks from `config/webhook_registry.json` bypass this check (they're admin-configured).
 
 ---
 
-### Fix 8-10: Path Restrictions and Vision Prompt Sanitization
+### Fix 8-9: File Path Restrictions ✅ IMPLEMENTED
 
-Lower priority - implement after critical fixes.
+**Files:** `skills/analyze_image.py`, `skills/pdf_read.py`
+
+**Change:** Restricted file path access to allowed directories only.
+
+```python
+ALLOWED_DIRS = [
+    Path('/home/boss/jarvis-voice/data'),
+    Path('/home/boss/jarvis-voice/stash'),
+    Path('/home/boss/Downloads'),
+    Path('/home/boss/Documents'),
+    Path('/home/boss/Pictures'),  # analyze_image only
+    Path('/tmp'),
+]
+```
+
+Files outside these directories cannot be read. Use stash refs instead.
+
+---
+
+### Fix 10: Vision Prompt Sanitization ✅ IMPLEMENTED
+
+**File:** `skills/analyze_image.py`
+
+**Change:** Added `_sanitize_vision_prompt()` function:
+- Length limit (1000 chars)
+- Detects injection patterns
+- Prepends grounding instruction if suspicious
+
+```python
+def _sanitize_vision_prompt(question: str) -> str:
+    if len(question) > 1000:
+        question = question[:1000]
+    
+    for pattern in injection_patterns:
+        if re.search(pattern, question, re.IGNORECASE):
+            return f"Analyze this image. User question: {question}"
+    
+    return question
+```
+
+---
+
+## API Security
+
+The Jarvis API (port 8880) has:
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Request Logging | ✅ | All requests logged to `logs/api/` |
+| Error Logging | ✅ | 4xx/5xx logged with details |
+| CORS | ⚠️ | `allow_origins=["*"]` - OK for local network |
+| Rate Limiting | ⬜ | Not implemented - low risk on local network |
+| Authentication | ⬜ | Not implemented - relies on network security |
+
+The API is intended for local network use only. External access should be through Tailscale or similar VPN.
 
 ---
 

@@ -8,6 +8,10 @@ Use cases:
 - Extract info from visual-heavy sites (charts, graphs, infographics)
 - Capture page state at a point in time
 - Analyze page layout, UI elements, or visual content
+
+Security:
+- SSRF protection via stash_helper.validate_url()
+- Blocks internal/private IPs
 """
 import sys
 import os
@@ -17,6 +21,9 @@ import tempfile
 from base64 import b64encode, b64decode
 from pathlib import Path
 from datetime import datetime
+
+# Add lib to path for security checks
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 
 
 def main():
@@ -42,6 +49,21 @@ def main():
     if not url:
         return_error("URL is required")
         return 1
+    
+    # SECURITY: Validate URL to prevent SSRF
+    try:
+        from stash_helper import validate_url, SecurityError
+        validate_url(url)
+    except SecurityError as e:
+        return_error(f"URL blocked for security: {e}")
+        return 1
+    except ImportError:
+        # Fallback basic check
+        url_lower = url.lower()
+        blocked = ['169.254', '127.0.0.1', 'localhost', '10.', '192.168.', '172.16.']
+        if any(b in url_lower for b in blocked):
+            return_error("URL blocked: internal/private addresses not allowed for screenshots")
+            return 1
     
     wait_seconds = input_data.get("wait", 2)  # Wait before screenshot
     analyze = input_data.get("analyze", False)  # Run vision analysis

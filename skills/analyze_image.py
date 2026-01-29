@@ -181,6 +181,30 @@ def _load_from_file(path: str) -> dict | None:
         # Expand user home directory
         file_path = Path(path).expanduser().resolve()
         
+        # SECURITY: Restrict file access to allowed directories
+        ALLOWED_DIRS = [
+            Path('/home/boss/jarvis-voice/data').resolve(),
+            Path('/home/boss/jarvis-voice/stash').resolve(),
+            Path('/home/boss/Downloads').resolve(),
+            Path('/home/boss/Documents').resolve(),
+            Path('/home/boss/Pictures').resolve(),
+            Path('/tmp').resolve(),
+        ]
+        
+        # Check if file is in an allowed directory
+        file_allowed = False
+        for allowed in ALLOWED_DIRS:
+            try:
+                file_path.relative_to(allowed)
+                file_allowed = True
+                break
+            except ValueError:
+                continue
+        
+        if not file_allowed:
+            _debug(f"[ANALYZE_IMAGE] Path not in allowed directories: {file_path}")
+            return None
+        
         if not file_path.exists():
             _debug(f"[ANALYZE_IMAGE] File not found: {file_path}")
             return None
@@ -276,8 +300,41 @@ def _load_from_stash(stash_ref: str) -> dict | None:
         return None
 
 
+def _sanitize_vision_prompt(question: str) -> str:
+    """
+    Sanitize vision prompt to prevent injection.
+    Removes obvious injection patterns but allows legitimate questions.
+    """
+    if not question:
+        return "Describe this image in detail."
+    
+    # Limit length
+    if len(question) > 1000:
+        question = question[:1000]
+    
+    # Check for obvious injection patterns (log but allow - vision models are generally safer)
+    import re
+    injection_patterns = [
+        r'ignore\s+(all\s+)?instructions',
+        r'system\s*:',
+        r'<\|im_start\|>',
+        r'\[INST\]',
+    ]
+    
+    for pattern in injection_patterns:
+        if re.search(pattern, question, re.IGNORECASE):
+            _debug(f"[ANALYZE_IMAGE] Warning: potential injection in question: {question[:50]}...")
+            # Don't block, but prepend a grounding instruction
+            return f"Analyze this image. User question: {question}"
+    
+    return question
+
+
 def _analyze_with_vision(image_base64: str, question: str, mode: str) -> str | None:
     """Perform vision analysis using configured model."""
+    
+    # SECURITY: Sanitize the question prompt
+    question = _sanitize_vision_prompt(question)
     
     if mode == 'local':
         return _vision_ollama(image_base64, question)

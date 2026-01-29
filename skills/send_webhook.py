@@ -185,6 +185,22 @@ def main():
         return_error(str(e))
         return 1
     
+    # SECURITY: If using direct URL (not registry), validate for SSRF
+    if url and not webhook_name:
+        try:
+            from stash_helper import validate_url, SecurityError
+            validate_url(resolved_url)
+        except SecurityError as e:
+            return_error(f"URL blocked for security: {e}. Use a named webhook from registry instead.")
+            return 1
+        except ImportError:
+            # Fallback basic check
+            url_lower = resolved_url.lower()
+            blocked = ['169.254', '127.0.0.1', 'localhost', '10.', '192.168.', '172.16.']
+            if any(b in url_lower for b in blocked):
+                return_error("Direct URL blocked: internal addresses not allowed. Use a named webhook instead.")
+                return 1
+    
     # Check rate limit
     rate_limit = webhook_config.get('rate_limit_seconds', DEFAULT_RATE_LIMIT)
     identifier = webhook_name or resolved_url
