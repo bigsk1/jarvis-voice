@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "crawl_url",
-  "description": "Crawl and extract clean markdown content from any webpage using Crawl4AI.\n\nUse this when:\n- User wants to read or summarize a specific webpage\n- You need content from JavaScript-heavy or dynamic sites\n- Basic fetch fails or returns incomplete content\n- Site has anti-bot protection (use stealth mode)\n- User provides a URL and wants the full page content\n\nDo NOT use for:\n- General web searches (use brave_search or native search instead)\n- When you don't have a specific URL\n\nFor protected sites like Rotten Tomatoes, IMDB, etc., enable stealth mode.",
+  "description": "Crawl and extract clean markdown content from any webpage using Crawl4AI.\n\nUse this when:\n- User wants to read or summarize a specific webpage\n- You need content from JavaScript-heavy or dynamic sites\n- Basic fetch fails or returns incomplete content\n- Site has anti-bot protection (use stealth mode)\n- User provides a URL and wants the full page content\n\nDo NOT use for:\n- General web searches (use brave_search or native search instead)\n- When you don't have a specific URL\n\nWait strategies:\n- 'fast': DOM ready only - fastest, may miss dynamic content\n- 'normal' (DEFAULT): All resources loaded - good balance\n- 'full': Network idle - AVOID for financial/news sites with live data feeds (causes timeouts)\n\nFor protected sites like Rotten Tomatoes, IMDB, etc., enable stealth mode.",
   "script": "crawl_url.py",
   "parameters": {
     "type": "object",
@@ -26,12 +26,28 @@
       },
       "wait_for_js": {
         "type": "boolean",
-        "description": "Wait for JavaScript to fully load (slower but needed for SPAs)",
+        "description": "DEPRECATED - use wait_strategy instead. Kept for backwards compatibility.",
         "default": false
+      },
+      "wait_strategy": {
+        "type": "string",
+        "enum": ["fast", "normal", "full"],
+        "description": "How long to wait for page load: 'fast' (DOM only), 'normal' (all resources, DEFAULT), 'full' (network idle - AVOID for live data sites like financial/news)",
+        "default": "normal"
+      },
+      "page_timeout": {
+        "type": "integer",
+        "description": "Page load timeout in milliseconds (default 30000, max 60000)",
+        "default": 30000
+      },
+      "delay_before_return_html": {
+        "type": "number",
+        "description": "Seconds to wait after page load for JS to render (default 3.0, max 10.0)",
+        "default": 3.0
       },
       "js_code": {
         "type": "string",
-        "description": "JavaScript code to execute before extraction (e.g., dismiss modals, click buttons)"
+        "description": "Safe JS snippet name: 'dismiss_modal', 'scroll_down', 'accept_cookies' (arbitrary code blocked)"
       },
       "css_selector": {
         "type": "string",

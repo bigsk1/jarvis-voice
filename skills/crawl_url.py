@@ -88,10 +88,26 @@ def main():
     if input_data.get("wait_for"):
         crawler_config["wait_for"] = f"css:{input_data['wait_for']}"
     
-    # Wait for JavaScript to fully load
-    if input_data.get("wait_for_js"):
-        crawler_config["wait_until"] = "networkidle"
-        crawler_config["delay_before_return_html"] = 2.0
+    # Page timeout (default 30s, max 60s for slow sites)
+    page_timeout = min(input_data.get("page_timeout", 30000), 60000)
+    crawler_config["page_timeout"] = page_timeout
+    
+    # Wait strategy for JavaScript-heavy sites
+    # Options: "fast" (domcontentloaded), "normal" (load), "full" (networkidle - risky!)
+    wait_strategy = input_data.get("wait_strategy", "normal")
+    
+    if input_data.get("wait_for_js") or wait_strategy != "fast":
+        # Map strategy to Playwright wait_until values
+        wait_until_map = {
+            "fast": "domcontentloaded",  # DOM ready, fastest
+            "normal": "load",             # All resources loaded (images, etc.)
+            "full": "networkidle",        # No network for 500ms - DANGEROUS on live sites!
+        }
+        crawler_config["wait_until"] = wait_until_map.get(wait_strategy, "load")
+        
+        # Give JS time to render after page load
+        delay = input_data.get("delay_before_return_html", 3.0)
+        crawler_config["delay_before_return_html"] = min(delay, 10.0)  # Cap at 10s
     
     # SECURITY: js_code parameter disabled - arbitrary JavaScript execution is dangerous
     # If js_code is provided, log a warning but don't execute
