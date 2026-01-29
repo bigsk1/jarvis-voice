@@ -2,10 +2,16 @@
 """
 Jarvis Skill: API Call
 Makes HTTP API calls to REST endpoints.
+
+Security: Uses SSRF protection to block requests to internal networks.
 """
 import sys
+import os
 import json
 import requests
+
+# Add lib to path for stash_helper
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 
 
 def main():
@@ -31,6 +37,19 @@ def main():
     if method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
         return_error(f"Invalid HTTP method: {method}")
         return 1
+    
+    # SECURITY: Validate URL to prevent SSRF attacks
+    try:
+        from stash_helper import validate_url, SecurityError
+        validated_url = validate_url(url)
+    except SecurityError as e:
+        return_error(f"URL blocked for security: {e}")
+        return 1
+    except ImportError:
+        # If stash_helper not available, do basic check
+        if any(blocked in url.lower() for blocked in ['169.254', '127.0.0.1', 'localhost', '10.', '192.168.', '172.16.']):
+            return_error("URL blocked: internal/private addresses not allowed")
+            return 1
     
     # Make API call
     try:

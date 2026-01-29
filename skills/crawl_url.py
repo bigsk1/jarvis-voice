@@ -93,9 +93,22 @@ def main():
         crawler_config["wait_until"] = "networkidle"
         crawler_config["delay_before_return_html"] = 2.0
     
-    # Execute JavaScript (e.g., dismiss modals)
+    # SECURITY: js_code parameter disabled - arbitrary JavaScript execution is dangerous
+    # If js_code is provided, log a warning but don't execute
     if input_data.get("js_code"):
-        crawler_config["js_code"] = input_data["js_code"]
+        # Only allow safe, pre-approved JavaScript snippets
+        SAFE_JS_SNIPPETS = {
+            "dismiss_modal": "document.querySelector('.modal-close, [data-dismiss=\"modal\"]')?.click()",
+            "scroll_down": "window.scrollTo(0, document.body.scrollHeight)",
+            "accept_cookies": "document.querySelector('[data-accept-cookies], .accept-cookies, #accept-cookies')?.click()",
+        }
+        js_code = input_data["js_code"]
+        if js_code in SAFE_JS_SNIPPETS:
+            crawler_config["js_code"] = SAFE_JS_SNIPPETS[js_code]
+        else:
+            # Log but don't execute arbitrary JS
+            import logging
+            logging.warning(f"Blocked arbitrary js_code execution: {js_code[:100]}")
     
     # Exclude noisy elements
     if input_data.get("exclude_tags"):

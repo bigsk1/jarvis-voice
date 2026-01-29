@@ -291,6 +291,19 @@ Mode: {self.mode}
                 "error": str (optional)
             }
         """
+        # SECURITY: Sanitize user input
+        try:
+            from security_utils import sanitize_user_input
+            transcript, security_info = sanitize_user_input(transcript)
+            
+            # Log security events (don't block, but audit)
+            if security_info.get("injection_detected"):
+                # Could add to a security audit log here
+                pass
+        except ImportError:
+            # security_utils not available, continue without sanitization
+            pass
+        
         # Reset status updater for new task
         self.status_updater.reset()
         

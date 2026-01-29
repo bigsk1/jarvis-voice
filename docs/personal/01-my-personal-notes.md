@@ -1042,6 +1042,12 @@ cat logs/api/access-$TODAY.jsonl | jq 'select(.duration_ms > 100)'
 # Custom retention
 ./bin/cleanup-logs --days 30
 
+
+Workflow when docs change:
+
+qmd update      # re-index changed files
+qmd embed       # regenerate embeddings (if needed)
+qmd status      # verify everything is working
 ```
 
 

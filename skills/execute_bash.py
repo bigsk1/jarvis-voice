@@ -2,22 +2,123 @@
 """
 Jarvis Skill: Execute Bash Command
 Executes bash commands with safety checks.
+
+Security:
+- Blocks dangerous command patterns (expanded list)
+- Detects command injection attempts
+- Blocks interpreter escapes
+- Logs all executed commands
 """
 import sys
 import json
 import subprocess
+import re
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-# Dangerous command patterns to block
+# Dangerous command patterns to block (comprehensive list)
 BLOCKED_PATTERNS = [
+    # Filesystem destruction
     'rm -rf /',
+    'rm -rf /*',
+    'rm -rf ~',
+    'rm -r -f /',
+    'rm -fr /',
+    'rmdir /',
     'mkfs',
     'dd if=',
-    ':(){:|:&};:',  # Fork bomb
+    'dd of=/dev',
+    'shred',
+    
+    # Fork bombs and resource exhaustion
+    ':(){:|:&};:',
+    ':(){ :|:& };:',
+    'fork while fork',
+    
+    # Permission changes
     'chmod -R 777 /',
-    'rm -rf /*',
-    'rm -rf ~/*',
+    'chmod 777 /',
+    'chown -R',
+    
+    # Sensitive file access
+    '/etc/shadow',
+    '/etc/passwd',  # Reading is logged, writing blocked
+    
+    # Network exfiltration patterns
+    '| nc ',
+    '| netcat ',
+    '| curl ',
+    '| wget ',
+    
+    # Reverse shells
+    '/dev/tcp/',
+    '/dev/udp/',
+    'bash -i',
+    'sh -i',
+    
+    # Cron/persistence
+    'crontab -',
+    '/etc/cron',
+    
+    # Shutdown/reboot
+    'shutdown',
+    'reboot',
+    'init 0',
+    'init 6',
+    'poweroff',
+    'halt',
 ]
+
+# Regex patterns for more sophisticated detection
+BLOCKED_REGEX_PATTERNS = [
+    r'rm\s+(-[rf]+\s+)*/',  # rm with various flag combinations targeting root
+    r'>\s*/dev/[sh]d[a-z]',  # Overwriting disk devices
+    r'curl\s+.*\|\s*(ba)?sh',  # Download and execute
+    r'wget\s+.*\|\s*(ba)?sh',  # Download and execute
+    r'python[23]?\s+-c\s+[\'"].*os\.system',  # Python command injection
+    r'perl\s+-e\s+[\'"].*system',  # Perl command injection
+    r'ruby\s+-e\s+[\'"].*system',  # Ruby command injection
+    r'eval\s*\(',  # Eval with subshell
+    r'\$\([^)]*rm\s',  # Command substitution with rm
+    r'`[^`]*rm\s',  # Backtick substitution with rm
+    r'base64\s+-d.*\|\s*(ba)?sh',  # Base64 decode and execute
+    r'>\s*/etc/',  # Writing to /etc
+    r';\s*rm\s',  # Command chaining with rm
+    r'&&\s*rm\s',  # Command chaining with rm
+    r'\|\|\s*rm\s',  # Command chaining with rm
+]
+
+
+def is_command_safe(command: str) -> tuple[bool, str]:
+    """
+    Check if a command is safe to execute.
+    
+    Returns:
+        (is_safe, reason) - tuple of bool and explanation string
+    """
+    cmd_lower = command.lower()
+    
+    # Check blocked string patterns
+    for pattern in BLOCKED_PATTERNS:
+        if pattern.lower() in cmd_lower:
+            return False, f"contains blocked pattern '{pattern}'"
+    
+    # Check regex patterns
+    for regex in BLOCKED_REGEX_PATTERNS:
+        if re.search(regex, command, re.IGNORECASE):
+            return False, f"matches dangerous pattern"
+    
+    # Check for suspicious command substitution
+    if '$(' in command or '`' in command:
+        # Allow simple variable expansion, block complex substitution
+        if re.search(r'\$\([^)]{20,}\)', command) or re.search(r'`[^`]{20,}`', command):
+            return False, "complex command substitution detected"
+    
+    return True, "ok"
 
 
 def main():
@@ -37,11 +138,15 @@ def main():
         return_error("Command is required")
         return 1
     
-    # Safety check: block obviously dangerous commands
-    for pattern in BLOCKED_PATTERNS:
-        if pattern in command:
-            return_error(f"Command blocked for safety: contains '{pattern}'")
-            return 1
+    # SECURITY: Comprehensive safety check
+    is_safe, reason = is_command_safe(command)
+    if not is_safe:
+        logger.warning(f"BLOCKED command: {command[:200]} - Reason: {reason}")
+        return_error(f"Command blocked for safety: {reason}")
+        return 1
+    
+    # Log all executed commands for audit
+    logger.info(f"Executing: {command[:500]}")
     
     # Execute command
     try:
