@@ -153,6 +153,22 @@ BLOCKED_REGEX_PATTERNS = [
     r'base64\s+-d.*\|\s*(ba)?sh', # Base64 decode and execute
     r';\s*rm\s',                   # Command chaining with rm
 ]
+
+# PROTECTED PATHS - Jarvis cannot modify its own code!
+PROTECTED_PATHS = [
+    '/home/boss/jarvis-voice',  # Jarvis codebase - NO self-modification
+    '/home/boss/.ssh',          # SSH keys
+    '/home/boss/.gnupg',        # GPG keys
+    '/etc', '/usr', '/bin', '/sbin', '/boot', '/root',
+]
+
+# Exceptions - write allowed in these subdirectories
+ALLOWED_WRITE_PATHS = [
+    '/home/boss/jarvis-voice/data',   # Data files OK
+    '/home/boss/jarvis-voice/logs',   # Log files OK
+    '/home/boss/jarvis-voice/stash',  # Stash artifacts OK
+    '/tmp',                            # Temp files OK
+]
 ```
 
 ---

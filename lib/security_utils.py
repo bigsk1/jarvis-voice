@@ -20,6 +20,32 @@ MAX_TRANSCRIPT_LENGTH = 10000
 MAX_MEMORY_VALUE_LENGTH = 10000
 MAX_URL_LENGTH = 2048
 
+# Protected paths - Jarvis cannot modify these
+# Used by execute_bash, and can be imported by other tools
+PROTECTED_PATHS = [
+    '/home/boss/jarvis-voice',  # Jarvis codebase - NO self-modification
+    '/home/boss/.ssh',          # SSH keys
+    '/home/boss/.gnupg',        # GPG keys  
+    '/home/boss/.config',       # User config
+    '/etc',                     # System config
+    '/usr',                     # System binaries
+    '/bin',                     # System binaries
+    '/sbin',                    # System binaries
+    '/boot',                    # Boot files
+    '/root',                    # Root home
+    '/var/log',                 # System logs (read OK, write blocked)
+]
+
+# Paths where write operations are allowed
+ALLOWED_WRITE_PATHS = [
+    '/home/boss/jarvis-voice/data',      # Data directory
+    '/home/boss/jarvis-voice/logs',      # Logs directory  
+    '/home/boss/jarvis-voice/stash',     # Stash artifacts
+    '/tmp',                               # Temp files
+    '/home/boss/Downloads',               # Downloads
+    '/home/boss/Documents',               # Documents
+]
+
 
 # Prompt injection detection patterns
 INJECTION_PATTERNS = [
@@ -198,3 +224,56 @@ def is_safe_url(url: str) -> bool:
         return False
     
     return True
+
+
+def is_path_protected(path: str, for_write: bool = True) -> tuple[bool, Optional[str]]:
+    """
+    Check if a path is protected from modification.
+    
+    Args:
+        path: File or directory path to check
+        for_write: If True, check for write protection. If False, always allow.
+        
+    Returns:
+        (is_protected, matched_protected_path)
+    """
+    import os
+    
+    if not path:
+        return False, None
+    
+    # Normalize path
+    path = os.path.expanduser(path)
+    path = os.path.normpath(path)
+    
+    # If not checking for write, return not protected
+    if not for_write:
+        return False, None
+    
+    # Check if path is under a protected directory
+    for protected in PROTECTED_PATHS:
+        protected_norm = os.path.normpath(protected)
+        
+        # Check if path starts with protected path
+        if path == protected_norm or path.startswith(protected_norm + os.sep):
+            # Check if it's in an allowed subdirectory
+            for allowed in ALLOWED_WRITE_PATHS:
+                allowed_norm = os.path.normpath(allowed)
+                if path == allowed_norm or path.startswith(allowed_norm + os.sep):
+                    return False, None  # Allowed
+            
+            return True, protected
+    
+    return False, None
+
+
+def get_security_summary() -> dict:
+    """
+    Get a summary of security settings for debugging/logging.
+    """
+    return {
+        "protected_paths": PROTECTED_PATHS,
+        "allowed_write_paths": ALLOWED_WRITE_PATHS,
+        "max_transcript_length": MAX_TRANSCRIPT_LENGTH,
+        "injection_patterns_count": len(INJECTION_PATTERNS),
+    }

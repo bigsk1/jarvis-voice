@@ -92,6 +92,72 @@ BLOCKED_REGEX_PATTERNS = [
     r'\|\|\s*rm\s',  # Command chaining with rm
 ]
 
+# Protected paths - Jarvis cannot modify its own code or critical system areas
+PROTECTED_PATHS = [
+    '/home/boss/jarvis-voice',  # Jarvis codebase - NO self-modification
+    '/home/boss/.ssh',          # SSH keys
+    '/home/boss/.gnupg',        # GPG keys
+    '/home/boss/.config',       # User config (careful)
+    '/etc',                     # System config
+    '/usr',                     # System binaries
+    '/bin',                     # System binaries
+    '/sbin',                    # System binaries
+    '/boot',                    # Boot files
+    '/root',                    # Root home
+]
+
+# Commands that modify files - used to check against protected paths
+MODIFYING_COMMANDS = [
+    'rm', 'rmdir', 'mv', 'cp', 'touch', 'mkdir',
+    'chmod', 'chown', 'chgrp',
+    'sed -i', 'sed --in-place',
+    'tee', 'dd',
+    'git checkout', 'git reset', 'git clean',
+    'nano', 'vim', 'vi', 'emacs',
+    'echo.*>', 'cat.*>',  # Redirects
+    'truncate',
+]
+
+
+def is_modifying_command(command: str) -> bool:
+    """Check if command modifies files (vs read-only)."""
+    cmd_lower = command.lower()
+    
+    # Check for modifying commands
+    for mod_cmd in MODIFYING_COMMANDS:
+        if mod_cmd in cmd_lower:
+            return True
+    
+    # Check for output redirection
+    if re.search(r'>\s*[^&]', command):  # > but not >&
+        return True
+    if '>>' in command:
+        return True
+    
+    return False
+
+
+def targets_protected_path(command: str) -> tuple[bool, str]:
+    """
+    Check if command targets a protected path.
+    
+    Returns:
+        (targets_protected, path_matched)
+    """
+    # Expand common path shortcuts
+    expanded = command.replace('~', '/home/boss')
+    
+    for protected in PROTECTED_PATHS:
+        # Check if protected path appears in command
+        if protected in expanded:
+            return True, protected
+        
+        # Also check with trailing slash
+        if protected.rstrip('/') + '/' in expanded:
+            return True, protected
+    
+    return False, ""
+
 
 def is_command_safe(command: str) -> tuple[bool, str]:
     """
@@ -117,6 +183,12 @@ def is_command_safe(command: str) -> tuple[bool, str]:
         # Allow simple variable expansion, block complex substitution
         if re.search(r'\$\([^)]{20,}\)', command) or re.search(r'`[^`]{20,}`', command):
             return False, "complex command substitution detected"
+    
+    # CRITICAL: Check if modifying command targets protected paths
+    if is_modifying_command(command):
+        targets, path = targets_protected_path(command)
+        if targets:
+            return False, f"cannot modify protected path: {path}"
     
     return True, "ok"
 
