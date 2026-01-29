@@ -122,7 +122,7 @@ scrape_configs:
   # ==========================================
   - job_name: 'node_fred'
     static_configs:
-      - targets: ['192.168.70.228:9100']
+      - targets: ['host.docker.internal:9100'] 
         labels:
           instance: 'fred'
           host: 'fred'

@@ -54,6 +54,12 @@ MONITORED_DAEMONS = {
         "script": "follow_up_daemon.py",
         "restart": True,
     },
+    "jarvis_api": {
+        "pid_file": "logs/jarvis-api.pid",
+        "script": "uvicorn",  # API runs via uvicorn, not a .py script directly
+        "restart": False,  # DO NOT auto-restart - just notify
+        "notify_only": True,  # Custom flag: only speak, don't try to restart
+    },
     # Note: Don't monitor self_healing_daemon - that's us!
 }
 
@@ -182,15 +188,21 @@ def restart_daemon(daemon_name: str, script_path: Path, pid_file: Path, project_
         return False
 
 
-def speak_daemon_down(daemon_name: str, project_root: Path, mode: str):
+def speak_daemon_down(daemon_name: str, project_root: Path, mode: str, will_restart: bool = True):
     """Speak notification that a sibling daemon is down."""
     friendly_names = {
         "reminder_scheduler": "the reminder scheduler",
         "follow_up_daemon": "the follow-up daemon",
+        "jarvis_api": "the Jarvis API",
     }
     
     friendly = friendly_names.get(daemon_name, daemon_name)
-    message = f"Hey Boss, {friendly} has crashed. I'm restarting it now."
+    
+    if will_restart:
+        message = f"Hey Boss, {friendly} has crashed. I'm restarting it now."
+    else:
+        # For notify-only services like the API
+        message = f"Hey Boss, {friendly} appears to be down. You may need to restart it manually."
     
     if mode == 'local':
         say_script = project_root / 'bin' / 'say-local.sh'
@@ -215,6 +227,7 @@ def speak_daemon_recovered(daemon_name: str, project_root: Path, mode: str):
     friendly_names = {
         "reminder_scheduler": "The reminder scheduler",
         "follow_up_daemon": "The follow-up daemon",
+        "jarvis_api": "The Jarvis API",
     }
     
     friendly = friendly_names.get(daemon_name, daemon_name)
@@ -567,17 +580,31 @@ def main():
     print(f"   Sibling daemon monitoring:")
     for daemon_name, config in MONITORED_DAEMONS.items():
         pid_file = project_root / config["pid_file"]
-        script_path = project_root / "services" / config["script"]
-        if script_path.exists():
+        notify_only = config.get("notify_only", False)
+        
+        # For notify_only daemons, we don't need a script path (we won't restart them)
+        if notify_only:
             daemons_to_monitor[daemon_name] = {
                 "pid_file": pid_file,
-                "script_path": script_path,
+                "script_path": None,
                 "script_name": config["script"],
-                "restart": config["restart"],
+                "restart": False,
+                "notify_only": True,
             }
-            print(f"     ✅ {daemon_name} (pid: {pid_file.name}, restart: {config['restart']})")
+            print(f"     👁️  {daemon_name} (pid: {pid_file.name}, notify only)")
         else:
-            print(f"     ⚠️  {daemon_name} - script not found: {script_path}")
+            script_path = project_root / "services" / config["script"]
+            if script_path.exists():
+                daemons_to_monitor[daemon_name] = {
+                    "pid_file": pid_file,
+                    "script_path": script_path,
+                    "script_name": config["script"],
+                    "restart": config.get("restart", True),
+                    "notify_only": False,
+                }
+                print(f"     ✅ {daemon_name} (pid: {pid_file.name}, restart: {config.get('restart', True)})")
+            else:
+                print(f"     ⚠️  {daemon_name} - script not found: {script_path}")
     
     print(f"   Service grace period: {SERVICE_GRACE_PERIOD}s")
     print(f"   Daemon grace period: {DAEMON_GRACE_PERIOD}s")
@@ -728,22 +755,24 @@ def main():
                             
                             if elapsed >= DAEMON_GRACE_PERIOD and not daemon_alert_sent.get(daemon_name):
                                 # Grace period exceeded - alert and attempt restart
-                                print(f"[{time_str}] ❌ DAEMON CRASHED: {daemon_name} (down for {int(elapsed)}s)")
+                                will_restart = config.get("restart", True) and not config.get("notify_only", False)
+                                print(f"[{time_str}] ❌ DAEMON DOWN: {daemon_name} (down for {int(elapsed)}s)")
                                 
-                                # Speak notification
-                                speak_daemon_down(daemon_name, project_root, mode)
+                                # Speak notification (with appropriate message based on restart intent)
+                                speak_daemon_down(daemon_name, project_root, mode, will_restart=will_restart)
                                 
                                 # Log
                                 logger.log_action("daemon_down", {
                                     "daemon": daemon_name,
                                     "down_since": daemon_down_since[daemon_name].isoformat(),
-                                    "elapsed_seconds": int(elapsed)
+                                    "elapsed_seconds": int(elapsed),
+                                    "will_restart": will_restart
                                 }, success=False)
                                 
                                 daemon_alert_sent[daemon_name] = True
                                 
-                                # Attempt self-healing restart
-                                if config.get("restart", True):
+                                # Attempt self-healing restart (unless notify_only)
+                                if will_restart:
                                     print(f"           🔄 Attempting restart...")
                                     if restart_daemon(
                                         daemon_name,
@@ -762,6 +791,8 @@ def main():
                                         logger.log_action("daemon_restart", {
                                             "daemon": daemon_name
                                         }, success=False)
+                                else:
+                                    print(f"           ℹ️  Notify only - manual restart required")
                     
                     daemon_last_status[daemon_name] = is_running
                 
