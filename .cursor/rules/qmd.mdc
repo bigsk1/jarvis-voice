@@ -20,14 +20,44 @@ This project has 148 markdown docs indexed with QMD (tobi/qmd). Use qmd BEFORE r
 # 1. FAST keyword search (use first, 90% of the time)
 qmd search "canvas pin system" -n 5
 
-# 2. Get full document content after finding it
+# 2. Get structured JSON results (best for parsing)
+qmd search "authentication" --json -n 10
+
+# 3. Get full document content after finding it
 qmd get "CANVAS_SYSTEM.md" --full
 
-# 3. Semantic search (when keywords don't match)
+# 4. Semantic search (when keywords don't match)
 qmd vsearch "how does jarvis remember things"
 
-# 4. List files in a section
+# 5. Hybrid with re-ranking (best quality, slowest)
+qmd query "error handling" --all --files --min-score 0.4
+
+# 6. List files in a section
 qmd ls jarvis-docs/api
+```
+
+## Search Options
+
+```bash
+-n <num>           # Number of results (default: 5, or 20 for --json)
+-c, --collection   # Restrict to collection: -c jarvis-docs
+--all              # Return all matches (use with --min-score)
+--min-score <num>  # Minimum score threshold (0.0-1.0)
+--full             # Show full document content
+--line-numbers     # Add line numbers to output
+
+# Output formats
+--json             # JSON output with snippets (best for parsing)
+--files            # Output: docid,score,filepath,context
+--md               # Markdown output
+```
+
+## Get Options
+
+```bash
+qmd get "file.md" --full      # Full content
+qmd get "file.md:50" -l 100   # Start at line 50, max 100 lines
+qmd get "#abc123"             # By docid from search results
 ```
 
 ## Key Indexed Sections
@@ -41,16 +71,17 @@ qmd ls jarvis-docs/api
 - `MEMORY_SYSTEM.md` - Memory architecture
 - `TOOL_MANAGEMENT.md` - 54+ tools list
 
-## Tips
+## Re-indexing (when docs change)
 
-- Add `-n 10` for more results
-- Use `--full` with `qmd get` to see entire doc
-- Search terms are case-insensitive
-- Prefer qmd over grep/find for docs - it has rich context annotations
+```bash
+qmd update                    # Re-index changed files
+qmd update --pull             # Git pull first, then re-index
+qmd embed                     # Regenerate embeddings after update
+```
 
 ## Why This Matters
 
 Reading docs directly wastes tokens. QMD finds the exact section needed:
 - 148 files × ~500 lines avg = 74,000 lines of docs
 - QMD search returns just the relevant snippets
-- Context annotations improve search relevance
+- 33 context annotations improve search relevance
