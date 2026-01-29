@@ -65,8 +65,8 @@
       },
       "extraction_type": {
         "type": "string",
-        "enum": ["llm", "cosine", "regex"],
-        "description": "Extraction strategy: 'llm' (structured LLM extraction), 'cosine' (semantic filtering), 'regex' (pattern matching). Omit for raw markdown."
+        "enum": ["llm", "cosine", "regex", "css"],
+        "description": "Extraction strategy: 'llm' (LLM extraction), 'cosine' (semantic filtering), 'regex' (pattern matching), 'css' (CSS selector schema). Omit for raw markdown."
       },
       "extraction_instruction": {
         "type": "string",
@@ -98,6 +98,14 @@
       "custom_patterns": {
         "type": "object",
         "description": "For extraction_type=regex: custom patterns {name: regex} (e.g., {\"price\": \"\\\\$[0-9,]+\"})"
+      },
+      "css_schema": {
+        "type": "object",
+        "description": "For extraction_type=css: JsonCssExtractionStrategy schema {baseSelector: 'article', fields: [{name, selector, type}]}"
+      },
+      "llm_provider": {
+        "type": "string",
+        "description": "For extraction_type=llm: override LLM provider (e.g., 'openai/gpt-4o-mini', 'ollama/llama2')"
       }
     },
     "required": []

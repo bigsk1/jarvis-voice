@@ -75,22 +75,28 @@ def main():
         "priority": input_data.get("priority", 10),
     }
     
-    # Browser config (stealth, user agent, etc.)
-    browser_config = {}
-    crawler_config = {}  # API uses crawler_config, not crawler_params!
+    # =========================================================================
+    # Browser Config - uses REST API format: {"type": "BrowserConfig", "params": {...}}
+    # =========================================================================
+    browser_params = {"headless": True}
     
     # Stealth mode - bypass bot detection
     if input_data.get("stealth"):
-        browser_config["enable_stealth"] = True
-        browser_config["user_agent_mode"] = "random"
+        browser_params["enable_stealth"] = True
+        browser_params["user_agent_mode"] = "random"
+    
+    # =========================================================================
+    # Crawler Config - uses REST API format: {"type": "CrawlerRunConfig", "params": {...}}
+    # =========================================================================
+    crawler_params = {}
     
     # Wait for specific element before extracting
     if input_data.get("wait_for"):
-        crawler_config["wait_for"] = f"css:{input_data['wait_for']}"
+        crawler_params["wait_for"] = f"css:{input_data['wait_for']}"
     
     # Page timeout (default 30s, max 60s for slow sites)
     page_timeout = min(input_data.get("page_timeout", 30000), 60000)
-    crawler_config["page_timeout"] = page_timeout
+    crawler_params["page_timeout"] = page_timeout
     
     # Wait strategy for JavaScript-heavy sites
     # Options: "fast" (domcontentloaded), "normal" (load), "full" (networkidle - risky!)
@@ -103,16 +109,17 @@ def main():
             "normal": "load",             # All resources loaded (images, etc.)
             "full": "networkidle",        # No network for 500ms - DANGEROUS on live sites!
         }
-        crawler_config["wait_until"] = wait_until_map.get(wait_strategy, "load")
+        crawler_params["wait_until"] = wait_until_map.get(wait_strategy, "load")
         
         # Give JS time to render after page load
         delay = input_data.get("delay_before_return_html", 3.0)
-        crawler_config["delay_before_return_html"] = min(delay, 10.0)  # Cap at 10s
+        crawler_params["delay_before_return_html"] = min(delay, 10.0)  # Cap at 10s
     
-    # SECURITY: js_code parameter disabled - arbitrary JavaScript execution is dangerous
-    # If js_code is provided, log a warning but don't execute
+    # Cache mode
+    crawler_params["cache_mode"] = input_data.get("cache_mode", "bypass")
+    
+    # SECURITY: js_code parameter - only allow safe, pre-approved snippets
     if input_data.get("js_code"):
-        # Only allow safe, pre-approved JavaScript snippets
         SAFE_JS_SNIPPETS = {
             "dismiss_modal": "document.querySelector('.modal-close, [data-dismiss=\"modal\"]')?.click()",
             "scroll_down": "window.scrollTo(0, document.body.scrollHeight)",
@@ -120,46 +127,50 @@ def main():
         }
         js_code = input_data["js_code"]
         if js_code in SAFE_JS_SNIPPETS:
-            crawler_config["js_code"] = SAFE_JS_SNIPPETS[js_code]
+            crawler_params["js_code"] = SAFE_JS_SNIPPETS[js_code]
         else:
-            # Log but don't execute arbitrary JS
             import logging
             logging.warning(f"Blocked arbitrary js_code execution: {js_code[:100]}")
     
     # Exclude noisy elements
     if input_data.get("exclude_tags"):
-        crawler_config["excluded_tags"] = input_data["exclude_tags"]
+        crawler_params["excluded_tags"] = input_data["exclude_tags"]
     else:
-        # Default: exclude common noise
-        crawler_config["excluded_tags"] = ["nav", "footer", "aside", "script", "style"]
+        crawler_params["excluded_tags"] = ["nav", "footer", "aside", "script", "style"]
     
     # CSS selector to focus on specific content
     if input_data.get("css_selector"):
-        crawler_config["css_selector"] = input_data["css_selector"]
+        crawler_params["css_selector"] = input_data["css_selector"]
     
     # =========================================================================
-    # Extraction Strategies (optional - enhances raw markdown with structured data)
+    # Extraction Strategies - REST API format with type/params wrappers
+    # Ref: https://docs.crawl4ai.com/core/docker-deployment/
     # =========================================================================
-    extraction_strategy = None
     extraction_type = input_data.get("extraction_type")
     
     if extraction_type == "llm":
         # LLM-based extraction - uses OpenAI/etc on Crawl4AI server
-        extraction_strategy = {
-            "type": "LLMExtractionStrategy",
-            "params": {
-                "instruction": input_data.get("extraction_instruction", "Extract key information from this page"),
-            }
+        llm_params = {
+            "instruction": input_data.get("extraction_instruction", "Extract key information from this page"),
+            "extraction_type": "schema" if input_data.get("extraction_schema") else "block",
+            "apply_chunking": True,
+            "chunk_token_threshold": input_data.get("chunk_threshold", 4000),
         }
-        # Optional: structured schema
+        # Optional: provider override (defaults to server's configured provider)
+        if input_data.get("llm_provider"):
+            llm_params["provider"] = input_data["llm_provider"]
+        # Optional: structured schema - wrap as {"type": "dict", "value": {...}}
         if input_data.get("extraction_schema"):
-            extraction_strategy["params"]["schema"] = input_data["extraction_schema"]
-        # Chunking for long pages
-        extraction_strategy["params"]["chunk_token_threshold"] = input_data.get("chunk_threshold", 4000)
+            llm_params["schema"] = {"type": "dict", "value": input_data["extraction_schema"]}
+        
+        crawler_params["extraction_strategy"] = {
+            "type": "LLMExtractionStrategy",
+            "params": llm_params
+        }
         
     elif extraction_type == "cosine":
         # Semantic similarity filtering - focuses on relevant content
-        extraction_strategy = {
+        crawler_params["extraction_strategy"] = {
             "type": "CosineStrategy",
             "params": {
                 "semantic_filter": input_data.get("semantic_filter", ""),
@@ -170,28 +181,43 @@ def main():
         }
         
     elif extraction_type == "regex":
-        # Fast pattern-based extraction
-        extraction_strategy = {
-            "type": "RegexExtractionStrategy",
-            "params": {}
-        }
-        # Built-in patterns: email, phone, url, currency, date, etc.
-        if input_data.get("regex_patterns"):
-            extraction_strategy["params"]["patterns"] = input_data["regex_patterns"]
-        # Custom patterns
+        # Fast pattern-based extraction - custom patterns wrapped as dict
+        regex_params = {"input_format": "fit_html"}
         if input_data.get("custom_patterns"):
-            extraction_strategy["params"]["custom"] = input_data["custom_patterns"]
+            regex_params["custom"] = {"type": "dict", "value": input_data["custom_patterns"]}
+        
+        crawler_params["extraction_strategy"] = {
+            "type": "RegexExtractionStrategy",
+            "params": regex_params
+        }
+        
+    elif extraction_type == "css":
+        # CSS-based structured extraction (LLM-free)
+        if input_data.get("css_schema"):
+            crawler_params["extraction_strategy"] = {
+                "type": "JsonCssExtractionStrategy",
+                "params": {
+                    "schema": {"type": "dict", "value": input_data["css_schema"]}
+                }
+            }
     
-    # Add configs to body
-    if browser_config:
-        body["browser_config"] = browser_config
-    if crawler_config:
-        body["crawler_config"] = crawler_config  # Correct key name!
-    if extraction_strategy:
-        body["extraction_strategy"] = extraction_strategy
+    # =========================================================================
+    # Build final body with proper REST API type/params wrappers
+    # =========================================================================
+    body["browser_config"] = {
+        "type": "BrowserConfig",
+        "params": browser_params
+    }
+    body["crawler_config"] = {
+        "type": "CrawlerRunConfig",
+        "params": crawler_params
+    }
     
     if input_data.get("screenshot"):
         body["screenshot"] = True
+    
+    # Track if extraction was requested (for fallback handling)
+    extraction_requested = extraction_type is not None
     
     try:
         # Submit crawl job
@@ -209,6 +235,21 @@ def main():
         if response.status_code == 403:
             return_error("Access forbidden - check API key")
             return 1
+        
+        # If extraction caused a 500 error, retry without it
+        if response.status_code == 500 and extraction_requested:
+            import logging
+            logging.warning(f"Extraction strategy failed (500), retrying without extraction...")
+            # Remove extraction_strategy and retry
+            if "extraction_strategy" in crawler_params:
+                del crawler_params["extraction_strategy"]
+                body["crawler_config"]["params"] = crawler_params
+            response = requests.post(
+                f"{crawl4ai_url}/crawl",
+                headers=headers,
+                json=body,
+                timeout=60
+            )
         
         response.raise_for_status()
         result = response.json()
@@ -254,12 +295,17 @@ def main():
             url_crawled = r.get("url", urls[0] if urls else "unknown")
             
             if markdown:
-                all_content.append({
+                content_item = {
                     "url": url_crawled,
                     "markdown": markdown[:10000],  # Limit size
                     "title": r.get("title", ""),
                     "success": r.get("success", True)
-                })
+                }
+                # Include extracted_content if extraction strategy produced results
+                if r.get("extracted_content"):
+                    content_item["extracted_content"] = r.get("extracted_content")
+                
+                all_content.append(content_item)
         
         if not all_content:
             return_error("No content extracted from URL")
