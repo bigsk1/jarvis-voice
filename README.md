@@ -1058,7 +1058,7 @@ LIMIT 7;"
 - [`docs/api/`](docs/api/) - **Proactive API** documentation (webhooks, alerts, monitoring)
 - [`docs/api/API_OVERVIEW.md`](docs/api/API_OVERVIEW.md) - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Intel, Images, Conversations) ⭐ ENHANCED
 - [`docs/api/INTEL.md`](docs/api/INTEL.md) - **Intel API** (CRUD for jarvis-intel files, ingestion, stats)
-- [`docs/api/IMAGES.md`](docs/api/IMAGES.md) - **Images API** (Cloudflare CDN upload, multi-agent image sharing) ⭐ NEW
+- [`docs/api/IMAGES.md`](docs/api/IMAGES.md) - **Images API** (Cloudflare CDN upload, multi-agent image sharing) 
 - [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (list, execute, history) 
 - [`docs/service/`](docs/service/) - **Background Services** documentation (daemons, auto-resolve)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
@@ -1297,14 +1297,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
-- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API ⭐ NEW
+- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API 
   - Toggle via `JARVIS_API_AUTH=true/false` in cloud.env/local.env
   - Localhost always whitelisted, public paths always accessible
   - API keys never logged, remote services (jarvis-monitor, unifi-protect-webhook) updated
   - See: [`docs/SECURITY_HARDENING.md`](docs/SECURITY_HARDENING.md)
 - ✅ **Docker Monitoring Fixes** - `host.docker.internal` for container-to-host connectivity
 - ✅ **UFW Firewall Documentation** - Essential ports added to DISASTER_RECOVERY.md
-- ✅ **Generated Images API** - Full management of local generated images ⭐ NEW
+- ✅ **Generated Images API** - Full management of local generated images 
   - List, search, download, delete, generate images via API
   - `upload_to_cdn` parameter for one-step generate + CDN upload
   - CDN catalog caches URLs for instant retrieval (no re-uploads)

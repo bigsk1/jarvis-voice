@@ -737,7 +737,7 @@ GET /api/canvas/{page_id}
 
 See [CANVAS.md](./CANVAS.md) for detailed documentation.
 
-### Images (Cloudflare CDN) ⭐ NEW
+### Images (Cloudflare CDN) 
 
 Upload images to Cloudflare Images CDN for permanent, public hosting.
 

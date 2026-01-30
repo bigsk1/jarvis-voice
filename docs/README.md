@@ -15,14 +15,14 @@
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.0** (workflow tooltips, prompt tooltips, server logs) ⭐ ENHANCED
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) 
 - **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice) ⭐ ENHANCED
-- **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support) ⭐ NEW
+- **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support) 
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
 - **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization** ⭐ ENHANCED)
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
 - **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results)
-- **[api/IMAGES.md](api/IMAGES.md)** - 🖼️ **Cloudflare CDN Upload** (permanent image hosting, multi-agent sharing, metadata tracking) ⭐ NEW 
+- **[api/IMAGES.md](api/IMAGES.md)** - 🖼️ **Cloudflare CDN Upload** (permanent image hosting, multi-agent sharing, metadata tracking)  
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) 
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
@@ -213,7 +213,7 @@
 | **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag  |
 | **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check cloud`  |
 | **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."`  |
-| **[Prompt Validator](SYSTEM_PROMPT_VALIDATOR.md)** | Debug unexpected behavior - `./bin/validate-system-prompt --issue "..."` ⭐ NEW |
+| **[Prompt Validator](SYSTEM_PROMPT_VALIDATOR.md)** | Debug unexpected behavior - `./bin/validate-system-prompt --issue "..."`  |
 
 **Intelligence Features (Phase 1.5):**
 - Insight tracking (times_applied, times_helpful, times_failed)
@@ -303,7 +303,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-01-30:**
-- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API ⭐ NEW
+- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API 
   - Toggle via `JARVIS_API_AUTH=true/false` in cloud.env/local.env
   - `JARVIS_API_KEY` environment variable for the secret key
   - Localhost (127.0.0.1, ::1) always whitelisted - no auth needed
@@ -319,7 +319,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Example UFW rules for quick setup
 
 **2026-01-28:**
-- ✅ **Generated Images API** - Full management of local generated images ⭐ NEW
+- ✅ **Generated Images API** - Full management of local generated images 
   - `GET /api/generated-images` - List/search images with pagination
   - `GET /api/generated-images/{name}` - Download image file
   - `GET /api/generated-images/{name}/base64` - Get as base64
@@ -329,13 +329,13 @@ tail -f logs/tools/tool-calls-*.jsonl
   - `GET /api/generated-images/cdn-catalog` - List all uploaded images with URLs
   - CDN catalog (`cdn_catalog.json`) tracks uploaded images for instant URL retrieval
   - See: [`docs/api/GENERATED_IMAGES.md`](api/GENERATED_IMAGES.md)
-- ✅ **Image Gallery UI** - Browse generated images in jarvis-canvas ⭐ NEW
+- ✅ **Image Gallery UI** - Browse generated images in jarvis-canvas 
   - New "🖼️ Gallery" link in Canvas header → `/gallery`
   - Grid view with thumbnails, search, sort by date/name/size
   - Lightbox for full-size viewing with keyboard navigation
   - Download, Get CDN URL (🔗), and Delete buttons
   - Responsive design for mobile/tablet
-- ✅ **Canvas Pin → Stash Pin Sync** - Image preservation ⭐ NEW
+- ✅ **Canvas Pin → Stash Pin Sync** - Image preservation 
   - When pinning a canvas page, automatically pins referenced stash spaces
   - Prevents images from breaking when stash TTL expires
   - Stash `is_expired` property fix for correct pinned space handling
@@ -346,12 +346,12 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Self-healing daemon now monitors systemd services and sibling daemons
   - PID + cmdline verification prevents false positives from PID reuse
   - Graceful degradation on transient failures
-- ✅ **API Request Logging** - Track all API traffic ⭐ NEW
+- ✅ **API Request Logging** - Track all API traffic 
   - `logs/api/access-YYYY-MM-DD.jsonl` and `errors-YYYY-MM-DD.jsonl`
   - Configurable loopback filtering (internal vs external traffic)
   - `jq` commands for live tailing, filtering, performance analysis
   - See: [`docs/api/LOGGING.md`](api/LOGGING.md)
-- ✅ **Log Management** - Automated cleanup ⭐ NEW
+- ✅ **Log Management** - Automated cleanup 
   - `bin/cleanup-logs` - Clean logs older than 60 days
   - `bin/cleanup-audio` - Clean audio files older than 30 days
   - `bin/cleanup-all` - Master script (logs, audio, images, stash)
@@ -371,14 +371,14 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/api/IMAGES.md`](api/IMAGES.md)
 
 **2026-01-26:**
-- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2 ⭐ NEW
+- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2 
   - `samantha` tool for real-time chat via OpenAI-compatible API
   - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)
   - Priority levels: urgent, normal, background
   - Configurable timeout (30-300s) for quick vs complex tasks
   - Fire-and-forget webhook option for Discord/Telegram posting
   - See: `docs/vps2/JARVIS_SAMANTHA_INTEGRATION.md` (private)
-- ✅ **Voice API Multi-Agent Support** - Per-request TTS provider/voice override ⭐ NEW
+- ✅ **Voice API Multi-Agent Support** - Per-request TTS provider/voice override 
   - `/api/voice/speak` now accepts `tts_provider` and `voice` parameters
   - Enables different agents to speak with distinct voices
   - Jarvis uses ElevenLabs, Samantha uses Qwen3-TTS "Samantha" voice
@@ -397,7 +397,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Useful for CLI testing without wake word
 
 **2026-01-25:**
-- ✅ **Intel API** - Programmatic access to jarvis-intel knowledge files ⭐ NEW
+- ✅ **Intel API** - Programmatic access to jarvis-intel knowledge files 
   - CRUD operations for intel files (create, read, update, delete)
   - `GET /api/intel/stats` - Folder statistics (total files, facts, size)
   - `GET /api/intel` - List all files with ingestion stats
@@ -407,7 +407,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - `POST /api/intel/ingest` - Manual ingestion (sync or async mode)
   - See: [`docs/api/INTEL.md`](api/INTEL.md)
 - ✅ **URL Ingest Workflow** - `/url_ingest <url>` to crawl, summarize, and ingest URLs to memory
-- ✅ **System Prompt Validator** - LLM-powered debugging tool for prompt engineering ⭐ NEW
+- ✅ **System Prompt Validator** - LLM-powered debugging tool for prompt engineering 
   - `./bin/validate-system-prompt --tools` - Comprehensive prompt audit
   - `--issue` flag for targeted debugging: `--issue "Jarvis called canvas before search"`
   - Root cause analysis: traces exact rules that caused unexpected behavior
@@ -425,7 +425,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **OpenAI API Fix** - max_completion_tokens for gpt-5.x/o1/o3 models
 
 **2026-01-24:**
-- ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI ⭐ NEW
+- ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI 
   - 📊 New "Feedback" tab at http://localhost:5003
   - Filter by rating (All, Issues 1-3, Good 4-5) and time range (7, 30, 90 days)
   - Stats bar shows average rating, total count, and issue rate percentage
@@ -440,7 +440,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: `jarvis-intelligence/README.md`
 
 **2026-01-23:**
-- ✅ **Manual Feedback in WebUI** - Trigger LLM-as-QA feedback from the web interface ⭐ NEW
+- ✅ **Manual Feedback in WebUI** - Trigger LLM-as-QA feedback from the web interface 
   - 📊 Toggle button enables feedback for all messages
   - `--feedback` inline flag for per-message trigger
   - Purple feedback card shows rating (1-5), summary, issues, tool ratings
