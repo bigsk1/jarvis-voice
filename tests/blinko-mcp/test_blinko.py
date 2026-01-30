@@ -24,7 +24,7 @@ if not BLINKO_API_KEY:
 # Connect to Blinko MCP server
 client = MCPRemoteClient(
     name='blinko',
-    url='http://192.168.70.228:1111/sse',
+    url='http://localhost:1111/sse',
     transport_type='sse',
     headers={
         'Authorization': f'Bearer {BLINKO_API_KEY}'

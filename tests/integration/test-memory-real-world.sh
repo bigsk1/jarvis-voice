@@ -35,7 +35,7 @@ echo "Building context... (natural conversation, not obvious 'remember this')"
 sleep 1
 ./orchestrator/orchestrator_v2.py cloud "By the way, the admin panel is at /admin and requires the secret key 'dev-secret-123' for local testing" > /tmp/rw2.log 2>&1
 sleep 1
-./orchestrator/orchestrator_v2.py cloud "Oh and I deployed this to my VPS at 192.168.70.228" > /tmp/rw3.log 2>&1
+./orchestrator/orchestrator_v2.py cloud "Oh and I deployed this to my VPS at 192.168.1.228" > /tmp/rw3.log 2>&1
 sleep 2
 
 echo "Context built. Now testing recall with complex queries..."
@@ -55,7 +55,7 @@ echo ""
 # Complex query 2: Relationship inference
 echo "Q2: 'What's the IP address where my authentication system is deployed?'"
 ./orchestrator/orchestrator_v2.py cloud "What's the IP address where my authentication system is deployed?" > /tmp/rw5.log 2>&1
-if grep -q "192.168.70.228" /tmp/rw5.log; then
+if grep -q "192.168.1.228" /tmp/rw5.log; then
     echo "   ✅ PASS - Connected 'authentication system' to 'Flask API' to 'VPS IP'"
 else
     echo "   ❌ FAIL - Didn't infer relationship between concepts"

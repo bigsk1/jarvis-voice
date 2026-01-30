@@ -66,7 +66,7 @@ def load_config_file() -> dict:
             "settings": {
                 "check_interval_minutes": 10,
                 "cooldown_hours": 4,
-                "jarvis_api_url": "http://192.168.70.228:8880"
+                "jarvis_api_url": "http://localhost:8880"
             },
             "watchlist": {
                 "crypto": [],

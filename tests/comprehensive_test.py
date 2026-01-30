@@ -534,8 +534,7 @@ class ComprehensiveTest:
         
         # Try localhost first, then network IP
         api_bases = [
-            "http://localhost:8880",
-            "http://192.168.70.228:8880"
+            "http://localhost:8880"
         ]
         
         api_running = False

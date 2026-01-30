@@ -1027,7 +1027,7 @@ CRITICAL RULES:
 3. No emojis, no markdown, no bullet points, no explanations of what you did
 
 GOOD EXAMPLES:
-- "Tetris server started on port 5000 at 192.168.70.228"
+- "Tetris server started on port 5000 at your local IP address"
 - "Webhook sent successfully, URL saved to memory and your canvas has been updated"
 - "Bitcoin price is $101,000, down 2% today"
 - "Email sent to John, confirmation code 12345"

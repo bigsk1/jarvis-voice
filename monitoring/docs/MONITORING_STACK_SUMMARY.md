@@ -2,7 +2,7 @@
 
 ## 🎉 What's Been Built
 
-A complete, self-hosted observability stack for Jarvis Voice Assistant running on **Fred (192.168.70.228)**.
+A complete, self-hosted observability stack for Jarvis Voice Assistant
 
 ---
 
@@ -10,7 +10,7 @@ A complete, self-hosted observability stack for Jarvis Voice Assistant running o
 
 ### **1. Grafana** (Port 3000)
 - **Purpose**: Visualization and dashboards
-- **Access**: http://192.168.70.228:3000
+- **Access**: http://localhost:3000
 - **Credentials**: `admin` / `jarvis_grafana_2025`
 - **Features**:
   - Pre-built "Jarvis Overview" dashboard
@@ -334,11 +334,11 @@ docker volume prune
 ## ✅ Deployment Checklist
 
 - [x] Docker Compose stack created
-- [x] Grafana accessible at http://192.168.70.228:3000
+- [x] Grafana accessible at http://localhost:3000
 - [x] Loki receiving logs from Promtail
 - [x] Promtail watching Jarvis log files
 - [x] Prometheus scraping Mini-AI Ollama
-- [x] Pre-built dashboard deployed
+- [x] Pre-built dashboard deployed  
 - [x] Alert rules configured
 - [x] Documentation created
 - [x] Management scripts functional
@@ -353,5 +353,5 @@ All services running, logs flowing, dashboard accessible. Ready for deep-dive an
 
 ---
 
-**Access**: http://192.168.70.228:3000 (admin / jarvis_grafana_2025)
+**Access**: http://localhost:3000 (admin / jarvis_grafana_2025)
 

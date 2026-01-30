@@ -149,7 +149,7 @@ else
     echo "⚠️  Some tests failed. Check logs for details."
     echo ""
     echo "After running, trigger reflection to learn from these:"
-    echo "  curl -X POST 'http://192.168.70.228:8880/api/intelligence/reflect?batch_size=20'"
+    echo "  curl -X POST 'http://localhost:8880/api/intelligence/reflect?batch_size=20'"
     exit 1
 fi
 

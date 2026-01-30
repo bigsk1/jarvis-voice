@@ -213,14 +213,14 @@ After implementing the fix:
 
 ```bash
 # Test total cost
-curl -s -G 'http://192.168.70.228:3100/loki/api/v1/query' \
+curl -s -G 'http://localhost:3100/loki/api/v1/query' \
   --data-urlencode 'query=sum(sum_over_time({job="jarvis", log_type="llm"} | json | unwrap cost_usd [1h]))' | \
   jq '.data.result[0].value[1]'
 
 # Expected: A number like "0.015" (total USD cost)
 
 # Test total tokens
-curl -s -G 'http://192.168.70.228:3100/loki/api/v1/query' \
+curl -s -G 'http://localhost:3100/loki/api/v1/query' \
   --data-urlencode 'query=sum(sum_over_time({job="jarvis", log_type="llm"} | json | unwrap total_tokens [1h]))' | \
   jq '.data.result[0].value[1]'
 
