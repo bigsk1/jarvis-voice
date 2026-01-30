@@ -14,6 +14,7 @@ services:
     environment:
       # Environment variables are loaded from .env file
       # You can override them here if needed
+      JARVIS_API_KEY: ${JARVIS_API_KEY}
       JARVIS_API: ${JARVIS_API}
       CHECK_INTERVAL: ${CHECK_INTERVAL}
       AUTO_RESOLVE_INTERVAL: ${AUTO_RESOLVE_INTERVAL}

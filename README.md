@@ -637,7 +637,7 @@ See [Proactive API docs](docs/api/) and [Reminder System](docs/api/REMINDER_SYST
 
 ### 7. Remote Monitoring Agent (Optional)
 
-Deploy the **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** (Docker) on remote servers for health checks and alerts:
+Deploy the **[Jarvis Monitor](./jarvis-monitor/README.md)** (Docker) on remote servers for health checks and alerts:
 
 ![jarvis-monitoring-agent-info-graph](docs/images/jarvis-monitoring-agent-info-graph.jpeg)
 
