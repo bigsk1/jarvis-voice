@@ -1,6 +1,10 @@
 # Jarvis Voice Assistant
 
-A self-hosted, intelligent voice assistant with advanced tool calling, memory, and autonomous coding capabilities.
+> **Heads up** — This is my personal voice assistant that's been running in my office for about four months now. I never planned to release it publicly. The codebase reflects that: there are hardcoded IPs, paths assume a user named "boss", and some things are wired together in ways that made sense for my setup but might confuse you.
+>
+> That said, if you want to run your own version, the [Disaster Recovery Guide](docs/DISASTER_RECOVERY.md) walks through setting up a fresh Ubuntu 24.04 server from scratch. You'll need to change the static IPs and a few config values, but everything *should* work if you follow the steps. No promises, no support — just sharing what I built.
+
+A self-hosted voice assistant with tool calling, memory, and autonomous coding capabilities and a hell of alot more! .
 
 ![jarvis-info-graph](docs/images/jarvis-info-graph.jpeg)
 
@@ -1608,7 +1612,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 📝 License
 
-Private project - Not licensed for public use.
+Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
 **Current Version:** v2.33 (January 2026)  

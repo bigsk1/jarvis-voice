@@ -1,155 +1,192 @@
 # Jarvis Voice Assistant - Disaster Recovery Guide
 
-> **Purpose:** Complete step-by-step guide to rebuild Jarvis from scratch on a new server. Follow this with an LLM assistant to restore full functionality.
+This is a rebuild guide. If you're reading this, either my server died or you're trying to set this up yourself. Either way, here's everything you need to get Jarvis running from scratch.
 
-**Estimated Time:** 3-4 hours (fresh Ubuntu install to fully working system)
+Fair warning: this project has hardcoded IPs, paths that assume a user named "boss", and other quirks from being a personal project. You'll need to adapt things to your setup. The IPs throughout this doc are from my network — change them to match yours.
 
----
-
-## 📋 Table of Contents
-
-1. [Prerequisites & Hardware](#prerequisites--hardware)
-2. [Operating System Setup](#operating-system-setup)
-3. [Directory Structure (CRITICAL)](#directory-structure-critical)
-4. [Audio Configuration](#audio-configuration)
-5. [Python Environment](#python-environment)
-6. [Clone Repository & Restore Data](#clone-repository--restore-data)
-7. [Configuration Files](#configuration-files)
-8. [Database Restoration](#database-restoration)
-9. [n8n Setup (Docker)](#n8n-setup-docker)
-10. [Systemd Services](#systemd-services)
-11. [Final Validation](#final-validation)
-12. [Troubleshooting](#troubleshooting)
+**Time estimate:** 2-4 hours depending on how much you're restoring vs starting fresh.
 
 ---
 
-## Prerequisites & Hardware
+## Table of contents
 
-### Server Requirements
-- **OS:** Ubuntu 22.04/24.04 LTS (recommended)
-- **RAM:** 8GB minimum (16GB+ for local LLM mode)
+1. [Prerequisites](#prerequisites)
+2. [Base system setup](#base-system-setup)
+3. [Clone and install](#clone-and-install)
+4. [Configuration](#configuration)
+5. [Database restoration](#database-restoration)
+6. [Services and validation](#services-and-validation)
+7. [Troubleshooting](#troubleshooting)
+
+---
+
+## Prerequisites
+
+### Server requirements
+- **OS:** Ubuntu Server 24.04 LTS (fresh install recommended)
+- **RAM:** 8GB minimum, 16GB+ if running local LLMs
 - **Storage:** 50GB+ SSD
-- **Network:** Static IP on LAN (for n8n, API access)
+- **Network:** Static IP (you'll need to update configs if your IPs differ from mine)
+- **User:** Admin user named `boss` with sudo access
 
-### Hardware Checklist
-- [ ] USB microphone or audio interface
-- [ ] Speakers or audio output device
-- [ ] Network connectivity (Ethernet preferred)
+### Hardware
+- USB microphone or audio interface
+- Speakers or audio output
+- Ethernet preferred over WiFi
 
-### Network Configuration
-**CRITICAL:** These IPs should be static/reserved in your router:
+### My network IPs (change these to yours)
 - Jarvis server: `192.168.70.228`
-- n8n server: `192.168.70.226` (Docker on same or different host)
+- Ollama server: `192.168.70.226`
+- n8n (Docker): same host or `192.168.70.226`
 
-**If IPs changed:** You'll need to update:
-- `config/cloud.env` - `N8N_LOCAL_API_URL`, `N8N_JARVIS_WEBHOOK_URL`
-- `config/local.env` - Same variables
-- `config/webhook_registry.json` - All n8n webhook URLs
-- n8n workflows - Jarvis API callback URLs
-
----
-
-## Operating System Setup
-
-### Step 1: Install Ubuntu Server
-
-```bash
-# After Ubuntu installation, update system
-sudo apt update && sudo apt upgrade -y
-
-# Install essential packages
-sudo apt install -y \
-  git curl wget build-essential \
-  python3.11 python3.11-venv python3-pip \
-  ffmpeg portaudio19-dev \
-  alsa-utils pulseaudio pulseaudio-utils \
-  sqlite3 \
-  docker.io docker-compose \
-  htop net-tools
-
-# Add user to docker group (for n8n)
-sudo usermod -aG docker $USER
-```
-
-### Step 2: Set Hostname (Optional)
-```bash
-sudo hostnamectl set-hostname jarvis-main
-```
-
-### Step 3: Verify Python Version
-```bash
-python3 --version  # Should be 3.11+
-```
+If your IPs are different, you'll need to update:
+- `config/cloud.env` and `config/local.env`
+- `config/webhook_registry.json`
+- Any n8n workflows that call back to Jarvis
 
 ---
 
-## Directory Structure (CRITICAL)
+## Base system setup
 
-**These paths are HARDCODED everywhere. Do not change them.**
+### 1. Create the boss user
+
+If you didn't create `boss` during Ubuntu install:
 
 ```bash
-# Create user home (if needed)
 sudo useradd -m -s /bin/bash boss
 sudo passwd boss
-su - boss  # Switch to boss user
+sudo usermod -aG sudo boss
+sudo usermod -aG docker boss
 
-# Create required directories
-cd /home/boss
-mkdir -p jarvis-voice
-mkdir -p jarvis-workspace  # OpenCode workspace
-mkdir -p .config/opencode
-
-# Verify paths
-echo "Home: $HOME"           # Must be /home/boss
-echo "PWD: $PWD"             # Should be /home/boss
-ls -la jarvis-voice          # Should exist (empty for now)
+# Switch to boss
+su - boss
 ```
 
-**Why these paths matter:**
-- `/home/boss/jarvis-voice` - Main codebase, referenced in systemd services
-- `/home/boss/jarvis-venv` - Python virtual environment (one level up from codebase)
-- `/home/boss/jarvis-workspace` - OpenCode workspace (isolated from main code)
-- Scripts use relative paths (`../`, `~/jarvis-venv`) assuming this structure
+### 2. Update system and install base packages
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
 
 ---
 
-## Audio Configuration
+## Clone and install
 
-### Step 1: Detect Audio Devices
+### 1. Clone the repository
 
 ```bash
-# List all audio devices
-aplay -l    # Playback devices
-arecord -l  # Recording devices
-
-# Example output:
-# card 0: PCH [HDA Intel PCH], device 0: ALC887-VD Analog [...]
-# card 3: Device [USB Audio Device], device 0: USB Audio [...]
-
-# Note the card and device numbers!
-# Format: hw:CARD_NUMBER,DEVICE_NUMBER
+cd /home/boss
+git clone https://github.com/bigsk1/jarvis-voice.git
+cd jarvis-voice
 ```
 
-**Record your devices:**
-- Microphone: `hw:___,___` or `plughw:CARD=___`
-- Speaker: `hw:___,___` or `plughw:CARD=___`
+### 2. Run setup scripts in order
 
-### Step 2: Test Audio
+Run these scripts in this order. Each one handles a specific part of the setup:
 
 ```bash
-# Test microphone (record 5 seconds)
+# 1. System dependencies (apt packages)
+#    Installs: ffmpeg, sox, sqlite3, portaudio, pulseaudio, jq, etc.
+sudo ./install-system-deps.sh
+
+# 2. Initial project setup
+#    Creates directories, sets permissions, initializes git hooks
+./setup.sh
+
+# 3. Python virtual environment and dependencies
+#    Creates ~/jarvis-venv, installs requirements.txt
+python3 -m venv ~/jarvis-venv
+source ~/jarvis-venv/bin/activate
+pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+
+# 4. Verify environment is correct
+./verify-env.sh
+
+# 5. Sync tools to database (registers all skills)
+./setup_tools.sh
+
+# 6. OpenCode workspace (if using autonomous coding)
+./setup_opencode_workspace.sh
+```
+
+### Script reference
+
+| Script | What it does |
+|--------|--------------|
+| `install-system-deps.sh` | Installs system packages from `system-packages.txt` |
+| `setup.sh` | Creates directories, permissions, git setup |
+| `requirements.txt` | Python dependencies (pip install -r) |
+| `pyproject.toml` | Project metadata, used by some tools |
+| `verify-env.sh` | Checks that everything is configured correctly |
+| `setup_tools.sh` | Syncs tool definitions to the database |
+| `setup_opencode_workspace.sh` | Sets up OpenCode autonomous coding workspace |
+
+### 3. Configure environment files
+
+Copy the example configs and edit with your API keys:
+
+```bash
+cp config/cloud.env.example config/cloud.env
+cp config/local.env.example config/local.env
+
+# Edit with your API keys and settings
+nano config/cloud.env
+```
+
+**Minimum required for cloud mode:**
+- `XAI_API_KEY` or `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+- `TTS_PROVIDER` and associated API key (ElevenLabs, OpenAI, etc.)
+
+**For local mode:**
+- Ollama endpoint (default: `http://192.168.70.226:11434`)
+- Local TTS setup (Kokoro or Qwen3-TTS)
+
+---
+
+## Directory structure
+
+These paths are hardcoded throughout the codebase:
+
+```
+/home/boss/
+├── jarvis-voice/          # Main codebase
+├── jarvis-venv/           # Python virtual environment
+├── jarvis-workspace/      # OpenCode projects
+└── .config/opencode/      # OpenCode config
+```
+
+**Don't change these paths** unless you want to grep through everything and update references.
+
+---
+
+## Audio configuration
+
+### Detect your devices
+
+```bash
+aplay -l    # List playback devices
+arecord -l  # List recording devices
+```
+
+Note your card and device numbers. Format: `hw:CARD,DEVICE`
+
+### Test audio
+
+```bash
+# Record 5 seconds
 arecord -D hw:3,0 -f cd -d 5 test.wav
 
-# Test playback
+# Play it back
 aplay test.wav
 
-# Test speaker directly
+# Test speakers
 speaker-test -D hw:0,0 -c 2 -t wav
 ```
 
-### Step 3: Configure ALSA (if needed)
+### Configure ALSA (if needed)
 
-Create `~/.asoundrc` if you need custom device mapping:
+Create `~/.asoundrc` for custom device mapping:
 
 ```bash
 cat > ~/.asoundrc << 'EOF'
@@ -158,7 +195,6 @@ pcm.!default {
     playback.pcm "plughw:0,0"
     capture.pcm "plughw:3,0"
 }
-
 ctl.!default {
     type hw
     card 0
@@ -166,126 +202,25 @@ ctl.!default {
 EOF
 ```
 
-### Step 4: Test PulseAudio
-
-```bash
-# Start PulseAudio (if not running)
-pulseaudio --start
-
-# List devices
-pactl list sources short
-pactl list sinks short
-
-# Set default devices
-pactl set-default-source YOUR_MIC_NAME
-pactl set-default-sink YOUR_SPEAKER_NAME
-```
-
-**CRITICAL:** Note exact device names/IDs for later config.
+Update the device numbers to match your hardware.
 
 ---
 
-## Python Environment
+## Configuration
 
-### Step 1: Create Virtual Environment
-
-```bash
-cd /home/boss
-
-# Create venv (one level up from jarvis-voice)
-python3 -m venv jarvis-venv
-
-# Activate
-source jarvis-venv/bin/activate
-
-# Verify
-which python  # Should show /home/boss/jarvis-venv/bin/python
-python --version  # Should be 3.11+
-```
-
-### Step 2: Upgrade pip
-
-```bash
-pip install --upgrade pip setuptools wheel
-```
-
----
-
-## Clone Repository & Restore Data
-
-### Step 1: Clone Repository
-
-```bash
-cd /home/boss
-
-# Clone from your Git remote
-git clone <YOUR_GIT_REMOTE_URL> jarvis-voice
-
-# Or if using rsync backup, skip to Step 2
-
-cd jarvis-voice
-git branch  # Verify you're on main branch
-```
-
-### Step 2: Restore Data from Backup (rsync)
-
-**If you have rsync backup of /home/boss:**
-
-```bash
-# On NEW server, sync from backup
-rsync -avz --progress \
-  user@backup-server:/path/to/backup/jarvis-voice/ \
-  /home/boss/jarvis-voice/
-
-# Specifically restore these:
-# - data/*.db (databases)
-# - config/*.env (API keys - NOT in git)
-# - config/contacts.json (NOT in git)
-# - config/webhook_registry.json (NOT in git)
-# - logs/ (optional, for history)
-```
-
-**Important files to restore:**
-```bash
-# Check these exist after restore:
-ls -lh /home/boss/jarvis-voice/data/jarvis_memory.db
-ls -lh /home/boss/jarvis-voice/data/jarvis_memory_local.db
-ls -lh /home/boss/jarvis-voice/config/cloud.env
-ls -lh /home/boss/jarvis-voice/config/local.env
-ls -lh /home/boss/jarvis-voice/config/contacts.json
-ls -lh /home/boss/jarvis-voice/config/webhook_registry.json
-```
-
-### Step 3: Install Python Dependencies
-
-```bash
-cd /home/boss/jarvis-voice
-source ~/jarvis-venv/bin/activate
-
-# Install from requirements.txt
-pip install -r requirements.txt
-
-# Verify key packages
-pip list | grep -E "openai|anthropic|ollama|faster-whisper|kokoro"
-```
-
----
-
-## Configuration Files
-
-### Step 1: Verify Config Files Exist
+### Verify config files exist
 
 ```bash
 cd /home/boss/jarvis-voice/config
 
-# These should exist (from git or rsync backup):
+# These should exist (from backup or created from templates):
 ls -la cloud.env
 ls -la local.env
 ls -la contacts.json
 ls -la webhook_registry.json
 ```
 
-**If missing, create from templates:**
+If missing, copy from templates:
 
 ```bash
 cp cloud.env.example cloud.env
@@ -294,15 +229,15 @@ cp contacts.json.example contacts.json
 cp webhook_registry.json.template webhook_registry.json
 ```
 
-### Step 2: Update Audio Device Paths
+### Update audio device paths
 
-**Edit `config/cloud.env` and `config/local.env`:**
+Edit `config/cloud.env` and `config/local.env`:
 
 ```bash
 nano config/cloud.env
 ```
 
-Find and update these lines with YOUR audio devices:
+Find and update these lines with your audio devices:
 
 ```bash
 # Audio Configuration (UPDATE THESE!)
