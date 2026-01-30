@@ -34,6 +34,7 @@ from typing import Dict, Any, Optional
 
 # Configuration from environment
 JARVIS_ALERTS_URL = os.environ.get('JARVIS_ALERTS_URL', 'http://localhost:8880/api/alerts')
+JARVIS_API_KEY = os.environ.get('JARVIS_API_KEY', '')  # Optional: for auth-enabled Jarvis API
 WEBHOOK_PORT = int(os.environ.get('WEBHOOK_PORT', '5050'))
 ALERT_START_HOUR = int(os.environ.get('ALERT_START_HOUR', '0'))
 ALERT_END_HOUR = int(os.environ.get('ALERT_END_HOUR', '24'))
@@ -242,13 +243,21 @@ def update_cooldown(device_id: str, event_type: str):
     _last_alert_time[key] = time.time()
 
 
+def _get_auth_headers() -> dict:
+    """Get headers for Jarvis API requests, including auth if configured."""
+    headers = {'Content-Type': 'application/json'}
+    if JARVIS_API_KEY:
+        headers['Authorization'] = f'Bearer {JARVIS_API_KEY}'
+    return headers
+
+
 def send_to_jarvis(alert_data: dict, auto_ack: bool = False) -> bool:
     """Send alert to Jarvis API, optionally auto-acknowledge."""
     try:
         req = Request(
             JARVIS_ALERTS_URL,
             data=json.dumps(alert_data).encode('utf-8'),
-            headers={'Content-Type': 'application/json'},
+            headers=_get_auth_headers(),
             method='POST'
         )
         with urlopen(req, timeout=10) as resp:
@@ -271,7 +280,10 @@ def _acknowledge_alert(alert_id: int):
     """Acknowledge alert to prevent follow-up reminders."""
     try:
         ack_url = f"{JARVIS_ALERTS_URL}/{alert_id}/acknowledge"
-        req = Request(ack_url, method='PUT')
+        headers = {}
+        if JARVIS_API_KEY:
+            headers['Authorization'] = f'Bearer {JARVIS_API_KEY}'
+        req = Request(ack_url, headers=headers, method='PUT')
         with urlopen(req, timeout=5) as resp:
             if resp.status == 200:
                 log.info(f"  Auto-acknowledged alert {alert_id} (no follow-ups)")
@@ -467,6 +479,7 @@ def main():
     log.info("UniFi Protect Webhook Receiver")
     log.info("=" * 60)
     log.info(f"  Jarvis API:     {JARVIS_ALERTS_URL}")
+    log.info(f"  API Auth:       {'✓ Configured' if JARVIS_API_KEY else '✗ None (set JARVIS_API_KEY if needed)'}")
     log.info(f"  Listening:      http://0.0.0.0:{WEBHOOK_PORT}/webhook")
     log.info(f"  Alert hours:    {ALERT_START_HOUR}:00 - {ALERT_END_HOUR}:00 (0-24 = always)")
     log.info(f"  Default cooldown: {DEFAULT_COOLDOWN}s")

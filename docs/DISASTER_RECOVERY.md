@@ -608,6 +608,55 @@ curl http://192.168.70.228:8880/api/reminders | jq
 
 ---
 
+## UFW Firewall Configuration
+
+If you're using UFW (recommended), here are the ports Jarvis needs:
+
+### Required ports (internal network)
+
+```bash
+# SSH (if remote access needed)
+sudo ufw allow 22/tcp
+
+# Jarvis API (webhooks, alerts, reminders)
+sudo ufw allow 8880/tcp
+
+# Web UIs
+sudo ufw allow 5001/tcp   # Jarvis Web UI
+sudo ufw allow 5002/tcp   # Memory Browser
+sudo ufw allow 5003/tcp   # Intelligence Dashboard
+sudo ufw allow 8090/tcp   # Canvas Viewer
+
+# Optional services
+sudo ufw allow 5050/tcp   # UniFi Protect webhook receiver
+sudo ufw allow 9090/tcp   # Prometheus (if monitoring enabled)
+sudo ufw allow 3000/tcp   # Grafana (if monitoring enabled)
+```
+
+### If Ollama is on another server
+
+```bash
+# On the Ollama server, allow from Jarvis
+sudo ufw allow from 192.168.70.228 to any port 11434
+```
+
+### Minimal config (API only)
+
+If you only need the API for external services:
+
+```bash
+sudo ufw allow 8880/tcp
+sudo ufw enable
+```
+
+### Check status
+
+```bash
+sudo ufw status verbose
+```
+
+---
+
 ## Troubleshooting
 
 ### Audio Issues

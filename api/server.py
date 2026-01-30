@@ -24,6 +24,94 @@ from api.routes.intelligence import router as intelligence_router
 # Request Logging Middleware
 # ============================================================================
 
+# ============================================================================
+# API Authentication Middleware (Optional)
+# ============================================================================
+
+class APIAuthMiddleware(BaseHTTPMiddleware):
+    """
+    Optional Bearer token authentication middleware.
+    
+    Controlled by environment variables:
+    - JARVIS_API_AUTH: true/false (default: false for backward compatibility)
+    - JARVIS_API_KEY: The API key to validate against
+    
+    When enabled:
+    - Localhost (127.0.0.1, ::1) requests are always allowed (internal calls)
+    - External requests require: Authorization: Bearer <JARVIS_API_KEY>
+    - Certain paths are always public: /api/health, /metrics, /docs, /
+    """
+    
+    def __init__(self, app):
+        super().__init__(app)
+        import os
+        
+        # Load auth config
+        self.auth_enabled = os.environ.get("JARVIS_API_AUTH", "false").lower() == "true"
+        self.api_key = os.environ.get("JARVIS_API_KEY", "")
+        
+        # IPs that don't need auth (internal/localhost)
+        self.trusted_ips = {"127.0.0.1", "::1", "localhost"}
+        
+        # Paths that are always public (no auth required)
+        self.public_paths = {"/", "/api/health", "/api/status", "/metrics", "/docs", "/docs/dark", "/redoc", "/openapi.json"}
+        
+        if self.auth_enabled:
+            if not self.api_key:
+                print("⚠️  JARVIS_API_AUTH=true but JARVIS_API_KEY not set! Auth disabled.")
+                self.auth_enabled = False
+            else:
+                print(f"🔐 API authentication enabled (localhost whitelisted)")
+        else:
+            print("🔓 API authentication disabled (set JARVIS_API_AUTH=true to enable)")
+    
+    async def dispatch(self, request: Request, call_next):
+        # If auth is disabled, pass through
+        if not self.auth_enabled:
+            return await call_next(request)
+        
+        path = request.url.path
+        client_ip = request.client.host if request.client else "unknown"
+        
+        # Public paths - no auth needed
+        if path in self.public_paths or path.startswith("/docs"):
+            return await call_next(request)
+        
+        # Localhost - trusted, no auth needed
+        if client_ip in self.trusted_ips:
+            return await call_next(request)
+        
+        # External request - check Bearer token
+        auth_header = request.headers.get("Authorization", "")
+        
+        if not auth_header:
+            return Response(
+                content=json.dumps({"error": "Authorization header required", "detail": "Use: Authorization: Bearer <api_key>"}),
+                status_code=401,
+                media_type="application/json"
+            )
+        
+        # Parse Bearer token
+        if not auth_header.startswith("Bearer "):
+            return Response(
+                content=json.dumps({"error": "Invalid authorization format", "detail": "Use: Authorization: Bearer <api_key>"}),
+                status_code=401,
+                media_type="application/json"
+            )
+        
+        token = auth_header[7:]  # Remove "Bearer " prefix
+        
+        if token != self.api_key:
+            return Response(
+                content=json.dumps({"error": "Invalid API key"}),
+                status_code=403,
+                media_type="application/json"
+            )
+        
+        # Auth passed
+        return await call_next(request)
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
     Middleware to log all API requests to logs/api/ directory.
@@ -271,6 +359,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API authentication middleware (optional, controlled by JARVIS_API_AUTH env var)
+# Middleware is added in reverse order - auth runs FIRST (added last)
+app.add_middleware(APIAuthMiddleware)
 
 # Request logging middleware - logs to logs/api/
 # Set log_loopback=True to include internal daemon traffic
