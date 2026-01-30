@@ -329,9 +329,63 @@ The Jarvis API (port 8880) has:
 | Error Logging | ✅ | 4xx/5xx logged with details |
 | CORS | ⚠️ | `allow_origins=["*"]` - OK for local network |
 | Rate Limiting | ⬜ | Not implemented - low risk on local network |
-| Authentication | ⬜ | Not implemented - relies on network security |
+| Authentication | ✅ | Optional Bearer token auth (toggle via env) |
 
-The API is intended for local network use only. External access should be through Tailscale or similar VPN.
+### API Authentication ✅ IMPLEMENTED
+
+The Jarvis API supports optional Bearer token authentication, controlled via environment variables.
+
+**Configuration:**
+
+```bash
+# In config/cloud.env or config/local.env
+JARVIS_API_AUTH=true          # Enable authentication (default: false)
+JARVIS_API_KEY="your-key"     # The API key to validate against
+```
+
+**Generate a secure key:**
+```bash
+openssl rand -hex 32
+```
+
+**Behavior when enabled (`JARVIS_API_AUTH=true`):**
+
+| Request Source | Auth Required? |
+|----------------|----------------|
+| Localhost (127.0.0.1, ::1) | ❌ No - always allowed |
+| Public paths (`/`, `/api/health`, `/metrics`, `/docs`) | ❌ No - always allowed |
+| External requests to other endpoints | ✅ Yes - requires Bearer token |
+
+**Making authenticated requests:**
+```bash
+# With auth enabled, external requests need the Authorization header
+curl -H "Authorization: Bearer your-api-key-here" \
+     http://192.168.70.228:8880/api/memory
+
+# Localhost requests don't need auth (whitelisted)
+curl http://localhost:8880/api/memory
+```
+
+**Remote services configuration:**
+
+Services running on remote hosts need the API key:
+
+```bash
+# jarvis-monitor/.env (Docker on remote server)
+JARVIS_API_KEY=your-api-key-here
+
+# unifi-protect-webhook/config.env (if using host IP, not localhost)
+JARVIS_API_KEY=your-api-key-here
+```
+
+**Tip:** Configure remote services with the API key now, then toggle `JARVIS_API_AUTH=true/false` on the main API as needed. Requests with keys still work when auth is disabled.
+
+**Security notes:**
+- API keys are **never logged** (only compared, not written to logs)
+- The `Authorization` header is read but not persisted
+- All internal services (self_healing_daemon, price_alert, jarvis-web) use localhost and don't need keys
+
+The API is intended for local network use only. External access should be through Tailscale or similar VPN, with API auth as an additional layer.
 
 ---
 

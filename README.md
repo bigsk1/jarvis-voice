@@ -52,6 +52,9 @@ A self-hosted voice assistant with tool calling, memory, and autonomous coding c
 
 ### Proactive System
 - **Event-Driven API**: Receive webhooks from external systems (port 8880)
+  - **Optional API Authentication**: Bearer token auth (`JARVIS_API_AUTH=true/false`)
+  - Localhost whitelisted, public paths always accessible
+  - See [`docs/SECURITY_HARDENING.md`](docs/SECURITY_HARDENING.md)
 - **Auto-Resolve**: URL-based and agent-based automatic issue resolution
 - **Background Services**: 24/7 daemons for follow-ups, healing, and reminders
 - **Smart Reminders**: Time-based reminders with natural language parsing and recurring support
@@ -1294,6 +1297,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (January 2026):**
+- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API ⭐ NEW
+  - Toggle via `JARVIS_API_AUTH=true/false` in cloud.env/local.env
+  - Localhost always whitelisted, public paths always accessible
+  - API keys never logged, remote services (jarvis-monitor, unifi-protect-webhook) updated
+  - See: [`docs/SECURITY_HARDENING.md`](docs/SECURITY_HARDENING.md)
+- ✅ **Docker Monitoring Fixes** - `host.docker.internal` for container-to-host connectivity
+- ✅ **UFW Firewall Documentation** - Essential ports added to DISASTER_RECOVERY.md
 - ✅ **Generated Images API** - Full management of local generated images ⭐ NEW
   - List, search, download, delete, generate images via API
   - `upload_to_cdn` parameter for one-step generate + CDN upload
@@ -1615,6 +1625,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.33 (January 2026)  
+**Current Version:** v2.34 (January 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Generated Images API + Image Gallery + CDN Catalog + Service Resilience + Log Management
+**Latest Features:** Optional API Authentication + Docker Monitoring Fixes + UFW Documentation

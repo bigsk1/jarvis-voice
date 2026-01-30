@@ -302,6 +302,22 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-01-30:**
+- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API ⭐ NEW
+  - Toggle via `JARVIS_API_AUTH=true/false` in cloud.env/local.env
+  - `JARVIS_API_KEY` environment variable for the secret key
+  - Localhost (127.0.0.1, ::1) always whitelisted - no auth needed
+  - Public paths (`/`, `/api/health`, `/metrics`, `/docs`) always accessible
+  - API keys never logged (security by design)
+  - Remote services updated: jarvis-monitor, unifi-protect-webhook
+  - See: [`docs/SECURITY_HARDENING.md`](SECURITY_HARDENING.md)
+- ✅ **Docker Monitoring Fixes** - Prometheus container-to-host connectivity
+  - `host.docker.internal` with `extra_hosts` for portable configs
+  - Fixed jarvis_api scrape target for Docker environments
+- ✅ **UFW Firewall Documentation** - Added to DISASTER_RECOVERY.md
+  - Essential ports for Jarvis services (8880, 5001, 5002, 5003, 8090, etc.)
+  - Example UFW rules for quick setup
+
 **2026-01-28:**
 - ✅ **Generated Images API** - Full management of local generated images ⭐ NEW
   - `GET /api/generated-images` - List/search images with pagination
@@ -950,6 +966,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-28 (v2.33)  
-**Latest:** Generated Images API + Image Gallery UI + CDN Catalog + Service Resilience + Log Management  
+**Last Updated:** 2026-01-30 (v2.34)  
+**Latest:** Optional API Authentication + Docker Monitoring Fixes + UFW Firewall Documentation  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
