@@ -20,11 +20,20 @@ from datetime import datetime
 
 # Configuration from environment variables
 JARVIS_API = os.getenv("JARVIS_API", "http://localhost:8880/api/alerts")
+JARVIS_API_KEY = os.getenv("JARVIS_API_KEY", "")  # Optional: for auth-enabled Jarvis API
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))
 MONITOR_CONTAINERS = [c.strip() for c in os.getenv("MONITOR_CONTAINERS", "").split(",") if c.strip()]
 SOURCE_NAME = os.getenv("SOURCE_NAME", os.uname().nodename)
 AUTO_RESOLVE_INTERVAL = int(os.getenv("AUTO_RESOLVE_INTERVAL", "60"))  # Faster auto-resolve (60s default)
 ALERT_TIMEOUT = int(os.getenv("ALERT_TIMEOUT", "30"))  # Timeout for Jarvis API calls (increased for TTS)
+
+
+def _get_auth_headers() -> dict:
+    """Get headers for Jarvis API requests, including auth if configured."""
+    headers = {"Content-Type": "application/json"}
+    if JARVIS_API_KEY:
+        headers["Authorization"] = f"Bearer {JARVIS_API_KEY}"
+    return headers
 
 
 def parse_monitor_urls(env_value: str) -> list:
@@ -92,7 +101,7 @@ def send_alert(title, description, severity, auto_resolve_url=None, metadata=Non
         payload["metadata"] = metadata
     
     try:
-        response = requests.post(JARVIS_API, json=payload, timeout=ALERT_TIMEOUT)
+        response = requests.post(JARVIS_API, json=payload, headers=_get_auth_headers(), timeout=ALERT_TIMEOUT)
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"❌ Failed to send alert: {e}", file=sys.stderr)
@@ -106,6 +115,7 @@ def resolve_alerts_by_source(title_pattern: str):
         response = requests.get(
             JARVIS_API.replace('/alerts', '/alerts'),
             params={"status": "pending", "source": SOURCE_NAME},
+            headers=_get_auth_headers(),
             timeout=ALERT_TIMEOUT
         )
         if not response.ok:
@@ -119,7 +129,7 @@ def resolve_alerts_by_source(title_pattern: str):
                 alert_id = alert['id']
                 # Resolve this alert
                 resolve_url = JARVIS_API.replace('/alerts', f'/alerts/{alert_id}/resolve')
-                requests.post(resolve_url, timeout=ALERT_TIMEOUT)
+                requests.post(resolve_url, headers=_get_auth_headers(), timeout=ALERT_TIMEOUT)
                 return True
         
         return False
@@ -156,6 +166,7 @@ def main():
     print("=" * 60)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Jarvis API: {JARVIS_API}")
+    print(f"API Auth: {'✓ Configured' if JARVIS_API_KEY else '✗ None'}")
     print(f"Source Name: {SOURCE_NAME}")
     print(f"Check Interval: {CHECK_INTERVAL}s")
     
