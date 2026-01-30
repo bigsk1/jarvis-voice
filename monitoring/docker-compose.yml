@@ -49,6 +49,8 @@ services:
     hostname: prometheus
     networks: ['monitoring']
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Allows container to reach host services
     ports:
       - "9090:9090"
     volumes:
@@ -82,8 +84,8 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=jarvis_grafana_2025
       
-      # Server settings
-      - GF_SERVER_ROOT_URL=http://192.168.70.228:3000
+      # Server settings (update ROOT_URL to your host IP for network access)
+      - GF_SERVER_ROOT_URL=http://localhost:3000
       - GF_SERVER_SERVE_FROM_SUB_PATH=false
       
       # Disable telemetry

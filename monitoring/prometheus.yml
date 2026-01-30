@@ -54,7 +54,7 @@ scrape_configs:
   # ==========================================
   - job_name: 'jarvis_api'
     static_configs:
-      - targets: ['localhost:8880']  # jarvis-api port (updated)
+      - targets: ['host.docker.internal:8880']  # Use host.docker.internal for Docker→host access
         labels:
           instance: 'fred-jarvis-api'
           host: 'fred'
