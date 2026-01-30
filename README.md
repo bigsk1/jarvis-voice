@@ -11,6 +11,29 @@ A self-hosted voice assistant with tool calling, memory, and autonomous coding c
 
 ## ✨ Key Features
 
+![jarvis-web](docs/images/jarvis-web.png)
+
+### Web Interface
+- **Jarvis Web UI v2.0** - Full-featured chat interface at localhost:5001
+  - Real-time WebSocket communication with tool streaming
+  - Mode switching (cloud/local) with per-mode settings
+  - **Audio playback controls**: Speaker button with pause/resume/stop
+  - **Music generation**: ElevenLabs music plays inline in chat
+  - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
+  - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines 
+  - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions 
+  - **Prompt hover tooltips**: Hover over `@` suggestions to see key points 
+  - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
+  - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
+  - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
+  - **Conversation search/export**: Filter, deep search, JSON/Markdown export
+  - **Image upload**: Drag-drop/paste/click with vision analysis
+  - **Mode-aware TTS/STT**: Cloud vs Local providers
+  - Dynamic LLM/model switching on-the-fly
+  - Launch: `./bin/jarvis-web`
+  - See [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
+
+
 ### Intelligence & Self-Learning
 - **Intelligence Layer**: Self-learning system that improves over time
   - Learns from every interaction (what worked, what didn't)
@@ -168,27 +191,6 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - Audio caching for instant playback of repeated phrases
   - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
 
-![jarvis-web](docs/images/jarvis-web.png)
-
-### Web Interface
-- **Jarvis Web UI v2.0** - Full-featured chat interface at localhost:5001
-  - Real-time WebSocket communication with tool streaming
-  - Mode switching (cloud/local) with per-mode settings
-  - **Audio playback controls**: Speaker button with pause/resume/stop
-  - **Music generation**: ElevenLabs music plays inline in chat
-  - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
-  - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines 
-  - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions 
-  - **Prompt hover tooltips**: Hover over `@` suggestions to see key points 
-  - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
-  - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
-  - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
-  - **Conversation search/export**: Filter, deep search, JSON/Markdown export
-  - **Image upload**: Drag-drop/paste/click with vision analysis
-  - **Mode-aware TTS/STT**: Cloud vs Local providers
-  - Dynamic LLM/model switching on-the-fly
-  - Launch: `./bin/jarvis-web`
-  - See [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
 
 ![jarvis-tui](docs/images/jarvis-tui.png)
 
@@ -475,6 +477,17 @@ jarvis-voice/
 
 ### 1. Initial Setup
 
+see [DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md) for detailed instructions.
+see [QUICKSTART.md](docs/QUICKSTART.md) for detailed instructions.
+
+### 1.1. Clone the repository
+```bash
+git clone https://github.com/bigsk1/jarvis-voice.git
+cd jarvis-voice
+```
+
+You need python 3.12 or higher.
+
 ```bash
 cd /home/boss/jarvis-voice
 ./setup.sh
@@ -516,18 +529,20 @@ source ~/jarvis-venv/bin/activate
 pip install -r requirements.txt
 
 # System packages (Ubuntu/Debian)
-sudo apt install sox ffmpeg jq sqlite3 traceroute inetutils-traceroute
+sudo apt install sox ffmpeg jq sqlite3 traceroute inetutils-traceroute curl 
 
 # See system-packages.txt for complete list of system dependencies
 
 # Ollama (for local mode)
 curl https://ollama.ai/install.sh | sh
-ollama pull qwen3-vl
+ollama pull qwen3:14b
 ollama pull nomic-embed-text
 
 # OpenCode (optional, for coding tasks)
 # See docs/opencode/OPENCODE.md for installation
 ```
+
+</details>
 
 ### 4. Run Jarvis
 
@@ -584,6 +599,8 @@ tmux attach -t jarvis-web
 
 # Detach without stopping: Ctrl+B then D
 ```
+
+
 
 ### 6. Proactive API & Reminders
 
@@ -642,7 +659,6 @@ docker run -d \
 
 See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for configuration options and Docker Compose examples.
 
-</details>
 
 ---
 
