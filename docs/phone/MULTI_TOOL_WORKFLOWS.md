@@ -5,12 +5,12 @@ The real power of Jarvis is chaining multiple tools together to accomplish compl
 ## The Vision
 
 ```
-"Hey Jarvis, call Wayne as Samantha and ask about the flight tomorrow, 
+"Hey Jarvis, call john as Samantha and ask about the flight tomorrow, 
 then create a reminder with the flight info"
 ```
 
 Jarvis should:
-1. **Call** Wayne using female persona (Samantha)
+1. **Call** john using female persona (Samantha)
 2. **Extract** flight details from the conversation
 3. **Save** info to Canvas and Memory
 4. **Create** a reminder synced to Google Calendar
@@ -23,14 +23,14 @@ Jarvis should:
 ### 🛫 Flight Info → Calendar Reminder
 
 ```
-You: "Call Wayne and get his flight details, then remind me when to pick him up"
+You: "Call john and get his flight details, then remind me when to pick him up"
 
 Jarvis Flow:
-1. phone_call → Call Wayne, ask about flight
+1. phone_call → Call john, ask about flight
 2. [Transcript saved to Canvas + Memory]
-3. create_reminder → "Pick up Wayne - Flight UA123 arrives 3:45pm at PDX"
+3. create_reminder → "Pick up john - Flight UA123 arrives 3:45pm at PDX"
 4. n8n webhook → Syncs to Google Calendar
-5. [30 mins before] Jarvis speaks: "Reminder: Pick up Wayne in 30 minutes"
+5. [30 mins before] Jarvis speaks: "Reminder: Pick up john in 30 minutes"
 ```
 
 ### 🎬 Movie Plans → Group Coordination
@@ -87,7 +87,7 @@ When a phone call completes, Jarvis automatically:
 | Action | Tool | Purpose |
 |--------|------|---------|
 | Save transcript | `canvas` | Full record in "Phone Calls/" folder |
-| Save summary | `memory` | Quick recall ("What did Wayne say about...?") |
+| Save summary | `memory` | Quick recall ("What did john say about...?") |
 | Extract key info | LLM | Dates, times, confirmations, action items |
 
 ### Chaining Tools
@@ -96,13 +96,13 @@ The orchestrator can call multiple tools in sequence:
 
 ```python
 # Turn 1: Make the call
-phone_call(recipient="Wayne", task="Get flight details", persona="female")
+phone_call(recipient="john", task="Get flight details", persona="female")
 
 # Turn 2: Create reminder from results  
-create_reminder(message="Pick up Wayne - Flight arrives 3:45pm PDX", time="3:15pm tomorrow")
+create_reminder(message="Pick up john - Flight arrives 3:45pm PDX", time="3:15pm tomorrow")
 
 # Turn 3: Confirm to user
-"Done! I called Wayne - his flight UA123 arrives at 3:45pm tomorrow. 
+"Done! I called john - his flight UA123 arrives at 3:45pm tomorrow. 
  I've set a reminder for 3:15pm to pick him up."
 ```
 
@@ -111,8 +111,8 @@ create_reminder(message="Pick up Wayne - Flight arrives 3:45pm PDX", time="3:15p
 Because call summaries are saved to memory, Jarvis can answer follow-ups:
 
 ```
-You: "What time was Wayne's flight again?"
-Jarvis: [searches memory] "Wayne's flight UA123 arrives at 3:45pm at PDX"
+You: "What time was john's flight again?"
+Jarvis: [searches memory] "john's flight UA123 arrives at 3:45pm at PDX"
 
 You: "Actually, remind me 1 hour before instead"
 Jarvis: [updates reminder] "Updated! I'll remind you at 2:45pm"
@@ -139,21 +139,21 @@ Jarvis: [updates reminder] "Updated! I'll remind you at 2:45pm"
 ### Smart Follow-ups
 After a call completes, Jarvis could suggest next actions:
 ```
-Jarvis: "Call complete. Wayne's flight is at 3:45pm. 
+Jarvis: "Call complete. john's flight is at 3:45pm. 
         Would you like me to set a reminder to pick him up?"
 ```
 
 ### Persona Memory
 Remember which persona works best for each contact:
 ```
-- Wayne prefers casual Jay
+- john prefers casual Jay
 - Mom likes professional James
 - Boss is fine with default Jarvis
 ```
 
 ### Call Scheduling
 ```
-You: "Call Wayne tomorrow morning to confirm the pickup"
+You: "Call john tomorrow morning to confirm the pickup"
 Jarvis: [creates scheduled call for 9am tomorrow]
 ```
 
@@ -165,8 +165,8 @@ Jarvis: [initiates 3-way call or sequential calls with summary]
 
 ### Voicemail Follow-up
 ```
-[Wayne doesn't answer, voicemail detected]
-Jarvis: "Wayne didn't answer. Want me to send a text instead, 
+[john doesn't answer, voicemail detected]
+Jarvis: "john didn't answer. Want me to send a text instead, 
         or try again in 30 minutes?"
 ```
 
@@ -199,8 +199,8 @@ For call chains to work smoothly:
 
 ## Tips for Complex Tasks
 
-1. **Be specific about the task**: "Ask about his flight tomorrow" vs just "call Wayne"
-2. **Chain with "then"**: "Call Wayne, then create a reminder"
+1. **Be specific about the task**: "Ask about his flight tomorrow" vs just "call john"
+2. **Chain with "then"**: "Call john, then create a reminder"
 3. **Mention the persona**: "Call as Samantha" or "use professional James"
 4. **Ask for confirmation**: "...and let me know what he says"
 

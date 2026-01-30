@@ -46,7 +46,6 @@ scipy==1.16.2
 setuptools==80.9.0
 sounddevice==0.5.2
 soundfile==0.13.1
-speexdsp @ file:///home/boss/speexdsp-python
 speexdsp-ns==0.1.2
 sympy==1.14.0
 threadpoolctl==3.6.0
