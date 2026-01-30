@@ -153,7 +153,7 @@ COMMANDS: List[Command] = [
     Command("API: Workflow History", "curl -s 'http://localhost:8880/api/workflows/history?limit=10' | jq '.executions[] | {workflow_id, ok, steps_completed, duration_ms}'", "Recent workflow executions", "🔄 Workflows"),
     Command("API: History by Workflow", "curl -s 'http://localhost:8880/api/workflows/history?workflow_id=crypto_market_report&limit=5' | jq", "Filter history by workflow", "🔄 Workflows"),
     Command("API: Success Rate", "curl -s 'http://localhost:8880/api/workflows/history?limit=50' | jq '{total: .count, success: .success_count, fail: .failure_count, rate: (.success_count / .count * 100 | round)}'", "Workflow success rate", "🔄 Workflows"),
-    Command("API Docs (Workflows)", "echo '🌐 Swagger UI: http://192.168.70.228:8880/docs/dark#/workflows' && echo '📖 Docs: docs/api/WORKFLOWS.md'", "Workflows API documentation", "🔄 Workflows"),
+    Command("API Docs (Workflows)", "echo '🌐 Swagger UI: http://localhost:8880/docs/dark#/workflows' && echo '📖 Docs: docs/api/WORKFLOWS.md'", "Workflows API documentation", "🔄 Workflows"),
     
     # === 🧪 TESTING ===
     Command("Test All (Cloud)", "./test-all-tools.sh", "All tool tests - cloud", "🧪 Testing"),
@@ -173,19 +173,19 @@ COMMANDS: List[Command] = [
     Command("Rebuild FTS Index", "./bin/rebuild-fts-index", "Rebuild search index", "💾 Memory"),
     Command("Memory Stats", "sqlite3 data/jarvis_memory.db \"SELECT category, COUNT(*) as count FROM knowledge_base GROUP BY category ORDER BY count DESC;\"", "Memory by category", "💾 Memory"),
     Command("Re-embed Memory", "echo '📝 To re-embed a memory after editing:' && echo '   ./bin/re-embed-memory <id>' && echo '   ./bin/re-embed-memory <id> local' && echo '' && echo 'Example: ./bin/re-embed-memory 42'", "Re-embed after edit", "💾 Memory"),
-    Command("Open Memory Browser", "echo '🌐 Open http://192.168.70.228:5002 in browser' && echo 'Or from Jarvis Web UI, click the 🧠 icon'", "Memory Browser URL", "💾 Memory"),
+    Command("Open Memory Browser", "echo '🌐 Open http://localhost:5002 in browser' && echo 'Or from Jarvis Web UI, click the 🧠 icon'", "Memory Browser URL", "💾 Memory"),
     
     # === 🧠 INTELLIGENCE ===
     Command("Start Intelligence UI", "./bin/jarvis-intelligence", "Intelligence Dashboard :5003", "🧠 Intelligence", interactive=True),
     Command("Intelligence UI Health", "curl -sf http://localhost:5003/api/status | jq || echo '❌ Intelligence UI not running'", "Intelligence UI status", "🧠 Intelligence"),
-    Command("Open Intelligence UI", "echo '🌐 Open http://192.168.70.228:5003 in browser' && echo 'Or from Jarvis Web UI, click the 📊 icon'", "Intelligence Dashboard URL", "🧠 Intelligence"),
+    Command("Open Intelligence UI", "echo '🌐 Open http://localhost:5003 in browser' && echo 'Or from Jarvis Web UI, click the 📊 icon'", "Intelligence Dashboard URL", "🧠 Intelligence"),
     Command("Intel Health", "./bin/check-intelligence-health.py", "Check intelligence health", "🧠 Intelligence"),
     Command("Intel Sync", "./bin/sync-intelligence-db.py", "Sync intelligence DBs", "🧠 Intelligence"),
     Command("Run All Maintenance", "./bin/run-intelligence-maintenance.py --watch", "All maintenance jobs", "🧠 Intelligence"),
     Command("Run Decay", "./bin/run-intelligence-maintenance.py --decay", "Decay unused insights", "🧠 Intelligence"),
     Command("Run Anomaly", "./bin/run-intelligence-maintenance.py --anomaly", "Detect anomalies", "🧠 Intelligence"),
     Command("Run Meta-Cognition", "./bin/run-intelligence-maintenance.py --meta", "Meta-cognition analysis", "🧠 Intelligence"),
-    Command("View Meta-Knowledge", "curl -s http://192.168.70.228:8880/api/intelligence/meta-knowledge | jq '.' 2>/dev/null || echo 'API not running'", "Meta-cognition findings", "🧠 Intelligence"),
+    Command("View Meta-Knowledge", "curl -s http://localhost:8880/api/intelligence/meta-knowledge | jq '.' 2>/dev/null || echo 'API not running'", "Meta-cognition findings", "🧠 Intelligence"),
     Command("View Insights", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(applies_to_pattern,1,40), constraint_type, round(confidence,2) FROM insights ORDER BY confidence DESC LIMIT 10;\"", "Top insights", "🧠 Intelligence"),
     Command("View Experiences", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(query,1,40), tools_used, outcome_success FROM experiences ORDER BY id DESC LIMIT 10;\"", "Recent experiences", "🧠 Intelligence"),
     Command("Re-embed Insight", "echo '📝 To re-embed an insight after editing:' && echo '   ./bin/re-embed-insight <id>' && echo '   ./bin/re-embed-insight <id> local' && echo '' && echo 'Example: ./bin/re-embed-insight 42'", "Re-embed after edit", "🧠 Intelligence"),
@@ -241,8 +241,8 @@ COMMANDS: List[Command] = [
     Command("Service Daemon Logs", "tail -50 logs/services/*.log 2>/dev/null || echo 'No service logs'", "Background service logs", "📋 Logs"),
     
     # === 📊 MONITORING ===
-    Command("API Metrics", "curl -s http://192.168.70.228:8880/metrics 2>/dev/null | head -50 || echo 'API not running'", "Prometheus metrics", "📊 Monitor"),
-    Command("Open Grafana", "echo '🌐 Open http://192.168.70.228:3000 in browser'", "Grafana dashboard URL", "📊 Monitor"),
+    Command("API Metrics", "curl -s http://localhost:8880/metrics 2>/dev/null | head -50 || echo 'API not running'", "Prometheus metrics", "📊 Monitor"),
+    Command("Open Grafana", "echo '🌐 Open http://localhost:3000 in browser'", "Grafana dashboard URL", "📊 Monitor"),
     Command("Monitor Status", "cd monitoring && ./manage.sh status", "Show running services", "📊 Monitor"),
     Command("Monitor Restart", "cd monitoring && ./manage.sh restart", "Restart monitoring", "📊 Monitor"),
     Command("Monitor Backup", "cd monitoring && ./manage.sh backup", "Backup monitoring data", "📊 Monitor"),
@@ -300,8 +300,8 @@ COMMANDS: List[Command] = [
     Command("API: Run Maintenance", "curl -X POST http://localhost:8880/api/intelligence/maintenance/all | jq", "Run all maintenance", "🌐 API"),
     
     # API Docs
-    Command("API: Open Docs (Dark)", "echo '🌐 Open http://192.168.70.228:8880/docs/dark in browser'", "Swagger UI (dark mode)", "🌐 API"),
-    Command("API: Open Docs (Light)", "echo '🌐 Open http://192.168.70.228:8880/docs in browser'", "Swagger UI (light mode)", "🌐 API"),
+    Command("API: Open Docs (Dark)", "echo '🌐 Open http://localhost:8880/docs/dark in browser'", "Swagger UI (dark mode)", "🌐 API"),
+    Command("API: Open Docs (Light)", "echo '🌐 Open http://localhost:8880/docs in browser'", "Swagger UI (light mode)", "🌐 API"),
 ]
 
 # ============================================================================

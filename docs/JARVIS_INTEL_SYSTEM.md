@@ -331,7 +331,7 @@ else:
 Currently stored (from `example_network.md`):
 - Ollama AI Server: 192.168.70.226:11434
 - Main router gateway: 192.168.70.1
-- Fred workstation: 192.168.70.228
+- Fred workstation: localhost
 - VLAN 10: IoT devices (192.168.10.0/24)
 - VLAN 20: Lab network (192.168.70.0/24)
 - Jarvis workspace: /home/boss/jarvis-workspace

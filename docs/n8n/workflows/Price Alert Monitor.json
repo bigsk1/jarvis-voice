@@ -23,7 +23,7 @@
     },
     {
       "parameters": {
-        "url": "http://192.168.70.228:8880/api/config/price-alerts",
+        "url": "http://localhost:8880/api/config/price-alerts",
         "options": {}
       },
       "id": "322085f2-5fb2-4bc3-bfcb-7ff88dbd9088",
@@ -59,7 +59,7 @@
     },
     {
       "parameters": {
-        "url": "http://192.168.70.228:8880/api/prices/stock/TSLA",
+        "url": "http://localhost:8880/api/prices/stock/TSLA",
         "options": {
           "timeout": 30000
         }
@@ -76,7 +76,7 @@
     },
     {
       "parameters": {
-        "url": "http://192.168.70.228:8880/api/prices/stock/GC=F",
+        "url": "http://localhost:8880/api/prices/stock/GC=F",
         "options": {
           "timeout": 30000
         }
@@ -153,7 +153,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.70.228:8880/api/alerts",
+        "url": "http://localhost:8880/api/alerts",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",

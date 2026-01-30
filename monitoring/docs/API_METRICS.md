@@ -14,7 +14,7 @@ The Jarvis API now exposes Prometheus metrics at `/metrics` endpoint, providing 
 - Provides standard HTTP metrics + custom Jarvis metrics
 
 ### 2. **Metrics Endpoint**
-- **URL**: `http://192.168.70.228:8880/metrics`
+- **URL**: `http://localhost:8880/metrics`
 - **Format**: Prometheus text format
 - **Access**: Public (no authentication)
 - **Excluded from instrumentation**: `/metrics`, `/docs`, `/redoc`, `/openapi.json`
@@ -22,7 +22,7 @@ The Jarvis API now exposes Prometheus metrics at `/metrics` endpoint, providing 
 ### 3. **Prometheus Scraping**
 - Updated `monitoring/prometheus.yml`
 - Job: `jarvis_api`
-- Target: `192.168.70.228:8880`
+- Target: `localhost:8880`
 - Scrape interval: 15 seconds
 
 ---
@@ -153,7 +153,7 @@ http_request_duration_seconds_bucket{handler="/api/health",le="0.01",method="GET
 ### 3. **Check Prometheus**
 ```bash
 # Open Prometheus UI
-open http://192.168.70.228:9090
+open http://localhost:9090
 
 # Go to Status → Targets
 # Look for "jarvis_api" - should show "UP"
@@ -162,7 +162,7 @@ open http://192.168.70.228:9090
 ### 4. **View in Grafana**
 ```bash
 # Open Grafana
-open http://192.168.70.228:3000
+open http://localhost:3000
 
 # Go to Explore
 # Select Prometheus data source
@@ -222,7 +222,7 @@ curl -X POST http://localhost:8880/api/alerts \
 curl http://localhost:8880/metrics | grep http_requests_total
 
 # Check Prometheus (after 15 seconds)
-curl -s 'http://192.168.70.228:9090/api/v1/query?query=http_requests_total{job="jarvis_api"}' | jq .
+curl -s 'http://localhost:9090/api/v1/query?query=http_requests_total{job="jarvis_api"}' | jq .
 ```
 
 ---
@@ -280,7 +280,7 @@ async def create_alert(...):
 ### API Port
 - **Port**: 8880 (NOT 8091!)
 - Updated in `monitoring/prometheus.yml`
-- Prometheus scrapes `192.168.70.228:8880/metrics`
+- Prometheus scrapes `localhost:8880/metrics`
 
 ### Virtual Environment
 Always activate the venv before starting the API:
@@ -296,7 +296,7 @@ source ~/jarvis-venv/bin/activate
 
 ### "Metrics not showing in Prometheus"
 1. Check API is running: `curl http://localhost:8880/metrics`
-2. Check Prometheus targets: http://192.168.70.228:9090/targets
+2. Check Prometheus targets: http://localhost:9090/targets
 3. Verify port is correct (8880, not 8091)
 
 ### "Module 'prometheus_fastapi_instrumentator' not found"

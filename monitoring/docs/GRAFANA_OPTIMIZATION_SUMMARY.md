@@ -128,7 +128,7 @@ count_over_time({job="jarvis", log_type="tools"} [5m])
 ### 1. Check Tool Analysis Dashboard
 ```bash
 # Open in browser
-http://192.168.70.228:3000/d/jarvis-tool-analysis
+http://localhost:3000/d/jarvis-tool-analysis
 ```
 
 **Expected**: All panels should load WITHOUT "500 errors"
@@ -136,7 +136,7 @@ http://192.168.70.228:3000/d/jarvis-tool-analysis
 ### 2. Test Query Performance
 ```bash
 # Test a query directly (should complete in <1 second)
-time curl -s -G 'http://192.168.70.228:3100/loki/api/v1/query' \
+time curl -s -G 'http://localhost:3100/loki/api/v1/query' \
   --data-urlencode 'query=sum(count_over_time({job="jarvis", log_type="tools"} [1h]))' | \
   jq '.data.result[0].value[1]'
 ```

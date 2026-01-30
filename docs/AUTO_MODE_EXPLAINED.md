@@ -43,7 +43,7 @@
    3. Started Flask server in background (PID: 128712)
    4. Verified server responding on port 5000
    
-   Server accessible at http://192.168.70.228:5000"
+   Server accessible at http://localhost:5000"
 
 "Build me a website with dark mode and user login"
 → "I've successfully completed building your website! Here's what was created:

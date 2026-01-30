@@ -71,7 +71,7 @@ start_stack() {
         echo ""
         show_status
         echo ""
-        print_info "Access Grafana at: ${GREEN}http://192.168.70.228:3000${NC}"
+        print_info "Access Grafana at: ${GREEN}http://localhost:3000${NC}"
         print_info "Username: ${YELLOW}admin${NC}"
         print_info "Password: ${YELLOW}jarvis_grafana_2025${NC}"
     else
@@ -112,9 +112,9 @@ show_status() {
     
     echo ""
     print_info "Service URLs:"
-    echo "  Grafana:    http://192.168.70.228:3000"
-    echo "  Prometheus: http://192.168.70.228:9090"
-    echo "  Loki:       http://192.168.70.228:3100"
+    echo "  Grafana:    http://localhost:3000"
+    echo "  Prometheus: http://localhost:9090"
+    echo "  Loki:       http://localhost:3100"
 }
 
 update_stack() {

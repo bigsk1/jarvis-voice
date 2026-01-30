@@ -181,7 +181,7 @@ def main():
     print("✅ Maintenance complete!")
     print()
     print("Logs written to: logs/intelligence/intelligence-YYYY-MM-DD.jsonl")
-    print("View in Grafana: http://192.168.70.228:3000 → Intelligence Dashboard")
+    print("View in Grafana: http://localhost:3000 → Intelligence Dashboard")
 
 
 if __name__ == "__main__":

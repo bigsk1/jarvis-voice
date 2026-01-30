@@ -15,12 +15,12 @@ If you still see "No data", follow the steps below:
 
 ```bash
 # Check if Loki has tool logs
-curl -s -G 'http://192.168.70.228:3100/loki/api/v1/query' \
+curl -s -G 'http://localhost:3100/loki/api/v1/query' \
   --data-urlencode 'query=sum(count_over_time({job="jarvis", log_type="tools"} | json [24h]))' \
   --data-urlencode 'time='$(date +%s)'' | jq '.data.result[0].value[1]'
 
 # Check if Loki has LLM logs
-curl -s -G 'http://192.168.70.228:3100/loki/api/v1/query' \
+curl -s -G 'http://localhost:3100/loki/api/v1/query' \
   --data-urlencode 'query=sum(count_over_time({job="jarvis", log_type="llm"} | json [24h]))' \
   --data-urlencode 'time='$(date +%s)'' | jq '.data.result[0].value[1]'
 ```
@@ -32,7 +32,7 @@ curl -s -G 'http://192.168.70.228:3100/loki/api/v1/query' \
 
 ### **Step 2: Check Dashboard Time Range**
 
-1. Open Grafana: http://192.168.70.228:3000
+1. Open Grafana: http://localhost:3000
 2. Open the dashboard showing "No data"
 3. Look at top-right corner - time range selector
 4. Try changing to: **Last 24 hours** or **Last 7 days**
@@ -183,7 +183,7 @@ source ~/jarvis-venv/bin/activate
 sleep 30
 
 # Check Grafana dashboards
-open http://192.168.70.228:3000
+open http://localhost:3000
 ```
 
 ---
@@ -207,7 +207,7 @@ curl http://localhost:8880/metrics | head -20
 
 ```bash
 # Check Prometheus targets
-curl -s 'http://192.168.70.228:9090/api/v1/targets' | \
+curl -s 'http://localhost:9090/api/v1/targets' | \
   jq '.data.activeTargets[] | select(.labels.job == "jarvis_api")'
 ```
 
@@ -219,7 +219,7 @@ curl -s 'http://192.168.70.228:9090/api/v1/targets' | \
 ### **Check 3: Does Prometheus Have Metrics?**
 
 ```bash
-curl -s 'http://192.168.70.228:9090/api/v1/query?query=http_requests_total{job="jarvis_api"}' | \
+curl -s 'http://localhost:9090/api/v1/query?query=http_requests_total{job="jarvis_api"}' | \
   jq '.data.result'
 ```
 
@@ -256,13 +256,13 @@ cd monitoring
 
 echo ""
 echo "=== LOKI DATA ==="
-curl -s -G 'http://192.168.70.228:3100/loki/api/v1/query' \
+curl -s -G 'http://localhost:3100/loki/api/v1/query' \
   --data-urlencode 'query=sum(count_over_time({job="jarvis"} | json [24h]))' | \
   jq '.data.result[0].value[1] // "No data"'
 
 echo ""
 echo "=== PROMETHEUS DATA ==="
-curl -s 'http://192.168.70.228:9090/api/v1/query?query=up{job="jarvis_api"}' | \
+curl -s 'http://localhost:9090/api/v1/query?query=up{job="jarvis_api"}' | \
   jq '.data.result[0].value[1] // "API not scraped"'
 ```
 

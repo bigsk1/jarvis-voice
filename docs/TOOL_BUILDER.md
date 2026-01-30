@@ -771,7 +771,7 @@ This was caused by LLMs generating Python code with literal newlines instead of 
 
 A dedicated dashboard is available at:
 
-**Dashboard**: [Jarvis Tool Builder](http://192.168.70.228:3000/d/jarvis-tool-builder)
+**Dashboard**: [Jarvis Tool Builder](http://localhost:3000/d/jarvis-tool-builder)
 
 ### Panels
 

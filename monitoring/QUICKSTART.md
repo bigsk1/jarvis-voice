@@ -21,7 +21,7 @@ cd ~/jarvis-voice/monitoring
 ℹ  Starting containers...
 ✓ Services started successfully!
 
-Access Grafana at: http://192.168.70.228:3000
+Access Grafana at: http://localhost:3000
 Username: admin
 Password: jarvis_grafana_2025
 ```
@@ -30,7 +30,7 @@ Password: jarvis_grafana_2025
 
 ## 🌐 Step 2: Open Grafana
 
-1. Open browser: **http://192.168.70.228:3000**
+1. Open browser: **http://localhost:3000**
 2. Login:
    
 

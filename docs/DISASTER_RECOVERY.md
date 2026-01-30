@@ -35,7 +35,7 @@ Fair warning: this project has hardcoded IPs, paths that assume a user named "bo
 - Ethernet preferred over WiFi
 
 ### My network IPs (change these to yours)
-- Jarvis server: `192.168.70.228`
+- Jarvis server: `localhost`
 - Ollama server: `192.168.70.226`
 - n8n (Docker): same host or `192.168.70.226`
 
@@ -563,13 +563,13 @@ ollama pull nomic-embed-text
 
 ```bash
 # Check API is running
-curl http://192.168.70.228:8880/api/health
+curl http://localhost:8880/api/health
 
 # Test reminders endpoint
-curl http://192.168.70.228:8880/api/reminders | jq
+curl http://localhost:8880/api/reminders | jq
 
 # Create test reminder
-curl -X POST http://192.168.70.228:8880/api/reminders \
+curl -X POST http://localhost:8880/api/reminders \
   -H "Content-Type: application/json" \
   -d '{"title":"Test","trigger_time":"2025-12-01T10:00:00Z"}'
 ```
@@ -593,7 +593,7 @@ curl -X POST http://192.168.70.228:8880/api/reminders \
 
 # Or create event in Google Calendar
 # Wait 1 minute, then check:
-curl http://192.168.70.228:8880/api/reminders | jq
+curl http://localhost:8880/api/reminders | jq
 ```
 
 ### Step 7: Test All Tools
@@ -637,7 +637,7 @@ sudo ufw allow 3000/tcp   # Grafana (if monitoring enabled)
 
 ```bash
 # On the Ollama server, allow from Jarvis
-sudo ufw allow from 192.168.70.228 to any port 11434
+sudo ufw allow from localhost to any port 11434
 ```
 
 ### Minimal config (API only)
@@ -825,7 +825,7 @@ curl http://localhost:8880/api/health
 sudo ufw allow 8880/tcp
 
 # Check from other machine
-curl http://192.168.70.228:8880/api/health
+curl http://localhost:8880/api/health
 ```
 
 ### Memory/Performance Issues

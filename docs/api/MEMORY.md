@@ -434,7 +434,7 @@ console.log(results[0].value);  // "john@example.com"
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.70.228:8880/api/memory",
+        "url": "http://localhost:8880/api/memory",
         "jsonParameters": true,
         "options": {},
         "bodyParametersJson": "={{ JSON.stringify({ category: 'project', key: $json.project_name, value: $json.status_update, importance: 7 }) }}"

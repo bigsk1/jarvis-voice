@@ -73,7 +73,7 @@ The Voice API supports per-request TTS overrides, enabling different AI agents t
 Samantha (secondary AI on VPS2) can speak through Jarvis's speakers with her own cloned voice:
 
 ```bash
-curl -X POST http://192.168.70.228:8880/api/voice/speak \
+curl -X POST http://localhost:8880/api/voice/speak \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Hello! This is Samantha speaking.",

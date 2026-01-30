@@ -225,7 +225,7 @@ topk(10, sum by (tool_name) (count_over_time({job="jarvis", log_type="tools"} | 
 ### 1. **View Dashboards**
 ```bash
 # Open Grafana
-open http://192.168.70.228:3000
+open http://localhost:3000
 
 # Login
 Username: admin
@@ -291,7 +291,7 @@ source ~/jarvis-venv/bin/activate
   - `/var/log/jarvis/llm-calls-*.jsonl` → `log_type="llm"`
 
 ### Grafana
-- **URL**: http://192.168.70.228:3000
+- **URL**: http://localhost:3000
 - **Dashboards**: Auto-loaded from `monitoring/grafana/dashboards/`
 - **Data Source**: Loki (auto-provisioned)
 
@@ -366,5 +366,5 @@ LLM logging is now capturing all API calls, costs, and performance metrics. Graf
 
 ---
 
-**Access Grafana**: http://192.168.70.228:3000 (admin / jarvis_grafana_2025)
+**Access Grafana**: http://localhost:3000 (admin / jarvis_grafana_2025)
 

@@ -78,7 +78,7 @@ The Price Alert Monitor workflow:
 settings:
   check_interval_minutes: 10
   cooldown_hours: 4
-  jarvis_api_url: http://192.168.70.228:8880
+  jarvis_api_url: http://localhost:8880
 
 watchlist:
   crypto:
@@ -196,7 +196,7 @@ https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,solana,ethereum&vs_cur
 1. Add new HTTP Request node:
    - **Name**: `Fetch AAPL Direct`
    - **Method**: GET
-   - **URL**: `http://192.168.70.228:8880/api/prices/stock/AAPL`
+   - **URL**: `http://localhost:8880/api/prices/stock/AAPL`
    - **Timeout**: 30000
 
 2. Connect it:
@@ -355,16 +355,16 @@ const aboveThresh = getThreshold(config.watchlist, 'stocks', 'TSLA', 'above');
 ### Alert Not Speaking
 
 1. Check severity is `high` or `critical` (medium won't speak)
-2. Verify Jarvis API is running: `curl http://192.168.70.228:8880/api/health`
+2. Verify Jarvis API is running: `curl http://localhost:8880/api/health`
 
 ### Config Not Loading
 
-1. Check API endpoint: `curl http://192.168.70.228:8880/api/config/price-alerts`
+1. Check API endpoint: `curl http://localhost:8880/api/config/price-alerts`
 2. If error, sends "Price monitor config error" alert
 
 ### Stock Price Returns Error
 
-1. Verify symbol: `curl http://192.168.70.228:8880/api/prices/stock/TSLA`
+1. Verify symbol: `curl http://localhost:8880/api/prices/stock/TSLA`
 2. Futures need `=F` suffix: `GC=F` not `GC`
 3. Check proxy is working (required for Yahoo Finance)
 

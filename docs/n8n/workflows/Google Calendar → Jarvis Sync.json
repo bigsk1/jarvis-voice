@@ -100,7 +100,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.70.228:8880/api/reminders",
+        "url": "http://localhost:8880/api/reminders",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -127,7 +127,7 @@
     {
       "parameters": {
         "method": "DELETE",
-        "url": "=http://192.168.70.228:8880/api/reminders/by-gcal/{{ $json.id }}",
+        "url": "=http://localhost:8880/api/reminders/by-gcal/{{ $json.id }}",
         "options": {}
       },
       "id": "cancel-jarvis-reminder",
@@ -220,7 +220,7 @@
     {
       "parameters": {
         "method": "PUT",
-        "url": "=http://192.168.70.228:8880/api/reminders/by-gcal/{{ $json.id }}",
+        "url": "=http://localhost:8880/api/reminders/by-gcal/{{ $json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

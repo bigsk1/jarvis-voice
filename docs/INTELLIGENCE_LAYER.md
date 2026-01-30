@@ -723,7 +723,7 @@ print(f'Processed {processed} reflections')
 "
 
 # Or via API
-curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
+curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
 ```
 
 Let me check the code to explain exactly how the reflection queue works:
@@ -789,7 +789,7 @@ print(f'Processed {processed} reflections')
 "
 
 # Or via API
-curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
+curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
 ```
 
 ### Future Options
@@ -805,7 +805,7 @@ Could add automatic reflection in the future:
 
 Could also tell jarvis to send api to ( leave details in intel file?)
 
-source ~/jarvis-venv/bin/activate && cd ~/jarvis-voice/monitoring && curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
+source ~/jarvis-venv/bin/activate && cd ~/jarvis-voice/monitoring && curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
 Results
 {"status":"ok","processed":3,"message":"Processed 3 pending reflections"}
 
@@ -838,15 +838,15 @@ Results
 **API Endpoints**:
 ```bash
 # Run all maintenance jobs
-curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/all
+curl -X POST http://localhost:8880/api/intelligence/maintenance/all
 
 # Individual jobs
-curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/decay
-curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/anomaly
-curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/meta-cognition
+curl -X POST http://localhost:8880/api/intelligence/maintenance/decay
+curl -X POST http://localhost:8880/api/intelligence/maintenance/anomaly
+curl -X POST http://localhost:8880/api/intelligence/maintenance/meta-cognition
 
 # View meta-knowledge findings
-curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
+curl http://localhost:8880/api/intelligence/meta-knowledge
 ```
 
 ### What Each Job Does
@@ -1280,7 +1280,7 @@ jarvis_intelligence_enabled{mode="cloud"}
 
 **Sample curl**:
 ```bash
-curl -s http://192.168.70.228:8880/metrics | grep jarvis_intelligence
+curl -s http://localhost:8880/metrics | grep jarvis_intelligence
 ```
 
 ### Loki Log Queries (LogQL)
@@ -1357,13 +1357,13 @@ Full REST API for intelligence management:
 
 ```bash
 # Health check
-curl http://192.168.70.228:8880/api/intelligence/health | jq
+curl http://localhost:8880/api/intelligence/health | jq
 
 # View insights
-curl http://192.168.70.228:8880/api/intelligence/insights | jq '.insights'
+curl http://localhost:8880/api/intelligence/insights | jq '.insights'
 
 # Trigger reflection
-curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
+curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
 ```
 
 or use to run manually
@@ -1755,7 +1755,7 @@ Jarvis knows: User wants verbose mode because:
    - "Quick" → extra concise, just facts
    
    ## Shortcuts
-   - "the server" → Ollama at 192.168.70.228
+   - "the server" → Ollama at localhost
    - "the usual" → Bitcoin + Ethereum prices
    - "morning routine" → weather + reminders + calendar
    

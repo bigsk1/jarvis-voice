@@ -93,7 +93,7 @@ Here's what was done:
 3. Started the Flask server in the background (PID: 128712)
 4. Verified the server is responding on port 5000
 
-The server is now accessible at http://192.168.70.228:5000"
+The server is now accessible at http://localhost:5000"
 ```
 
 ---

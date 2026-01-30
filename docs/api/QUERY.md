@@ -270,7 +270,7 @@ console.log(`Tools: ${result.tools_used.join(', ')}`);
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.70.228:8880/api/query/quick",
+        "url": "http://localhost:8880/api/query/quick",
         "options": {
           "timeout": 120000
         },
@@ -298,7 +298,7 @@ console.log(`Tools: ${result.tools_used.join(', ')}`);
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.70.228:8880/api/query",
+        "url": "http://localhost:8880/api/query",
         "bodyParametersJson": "={\"query\": \"Check if my servers are healthy\", \"mode\": \"cloud\", \"session_id\": \"n8n-health-check\"}"
       }
     }
@@ -312,7 +312,7 @@ console.log(`Tools: ${result.tools_used.join(', ')}`);
 # configuration.yaml
 rest_command:
   jarvis_query:
-    url: "http://192.168.70.228:8880/api/query/quick"
+    url: "http://localhost:8880/api/query/quick"
     method: POST
     content_type: "application/json"
     payload: '{"query": "{{ query }}", "mode": "cloud"}'

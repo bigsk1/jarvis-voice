@@ -316,7 +316,7 @@ logs/evolution/
 A dedicated dashboard for monitoring feedback and evolution:
 
 **Dashboard**: `Jarvis Feedback & Evolution`
-**URL**: http://192.168.70.228:3000/d/jarvis-feedback-evolution
+**URL**: http://localhost:3000/d/jarvis-feedback-evolution
 
 **Panels:**
 1. **Feedback Overview** - Total feedback entries (24h)

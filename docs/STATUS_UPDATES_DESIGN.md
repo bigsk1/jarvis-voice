@@ -358,7 +358,7 @@ def get_opencode_status(session_id: str) -> str:
             return "Making progress"
     return None
 
-# API Docs: http://192.168.70.228:4096/doc
+# API Docs: http://localhost:4096/doc
 # Session endpoint: GET /sessions/<uuid>
 ```
 

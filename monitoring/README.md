@@ -14,7 +14,7 @@ Complete observability solution for Jarvis Voice Assistant using **Grafana + Lok
 ## 🏗️ Architecture
 
 ```
-Fred (192.168.70.228) - Jarvis Host
+Fred (localhost) - Jarvis Host
 ├── Jarvis Voice Assistant
 │   └── Logs → /home/boss/jarvis-voice/logs/
 │       ├── tools/tool-calls-*.jsonl
@@ -58,11 +58,11 @@ docker-compose ps
 ### 3. Access Dashboards
 
 Open in your browser:
-- **Grafana**: http://192.168.70.228:3000
+- **Grafana**: http://localhost:3000
   - Username: `admin`
   - Password: `jarvis_grafana_2025`
-- **Prometheus**: http://192.168.70.228:9090
-- **Loki**: http://192.168.70.228:3100
+- **Prometheus**: http://localhost:9090
+- **Loki**: http://localhost:3100
 
 ### 4. View Jarvis Dashboard
 
@@ -147,7 +147,7 @@ Click **+ Create** → **Dashboard** in Grafana to build custom views.
 
 ### Query Metrics
 
-Open Prometheus (http://192.168.70.228:9090) and try:
+Open Prometheus (http://localhost:9090) and try:
 
 ```promql
 
@@ -269,7 +269,7 @@ docker run --rm \
 ### Prometheus Not Scraping
 
 1. Check targets in Prometheus:
-   - Go to http://192.168.70.228:9090/targets
+   - Go to http://localhost:9090/targets
    - Look for red/down targets
 
 
@@ -349,7 +349,7 @@ def _send_monitoring_event(event_type, data):
 ## 💬 Support
 
 Issues? Questions?
-- Check Grafana at http://192.168.70.228:3000
+- Check Grafana at http://localhost:3000
 - View logs: `docker-compose logs -f`
 - Restart services: `docker-compose restart`
 

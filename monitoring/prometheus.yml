@@ -54,7 +54,7 @@ scrape_configs:
   # ==========================================
   - job_name: 'jarvis_api'
     static_configs:
-      - targets: ['192.168.70.228:8880']  # jarvis-api port (updated)
+      - targets: ['localhost:8880']  # jarvis-api port (updated)
         labels:
           instance: 'fred-jarvis-api'
           host: 'fred'
@@ -68,7 +68,7 @@ scrape_configs:
   # ==========================================
   # - job_name: 'ollama_fred'
   #   static_configs:
-  #     - targets: ['192.168.70.228:11434']
+  #     - targets: ['localhost:11434']
   #       labels:
   #         instance: 'fred-ollama'
   #         host: 'fred'

@@ -339,7 +339,7 @@ console.log(`Crypto queries: ${cryptoConvs.length}`);
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
         "method": "GET",
-        "url": "http://192.168.70.228:8880/api/conversations/stats"
+        "url": "http://localhost:8880/api/conversations/stats"
       }
     },
     {

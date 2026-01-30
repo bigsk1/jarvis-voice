@@ -202,7 +202,7 @@ The Prices API is designed for n8n workflows. See [PRICE_ALERT_MONITOR.md](../n8
 ```
 HTTP Request Node:
   Method: GET
-  URL: http://192.168.70.228:8880/api/prices/stock/TSLA
+  URL: http://localhost:8880/api/prices/stock/TSLA
   
 Output: Use {{ $json.data.price_usd }} in expressions
 ```

@@ -23,7 +23,7 @@ This document describes the bidirectional synchronization between Jarvis reminde
 
 | Service | IP Address | Port | Description |
 |---------|------------|------|-------------|
-| Jarvis API | 192.168.70.228 | 8880 | Reminder API endpoints |
+| Jarvis API | localhost | 8880 | Reminder API endpoints |
 | n8n | 192.168.70.226 | 5678 | Workflow automation |
 | Google Calendar | cloud | - | External API |
 
@@ -91,7 +91,7 @@ When an event is created/modified/deleted in Google Calendar:
 
 **Create Jarvis API Call**:
 ```bash
-POST http://192.168.70.228:8880/api/reminders
+POST http://localhost:8880/api/reminders
 Content-Type: application/json
 
 {
@@ -108,7 +108,7 @@ Content-Type: application/json
 
 **Update Jarvis API Call**:
 ```bash
-PUT http://192.168.70.228:8880/api/reminders/by-gcal/{gcal_event_id}
+PUT http://localhost:8880/api/reminders/by-gcal/{gcal_event_id}
 Content-Type: application/json
 
 {
@@ -125,7 +125,7 @@ Content-Type: application/json
 
 **Delete Jarvis API Call**:
 ```bash
-DELETE http://192.168.70.228:8880/api/reminders/by-gcal/{gcal_event_id}
+DELETE http://localhost:8880/api/reminders/by-gcal/{gcal_event_id}
 ```
 
 ## Jarvis API Endpoints
@@ -247,7 +247,7 @@ curl -X POST http://192.168.70.226:5678/webhook/jarvis-reminder \
 # 1. Create event in Google Calendar (web/mobile)
 # 2. Wait ~5 minutes for n8n trigger
 # 3. Check Jarvis reminders
-curl http://192.168.70.228:8880/api/reminders | jq
+curl http://localhost:8880/api/reminders | jq
 ```
 
 ## Troubleshooting

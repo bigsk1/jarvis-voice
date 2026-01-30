@@ -92,7 +92,7 @@ Jarvis:
   2. Found: "cd ~/jarvis-workspace/projects/tetris-game && source venv/bin/activate && python server.py (port 5000)"
   3. cd ~/jarvis-workspace/projects/tetris-game && source venv/bin/activate && nohup python server.py > server.log 2>&1 &
   4. curl http://localhost:5000/health  # ✅ Verifies with curl (not GUI)
-  5. Reports: "Server running on 0.0.0.0:5000 (accessible at 192.168.70.228:5000)"
+  5. Reports: "Server running on 0.0.0.0:5000 (accessible at localhost:5000)"
 ```
 
 **Tools used**: `['search_memory', 'execute_bash', ...]`  

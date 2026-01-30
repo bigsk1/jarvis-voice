@@ -170,13 +170,13 @@ cat logs/intelligence/intelligence-*.jsonl | jq -c '.event'
 cat logs/intelligence/intelligence-*.jsonl | jq 'select(.event == "reflection_response")'
 
 # Trigger reflection
-curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
+curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
 
 # View insights
-curl http://192.168.70.228:8880/api/intelligence/insights | jq '.insights'
+curl http://localhost:8880/api/intelligence/insights | jq '.insights'
 
 # View meta-knowledge
-curl http://192.168.70.228:8880/api/intelligence/meta-knowledge | jq '.'
+curl http://localhost:8880/api/intelligence/meta-knowledge | jq '.'
 
 ```
 
@@ -216,7 +216,7 @@ cloud or local  both to get all tables made and to create embedding for tools an
 
 # trigger reflection manually
 python3 -c "from lib.intelligence_hooks import trigger_reflection; trigger_reflection(10)"
-curl -X POST "http://192.168.70.228:8880/api/intelligence/reflect?batch_size=5"
+curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
 ```
 
 # Feedback Commands
@@ -722,15 +722,15 @@ FROM insights WHERE times_applied > 0"
 ./bin/run-intelligence-maintenance.py --decay --force
 
 # All jobs
-curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/all
+curl -X POST http://localhost:8880/api/intelligence/maintenance/all
 
 # Individual
-curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/decay
-curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/anomaly
-curl -X POST http://192.168.70.228:8880/api/intelligence/maintenance/meta-cognition
+curl -X POST http://localhost:8880/api/intelligence/maintenance/decay
+curl -X POST http://localhost:8880/api/intelligence/maintenance/anomaly
+curl -X POST http://localhost:8880/api/intelligence/maintenance/meta-cognition
 
 # View meta-knowledge
-curl http://192.168.70.228:8880/api/intelligence/meta-knowledge
+curl http://localhost:8880/api/intelligence/meta-knowledge
 
 ```
 

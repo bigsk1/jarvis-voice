@@ -2,7 +2,7 @@
 
 ## Quick Access
 
-**Grafana URL**: http://192.168.70.228:3000  
+**Grafana URL**: http://localhost:3000  
 **Username**: `admin`  
 **Password**: `jarvis_grafana_2025`
 
@@ -38,7 +38,7 @@
 ## 📊 Using the Pre-Built Dashboard
 
 ### Access the Dashboard:
-1. Open Grafana: http://192.168.70.228:3000
+1. Open Grafana: http://localhost:3000
 2. Login with credentials above
 3. Go to **Dashboards** → **Jarvis Overview**
 
@@ -387,7 +387,7 @@ cd ~/jarvis-voice/monitoring
 ./manage.sh backup
 
 # Access Grafana
-open http://192.168.70.228:3000
+open http://localhost:3000
 # Login: admin / jarvis_grafana_2025
 ```
 

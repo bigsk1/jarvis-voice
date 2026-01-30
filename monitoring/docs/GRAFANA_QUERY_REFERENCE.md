@@ -198,7 +198,7 @@ rate({job="jarvis", log_type="tools"}[5m])
 
 ### Base Metrics
 
-Scraped from `http://192.168.70.228:8880/metrics` (Jarvis API)
+Scraped from `http://localhost:8880/metrics` (Jarvis API)
 
 | Metric | Type | Description | Labels |
 |--------|------|-------------|--------|

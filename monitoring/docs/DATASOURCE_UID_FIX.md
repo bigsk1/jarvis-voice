@@ -16,7 +16,7 @@
 ### Investigation
 1. Confirmed Loki had data:
    ```bash
-   curl -s -G 'http://192.168.70.228:3100/loki/api/v1/query' \
+   curl -s -G 'http://localhost:3100/loki/api/v1/query' \
      --data-urlencode 'query=sum(count_over_time({job="jarvis", log_type="tools"} | json [24h]))' | \
      jq '.data.result[0].value[1]'
    # Result: "1539" ✅
@@ -25,7 +25,7 @@
 2. Checked Grafana datasource configuration:
    ```bash
    curl -s -H "Authorization: Basic YWRtaW46amFydmlzX2dyYWZhbmFfMjAyNQ==" \
-     'http://192.168.70.228:3000/api/datasources' | \
+     'http://localhost:3000/api/datasources' | \
      jq '.[] | select(.name == "Loki") | {name, uid, url, access}'
    # Result: uid = "P8E80F9AEF21F6940" ✅
    ```
@@ -34,7 +34,7 @@
    ```bash
    curl -s -H "Authorization: Basic ..." \
      -H "Content-Type: application/json" \
-     -X POST 'http://192.168.70.228:3000/api/ds/query' \
+     -X POST 'http://localhost:3000/api/ds/query' \
      -d '{"queries":[{"refId":"A","expr":"...","datasource":{"type":"loki","uid":"loki"},"queryType":"instant"}]}'
    # Result: {"message": "Data source not found", "traceID": ""} ❌
    ```
@@ -49,13 +49,13 @@
 ```bash
 # Loki datasource
 curl -s -H "Authorization: Basic YWRtaW46amFydmlzX2dyYWZhbmFfMjAyNQ==" \
-  'http://192.168.70.228:3000/api/datasources' | \
+  'http://localhost:3000/api/datasources' | \
   jq '.[] | select(.name == "Loki") | .uid'
 # Output: "P8E80F9AEF21F6940"
 
 # Prometheus datasource
 curl -s -H "Authorization: Basic YWRtaW46amFydmlzX2dyYWZhbmFfMjAyNQ==" \
-  'http://192.168.70.228:3000/api/datasources' | \
+  'http://localhost:3000/api/datasources' | \
   jq '.[] | select(.name == "Prometheus") | .uid'
 # Output: "PBFA97CFB590B2093"
 ```
@@ -154,12 +154,12 @@ Grafana provisioning supports datasource variables:
 ```bash
 # Get Loki UID
 curl -s -H "Authorization: Basic $(echo -n 'admin:jarvis_grafana_2025' | base64)" \
-  'http://192.168.70.228:3000/api/datasources' | \
+  'http://localhost:3000/api/datasources' | \
   jq -r '.[] | select(.name == "Loki") | .uid'
 
 # Get Prometheus UID
 curl -s -H "Authorization: Basic $(echo -n 'admin:jarvis_grafana_2025' | base64)" \
-  'http://192.168.70.228:3000/api/datasources' | \
+  'http://localhost:3000/api/datasources' | \
   jq -r '.[] | select(.name == "Prometheus") | .uid'
 ```
 
@@ -174,7 +174,7 @@ docker compose restart grafana
 sleep 10
 
 # 3. Check dashboard in browser
-open http://192.168.70.228:3000/d/<dashboard-uid>
+open http://localhost:3000/d/<dashboard-uid>
 
 # 4. If "No data", check datasource UIDs in JSON
 ```
@@ -195,10 +195,10 @@ Both issues were addressed in the dashboard JSON updates.
 
 With the fix applied, all dashboards are now accessible at:
 
-- **Tool Analysis**: http://192.168.70.228:3000/d/jarvis-tool-analysis
-- **LLM Performance**: http://192.168.70.228:3000/d/jarvis-llm-perf/jarvis-llm-performance
-- **API Performance**: http://192.168.70.228:3000/d/jarvis-api-perf/jarvis-api-performance
-- **Overview**: http://192.168.70.228:3000/d/jarvis-overview
+- **Tool Analysis**: http://localhost:3000/d/jarvis-tool-analysis
+- **LLM Performance**: http://localhost:3000/d/jarvis-llm-perf/jarvis-llm-performance
+- **API Performance**: http://localhost:3000/d/jarvis-api-perf/jarvis-api-performance
+- **Overview**: http://localhost:3000/d/jarvis-overview
 
 ---
 
