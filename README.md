@@ -1,8 +1,8 @@
 # Jarvis Voice Assistant
 
-> **Heads up** — This is my personal voice assistant that I have been building for about four months now. I never planned to release it publicly. The codebase reflects that: there are hardcoded IPs, paths assume a user named "boss", and some things are wired together in ways that made sense for my setup but might confuse you.
+> **Heads up** — This is my personal AI voice assistant that I have been building for about four months now. I never planned to release it publicly. The codebase reflects that: there are hardcoded IPs, paths assume a user named "boss", and some things are wired together in ways that made sense for my setup but might confuse you.
 >
-> That said, if you want to run your own version, the [Disaster Recovery Guide](docs/DISASTER_RECOVERY.md) walks through setting up a fresh Ubuntu 24.04 server from scratch. You'll need to change the static IPs and a few config values, but everything *should* work if you follow the steps. No promises, no support — just sharing what I built. If you care support and cover some of the thousands spent on api costs, please consider donating.
+> That said, if you want to run your own version, the [Disaster Recovery Guide](docs/DISASTER_RECOVERY.md) walks through setting up a fresh Ubuntu 24.04 server from scratch. You'll need to change the static IPs and a few config values, but everything *should* work if you follow the steps. No promises, no support — just sharing what I built. If you care support and cover some of the api costs, please consider donating.
 
 A self-hosted voice assistant with tool calling, memory, and autonomous coding capabilities and a hell of alot more!
 

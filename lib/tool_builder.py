@@ -52,7 +52,7 @@ AVAILABLE_PACKAGES = {
     
     # Already installed in jarvis-venv
     "requests", "anthropic", "openai", "httpx", "pydantic",
-    "fastapi", "uvicorn", "yt-dlp", "yfinance",
+    "fastapi", "uvicorn", "yt-dlp", "yfinance", "xai_sdk",
     
     # Data Science & Math
     "numpy", "scipy", "sympy", "mpmath",
