@@ -15,6 +15,7 @@ from .workflows import router as workflows_router
 from .intel import router as intel_router
 from .images import router as images_router
 from .generated_images import router as generated_images_router
+from .generated_videos import router as generated_videos_router
 
-__all__ = ['alerts_router', 'reminders_router', 'health_router', 'voice_router', 'memory_router', 'query_router', 'conversations_router', 'stash_router', 'canvas_router', 'prices_router', 'config_router', 'workflows_router', 'intel_router', 'images_router', 'generated_images_router']
+__all__ = ['alerts_router', 'reminders_router', 'health_router', 'voice_router', 'memory_router', 'query_router', 'conversations_router', 'stash_router', 'canvas_router', 'prices_router', 'config_router', 'workflows_router', 'intel_router', 'images_router', 'generated_images_router', 'generated_videos_router']
 

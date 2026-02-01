@@ -20,6 +20,9 @@ IMAGES_PATH = JARVIS_ROOT / 'data' / 'generated_images'
 # Path to generated music
 MUSIC_PATH = JARVIS_ROOT / 'data' / 'generated_music'
 
+# Path to generated videos
+VIDEOS_PATH = JARVIS_ROOT / 'data' / 'generated_videos'
+
 # Path to stash
 STASH_PATH = JARVIS_ROOT / 'data' / 'stash'
 
@@ -1130,6 +1133,25 @@ def serve_music(filename):
     return send_from_directory(str(MUSIC_PATH), filename)
 
 
+@api_bp.route('/videos/<filename>', methods=['GET'])
+def serve_video(filename):
+    """Serve generated video files"""
+    # Security: only allow video files, no path traversal
+    if '..' in filename or '/' in filename:
+        abort(404)
+    
+    # Check common video extensions
+    allowed_extensions = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in allowed_extensions:
+        abort(404)
+    
+    if not VIDEOS_PATH.exists():
+        abort(404)
+    
+    return send_from_directory(str(VIDEOS_PATH), filename)
+
+
 @api_bp.route('/stash/<space_id>/<file_id>', methods=['GET'])
 def serve_stash_file(space_id, file_id):
     """
@@ -1181,6 +1203,11 @@ def serve_stash_file(space_id, file_id):
         '.ogg': 'audio/ogg',
         '.opus': 'audio/opus',
         '.m4a': 'audio/mp4',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska',
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',

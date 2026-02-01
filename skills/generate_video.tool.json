@@ -1,0 +1,58 @@
+{
+  "enabled": true,
+  "name": "generate_video",
+  "description": "Generate AI videos with xAI Grok Video or Gemini Veo. Create videos from text prompts or images. Use when user says 'generate a video', 'create a video', 'make a video animation', 'animate this'. PROVIDERS: xAI Grok (default, 1-15s duration, more aspect ratios) or Gemini Veo (4-8s, native audio, up to 4K). Videos save to stash for use with other tools.",
+  "script": "generate_video.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "Detailed description of the video. Be specific about subject, action, movement, style, mood. For Gemini: Use quotes for dialogue, describe sound effects. Example: 'A cat playing with a ball, slow motion, cinematic lighting'"
+      },
+      "provider": {
+        "type": "string",
+        "enum": ["xai", "gemini"],
+        "description": "Video provider: 'xai' (default, Grok Imagine Video - more duration options), 'gemini' (Veo 3.1 - native audio, higher resolution). If not specified, uses VIDEO_TOOL_PROVIDER from config."
+      },
+      "duration": {
+        "type": "integer",
+        "description": "Video duration in seconds. xAI: 1-15 seconds (any value). Gemini: rounds to 4, 6, or 8 seconds. Default is 5 seconds."
+      },
+      "aspect_ratio": {
+        "type": "string",
+        "enum": ["16:9", "4:3", "1:1", "9:16", "3:4", "3:2", "2:3"],
+        "description": "Video shape. xAI supports all 7 options. Gemini only supports '16:9' (widescreen) or '9:16' (vertical) - others will be mapped."
+      },
+      "resolution": {
+        "type": "string",
+        "enum": ["720p", "480p", "1080p", "4k"],
+        "description": "Video resolution. xAI: '720p' or '480p'. Gemini: '720p', '1080p', or '4k' (1080p/4k only supports 8s duration)."
+      },
+      "image_url": {
+        "type": "string",
+        "description": "URL of an image to generate video from (image-to-video). The image will be animated based on the prompt. Works with both xAI and Gemini."
+      },
+      "video_url": {
+        "type": "string",
+        "description": "XAI ONLY: URL of a video to edit. Maximum source video length is 8.7 seconds. The prompt describes the edit to make."
+      },
+      "negative_prompt": {
+        "type": "string",
+        "description": "GEMINI ONLY: What to avoid in the video. Example: 'cartoon, low quality, blurry'"
+      },
+      "save": {
+        "type": "boolean",
+        "description": "Save to stash for use with other tools (default: true). Video is downloaded and stored locally."
+      }
+    },
+    "required": ["prompt"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}

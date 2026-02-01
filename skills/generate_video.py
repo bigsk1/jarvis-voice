@@ -1,0 +1,585 @@
+#!/usr/bin/env python3
+"""
+Video Generation Tool for Jarvis
+Supports multiple providers: xAI Grok Video (default), Gemini Veo
+
+Features:
+  - xAI Grok: Text-to-video, image-to-video, video editing (1-15 seconds)
+  - Gemini Veo: Text-to-video, image-to-video with native audio (4-8 seconds, up to 4K)
+  - Multiple aspect ratios and resolutions
+  - Saves to stash for use with other tools
+
+Providers:
+  - xai: xAI Grok Imagine Video (default) - More duration options
+  - gemini: Google Veo 3.1 - Native audio, higher resolution options
+
+Configure via VIDEO_TOOL_PROVIDER in cloud.env (default: xai)
+"""
+
+import sys
+import json
+import time
+import base64
+import requests
+from pathlib import Path
+from datetime import datetime
+
+# Add lib to path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+from config_loader import load_config, get_config_value
+
+# =============================================================================
+# Provider: xAI Grok Video
+# =============================================================================
+DEFAULT_XAI_VIDEO_MODEL = "grok-imagine-video"
+
+# xAI supported aspect ratios
+XAI_ASPECT_RATIOS = ["16:9", "4:3", "1:1", "9:16", "3:4", "3:2", "2:3"]
+
+# xAI supported resolutions
+XAI_RESOLUTIONS = ["720p", "480p"]
+
+# xAI duration limits
+XAI_MIN_DURATION = 1
+XAI_MAX_DURATION = 15
+
+# =============================================================================
+# Provider: Google Gemini Veo
+# =============================================================================
+DEFAULT_GEMINI_VIDEO_MODEL = "veo-3.1-generate-preview"
+
+# Gemini supported aspect ratios (only 2 options)
+GEMINI_ASPECT_RATIOS = ["16:9", "9:16"]
+
+# Gemini supported resolutions
+GEMINI_RESOLUTIONS = ["720p", "1080p", "4k"]
+
+# Gemini duration options (discrete values, not a range)
+GEMINI_DURATIONS = [4, 6, 8]  # seconds
+
+# Duration limits (for compatibility)
+MIN_DURATION = 1
+MAX_DURATION = 15
+
+
+def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
+                       resolution: str = "720p", image_url: str = None,
+                       video_url: str = None) -> dict:
+    """
+    Generate a video using xAI Grok Imagine Video.
+    
+    Args:
+        prompt: What to generate or describe the edit
+        duration: Video duration in seconds (1-15)
+        aspect_ratio: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3
+        resolution: 720p or 480p
+        image_url: Optional image URL to generate video from
+        video_url: Optional video URL to edit (max 8.7s source)
+    
+    Returns:
+        dict with video_url, duration, model info
+    """
+    
+    api_key = get_config_value('XAI_API_KEY')
+    if not api_key:
+        raise ValueError("XAI_API_KEY not configured. Add it to config/cloud.env")
+    
+    # Get model from env or use default
+    model_name = get_config_value('XAI_VIDEO_MODEL', DEFAULT_XAI_VIDEO_MODEL)
+    
+    # Validate duration
+    duration = max(MIN_DURATION, min(MAX_DURATION, duration))
+    
+    # Validate aspect ratio
+    if aspect_ratio not in XAI_ASPECT_RATIOS:
+        aspect_ratio = "16:9"
+    
+    # Validate resolution
+    if resolution not in XAI_RESOLUTIONS:
+        resolution = "720p"
+    
+    try:
+        from xai_sdk import Client
+        
+        # Create client with API key
+        client = Client(api_key=api_key)
+        
+        # Build kwargs for video generation
+        kwargs = {
+            "prompt": prompt,
+            "model": model_name,
+            "duration": duration,
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution
+        }
+        
+        # Add image_url for image-to-video
+        if image_url:
+            kwargs["image_url"] = image_url
+        
+        # Add video_url for video editing
+        if video_url:
+            kwargs["video_url"] = video_url
+        
+        # Generate video with automatic polling (SDK handles waiting)
+        # This can take 30-120+ seconds
+        response = client.video.generate(**kwargs)
+        
+        return {
+            "video_url": response.url,
+            "duration": getattr(response, 'duration', duration),
+            "prompt": prompt,
+            "model": model_name,
+            "provider": "xai",
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
+            "from_image": image_url is not None,
+            "is_edit": video_url is not None
+        }
+        
+    except ImportError:
+        raise ValueError("xai_sdk not installed. Run: pip install xai-sdk")
+    except Exception as e:
+        raise Exception(f"xAI Video generation failed: {str(e)}")
+
+
+def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "16:9",
+                          resolution: str = "720p", image_url: str = None,
+                          negative_prompt: str = None) -> dict:
+    """
+    Generate a video using Google Gemini Veo 3.1.
+    
+    Args:
+        prompt: What to generate (supports audio cues in quotes for dialogue)
+        duration: Video duration - must be 4, 6, or 8 seconds
+        aspect_ratio: 16:9 (landscape) or 9:16 (portrait)
+        resolution: 720p, 1080p, or 4k (1080p/4k only supports 8s)
+        image_url: Optional image URL for image-to-video
+        negative_prompt: What to avoid in the video
+    
+    Returns:
+        dict with video_url, duration, model info
+    """
+    
+    api_key = get_config_value('GEMINI_API_KEY')
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not configured. Add it to config/cloud.env")
+    
+    # Get model from env or use default
+    model_name = get_config_value('GEMINI_VIDEO_MODEL', DEFAULT_GEMINI_VIDEO_MODEL)
+    
+    # Validate and map duration to nearest supported value
+    if duration <= 5:
+        gemini_duration = 4
+    elif duration <= 7:
+        gemini_duration = 6
+    else:
+        gemini_duration = 8
+    
+    # Validate aspect ratio (Gemini only supports 2)
+    if aspect_ratio not in GEMINI_ASPECT_RATIOS:
+        # Map to nearest supported
+        if aspect_ratio in ["9:16", "3:4", "2:3"]:
+            aspect_ratio = "9:16"
+        else:
+            aspect_ratio = "16:9"
+    
+    # Validate resolution
+    if resolution not in GEMINI_RESOLUTIONS:
+        resolution = "720p"
+    
+    # 1080p and 4k only support 8 second videos
+    if resolution in ["1080p", "4k"] and gemini_duration != 8:
+        gemini_duration = 8
+    
+    try:
+        from google import genai
+        from google.genai import types
+        
+        # Create client with API key
+        client = genai.Client(api_key=api_key)
+        
+        # Build config for video generation
+        config_kwargs = {
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
+        }
+        
+        if negative_prompt:
+            config_kwargs["negative_prompt"] = negative_prompt
+        
+        # Note: duration_seconds is a string in Gemini API
+        # Only add if supported (check API version)
+        # config_kwargs["duration_seconds"] = str(gemini_duration)
+        
+        config = types.GenerateVideosConfig(**config_kwargs)
+        
+        # Build generation kwargs
+        gen_kwargs = {
+            "model": model_name,
+            "prompt": prompt,
+            "config": config,
+        }
+        
+        # Add image for image-to-video if provided
+        if image_url:
+            # Download image and convert to genai format
+            try:
+                img_response = requests.get(image_url, timeout=30)
+                img_response.raise_for_status()
+                img_bytes = img_response.content
+                
+                # Determine mime type
+                content_type = img_response.headers.get('content-type', 'image/png')
+                if 'jpeg' in content_type or 'jpg' in content_type:
+                    mime_type = 'image/jpeg'
+                elif 'png' in content_type:
+                    mime_type = 'image/png'
+                elif 'webp' in content_type:
+                    mime_type = 'image/webp'
+                else:
+                    mime_type = 'image/png'
+                
+                # Create image object
+                gen_kwargs["image"] = types.Image(
+                    image_bytes=img_bytes,
+                    mime_type=mime_type
+                )
+            except Exception as e:
+                # Continue without image if download fails
+                print(f"Warning: Could not download image: {e}", file=sys.stderr)
+        
+        # Start video generation (async operation)
+        operation = client.models.generate_videos(**gen_kwargs)
+        
+        # Poll for completion (Gemini videos can take 30-120+ seconds)
+        poll_count = 0
+        max_polls = 60  # 10 minutes max (10s intervals)
+        
+        while not operation.done and poll_count < max_polls:
+            time.sleep(10)
+            operation = client.operations.get(operation)
+            poll_count += 1
+        
+        if not operation.done:
+            raise Exception("Video generation timed out after 10 minutes")
+        
+        # Get the generated video
+        if not operation.response or not operation.response.generated_videos:
+            raise Exception("No video generated - empty response from Gemini")
+        
+        generated_video = operation.response.generated_videos[0]
+        
+        # Download the video file
+        client.files.download(file=generated_video.video)
+        
+        # Get the video URL or bytes
+        video = generated_video.video
+        video_url = getattr(video, 'uri', None) or getattr(video, 'url', None)
+        
+        # If we have video bytes directly, save to temp and return path
+        video_bytes = getattr(video, 'video_bytes', None)
+        if video_bytes and not video_url:
+            # Save bytes to temp file and return local path
+            temp_dir = Path(__file__).parent.parent / 'data' / 'generated_videos'
+            temp_dir.mkdir(exist_ok=True)
+            temp_file = temp_dir / f"gemini_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+            temp_file.write_bytes(video_bytes)
+            video_url = f"file://{temp_file}"
+        
+        return {
+            "video_url": video_url,
+            "video_bytes": video_bytes,  # May have raw bytes
+            "duration": gemini_duration,
+            "prompt": prompt,
+            "model": model_name,
+            "provider": "gemini",
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
+            "from_image": image_url is not None,
+            "has_audio": True  # Veo 3+ generates native audio
+        }
+        
+    except ImportError:
+        raise ValueError("google-genai not installed. Run: pip install google-genai")
+    except Exception as e:
+        raise Exception(f"Gemini Video generation failed: {str(e)}")
+
+
+def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
+                   resolution: str = "720p", image_url: str = None,
+                   video_url: str = None, negative_prompt: str = None,
+                   provider: str = None) -> dict:
+    """
+    Generate a video using configured provider.
+    
+    Args:
+        prompt: What to generate
+        duration: Video duration in seconds
+                  - xAI: 1-15 seconds (continuous range)
+                  - Gemini: 4, 6, or 8 seconds (discrete values)
+        aspect_ratio: Video shape
+                  - xAI: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3
+                  - Gemini: 16:9 or 9:16 only
+        resolution: Video quality
+                  - xAI: 720p or 480p
+                  - Gemini: 720p, 1080p, or 4k
+        image_url: Optional image URL for image-to-video
+        video_url: Optional video URL for editing (xAI only)
+        negative_prompt: What to avoid (Gemini only)
+        provider: Override provider (xai or gemini)
+    """
+    
+    # Determine provider
+    if provider is None:
+        provider = get_config_value('VIDEO_TOOL_PROVIDER', 'xai').lower()
+    
+    if provider == 'gemini':
+        return generate_video_gemini(
+            prompt=prompt,
+            duration=duration,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            image_url=image_url,
+            negative_prompt=negative_prompt
+        )
+    else:
+        # Default to xAI
+        return generate_video_xai(
+            prompt=prompt,
+            duration=duration,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            image_url=image_url,
+            video_url=video_url
+        )
+
+
+def download_video(video_url: str, filename: str, video_bytes: bytes = None) -> Path:
+    """Download video from URL to local file, or save bytes directly."""
+    
+    videos_dir = Path(__file__).parent.parent / 'data' / 'generated_videos'
+    videos_dir.mkdir(exist_ok=True)
+    
+    video_path = videos_dir / filename
+    
+    # If we already have bytes (Gemini may provide these directly), save them
+    if video_bytes:
+        video_path.write_bytes(video_bytes)
+        return video_path
+    
+    # Handle file:// URLs (local temp files from Gemini)
+    if video_url and video_url.startswith('file://'):
+        temp_path = Path(video_url.replace('file://', ''))
+        if temp_path.exists():
+            # Move/copy temp file to final location
+            import shutil
+            shutil.move(str(temp_path), str(video_path))
+            return video_path
+    
+    # Download from remote URL (xAI or Gemini remote)
+    if video_url:
+        # Add API key header if it's a Gemini URL
+        headers = {}
+        if 'googleapis.com' in video_url or 'google' in video_url:
+            api_key = get_config_value('GEMINI_API_KEY', '')
+            if api_key:
+                headers['x-goog-api-key'] = api_key
+        
+        response = requests.get(video_url, timeout=300, stream=True, headers=headers, allow_redirects=True)
+        response.raise_for_status()
+        
+        # Write in chunks for large files
+        with open(video_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
+        return video_path
+    
+    raise ValueError("No video URL or bytes provided")
+
+
+def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
+    """Save generated video to stash for use with other tools."""
+    
+    filename = video_path.name
+    
+    # Read video bytes
+    video_bytes = video_path.read_bytes()
+    
+    # Create stash reference for discoverability
+    try:
+        sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+        from stash_helper import open_space, StashFile
+        
+        space, _ = open_space(scope='session', labels=['generated_videos'])
+        stash_file = StashFile(space)
+        
+        # Get provider tag
+        provider = video_data.get('provider', 'xai')
+        
+        # Save as binary to stash
+        result = stash_file.save_binary(
+            data=video_bytes,
+            name=filename,
+            mime_type='video/mp4',
+            on_conflict='overwrite',
+            tags=['ai_generated', 'video', provider, video_data.get('aspect_ratio', '16:9')],
+            tool_origin='generate_video'
+        )
+        
+        return {
+            "saved": True,
+            "stash_ref": result.get('ref'),
+            "space_id": space.space_id,
+            "path": str(video_path),
+            "stash_path": result.get('path'),
+            "filename": filename,
+            "size_bytes": len(video_bytes),
+            "stash": True
+        }
+    except Exception as e:
+        # Stash failed but file is saved
+        return {
+            "saved": True,
+            "path": str(video_path),
+            "filename": filename,
+            "size_bytes": video_path.stat().st_size,
+            "stash": False,
+            "note": f"File saved but stash indexing failed: {e}"
+        }
+
+
+def main():
+    try:
+        load_config()
+        
+        # Parse arguments
+        if len(sys.argv) > 1:
+            args = json.loads(sys.argv[1])
+        else:
+            args = json.load(sys.stdin)
+        
+        prompt = args.get('prompt', '')
+        if not prompt:
+            raise ValueError("prompt is required - describe what video you want to generate")
+        
+        # Parameters
+        duration = args.get('duration', 5)
+        aspect_ratio = args.get('aspect_ratio', '16:9')
+        resolution = args.get('resolution', '720p')
+        image_url = args.get('image_url')  # For image-to-video
+        video_url = args.get('video_url')  # For video editing (xAI only)
+        negative_prompt = args.get('negative_prompt')  # For Gemini
+        save = args.get('save', True)
+        provider = args.get('provider')  # Override provider if specified
+        
+        # Generate the video
+        result = generate_video(
+            prompt=prompt,
+            duration=duration,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            image_url=image_url,
+            video_url=video_url,
+            negative_prompt=negative_prompt,
+            provider=provider
+        )
+        
+        # Download and save video
+        save_info = None
+        if save and (result.get('video_url') or result.get('video_bytes')):
+            # Generate filename from prompt
+            safe_prompt = "".join(c if c.isalnum() or c in ' -_' else '' for c in prompt[:40])
+            safe_prompt = safe_prompt.replace(' ', '_').lower()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"video_{safe_prompt}_{timestamp}.mp4"
+            
+            # Download video (may have bytes directly from Gemini)
+            video_path = download_video(
+                result.get('video_url', ''), 
+                filename,
+                video_bytes=result.get('video_bytes')
+            )
+            
+            # Save to stash
+            save_info = save_to_stash(video_path, prompt, result)
+            
+            # Also save to memory for cross-session discovery
+            try:
+                from memory_db import MemoryDB
+                db = MemoryDB()
+                
+                stash_ref = save_info.get('stash_ref', '')
+                space_id = save_info.get('space_id', '')
+                
+                memory_key = f"stash_video_{space_id}" if space_id else f"generated_video_{timestamp}"
+                memory_value = f"Generated video: {prompt[:150]}. STASH: {stash_ref}. FILE: {save_info.get('filename')}"
+                
+                db.remember(
+                    key=memory_key,
+                    value=memory_value,
+                    category="stash_artifact",
+                    importance=6,  # Higher importance for stash items
+                    source="generate_video",
+                    metadata={
+                        "stash_ref": stash_ref,
+                        "space_id": space_id,
+                        "filename": save_info.get('filename', ''),
+                        "prompt": prompt[:200],
+                        "provider": result.get('provider', 'xai'),
+                        "duration": result.get('duration'),
+                        "tags": ["video", "generated", "ai_created"],
+                        "type": "video"
+                    }
+                )
+            except Exception:
+                pass  # Don't fail the tool if memory save fails
+        
+        # Build response
+        provider_used = result.get('provider', 'xai')
+        duration_result = result.get('duration', duration)
+        speech = f"Generated {duration_result}s video with {provider_used}: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+        
+        response = {
+            "ok": True,
+            "speech": speech,
+            "data": {
+                "prompt": prompt,
+                "provider": provider_used,
+                "model": result['model'],
+                "duration": duration_result,
+                "aspect_ratio": result.get('aspect_ratio'),
+                "resolution": result.get('resolution'),
+                "video_url": result.get('video_url')  # Original URL (may expire)
+            }
+        }
+        
+        # Add mode indicators
+        if result.get('from_image'):
+            response["data"]["generated_from"] = "image"
+        if result.get('is_edit'):
+            response["data"]["mode"] = "edit"
+        if result.get('has_audio'):
+            response["data"]["has_audio"] = True
+        
+        # Add save info
+        if save_info:
+            response["data"]["saved"] = save_info
+            if save_info.get('path'):
+                response["speech"] += f". Saved to: {save_info['filename']}"
+                response["data"]["file_path"] = save_info['path']
+        
+        print(json.dumps(response))
+        
+    except Exception as e:
+        print(json.dumps({
+            "ok": False,
+            "speech": f"Failed to generate video: {e}",
+            "error": str(e)
+        }))
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

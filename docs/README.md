@@ -302,6 +302,28 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-02-01:**
+- ✅ **Video Generation Tool** - AI video generation with dual provider support
+  - **xAI Grok Imagine Video**: 1-15s duration, 7 aspect ratios, video editing
+  - **Gemini Veo 3.1**: 4/6/8s duration, native audio, up to 4K resolution
+  - `generate_video` tool for text-to-video and image-to-video
+  - Configure via `VIDEO_TOOL_PROVIDER=xai` or `VIDEO_TOOL_PROVIDER=gemini`
+  - Saves to `data/generated_videos/` + stash + memory
+  - Video player in jarvis-web chat UI
+  - See: [`docs/video/README.md`](video/README.md)
+- ✅ **Generated Videos API** - Full management of generated videos
+  - `GET /api/generated-videos` - List/search videos with pagination
+  - `GET /api/generated-videos/{name}` - Download video file
+  - `GET /api/generated-videos/{name}/info` - Video metadata
+  - `DELETE /api/generated-videos/{name}` - Delete video
+  - `POST /api/generated-videos/generate` - Generate new video
+  - See: [`docs/api/GENERATED_VIDEOS.md`](api/GENERATED_VIDEOS.md)
+- ✅ **Tool Builder Research Fix** - Smarter query extraction
+  - Extracts documentation URLs and key technical terms
+  - Removes sensitive info (API keys, IPs, paths)
+  - Better error logging for build failures
+- ⬆️ **xai-sdk 1.6.1** - Required for video generation (1.6.0+)
+
 **2026-01-30:**
 - ✅ **Optional API Authentication** - Bearer token auth for Jarvis API 
   - Toggle via `JARVIS_API_AUTH=true/false` in cloud.env/local.env
@@ -966,6 +988,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-30 (v2.34)  
-**Latest:** Optional API Authentication + Docker Monitoring Fixes + UFW Firewall Documentation  
+**Last Updated:** 2026-02-01 (v2.36)  
+**Latest:** Gemini Veo Video Support (native audio, 4K) + xAI Grok Video + Generated Videos API  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

@@ -102,7 +102,7 @@ Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic
 
 ### 3. **Reasoning Mode at No Extra Cost**
 
-- Reasoning models: `grok-4-fast-reasoning-latest`, `grok-4-1-fast-reasoning-latest`
+- Reasoning models: `grok-4-1-fast-reasoning-latest`
 - **Same price** as non-reasoning models ($0.20/$0.50)
 - Better decision-making for complex tasks
 - Reasoning is integrated into response (not exposed separately like Claude)
@@ -182,7 +182,7 @@ Response uses:
 ```
 
 **Requirements**:
-- xai-sdk >= 1.5.0 (automatically installed)
+- xai-sdk >= 1.6.1 (video generation requires 1.6.0+)
 - Supports Grok 4 models (grok-4, grok-4-fast, grok-4-1-fast)
 
 **Cost**: Standard token pricing + search tool invocations (see xAI pricing)
@@ -191,6 +191,58 @@ Response uses:
 
 - `grok-2-image-1212`: $0.07/image (131K context)
 - Not yet integrated into Jarvis, but available
+
+### 7. **Video Generation** ✅ NEW
+
+Generate AI videos using **Grok Imagine Video**:
+
+```bash
+# Via Jarvis
+jarvis cloud "Generate a video of a cat playing with a ball"
+
+# Via API
+curl -X POST http://localhost:8880/api/generated-videos/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A cat playing with a ball", "duration": 5}'
+```
+
+**Configuration** (config/cloud.env):
+```bash
+VIDEO_TOOL_PROVIDER="xai"
+XAI_VIDEO_MODEL="grok-imagine-video"
+```
+
+**xAI Grok Video Parameters**:
+
+| Parameter | Options | Default | Description |
+|-----------|---------|---------|-------------|
+| `duration` | 1-15 seconds | 5 | Video length (continuous range) |
+| `aspect_ratio` | `16:9`, `4:3`, `1:1`, `9:16`, `3:4`, `3:2`, `2:3` | `16:9` | Video shape (7 options) |
+| `resolution` | `720p`, `480p` | `720p` | Video quality |
+| `image_url` | URL | - | Generate from image (image-to-video) |
+| `video_url` | URL | - | Edit existing video (≤8.7s source) |
+
+**Generation Modes**:
+1. **Text-to-Video**: Generate from text prompt
+2. **Image-to-Video**: Animate an existing image
+3. **Video Edit**: Modify an existing video (xAI only)
+
+**xAI Grok Strengths**:
+- Flexible duration: 1-15 seconds (any value)
+- 7 aspect ratio options
+- Video editing capability
+
+**Generation Time**: 30-120+ seconds depending on duration
+
+**File Size**: ~3-5 MB per 5 seconds (720p)
+
+**Requirements**: xai-sdk >= 1.6.1 (video support added in 1.6.0)
+
+**Alternative**: Gemini Veo 3.1 is also supported with native audio, higher resolution (up to 4k), but limited duration (4/6/8s). See [Video Generation Docs](video/README.md) for comparison.
+
+**Storage**: Videos saved to `data/generated_videos/` and indexed in stash.
+
+See [Video Generation Docs](video/README.md) for full details.
 
 ---
 

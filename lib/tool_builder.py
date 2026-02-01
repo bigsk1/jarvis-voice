@@ -740,10 +740,91 @@ class ToolBuilder:
         return any(kw in gap_lower for kw in research_keywords)
     
     def _build_research_query(self, gap_description: str) -> str:
-        """Build a research query for Jarvis."""
-        # Extract the core capability needed
-        return f"Search for current documentation and API examples for: {gap_description}. " \
-               f"Include authentication methods, required parameters, and example requests."
+        """
+        Build a focused research query for Jarvis.
+        
+        Extracts key technical terms and URLs while removing sensitive information.
+        Limits query to prevent timeouts and improve search quality.
+        """
+        import re
+        
+        # Extract documentation URLs (these are valuable for research)
+        url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+        urls = re.findall(url_pattern, gap_description)
+        doc_urls = [url for url in urls if any(kw in url.lower() for kw in 
+                    ['docs', 'documentation', 'api', 'guide', 'reference', 'readme'])]
+        
+        # Extract key technical terms
+        tech_terms = set()
+        
+        # Look for SDK/library names (common patterns)
+        sdk_patterns = [
+            r'\b(\w+_sdk)\b',           # xai_sdk, openai_sdk
+            r'\b(\w+[-_]?api)\b',        # openai-api, stripe_api
+            r'\bsdk\s+(\w+)\b',          # sdk xai
+            r'\b(\w+)\s+sdk\b',          # xai sdk
+            r'\blibrary\s+(\w+)\b',      # library requests
+            r'\bpackage\s+(\w+)\b',      # package httpx
+        ]
+        for pattern in sdk_patterns:
+            matches = re.findall(pattern, gap_description.lower())
+            tech_terms.update(matches)
+        
+        # Look for API/service names
+        service_keywords = ['api', 'endpoint', 'service', 'tool', 'integration']
+        words = gap_description.lower().split()
+        for i, word in enumerate(words):
+            if word in service_keywords and i > 0:
+                tech_terms.add(words[i-1])  # Word before "api"
+            if word in service_keywords and i < len(words) - 1:
+                tech_terms.add(words[i+1])  # Word after "api"
+        
+        # Extract model names (patterns like model=xxx, model="xxx")
+        model_pattern = r'model[=:]\s*["\']?([a-zA-Z0-9_-]+)["\']?'
+        models = re.findall(model_pattern, gap_description)
+        tech_terms.update(models)
+        
+        # Look for explicit tool/capability mentions
+        capability_pattern = r'(?:create|build|make)\s+(?:a\s+)?(\w+[-_]?\w*)\s+tool'
+        capabilities = re.findall(capability_pattern, gap_description.lower())
+        tech_terms.update(capabilities)
+        
+        # Remove common words that aren't useful for search
+        stop_words = {'the', 'a', 'an', 'to', 'for', 'in', 'on', 'at', 'is', 'it', 
+                      'and', 'or', 'of', 'with', 'this', 'that', 'can', 'so', 'also',
+                      'i', 'my', 'we', 'our', 'want', 'need', 'like', 'use', 'using',
+                      'set', 'get', 'true', 'false', 'default', 'project', 'root'}
+        tech_terms = {t for t in tech_terms if t.lower() not in stop_words and len(t) > 2}
+        
+        # Build the focused query
+        query_parts = []
+        
+        # Add primary documentation URL if found
+        if doc_urls:
+            query_parts.append(f"Fetch and read: {doc_urls[0]}")
+        
+        # Add key terms
+        if tech_terms:
+            terms_str = ' '.join(sorted(tech_terms)[:5])  # Limit to 5 terms
+            query_parts.append(f"Search for: {terms_str} API documentation and Python examples")
+        else:
+            # Fallback: extract first meaningful sentence
+            sentences = gap_description.split('.')
+            first_sentence = sentences[0][:100] if sentences else gap_description[:100]
+            # Remove sensitive patterns
+            first_sentence = re.sub(r'[A-Z_]+_KEY\s*=\s*\S+', '', first_sentence)
+            first_sentence = re.sub(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', '', first_sentence)
+            first_sentence = re.sub(r'/home/\S+', '', first_sentence)
+            query_parts.append(f"Search for: {first_sentence.strip()} documentation")
+        
+        # Combine and limit length
+        query = '. '.join(query_parts)
+        
+        # Final safety: truncate to reasonable length
+        if len(query) > 300:
+            query = query[:300] + "..."
+        
+        return query
     
     def research_via_jarvis(self, question: str, timeout: int = 180) -> str | None:
         """
@@ -905,6 +986,7 @@ class ToolBuilder:
         
         # Research via Jarvis (Ouroboros pattern) if enabled
         research_context = "No research needed for this tool."
+        research_result = None
         if enable_research and self._needs_research(gap_description):
             research_query = self._build_research_query(gap_description)
             print(f"🔍 Researching via Jarvis: {research_query[:80]}...")
@@ -949,24 +1031,30 @@ class ToolBuilder:
                 result = self._parse_llm_response(response)
                 
                 if result.get('action') == 'SKIP_MCP_EXISTS':
+                    msg = f"MCP tool already exists: {result.get('skip_reason', 'unknown')}"
+                    self._log_build_failure(gap_description, "skipped_mcp", msg, retries, research_result)
                     return ToolBuildResult(
                         success=False,
                         status="skipped_mcp",
-                        message=f"MCP tool already exists: {result.get('skip_reason', 'unknown')}"
+                        message=msg
                     )
                 
                 if result.get('action') == 'SKIP_TRIVIAL':
+                    msg = f"Tool deemed trivial: {result.get('skip_reason', 'unknown')}"
+                    self._log_build_failure(gap_description, "skipped_trivial", msg, retries, research_result)
                     return ToolBuildResult(
                         success=False,
                         status="skipped_trivial",
-                        message=f"Tool deemed trivial: {result.get('skip_reason', 'unknown')}"
+                        message=msg
                     )
                 
                 if result.get('action') == 'SKIP_DUPLICATE':
+                    msg = f"Similar tool already exists: {result.get('skip_reason', 'unknown')}"
+                    self._log_build_failure(gap_description, "skipped_duplicate", msg, retries, research_result)
                     return ToolBuildResult(
                         success=False,
                         status="skipped_duplicate",
-                        message=f"Similar tool already exists: {result.get('skip_reason', 'unknown')}"
+                        message=msg
                     )
                 
                 # Validate and create tool
@@ -983,13 +1071,16 @@ class ToolBuilder:
                 last_error = str(e)
                 retries += 1
                 if retries >= max_retries:
+                    msg = f"Failed after {max_retries} attempts: {last_error}"
+                    self._log_build_failure(gap_description, "failed", msg, retries, research_result)
                     return ToolBuildResult(
                         success=False,
                         status="failed",
-                        message=f"Failed after {max_retries} attempts: {last_error}",
+                        message=msg,
                         retries_used=retries
                     )
         
+        self._log_build_failure(gap_description, "failed", "Unknown error", retries, research_result)
         return ToolBuildResult(
             success=False,
             status="failed",
@@ -1459,6 +1550,29 @@ CRITICAL: Call load_config() and setup proxy BEFORE making any network requests!
         log_file = LOGS_DIR / f"tool-builder-{datetime.now().strftime('%Y-%m-%d')}.jsonl"
         with open(log_file, 'a') as f:
             f.write(json.dumps(log_entry) + "\n")
+    
+    def _log_build_failure(self, gap_description: str, status: str, error: str, retries: int = 0, research_result: str = None):
+        """Log build failures for debugging and monitoring."""
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event": "tool_build_failed",
+            "status": status,
+            "mode": self.mode,
+            "gap_description": gap_description[:500],  # Truncate for log readability
+            "error": error[:1000],  # Truncate error
+            "retries_used": retries,
+            "research_performed": research_result is not None,
+            "research_result_length": len(research_result) if research_result else 0,
+            "builder_provider": getattr(self.provider, 'provider', 'unknown'),
+            "builder_model": getattr(self.provider, 'model', 'unknown')
+        }
+        
+        log_file = LOGS_DIR / f"tool-builder-{datetime.now().strftime('%Y-%m-%d')}.jsonl"
+        try:
+            with open(log_file, 'a') as f:
+                f.write(json.dumps(log_entry) + "\n")
+        except Exception:
+            pass  # Don't fail if logging fails
 
 
 def list_pending_tools() -> list[dict]:

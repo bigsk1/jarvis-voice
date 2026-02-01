@@ -363,6 +363,7 @@ jarvis-voice/
 │   ├── docker_control.py     # Docker/compose management
 │   ├── deep_memory_search.py # Multi-source search
 │   ├── generate_image.py     # AI image generation (Gemini)
+│   ├── generate_video.py     # AI video generation (xAI Grok, Gemini Veo)
 │   ├── generate_music.py     # AI music (ElevenLabs)
 │   ├── analyze_image.py      # Vision analysis
 │   ├── phone_call.py         # AI phone calls (Vapi.ai)
@@ -708,6 +709,11 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `generate_image` - **AI image generation**: Google Gemini 3 Pro with Search Grounding
   - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
   - **Google Search Grounding** - Real-time data in images (weather, crypto prices, news)
+  - Auto-saves to stash + memory for cross-session recall
+- `generate_video` - **AI video generation**: xAI Grok or Gemini Veo
+  - xAI: 1-15s duration, 7 aspect ratios, video editing
+  - Gemini: 4/6/8s, native audio, up to 4K resolution
+  - Text-to-video and image-to-video modes
   - Auto-saves to stash + memory for cross-session recall
   - Multi-tool ready: generate → email, generate → print, generate → canvas
 - `analyze_image` - **Vision analysis**: Analyze images from URLs, files, or stash refs
@@ -1479,6 +1485,12 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Auto-saves to stash + memory for cross-session recall
   - Multi-tool workflows: generate → email, generate → print, generate → canvas
   - See: `skills/generate_image.py`
+- ✅ **AI Video Generation (xAI Grok + Gemini Veo)** - Dual-provider video generation
+  - "Generate a video of a cat playing with a ball" → xAI/Gemini creates video
+  - xAI: 1-15s, 7 aspect ratios, video editing | Gemini: 4/6/8s, native audio, 4K
+  - Text-to-video, image-to-video, video editing modes
+  - Video player in jarvis-web chat, API endpoints for management
+  - See: [`docs/video/README.md`](docs/video/README.md)
 - ✅ **Stash + Memory Architecture** - Unified artifact workflow
   - **Stash** = Workshop (temporary files, 7-day TTL, `stash://` references)
   - **Memory** = Index (permanent entries pointing to stash locations)
@@ -1641,6 +1653,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.34 (January 2026)  
+**Current Version:** v2.36 (February 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Optional API Authentication + Docker Monitoring Fixes + UFW Documentation
+**Latest Features:** Gemini Veo Video (native audio, 4K) + xAI Grok Video + Generated Videos API

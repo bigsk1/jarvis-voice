@@ -1353,6 +1353,106 @@ class ChatUI {
       `;
     }
     
+    // Check for generated video
+    let videoHtml = '';
+    let videoUrl = null;
+    let videoTitle = 'Generated Video';
+    let videoDuration = '';
+    let videoHasAudio = false;
+    let videoProvider = '';
+    
+    // Method 1: Check data.generate_video object
+    const videoData = data.generate_video;
+    if (videoData && typeof videoData === 'object') {
+      // Try various paths for video URL - prefer local file over remote URL
+      const savedInfo = videoData.saved || videoData.data?.saved;
+      if (savedInfo?.filename) {
+        videoUrl = `/api/videos/${savedInfo.filename}`;
+      }
+      
+      // Fallback to stash reference
+      if (!videoUrl && videoData.stash_ref) {
+        const stashMatch = videoData.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
+        if (stashMatch) {
+          videoUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+        }
+      }
+      
+      // Fallback to file_path
+      if (!videoUrl && videoData.file_path) {
+        const videoFilename = videoData.file_path.split('/').pop();
+        videoUrl = `/api/videos/${videoFilename}`;
+      }
+      
+      // Last resort: remote URL (may expire)
+      if (!videoUrl && videoData.video_url) {
+        videoUrl = videoData.video_url;
+      }
+      
+      // Get duration, title, audio, and provider
+      videoDuration = videoData.duration || videoData.data?.duration || '';
+      videoHasAudio = videoData.has_audio || videoData.data?.has_audio || false;
+      videoProvider = videoData.provider || videoData.data?.provider || '';
+      videoTitle = videoData.prompt 
+        ? `Generated Video: ${videoData.prompt.substring(0, 50)}${videoData.prompt.length > 50 ? '...' : ''}`
+        : 'Generated Video';
+    }
+    
+    // Method 2: Search in tool results data
+    const hasVideoTool = toolsUsed.includes('generate_video') || 
+      Object.keys(this.pendingTools).some(k => k.startsWith('generate_video'));
+    if (!videoUrl && hasVideoTool) {
+      const videoResult = toolResultsData['generate_video'];
+      if (videoResult) {
+        const savedInfo = videoResult.saved || videoResult.data?.saved;
+        if (savedInfo?.filename) {
+          videoUrl = `/api/videos/${savedInfo.filename}`;
+        }
+        
+        if (!videoUrl && videoResult.stash_ref) {
+          const stashMatch = videoResult.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
+          if (stashMatch) {
+            videoUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+          }
+        }
+        
+        if (!videoUrl && videoResult.file_path) {
+          const videoFilename = videoResult.file_path.split('/').pop();
+          videoUrl = `/api/videos/${videoFilename}`;
+        }
+        
+        if (!videoUrl && videoResult.video_url) {
+          videoUrl = videoResult.video_url;
+        }
+        
+        videoDuration = videoResult.duration || videoResult.data?.duration || videoDuration;
+        videoHasAudio = videoResult.has_audio || videoResult.data?.has_audio || videoHasAudio;
+        videoProvider = videoResult.provider || videoResult.data?.provider || videoProvider;
+        if (videoResult.prompt) {
+          videoTitle = `Generated Video: ${videoResult.prompt.substring(0, 50)}${videoResult.prompt.length > 50 ? '...' : ''}`;
+        }
+      }
+    }
+    
+    if (videoUrl) {
+      const durationStr = videoDuration ? `${videoDuration}s` : '';
+      const audioStr = videoHasAudio ? ' 🔊' : '';
+      const providerStr = videoProvider ? ` (${videoProvider})` : '';
+      videoHtml = `
+        <div class="message-video">
+          <div class="video-header">
+            <span class="video-icon">🎬</span>
+            <span class="video-title">${Utils.escapeHtml(videoTitle)}</span>
+          </div>
+          <video controls preload="metadata" class="video-player">
+            <source src="${videoUrl}" type="video/mp4">
+            Your browser does not support video playback.
+          </video>
+          ${(durationStr || audioStr) ? `<div class="video-info"><span class="video-duration">${durationStr}${audioStr}${providerStr}</span></div>` : ''}
+        </div>
+      `;
+    }
+    
     const parsedText = Utils.parseMarkdown(text);
     
     // Build expandable details section
@@ -1381,6 +1481,7 @@ class ChatUI {
       ${toolCardsHtml}
       ${imageHtml}
       ${audioHtml}
+      ${videoHtml}
       <div class="message-bubble">
         ${parsedText}
         ${detailsHtml}

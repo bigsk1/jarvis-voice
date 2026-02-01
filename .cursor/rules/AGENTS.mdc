@@ -304,6 +304,9 @@ if __name__ == "__main__":
 "description": "Search memories"
 ```
 
+Make sure to add a timeout if tool is going to take a long time to complete in orchestrator/executor.py
+
+
 ### Enable/Disable Tools
 
 ```bash
