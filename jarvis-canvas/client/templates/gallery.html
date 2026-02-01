@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Jarvis Gallery - Generated Images{% endblock %}
+
+{% block head %}
+    <!-- Gallery styles -->
+    <link rel="stylesheet" href="/static/css/gallery.css">
+{% endblock %}
+
+{% block body %}
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon"><img src="/favicon.ico" alt="Jarvis"></div>
+            <span>Jarvis Gallery</span>
+        </div>
+        <div class="header-stats">
+            <span id="imageCount">0 images</span>
+            <span id="totalSize">0 MB</span>
+        </div>
+        <div class="header-links">
+            <a href="/" class="header-link" title="Back to Canvas">📝 Canvas</a>
+            <a href="/video-gallery" class="header-link" title="Video Gallery">🎬 Videos</a>
+            <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;">🤖 Jarvis</a>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="controls">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search images..." oninput="filterImages()">
+            </div>
+            <select class="sort-select" id="sortSelect" onchange="sortImages()">
+                <option value="date-desc">Newest First</option>
+                <option value="date-asc">Oldest First</option>
+                <option value="name-asc">Name A-Z</option>
+                <option value="name-desc">Name Z-A</option>
+                <option value="size-desc">Largest First</option>
+                <option value="size-asc">Smallest First</option>
+            </select>
+            <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh</button>
+        </div>
+
+        <div class="gallery" id="gallery"></div>
+
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-state-icon">🖼️</div>
+            <h3>No images found</h3>
+            <p>Generated images will appear here</p>
+        </div>
+    </main>
+
+    <div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+        <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+        <div class="lightbox-content" onclick="event.stopPropagation()">
+            <img id="lightboxImage" src="" alt="">
+            <div class="lightbox-info">
+                <span class="lightbox-filename" id="lightboxFilename"></span>
+                <div class="lightbox-actions">
+                    <button class="btn btn-primary" onclick="downloadImage()">⬇️ Download</button>
+                    <button class="btn btn-secondary" onclick="getCdnUrlFromLightbox()" id="lightboxCdnBtn">🔗 Get URL</button>
+                    <button class="btn btn-accent" onclick="openVideoModalFromLightbox()" id="lightboxVideoBtn">🎬 To Video</button>
+                    <button class="btn btn-danger" onclick="deleteFromLightbox()">🗑️ Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Video Generation Modal -->
+    <div class="video-modal" id="videoModal">
+        <div class="video-modal-content">
+            <div class="video-modal-header">
+                <h2>🎬 Convert to Video</h2>
+                <button class="video-modal-close" onclick="closeVideoModal()">&times;</button>
+            </div>
+            <img id="videoModalPreview" class="video-modal-preview" src="" alt="Preview">
+            <div id="videoModalForm">
+                <div class="form-group">
+                    <label for="videoPrompt">Animation Prompt</label>
+                    <textarea id="videoPrompt" placeholder="Describe how the image should animate... e.g., 'Gentle camera pan with clouds moving slowly'"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="videoProvider">Provider</label>
+                        <select id="videoProvider" onchange="updateVideoOptions()">
+                            <option value="xai">xAI Grok (1-15s)</option>
+                            <option value="gemini">Gemini Veo (4-8s, audio)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="videoDuration">Duration</label>
+                        <select id="videoDuration">
+                            <option value="5">5 seconds</option>
+                            <option value="8">8 seconds</option>
+                            <option value="10">10 seconds</option>
+                            <option value="15">15 seconds</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="videoAspect">Aspect Ratio</label>
+                        <select id="videoAspect">
+                            <option value="16:9">16:9 (Landscape)</option>
+                            <option value="9:16">9:16 (Portrait)</option>
+                            <option value="1:1">1:1 (Square)</option>
+                            <option value="4:3">4:3 (Classic)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="videoResolution">Resolution</label>
+                        <select id="videoResolution">
+                            <option value="720p">720p (HD)</option>
+                            <option value="1080p">1080p (Full HD)</option>
+                            <option value="4k">4K (Ultra HD)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="video-modal-actions">
+                    <button class="btn btn-secondary" onclick="closeVideoModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="generateVideo()" id="generateVideoBtn">🎬 Generate Video</button>
+                </div>
+            </div>
+            <div class="video-progress" id="videoProgress">
+                <div class="spinner"></div>
+                <p>Generating video... This may take 2-5 minutes</p>
+                <p id="videoProgressStatus" style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 8px;"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gallery JavaScript -->
+    <script src="/static/js/gallery.js"></script>
+{% endblock %}

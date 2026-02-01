@@ -303,6 +303,25 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-02-01:**
+- ✅ **Video Gallery UI** - Browse generated videos in jarvis-canvas ⭐ NEW
+  - Grid view with hover preview and provider badges (xAI/Gemini)
+  - Lightbox viewer with video controls below video
+  - Search, sort by date/name/size/duration
+  - Download and delete functionality
+  - Access via `/video-gallery` or "🎬 Videos" link in Canvas header
+  - See: [`docs/CANVAS_SYSTEM.md`](CANVAS_SYSTEM.md)
+- ✅ **Video Catalog System** - Persistent metadata for generated videos ⭐ NEW
+  - `video_catalog.json` stores provider, aspect ratio, tags per video
+  - Auto-syncs with stash metadata, survives stash TTL cleanup
+  - Shared between `jarvis-api` (8880) and `jarvis-canvas` (8890)
+  - API now returns `provider`, `aspect`, `tags` in video listings
+  - See: [`docs/api/GENERATED_VIDEOS.md`](api/GENERATED_VIDEOS.md)
+- ✅ **Canvas Modular Architecture** - Refactored jarvis-canvas for maintainability
+  - Migrated from monolithic 3,770-line file to proper Flask app structure
+  - Matches pattern of jarvis-web, jarvis-memory, jarvis-intelligence
+  - Separate CSS/JS/templates for canvas, gallery, video-gallery
+  - See: [`docs/CANVAS_MIGRATION_PLAN.md`](CANVAS_MIGRATION_PLAN.md)
+- ✅ **Image Gallery UI Improvements** - Delete button moved to right side
 - ✅ **Video Generation Tool** - AI video generation with dual provider support
   - **xAI Grok Imagine Video**: 1-15s duration, 7 aspect ratios, video editing
   - **Gemini Veo 3.1**: 4/6/8s duration, native audio, up to 4K resolution
@@ -312,10 +331,10 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Video player in jarvis-web chat UI
   - See: [`docs/video/README.md`](video/README.md)
 - ✅ **Generated Videos API** - Full management of generated videos
-  - `GET /api/generated-videos` - List/search videos with pagination
+  - `GET /api/generated-videos` - List/search videos with pagination + provider/tags
   - `GET /api/generated-videos/{name}` - Download video file
-  - `GET /api/generated-videos/{name}/info` - Video metadata
-  - `DELETE /api/generated-videos/{name}` - Delete video
+  - `GET /api/generated-videos/{name}/info` - Video metadata with provider/tags
+  - `DELETE /api/generated-videos/{name}` - Delete video + update catalog
   - `POST /api/generated-videos/generate` - Generate new video
   - See: [`docs/api/GENERATED_VIDEOS.md`](api/GENERATED_VIDEOS.md)
 - ✅ **Tool Builder Research Fix** - Smarter query extraction
@@ -988,6 +1007,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-01 (v2.36)  
-**Latest:** Gemini Veo Video Support (native audio, 4K) + xAI Grok Video + Generated Videos API  
+**Last Updated:** 2026-02-01 (v2.37)  
+**Latest:** Video Gallery UI + Video Catalog + Canvas Modular Architecture  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

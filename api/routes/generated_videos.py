@@ -35,8 +35,121 @@ router = APIRouter(prefix="/api/generated-videos", tags=["generated-videos"])
 GENERATED_VIDEOS_DIR = PROJECT_ROOT / "data" / "generated_videos"
 GENERATED_VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Catalog file for video metadata (shared with jarvis-canvas)
+VIDEO_CATALOG_FILE = GENERATED_VIDEOS_DIR / "video_catalog.json"
+
+# Stash directory for looking up metadata
+STASH_DIR = PROJECT_ROOT / "data" / "stash"
+
 # Supported video extensions
 VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
+
+
+def load_video_catalog() -> dict:
+    """Load the video catalog from disk."""
+    if VIDEO_CATALOG_FILE.exists():
+        try:
+            with open(VIDEO_CATALOG_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_video_catalog(catalog: dict):
+    """Save the video catalog to disk."""
+    try:
+        with open(VIDEO_CATALOG_FILE, 'w') as f:
+            json.dump(catalog, f, indent=2)
+    except Exception as e:
+        print(f"⚠️  Failed to save video catalog: {e}")
+
+
+def lookup_stash_metadata(filename: str) -> Optional[dict]:
+    """Look up metadata for a video file from stash."""
+    if not STASH_DIR.exists():
+        return None
+    
+    for space_dir in STASH_DIR.iterdir():
+        if not space_dir.is_dir():
+            continue
+        
+        meta_file = space_dir / "meta.json"
+        if not meta_file.exists():
+            continue
+        
+        try:
+            with open(meta_file) as f:
+                meta = json.load(f)
+            
+            if 'generated_videos' not in meta.get('labels', []):
+                continue
+            
+            for file_info in meta.get('files', []):
+                stored_name = file_info.get('stored_name') or file_info.get('name')
+                if stored_name != filename:
+                    continue
+                
+                tags = file_info.get('tags', [])
+                
+                # Detect provider from tags
+                provider = None
+                if 'gemini' in tags:
+                    provider = 'Gemini'
+                elif 'xai' in tags:
+                    provider = 'xAI'
+                elif 'runway' in tags:
+                    provider = 'Runway'
+                
+                # Get aspect ratio from tags
+                aspect = None
+                for tag in tags:
+                    if ':' in tag and tag.replace(':', '').replace('.', '').isdigit():
+                        aspect = tag
+                        break
+                
+                return {
+                    'provider': provider,
+                    'aspect': aspect,
+                    'tags': tags,
+                    'tool_origin': file_info.get('tool_origin'),
+                    'created_at': file_info.get('created_at')
+                }
+        except Exception:
+            pass
+    
+    return None
+
+
+def sync_video_catalog() -> dict:
+    """Sync video catalog with actual files and stash metadata."""
+    catalog = load_video_catalog()
+    changed = False
+    
+    # Get actual video files
+    actual_files = set()
+    if GENERATED_VIDEOS_DIR.exists():
+        for f in GENERATED_VIDEOS_DIR.iterdir():
+            if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
+                actual_files.add(f.name)
+    
+    # Remove deleted videos from catalog
+    deleted = [name for name in catalog if name not in actual_files]
+    for name in deleted:
+        del catalog[name]
+        changed = True
+    
+    # Add new videos (lookup stash metadata)
+    for filename in actual_files:
+        if filename not in catalog:
+            meta = lookup_stash_metadata(filename)
+            catalog[filename] = meta or {}
+            changed = True
+    
+    if changed:
+        save_video_catalog(catalog)
+    
+    return catalog
 
 
 class VideoInfo(BaseModel):
@@ -46,6 +159,9 @@ class VideoInfo(BaseModel):
     size_human: str
     modified: str
     extension: str
+    provider: Optional[str] = None
+    aspect: Optional[str] = None
+    tags: Optional[list[str]] = None
 
 
 class VideoListResponse(BaseModel):
@@ -67,6 +183,11 @@ class VideoDetailResponse(BaseModel):
     extension: str
     mime_type: str
     path: str
+    provider: Optional[str] = None
+    aspect: Optional[str] = None
+    tags: Optional[list[str]] = None
+    tool_origin: Optional[str] = None
+    created_at: Optional[str] = None
 
 
 class DeleteResponse(BaseModel):
@@ -108,27 +229,37 @@ def format_size(size_bytes: int) -> str:
         return f"{size_bytes / (1024 * 1024):.1f} MB"
 
 
-def get_video_list() -> tuple[list[VideoInfo], int]:
+def get_video_list() -> tuple[list[VideoInfo], int, dict]:
     """Get list of videos with metadata."""
     videos = []
     total_size = 0
+    
+    # Sync catalog with actual files
+    catalog = sync_video_catalog()
     
     if GENERATED_VIDEOS_DIR.exists():
         for f in GENERATED_VIDEOS_DIR.iterdir():
             if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
                 stat = f.stat()
+                
+                # Get metadata from catalog
+                meta = catalog.get(f.name, {})
+                
                 videos.append(VideoInfo(
                     name=f.name,
                     size=stat.st_size,
                     size_human=format_size(stat.st_size),
                     modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                    extension=f.suffix.lower()
+                    extension=f.suffix.lower(),
+                    provider=meta.get('provider'),
+                    aspect=meta.get('aspect'),
+                    tags=meta.get('tags')
                 ))
                 total_size += stat.st_size
     
     # Sort by modified date descending
     videos.sort(key=lambda x: x.modified, reverse=True)
-    return videos, total_size
+    return videos, total_size, catalog
 
 
 def get_mime_type(extension: str) -> str:
@@ -162,7 +293,7 @@ async def list_generated_videos(
     curl http://localhost:8880/api/generated-videos?search=robot&limit=10
     ```
     """
-    videos, total_size = get_video_list()
+    videos, total_size, _ = get_video_list()
     
     # Filter by search if provided
     if search:
@@ -186,7 +317,7 @@ async def list_generated_videos(
 @router.get("/health")
 async def generated_videos_health():
     """Check generated videos directory status."""
-    videos, total_size = get_video_list()
+    videos, total_size, _ = get_video_list()
     
     # Check configured provider
     provider = get_config_value("VIDEO_TOOL_PROVIDER", "xai")
@@ -320,7 +451,7 @@ async def generate_video(request: GenerateRequest):
 @router.get("/{filename}/info", response_model=VideoDetailResponse)
 async def get_video_info(filename: str):
     """
-    Get detailed information about a video.
+    Get detailed information about a video including provider and tags.
     
     **Example**:
     ```bash
@@ -338,6 +469,10 @@ async def get_video_info(filename: str):
     stat = filepath.stat()
     ext = filepath.suffix.lower()
     
+    # Get metadata from catalog
+    catalog = sync_video_catalog()
+    meta = catalog.get(filename, {})
+    
     return VideoDetailResponse(
         ok=True,
         name=filename,
@@ -346,7 +481,12 @@ async def get_video_info(filename: str):
         modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
         extension=ext,
         mime_type=get_mime_type(ext),
-        path=str(filepath.relative_to(PROJECT_ROOT))
+        path=str(filepath.relative_to(PROJECT_ROOT)),
+        provider=meta.get('provider'),
+        aspect=meta.get('aspect'),
+        tags=meta.get('tags'),
+        tool_origin=meta.get('tool_origin'),
+        created_at=meta.get('created_at')
     )
 
 
@@ -386,7 +526,7 @@ async def get_generated_video(filename: str):
 @router.delete("/{filename}", response_model=DeleteResponse)
 async def delete_generated_video(filename: str):
     """
-    Delete a generated video.
+    Delete a generated video and remove from catalog.
     
     **Example**:
     ```bash
@@ -402,7 +542,15 @@ async def delete_generated_video(filename: str):
         return DeleteResponse(ok=False, error="Video not found")
     
     try:
+        # Delete the video file
         filepath.unlink()
+        
+        # Remove from catalog
+        catalog = load_video_catalog()
+        if filename in catalog:
+            del catalog[filename]
+            save_video_catalog(catalog)
+        
         return DeleteResponse(ok=True, deleted=filename)
     except Exception as e:
         return DeleteResponse(ok=False, error=str(e))

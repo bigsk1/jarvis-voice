@@ -231,6 +231,13 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 
 ![jarvis-gallery](docs/images/jarvis-gallery.png)
 
+- **Video Gallery UI**: Browse generated videos in Canvas web UI (Feb 2026)
+  - Grid view with hover preview, provider badges (xAI/Gemini)
+  - Lightbox viewer with video controls
+  - Search, sort by date/name/size/duration
+  - Download and delete functionality
+  - Access via "🎬 Videos" link in Canvas header
+
 
 ### Speech Modes - Smart Adaptive Response System
 
@@ -1653,6 +1660,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.36 (February 2026)  
+**Current Version:** v2.37 (February 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Gemini Veo Video (native audio, 4K) + xAI Grok Video + Generated Videos API
+**Latest Features:** Video Gallery UI + Video Catalog + Canvas Modular Architecture

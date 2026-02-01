@@ -422,9 +422,47 @@ curl -s http://localhost:8880/api/canvas/stats | jq '.'
 
 ---
 
+## Canvas Web UI
+
+The Canvas server (`jarvis-canvas`) provides a web interface at port 8890:
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:8890/` | Canvas pages viewer |
+| `http://localhost:8890/gallery` | Image gallery |
+| `http://localhost:8890/video-gallery` | Video gallery (Feb 2026) |
+
+### Video Gallery Features
+
+- Grid view with hover preview
+- Lightbox viewer with video controls
+- Provider badges (xAI, Gemini) from `video_catalog.json`
+- Search, sort by date/name/size/duration
+- Download and delete functionality
+- Keyboard shortcuts (arrows, space, escape)
+
+### Architecture (Feb 2026 Refactor)
+
+The canvas server was refactored from a monolithic file to modular Flask app:
+
+```
+jarvis-canvas/
+├── config.py                 # Configuration
+├── client/
+│   ├── static/css/           # Stylesheets (canvas, gallery, video-gallery)
+│   ├── static/js/            # JavaScript (canvas, gallery, video-gallery)
+│   └── templates/            # Jinja2 templates
+└── server/
+    ├── app.py                # Flask app factory
+    └── routes/               # API blueprints (pages, gallery, video_gallery, stash)
+```
+
+---
+
 ## See Also
 
 - [API Overview](./API_OVERVIEW.md) - Full API documentation
 - [Stash API](./STASH.md) - Download embedded images
 - [Memory API](./MEMORY.md) - Direct memory access
+- [Generated Videos API](./GENERATED_VIDEOS.md) - Video management
 - [Test API](./TEST_API.md) - Testing examples

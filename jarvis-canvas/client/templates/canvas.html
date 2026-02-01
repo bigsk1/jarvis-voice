@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Jarvis Canvas{% endblock %}
+
+{% block head %}
+    <!-- Markdown & Syntax Highlighting -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
+    <!-- Canvas styles -->
+    <link rel="stylesheet" href="/static/css/canvas.css">
+{% endblock %}
+
+{% block body %}
+    <header class="header">
+        <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()" title="Toggle Menu">☰</button>
+        <div class="logo">
+            <div class="logo-icon"><img src="/favicon.ico" alt="Jarvis" style="width:24px;height:24px;"></div>
+            <span>Jarvis Canvas</span>
+        </div>
+        <div class="header-search">
+            <input type="text" id="searchInput" placeholder="Search pages... (Ctrl+K)">
+        </div>
+        <div class="header-actions">
+            <div class="header-status">
+                <div class="status-dot"></div>
+                <span id="pageCount">0 pages</span>
+            </div>
+            <div class="header-links">
+                <a href="/gallery" class="header-link" title="Image Gallery">
+                    🖼️ <span>Gallery</span>
+                </a>
+                <a href="/video-gallery" class="header-link" title="Video Gallery">
+                    🎬 <span>Videos</span>
+                </a>
+                <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;" title="Jarvis Web">
+                    🤖 <span>Jarvis</span>
+                </a>
+                <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5002', '_blank'); return false;" title="Memory Browser">
+                    🧠 <span>Memory</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Sidebar overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+    <aside class="sidebar" id="sidebar">
+        <button class="sidebar-close" id="sidebarClose" onclick="closeSidebar()">&times;</button>
+        <div class="sidebar-section" id="pinnedSection" style="display: none;">
+            <div class="sidebar-title">📌 Pinned</div>
+            <ul class="page-list" id="pinnedList"></ul>
+        </div>
+        <div class="sidebar-section" id="foldersSection">
+            <div class="sidebar-title">📁 Folders</div>
+            <ul class="page-list" id="folderList"></ul>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-title">📄 Pages</div>
+            <ul class="page-list" id="pageList"></ul>
+        </div>
+        <div class="sidebar-actions">
+            <button class="btn btn-secondary btn-full" onclick="openUploadModal()">
+                📤 Import Page
+            </button>
+        </div>
+    </aside>
+
+    <main class="main">
+        <div class="empty-state" id="emptyState">
+            <div class="empty-icon">📄</div>
+            <h2 class="empty-title">No pages yet</h2>
+            <p class="empty-subtitle">Ask Jarvis to save something to your canvas, or import a page.</p>
+        </div>
+        <div class="page-view" id="pageView" style="display: none;"></div>
+    </main>
+
+    <!-- Edit Modal -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Edit Page</h3>
+                <button class="modal-close" onclick="closeEditModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Title</label>
+                    <input type="text" class="form-input" id="editTitle">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tags (comma separated)</label>
+                    <input type="text" class="form-input" id="editTags" placeholder="research, code, reference">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Content (Markdown)</label>
+                    <textarea class="form-textarea" id="editContent"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Import Page</h3>
+                <button class="modal-close" onclick="closeUploadModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('uploadFile').click()">
+                    <div class="upload-icon">📄</div>
+                    <div class="upload-text">Click or drag a JSON file here</div>
+                </div>
+                <input type="file" id="uploadFile" accept=".json" style="display: none" onchange="handleFileSelect(event)">
+                <div class="upload-preview" id="uploadPreview">
+                    <div class="upload-preview-title" id="uploadPreviewTitle"></div>
+                    <div class="upload-preview-info" id="uploadPreviewInfo"></div>
+                </div>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="uploadForceNew">
+                        <span>Create as new page (even if ID exists)</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                <button class="btn btn-primary" id="uploadSubmitBtn" disabled onclick="submitUpload()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Lightbox -->
+    <div class="image-lightbox" id="imageLightbox" onclick="closeLightbox()">
+        <button class="image-lightbox-close" onclick="closeLightbox()">&times;</button>
+        <img id="lightboxImage" src="" alt="">
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Canvas JavaScript -->
+    <script src="/static/js/canvas.js"></script>
+{% endblock %}

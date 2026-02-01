@@ -39,18 +39,31 @@ List all generated videos with metadata.
       "size": 3456789,
       "size_human": "3.3 MB",
       "modified": "2026-02-01T02:10:27",
-      "extension": ".mp4"
+      "extension": ".mp4",
+      "provider": "xAI",
+      "aspect": "16:9",
+      "tags": ["ai_generated", "video", "xai", "16:9"]
     },
     {
       "name": "video_sunset_timelapse_20260131_180045.mp4",
       "size": 3332223,
       "size_human": "3.2 MB",
       "modified": "2026-01-31T18:00:45",
-      "extension": ".mp4"
+      "extension": ".mp4",
+      "provider": "Gemini",
+      "aspect": "16:9",
+      "tags": ["ai_generated", "video", "gemini", "16:9"]
     }
   ]
 }
 ```
+
+**New Fields (Feb 2026)**:
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | string | AI provider: `xAI`, `Gemini`, `Runway`, etc. |
+| `aspect` | string | Aspect ratio: `16:9`, `9:16`, `1:1`, etc. |
+| `tags` | array | Tags from generation: `ai_generated`, `video`, provider, aspect |
 
 **Example**:
 ```bash
@@ -112,7 +125,12 @@ Get detailed metadata about a video.
   "modified": "2026-02-01T02:10:27",
   "extension": ".mp4",
   "mime_type": "video/mp4",
-  "path": "data/generated_videos/video_a_cat_playing_20260201_021027.mp4"
+  "path": "data/generated_videos/video_a_cat_playing_20260201_021027.mp4",
+  "provider": "xAI",
+  "aspect": "16:9",
+  "tags": ["ai_generated", "video", "xai", "16:9"],
+  "tool_origin": "generate_video",
+  "created_at": "2026-02-01T10:10:28Z"
 }
 ```
 
@@ -374,17 +392,45 @@ Videos are stored in multiple locations:
 data/generated_videos/
 ├── video_a_cat_playing_20260201_021027.mp4
 ├── video_sunset_timelapse_20260131_180045.mp4
-└── ...
+├── ...
+└── video_catalog.json  ← Metadata catalog (provider, tags, aspect)
 ```
 
-### 2. Stash (for cross-tool use)
+### 2. Video Catalog (Feb 2026)
+
+The `video_catalog.json` file stores metadata for all videos:
+
+```json
+{
+  "video_a_cat_playing_20260201_021027.mp4": {
+    "provider": "xAI",
+    "aspect": "16:9",
+    "tags": ["ai_generated", "video", "xai", "16:9"],
+    "tool_origin": "generate_video",
+    "created_at": "2026-02-01T10:10:28Z"
+  }
+}
+```
+
+**How it syncs:**
+1. When listing videos, the API auto-syncs the catalog with actual files
+2. New videos → metadata pulled from stash, added to catalog
+3. Deleted videos → removed from catalog
+4. Stash TTL expires → catalog still has all metadata (persistent)
+
+**Benefits:**
+- Provider/tags survive stash cleanup (7-day TTL)
+- Both `jarvis-api` (port 8880) and `jarvis-canvas` (port 8890) share the same catalog
+- No sidecar files needed - single source of truth
+
+### 3. Stash (for cross-tool use)
 ```
 data/stash/space_{timestamp}_{id}/
 ├── meta.json
 └── video_filename.mp4
 ```
 
-### 3. Memory (for discovery)
+### 4. Memory (for discovery)
 Videos are indexed in memory with:
 - Category: `stash_artifact`
 - Type: `video`

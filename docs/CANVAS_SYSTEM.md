@@ -92,15 +92,93 @@ The canvas server includes an integrated image gallery for browsing generated im
 - **Search** - filter by filename
 - **Sort** - by date, name, or size
 - **Download** - save images locally
+- **CDN Upload** - get Cloudflare CDN URL for sharing (🔗 button)
+- **Convert to Video** - create AI video from image (🎬 button) ✨ NEW
 - **Delete** - remove unwanted images
 - **Keyboard shortcuts:**
   - `Escape` - close lightbox
   - `←` / `→` - navigate between images
 
+### Image to Video Conversion (Feb 2026)
+
+Convert any gallery image to AI video with the 🎬 button:
+
+1. Click 🎬 on any image (in grid or lightbox)
+2. Modal opens with:
+   - **Animation Prompt** - describe how the image should animate
+   - **Provider** - xAI Grok (1-15s) or Gemini Veo (4-8s, native audio)
+   - **Duration** - options vary by provider
+   - **Aspect Ratio** - 16:9, 9:16, etc.
+   - **Resolution** - 720p to 4K (Gemini)
+3. Click "Generate Video"
+4. Wait 2-5 minutes for generation
+5. Video saves to `data/generated_videos/`
+
+**API Endpoint:**
+```bash
+POST /api/gallery/images/{filename}/to-video
+Content-Type: application/json
+
+{
+  "prompt": "Gentle zoom with clouds moving slowly",
+  "provider": "xai",
+  "duration": 8,
+  "aspect_ratio": "16:9",
+  "resolution": "720p"
+}
+```
+
 ### Source Directory
 Images are served from: `data/generated_images/`
 
 This is where the `generate_image` tool saves AI-generated images.
+
+---
+
+## Video Gallery (Feb 2026)
+
+The canvas server includes an integrated video gallery for browsing generated videos.
+
+![Jarvis Video Gallery](images/jarvis-video-gallery.png)
+
+### Access
+- **URL:** `http://localhost:8890/video-gallery`
+- **Navigation:** Click "🎬 Videos" in any canvas header
+
+### Features
+- **Video grid** with hover preview
+- **Lightbox view** - click to play full size with controls
+- **Search** - filter by filename
+- **Sort** - by date, name, size, or duration
+- **Download** - save videos locally
+- **Delete** - remove unwanted videos
+- **Provider badges** - shows xAI/Gemini source
+- **Duration display** - shows video length
+- **Keyboard shortcuts:**
+  - `Escape` - close lightbox
+  - `←` / `→` - navigate between videos
+  - `Space` - play/pause
+
+### Source Directory
+Videos are served from: `data/generated_videos/`
+
+This is where the `generate_video` tool saves AI-generated videos.
+
+### API Endpoints
+
+```bash
+# List all videos
+GET /api/gallery/videos
+# Response: { videos: [...], count: N, total_size: bytes }
+
+# Get video file
+GET /api/gallery/videos/<filename>
+
+# Delete video
+DELETE /api/gallery/videos/<filename>
+```
+
+---
 
 ## API Reference
 
@@ -420,14 +498,20 @@ Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq", "Canv
 
 ## Future Enhancements
 
-### Recently Added (Jan 2026)
+### Recently Added (Feb 2026)
+
+- [x] **Image to Video** - Convert gallery images to AI video (xAI Grok or Gemini Veo)
+- [x] **Video modal** - Configure provider, duration, aspect ratio, resolution
+- [x] **CDN auto-upload** - Images automatically uploaded to CDN for video generation
+
+### Added (Jan 2026)
 
 - [x] **Download/Upload API** - Export pages as JSON/Markdown, import from JSON
 - [x] **Nested folders** - Support `Workflows/Archive/page` structure
 - [x] **URL-aware folders** - Titles with `://` don't create broken folders
 - [x] **Workflow organization** - Workflows create pages in `Workflows/{type}/` folders
 
-### Previously Added (Dec 2025)
+### Added (Dec 2025)
 
 - [x] **Folder organization** - Auto-group pages by title prefix
 - [x] **Print support** - Browser print dialog with clean output
@@ -516,6 +600,9 @@ POST /api/pages
 
 ### Planned Features
 
+- [x] **Video Gallery** - Browse generated videos like image gallery (Feb 2026)
+- [x] **Modular architecture** - Refactored to proper Flask app structure (Feb 2026)
+- [ ] **Video editing** - Send video back to xAI for revisions
 - [ ] **Command Center** - System status dashboard
 - [ ] **Service monitors** - API health widgets
 - [ ] **"Explain this" button** - Ask Jarvis about content
@@ -568,11 +655,18 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 
 | File | Purpose |
 |------|---------|
-| `bin/jarvis-canvas` | Server script |
+| `bin/jarvis-canvas` | Entry point script |
+| `jarvis-canvas/` | Modular Flask app (Feb 2026 refactor) |
+| `jarvis-canvas/server/app.py` | Flask app factory |
+| `jarvis-canvas/server/routes/` | API route blueprints |
+| `jarvis-canvas/client/templates/` | Jinja2 templates |
+| `jarvis-canvas/client/static/` | CSS and JavaScript |
 | `skills/canvas.py` | Tool implementation |
 | `skills/canvas.tool.json` | Tool definition |
 | `data/canvas/*.json` | Page storage |
-| `api/routes/canvas.py` | FastAPI routes  |
+| `data/generated_images/` | Image gallery source |
+| `data/generated_videos/` | Video gallery source |
+| `api/routes/canvas.py` | FastAPI routes (port 8880) |
 | `docs/CANVAS_SYSTEM.md` | This documentation |
 
 ---
@@ -676,6 +770,12 @@ The canvas tool now supports reading pages back:
 
 ---
 
-**Version:** 1.3  
-**Last Updated:** 2026-01-22
+**Version:** 2.0  
+**Last Updated:** 2026-02-01
+
+### Changelog
+
+- **v2.0** (Feb 2026): Modular architecture refactor + Video Gallery
+- **v1.4** (Feb 2026): Image-to-video conversion
+- **v1.3** (Jan 2026): Download/upload API, nested folders
 

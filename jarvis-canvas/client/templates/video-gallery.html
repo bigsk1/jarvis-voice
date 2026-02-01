@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Jarvis Video Gallery - Generated Videos{% endblock %}
+
+{% block head %}
+    <!-- Video Gallery styles -->
+    <link rel="stylesheet" href="/static/css/video-gallery.css">
+{% endblock %}
+
+{% block body %}
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon"><img src="/favicon.ico" alt="Jarvis"></div>
+            <span>Jarvis Videos</span>
+        </div>
+        <div class="header-stats">
+            <span id="videoCount">0 videos</span>
+            <span id="totalSize">0 MB</span>
+        </div>
+        <div class="header-links">
+            <a href="/" class="header-link" title="Back to Canvas">📝 Canvas</a>
+            <a href="/gallery" class="header-link" title="Image Gallery">🖼️ Images</a>
+            <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;">🤖 Jarvis</a>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="controls">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search videos..." oninput="filterVideos()">
+            </div>
+            <select class="sort-select" id="sortSelect" onchange="sortVideos()">
+                <option value="date-desc">Newest First</option>
+                <option value="date-asc">Oldest First</option>
+                <option value="name-asc">Name A-Z</option>
+                <option value="name-desc">Name Z-A</option>
+                <option value="size-desc">Largest First</option>
+                <option value="size-asc">Smallest First</option>
+                <option value="duration-desc">Longest First</option>
+                <option value="duration-asc">Shortest First</option>
+            </select>
+            <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh</button>
+        </div>
+
+        <div class="video-gallery" id="videoGallery"></div>
+
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-state-icon">🎬</div>
+            <h3>No videos found</h3>
+            <p>Generated videos will appear here</p>
+        </div>
+    </main>
+
+    <div class="video-lightbox" id="videoLightbox" onclick="closeLightbox(event)">
+        <button class="video-lightbox-close" onclick="closeLightbox()">&times;</button>
+        <div class="video-lightbox-content" onclick="event.stopPropagation()">
+            <video id="lightboxVideo" controls autoplay></video>
+            <div class="video-lightbox-info">
+                <span class="video-lightbox-filename" id="lightboxFilename"></span>
+                <div class="video-lightbox-actions">
+                    <button class="btn btn-primary" onclick="downloadVideo()">⬇️ Download</button>
+                    <button class="btn btn-danger" onclick="deleteFromLightbox()">🗑️ Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Video Gallery JavaScript -->
+    <script src="/static/js/video-gallery.js"></script>
+{% endblock %}
