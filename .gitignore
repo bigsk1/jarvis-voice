@@ -75,7 +75,9 @@ data/*.db-*
 data/backups
 data/.email_rate_limit
 data/.webhook_rate_limit
-data/canvas
+data/canvas/*
+data/generated_videos/*
+data/generated_music/*
 
 # Cursor chat history files
 cursor_*.md
@@ -88,7 +90,7 @@ logs/opencode/
 .opencode/
 
 # User knowledge base (contains sensitive info: IPs, credentials, network configs)
-jarvis-intel/
+jarvis-intel/*
 
 
 # ===== Blinko Integration =====
@@ -104,11 +106,11 @@ data/.phone_call_lock
 data/.phone_call_in_progress
 
 characters/
-data/generated_images/
+data/generated_images/*
 jarvis-web/data/uploads/
 
 # web ui
-data/web_conversations/
+data/web_conversations/*
 docs/Agent-Skills-for-Context-Engineering-main
 
 docs/vps2
