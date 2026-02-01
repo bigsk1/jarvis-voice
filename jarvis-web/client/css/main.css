@@ -1660,8 +1660,23 @@ body {
     flex-wrap: nowrap;
   }
   
-  .input-row .icon-btn:not(.send-btn):not(.enhance-btn):not(.speaker-btn):not(.stop-btn) {
-    display: none; /* Hide extra buttons on mobile, keep send, enhance, speaker, and stop */
+  /* Hide extra buttons on mobile - keep send, enhance, upload, and stop (when active) */
+  /* Note: mic hidden on mobile since native keyboard has voice input */
+  .input-actions .icon-btn:not(.send-btn):not(.enhance-btn):not(.upload-btn):not(.stop-btn):not(.speaker-btn) {
+    display: none !important;
+  }
+  
+  /* Smaller buttons on mobile */
+  .input-actions .icon-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    font-size: 1rem !important;
+  }
+  
+  .input-actions .send-btn {
+    width: 36px !important;
+    height: 36px !important;
   }
   
   /* Show speaker button on mobile when audio is playing */
@@ -1674,6 +1689,12 @@ body {
   .stop-btn[style*="display: flex"],
   .stop-btn[style*="display:flex"] {
     display: flex !important;
+  }
+  
+  /* Reduce input wrapper padding on mobile */
+  .chat-input-wrapper {
+    padding: var(--space-xs);
+    gap: var(--space-xs);
   }
   
   /* Keep the log panel usable on mobile */
@@ -1721,6 +1742,35 @@ body {
   
   .chat-area {
     padding-bottom: 40px;
+  }
+  
+  /* Compact input on extra small screens */
+  .input-actions {
+    gap: 2px !important;
+  }
+  
+  .input-actions .icon-btn {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    font-size: 0.9rem !important;
+  }
+  
+  .input-actions .send-btn {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  
+  /* Only show send, enhance, and upload on tiny screens - stop shown when active */
+  /* Note: mic hidden on mobile since native keyboard has voice input */
+  .input-actions .icon-btn:not(.send-btn):not(.enhance-btn):not(.upload-btn):not(.stop-btn) {
+    display: none !important;
+  }
+  
+  /* Speaker still shows when playing */
+  .input-actions .speaker-btn.playing,
+  .input-actions .speaker-btn.paused {
+    display: flex !important;
   }
 }
 
