@@ -151,6 +151,8 @@ class Orchestrator:
         
         # Progress callback for real-time tool execution events (WebSocket)
         self.progress_callback = None
+        # Cancel check callback - returns True if processing should be cancelled
+        self.cancel_check = None
     
     def set_status_callback(self, callback):
         """Set callback for status updates (for web UI to emit via WebSocket)."""
@@ -165,6 +167,23 @@ class Orchestrator:
         - routing(message)
         """
         self.progress_callback = callback
+    
+    def set_cancel_check(self, callback):
+        """Set callback to check if processing should be cancelled.
+        
+        Callback should return True if cancellation is requested.
+        Checked between turns and before tool execution.
+        """
+        self.cancel_check = callback
+    
+    def _is_cancelled(self) -> bool:
+        """Check if processing has been cancelled."""
+        if self.cancel_check:
+            try:
+                return bool(self.cancel_check())
+            except Exception:
+                return False
+        return False
     
     def _emit_progress(self, event_type: str, **kwargs):
         """Emit progress event if callback is set."""
@@ -399,6 +418,20 @@ Mode: {self.mode}
         
         # Multi-turn loop
         for turn_num in range(max_turns):
+            # Check for cancellation at start of each turn
+            if self._is_cancelled():
+                self._emit_progress('routing', message='Processing cancelled')
+                return {
+                    "ok": True,
+                    "response": f"Processing stopped after {turn_num} turn(s). Results so far:\n\n" + 
+                               (conversation_context[-1].get('summary', 'No results yet.') if conversation_context else 'No results yet.'),
+                    "tools_used": tools_used,
+                    "data": accumulated_data,
+                    "usage_info": total_usage if any(total_usage.values()) else None,
+                    "thinking": first_thinking,
+                    "cancelled": True
+                }
+            
             # Build context for this turn
             if turn_num == 0:
                 # First turn: use original transcript
@@ -520,6 +553,20 @@ Mode: {self.mode}
                     # Default: acknowledge any other tool at first turn
                     if turn_num == 0:
                         self.status_updater.update(category='task_start', tool_name=tool_name)
+                
+                # Check for cancellation before executing tool
+                if self._is_cancelled():
+                    self._emit_progress('routing', message='Processing cancelled')
+                    return {
+                        "ok": True,
+                        "response": f"Stopped before {tool_name}. Results so far:\n\n" + 
+                                   (conversation_context[-1].get('summary', 'No results yet.') if conversation_context else 'No results yet.'),
+                        "tools_used": tools_used,
+                        "data": accumulated_data,
+                        "usage_info": total_usage if any(total_usage.values()) else None,
+                        "thinking": first_thinking,
+                        "cancelled": True
+                    }
                 
                 # Track this tool call for unique IDs in progress events
                 call_index = tool_call_counts.get(tool_name, 0)

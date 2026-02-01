@@ -22,6 +22,7 @@ class ChatHandler:
     def __init__(self, socketio):
         self.socketio = socketio
         self.sessions = {}  # session_id -> {mode, conversation_id, ...}
+        self.pending_cancellations = {}  # message_id -> True (to signal orchestrator to stop)
         self._register_handlers()
     
     def _register_handlers(self):
@@ -62,6 +63,22 @@ class ChatHandler:
                 del self.sessions[session_id]
             leave_room(session_id)
             print(f"[WS] Client disconnected: {session_id}")
+        
+        @self.socketio.on('cancel')
+        def handle_cancel(data):
+            """Handle request to cancel current processing"""
+            session_id = request.sid
+            message_id = data.get('message_id')
+            
+            if message_id:
+                self.pending_cancellations[message_id] = True
+                print(f"[WS] Cancel requested for message {message_id}")
+                
+                # Acknowledge cancellation request
+                emit('cancel:ack', {
+                    'message_id': message_id,
+                    'status': 'stopping'
+                }, room=session_id)
         
         @self.socketio.on('chat:send')
         def handle_chat_send(data):
@@ -584,6 +601,12 @@ class ChatHandler:
                         }, room=session_id)
                 
                 orchestrator.set_progress_callback(progress_callback)
+                
+                # Set cancel check callback
+                def cancel_check():
+                    return self.pending_cancellations.get(message_id, False)
+                
+                orchestrator.set_cancel_check(cancel_check)
             
             # Get conversation history for context
             conversation_history = self._get_conversation_context(conversation_id)
@@ -607,7 +630,13 @@ class ChatHandler:
                 conversation_history=conversation_history,
                 excluded_tools=blocked_tools
             )
-            print(f"[CHAT] Got result: ok={result.get('ok')}, tools={result.get('tools_used', [])}")
+            
+            # Clean up cancellation flag
+            if message_id in self.pending_cancellations:
+                del self.pending_cancellations[message_id]
+            
+            was_cancelled = result.get('cancelled', False)
+            print(f"[CHAT] Got result: ok={result.get('ok')}, tools={result.get('tools_used', [])}, cancelled={was_cancelled}")
             
             duration_ms = int((time.time() - start_time) * 1000)
             
@@ -743,6 +772,7 @@ class ChatHandler:
                 'data': response_data,
                 'tools_used': tools_used,
                 'ok': result.get('ok', True),
+                'cancelled': was_cancelled,  # True if user stopped processing
                 'duration_ms': duration_ms,
                 'usage': result.get('usage', {}),
                 'audio_url': audio_url

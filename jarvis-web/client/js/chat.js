@@ -172,6 +172,7 @@ class ChatUI {
     this.sendBtn = document.getElementById('sendBtn');
     this.micBtn = document.getElementById('micBtn');
     this.enhanceBtn = document.getElementById('enhanceBtn');
+    this.stopBtn = document.getElementById('stopBtn');
     
     // Image upload elements
     this.uploadBtn = document.getElementById('uploadBtn');
@@ -274,6 +275,9 @@ class ChatUI {
   _setupEventListeners() {
     // Send button
     this.sendBtn.addEventListener('click', () => this.sendMessage());
+    
+    // Stop button - cancel processing
+    this.stopBtn.addEventListener('click', () => this.cancelProcessing());
     
     // Enter to send (Shift+Enter for new line), arrow keys for autocomplete
     this.inputField.addEventListener('keydown', (e) => {
@@ -1557,6 +1561,11 @@ class ChatUI {
     // Remove existing thinking indicator
     this.hideThinking();
     
+    // Show stop button
+    if (this.stopBtn) {
+      this.stopBtn.style.display = 'flex';
+    }
+    
     const thinkingEl = document.createElement('div');
     thinkingEl.className = 'message assistant thinking-message';
     thinkingEl.innerHTML = `
@@ -1582,6 +1591,13 @@ class ChatUI {
     const thinkingEl = this.messagesContainer.querySelector('.thinking-message');
     if (thinkingEl) {
       thinkingEl.remove();
+    }
+    
+    // Hide and reset stop button
+    if (this.stopBtn) {
+      this.stopBtn.style.display = 'none';
+      this.stopBtn.disabled = false;
+      this.stopBtn.style.opacity = '1';
     }
   }
   
@@ -1979,6 +1995,29 @@ class ChatUI {
   updateSendButton() {
     this.sendBtn.disabled = this.isProcessing;
     this.sendBtn.innerHTML = this.isProcessing ? '⏳' : '➤';
+  }
+  
+  /**
+   * Cancel current processing
+   */
+  cancelProcessing() {
+    if (!this.isProcessing) return;
+    
+    console.log('[ChatUI] Canceling processing...');
+    
+    // Send cancel event to server
+    if (window.jarvisSocket && window.jarvisSocket.socket) {
+      window.jarvisSocket.socket.emit('cancel', {
+        message_id: this.currentMessageId
+      });
+    }
+    
+    // Show cancellation status
+    this.showProgressStatus('Stopping...');
+    
+    // Disable stop button to prevent spam
+    this.stopBtn.disabled = true;
+    this.stopBtn.style.opacity = '0.5';
   }
 
   /**

@@ -149,7 +149,11 @@
               rows="1"
             ></textarea>
             <div class="input-actions">
-              <!-- Speaker button FIRST (far left) so it doesn't shift other buttons when appearing/disappearing -->
+              <!-- Stop button (far left, red) - appears during processing -->
+              <button class="icon-btn stop-btn" id="stopBtn" title="Stop processing" style="display: none;">
+                ⏹
+              </button>
+              <!-- Speaker button (left side) so it doesn't shift other buttons when appearing/disappearing -->
               <button class="icon-btn speaker-btn" id="speakerBtn" title="Audio playing - click to pause" style="display: none;">
                 <span class="speaker-icon">🔊</span>
                 <span class="speaker-waves">

@@ -871,6 +871,37 @@ body {
   transform: rotate(-90deg);
 }
 
+/* ⏹ Stop button (cancel processing) */
+.stop-btn {
+  background: var(--error) !important;
+  border: 1px solid var(--error) !important;
+  color: white !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+  font-size: 0.9rem;
+  animation: stop-pulse 1.5s ease-in-out infinite;
+}
+
+.stop-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.6);
+  animation: none;
+}
+
+@keyframes stop-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.7);
+  }
+}
+
 /* 🔊 Speaker button (audio playback control) */
 .speaker-btn {
   position: relative;
@@ -1629,13 +1660,19 @@ body {
     flex-wrap: nowrap;
   }
   
-  .input-row .icon-btn:not(.send-btn):not(.enhance-btn):not(.speaker-btn) {
-    display: none; /* Hide extra buttons on mobile, keep send, enhance, and speaker */
+  .input-row .icon-btn:not(.send-btn):not(.enhance-btn):not(.speaker-btn):not(.stop-btn) {
+    display: none; /* Hide extra buttons on mobile, keep send, enhance, speaker, and stop */
   }
   
   /* Show speaker button on mobile when audio is playing */
   .speaker-btn.playing,
   .speaker-btn.paused {
+    display: flex !important;
+  }
+  
+  /* Show stop button on mobile when visible (during processing) */
+  .stop-btn[style*="display: flex"],
+  .stop-btn[style*="display:flex"] {
     display: flex !important;
   }
   
