@@ -2607,6 +2607,153 @@ GALLERY_TEMPLATE = '''
             background: var(--border);
         }
 
+        .btn-accent {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+
+        .btn-accent:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        /* Video Modal */
+        .video-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-modal.active {
+            display: flex;
+        }
+
+        .video-modal-content {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .video-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .video-modal-header h2 {
+            font-size: 1.25rem;
+            color: var(--text-primary);
+        }
+
+        .video-modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .video-modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .video-modal-preview {
+            width: 100%;
+            max-height: 200px;
+            object-fit: contain;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            font-size: 0.875rem;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .video-modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .video-modal-actions .btn {
+            flex: 1;
+            padding: 12px;
+        }
+
+        .video-progress {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .video-progress.active {
+            display: block;
+        }
+
+        .video-progress .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         /* Lightbox */
         .lightbox {
             display: none;
@@ -2797,6 +2944,7 @@ GALLERY_TEMPLATE = '''
                 <div class="lightbox-actions">
                     <button class="btn btn-primary" onclick="downloadImage()">⬇️ Download</button>
                     <button class="btn btn-secondary" onclick="getCdnUrlFromLightbox()" id="lightboxCdnBtn">🔗 Get URL</button>
+                    <button class="btn btn-accent" onclick="openVideoModalFromLightbox()" id="lightboxVideoBtn">🎬 To Video</button>
                     <button class="btn btn-danger" onclick="deleteFromLightbox()">🗑️ Delete</button>
                 </div>
             </div>
@@ -2805,9 +2953,73 @@ GALLERY_TEMPLATE = '''
 
     <div class="toast" id="toast"></div>
 
+    <!-- Video Generation Modal -->
+    <div class="video-modal" id="videoModal">
+        <div class="video-modal-content">
+            <div class="video-modal-header">
+                <h2>🎬 Convert to Video</h2>
+                <button class="video-modal-close" onclick="closeVideoModal()">&times;</button>
+            </div>
+            <img id="videoModalPreview" class="video-modal-preview" src="" alt="Preview">
+            <div id="videoModalForm">
+                <div class="form-group">
+                    <label for="videoPrompt">Animation Prompt</label>
+                    <textarea id="videoPrompt" placeholder="Describe how the image should animate... e.g., 'Gentle camera pan with clouds moving slowly'"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="videoProvider">Provider</label>
+                        <select id="videoProvider" onchange="updateVideoOptions()">
+                            <option value="xai">xAI Grok (1-15s)</option>
+                            <option value="gemini">Gemini Veo (4-8s, audio)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="videoDuration">Duration</label>
+                        <select id="videoDuration">
+                            <option value="5">5 seconds</option>
+                            <option value="8">8 seconds</option>
+                            <option value="10">10 seconds</option>
+                            <option value="15">15 seconds</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="videoAspect">Aspect Ratio</label>
+                        <select id="videoAspect">
+                            <option value="16:9">16:9 (Landscape)</option>
+                            <option value="9:16">9:16 (Portrait)</option>
+                            <option value="1:1">1:1 (Square)</option>
+                            <option value="4:3">4:3 (Classic)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="videoResolution">Resolution</label>
+                        <select id="videoResolution">
+                            <option value="720p">720p (HD)</option>
+                            <option value="1080p">1080p (Full HD)</option>
+                            <option value="4k">4K (Ultra HD)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="video-modal-actions">
+                    <button class="btn btn-secondary" onclick="closeVideoModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="generateVideo()" id="generateVideoBtn">🎬 Generate Video</button>
+                </div>
+            </div>
+            <div class="video-progress" id="videoProgress">
+                <div class="spinner"></div>
+                <p>Generating video... This may take 2-5 minutes</p>
+                <p id="videoProgressStatus" style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 8px;"></p>
+            </div>
+        </div>
+    </div>
+
     <script>
         let images = [];
         let filteredImages = [];
+        let videoModalImage = null;
         let currentImage = null;
 
         async function fetchImages() {
@@ -2878,6 +3090,7 @@ GALLERY_TEMPLATE = '''
                         <div class="image-actions">
                             <button class="btn btn-primary" onclick="event.stopPropagation(); downloadByIndex(${index})">⬇️</button>
                             <button class="btn btn-secondary" onclick="event.stopPropagation(); getCdnUrlByIndex(${index})" title="Get CDN URL">🔗</button>
+                            <button class="btn btn-accent" onclick="event.stopPropagation(); openVideoModalByIndex(${index})" title="Convert to Video">🎬</button>
                             <button class="btn btn-danger" onclick="event.stopPropagation(); deleteByIndex(${index})">🗑️</button>
                         </div>
                     </div>
@@ -3152,6 +3365,161 @@ GALLERY_TEMPLATE = '''
             openLightbox(filteredImages[newIndex].name);
         }
 
+        // ============ Video Generation Modal ============
+        
+        function openVideoModalByIndex(index) {
+            const img = filteredImages[index];
+            if (img) openVideoModal(img.name);
+        }
+
+        function openVideoModalFromLightbox() {
+            if (currentImage) {
+                closeLightbox();
+                openVideoModal(currentImage);
+            }
+        }
+
+        function openVideoModal(filename) {
+            videoModalImage = filename;
+            document.getElementById('videoModalPreview').src = `/api/gallery/images/${encodeURIComponent(filename)}`;
+            document.getElementById('videoPrompt').value = '';
+            document.getElementById('videoModalForm').style.display = 'block';
+            document.getElementById('videoProgress').classList.remove('active');
+            document.getElementById('videoModal').classList.add('active');
+            document.body.style.overflow = 'hidden';
+            
+            // Set default aspect ratio based on image (could be enhanced to detect actual ratio)
+            document.getElementById('videoAspect').value = '16:9';
+            updateVideoOptions();
+        }
+
+        function closeVideoModal() {
+            document.getElementById('videoModal').classList.remove('active');
+            document.body.style.overflow = '';
+            videoModalImage = null;
+        }
+
+        function updateVideoOptions() {
+            const provider = document.getElementById('videoProvider').value;
+            const durationSelect = document.getElementById('videoDuration');
+            const resolutionSelect = document.getElementById('videoResolution');
+            const aspectSelect = document.getElementById('videoAspect');
+            
+            // Clear and rebuild duration options based on provider
+            durationSelect.innerHTML = '';
+            if (provider === 'gemini') {
+                // Gemini only supports 4, 6, or 8 seconds
+                ['4', '6', '8'].forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d;
+                    opt.text = d + ' seconds';
+                    durationSelect.appendChild(opt);
+                });
+                durationSelect.value = '8';
+                
+                // Gemini supports higher resolutions
+                resolutionSelect.innerHTML = `
+                    <option value="720p">720p (HD)</option>
+                    <option value="1080p">1080p (Full HD) - 8s only</option>
+                    <option value="4k">4K (Ultra HD) - 8s only</option>
+                `;
+                
+                // Gemini only supports 2 aspect ratios
+                aspectSelect.innerHTML = `
+                    <option value="16:9">16:9 (Landscape)</option>
+                    <option value="9:16">9:16 (Portrait)</option>
+                `;
+            } else {
+                // xAI supports 1-15 seconds
+                ['5', '8', '10', '12', '15'].forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d;
+                    opt.text = d + ' seconds';
+                    durationSelect.appendChild(opt);
+                });
+                durationSelect.value = '5';
+                
+                // xAI supports 720p and 480p
+                resolutionSelect.innerHTML = `
+                    <option value="720p">720p (HD)</option>
+                    <option value="480p">480p (SD)</option>
+                `;
+                
+                // xAI supports more aspect ratios
+                aspectSelect.innerHTML = `
+                    <option value="16:9">16:9 (Landscape)</option>
+                    <option value="9:16">9:16 (Portrait)</option>
+                    <option value="1:1">1:1 (Square)</option>
+                    <option value="4:3">4:3 (Classic)</option>
+                    <option value="3:2">3:2 (Photo)</option>
+                `;
+            }
+        }
+
+        async function generateVideo() {
+            if (!videoModalImage) return;
+            
+            const prompt = document.getElementById('videoPrompt').value.trim();
+            if (!prompt) {
+                showToast('Please describe how the image should animate', 'error');
+                return;
+            }
+            
+            const provider = document.getElementById('videoProvider').value;
+            const duration = parseInt(document.getElementById('videoDuration').value);
+            const aspect = document.getElementById('videoAspect').value;
+            const resolution = document.getElementById('videoResolution').value;
+            
+            // Show progress
+            document.getElementById('videoModalForm').style.display = 'none';
+            document.getElementById('videoProgress').classList.add('active');
+            document.getElementById('videoProgressStatus').textContent = `Using ${provider === 'gemini' ? 'Gemini Veo' : 'xAI Grok'}...`;
+            
+            try {
+                const response = await fetch(`/api/gallery/images/${encodeURIComponent(videoModalImage)}/to-video`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        provider: provider,
+                        duration: duration,
+                        aspect_ratio: aspect,
+                        resolution: resolution
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showToast('✅ Video generated! Check /video-gallery', 'success');
+                    closeVideoModal();
+                    
+                    // Open video gallery in new tab if available
+                    if (data.video_path) {
+                        console.log('Video saved to:', data.video_path);
+                    }
+                } else {
+                    showToast(`❌ ${data.error || 'Video generation failed'}`, 'error');
+                    // Show form again
+                    document.getElementById('videoModalForm').style.display = 'block';
+                    document.getElementById('videoProgress').classList.remove('active');
+                }
+            } catch (err) {
+                console.error('Video generation error:', err);
+                showToast(`❌ ${err.message || 'Failed to generate video'}`, 'error');
+                // Show form again
+                document.getElementById('videoModalForm').style.display = 'block';
+                document.getElementById('videoProgress').classList.remove('active');
+            }
+        }
+
+        // Close video modal on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('videoModal').classList.contains('active')) {
+                closeVideoModal();
+            }
+        });
+
         // Initialize
         fetchImages();
     </script>
@@ -3274,6 +3642,98 @@ def get_cdn_url(filename):
         return jsonify(data)
     except requests.exceptions.RequestException as e:
         return jsonify({'ok': False, 'error': f'API error: {str(e)}'}), 500
+
+
+@app.route('/api/gallery/images/<filename>/to-video', methods=['POST'])
+def convert_image_to_video(filename):
+    """Convert an image to video using generate_video tool."""
+    import subprocess
+    
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename:
+        return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        return jsonify({'ok': False, 'error': 'Image not found'}), 404
+    
+    # Get request data
+    data = request.get_json() or {}
+    prompt = data.get('prompt', 'Animate this image with gentle movement')
+    provider = data.get('provider', 'xai')
+    duration = data.get('duration', 5)
+    aspect_ratio = data.get('aspect_ratio', '16:9')
+    resolution = data.get('resolution', '720p')
+    
+    # First, get the image URL - either local file path or CDN URL
+    # For local access, we'll use file:// protocol or upload to CDN first
+    # The generate_video tool needs a URL, so we'll upload to CDN first if not already there
+    
+    try:
+        import requests as req
+        
+        # Check if already in CDN catalog
+        cdn_url = None
+        cdn_catalog = GENERATED_IMAGES_DIR / "cdn_catalog.json"
+        if cdn_catalog.exists():
+            try:
+                catalog = json.loads(cdn_catalog.read_text())
+                if filename in catalog:
+                    cdn_url = catalog[filename].get('url')
+            except:
+                pass
+        
+        # If not in CDN, upload it first
+        if not cdn_url:
+            api_url = f"http://localhost:8880/api/generated-images/{filename}/cdn-url"
+            response = req.get(api_url, timeout=60)
+            result = response.json()
+            if result.get('ok'):
+                cdn_url = result.get('url')
+        
+        if not cdn_url:
+            return jsonify({'ok': False, 'error': 'Could not get image URL for video generation'}), 400
+        
+        # Build args for generate_video tool
+        tool_args = {
+            "prompt": prompt,
+            "image_url": cdn_url,
+            "provider": provider,
+            "duration": duration,
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
+            "save": True
+        }
+        
+        # Call generate_video tool via API (it has proper timeout handling)
+        api_url = "http://localhost:8880/api/generated-videos/generate"
+        response = req.post(
+            api_url,
+            json=tool_args,
+            timeout=660  # 11 minutes (slightly more than the 10 min internal timeout)
+        )
+        
+        result = response.json()
+        
+        if result.get('ok'):
+            return jsonify({
+                'ok': True,
+                'speech': result.get('speech'),
+                'video_path': result.get('data', {}).get('file_path'),
+                'video_url': result.get('data', {}).get('video_url'),
+                'duration': result.get('data', {}).get('duration'),
+                'provider': provider
+            })
+        else:
+            return jsonify({
+                'ok': False,
+                'error': result.get('error') or result.get('speech') or 'Video generation failed'
+            })
+            
+    except req.exceptions.Timeout:
+        return jsonify({'ok': False, 'error': 'Video generation timed out (10+ minutes)'}), 504
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 # ============================================================================
