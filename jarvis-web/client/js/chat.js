@@ -893,21 +893,38 @@ class ChatUI {
     });
     
     socket.on('toolStart', (data) => {
-      this.addToolCard(data.tool, 'pending', data.args);
+      // Use call_index for unique card ID when same tool called multiple times
+      const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
+      this.addToolCard(cardId, data.tool, 'pending', data.args);
     });
     
     socket.on('toolProgress', (data) => {
-      this.updateToolCard(data.tool, 'pending', { progress: data.progress, status: data.status });
+      if (data.tool) {
+        // Update specific tool card with progress
+        this.updateToolCard(data.tool, 'pending', { progress: data.progress, status: data.status });
+      } else if (data.status) {
+        // Show routing/progress status as ephemeral message
+        this.showProgressStatus(data.status);
+      }
     });
     
     socket.on('toolComplete', (data) => {
-      // Use workflow_step for unique ID if present (allows duplicate tools)
-      const cardId = data.workflow_step != null ? `${data.tool}_step${data.workflow_step}` : data.tool;
+      // Use call_index or workflow_step for unique ID (allows duplicate tools)
+      let cardId;
+      if (data.call_index > 0) {
+        cardId = `${data.tool}_${data.call_index}`;
+      } else if (data.workflow_step != null) {
+        cardId = `${data.tool}_step${data.workflow_step}`;
+      } else {
+        cardId = data.tool;
+      }
       this.updateToolCard(cardId, data.tool, 'success', data.result, data.duration_ms);
     });
     
     socket.on('toolError', (data) => {
-      this.updateToolCard(data.tool, 'error', { error: data.error });
+      // Use call_index for unique card ID when same tool called multiple times
+      const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
+      this.updateToolCard(cardId, data.tool, 'error', { error: data.error });
     });
     
     socket.on('response', (data) => {
@@ -1609,6 +1626,38 @@ class ChatUI {
   }
   
   /**
+   * Show instant progress status (no delay, shorter duration)
+   * Used for routing/tool execution progress events
+   */
+  showProgressStatus(statusText) {
+    // Remove existing progress status
+    const existingProgress = this.messagesContainer.querySelector('.progress-status-message');
+    if (existingProgress) {
+      existingProgress.remove();
+    }
+    
+    const statusEl = document.createElement('div');
+    statusEl.className = 'message progress-status-message';
+    statusEl.innerHTML = `
+      <div class="progress-status-content">
+        <span class="progress-icon">⚡</span>
+        <span class="progress-text">${Utils.escapeHtml(statusText)}</span>
+      </div>
+    `;
+    
+    this.messagesContainer.appendChild(statusEl);
+    Utils.scrollToBottom(this.messagesContainer);
+    
+    // Auto-remove after 5 seconds (or replaced by next progress/response)
+    setTimeout(() => {
+      if (statusEl.parentNode) {
+        statusEl.classList.add('fade-out');
+        setTimeout(() => statusEl.remove(), 300);
+      }
+    }, 5000);
+  }
+  
+  /**
    * Clear status message
    */
   clearStatus() {
@@ -1618,18 +1667,29 @@ class ChatUI {
       this._statusTimeout = null;
     }
     
+    // Clear TTS status message
     const statusEl = this.messagesContainer.querySelector('.status-message');
     if (statusEl) {
       statusEl.remove();
+    }
+    
+    // Clear progress status message
+    const progressEl = this.messagesContainer.querySelector('.progress-status-message');
+    if (progressEl) {
+      progressEl.remove();
     }
   }
 
   /**
    * Add a tool execution card (for tool:start events)
+   * @param {string} cardId - Unique ID for the card (e.g., 'crypto_price' or 'phone_call_1')
+   * @param {string} toolName - Display name of the tool
+   * @param {string} status - Status: 'pending', 'success', 'error'
+   * @param {object} args - Tool arguments
    */
-  addToolCard(toolName, status, args = {}) {
-    // For non-workflow tools, cardId equals toolName
-    this.pendingTools[toolName] = { toolName, status, args, result: null, duration: null };
+  addToolCard(cardId, toolName, status, args = {}) {
+    // Store in pendingTools using cardId as key
+    this.pendingTools[cardId] = { toolName, status, args, result: null, duration: null };
     
     const pendingCards = document.getElementById('pendingToolCards');
     if (!pendingCards) return;
@@ -1637,7 +1697,7 @@ class ChatUI {
     const cardHtml = this._createToolCardHtml(toolName, status, args);
     const cardEl = document.createElement('div');
     cardEl.innerHTML = cardHtml;
-    cardEl.firstChild.id = `tool-card-${toolName}`;
+    cardEl.firstChild.id = `tool-card-${cardId}`;
     
     pendingCards.appendChild(cardEl.firstChild);
     Utils.scrollToBottom(this.messagesContainer);

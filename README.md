@@ -722,7 +722,6 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
   - Gemini: 4/6/8s, native audio, up to 4K resolution
   - Text-to-video and image-to-video modes
   - Auto-saves to stash + memory for cross-session recall
-  - Multi-tool ready: generate → email, generate → print, generate → canvas
 - `analyze_image` - **Vision analysis**: Analyze images from URLs, files, or stash refs
   - Cloud=Grok/Claude/GPT-4o, Local=llava
   - SSRF protection (blocks private IPs), path traversal protection

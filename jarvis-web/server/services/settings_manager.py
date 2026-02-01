@@ -189,6 +189,11 @@ class SettingsManager:
             # Audio (web-only)
             'audio': web_config.get('audio', {}),
             
+            # UI settings (web-only)
+            'ui': {
+                'progress_events': web_config.get('ui', {}).get('progress_events', True)
+            },
+            
             # Conversation settings (web-only)
             'conversation': {
                 'history_limit': web_config.get('conversation', {}).get('history_limit', 20)
@@ -300,6 +305,12 @@ class SettingsManager:
             if 'audio' not in config:
                 config['audio'] = {}
             config['audio']['tts_enabled'] = overrides['tts_enabled']
+        
+        # Handle UI overrides (global)
+        if 'progress_events' in overrides:
+            if 'ui' not in config:
+                config['ui'] = {}
+            config['ui']['progress_events'] = overrides['progress_events']
         
         # Handle conversation overrides (global)
         if 'history_limit' in overrides:

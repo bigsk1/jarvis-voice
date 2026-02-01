@@ -30,7 +30,8 @@ DEFAULT_CONFIG = {
         "theme": "dark",
         "show_tool_details": True,
         "auto_scroll": True,
-        "sound_effects": True
+        "sound_effects": True,
+        "progress_events": True
     },
     "audio": {
         "tts_enabled": False,

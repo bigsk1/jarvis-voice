@@ -818,6 +818,7 @@ class JarvisApp {
         // Populate General settings
         document.getElementById('setting-mode').value = s.mode || 'cloud';
         document.getElementById('setting-tts').checked = s.audio?.tts_enabled || false;
+        document.getElementById('setting-progress-events').checked = s.ui?.progress_events !== false;  // Default true
         document.getElementById('setting-glow-intensity').value = this.glowIntensity;
         
         // Populate LLM Provider
@@ -1451,6 +1452,7 @@ class JarvisApp {
       // Collect all settings
       const settings = {
         tts_enabled: document.getElementById('setting-tts').checked,
+        progress_events: document.getElementById('setting-progress-events').checked,
         llm_provider: document.getElementById('setting-llm-provider').value || null,
         llm_model: document.getElementById('setting-llm-model').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,

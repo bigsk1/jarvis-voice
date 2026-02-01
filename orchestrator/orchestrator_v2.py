@@ -6,6 +6,7 @@ Enhanced with LLM-based routing and confirmation flow.
 import os
 import sys
 import json
+import time
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -147,10 +148,32 @@ class Orchestrator:
         
         # Status updates for voice progress feedback
         self.status_updater = StatusUpdater(mode)
+        
+        # Progress callback for real-time tool execution events (WebSocket)
+        self.progress_callback = None
     
     def set_status_callback(self, callback):
         """Set callback for status updates (for web UI to emit via WebSocket)."""
         self.status_updater.set_speech_callback(callback)
+    
+    def set_progress_callback(self, callback):
+        """Set callback for progress events (tool start/complete, turn info).
+        
+        Callback will be called with:
+        - tool_start(tool_name, turn, max_turns, args)
+        - tool_complete(tool_name, duration_ms, success, error=None)
+        - routing(message)
+        """
+        self.progress_callback = callback
+    
+    def _emit_progress(self, event_type: str, **kwargs):
+        """Emit progress event if callback is set."""
+        if self.progress_callback:
+            try:
+                self.progress_callback(event_type, **kwargs)
+            except Exception as e:
+                if sys.stdout.isatty():
+                    print(f"⚠️ Progress callback error: {e}")
     
     def _maybe_collect_feedback(self, result: dict[str, Any], transcript: str) -> dict[str, Any]:
         """
@@ -351,6 +374,7 @@ Mode: {self.mode}
         tools_used = []
         accumulated_data = {}
         last_tool_call = None  # Track last tool to detect duplicates
+        tool_call_counts = {}  # Track how many times each tool has been called (for progress events)
         
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
@@ -433,6 +457,11 @@ Mode: {self.mode}
                 tool_name = route["tool_name"]
                 arguments = route["arguments"]
                 
+                # Emit routing progress
+                self._emit_progress('routing',
+                    message=f"Using {tool_name}..." if turn_num == 0 else f"Turn {turn_num + 1}: using {tool_name}..."
+                )
+                
                 # Detect duplicate tool calls (same tool, similar/empty args)
                 current_call = (tool_name, json.dumps(arguments, sort_keys=True))
                 if last_tool_call and last_tool_call == current_call:
@@ -492,17 +521,40 @@ Mode: {self.mode}
                     if turn_num == 0:
                         self.status_updater.update(category='task_start', tool_name=tool_name)
                 
-                # Execute the tool
+                # Track this tool call for unique IDs in progress events
+                call_index = tool_call_counts.get(tool_name, 0)
+                tool_call_counts[tool_name] = call_index + 1
+                
+                # Emit progress: tool starting (with call_index for duplicate tracking)
+                self._emit_progress('tool_start', 
+                    tool=tool_name, 
+                    turn=turn_num + 1, 
+                    max_turns=max_turns,
+                    args=arguments,
+                    call_index=call_index
+                )
+                
+                # Execute the tool with timing
+                tool_start_time = time.time()
                 result = self.executor.execute(tool_name, arguments)
+                tool_duration_ms = int((time.time() - tool_start_time) * 1000)
                 
                 # Stop background updates after tool completes
                 if tool_name == 'opencode':
                     self.status_updater.stop_background_updates()
                 
                 if result["ok"]:
+                    # Emit progress: tool completed successfully
+                    self._emit_progress('tool_complete',
+                        tool=tool_name,
+                        duration_ms=tool_duration_ms,
+                        success=True,
+                        call_index=call_index
+                    )
+                    
                     # Success - add to context and continue
                     if sys.stdout.isatty():
-                        print(f"✅ Tool succeeded")
+                        print(f"✅ Tool succeeded ({tool_duration_ms}ms)")
                         print(f"📊 Tool result: {json.dumps(result.get('data', {}), indent=2)[:200]}...")
                     
                     # Track tool execution
@@ -536,7 +588,16 @@ Mode: {self.mode}
                     error = result.get("error", "Unknown error")
                     speech = result.get("speech", f"Failed to execute {tool_name}")
                     if sys.stdout.isatty():
-                        print(f"❌ Tool failed: {error}")
+                        print(f"❌ Tool failed ({tool_duration_ms}ms): {error}")
+                    
+                    # Emit progress: tool failed
+                    self._emit_progress('tool_complete',
+                        tool=tool_name,
+                        duration_ms=tool_duration_ms,
+                        success=False,
+                        error=str(error)[:200],  # Truncate long errors
+                        call_index=call_index
+                    )
                     
                     # Status update on error
                     is_server_error = '500' in str(error) or 'Internal Server Error' in str(error)
@@ -545,6 +606,12 @@ Mode: {self.mode}
                         error_message=error,
                         is_server_error=is_server_error
                     )
+                    
+                    # Emit progress: retrying
+                    if retry_count < self.max_retries:
+                        self._emit_progress('routing',
+                            message=f"Tool failed, trying another approach... (retry {retry_count + 1}/{self.max_retries})"
+                        )
                     
                     # Retry if we haven't exceeded max retries
                     if retry_count < self.max_retries:

@@ -524,6 +524,67 @@ class ChatHandler:
             
             orchestrator.set_status_callback(status_callback)
             
+            # Set up progress callback for real-time tool execution events
+            # Check if progress events are enabled (default: True)
+            from ..config import get_web_setting
+            progress_enabled = get_web_setting('ui.progress_events', True)
+            
+            if progress_enabled:
+                def progress_callback(event_type: str, **kwargs):
+                    """Send tool progress events to browser via WebSocket"""
+                    if event_type == 'tool_start':
+                        tool_name = kwargs.get('tool')
+                        call_index = kwargs.get('call_index', 0)
+                        print(f"[CHAT] Tool starting: {tool_name}[{call_index}] (turn {kwargs.get('turn')}/{kwargs.get('max_turns')})")
+                        self.socketio.emit('tool:start', {
+                            'message_id': message_id,
+                            'tool': tool_name,
+                            'call_index': call_index,  # For unique card IDs when same tool called multiple times
+                            'args': kwargs.get('args', {}),
+                            'turn': kwargs.get('turn'),
+                            'max_turns': kwargs.get('max_turns'),
+                            'timestamp': time.time()
+                        }, room=session_id)
+                    
+                    elif event_type == 'tool_complete':
+                        # Emit tool completion in real-time (success or failure)
+                        tool_name = kwargs.get('tool')
+                        call_index = kwargs.get('call_index', 0)
+                        duration_ms = kwargs.get('duration_ms')
+                        success = kwargs.get('success')
+                        
+                        if success:
+                            print(f"[CHAT] Tool completed: {tool_name}[{call_index}] ({duration_ms}ms)")
+                            self.socketio.emit('tool:complete', {
+                                'message_id': message_id,
+                                'tool': tool_name,
+                                'call_index': call_index,  # For matching unique card ID
+                                'result': {},  # Result will be in final response
+                                'duration_ms': duration_ms,
+                                'success': True,
+                                'timestamp': time.time()
+                            }, room=session_id)
+                        else:
+                            print(f"[CHAT] Tool failed: {tool_name}[{call_index}] - {kwargs.get('error', 'unknown')}")
+                            self.socketio.emit('tool:error', {
+                                'message_id': message_id,
+                                'tool': tool_name,
+                                'call_index': call_index,
+                                'error': kwargs.get('error', 'Unknown error'),
+                                'duration_ms': duration_ms,
+                                'timestamp': time.time()
+                            }, room=session_id)
+                    
+                    elif event_type == 'routing':
+                        print(f"[CHAT] Routing: {kwargs.get('message')}")
+                        self.socketio.emit('tool:progress', {
+                            'message_id': message_id,
+                            'status': kwargs.get('message'),
+                            'timestamp': time.time()
+                        }, room=session_id)
+                
+                orchestrator.set_progress_callback(progress_callback)
+            
             # Get conversation history for context
             conversation_history = self._get_conversation_context(conversation_id)
             
@@ -595,30 +656,33 @@ class ChatHandler:
                         emit_index += 1
             else:
                 # Normal orchestrator results - tools_used may have duplicates
-                # Track how many times each tool has been seen to create unique IDs
-                tool_counts = {}
-                for idx, tool in enumerate(tools_used):
-                    # Get result - accumulated_data may be a list for repeated tools
-                    tool_result = data.get(tool, {})
-                    
-                    # If result is a list, get the specific iteration
-                    tool_idx = tool_counts.get(tool, 0)
-                    if isinstance(tool_result, list):
-                        if tool_idx < len(tool_result):
-                            tool_result = tool_result[tool_idx]
-                        else:
-                            tool_result = tool_result[-1] if tool_result else {}
-                    
-                    tool_counts[tool] = tool_idx + 1
-                    
-                    self.socketio.emit('tool:complete', {
-                        'tool': tool,
-                        'result': tool_result,
-                        'duration_ms': duration_ms // max(len(tools_used), 1),
-                        'success': True,
-                        'message_id': message_id,
-                        'workflow_step': idx  # Use overall index for unique ID
-                    }, room=session_id)
+                # Skip emitting tool:complete if progress_events is enabled - we handle this in real-time
+                # via the progress callback (prevents duplicate tool cards)
+                if not progress_enabled:
+                    # Track how many times each tool has been seen to create unique IDs
+                    tool_counts = {}
+                    for idx, tool in enumerate(tools_used):
+                        # Get result - accumulated_data may be a list for repeated tools
+                        tool_result = data.get(tool, {})
+                        
+                        # If result is a list, get the specific iteration
+                        tool_idx = tool_counts.get(tool, 0)
+                        if isinstance(tool_result, list):
+                            if tool_idx < len(tool_result):
+                                tool_result = tool_result[tool_idx]
+                            else:
+                                tool_result = tool_result[-1] if tool_result else {}
+                        
+                        tool_counts[tool] = tool_idx + 1
+                        
+                        self.socketio.emit('tool:complete', {
+                            'tool': tool,
+                            'result': tool_result,
+                            'duration_ms': duration_ms // max(len(tools_used), 1),
+                            'success': True,
+                            'message_id': message_id,
+                            'workflow_step': idx  # Use overall index for unique ID
+                        }, room=session_id)
             
             # Save assistant response to conversation
             try:
