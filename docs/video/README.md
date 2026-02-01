@@ -143,19 +143,49 @@ Specify what to avoid:
 
 ## Storage
 
-Videos are stored in three locations:
+Videos are stored in multiple locations:
 
-1. **File System**: `data/generated_videos/`
-   - Filename: `video_{prompt_slug}_{timestamp}.mp4`
-   - Example: `video_a_cat_playing_20260201_021027.mp4`
+### 1. File System
+```
+data/generated_videos/
+├── video_a_cat_playing_20260201_021027.mp4
+├── video_sunset_timelapse_20260131_180045.mp4
+├── ...
+└── video_catalog.json  ← Metadata catalog
+```
 
-2. **Stash**: Indexed for cross-tool use
-   - Space: `space_{timestamp}_{id}/`
-   - Tags: `ai_generated`, `video`, `{provider}`, `{aspect_ratio}`
+### 2. Video Catalog (Feb 2026)
+The `video_catalog.json` stores persistent metadata for all videos:
 
-3. **Memory**: Entry created for cross-session discovery
-   - Category: `stash_artifact`
-   - Searchable by prompt and metadata
+```json
+{
+  "video_a_cat_playing_20260201_021027.mp4": {
+    "provider": "xAI",
+    "aspect": "16:9",
+    "tags": ["ai_generated", "video", "xai", "16:9"],
+    "tool_origin": "generate_video",
+    "created_at": "2026-02-01T10:10:28Z"
+  }
+}
+```
+
+**How it works:**
+- When videos are generated, metadata is saved to stash AND catalog
+- Catalog syncs automatically - new files get metadata from stash
+- Catalog survives stash TTL (7-day cleanup) - metadata persists
+- Shared by `jarvis-api` (8880) and `jarvis-canvas` (8890)
+
+### 3. Stash (Cross-Tool Use)
+```
+data/stash/space_{timestamp}_{id}/
+├── meta.json    ← Original tags: ai_generated, video, {provider}, {aspect}
+└── video_file.mp4
+```
+
+### 4. Memory (Discovery)
+Entry created for cross-session recall:
+- Category: `stash_artifact`
+- Searchable by prompt and metadata
 
 ## Generation Time
 
@@ -182,10 +212,26 @@ Approximate file sizes:
 
 ## Web UI
 
+### Jarvis Web Chat
 Generated videos appear in the chat with:
 - Video player with play/pause controls
 - Duration indicator
 - Downloadable link
+
+### Video Gallery (Feb 2026)
+Browse all generated videos at `http://localhost:8890/video-gallery`:
+
+**Features:**
+- Grid view with hover preview
+- Provider badges (xAI, Gemini) from video catalog
+- Lightbox viewer with controls below video
+- Search and sort (date, name, size, duration)
+- Download and delete functionality
+- Keyboard shortcuts (arrows, space, escape)
+
+**Access:**
+- Direct URL: `http://localhost:8890/video-gallery`
+- Canvas header: "🎬 Videos" link
 
 ## API Endpoints
 
@@ -193,12 +239,19 @@ See [API Documentation](../api/GENERATED_VIDEOS.md) for full endpoint reference.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/generated-videos` | GET | List all videos |
+| `/api/generated-videos` | GET | List all videos (with provider, aspect, tags) |
 | `/api/generated-videos/{filename}` | GET | Download video |
-| `/api/generated-videos/{filename}/info` | GET | Video metadata |
-| `/api/generated-videos/{filename}` | DELETE | Delete video |
+| `/api/generated-videos/{filename}/info` | GET | Video metadata (with provider, aspect, tags) |
+| `/api/generated-videos/{filename}` | DELETE | Delete video + remove from catalog |
 | `/api/generated-videos/generate` | POST | Generate new video |
 | `/api/generated-videos/health` | GET | Health check |
+
+**New response fields (Feb 2026):**
+- `provider`: AI provider name (xAI, Gemini, etc.)
+- `aspect`: Aspect ratio (16:9, 9:16, etc.)
+- `tags`: Array of tags from generation
+- `tool_origin`: Tool that created the video
+- `created_at`: ISO timestamp
 
 ## Requirements
 
