@@ -281,7 +281,7 @@ class PromptEvolutionEngine:
                     return """The system prompt in router_v2.py includes:
 - MEMORY-FIRST RULE: Check memory tools before action tools
 - Tool selection guidance for different query types  
-- Voice output rules (max ~25 words, no markdown)
+- Voice output rules (max ~50 words, no markdown)
 - Multi-turn orchestration rules
 - Current date/time injection
 - Response formatting based on JARVIS_RESPONSE_STYLE
@@ -321,7 +321,9 @@ For specific improvements, check feedback logs for exact issues reported."""
         model = get_config_value('FEEDBACK_MODEL',
                                 get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929'))
         
-        # Build provider
+        print(f"⏳ Generating improvement using {provider_type}/{model}...")
+        
+        # Build provider - use the model variable we computed above
         if provider_type == 'anthropic':
             provider = create_provider(
                 'anthropic',
@@ -332,18 +334,18 @@ For specific improvements, check feedback logs for exact issues reported."""
             provider = create_provider(
                 'xai',
                 api_key=get_config_value('XAI_API_KEY'),
-                model=get_config_value('XAI_MODEL', 'grok-4-1-fast-reasoning-latest')
+                model=model
             )
         elif provider_type == 'openai':
             provider = create_provider(
                 'openai',
                 api_key=get_config_value('OPENAI_API_KEY'),
-                model=get_config_value('OPENAI_MODEL', 'gpt-4o')
+                model=model
             )
         else:
             provider = create_provider(
                 'ollama',
-                model=get_config_value('OLLAMA_MODEL', 'qwen3:14b'),
+                model=model,
                 base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
             )
         

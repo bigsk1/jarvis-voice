@@ -146,8 +146,7 @@ def cmd_generate(args):
         print(f"\nCurrent content:")
         print(f"  {current[:200]}{'...' if len(current) > 200 else ''}")
     
-    # Generate improvement
-    print(f"\n⏳ Generating improvement using {get_config_value('FEEDBACK_PROVIDER', 'anthropic')}...")
+    # Generate improvement (model info printed by engine)
     
     improvement = engine.generate_improvement(summary)
     

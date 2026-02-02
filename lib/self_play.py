@@ -404,7 +404,7 @@ Generate {count} queries:"""
             
             # Build config context to help feedback understand the style
             config_context = f"""Response Style: {response_style}
-- casual: Brief voice output (~25 words), no URLs for speech
+- casual: Brief voice output (~50 words), no URLs for speech
 - auto: Adapts based on query complexity
 - detailed: Full output for display/reading, markdown and URLs allowed{native_search_info}"""
             

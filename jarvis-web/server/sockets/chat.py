@@ -886,7 +886,7 @@ class ChatHandler:
             # Build config context
             response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
             style_explanations = {
-                'casual': 'Short voice-friendly output. URLs are REMOVED, search results summarized to ~25 words.',
+                'casual': 'Short voice-friendly output. URLs are REMOVED, search results summarized to ~50 words.',
                 'auto': 'Smart mode. Search tools get condensed (no URLs), complex tools keep full details.',
                 'detailed': 'FULL LLM response preserved. URLs ARE INCLUDED. Verbose output is EXPECTED and CORRECT.'
             }
