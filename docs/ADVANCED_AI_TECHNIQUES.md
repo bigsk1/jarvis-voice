@@ -14,6 +14,11 @@
 6. [Phase 7: Versioned Prompts & Rollback](#phase-7-versioned-prompts--rollback)
 7. [Implementation Priority](#implementation-priority)
 8. [Safety & Guardrails](#safety--guardrails)
+9. [Implementation Status](#implementation-status)
+10. [🚨 Reality Check: Why Nothing Evolves](#-reality-check-why-nothing-evolves-feb-2026)
+11. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
+12. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
+13. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
 
 ---
 
@@ -1114,15 +1119,385 @@ Each phase builds on the previous, with safety guardrails ensuring stability.
 
 | Phase | Feature | Status | Files |
 |-------|---------|--------|-------|
-| **3** | Self-Evolving Prompts | ✅ **IMPLEMENTED** | `lib/prompt_evolution.py`, `lib/prompt_versioning.py`, `bin/evolve-prompts` |
-| **7** | Versioned Rollback | ✅ **IMPLEMENTED** | Included in Phase 3 |
+| **3** | Self-Evolving Prompts | ✅ Built, ⚠️ Not Triggering | `lib/prompt_evolution.py`, `lib/prompt_versioning.py`, `bin/evolve-prompts` |
+| **7** | Versioned Rollback | ✅ Built, Untested | Included in Phase 3 |
 | **4** | Dynamic Tool Creation | ✅ **IMPLEMENTED** | `lib/tool_builder.py`, `bin/build-tool`, Ouroboros research 🐍 |
-| **5** | Parallel Subagents | 📋 Planned | - |
+| **5** | Parallel Subagents | 📋 Planned | See Phase 8 below |
 | **6** | Self-Play Optimization | 📋 Planned | - |
+| **8** | Swarm Mode | 📋 Brainstorming | `docs/swarm/BRAINSTORM.md` |
+| **9** | Autonomous Maintenance | 📋 Brainstorming | See below |
+| **10** | Proactive Briefing Agent | 📋 Brainstorming | See below |
 
 ---
 
-**Document Version:** 1.2  
-**Last Updated:** 2025-12-02  
-**Status:** Phase 3, 4 & 7 Implemented - Self-learning AGI core complete!
+## 🚨 Reality Check: Why Nothing Evolves (Feb 2026)
+
+**The Problem:** Evolution infrastructure exists but hasn't triggered in 2+ months.
+
+### Root Causes
+
+| Issue | Why It Matters |
+|-------|----------------|
+| **Feedback rarely collected** | `--feedback` flag required, `FEEDBACK_RANDOM_ENABLED=false` by default |
+| **Thresholds too conservative** | Need 5+ low ratings (prod), 2+ (test) - but feedback is rare |
+| **No scheduled checks** | Evolution only runs during active queries |
+| **Cron not configured** | No nightly `evolve-prompts` job running |
+| **Self-play not built** | Would generate synthetic feedback, but doesn't exist yet |
+
+### Quick Fix Checklist
+
+```bash
+# 1. Enable random feedback collection (15% of queries)
+# In config/cloud.env:
+FEEDBACK_RANDOM_ENABLED=true
+FEEDBACK_RANDOM_CHANCE=0.15
+
+# 2. Lower thresholds for testing
+EVOLUTION_MIN_LOW_RATINGS=2
+EVOLUTION_LOW_THRESHOLD=7
+EVOLUTION_WINDOW_DAYS=14
+
+# 3. Add cron job for scheduled evolution
+crontab -e
+# Add:
+0 3 * * * cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate >> /tmp/jarvis-evolution.log 2>&1
+
+# 4. Check current feedback state
+sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM feedback WHERE rating < 6"
+./bin/evolve-prompts check cloud
+```
+
+### The Deeper Problem: Reactive vs Autonomous
+
+All current systems are **reactive** (require user initiation):
+
+```
+Current Architecture:
+┌─────────────────────────────────────────────────┐
+│  User Query → Jarvis Processes → User Response  │
+│                    │                            │
+│              (optional feedback)                │
+│                    │                            │
+│        (optional evolution if thresholds met)   │
+└─────────────────────────────────────────────────┘
+
+What's Missing:
+┌─────────────────────────────────────────────────┐
+│           Autonomous Background Loop            │
+│                                                 │
+│  ┌─────────┐   ┌─────────┐   ┌─────────────┐   │
+│  │ Observe │ → │ Decide  │ → │ Act/Report  │   │
+│  └─────────┘   └─────────┘   └─────────────┘   │
+│       ↑                             │          │
+│       └─────────────────────────────┘          │
+│                                                 │
+│  Runs: Cron / Event-triggered / Always-on      │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## Phase 8: Swarm Mode (Research Parallelism)
+
+> **Status:** Brainstorming  
+> **Full Design:** [docs/swarm/BRAINSTORM.md](swarm/BRAINSTORM.md)
+
+### Concept
+
+For research-heavy queries, spawn multiple specialized subagents in parallel, then synthesize results.
+
+```
+Query: "Compare React, Vue, and Svelte for a new project"
+
+        ┌───────────────────────────────────┐
+        │         Swarm Orchestrator        │
+        └───────────────────────────────────┘
+                        │
+         ┌──────────────┼──────────────┐
+         ▼              ▼              ▼
+    ┌─────────┐   ┌─────────┐   ┌─────────┐
+    │ Agent 1 │   │ Agent 2 │   │ Agent 3 │
+    │ React   │   │   Vue   │   │ Svelte  │
+    │ research│   │ research│   │ research│
+    └────┬────┘   └────┬────┘   └────┬────┘
+         │              │              │
+         └──────────────┼──────────────┘
+                        ▼
+               ┌──────────────┐
+               │  Swarm Boss  │
+               │  (Synthesis) │
+               └──────────────┘
+                        │
+                        ▼
+               Canvas Report + Speech Summary
+```
+
+### When Swarm Makes Sense
+
+| Good for Swarm | Better as Workflow/Sequential |
+|----------------|-------------------------------|
+| Multi-topic research | Single API calls (weather, time) |
+| Compare N items | Simple CRUD operations |
+| Fact verification (consensus) | Memory operations |
+| Security analysis (red team) | Deterministic multi-step tasks |
+| Creative brainstorming | Cost-sensitive queries |
+
+### Key Design Elements
+
+1. **Subagent Profiles** (`config.json` + `SKILL.md`)
+   - Static config: model, tools, limits, timeout
+   - Dynamic guidance: generated from query or pre-written
+
+2. **Quantity Parameter**: `qty: 2` spawns 2 identical agents for diversity
+
+3. **Model Diversity**: Different agents can use different LLMs
+   - Grok for speed, Gemini for multimodal, Claude for reasoning
+
+4. **Swarm Boss**: Smarter model synthesizes all results
+
+5. **MCP Considerations**: Single server handles concurrent requests
+
+### Cost/Benefit Reality Check
+
+| Metric | Sequential | Swarm (3 agents) |
+|--------|-----------|------------------|
+| Latency | ~45s | ~18s (parallel) |
+| Tokens | ~10k | ~35k (3x research + synthesis) |
+| Cost | $0.10 | $0.40 |
+| Quality | Single perspective | Multiple perspectives |
+
+**Verdict:** Swarm is for quality-critical research, not everyday queries.
+
+---
+
+## Phase 9: Autonomous Maintenance Agent
+
+### Concept
+
+An always-on (or cron-scheduled) agent that monitors system health and takes action without user prompting.
+
+### What Autonomous Jarvis Should Do
+
+| Task | Current State | Autonomous State |
+|------|--------------|------------------|
+| Memory cleanup | Manual or never | "500 memories, cleaned 200 stale" |
+| Tool health | User notices failures | "brave_search failed 10x, switching to fallback" |
+| Feedback analysis | `evolve-prompts check` | Auto-analyzes patterns, proposes fixes |
+| Proactive briefing | Hardcoded workflow | LLM decides what's worth mentioning |
+| Cost monitoring | Manual check | "Token usage 3x normal, investigating" |
+| Error patterns | Read logs manually | "Detected recurring timeout in X, added retry" |
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    AUTONOMOUS MAINTENANCE LOOP                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Trigger: Cron (every 6h) OR Event (error spike) OR Manual      │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                     OBSERVE PHASE                        │    │
+│  │                                                          │    │
+│  │  - Memory DB stats (count, age distribution, duplicates) │    │
+│  │  - Error logs (last 24h, patterns, frequencies)          │    │
+│  │  - Feedback ratings (trends, low performers)             │    │
+│  │  - Tool usage (success rates, latencies)                 │    │
+│  │  - Token costs (daily, by tool, anomalies)               │    │
+│  │                                                          │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│                             ▼                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                     DECIDE PHASE                         │    │
+│  │                                                          │    │
+│  │  LLM analyzes observations:                              │    │
+│  │  - What needs attention?                                 │    │
+│  │  - Priority ranking                                      │    │
+│  │  - Safe to auto-fix vs needs human approval?             │    │
+│  │                                                          │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│                             ▼                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                      ACT PHASE                           │    │
+│  │                                                          │    │
+│  │  Auto-actions (safe):                                    │    │
+│  │  - Archive old memories (>90 days, low relevance)        │    │
+│  │  - Retry failed tool sync                                │    │
+│  │  - Clear stale cache entries                             │    │
+│  │                                                          │    │
+│  │  Require approval:                                       │    │
+│  │  - Delete memories                                       │    │
+│  │  - Disable tools                                         │    │
+│  │  - Modify prompts                                        │    │
+│  │                                                          │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│                             ▼                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    REPORT PHASE                          │    │
+│  │                                                          │    │
+│  │  - Log all observations and actions                      │    │
+│  │  - Generate summary for user (if significant)            │    │
+│  │  - Queue notifications for morning briefing              │    │
+│  │                                                          │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Maintenance Checks (Concrete)
+
+```python
+MAINTENANCE_CHECKS = [
+    {
+        "name": "memory_health",
+        "query": """
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN created_at < date('now', '-90 days') THEN 1 ELSE 0 END) as stale,
+                SUM(CASE WHEN importance < 3 THEN 1 ELSE 0 END) as low_importance
+            FROM memory_entries
+        """,
+        "action_threshold": {"stale": 100, "low_importance": 200},
+        "auto_action": "archive_stale_memories",
+        "approval_required": False
+    },
+    {
+        "name": "tool_health",
+        "source": "logs/api/errors-*.jsonl",
+        "pattern": "Count errors per tool in last 24h",
+        "action_threshold": {"error_count": 10, "error_rate": 0.3},
+        "auto_action": "alert_and_suggest_fallback",
+        "approval_required": True  # Don't auto-disable tools
+    },
+    {
+        "name": "feedback_patterns",
+        "query": "SELECT component, AVG(rating) FROM feedback GROUP BY component",
+        "action_threshold": {"avg_rating": 5.0},
+        "auto_action": "trigger_evolution_check",
+        "approval_required": False
+    },
+    {
+        "name": "cost_anomaly",
+        "source": "logs/api/access-*.jsonl",
+        "pattern": "Compare today's tokens vs 7-day average",
+        "action_threshold": {"pct_increase": 200},  # 2x normal
+        "auto_action": "alert_user",
+        "approval_required": True
+    }
+]
+```
+
+### CLI / Cron
+
+```bash
+# Manual run (dry mode)
+./bin/jarvis-maintenance --mode cloud --dry-run
+
+# Output:
+# 🔍 Observing system state...
+# ├── Memory: 523 total, 89 stale (>90d), 145 low importance
+# ├── Errors (24h): brave_search: 3, fetch: 1
+# ├── Feedback: 12 entries, avg 6.8, lowest: tool:search_memory (5.2)
+# └── Tokens (24h): 45,231 (normal range)
+#
+# 🧠 Analysis:
+# ├── Memory cleanup recommended: 89 stale entries
+# ├── No tool health issues
+# └── search_memory flagged for evolution check
+#
+# 📋 Proposed Actions (dry run):
+# 1. [AUTO] Archive 89 stale memories
+# 2. [AUTO] Trigger evolution check for search_memory
+#
+# Run with --execute to perform actions
+
+# Cron (every 6 hours)
+0 */6 * * * cd /home/boss/jarvis-voice && ./bin/jarvis-maintenance --mode cloud --execute >> logs/maintenance.log 2>&1
+```
+
+---
+
+## Phase 10: Proactive Briefing Agent
+
+### Concept
+
+Instead of hardcoded "good morning" workflows, an LLM-driven agent that **decides** what's worth telling you.
+
+### Current State (Workflow)
+
+```json
+{
+  "steps": [
+    {"tool": "get_weather"},
+    {"tool": "list_calendar_events"},
+    {"tool": "check_stock_prices"}
+  ]
+}
+```
+
+**Problem:** Same output every day, even if nothing changed or nothing is relevant.
+
+### Proactive State (Agent)
+
+```python
+BRIEFING_PROMPT = """
+You are preparing a morning briefing.
+
+Available sources: Weather, Calendar, Email, Stocks, News, Jarvis logs
+
+Your job:
+1. Check each source ONLY if likely relevant
+2. Skip sources with no significant info
+3. Prioritize: urgent > time-sensitive > informational
+4. Keep total briefing under 60 seconds spoken
+
+Output what the user NEEDS to know, not everything you CAN fetch.
+"""
+```
+
+### Example Output Comparison
+
+| Workflow (Current) | Agent (Proactive) |
+|--------------------|-------------------|
+| "Weather: 65°F. Calendar: No events. Stocks: AAPL +0.1%" | "Rain this afternoon, grab an umbrella. Your 3pm with Sarah moved. Bitcoin hit $50k." |
+
+---
+
+## Open Questions
+
+### Architecture
+- **Persistent daemon vs cron?** Daemon enables real-time reactions but adds complexity
+- **Notification channel?** Discord, email, voice, or just logs?
+- **Token budget for autonomous actions?** Cap daily spend?
+
+### For Swarm
+- Start with 2-agent research prototype?
+- How to handle MCP rate limits across parallel agents?
+
+### For Maintenance
+- How aggressive should auto-cleanup be?
+- Archive vs delete for old memories?
+
+### For Proactive Briefings
+- Learn user preferences? (skip stocks if never asked)
+- Interrupt threshold? (only notify if importance > X)
+
+---
+
+## References
+
+- [LLM Council](https://github.com/karpathy/llm-council) - Multi-LLM consensus (Karpathy)
+- [OpenAI Swarm](https://github.com/openai/swarm) - Lightweight multi-agent
+- [CrewAI](https://github.com/joaomdmoura/crewAI) - Role-based agents
+- [AutoGen](https://github.com/microsoft/autogen) - Microsoft multi-agent
+- [Swarm Brainstorm](swarm/BRAINSTORM.md) - Jarvis-specific design
+
+---
+
+**Document Version:** 2.0  
+**Last Updated:** 2026-02-02  
+**Status:** Phases 3, 4, 7 built but underutilized. Phases 8-10 brainstorming.
 
