@@ -191,7 +191,7 @@ Use this to:
 
 ## Generate New Image
 
-Generate a new image using the configured AI provider (Gemini or OpenAI).
+Generate a new image using the configured AI provider (Gemini, OpenAI, or xAI).
 
 ```bash
 curl -X POST http://localhost:8880/api/generated-images/generate \
@@ -209,12 +209,13 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
 |-----------|------|---------|-------------|
 | `prompt` | string | **required** | What to generate |
 | `aspect_ratio` | string | "square" | square, landscape, portrait, wide, tall, 16:9, 4:3 |
-| `image_size` | string | "2K" | 1K, 2K, or 4K |
+| `image_size` | string | "2K" | 1K, 2K, or 4K (Gemini/OpenAI only) |
 | `style` | string | null | Art style (photorealistic, watercolor, anime, etc.) |
 | `negative_prompt` | string | null | Things to avoid |
 | `use_grounding` | bool | false | Use Google Search for real-time data (Gemini only) |
-| `provider` | string | null | Override provider: "gemini" or "openai" |
+| `provider` | string | null | Override provider: "gemini", "openai", or "xai" |
 | `transparent` | bool | false | Transparent background (OpenAI only, png/webp) |
+| `n` | int | 1 | Number of images to generate, 1-10 (xAI only) |
 | `save` | bool | true | Save to disk and stash |
 | `mode` | string | "cloud" | "cloud" uses cloud.env, "local" uses local.env |
 | `upload_to_cdn` | bool | false | Upload to Cloudflare CDN and return public URL |
@@ -266,6 +267,50 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
     "transparent": true
   }'
 ```
+
+**Using xAI (fast & cheap):**
+```bash
+curl -X POST http://localhost:8880/api/generated-images/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A futuristic cityscape at night",
+    "provider": "xai",
+    "aspect_ratio": "landscape"
+  }'
+```
+
+**Batch generation (xAI only - multiple variations):**
+```bash
+curl -X POST http://localhost:8880/api/generated-images/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A cute robot mascot",
+    "provider": "xai",
+    "n": 4
+  }'
+```
+
+Response with multiple images:
+```json
+{
+  "ok": true,
+  "speech": "Generated image with xai: A cute robot mascot (4 images)",
+  "data": {
+    "image_count": 4,
+    "saved": {
+      "filename": "generated_a_cute_robot_mascot_20260202_123456.png",
+      "space_id": "space_20260202_123456_abc123"
+    },
+    "additional_images": [
+      { "filename": "..._2.png", "stash_ref": "stash://space_.../f_..." },
+      { "filename": "..._3.png", "stash_ref": "stash://space_.../f_..." },
+      { "filename": "..._4.png", "stash_ref": "stash://space_.../f_..." }
+    ]
+  }
+}
+```
+
+All images are saved to `data/generated_images/` and the same stash space.
 
 **With CDN upload** (get public URL in one step):
 ```bash
@@ -327,7 +372,7 @@ curl http://localhost:8880/api/generated-images/health
 The default provider is set in `config/cloud.env`:
 
 ```bash
-# Provider: gemini (default) or openai
+# Provider: gemini (default), openai, or xai
 IMAGE_TOOL_PROVIDER="gemini"
 
 # Gemini model
@@ -335,9 +380,25 @@ GEMINI_IMAGE_MODEL="gemini-3-pro-image-preview"
 
 # OpenAI model (if using openai provider)
 OPENAI_IMAGE_MODEL="gpt-image-1.5"
+
+# xAI model (if using xai provider)
+# XAI_IMAGE_MODEL="grok-imagine-image"  # default
 ```
 
 You can override the provider per-request using the `provider` parameter.
+
+### Provider Comparison
+
+| Feature | Gemini | OpenAI | xAI |
+|---------|--------|--------|-----|
+| Model | gemini-2.0-flash-preview | gpt-image-1.5 | grok-imagine-image |
+| Grounding (real-time data) | ✅ | ❌ | ❌ |
+| Text rendering | Good | Best | Good |
+| Transparent backgrounds | ❌ | ✅ | ❌ |
+| Batch generation (n > 1) | ❌ | ❌ | ✅ (1-10 images) |
+| Quality parameter | ✅ (1K/2K/4K) | ✅ (low/med/high) | ❌ (not supported) |
+| Speed | Medium | Slow | Fast |
+| Cost | Medium | High | Low |
 
 ---
 

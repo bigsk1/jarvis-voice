@@ -303,6 +303,14 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-02-02:**
+- ✅ **xAI Image Generation** - Fast & cheap image generation ⭐ NEW
+  - Added `xai` provider to `generate_image` tool (grok-imagine-image model)
+  - Batch generation: `n` parameter (1-10 images) for variations
+  - All batch images saved to same stash space with individual refs
+  - Works with all existing tools (canvas, email, gallery, CDN upload)
+  - Set `IMAGE_TOOL_PROVIDER=xai` or use `provider: "xai"` per-request
+  - Note: Quality parameter not supported by xAI (no 1K/2K/4K)
+  - See: [`docs/api/GENERATED_IMAGES.md`](api/GENERATED_IMAGES.md)
 - ✅ **Real-time Progress Events** - See tool execution as it happens ⭐ NEW
   - WebUI shows "Using weather...", "Using brave_search..." during processing
   - Tool cards appear with status (pending → complete with duration)
