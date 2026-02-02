@@ -134,6 +134,8 @@ A self-hosted voice assistant with tool calling, memory, and autonomous coding c
   - API: `POST /api/images`, `POST /api/images/base64`
   - See [`docs/api/IMAGES.md`](docs/api/IMAGES.md)
 - **Generated Images API**: Full management of AI-generated images
+  - **3 providers**: Gemini (grounding), OpenAI (best text), xAI (fast & cheap!)
+  - **Batch generation**: xAI supports `n=1-10` for multiple variations ($0.02/image!)
   - List, search, download, delete local images
   - Generate new images with optional `upload_to_cdn` for one-step CDN URL
   - CDN catalog (`cdn_catalog.json`) caches URLs - no re-uploads needed
@@ -369,7 +371,7 @@ jarvis-voice/
 │   ├── ssh_remote.py         # Remote SSH execution
 │   ├── docker_control.py     # Docker/compose management
 │   ├── deep_memory_search.py # Multi-source search
-│   ├── generate_image.py     # AI image generation (Gemini)
+│   ├── generate_image.py     # AI image generation (Gemini/OpenAI/xAI)
 │   ├── generate_video.py     # AI video generation (xAI Grok, Gemini Veo)
 │   ├── generate_music.py     # AI music (ElevenLabs)
 │   ├── analyze_image.py      # Vision analysis
@@ -713,9 +715,11 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 
 **Artifact & Output Tools:**
-- `generate_image` - **AI image generation**: Google Gemini 3 Pro with Search Grounding
+- `generate_image` - **AI image generation**: Gemini, OpenAI, or xAI
+  - **3 providers**: Gemini (grounding), OpenAI (best text), xAI (fast & cheap - $0.02/image!)
+  - **Batch generation**: xAI `n=1-10` for multiple variations in one request
   - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
-  - **Google Search Grounding** - Real-time data in images (weather, crypto prices, news)
+  - **Gemini Search Grounding** - Real-time data in images (weather, crypto prices, news)
   - Auto-saves to stash + memory for cross-session recall
 - `generate_video` - **AI video generation**: xAI Grok or Gemini Veo
   - xAI: 1-15s duration, 7 aspect ratios, video editing
@@ -1484,13 +1488,15 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **Image upload**: Drag-drop/paste/click with vision analysis
   - Real-time WebSocket chat with tool streaming
   - See: [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
-- ✅ **AI Image Generation (Gemini 3 Pro)** - High-quality image generation
+- ✅ **AI Image Generation (Gemini/OpenAI/xAI)** - Multi-provider image generation ⭐ ENHANCED
+  - **3 providers**: Gemini (grounding), OpenAI (best text), xAI (fast & cheap!)
+  - **xAI Grok Imagine**: $0.02/image, batch generation `n=1-10` for variations
   - "Generate a bitcoin infographic with current price" → Gemini creates with real data
   - Aspect ratios (1:1, 16:9, 9:16, 3:4, etc.), styles, negative prompts
-  - **Google Search Grounding** - Images can include real-time data (weather, prices, news)
+  - **Gemini Search Grounding** - Images can include real-time data (weather, prices, news)
   - Auto-saves to stash + memory for cross-session recall
   - Multi-tool workflows: generate → email, generate → print, generate → canvas
-  - See: `skills/generate_image.py`
+  - See: `skills/generate_image.py`, [`docs/api/GENERATED_IMAGES.md`](docs/api/GENERATED_IMAGES.md)
 - ✅ **AI Video Generation (xAI Grok + Gemini Veo)** - Dual-provider video generation
   - "Generate a video of a cat playing with a ball" → xAI/Gemini creates video
   - xAI: 1-15s, 7 aspect ratios, video editing | Gemini: 4/6/8s, native audio, 4K
@@ -1659,6 +1665,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.38 (February 2026)  
+**Current Version:** v2.39 (February 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Real-time Progress Events + Stop Button + Voice Compression Fix
+**Latest Features:** xAI Image Generation (batch n=1-10, $0.02/image!) + Progress Events + Stop Button
