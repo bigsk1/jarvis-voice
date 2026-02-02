@@ -302,6 +302,26 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-02-02:**
+- ✅ **Real-time Progress Events** - See tool execution as it happens ⭐ NEW
+  - WebUI shows "Using weather...", "Using brave_search..." during processing
+  - Tool cards appear with status (pending → complete with duration)
+  - Toggle in Settings → UI → Progress Events
+  - Duplicate tool calls tracked separately (e.g., `search_0`, `search_1`)
+- ✅ **Stop Button** - Graceful processing cancellation ⭐ NEW
+  - Red stop button (⏹) appears during processing
+  - Cancels between turns, returns partial results
+  - "Stopped after 2 tool(s). Results so far: ..."
+- ✅ **Mobile Layout Fixes** - Better button visibility on small screens
+  - Send button no longer cut off on iPhone 13 Pro (428px)
+  - Mobile shows: Upload (📎), Enhance (✨), Send (➤), Stop (⏹)
+  - Mic hidden on mobile (native keyboard has voice input)
+- ✅ **Voice Compression Fix** - Preserves named entities in multi-tool summaries
+  - Before: "Animation adventure at Regal" (useless!)
+  - After: "Shelter, Iron Lung, Avatar: Fire and Ash at Regal Evergreen"
+  - Compression now sees BOTH LLM response (names) + raw data (numbers)
+  - Configurable via `JARVIS_MULTI_TURN_WORD_LIMIT` (default 50)
+
 **2026-02-01:**
 - ✅ **Video Gallery UI** - Browse generated videos in jarvis-canvas ⭐ NEW
   - Grid view with hover preview and provider badges (xAI/Gemini)
