@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 Image Generation Tool for Jarvis
-Supports multiple providers: Google Gemini and OpenAI GPT Image
+Supports multiple providers: Google Gemini, OpenAI GPT Image, and xAI Grok Imagine
 
 Features:
   - Google Gemini: Search grounding for real-time data (weather, stocks, current events)
   - OpenAI GPT Image: Superior instruction following, text rendering, real-world knowledge
+  - xAI Grok Imagine: Fast and cheap image generation with aspect ratio support
   - Multiple aspect ratios and quality settings
   - Transparent background support (OpenAI)
   - Saves to stash for use with email, printer, canvas, pdf_create, etc.
@@ -13,6 +14,7 @@ Features:
 Providers:
   - gemini: Google Gemini 3 Pro Image Preview (grounding support)
   - openai: OpenAI gpt-image-1 (best text rendering, highest quality)
+  - xai: xAI Grok Imagine (fast, cheap, good quality)
 
 Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
 """
@@ -79,8 +81,128 @@ OPENAI_QUALITY_MAP = {
     "high": "high"
 }
 
+# =============================================================================
+# Provider: xAI Grok Imagine
+# =============================================================================
+XAI_API_BASE = "https://api.x.ai/v1/images/generations"
+DEFAULT_XAI_IMAGE_MODEL = "grok-imagine-image"
+
+# xAI aspect ratios (supports common ratios)
+XAI_ASPECT_RATIOS = {
+    "square": "1:1",
+    "landscape": "16:9",
+    "portrait": "9:16",
+    "wide": "21:9",
+    "tall": "9:21",
+    "4:3": "4:3",
+    "3:4": "3:4",
+    "2:3": "2:3",
+    "3:2": "3:2",
+    "16:9": "16:9",
+    "9:16": "9:16",
+    "1:1": "1:1"
+}
+
 # Shared image sizes
 IMAGE_SIZES = ["1K", "2K", "4K"]
+
+
+def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = None,
+                       negative_prompt: str = None, n: int = 1) -> dict:
+    """
+    Generate an image using xAI Grok Imagine API.
+    
+    Args:
+        prompt: What to generate
+        aspect_ratio: square, landscape, portrait, wide, tall, 4:3, 3:4, etc.
+        style: Optional art style to prepend
+        negative_prompt: Things to avoid (appended to prompt)
+        n: Number of images to generate (1-10)
+    """
+    
+    api_key = get_config_value('XAI_API_KEY')
+    if not api_key:
+        raise ValueError("XAI_API_KEY not configured. Add it to config/cloud.env")
+    
+    # Get model from env or use default
+    model_name = get_config_value('XAI_IMAGE_MODEL', DEFAULT_XAI_IMAGE_MODEL)
+    
+    # Build the prompt
+    full_prompt = prompt
+    if style:
+        full_prompt = f"{style} style: {prompt}"
+    if negative_prompt:
+        full_prompt += f". Do not include: {negative_prompt}"
+    
+    # Map aspect ratio
+    ar = XAI_ASPECT_RATIOS.get(aspect_ratio, XAI_ASPECT_RATIOS.get(aspect_ratio, "1:1"))
+    
+    # Validate n (1-10)
+    n = max(1, min(10, n))
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": model_name,
+        "prompt": full_prompt,
+        "response_format": "b64_json",  # Get base64 for consistency
+        "n": n
+    }
+    
+    # Add aspect ratio if not default
+    if ar != "1:1":
+        payload["aspect_ratio"] = ar
+    
+    # Make request
+    timeout = 120  # xAI is generally fast
+    response = requests.post(
+        XAI_API_BASE,
+        headers=headers,
+        json=payload,
+        timeout=timeout
+    )
+    
+    if response.status_code != 200:
+        error_msg = response.text
+        try:
+            error_data = response.json()
+            error_msg = error_data.get('error', {}).get('message', response.text)
+        except:
+            pass
+        raise Exception(f"xAI API error ({response.status_code}): {error_msg}")
+    
+    result = response.json()
+    
+    # Extract images from response
+    data = result.get('data', [])
+    if not data:
+        raise Exception("No image generated - empty response from xAI")
+    
+    # Return first image (or all if n > 1)
+    images = []
+    for item in data:
+        image_b64 = item.get('b64_json')
+        if image_b64:
+            images.append(image_b64)
+    
+    if not images:
+        raise Exception("No image data in response")
+    
+    return {
+        "image_base64": images[0],  # Primary image
+        "all_images": images if n > 1 else None,  # All images if multiple requested
+        "image_count": len(images),
+        "mime_type": "image/png",  # xAI returns PNG
+        "prompt": prompt,
+        "full_prompt": full_prompt,
+        "model": model_name,
+        "provider": "xai",
+        "aspect_ratio": ar,
+        "used_grounding": False
+    }
 
 
 def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size: str = "2K",
@@ -336,9 +458,9 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
                    use_grounding: bool = False, style: str = None, 
                    negative_prompt: str = None, context_data: str = None,
                    transparent: bool = False, output_format: str = "png",
-                   provider: str = None) -> dict:
+                   provider: str = None, n: int = 1) -> dict:
     """
-    Generate an image using configured provider (Gemini or OpenAI).
+    Generate an image using configured provider (Gemini, OpenAI, or xAI).
     
     Args:
         prompt: What to generate
@@ -350,7 +472,8 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
         context_data: Additional data from other Jarvis tools (Gemini only)
         transparent: Enable transparent background (OpenAI only, png/webp)
         output_format: png, jpeg, or webp (OpenAI only)
-        provider: Override provider (gemini or openai)
+        provider: Override provider (gemini, openai, or xai)
+        n: Number of images to generate (xAI only, 1-10)
     """
     
     # Determine provider
@@ -366,6 +489,14 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
             negative_prompt=negative_prompt,
             transparent=transparent,
             output_format=output_format
+        )
+    elif provider == 'xai':
+        return generate_image_xai(
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            style=style,
+            negative_prompt=negative_prompt,
+            n=n
         )
     else:
         # Default to Gemini
@@ -473,6 +604,9 @@ def main():
         output_format = args.get('output_format', 'png')
         provider = args.get('provider')  # Override provider if specified
         
+        # xAI-specific parameters
+        n = args.get('n', 1)  # Number of images (xAI supports 1-10)
+        
         # Generate the image
         result = generate_image(
             prompt=prompt,
@@ -484,7 +618,8 @@ def main():
             context_data=context_data,
             transparent=transparent,
             output_format=output_format,
-            provider=provider
+            provider=provider,
+            n=n
         )
         
         # Save to stash if requested
@@ -551,6 +686,10 @@ def main():
                 response["data"]["transparent"] = True
             if result.get('revised_prompt'):
                 response["data"]["revised_prompt"] = result['revised_prompt']
+        elif provider_used == 'xai':
+            if result.get('image_count', 1) > 1:
+                response["data"]["image_count"] = result['image_count']
+                response["speech"] += f" ({result['image_count']} images)"
         
         # Add save info
         if save_info:

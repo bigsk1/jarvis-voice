@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "generate_image",
-  "description": "🎨 Generate AI images with Google Gemini or OpenAI GPT Image. Create pictures, artwork, infographics, visualizations. Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize'. PROVIDERS: Gemini (default) has Google Search grounding for real-time data; OpenAI has superior text rendering and transparent backgrounds. Example: 'Create an infographic of today's weather' with use_grounding=true (Gemini). Images save to stash for email, print, canvas, PDF.",
+  "description": "🎨 Generate AI images with Gemini, OpenAI, or xAI. Create pictures, artwork, infographics, visualizations. Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize'. PROVIDERS: Gemini (default) has Google Search grounding; OpenAI has best text rendering; xAI is fast and cheap. Example: 'Create an infographic of today's weather' with use_grounding=true (Gemini). Images save to stash for email, print, canvas, PDF.",
   "script": "generate_image.py",
   "parameters": {
     "type": "object",
@@ -12,8 +12,8 @@
       },
       "provider": {
         "type": "string",
-        "enum": ["gemini", "openai"],
-        "description": "Image provider: 'gemini' (default, has grounding for real-time data), 'openai' (gpt-image-1, best text rendering, transparent backgrounds). If not specified, uses IMAGE_TOOL_PROVIDER from config."
+        "enum": ["gemini", "openai", "xai"],
+        "description": "Image provider: 'gemini' (default, grounding for real-time data), 'openai' (gpt-image-1, best text), 'xai' (grok-imagine, fast & cheap). Uses IMAGE_TOOL_PROVIDER from config if not specified."
       },
       "aspect_ratio": {
         "type": "string",
@@ -49,6 +49,10 @@
         "type": "string",
         "enum": ["png", "jpeg", "webp"],
         "description": "OPENAI ONLY: Output format. 'png' (default, lossless), 'jpeg' (faster, smaller), 'webp' (modern, good compression). Transparent requires png/webp."
+      },
+      "n": {
+        "type": "integer",
+        "description": "XAI ONLY: Number of images to generate (1-10). Only first image is saved to stash; all returned in response."
       },
       "save": {
         "type": "boolean",
