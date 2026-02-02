@@ -1136,35 +1136,33 @@ Your condensed response:"""
             has_arrays = any(isinstance(v, list) for v in accumulated_data.values())
             max_chars = 2000 if has_arrays else 800
             
+            # Include BOTH: LLM's synthesized response (has extracted names) AND raw tool data (has structured info)
+            # This ensures we don't lose either source of truth
             context = f"""User asked: "{user_query}"
 
 Tools executed: {', '.join(tools_used)}
 
-Results: {json.dumps(accumulated_data, indent=2)[:max_chars]}
+LLM's detailed answer (USE NAMES FROM HERE):
+{llm_response[:1200]}
 
-Create a concise response for voice output (will be spoken aloud through speakers).
+Raw tool data (backup for numbers/details):
+{json.dumps(accumulated_data, indent=2)[:max_chars]}
 
-CRITICAL RULES:
-1. MAX {multi_turn_limit} WORDS for multi-tool summaries
-2. State outcome + essential details
-3. No emojis, no markdown, no bullet points, no explanations of what you did
-4. NEVER drop named entities - movie titles, business names, product names, people's names MUST be included
-5. If user asked for "top 3" or a list, the response MUST include those specific items by name
+Condense into a voice-friendly summary (will be spoken aloud through speakers).
 
-GOOD EXAMPLES:
-- "Top 3 movies in Hillsboro: Send Help at Regal Movies On TV, The Amateur at Evergreen Parkway, and Companion at AMC. Check theater sites for showtimes."
-- "Bitcoin price is $101,000, down 2% today"
-- "Email sent to John, confirmation code 12345"
-- "Weather: 52°F, light rain. High 58, low 45 today."
+RULES:
+1. MAX {multi_turn_limit} WORDS
+2. PRESERVE all named entities (restaurant names, movie titles, business names, people) - copy them exactly
+3. PRESERVE key numbers (prices, temperatures, percentages, ratings)
+4. No emojis, no markdown, no bullet points, no explanations of what tools did
+5. If user asked for "top 3" items, include all 3 by name
 
-BAD EXAMPLES (missing entities):
-- "Animation adventure at Regal" ← Missing the actual movie title!
-- "Top movies in area: 1. At theater. 2. At theater." ← Useless without movie names
-- "Found 3 options nearby" ← No actual names given
+GOOD: "Top 3 date night spots: Copper River, BJ's Brewhouse, Thirsty Lion. Tonight: 47°F clear."
+BAD: "[Names from results]" or "Found 3 options" ← Never use placeholders!
 
 Your response:"""
             
-            response = self.router.provider.chat(context, system_prompt=f"You are a voice assistant. Concise response, MAX {multi_turn_limit} words. ALWAYS include named entities (titles, names, places). No explanations.")
+            response = self.router.provider.chat(context, system_prompt=f"Condense to MAX {multi_turn_limit} words. Preserve names, titles, and numbers exactly. No placeholders.")
             return response.strip()
         except Exception as e:
             # Fallback to LLM's original response
