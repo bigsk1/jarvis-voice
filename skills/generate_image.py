@@ -620,11 +620,11 @@ def save_additional_images(all_images: list, prompt: str, provider: str, space_i
     if space_id:
         try:
             sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
-            from stash_helper import Space, StashFile
-            space = Space(space_id)
+            from stash_helper import StashSpace, StashFile
+            space = StashSpace(space_id)
             stash_file = StashFile(space)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Could not open stash space {space_id}: {e}", file=sys.stderr)
     
     for i, img_b64 in enumerate(all_images[1:], start=2):
         filename = f"generated_{safe_prompt}_{timestamp}_{i}.png"
