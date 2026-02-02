@@ -1090,10 +1090,15 @@ RULES:
 2. Remove: greetings, emojis, markdown, numbered lists
 3. For informational queries, include enough context to be useful
 4. No URLs unless critical
+5. NEVER drop named entities - movie titles, restaurant names, product names, people's names MUST be preserved
+6. If user asked for specific items (top 3, best restaurants, etc.), include those by name
 
 EXAMPLES:
 Verbose: "Great! I've looked up ntfy. It's an open-source push notification service that lets you..."
 Condensed: "Ntfy is an open-source push notification service. Self-hosted setup needs TLS certs for iOS APNs. Without proper HTTPS, it falls back to battery-draining polling. Use Caddy or nginx for auto-TLS."
+
+BAD (drops entities): "Found several restaurants nearby including one Italian and one Thai option."
+GOOD (preserves entities): "Top restaurants nearby: Olive Garden for Italian, Thai Orchid for Thai, and Red Robin for burgers."
 
 Your condensed response:"""
             
@@ -1111,6 +1116,7 @@ Your condensed response:"""
     def _format_multi_turn_summary(self, user_query: str, tools_used: list, accumulated_data: dict, llm_response: str) -> str:
         """
         Format multi-turn results for voice output (short & sweet).
+        Uses JARVIS_MULTI_TURN_WORD_LIMIT for multi-tool summaries (default: 50 words).
         
         Args:
             user_query: Original user request
@@ -1122,6 +1128,9 @@ Your condensed response:"""
             Concise voice-friendly summary
         """
         try:
+            # Get configurable word limit for multi-turn (default 50)
+            multi_turn_limit = int(os.environ.get('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+            
             # Use LLM to create a concise voice summary
             # Calculate dynamic truncation - more data for repeated tools (arrays)
             has_arrays = any(isinstance(v, list) for v in accumulated_data.values())
@@ -1136,23 +1145,26 @@ Results: {json.dumps(accumulated_data, indent=2)[:max_chars]}
 Create a concise response for voice output (will be spoken aloud through speakers).
 
 CRITICAL RULES:
-1. MAX 40 WORDS for multi-tool summaries
+1. MAX {multi_turn_limit} WORDS for multi-tool summaries
 2. State outcome + essential details
 3. No emojis, no markdown, no bullet points, no explanations of what you did
+4. NEVER drop named entities - movie titles, business names, product names, people's names MUST be included
+5. If user asked for "top 3" or a list, the response MUST include those specific items by name
 
 GOOD EXAMPLES:
-- "Tetris server started on port 5000 at your local IP address"
-- "Webhook sent successfully, URL saved to memory and your canvas has been updated"
+- "Top 3 movies in Hillsboro: Send Help at Regal Movies On TV, The Amateur at Evergreen Parkway, and Companion at AMC. Check theater sites for showtimes."
 - "Bitcoin price is $101,000, down 2% today"
 - "Email sent to John, confirmation code 12345"
+- "Weather: 52°F, light rain. High 58, low 45 today."
 
-BAD EXAMPLES (TOO LONG):
-- "Perfect! I've successfully started the Tetris game server. Here's what I did: 1. Found the game..."
-- "Great news! The webhook has been sent successfully to httpbin.org and I've saved the URL..."
+BAD EXAMPLES (missing entities):
+- "Animation adventure at Regal" ← Missing the actual movie title!
+- "Top movies in area: 1. At theater. 2. At theater." ← Useless without movie names
+- "Found 3 options nearby" ← No actual names given
 
 Your response:"""
             
-            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Concise response, MAX 40 words. No explanations.")
+            response = self.router.provider.chat(context, system_prompt=f"You are a voice assistant. Concise response, MAX {multi_turn_limit} words. ALWAYS include named entities (titles, names, places). No explanations.")
             return response.strip()
         except Exception as e:
             # Fallback to LLM's original response
