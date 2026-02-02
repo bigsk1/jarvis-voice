@@ -1,7 +1,6 @@
 ---
-alwaysApply: true
+alwaysApply: false
 ---
-
 # QMD Search for Documentation
 
 This project has 148 markdown docs indexed with QMD (tobi/qmd). Use qmd BEFORE reading files manually - it's faster and finds relevant content across the entire docs/ folder.

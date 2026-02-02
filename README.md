@@ -1659,6 +1659,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.37 (February 2026)  
+**Current Version:** v2.38 (February 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Video Gallery UI + Video Catalog + Canvas Modular Architecture
+**Latest Features:** Real-time Progress Events + Stop Button + Voice Compression Fix
