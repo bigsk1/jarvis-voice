@@ -148,16 +148,23 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
     payload = {
         "model": model_name,
         "prompt": full_prompt,
-        "response_format": "b64_json",  # Get base64 for consistency
         "n": n
     }
+    
+    # Use URL format for batch (n > 1), base64 for single
+    # xAI batch generation works better with URL format
+    if n > 1:
+        # URLs for batch - we'll download them
+        pass  # Default is URL
+    else:
+        payload["response_format"] = "b64_json"
     
     # Add aspect ratio if not default
     if ar != "1:1":
         payload["aspect_ratio"] = ar
     
-    # Make request
-    timeout = 120  # xAI is generally fast
+    # Make request (longer timeout for batch)
+    timeout = 120 + (n - 1) * 30  # Extra time per image
     response = requests.post(
         XAI_API_BASE,
         headers=headers,
@@ -181,20 +188,30 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
     if not data:
         raise Exception("No image generated - empty response from xAI")
     
-    # Return first image (or all if n > 1)
+    # Handle both URL and base64 responses
     images = []
     for item in data:
+        # Try base64 first
         image_b64 = item.get('b64_json')
         if image_b64:
             images.append(image_b64)
+        # Try URL and download
+        elif item.get('url'):
+            try:
+                img_response = requests.get(item['url'], timeout=60)
+                if img_response.status_code == 200:
+                    images.append(base64.b64encode(img_response.content).decode('utf-8'))
+            except Exception as e:
+                print(f"Warning: Failed to download image from URL: {e}", file=sys.stderr)
     
     if not images:
         raise Exception("No image data in response")
     
     return {
         "image_base64": images[0],  # Primary image
-        "all_images": images if n > 1 else None,  # All images if multiple requested
+        "all_images": images if len(images) > 1 else None,  # All images if multiple returned
         "image_count": len(images),
+        "requested_count": n,
         "mime_type": "image/png",  # xAI returns PNG
         "prompt": prompt,
         "full_prompt": full_prompt,
@@ -576,8 +593,15 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
         }
 
 
-def save_additional_images(all_images: list, prompt: str, provider: str) -> list:
-    """Save additional images when n > 1 (xAI batch generation)."""
+def save_additional_images(all_images: list, prompt: str, provider: str, space_id: str = None) -> list:
+    """Save additional images when n > 1 (xAI batch generation).
+    
+    Args:
+        all_images: List of base64-encoded images
+        prompt: Original prompt
+        provider: Provider name (xai)
+        space_id: Stash space ID to add images to (same space as first image)
+    """
     saved_files = []
     
     # Skip first image (already saved by save_to_stash)
@@ -591,15 +615,46 @@ def save_additional_images(all_images: list, prompt: str, provider: str) -> list
     safe_prompt = safe_prompt.replace(' ', '_').lower()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
+    # Try to get stash helper for adding to same space
+    stash_file = None
+    if space_id:
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+            from stash_helper import Space, StashFile
+            space = Space(space_id)
+            stash_file = StashFile(space)
+        except Exception:
+            pass
+    
     for i, img_b64 in enumerate(all_images[1:], start=2):
         filename = f"generated_{safe_prompt}_{timestamp}_{i}.png"
         image_bytes = base64.b64decode(img_b64)
+        
+        # Save to generated_images
         image_path = images_dir / filename
         image_path.write_bytes(image_bytes)
-        saved_files.append({
+        
+        file_info = {
             "filename": filename,
             "path": str(image_path)
-        })
+        }
+        
+        # Also add to stash (same space as first image)
+        if stash_file:
+            try:
+                result = stash_file.save_binary(
+                    data=image_bytes,
+                    name=filename,
+                    mime_type="image/png",
+                    on_conflict='overwrite',
+                    tags=['ai_generated', provider, 'batch'],
+                    tool_origin='generate_image'
+                )
+                file_info["stash_ref"] = result.get('ref')
+            except Exception:
+                pass
+        
+        saved_files.append(file_info)
     
     return saved_files
 
@@ -719,12 +774,14 @@ def main():
                 response["data"]["image_count"] = result['image_count']
                 response["speech"] += f" ({result['image_count']} images)"
                 
-                # Save additional images when n > 1
+                # Save additional images when n > 1 (same stash space)
                 if save and result.get('all_images'):
+                    space_id = save_info.get('space_id') if save_info else None
                     additional = save_additional_images(
                         result['all_images'], 
                         prompt, 
-                        provider_used
+                        provider_used,
+                        space_id
                     )
                     if additional:
                         response["data"]["additional_images"] = additional
