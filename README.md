@@ -1328,6 +1328,33 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
+**Completed (February 2026):**
+- ✅ **xAI Image Generation** - Fast & cheap image generation ⭐ NEW
+  - Added `xai` provider to `generate_image` tool (grok-imagine-image model)
+  - **$0.02/image** - 10x cheaper than alternatives!
+  - **Batch generation**: `n=1-10` for multiple variations in one request
+  - All batch images saved to same stash space with individual refs
+  - Works with all existing tools (canvas, email, gallery, CDN upload)
+  - Set `IMAGE_TOOL_PROVIDER=xai` or use `provider: "xai"` per-request
+  - See: [`docs/api/GENERATED_IMAGES.md`](docs/api/GENERATED_IMAGES.md)
+- ✅ **Real-time Progress Events** - See tool execution as it happens
+  - WebUI shows "Using weather...", "Using brave_search..." during processing
+  - Tool cards appear with status (pending → complete with duration)
+  - Toggle in Settings → "Progress Events"
+- ✅ **Stop Button** - Graceful cancellation of long-running tasks
+  - Red stop button appears during processing
+  - Returns partial results instead of full abort
+- ✅ **Mobile Layout Fixes** - WebUI works on small screens (iPhone 13 Pro, etc.)
+  - Action buttons (upload, enhance) remain visible at 428px width
+  - Native mobile keyboard provides mic functionality
+- ✅ **Voice Compression Fix** - Named entities preserved in spoken summaries
+  - Movie titles, restaurant names no longer stripped from voice output
+  - Configurable word limit via `JARVIS_MULTI_TURN_WORD_LIMIT`
+- ✅ **System Prompt Refinements** - LLM self-review improvements
+  - Fixed tool name mismatches (`mcp_fetch` → `mcp_fetch_fetch`)
+  - Consolidated reminder/alert rules
+  - Clarified memory fallback and native search behavior
+
 **Completed (January 2026):**
 - ✅ **Optional API Authentication** - Bearer token auth for Jarvis API 
   - Toggle via `JARVIS_API_AUTH=true/false` in cloud.env/local.env
