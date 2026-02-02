@@ -576,6 +576,34 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
         }
 
 
+def save_additional_images(all_images: list, prompt: str, provider: str) -> list:
+    """Save additional images when n > 1 (xAI batch generation)."""
+    saved_files = []
+    
+    # Skip first image (already saved by save_to_stash)
+    if len(all_images) <= 1:
+        return saved_files
+    
+    images_dir = Path(__file__).parent.parent / 'data' / 'generated_images'
+    images_dir.mkdir(exist_ok=True)
+    
+    safe_prompt = "".join(c if c.isalnum() or c in ' -_' else '' for c in prompt[:40])
+    safe_prompt = safe_prompt.replace(' ', '_').lower()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    for i, img_b64 in enumerate(all_images[1:], start=2):
+        filename = f"generated_{safe_prompt}_{timestamp}_{i}.png"
+        image_bytes = base64.b64decode(img_b64)
+        image_path = images_dir / filename
+        image_path.write_bytes(image_bytes)
+        saved_files.append({
+            "filename": filename,
+            "path": str(image_path)
+        })
+    
+    return saved_files
+
+
 def main():
     try:
         load_config()
@@ -690,6 +718,16 @@ def main():
             if result.get('image_count', 1) > 1:
                 response["data"]["image_count"] = result['image_count']
                 response["speech"] += f" ({result['image_count']} images)"
+                
+                # Save additional images when n > 1
+                if save and result.get('all_images'):
+                    additional = save_additional_images(
+                        result['all_images'], 
+                        prompt, 
+                        provider_used
+                    )
+                    if additional:
+                        response["data"]["additional_images"] = additional
         
         # Add save info
         if save_info:

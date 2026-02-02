@@ -157,8 +157,9 @@ class GenerateRequest(BaseModel):
     style: Optional[str] = Field(None, description="Art style (e.g., 'photorealistic', 'watercolor', 'anime')")
     negative_prompt: Optional[str] = Field(None, description="Things to avoid in the image")
     use_grounding: bool = Field(False, description="Use Google Search for real-time data (Gemini only)")
-    provider: Optional[str] = Field(None, description="Override provider: 'gemini' or 'openai'")
+    provider: Optional[str] = Field(None, description="Override provider: 'gemini', 'openai', or 'xai'")
     transparent: bool = Field(False, description="Transparent background (OpenAI only, png/webp)")
+    n: Optional[int] = Field(None, ge=1, le=10, description="Number of images (xAI only, 1-10)")
     save: bool = Field(True, description="Save to disk and stash")
     mode: str = Field("cloud", description="'cloud' uses cloud.env, 'local' uses local.env")
     upload_to_cdn: bool = Field(False, description="Upload to Cloudflare CDN and return public URL")
@@ -342,6 +343,8 @@ async def generate_image(request: GenerateRequest):
             args["provider"] = request.provider
         if request.transparent:
             args["transparent"] = request.transparent
+        if request.n and request.n > 1:
+            args["n"] = request.n
         
         # Call generate_image tool
         tool_path = PROJECT_ROOT / "skills" / "generate_image.py"
