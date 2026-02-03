@@ -207,8 +207,8 @@ class JarvisApp {
       
       // Sync to server so TTS generation is actually disabled (saves 11labs tokens!)
       try {
-        await fetch('/api/settings', {
-          method: 'POST',
+        await fetch('/api/settings/web', {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tts_enabled: this.audioEnabled })
         });
