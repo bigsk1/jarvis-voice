@@ -195,7 +195,7 @@ class JarvisApp {
     });
     
     // Audio toggle (enable/disable TTS)
-    this.audioToggle.addEventListener('click', () => {
+    this.audioToggle.addEventListener('click', async () => {
       this.audioEnabled = !this.audioEnabled;
       Utils.storage.set('audioEnabled', this.audioEnabled);
       this._updateAudioButton();
@@ -203,6 +203,17 @@ class JarvisApp {
       // If disabling audio, also stop any current playback
       if (!this.audioEnabled && this.currentAudio) {
         this.stopAudioPlayback();
+      }
+      
+      // Sync to server so TTS generation is actually disabled (saves 11labs tokens!)
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tts_enabled: this.audioEnabled })
+        });
+      } catch (err) {
+        console.error('Failed to sync TTS setting to server:', err);
       }
     });
     
@@ -456,6 +467,29 @@ class JarvisApp {
     
     // Update audio button
     this._updateAudioButton();
+    
+    // Sync audio toggle with server TTS setting on startup
+    this._syncAudioWithServer();
+  }
+  
+  /**
+   * Sync audio toggle state with server TTS setting
+   */
+  async _syncAudioWithServer() {
+    try {
+      const response = await fetch('/api/settings');
+      const data = await response.json();
+      if (data.ok && data.settings) {
+        const serverTtsEnabled = data.settings.audio?.tts_enabled || false;
+        if (this.audioEnabled !== serverTtsEnabled) {
+          this.audioEnabled = serverTtsEnabled;
+          Utils.storage.set('audioEnabled', this.audioEnabled);
+          this._updateAudioButton();
+        }
+      }
+    } catch (err) {
+      console.error('Failed to sync audio setting with server:', err);
+    }
   }
 
   /**
@@ -820,6 +854,11 @@ class JarvisApp {
         document.getElementById('setting-tts').checked = s.audio?.tts_enabled || false;
         document.getElementById('setting-progress-events').checked = s.ui?.progress_events !== false;  // Default true
         document.getElementById('setting-glow-intensity').value = this.glowIntensity;
+        
+        // Sync audio toggle button with server TTS setting
+        this.audioEnabled = s.audio?.tts_enabled || false;
+        Utils.storage.set('audioEnabled', this.audioEnabled);
+        this._updateAudioButton();
         
         // Populate LLM Provider
         const providerSelect = document.getElementById('setting-llm-provider');
