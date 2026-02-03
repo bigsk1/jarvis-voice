@@ -12,10 +12,11 @@
     "theme": "dark",
     "show_tool_details": true,
     "auto_scroll": true,
-    "sound_effects": true
+    "sound_effects": true,
+    "progress_events": true
   },
   "audio": {
-    "tts_enabled": true,
+    "tts_enabled": false,
     "tts_autoplay": true,
     "stt_enabled": false
   },
