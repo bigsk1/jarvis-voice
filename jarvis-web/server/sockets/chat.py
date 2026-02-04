@@ -1104,6 +1104,14 @@ Mode: {mode}
             print("[CHAT] ELEVENLABS_API_KEY not configured")
             return None
         
+        # v3 has 5k char limit, v2 has 10k - truncate if needed
+        char_limit = 5000 if model_id == 'eleven_v3' else 10000
+        if len(text) > char_limit:
+            print(f"[CHAT TTS] Text truncated from {len(text)} to {char_limit} chars for {model_id}")
+            text = text[:char_limit]
+        
+        print(f"[CHAT TTS] ElevenLabs: model={model_id}, voice={voice_id[:8]}..., chars={len(text)}")
+        
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         
         headers = {
