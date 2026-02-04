@@ -115,32 +115,44 @@ else
             exit 1
         fi
         
+        # Get voice settings from config (with sensible defaults)
+        ELEVENLABS_TTS_STABILITY="${ELEVENLABS_TTS_STABILITY:-0.5}"
+        ELEVENLABS_TTS_SIMILARITY_BOOST="${ELEVENLABS_TTS_SIMILARITY_BOOST:-0.75}"
+        ELEVENLABS_TTS_STYLE="${ELEVENLABS_TTS_STYLE:-0.0}"
+        ELEVENLABS_TTS_USE_SPEAKER_BOOST="${ELEVENLABS_TTS_USE_SPEAKER_BOOST:-true}"
+        
         # Build ElevenLabs TTS JSON
         # v3 has different voice_settings requirements (stability must be 0.0, 0.5, or 1.0)
         if [ "$ELEVENLABS_TTS_MODEL" = "eleven_v3" ]; then
             TTS_JSON=$(jq -n \
               --arg text "$TEXT" \
               --arg model_id "$ELEVENLABS_TTS_MODEL" \
+              --argjson stability "$ELEVENLABS_TTS_STABILITY" \
+              --argjson similarity "$ELEVENLABS_TTS_SIMILARITY_BOOST" \
               '{
                 text: $text,
                 model_id: $model_id,
                 voice_settings: {
-                  stability: 0.5,
-                  similarity_boost: 0.75
+                  stability: $stability,
+                  similarity_boost: $similarity
                 }
               }')
         else
             TTS_JSON=$(jq -n \
               --arg text "$TEXT" \
               --arg model_id "$ELEVENLABS_TTS_MODEL" \
+              --argjson stability "$ELEVENLABS_TTS_STABILITY" \
+              --argjson similarity "$ELEVENLABS_TTS_SIMILARITY_BOOST" \
+              --argjson style "$ELEVENLABS_TTS_STYLE" \
+              --argjson speaker_boost "$ELEVENLABS_TTS_USE_SPEAKER_BOOST" \
               '{
                 text: $text,
                 model_id: $model_id,
                 voice_settings: {
-                  stability: 0.5,
-                  similarity_boost: 0.75,
-                  style: 0.0,
-                  use_speaker_boost: true
+                  stability: $stability,
+                  similarity_boost: $similarity,
+                  style: $style,
+                  use_speaker_boost: $speaker_boost
                 }
               }')
         fi

@@ -1008,18 +1008,26 @@ def _generate_elevenlabs_tts(text: str, output_dir: Path, timestamp: str) -> Pat
         "Content-Type": "application/json"
     }
     
+    # Get voice settings from config (with sensible defaults)
+    stability = float(get_jarvis_setting('ELEVENLABS_TTS_STABILITY', '0.5'))
+    similarity = float(get_jarvis_setting('ELEVENLABS_TTS_SIMILARITY_BOOST', '0.75'))
+    
     # v3 has different voice_settings requirements (stability must be 0.0, 0.5, or 1.0)
     if model_id == 'eleven_v3':
+        # Snap stability to valid v3 values
+        stability = min([0.0, 0.5, 1.0], key=lambda x: abs(x - stability))
         voice_settings = {
-            "stability": 0.5,  # Natural (0.0=Creative, 0.5=Natural, 1.0=Robust)
-            "similarity_boost": 0.75
+            "stability": stability,
+            "similarity_boost": similarity
         }
     else:
+        style = float(get_jarvis_setting('ELEVENLABS_TTS_STYLE', '0.5'))
+        speaker_boost = get_jarvis_setting('ELEVENLABS_TTS_USE_SPEAKER_BOOST', 'true').lower() == 'true'
         voice_settings = {
-            "stability": 0.7,
-            "similarity_boost": 0.75,
-            "style": 0.5,
-            "use_speaker_boost": True
+            "stability": stability,
+            "similarity_boost": similarity,
+            "style": style,
+            "use_speaker_boost": speaker_boost
         }
     
     payload = {
