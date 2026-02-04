@@ -90,9 +90,9 @@ jobs:
               'api/server.py',
               'api/routes/query.py',
               'api/routes/voice.py', 
-              'lib/llm_router.py',
-              'lib/tool_executor.py',
-              'lib/memory_manager.py',
+              'lib/llm_provider.py',
+              'lib/memory_db.py',
+              'lib/config_loader.py',
               'orchestrator/orchestrator_v2.py',
           ]
           
