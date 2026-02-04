@@ -376,6 +376,7 @@ async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest = N
             duration_ms=duration_ms,
             data=result.get("data"),
             usage=result.get("usage"),
+            server_side_tools=result.get("server_side_tools"),
             error=result.get("error")
         )
         

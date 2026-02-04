@@ -2,7 +2,7 @@
 
 > **Status**: ✅ Implemented  
 > **Purpose**: Structured multi-tool workflow execution without hardcoded Python logic  
-> **Last Updated**: January 23, 2026
+> **Last Updated**: February 4, 2026
 
 ---
 
@@ -1615,9 +1615,19 @@ The pipeline executor returns a response compatible with the WebUI:
             ...
         ]
     },
-    "tools_used": ["stash", "brave_search", "crawl_url", "canvas"]
+    "tools_used": ["stash", "brave_search", "crawl_url", "canvas"],
+    "usage": {"input_tokens": 500, "output_tokens": 200, ...},  # LLM usage for param filling
+    "server_side_tools": {"SERVER_SIDE_TOOL_X_SEARCH": 2, "SERVER_SIDE_TOOL_WEB_SEARCH": 1}  # xAI/Anthropic native tools
 }
 ```
+
+**Server-Side Tools Tracking:**
+
+Workflows track usage of LLM provider native tools (xAI `web_search`, `x_search`, Anthropic `web search`, etc.):
+- Accumulated from LLM calls during parameter filling and validation
+- Returned in response for WebUI toast notification ("🔍 Server-side: X Search, Web Search")
+- Logged to `logs/server-side-tools/server-tools-YYYY-MM-DD.jsonl`
+- View summary: `LLMLogger().get_server_side_tools_summary(days=7)`
 
 **WebUI Changes Made:**
 

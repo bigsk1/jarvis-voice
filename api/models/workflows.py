@@ -54,6 +54,7 @@ class WorkflowExecuteResponse(BaseModel):
     duration_ms: float | None = Field(None, description="Execution time in milliseconds")
     data: dict[str, Any] | None = Field(None, description="Accumulated data from steps")
     usage: dict[str, Any] | None = Field(None, description="LLM token usage from workflow")
+    server_side_tools: dict[str, int] | None = Field(None, description="LLM provider native tools used (xAI web_search, x_search, etc.)")
     error: str | None = None
     
     class Config:
@@ -65,7 +66,8 @@ class WorkflowExecuteResponse(BaseModel):
                 "tools_used": ["get_time", "crypto_price", "mcp_brave_search_brave_web_search", "canvas", "send_email"],
                 "steps_completed": 9,
                 "duration_ms": 45230.5,
-                "data": {"coin1_price": "89651", "coin1_change": "2.05"}
+                "data": {"coin1_price": "89651", "coin1_change": "2.05"},
+                "server_side_tools": {"SERVER_SIDE_TOOL_X_SEARCH": 2, "SERVER_SIDE_TOOL_WEB_SEARCH": 1}
             }
         }
 

@@ -191,7 +191,7 @@ echo ""
 
 # Show overall disk usage
 echo "📊 Current disk usage:"
-du -sh "$PROJECT_ROOT/logs" "$PROJECT_ROOT/audio" "$PROJECT_ROOT/data/generated_images" "$PROJECT_ROOT/data/stash" 2>/dev/null | while read size dir; do
+du -sh "$PROJECT_ROOT/logs" "$PROJECT_ROOT/logs/server-side-tools" "$PROJECT_ROOT/audio" "$PROJECT_ROOT/data/generated_images" "$PROJECT_ROOT/data/stash" 2>/dev/null | while read size dir; do
     name=$(basename "$dir")
     printf "   %-20s %s\n" "$name/" "$size"
 done

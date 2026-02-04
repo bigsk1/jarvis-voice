@@ -237,6 +237,8 @@ COMMANDS: List[Command] = [
     # === 📋 LOGS ===
     Command("Tool Logs", "cat logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -30", "Tool execution logs", "📋 Logs"),
     Command("LLM Logs", "cat logs/llm-calls-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{model,cost_usd}'", "LLM call logs", "📋 Logs"),
+    Command("Server-Side Tools", "cat logs/server-side-tools/server-tools-$(date +%Y-%m-%d).jsonl 2>/dev/null | jq -c '{ts: .timestamp[11:19], provider, context, tools, total_calls}' || echo 'No server-side tool usage today'", "xAI/Anthropic native tools", "📋 Logs"),
+    Command("Server-Side Summary", "python3 -c \"import sys; sys.path.insert(0,'lib'); from llm_logger import LLMLogger; s=LLMLogger().get_server_side_tools_summary(7); print(f'Last 7 days: {s[\\\"total_calls\\\"]} calls'); print(f'By tool: {s[\\\"by_tool\\\"]}'); print(f'By provider: {s[\\\"by_provider\\\"]}')\"", "7-day server-side summary", "📋 Logs"),
     Command("Intel Logs", "cat logs/intelligence/intelligence-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{event,query:.query[:100]}' || echo 'No intel logs today'", "Intelligence logs", "📋 Logs"),
     Command("Feedback Logs", "cat logs/feedback/feedback-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -10 | jq -c '{rating,query:.query[:100]}' || echo 'No feedback logs today'", "LLM feedback logs", "📋 Logs"),
     Command("OpenCode Logs", "cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{event,session_id}' || echo 'No OpenCode logs today'", "OpenCode session logs", "📋 Logs"),

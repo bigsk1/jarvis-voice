@@ -96,6 +96,113 @@ class LLMLogger:
         # Write as JSON lines (one JSON object per line)
         with open(self.log_file, 'a') as f:
             f.write(json.dumps(log_entry) + '\n')
+        
+        # Also log server-side tools to dedicated file if any were used
+        if usage_info and usage_info.get("server_side_tools"):
+            self._log_server_side_tools(
+                provider=provider,
+                model=model,
+                tools=usage_info["server_side_tools"],
+                context=prompt_type,
+                user_query=user_query,
+                mode=mode
+            )
+    
+    def _log_server_side_tools(
+        self,
+        provider: str,
+        model: str,
+        tools: dict[str, int],
+        context: str = None,
+        user_query: str = None,
+        mode: str = "cloud"
+    ):
+        """
+        Log server-side tool usage to dedicated log file.
+        
+        This tracks xAI (web_search, x_search), Anthropic (web search, code execution), etc.
+        Useful for cost monitoring since these often have additional charges.
+        """
+        # Use dedicated subfolder for server-side tools
+        server_tools_dir = self.log_dir / "server-side-tools"
+        server_tools_dir.mkdir(parents=True, exist_ok=True)
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        server_tools_log = server_tools_dir / f"server-tools-{today}.jsonl"
+        
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "mode": mode,
+            "provider": provider,
+            "model": model,
+            "context": context,  # e.g., "chat", "routing", "workflow_param_fill"
+            "user_query": user_query[:200] if user_query else None,
+            "tools": tools,  # e.g., {"SERVER_SIDE_TOOL_X_SEARCH": 2, "SERVER_SIDE_TOOL_WEB_SEARCH": 1}
+            "total_calls": sum(tools.values())
+        }
+        
+        with open(server_tools_log, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    
+    def log_server_side_tools(
+        self,
+        provider: str,
+        model: str,
+        tools: dict[str, int],
+        context: str = None,
+        user_query: str = None,
+        mode: str = "cloud"
+    ):
+        """
+        Public method to log server-side tool usage.
+        
+        Call this from orchestrator/pipeline_executor when tracking server-side tools
+        that may not go through the normal LLM logging path.
+        """
+        if tools:
+            self._log_server_side_tools(provider, model, tools, context, user_query, mode)
+    
+    def get_server_side_tools_summary(self, days: int = 1) -> dict:
+        """
+        Get summary of server-side tool usage.
+        
+        Returns:
+            Dict with tool counts, total calls, and breakdown by provider.
+        """
+        from datetime import timedelta
+        
+        summary = {
+            "total_calls": 0,
+            "by_tool": {},
+            "by_provider": {},
+            "entries": []
+        }
+        
+        # Check log files for the specified number of days
+        server_tools_dir = self.log_dir / "server-side-tools"
+        for i in range(days):
+            date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            log_file = server_tools_dir / f"server-tools-{date}.jsonl"
+            
+            if log_file.exists():
+                with open(log_file, 'r') as f:
+                    for line in f:
+                        if line.strip():
+                            entry = json.loads(line)
+                            summary["entries"].append(entry)
+                            
+                            # Aggregate by tool
+                            for tool, count in entry.get("tools", {}).items():
+                                clean_name = tool.replace("SERVER_SIDE_TOOL_", "").lower()
+                                summary["by_tool"][clean_name] = summary["by_tool"].get(clean_name, 0) + count
+                                summary["total_calls"] += count
+                            
+                            # Aggregate by provider
+                            provider = entry.get("provider", "unknown")
+                            provider_count = sum(entry.get("tools", {}).values())
+                            summary["by_provider"][provider] = summary["by_provider"].get(provider, 0) + provider_count
+        
+        return summary
     
     def get_recent_logs(self, limit: int = 10) -> list:
         """Get recent LLM calls."""

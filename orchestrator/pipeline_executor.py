@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
 from llm_provider import create_provider
 from tool_logger import ToolLogger
+from llm_logger import LLMLogger
 
 
 class PipelineExecutor:
@@ -41,6 +42,7 @@ class PipelineExecutor:
         self.executor = executor
         self.provider = provider or self._create_provider()
         self.logger = ToolLogger()
+        self.llm_logger = LLMLogger()
         load_config(mode)
         
         # Track cumulative token usage for this workflow execution
@@ -74,6 +76,11 @@ class PipelineExecutor:
                 self._total_usage["output_tokens"] += usage_info.get("output_tokens", 0)
                 self._total_usage["total_tokens"] += usage_info.get("total_tokens", 0)
                 self._total_usage["cost_usd"] += usage_info.get("cost_usd", 0)
+                
+                # Track server-side tools (xAI web_search, x_search, Anthropic web search)
+                if usage_info.get("server_side_tools"):
+                    for tool_name, count in usage_info["server_side_tools"].items():
+                        self._server_side_tools[tool_name] = self._server_side_tools.get(tool_name, 0) + count
             
             return text or ""
         except Exception as e:
@@ -135,6 +142,9 @@ class PipelineExecutor:
             "total_tokens": 0,
             "cost_usd": 0.0
         }
+        
+        # Track server-side tool usage from LLM providers (xAI web_search, x_search, etc.)
+        self._server_side_tools = {}
         
         workflow_id = workflow.get("id", "unknown")
         workflow_name = workflow.get("name", workflow_id)
@@ -1034,7 +1044,8 @@ class PipelineExecutor:
                 "variables": {k: v for k, v in variables.items() if not k.startswith("_")}
             },
             "tools_used": list(dict.fromkeys(tools_used)),  # Preserve order, remove duplicates
-            "usage": self._total_usage if self._total_usage.get("total_tokens", 0) > 0 else None
+            "usage": self._total_usage if self._total_usage.get("total_tokens", 0) > 0 else None,
+            "server_side_tools": self._server_side_tools if self._server_side_tools else None
         }
         
         # Log workflow execution
@@ -1048,6 +1059,19 @@ class PipelineExecutor:
                 duration_ms=duration_ms,
                 steps_completed=len(results),
                 tools_used=list(set(tools_used)),
+                mode=self.mode
+            )
+        
+        # Log server-side tools to dedicated log file
+        if self._server_side_tools:
+            provider_type = get_config_value("LLM_PROVIDER", "unknown")
+            model = get_config_value(f"{provider_type.upper()}_MODEL", "unknown")
+            self.llm_logger.log_server_side_tools(
+                provider=provider_type,
+                model=model,
+                tools=self._server_side_tools,
+                context=f"workflow:{workflow.get('id', 'unknown')}",
+                user_query=query,
                 mode=self.mode
             )
         

@@ -51,6 +51,19 @@ class QueryResponse(BaseModel):
     session_id: str | None = Field(None, description="Session ID for follow-up queries")
     error: str | None = None
     
+    # Extended fields (all optional for backwards compatibility)
+    data: dict[str, Any] | None = Field(None, description="Accumulated data from tool results")
+    usage: dict[str, Any] | None = Field(None, description="Token usage and cost info")
+    server_side_tools: dict[str, int] | None = Field(None, description="LLM provider native tools (xAI web_search, x_search, etc.)")
+    thinking: str | None = Field(None, description="LLM reasoning/thinking (if enabled)")
+    raw_llm_response: str | None = Field(None, description="Original LLM response before voice formatting")
+    experience_id: int | None = Field(None, description="Experience ID for feedback linking")
+    available_tools: list[str] | None = Field(None, description="Tools the LLM could choose from")
+    feedback: dict[str, Any] | None = Field(None, description="Self-critique feedback (if collected)")
+    cancelled: bool | None = Field(None, description="True if user stopped processing")
+    max_turns_reached: bool | None = Field(None, description="True if hit max turns limit")
+    workflow_executed: str | None = Field(None, description="Workflow ID if a workflow was triggered")
+    
     class Config:
         json_schema_extra = {
             "example": {
@@ -58,6 +71,9 @@ class QueryResponse(BaseModel):
                 "speech": "The weather in Hillsboro is 45°F with partly cloudy skies.",
                 "response": "The current weather in Hillsboro, OR is 45°F with partly cloudy skies and 65% humidity.",
                 "tools_used": ["weather"],
-                "session_id": "n8n-workflow-123"
+                "session_id": "n8n-workflow-123",
+                "data": {"temperature": "45°F", "conditions": "partly cloudy"},
+                "usage": {"input_tokens": 1500, "output_tokens": 200, "cost_usd": 0.0023},
+                "server_side_tools": {"SERVER_SIDE_TOOL_WEB_SEARCH": 1}
             }
         }

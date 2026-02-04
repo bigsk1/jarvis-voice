@@ -1390,6 +1390,10 @@ Your BEST EFFORT response:"""
             if result.get("usage"):
                 response["usage"] = result["usage"]
             
+            # Pass through server-side tool usage (xAI web_search, x_search, etc.)
+            if result.get("server_side_tools"):
+                response["server_side_tools"] = result["server_side_tools"]
+            
             return response
             
         except Exception as e:

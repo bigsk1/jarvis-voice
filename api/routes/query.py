@@ -72,10 +72,22 @@ async def query_jarvis(request: QueryRequest):
         return QueryResponse(
             ok=result.get('ok', True),
             speech=result.get('speech'),
-            response=result.get('speech'),  # Full response same as speech for now
+            response=result.get('raw_llm_response') or result.get('speech'),  # Raw response or speech
             tools_used=result.get('tools_used', []),
             session_id=request.session_id,
-            error=result.get('error')
+            error=result.get('error'),
+            # Extended fields
+            data=result.get('data'),
+            usage=result.get('usage'),
+            server_side_tools=result.get('server_side_tools'),
+            thinking=result.get('thinking'),
+            raw_llm_response=result.get('raw_llm_response'),
+            experience_id=result.get('experience_id'),
+            available_tools=result.get('available_tools'),
+            feedback=result.get('feedback'),
+            cancelled=result.get('cancelled'),
+            max_turns_reached=result.get('max_turns_reached'),
+            workflow_executed=result.get('workflow_executed')
         )
         
     except Exception as e:

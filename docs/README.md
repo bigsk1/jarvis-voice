@@ -302,6 +302,23 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-02-04:**
+- ✅ **Server-Side Tools Logging** - Track xAI/Anthropic native tool usage ⭐ NEW
+  - New dedicated log folder: `logs/server-side-tools/`
+  - Tracks `web_search`, `x_search`, `code_execution` usage with counts
+  - Auto-logged from LLM calls and workflow executions
+  - Dashboard commands: "Server-Side Tools" and "Server-Side Summary" in 📋 Logs
+  - Included in `cleanup-logs` for 60-day retention
+  - Programmatic access: `LLMLogger().get_server_side_tools_summary(days=7)`
+- ✅ **Workflow Server-Side Tool Toast** - Visual feedback for native tools in workflows
+  - Workflows now pass through `server_side_tools` data to UI
+  - Toast shows "🔍 Server-side: X Search, Web Search" after workflow completes
+  - Previously only worked for single/multi-tool calls, now works for workflows too
+- ✅ **WebUI Auth Logging** - Track authentication failures
+  - Auth events logged to `logs/auth/auth-YYYY-MM-DD.jsonl`
+  - Logs: login success/failure, token validation errors
+  - Helps debug auth issues across web UIs
+
 **2026-02-02:**
 - ✅ **xAI Image Generation** - Fast & cheap image generation ⭐ NEW
   - Added `xai` provider to `generate_image` tool (grok-imagine-image model)

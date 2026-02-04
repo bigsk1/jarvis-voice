@@ -12,6 +12,7 @@
 #   - logs/services/      - Daemon logs (reminder, follow-up, self-healing)
 #   - logs/               - LLM calls, workflows, tools, intelligence, etc.
 #   - logs/opencode/      - OpenCode session logs
+#   - logs/server-side-tools/ - xAI/Anthropic native tool usage logs
 #
 # NOT cleaned (preserved):
 #   - logs/*.pid          - PID files (needed for running daemons)
@@ -95,6 +96,7 @@ DIRS=(
     "$LOGS_DIR/tool-builder"
     "$LOGS_DIR/self-play"
     "$LOGS_DIR/validate-system-prompt"
+    "$LOGS_DIR/server-side-tools"
 )
 
 TOTAL_DELETED=0
