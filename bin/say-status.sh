@@ -42,11 +42,12 @@ if [ "$STATUS_CACHE_ENABLED" = "true" ]; then
 fi
 
 # Generate cache key from text + voice settings + provider
+# Any setting change = new cache key = new audio generation
 generate_cache_key() {
     local text="$1"
     if [ "$TTS_PROVIDER" = "elevenlabs" ]; then
-        # Include ElevenLabs settings in hash
-        echo -n "${text}|elevenlabs|${ELEVENLABS_TTS_VOICE:-}|${ELEVENLABS_TTS_MODEL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        # Include all ElevenLabs settings in hash (model, voice, stability, similarity)
+        echo -n "${text}|elevenlabs|${ELEVENLABS_TTS_VOICE:-}|${ELEVENLABS_TTS_MODEL:-}|${ELEVENLABS_TTS_STABILITY:-0.5}|${ELEVENLABS_TTS_SIMILARITY_BOOST:-0.75}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     elif [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
         # Include Qwen3-TTS settings in hash
         echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_FORMAT:-mp3}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
