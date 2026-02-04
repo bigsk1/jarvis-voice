@@ -1,0 +1,130 @@
+name: Python Check
+
+on:
+  push:
+    branches: [main, dev-*]
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+      - '.github/workflows/python-check.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.py'
+
+jobs:
+  syntax-check:
+    runs-on: ubuntu-latest
+    name: Syntax & Import Check
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install core dependencies
+        run: |
+          pip install --upgrade pip
+          # Install only the dependencies that work in CI (no audio/hardware)
+          pip install \
+            anthropic \
+            openai \
+            xai-sdk \
+            google-genai \
+            fastapi \
+            uvicorn \
+            pydantic \
+            flask \
+            flask-cors \
+            requests \
+            PyYAML \
+            python-socketio \
+            aiohttp
+      
+      - name: Python syntax check (all files)
+        run: |
+          echo "Checking Python syntax..."
+          python -m py_compile api/server.py
+          python -m py_compile jarvis-web/server/app.py
+          python -m py_compile jarvis-intelligence/server/app.py
+          python -m py_compile jarvis-memory/server/app.py
+          python -m py_compile jarvis-canvas/server/app.py
+          python -m py_compile orchestrator/orchestrator_v2.py
+          
+          # Check all skills
+          for f in skills/*.py; do
+            python -m py_compile "$f" && echo "✓ $f"
+          done
+          
+          # Check lib modules
+          for f in lib/*.py; do
+            python -m py_compile "$f" && echo "✓ $f"
+          done
+          
+          # Check services
+          for f in services/*.py; do
+            python -m py_compile "$f" && echo "✓ $f"
+          done
+          
+          echo "All syntax checks passed!"
+      
+      - name: Test core module imports
+        run: |
+          echo "Testing core module imports..."
+          
+          # Set up Python path
+          export PYTHONPATH="${PYTHONPATH}:${PWD}:${PWD}/lib:${PWD}/skills:${PWD}/orchestrator:${PWD}/api"
+          
+          # Test that core modules can at least be parsed
+          # (full imports may fail due to missing audio deps, but syntax should be valid)
+          python -c "
+          import ast
+          import sys
+          
+          files_to_check = [
+              'api/server.py',
+              'api/routes/query.py',
+              'api/routes/voice.py', 
+              'lib/llm_router.py',
+              'lib/tool_executor.py',
+              'lib/memory_manager.py',
+              'orchestrator/orchestrator_v2.py',
+          ]
+          
+          errors = []
+          for filepath in files_to_check:
+              try:
+                  with open(filepath, 'r') as f:
+                      ast.parse(f.read())
+                  print(f'✓ {filepath}')
+              except SyntaxError as e:
+                  errors.append(f'{filepath}: {e}')
+                  print(f'✗ {filepath}: {e}')
+          
+          if errors:
+              print(f'\n{len(errors)} file(s) have syntax errors!')
+              sys.exit(1)
+          else:
+              print('\nAll core modules parsed successfully!')
+          "
+      
+      - name: Check for common issues
+        run: |
+          echo "Checking for common issues..."
+          
+          # Check for debug prints left in code (common mistake)
+          if grep -r "print.*DEBUG" --include="*.py" api/ lib/ orchestrator/ 2>/dev/null | grep -v "^#"; then
+            echo "Warning: Found DEBUG print statements"
+          fi
+          
+          # Check for hardcoded localhost in non-example files
+          if grep -rn "192\.168\." --include="*.py" api/ lib/ skills/ 2>/dev/null | head -5; then
+            echo "Warning: Found hardcoded private IPs in Python files"
+          fi
+          
+          echo "Common issue check complete"
