@@ -515,7 +515,8 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
         "recurring": recurrence_rule is not None,
         "recurrence_rule": recurrence_rule,
         "gcal_synced": gcal_synced,
-        "gcal_event_id": gcal_event_id
+        # Note: gcal_event_id intentionally excluded from response to prevent
+        # LLM from speaking the long ID. It's stored in the database for sync purposes.
     }
 
 
