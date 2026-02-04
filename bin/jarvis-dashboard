@@ -246,6 +246,7 @@ COMMANDS: List[Command] = [
     Command("Service JSONL (Today)", "tail -20 logs/services/*-$(date +%Y-%m-%d).jsonl 2>/dev/null | jq -c '{daemon:.daemon,event:.event,ts:.timestamp}' 2>/dev/null || echo 'No JSONL logs today'", "Today's structured service logs", "📋 Logs"),
     
     # === 📊 MONITORING ===
+    Command("Port Check", "echo '=== Jarvis Services ===' && for p in 8880 5001 5002 5003 8890 4096 3000; do ss -tlnp 2>/dev/null | grep -q \":$p \" && echo \"✅ :$p listening\" || echo \"❌ :$p not listening\"; done", "Check key ports (API/Web/Memory/Intel/Canvas/OpenCode/Grafana)", "📊 Monitor"),
     Command("API Metrics", "curl -s http://localhost:8880/metrics 2>/dev/null | head -50 || echo 'API not running'", "Prometheus metrics", "📊 Monitor"),
     Command("Open Grafana", "echo '🌐 Open http://localhost:3000 in browser'", "Grafana dashboard URL", "📊 Monitor"),
     Command("Monitor Status", "cd monitoring && ./manage.sh status", "Show running services", "📊 Monitor"),
@@ -253,16 +254,20 @@ COMMANDS: List[Command] = [
     Command("Monitor Backup", "cd monitoring && ./manage.sh backup", "Backup monitoring data", "📊 Monitor"),
     
     # === ⚙️ CONFIG ===
-    Command("View Cloud Config", "grep -v '^#' config/cloud.env | grep -v '^$' | head -50", "Cloud settings", "⚙️ Config"),
-    Command("View Local Config", "grep -v '^#' config/local.env | grep -v '^$' | head -50", "Local settings", "⚙️ Config"),
+    Command("Config Summary (Cloud)", "grep -E '^(LLM_PROVIDER|ANTHROPIC_MODEL|TTS_PROVIDER|JARVIS_RESPONSE_STYLE|JARVIS_INTELLIGENCE|AUTO_CONTEXT)=' config/cloud.env | head -10", "Key cloud settings (no secrets)", "⚙️ Config"),
+    Command("Config Summary (Local)", "grep -E '^(LLM_PROVIDER|OLLAMA_MODEL|OLLAMA_BASE_URL|TTS_PROVIDER|QWEN3_TTS_VOICE|JARVIS_RESPONSE_STYLE)=' config/local.env | head -10", "Key local settings (no secrets)", "⚙️ Config"),
     Command("View Status Phrases", "cat config/status_phrases.json | jq '.categories | keys'", "Status phrase categories", "⚙️ Config"),
-    Command("View Contacts", "cat config/contacts.json", "Email contacts", "⚙️ Config"),
+    Command("MCP Servers", "cat config/mcp-servers.json 2>/dev/null | jq '.mcpServers | keys'", "List MCP servers", "⚙️ Config"),
+    Command("Ghost Tools (Cloud)", "grep '^GHOST_TOOLS=' config/cloud.env | cut -d= -f2 | tr ',' '\\n'", "Always-loaded cloud tools", "⚙️ Config"),
+    Command("Ghost Tools (Local)", "grep '^GHOST_TOOLS=' config/local.env | cut -d= -f2 | tr ',' '\\n'", "Always-loaded local tools", "⚙️ Config"),
     
     # === 🔒 MAINTENANCE ===
     Command("Backup All DBs", "cp data/jarvis_memory.db data/jarvis_memory.db.bak && cp data/jarvis_memory_local.db data/jarvis_memory_local.db.bak && cp data/jarvis_intelligence.db data/jarvis_intelligence.db.bak && echo '✅ All DBs backed up'", "Backup all databases", "🔒 Maint"),
     Command("Embeddings Health (Cloud)", "./bin/check-embeddings-health.py cloud", "Check cloud embeddings", "🔒 Maint"),
     Command("Embeddings Health (Local)", "./bin/check-embeddings-health.py local", "Check local embeddings", "🔒 Maint"),
+    Command("DB Sizes", "ls -lh data/*.db 2>/dev/null | awk '{print $5, $9}' | sed 's|data/||'", "Database file sizes", "🔒 Maint"),
     Command("Disk Usage", "du -sh data/ logs/ ~/.cache/jarvis/ 2>/dev/null", "Check disk usage", "🔒 Maint"),
+    Command("View Crontab", "crontab -l 2>/dev/null || echo 'No crontab configured'", "Current cron jobs", "🔒 Maint"),
     Command("Git Status", "git status -s", "Git status (short)", "🔒 Maint"),
     Command("Git Log", "git log --oneline -15", "Recent commits", "🔒 Maint"),
     

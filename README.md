@@ -217,7 +217,7 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - FTS5 search, dual database (cloud/local), re-embed after edits
   - Mobile responsive: hamburger menu at ≤730px
   - Launch: `./bin/jarvis-memory`
-- **Canvas Viewer**: Visual knowledge display at localhost:8090
+- **Canvas Viewer**: Visual knowledge display at localhost:8890
   - Jarvis saves research results, code snippets, comparisons
   - Beautiful dark UI with Markdown rendering
   - Search, pin, edit, delete pages
@@ -323,7 +323,7 @@ jarvis-voice/
 │   ├── jarvis-services       # Background services daemon
 │   ├── jarvis-dashboard      # Command Dashboard TUI
 │   ├── jarvis-web            # Web UI launcher (port 5001)
-│   ├── jarvis-canvas         # Canvas viewer (port 8090)
+│   ├── jarvis-canvas         # Canvas & Gallery viewer (port 8890)
 │   ├── jarvis-memory         # Memory Browser UI (port 5002)
 │   ├── jarvis-intelligence   # Intelligence Dashboard (port 5003)
 │   ├── jarvis-feedback       # Feedback system CLI
@@ -361,7 +361,7 @@ jarvis-voice/
 │   ├── tool_schema.py        # Tool discovery & validation
 │   ├── workflow_loader.py    # Workflow JSON loader
 │   └── pipeline_executor.py  # Deterministic pipeline execution
-├── skills/                   # Tool scripts (53+)
+├── skills/                   # Tool scripts (49+)
 │   ├── auto-tools/           # Auto-generated tools
 │   │   ├── docker_control.*  # Docker management
 │   │   ├── network_tools.*   # Network diagnostics
@@ -369,20 +369,24 @@ jarvis-voice/
 │   │   ├── text_summarizer.* # Text processing
 │   │   └── youtube_transcript.* # YouTube transcripts
 │   ├── ssh_remote.py         # Remote SSH execution
-│   ├── docker_control.py     # Docker/compose management
 │   ├── deep_memory_search.py # Multi-source search
 │   ├── generate_image.py     # AI image generation (Gemini/OpenAI/xAI)
 │   ├── generate_video.py     # AI video generation (xAI Grok, Gemini Veo)
 │   ├── generate_music.py     # AI music (ElevenLabs)
 │   ├── analyze_image.py      # Vision analysis
 │   ├── phone_call.py         # AI phone calls (Vapi.ai)
+│   ├── samantha.py           # Delegate to Samantha AI assistant (openclaw)
 │   ├── spotify.py            # Spotify music control
 │   ├── canvas.py             # Canvas page management
 │   ├── stash.py              # Artifact storage
 │   ├── pdf_create.py         # PDF generation
+│   ├── pdf_read.py           # PDF text extraction
 │   ├── printer.py            # CUPS printing
 │   ├── calculator.py         # Advanced math
 │   ├── weather.py            # Weather forecasts
+│   ├── crawl_url.py          # Web crawling (Crawl4AI)
+│   ├── screenshot_url.py     # Website screenshots
+│   ├── upload_cloudflare.py  # Cloudflare R2/CDN upload
 │   ├── remember.py / recall.py / forget.py  # Memory tools
 │   ├── search_memory.py      # FTS5 keyword search
 │   ├── semantic_recall.py    # AI semantic search
@@ -391,6 +395,8 @@ jarvis-voice/
 │   ├── send_email.py         # Email with templates
 │   ├── send_webhook.py       # Webhook triggers
 │   ├── create_reminder.py    # Smart reminders
+│   ├── crypto_price.py       # Crypto prices (CoinGecko)
+│   ├── stock_price.py        # Stock prices
 │   └── *.tool.json           # Tool definitions
 ├── config/                   # Configuration files
 │   ├── cloud.env             # Cloud mode settings (gitignored)
@@ -429,6 +435,16 @@ jarvis-voice/
 │   ├── client/               # Frontend (HTML/CSS/JS)
 │   ├── server/               # Backend (Flask routes)
 │   └── data/prompts/         # @prompt templates
+├── jarvis-canvas/            # Canvas & Gallery Viewer (port 8890)
+│   ├── client/               # Frontend
+│   │   ├── static/css/       # Stylesheets (base, canvas, gallery, video)
+│   │   ├── static/js/        # JavaScript (canvas, gallery, video-gallery)
+│   │   └── templates/        # HTML templates
+│   ├── server/               # Backend (Flask)
+│   │   ├── app.py            # Main Flask app
+│   │   ├── pages.py          # Canvas page storage
+│   │   └── routes/           # API routes (gallery, video, stash, health)
+│   └── config.py             # Configuration
 ├── jarvis-intelligence/      # Intelligence Dashboard
 │   ├── client/               # Frontend (HTML/CSS/JS)
 │   └── server/               # Backend (Flask routes)
@@ -599,7 +615,7 @@ Start everything with one command using tmux sessions (make sure they are all se
 | `jarvis-api` | 8880 | Proactive API (webhooks, reminders) |
 | `jarvis-services` | - | Background services (auto-resolve) |
 | `jarvis-web` | 5001 | Web UI chat interface |
-| `jarvis-canvas` | 8090 | Canvas viewer |
+| `jarvis-canvas` | 8890 | Canvas & Gallery viewer |
 | `jarvis-memory` | 5002 | Memory Browser UI |
 | `jarvis-intelligence` | 5003 | Intelligence Dashboard |
 
