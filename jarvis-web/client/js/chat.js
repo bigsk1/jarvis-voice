@@ -942,6 +942,18 @@ class ChatUI {
       if (data.usage) {
         this._updateTokenCounter(data.usage);
       }
+      
+      // Show discrete toast for server-side tools (xAI/Anthropic native search)
+      if (data.server_side_tools && Object.keys(data.server_side_tools).length > 0) {
+        const tools = Object.entries(data.server_side_tools)
+          .map(([name, count]) => {
+            // Clean up tool name: SERVER_SIDE_TOOL_X_SEARCH -> x search
+            const cleanName = name.replace('SERVER_SIDE_TOOL_', '').toLowerCase().replace(/_/g, ' ');
+            return `${cleanName}${count > 1 ? ` (${count}x)` : ''}`;
+          })
+          .join(', ');
+        Utils.toast(`🔍 Provider: ${tools}`, 'info', 4000);
+      }
     });
     
     socket.on('error', (data) => {

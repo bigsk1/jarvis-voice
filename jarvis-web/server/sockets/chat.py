@@ -775,7 +775,8 @@ class ChatHandler:
                 'cancelled': was_cancelled,  # True if user stopped processing
                 'duration_ms': duration_ms,
                 'usage': result.get('usage', {}),
-                'audio_url': audio_url
+                'audio_url': audio_url,
+                'server_side_tools': result.get('server_side_tools', {})  # xAI/Anthropic native tools
             }, room=session_id)
             
             # Collect feedback if requested (runs async after main response)

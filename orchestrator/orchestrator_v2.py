@@ -759,13 +759,15 @@ Mode: {self.mode}
                 if token_info:
                     response["usage"] = token_info
                     
-                    # Log xAI native search summary if used
+                    # Log xAI native search summary if used and add to response
                     if total_usage.get("server_side_tools"):
                         server_tools = total_usage["server_side_tools"]
                         total_searches = sum(server_tools.values())
                         tool_summary = ", ".join(f"{k.replace('SERVER_SIDE_TOOL_', '').lower()}={v}" for k, v in server_tools.items())
                         if sys.stdout.isatty():
                             print(f"🔍 xAI native search: {total_searches} call(s) [{tool_summary}]")
+                        # Include in response for WebUI notification
+                        response["server_side_tools"] = server_tools
                 
                 # Add thinking to response if available
                 if first_thinking:
