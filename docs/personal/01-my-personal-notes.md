@@ -699,6 +699,25 @@ SELECT description,
        times_applied
 FROM insights WHERE times_applied > 0"
 
+### Sync Intelligence Between Modes
+
+```bash
+# Sync from cloud → local (regenerates 768-dim embeddings)
+./bin/sync-intelligence-db.py local
+
+# Sync from local → cloud (regenerates 1536-dim embeddings)
+./bin/sync-intelligence-db.py cloud
+
+# Reset a database (with backup)
+./bin/sync-intelligence-db.py --reset cloud
+
+# Dry run (see what would happen)
+./bin/sync-intelligence-db.py --dry-run local
+
+# Reset (delete) a database
+./bin/sync-intelligence-db.py --reset local
+```
+
 # Reset intelligence (careful!)
 ./bin/sync-intelligence-db.py --reset cloud
 ```
