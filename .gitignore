@@ -96,6 +96,9 @@ cursor_*.md
 logs/opencode/
 .opencode/
 
+# Auth logs
+logs/auth/
+
 # User knowledge base (contains sensitive info: IPs, credentials, network configs)
 jarvis-intel/*
 
@@ -111,6 +114,7 @@ opencodetmp/
 data/.spotify_cache
 data/.phone_call_lock
 data/.phone_call_in_progress
+data/.webui_secret
 
 characters/
 data/generated_images/*

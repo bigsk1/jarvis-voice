@@ -5,7 +5,7 @@ Flask server for viewing/managing Jarvis memory database
 import os
 import sys
 from pathlib import Path
-from flask import Flask, send_from_directory, jsonify, request
+from flask import Flask, send_from_directory, jsonify, request, redirect
 from flask_cors import CORS
 
 # Setup paths
@@ -18,11 +18,15 @@ INTEL_PATH = JARVIS_ROOT / 'jarvis-intel'
 # Add lib to path
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
+from webui_auth import is_auth_enabled, get_token_from_request, verify_token
+from config_loader import load_config
+
 # Import routes after path setup
 from .routes.memories import memories_bp
 from .routes.intel import intel_bp
 from .routes.conversations import conversations_bp
 from .routes.stats import stats_bp
+from .routes.auth import auth_bp
 
 # Create Flask app
 app = Flask(__name__,
@@ -37,11 +41,39 @@ app.register_blueprint(memories_bp)
 app.register_blueprint(intel_bp)
 app.register_blueprint(conversations_bp)
 app.register_blueprint(stats_bp)
+app.register_blueprint(auth_bp)
+
+# Auth middleware
+PUBLIC_ROUTES = {'/login', '/api/auth/login', '/api/auth/status', '/api/auth/verify', '/api/status'}
+PUBLIC_EXTENSIONS = {'.css', '.js', '.ico', '.png', '.jpg', '.svg'}
+
+@app.before_request
+def check_auth():
+    if not is_auth_enabled():
+        return None
+    if request.path in PUBLIC_ROUTES:
+        return None
+    if any(request.path.endswith(ext) for ext in PUBLIC_EXTENSIONS):
+        return None
+    
+    token = get_token_from_request(request)
+    if verify_token(token):
+        return None
+    
+    if request.path.startswith('/api/'):
+        return {'ok': False, 'error': 'Authentication required'}, 401
+    return redirect(f'/login?redirect={request.path}')
 
 
 # =============================================================================
 # Static file serving
 # =============================================================================
+
+@app.route('/login')
+def serve_login():
+    """Serve the login page"""
+    return send_from_directory(CLIENT_PATH, 'login.html')
+
 
 @app.route('/')
 def serve_index():
@@ -95,13 +127,17 @@ def server_error(e):
 # Main entry point
 # =============================================================================
 
-def run_server(host: str = '0.0.0.0', port: int = 5002, debug: bool = False):
+def run_server(host: str = '0.0.0.0', port: int = 5002, mode: str = 'cloud', debug: bool = False):
     """Run the web server"""
+    load_config(mode)
+    auth_status = "ENABLED" if is_auth_enabled() else "DISABLED"
+    
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║                  🧠 JARVIS MEMORY BROWSER                     ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  Address:  http://{host}:{port:<42} ║
+║  Mode:     {mode.upper():<10} | Auth: {auth_status:<26} ║
 ║  Debug:    {str(debug):<52} ║
 ╚═══════════════════════════════════════════════════════════════╝
 """)

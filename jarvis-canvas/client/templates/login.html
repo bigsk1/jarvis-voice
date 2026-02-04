@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis Canvas - Login</title>
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-tertiary: #1a1a24;
+      --border: #2a2a3a;
+      --accent: #ff6b6b;
+      --accent-glow: rgba(255, 107, 107, 0.3);
+      --text-primary: #e0e0e0;
+      --text-secondary: #a0a0a0;
+      --error: #ff4444;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-image: 
+        radial-gradient(ellipse at 50% 0%, rgba(255, 107, 107, 0.08) 0%, transparent 50%);
+    }
+    
+    .login-container { width: 100%; max-width: 400px; padding: 20px; }
+    
+    .login-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+    
+    .logo { text-align: center; margin-bottom: 32px; }
+    .logo-icon { font-size: 64px; display: block; margin-bottom: 16px; filter: drop-shadow(0 0 20px var(--accent-glow)); }
+    .logo-text { font-size: 24px; font-weight: 600; letter-spacing: 2px; color: var(--accent); }
+    .logo-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 8px; letter-spacing: 2px; text-transform: uppercase; }
+    
+    .form-group { margin-bottom: 24px; }
+    .form-label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .form-input {
+      width: 100%; padding: 14px 16px;
+      background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text-primary); font-size: 16px; transition: all 0.2s ease;
+      -webkit-appearance: none; appearance: none;
+    }
+    .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    
+    .login-btn {
+      width: 100%; padding: 14px;
+      background: linear-gradient(135deg, var(--accent), #cc5555);
+      border: none; border-radius: 8px;
+      color: #fff; font-size: 14px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 2px;
+      cursor: pointer; transition: all 0.2s ease;
+    }
+    .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px var(--accent-glow); }
+    .login-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    
+    .error-message {
+      background: rgba(255, 68, 68, 0.1); border: 1px solid var(--error);
+      color: var(--error); padding: 12px 16px; border-radius: 8px;
+      margin-bottom: 24px; font-size: 14px; display: none;
+    }
+    .error-message.show { display: block; }
+    
+    .footer-note { text-align: center; margin-top: 24px; font-size: 12px; color: var(--text-secondary); }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="logo">
+        <span class="logo-icon">🎨</span>
+        <div class="logo-text">JARVIS CANVAS</div>
+        <div class="logo-subtitle">Visual Knowledge Viewer</div>
+      </div>
+      
+      <div class="error-message" id="errorMessage"></div>
+      
+      <form id="loginForm">
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" class="form-input" placeholder="Enter your password" autocomplete="current-password" autofocus>
+        </div>
+        <button type="submit" class="login-btn" id="loginBtn">Sign In</button>
+      </form>
+      
+      <div class="footer-note">Shared auth with all Jarvis UIs</div>
+    </div>
+  </div>
+  
+  <script>
+    const form = document.getElementById('loginForm');
+    const passwordInput = document.getElementById('password');
+    const loginBtn = document.getElementById('loginBtn');
+    const errorMessage = document.getElementById('errorMessage');
+    
+    // Check if already authenticated
+    const existingToken = localStorage.getItem('jarvis_auth_token');
+    if (existingToken) {
+      fetch('/api/auth/verify', { headers: { 'Authorization': `Bearer ${existingToken}` } })
+        .then(r => r.json())
+        .then(data => { if (data.ok) window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/'; })
+        .catch(() => localStorage.removeItem('jarvis_auth_token'));
+    }
+    
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const password = passwordInput.value;
+      if (!password) { showError('Please enter a password'); return; }
+      
+      loginBtn.disabled = true;
+      errorMessage.classList.remove('show');
+      
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await response.json();
+        
+        if (data.ok && data.token) {
+          localStorage.setItem('jarvis_auth_token', data.token);
+          const expiryDays = data.expires_in_days || 30;
+          document.cookie = `jarvis_auth=${data.token}; path=/; max-age=${expiryDays * 86400}; SameSite=Lax`;
+          window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/';
+        } else {
+          showError(data.error || 'Invalid password');
+        }
+      } catch (err) {
+        showError('Connection failed');
+      } finally {
+        loginBtn.disabled = false;
+      }
+    });
+    
+    function showError(msg) {
+      errorMessage.textContent = msg;
+      errorMessage.classList.add('show');
+    }
+  </script>
+</body>
+</html>

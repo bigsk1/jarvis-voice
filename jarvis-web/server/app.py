@@ -18,7 +18,12 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from .config import load_web_config, get_web_setting, load_jarvis_config
 from .routes.api import api_bp
+from .routes.auth import auth_bp
 from .sockets.chat import ChatHandler
+
+# Import auth utilities
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+from webui_auth import is_auth_enabled, get_token_from_request, verify_token
 
 # Global to track startup mode (set in run_server)
 _startup_mode = 'cloud'
@@ -46,14 +51,69 @@ socketio = SocketIO(
 
 # Register blueprints
 app.register_blueprint(api_bp)
+app.register_blueprint(auth_bp)
 
 # Initialize chat handler
 chat_handler = ChatHandler(socketio)
 
 
 # =============================================================================
+# Authentication middleware
+# =============================================================================
+
+# Routes that don't require authentication
+PUBLIC_ROUTES = {
+    '/login',
+    '/login.html',
+    '/api/auth/login',
+    '/api/auth/status',
+    '/api/auth/verify',
+}
+
+# Static file extensions that don't need auth
+PUBLIC_EXTENSIONS = {'.css', '.js', '.ico', '.png', '.jpg', '.svg', '.woff', '.woff2'}
+
+
+@app.before_request
+def check_auth():
+    """Check authentication before each request"""
+    from flask import request, redirect
+    
+    # Skip if auth not enabled
+    if not is_auth_enabled():
+        return None
+    
+    # Skip public routes
+    if request.path in PUBLIC_ROUTES:
+        return None
+    
+    # Skip static files
+    if any(request.path.endswith(ext) for ext in PUBLIC_EXTENSIONS):
+        return None
+    
+    # Check for valid token
+    token = get_token_from_request(request)
+    if verify_token(token):
+        return None
+    
+    # Not authenticated
+    if request.path.startswith('/api/'):
+        # API request - return 401 JSON
+        return {'ok': False, 'error': 'Authentication required'}, 401
+    else:
+        # Page request - redirect to login
+        return redirect(f'/login?redirect={request.path}')
+
+
+# =============================================================================
 # Static file serving
 # =============================================================================
+
+@app.route('/login')
+def serve_login():
+    """Serve the login page"""
+    return send_from_directory(CLIENT_PATH, 'login.html')
+
 
 @app.route('/')
 def serve_index():
@@ -114,12 +174,14 @@ def run_server(host: str = None, port: int = None, mode: str = 'cloud', debug: b
     # Load Jarvis config for the specified mode
     load_jarvis_config(mode)
     
+    auth_status = "ENABLED (password required)" if is_auth_enabled() else "DISABLED (open access)"
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║                     🤖 JARVIS WEB UI                          ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  Mode:     {mode.upper():<52} ║
 ║  Address:  http://{host}:{port:<42} ║
+║  Auth:     {auth_status:<52} ║
 ║  Debug:    {str(debug):<52} ║
 ╚═══════════════════════════════════════════════════════════════╝
 """)

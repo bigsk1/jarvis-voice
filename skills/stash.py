@@ -118,7 +118,7 @@ Do NOT add commentary or opinions - just the facts."""
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': user_prompt}
                     ],
-                    'max_tokens': 300,
+                    'max_tokens': 400,
                     'temperature': 0.3
                 },
                 timeout=30
@@ -140,7 +140,7 @@ Do NOT add commentary or opinions - just the facts."""
                 },
                 json={
                     'model': get_config_value('STASH_SUMMARIZE_MODEL', 'claude-4-5-sonnet-20250929'),
-                    'max_tokens': 300,
+                    'max_tokens': 400,
                     'system': system_prompt,
                     'messages': [{'role': 'user', 'content': user_prompt}]
                 },
@@ -179,12 +179,12 @@ Do NOT add commentary or opinions - just the facts."""
                 'https://api.x.ai/v1/chat/completions',
                 headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
                 json={
-                    'model': get_config_value('STASH_SUMMARIZE_MODEL', 'grok-4-1-fast-non-reasoning-latest'),
+                    'model': get_config_value('STASH_SUMMARIZE_MODEL', 'grok-4-1-fast-non-reasoning'),
                     'messages': [
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': user_prompt}
                     ],
-                    'max_tokens': 300,
+                    'max_tokens': 400,
                     'temperature': 0.3
                 },
                 timeout=30

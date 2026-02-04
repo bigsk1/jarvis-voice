@@ -153,6 +153,60 @@ const Utils = {
     remove(key) {
       localStorage.removeItem(`jarvis_${key}`);
     }
+  },
+
+  /**
+   * Authentication helpers
+   */
+  auth: {
+    getToken() {
+      return localStorage.getItem('jarvis_auth_token');
+    },
+    
+    setToken(token) {
+      localStorage.setItem('jarvis_auth_token', token);
+      // Also set cookie for server-side checks
+      document.cookie = `jarvis_auth=${token}; path=/; max-age=86400; SameSite=Lax`;
+    },
+    
+    clearToken() {
+      localStorage.removeItem('jarvis_auth_token');
+      document.cookie = 'jarvis_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    },
+    
+    isAuthenticated() {
+      return !!this.getToken();
+    },
+    
+    logout() {
+      this.clearToken();
+      window.location.href = '/login';
+    },
+    
+    // Get headers with auth token for fetch requests
+    getHeaders(additionalHeaders = {}) {
+      const headers = { ...additionalHeaders };
+      const token = this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      return headers;
+    },
+    
+    // Wrapper for fetch that includes auth
+    async fetch(url, options = {}) {
+      options.headers = this.getHeaders(options.headers || {});
+      const response = await fetch(url, options);
+      
+      // If 401, redirect to login
+      if (response.status === 401) {
+        this.clearToken();
+        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        throw new Error('Authentication required');
+      }
+      
+      return response;
+    }
   }
 };
 
