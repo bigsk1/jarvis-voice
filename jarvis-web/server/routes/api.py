@@ -1008,15 +1008,24 @@ def _generate_elevenlabs_tts(text: str, output_dir: Path, timestamp: str) -> Pat
         "Content-Type": "application/json"
     }
     
-    payload = {
-        "text": text,
-        "model_id": model_id,
-        "voice_settings": {
+    # v3 has different voice_settings requirements (stability must be 0.0, 0.5, or 1.0)
+    if model_id == 'eleven_v3':
+        voice_settings = {
+            "stability": 0.5,  # Natural (0.0=Creative, 0.5=Natural, 1.0=Robust)
+            "similarity_boost": 0.75
+        }
+    else:
+        voice_settings = {
             "stability": 0.7,
             "similarity_boost": 0.75,
             "style": 0.5,
             "use_speaker_boost": True
         }
+    
+    payload = {
+        "text": text,
+        "model_id": model_id,
+        "voice_settings": voice_settings
     }
     
     response = requests.post(url, json=payload, headers=headers)

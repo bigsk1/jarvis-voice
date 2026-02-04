@@ -75,19 +75,34 @@ elif [ "$TTS_PROVIDER" = "elevenlabs" ]; then
     fi
     
     # Build ElevenLabs TTS JSON
-    TTS_JSON=$(jq -n \
-      --arg text "$TEXT" \
-      --arg model_id "$ELEVENLABS_TTS_MODEL" \
-      '{
-        text: $text,
-        model_id: $model_id,
-        voice_settings: {
-          stability: 0.7,
-          similarity_boost: 0.75,
-          style: 0.5,
-          use_speaker_boost: true
-        }
-      }')
+    # v3 has different voice_settings requirements (stability must be 0.0, 0.5, or 1.0)
+    if [ "$ELEVENLABS_TTS_MODEL" = "eleven_v3" ]; then
+        TTS_JSON=$(jq -n \
+          --arg text "$TEXT" \
+          --arg model_id "$ELEVENLABS_TTS_MODEL" \
+          '{
+            text: $text,
+            model_id: $model_id,
+            voice_settings: {
+              stability: 0.5,
+              similarity_boost: 0.75
+            }
+          }')
+    else
+        TTS_JSON=$(jq -n \
+          --arg text "$TEXT" \
+          --arg model_id "$ELEVENLABS_TTS_MODEL" \
+          '{
+            text: $text,
+            model_id: $model_id,
+            voice_settings: {
+              stability: 0.7,
+              similarity_boost: 0.75,
+              style: 0.5,
+              use_speaker_boost: true
+            }
+          }')
+    fi
     
     # Call ElevenLabs TTS API (returns mp3 by default)
     TEMP_MP3="/tmp/jarvis-tts-$$.mp3"
