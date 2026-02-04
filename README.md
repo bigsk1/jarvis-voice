@@ -248,9 +248,9 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 Jarvis adapts its response style based on your environment and task complexity:
 
 **🎙️ Casual Mode** (Default for Voice)
-- Always 8-12 words for voice output
+- Concise responses with configurable word limits (75/50/35 words)
+- Strips `stash://` refs, long URLs, file paths from speech
 - Perfect for: Voice interactions, speakers, TTS
-- Example: *"Website built with dark mode and login system"* (9 words)
 
 **🖥️ Detailed Mode** (Best for CLI/Debugging)
 - Full LLM response with complete context

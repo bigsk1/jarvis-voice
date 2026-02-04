@@ -6,22 +6,32 @@
 
 ## The 3 Modes Explained
 
-### 1. `JARVIS_RESPONSE_STYLE="casual"` (DEFAULT - Best for Voice)
-**Always** condenses responses to 8-12 words for voice output.
+### 1. `JARVIS_RESPONSE_STYLE="casual"` (Voice-Friendly)
+**Always** condenses responses for voice output using word limits.
+
+**Word Limits:**
+- Q&A responses: `JARVIS_QA_WORD_LIMIT` (default: 75 words)
+- Multi-turn summaries: `JARVIS_MULTI_TURN_WORD_LIMIT` (default: 50 words)
+- Tool confirmations: 35 words (hardcoded)
+
+**Also strips from speech:**
+- `stash://` references
+- Long URLs (>30 chars)
+- File paths (simplified to filename)
 
 **Examples**:
 ```
 "What time is it?" 
-→ "It's 12:34 AM on November 13th"  (8 words)
+→ "It's 12:34 AM on November 13th"
 
 "Start the tetris server"
-→ "Tetris server started successfully with PID 128712"  (8 words)
+→ "Tetris server started successfully with PID 128712"
 
-"Build me a website with dark mode and user login"
-→ "Website built with dark mode and login system"  (9 words)
+"Generate an image of a cat"
+→ "Image generated and saved to stash"  (NOT stash://space_xxx/f_xxx)
 ```
 
-**When to use**: Voice mode (default) - everything spoken through speakers should be concise.
+**When to use**: Voice mode - everything spoken through speakers should be concise.
 
 ---
 
@@ -44,67 +54,86 @@
    4. Verified server responding on port 5000
    
    Server accessible at http://localhost:5000"
-
-"Build me a website with dark mode and user login"
-→ "I've successfully completed building your website! Here's what was created:
-
-   Components:
-   - Full dark mode theme with CSS variables
-   - User authentication system (login/register)
-   - JWT token-based session management
-   - Responsive design for mobile/desktop
-   - SQLite database for user storage
-   
-   Files created:
-   - server.py (Flask backend)
-   - templates/ (HTML pages)
-   - static/css/dark-theme.css
-   - static/js/auth.js
-   
-   The server is running on port 3000..."
 ```
 
-**When to use**: CLI testing, debugging, log review - when you need full technical context.
+**When to use**: CLI testing, debugging, log review - when you need full technical context including URLs and stash refs.
 
 ---
 
-### 3. `JARVIS_RESPONSE_STYLE="auto"` ⭐ (NEW - Smart Adaptive)
+### 3. `JARVIS_RESPONSE_STYLE="auto"` (RECOMMENDED - Smart Adaptive)
 **Intelligently decides** based on tool type and complexity.
 
 #### **Auto Mode Logic**:
 
 ```python
-# Search tools → Always format for voice
-if tool in ['search_memory', 'duckduckgo_search', 'recall', 'semantic_recall']:
-    return FORMATTED_SHORT  # Remove URLs, summarize
+# Multi-turn (turn_num > 0) → Always format summary
+if turn_num > 0:
+    return _format_multi_turn_summary()  # 50 word limit, strips refs
 
-# Simple data tools → Keep concise (if already short)
-elif tool in ['get_time', 'crypto_price', 'get_weather']:
-    if response_length <= 20 words:
+# Search tools → Always format for voice
+if tool in SEARCH_TOOLS:
+    return _format_single_turn_casual()  # Remove URLs, summarize
+
+# Simple data tools → Keep if short, condense if long
+elif tool in SIMPLE_TOOLS:
+    if response_length <= 25 words:
         return AS_IS  # Already short, keep it
     else:
-        return FORMATTED_SHORT  # Condense
+        return _format_single_turn_casual()  # Condense
 
-# Complex/action tools → Adaptive based on response length
-elif tool in ['opencode', 'execute_bash', 'send_webhook']:
+# Complex/action tools → Keep detailed if long response
+elif tool in COMPLEX_TOOLS:
     if response_length > 50 words:
-        return DETAILED  # Keep full context for complex operations
+        return AS_IS  # Keep full context (GAP: may include stash refs)
     else:
-        return FORMATTED_SHORT  # Condense simple results
+        return _format_single_turn_casual()  # Condense short results
 
-# Multi-turn (multiple tools) → Always format summary
-if turn_num > 0:
-    return FORMATTED_SUMMARY
+# Default (unlisted tools) → Condense
+else:
+    return _format_single_turn_casual()
 ```
 
-#### **Auto Mode Examples**:
+---
+
+## Tool Categories
+
+### SEARCH_TOOLS (always formatted, URLs stripped):
+```python
+SEARCH_TOOLS = {
+    'search_memory', 'semantic_recall', 'recall', 'search_conversations',
+    'brave_search', 'mcp_duckduckgo_search', 'mcp_fetch_fetch',
+    'get_recent_conversations'
+}
+```
+
+### SIMPLE_TOOLS (keep if <25 words):
+```python
+SIMPLE_TOOLS = {
+    'get_time', 'crypto_price', 'get_weather', 'calculate',
+    'get_system_info', 'get_disk_usage'
+}
+```
+
+### COMPLEX_TOOLS (keep detailed if >50 words):
+```python
+COMPLEX_TOOLS = {
+    'opencode', 'execute_bash', 'send_webhook', 'api_call',
+    'generate_image', 'canvas_operations'
+}
+```
+
+**Known GAP:** Complex tools with >50 word responses bypass stash/URL stripping. TODO in code.
+
+---
+
+## Auto Mode Examples
 
 **Simple Query (Short Response)**:
 ```
 "What time is it?"  
 Tool: get_time
 Response length: 8 words
-→ "It's 12:34 AM on November 13th"  (condensed)
+→ "It's 12:34 AM on November 13th"  (kept as-is, already short)
 ```
 
 **Search Query (Always Formatted)**:
@@ -113,60 +142,22 @@ Response length: 8 words
 Tool: search_memory  
 → "Found 3 webhook memories: URL, logger endpoint, and server port"  
    (formatted for voice, URLs removed)
-
-"Use DuckDuckGo to find movies in Hillsboro"
-Tool: mcp_duckduckgo_search
-→ "Found 5 theaters showing latest movies. Regal Cinemas has evening showtimes..."
-   (formatted for voice, URLs removed, summarized)
 ```
 
 **Simple Action (Short Response)**:
 ```
 "Start the tetris server"
-Tool: execute_bash (then search_memory)
+Tool: execute_bash
 Response length: ~15 words
 → "Tetris server started on port 5000"  (condensed)
 ```
 
 **Complex Build (Detailed Response)**:
 ```
-"Build me a complete e-commerce website with user login, dark mode, shopping cart, and payment integration"
+"Build me a complete e-commerce website"
 Tool: opencode
-Response length: 80+ words (detailed technical response)
+Response length: 80+ words
 → FULL DETAILED RESPONSE (kept as-is because >50 words)
-
-   "I've successfully built your e-commerce website with all requested features:
-
-   Architecture:
-   - Flask backend with Blueprint structure
-   - SQLAlchemy ORM for database
-   - JWT authentication for user sessions
-   - Stripe payment integration
-   - Dark mode theme with CSS variables
-   
-   Features implemented:
-   1. User registration and login system
-   2. Product catalog with search/filter
-   3. Shopping cart with session persistence
-   4. Checkout flow with Stripe
-   5. Dark mode toggle (persists in localStorage)
-   
-   Files created (23 total):
-   - server.py (main Flask app)
-   - models/ (User, Product, Order, Cart)
-   - routes/ (auth, products, cart, payment)
-   - templates/ (12 HTML pages)
-   - static/css/dark-theme.css
-   - static/js/cart.js, auth.js, theme-toggle.js
-   
-   Database: SQLite (ready for PostgreSQL upgrade)
-   Server running on: http://localhost:5000
-   Admin panel: http://localhost:5000/admin
-   
-   Next steps:
-   - Configure Stripe API keys in .env
-   - Add product images to static/images/
-   - Test checkout flow with Stripe test cards"
 ```
 
 **Multi-Turn (Always Formatted)**:
@@ -174,135 +165,83 @@ Response length: 80+ words (detailed technical response)
 "Start the tetris server and save the URL to memory"
 Turn 1: search_memory → find instructions
 Turn 2: execute_bash → start server
-Turn 3: execute_bash → verify running
-Turn 4: remember → save URL
+Turn 3: remember → save URL
 → "Tetris server started on port 5000, URL saved to memory"  
-   (always formatted for multi-turn)
+   (always formatted for multi-turn, summarizes ALL tools)
 ```
 
 ---
 
-## **When to Use Each Mode**
+## When to Use Each Mode
 
-| Mode | Best For | Response Style |
-|------|----------|----------------|
-| **casual** | Voice mode (default) | Always 8-12 words |
-| **detailed** | CLI, debugging, logs | Always full context |
-| **auto** | Mixed usage, smart assistant | Adapts based on tool/complexity |
-
----
-
-## **Your Original Idea Was Perfect!**
-
-You asked:
-> "Build me a website...response in auto longer?"
-
-**YES!** In auto mode:
-- ✅ Simple tasks → Short responses
-- ✅ Complex builds (>50 words) → Detailed responses
-- ✅ Search queries → Always formatted (no URLs)
-- ✅ Multi-turn operations → Formatted summaries
-
-**Auto mode gives you the best of both worlds!**
+| Mode | Best For | Word Limits | Strips Technical Refs |
+|------|----------|-------------|----------------------|
+| **casual** | Voice mode | Q&A: 75, Multi: 50, Tool: 35 | Yes |
+| **detailed** | CLI, debugging | No limit | No |
+| **auto** | Smart assistant | Varies by tool | Mostly (see GAP) |
 
 ---
 
-## **How to Enable Auto Mode**
+## Configuration
 
-### Option 1: Set in config (permanent)
+### Set in config (permanent)
 ```bash
-# Edit config/cloud.env
+# Edit config/cloud.env or config/local.env
 JARVIS_RESPONSE_STYLE="auto"
+
+# Optional: Customize word limits
+JARVIS_QA_WORD_LIMIT=75
+JARVIS_MULTI_TURN_WORD_LIMIT=50
 ```
 
-### Option 2: Env var override (one-off testing)
+### Env var override (one-off testing)
 ```bash
 JARVIS_RESPONSE_STYLE=auto ./jarvis
 # or
-JARVIS_RESPONSE_STYLE=auto python3 orchestrator/orchestrator_v2.py cloud "query"
+JARVIS_RESPONSE_STYLE=auto ./orchestrator/orchestrator_v2.py cloud "query" --speak
 ```
 
 ---
 
-## **Implementation Details**
-
-### Tool Categories:
-
-**Search Tools** (always formatted):
-- `search_memory`
-- `semantic_recall`
-- `recall`
-- `mcp_duckduckgo_search`
-- `mcp_fetch_fetch`
-
-**Simple Tools** (keep short if <20 words):
-- `get_time`
-- `crypto_price`
-- `get_weather`
-
-**Complex Tools** (adaptive based on length):
-- `opencode` (detailed if >50 words)
-- `execute_bash` (detailed if >50 words)
-- `send_webhook`
-- `api_call`
-
-**Multi-Turn** (always formatted):
-- Any operation using 2+ tools
-
----
-
-## **Testing Auto Mode**
+## Testing Auto Mode
 
 ```bash
 # Simple query - should be short
-JARVIS_RESPONSE_STYLE=auto python3 orchestrator/orchestrator_v2.py cloud "what time is it"
+JARVIS_RESPONSE_STYLE=auto ./orchestrator/orchestrator_v2.py cloud "what time is it" --json | jq -r '.speech'
 
 # Search query - should be formatted (no URLs)
-JARVIS_RESPONSE_STYLE=auto python3 orchestrator/orchestrator_v2.py cloud "search memory for webhook"
+JARVIS_RESPONSE_STYLE=auto ./orchestrator/orchestrator_v2.py cloud "search memory for webhook" --json | jq -r '.speech'
 
 # Simple action - should be short
-JARVIS_RESPONSE_STYLE=auto python3 orchestrator/orchestrator_v2.py cloud "start tetris server"
+JARVIS_RESPONSE_STYLE=auto ./orchestrator/orchestrator_v2.py cloud "start tetris server" --json | jq -r '.speech'
 
 # Complex build - should be detailed (if response >50 words)
-JARVIS_RESPONSE_STYLE=auto python3 orchestrator/orchestrator_v2.py cloud "use opencode to build a complete flask API with authentication"
+JARVIS_RESPONSE_STYLE=auto ./orchestrator/orchestrator_v2.py cloud "use opencode to build a flask API" --json | jq -r '.speech'
 ```
 
 ---
 
-## **Why This Is Better Than Original**
+## Summary
 
-**Original idea** (from cloud.env comment):
-> "auto: Smart mode - format search results, keep other tools raw"
+| Mode | Behavior | Best For |
+|------|----------|----------|
+| `casual` | Always condense with word limits | Voice mode |
+| `detailed` | Always full response | CLI/debugging |
+| `auto` | Smart: short for simple, detailed for complex | Mixed usage |
 
-**Problem**: Too simplistic. "Keep other tools raw" means:
-- Simple queries (time, crypto) → Verbose ❌
-- Complex builds → Verbose ✅
-- Multi-turn → Inconsistent ❌
-
-**New auto mode**:
-- Search tools → Formatted ✅
-- Simple tools → Smart (short if possible) ✅
-- Complex tools → Adaptive (detailed only if needed) ✅
-- Multi-turn → Formatted summaries ✅
-
-**Result**: Truly intelligent mode that adapts to context!
+**Auto mode gives you the best of both worlds:**
+- Simple tasks → Short responses
+- Complex builds (>50 words) → Detailed responses  
+- Search queries → Always formatted (no URLs)
+- Multi-turn operations → Formatted summaries of ALL tools
 
 ---
 
-## **Summary**
-
-- ✅ **casual**: Always short (voice mode default)
-- ✅ **detailed**: Always verbose (CLI debugging)
-- ✅ **auto**: Smart adaptive (your idea, now implemented!)
-
-**Your intuition was spot-on!** Auto mode now:
-- Keeps simple things short
-- Keeps complex things detailed
-- Formats searches for voice
-- Adapts based on what makes sense
+**Related Docs:**
+- `docs/CASUAL_VS_DETAILED_MODE.md` - Detailed comparison
+- `config/cloud.env` - Configuration options
 
 ---
 
-*Last updated: 2025-11-13*  
-*Feature requested by: User during voice mode testing*
-
+*Last updated: 2026-02-02*  
+*Updated: Corrected word limits, added stash/URL stripping info, documented GAP*

@@ -9,19 +9,25 @@ Understanding how Jarvis handles conversation state between interactions is crit
 ## TL;DR - Quick Answers
 
 **Q: Does Jarvis remember context between wake word cycles?**  
-**A: No** - Each wake word cycle is a fresh request with NO automatic context from the previous cycle.
+**A: YES (now)** - Auto-context automatically loads recent conversations when enabled.
 
-**Q: So every time I say "Hey Jarvis", it's like a new conversation?**  
-**A: Yes** - Unless you explicitly ask it to recall previous conversations using tools like `search_conversations` or `get_recent_conversations`.
+**Q: So every time I say "Hey Jarvis", it knows what I just asked?**  
+**A: Yes (if within time window):**
+- `AUTO_CONTEXT_ENABLED=true` (default) - loads recent conversations automatically
+- `AUTO_CONTEXT_WINDOW=3` - how many recent conversations to include
+- `AUTO_CONTEXT_MINUTES=10` - only include conversations from last N minutes
+
+**Q: How does the WebUI handle context?**  
+**A:** WebUI maintains conversation history client-side and passes it directly to the orchestrator via `conversation_history` parameter - different from terminal auto-context.
 
 **Q: Isn't that inefficient? It has to re-send the system prompt and all tools every time?**  
-**A: Yes and No:**
-- ✅ **Prompt caching** (Anthropic, OpenAI) makes this efficient - system prompt is cached for 5+ minutes
-- ✅ **Stateless design** is simpler and more reliable (no state bugs, no memory leaks)
-- ❌ **No automatic context** means Jarvis doesn't know what you just discussed unless you explicitly ask
+**A: No - Prompt caching makes this efficient:**
+- ✅ **Prompt caching** (Anthropic, OpenAI) - system prompt cached for 5+ minutes
+- ✅ **Auto-context** now provides conversation continuity
+- ✅ **98%+ cost reduction** due to caching
 
 **Q: What about OpenAI's Responses API with `store=True` and `previous_response_id`?**  
-**A:** That would enable **automatic context chaining** but requires a **major refactor**. Current implementation uses Chat Completions API (stateless).
+**A:** Not implemented. Auto-context provides similar benefits without provider lock-in.
 
 ---
 
@@ -72,7 +78,7 @@ Understanding how Jarvis handles conversation state between interactions is crit
 └─────────────────────────────────────────────────┘
 ```
 
-**Key Point:** Each cycle is **completely independent**. The `Orchestrator()` instance is destroyed after each interaction.
+**Key Point:** Each cycle creates a new `Orchestrator()` instance, BUT auto-context loads recent conversations from database automatically (if enabled).
 
 ---
 
@@ -88,7 +94,19 @@ Understanding how Jarvis handles conversation state between interactions is crit
     },
     {
       "role": "user", 
-      "content": "What's the time?"  # Only the CURRENT question
+      "content": """
+        === RECENT CONVERSATION HISTORY ===
+        Last 3 conversation(s) in past 10 minutes
+        
+        [1] User: What's the price of bitcoin?
+            Jarvis: Bitcoin is $103,664
+        
+        [2] User: And ethereum?
+            Jarvis: Ethereum is $3,200
+        
+        === CURRENT REQUEST ===
+        What about solana?
+      """  # Auto-context prepended to current question
     }
   ],
   "tools": [
@@ -100,19 +118,18 @@ Understanding how Jarvis handles conversation state between interactions is crit
 }
 ```
 
-**What's MISSING:**
-- ❌ Previous user questions
-- ❌ Previous Jarvis responses
-- ❌ Tools used in last cycle
-- ❌ Context about what you were discussing
+**What's NOW Included (with auto-context):**
+- ✅ Previous user questions (from AUTO_CONTEXT_WINDOW)
+- ✅ Previous Jarvis responses (from AUTO_CONTEXT_WINDOW)
+- ✅ Time-filtered (AUTO_CONTEXT_MINUTES, default 10 min)
 
 **Why This Works:**
 - ✅ **Prompt Caching** - Anthropic/OpenAI cache the system prompt + tools for 5 minutes
   - First request: ~7500 tokens input
-  - Subsequent requests (within 5 min): ~50 tokens input (only your question)
+  - Subsequent requests (within 5 min): ~50 tokens input (only your question + context)
   - Cache hit rate: >90% in practice
-- ✅ **Simplicity** - No complex state management, no conversation history bugs
-- ✅ **Reliability** - Can't have stale context or "hallucinated" previous responses
+- ✅ **Auto-Context** - Recent conversations automatically included
+- ✅ **Configurable** - Disable if you want fully stateless behavior
 
 ---
 
@@ -198,33 +215,40 @@ After the cycle completes:
 
 ---
 
-### 5. Why No Automatic Context?
+### 5. Auto-Context Feature (Added 2025)
 
-**Design Philosophy:**
+**Configuration (cloud.env / local.env):**
+```bash
+# Enable automatic conversation context loading
+AUTO_CONTEXT_ENABLED=true
 
-1. **Stateless = Reliable**
-   - No "conversation drift" where context becomes corrupted
-   - No memory leaks from long-running conversations
-   - Easy to debug (each cycle is independent)
+# How many recent conversations to include
+AUTO_CONTEXT_WINDOW=3
 
-2. **Explicit > Implicit**
-   - User MUST ask for previous context
-   - Forces LLM to think about when context is actually needed
-   - Prevents "context pollution" where old info interferes with new requests
+# Only include conversations from last N minutes
+AUTO_CONTEXT_MINUTES=10
+```
 
-3. **Cost Efficiency (with caching)**
-   - Prompt caching makes stateless efficient
-   - System prompt + tools cached for 5 minutes
-   - Only user query changes each cycle
+**How It Works:**
 
-4. **Voice UX Design**
-   - Voice conversations are naturally segmented
-   - "Hey Jarvis" = explicit start of new task
-   - If you need context, you naturally say "what was my last question?"
+1. **On each cycle**, orchestrator calls `_build_conversation_context()`
+2. **Loads recent conversations** from `memory_db.conversations` table
+3. **Filters by time** (only last N minutes)
+4. **Prepends to user query** as "RECENT CONVERSATION HISTORY"
+
+**WebUI vs Terminal:**
+- **WebUI:** Passes `conversation_history` directly (client maintains state)
+- **Terminal:** Uses auto-context from database (server loads state)
+
+**Design Benefits:**
+- ✅ Context without server-side session state
+- ✅ Works across all providers (not OpenAI-specific)
+- ✅ Configurable time window prevents stale context
+- ✅ Can be disabled for fully stateless behavior
 
 ---
 
-### 6. OpenAI Responses API (Not Implemented)
+### 6. OpenAI Responses API (Not Implemented, image gen only 2-3-26)
 
 **What You're Referring To:**
 ```python
@@ -276,28 +300,29 @@ res2 = client.responses.create(
 
 ### 7. Practical Examples
 
-#### Example 1: No Automatic Context
+#### Example 1: Auto-Context in Action
 
 ```
 Cycle 1:
 You: "Hey Jarvis, what's Bitcoin price?"
 Jarvis: "Bitcoin is $91,711"
-[STATE DISCARDED]
+[Logged to conversations table]
 
-Cycle 2:
+Cycle 2 (within 10 minutes):
 You: "Hey Jarvis, what about Ethereum?"
-Jarvis: [Has NO idea you just asked about crypto]
-        [Needs to call crypto_price tool again]
-```
-
-**If you wanted context:**
-```
-Cycle 2:
-You: "Hey Jarvis, like I just asked about Bitcoin, what about Ethereum?"
-Jarvis: [Calls search_conversations with "Bitcoin"]
-        [Sees you asked about crypto prices]
+Jarvis: [Auto-context loads: "User asked about Bitcoin → $91,711"]
+        [Understands crypto context]
         [Calls crypto_price for Ethereum]
         "Ethereum is $3,200"
+```
+
+**After time window expires (10+ minutes later):**
+```
+Cycle 3:
+You: "Hey Jarvis, what about Solana?"
+Jarvis: [Auto-context is empty - too old]
+        [Still calls crypto_price - tool handles it]
+        "Solana is $148"
 ```
 
 #### Example 2: Multi-Turn WITHIN Cycle
@@ -484,27 +509,25 @@ If the cloud provider expects to "pick up later", it's assuming **stateful conte
 
 ### 13. Summary
 
-**Current State:**
-- 🔴 **No automatic context** between wake word cycles
+**Current State (Updated 2026):**
+- 🟢 **Auto-context** loads recent conversations automatically (configurable)
 - 🟢 **Context persists** within multi-turn tool execution (single cycle)
-- 🟢 **Explicit context retrieval** via memory/conversation tools
-- 🟢 **Prompt caching** makes stateless approach efficient
-- 🟢 **Stateless = simple, reliable, provider-agnostic**
+- 🟢 **WebUI** maintains conversation history client-side
+- 🟢 **Prompt caching** makes approach efficient (98%+ cost reduction)
+- 🟢 **Provider-agnostic** - works with OpenAI, Anthropic, Ollama
 
-**Your Intuition:**
-> "this doesnt seem good, and every cycle it gets all system prompt, tools mcp flooded back to input?"
-
-**Response:**
-- ✅ You're right it seems inefficient
-- ✅ BUT: Prompt caching makes it practically free (98%+ cost reduction)
-- ✅ Simplicity and reliability benefits outweigh the "wasteful" appearance
-- ⚠️ Responses API would fix this, but at significant complexity cost
+**Configuration:**
+```bash
+AUTO_CONTEXT_ENABLED=true   # Enable auto-context
+AUTO_CONTEXT_WINDOW=3       # Recent conversations to include
+AUTO_CONTEXT_MINUTES=10     # Time window
+```
 
 **Bottom Line:**
 
-The current architecture is **intentionally stateless**. It looks inefficient but is actually quite efficient thanks to prompt caching. Moving to a stateful architecture (Responses API) would be more "elegant" but would require a major refactor and lose provider compatibility.
+The architecture now provides **automatic context** via the auto-context feature while remaining provider-agnostic. The WebUI maintains its own conversation history, while terminal mode uses database-backed auto-context.
 
-For a voice assistant, the stateless approach is arguably more appropriate - "Hey Jarvis" naturally signals a new task, not a continuation. If you find yourself constantly needing context from previous cycles, that might indicate a need for stateful design, but in practice, most voice interactions are self-contained tasks.
+For voice assistant use, "Hey Jarvis" within the time window will have context from recent conversations. After the time window expires, it's a fresh start - which matches natural voice UX expectations.
 
 ---
 
@@ -512,5 +535,10 @@ For a voice assistant, the stateless approach is arguably more appropriate - "He
 - `docs/MULTI_TURN_ORCHESTRATION.md` - Multi-turn within a cycle
 - `docs/MEMORY_SYSTEM.md` - Persistent memory tools
 - `docs/DUAL_DATABASE_SYSTEM.md` - Database architecture
-- `docs/PROMPT_CACHING.md` - (would be useful to create)
+- `docs/CASUAL_VS_DETAILED_MODE.md` - Response style modes
+
+---
+
+*Last updated: 2026-02-02*
+*Major update: Added auto-context documentation, WebUI conversation handling*
 

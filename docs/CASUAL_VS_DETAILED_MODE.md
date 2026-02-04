@@ -1,89 +1,81 @@
-# Casual vs Detailed Mode
+# Casual vs Detailed vs Auto Mode
 
-## The Problem
+## Overview
 
-Both casual and detailed modes were broken and producing verbose output.
+Jarvis has three response style modes that control how tool results and Q&A responses are formatted for voice output. The key distinction is:
 
-## What Was Broken
-
-### Before Fix:
-```python
-# orchestrator_v2.py line 160-171 (OLD)
-if turn_num > 0:  # Multi-turn only
-    if response_style == 'casual':
-        speech = format_summary(...)
-    else:
-        speech = raw_speech
-else:
-    # Single-turn: IGNORED response_style completely!
-    speech = raw_speech
-```
-
-**Result**: 
-- ❌ `casual` mode: Only formatted multi-turn, single-turn was verbose
-- ❌ `detailed` mode: Everything was verbose
-- ❌ Both modes produced output like: "Perfect! I've successfully started the server. It's now running on port 5000! Here's what I did..."
-
-## What's Fixed
-
-### After Fix:
-```python
-# orchestrator_v2.py line 159-172 (NEW)
-# Apply response style for ALL responses (single + multi-turn)
-response_style = os.environ.get('JARVIS_RESPONSE_STYLE', 'casual').lower()
-
-if response_style == 'casual':
-    if turn_num > 0:
-        speech = _format_multi_turn_summary(...)
-    else:
-        speech = _format_single_turn_casual(...)  # NEW!
-else:
-    # Detailed mode: use raw LLM response
-    speech = raw_speech
-```
-
-**Plus**: Strengthened router system prompt to generate SHORT responses from the start.
+- **Internal LLM processing** - Always has full access to URLs, stash refs, file paths
+- **Final speech output** - Formatted based on mode (casual/auto strip technical details)
 
 ---
 
-## Now The Difference IS REAL
+## Quick Reference
 
-### `JARVIS_RESPONSE_STYLE="casual"` (DEFAULT)
-**Best for voice mode** - Spoken through speakers
+| Mode | Best For | Word Limits | Technical Details |
+|------|----------|-------------|-------------------|
+| `casual` | Voice/TTS | Q&A: 75, Multi-turn: 50, Tool: 35 | Stripped |
+| `auto` | Voice (smart) | Same as casual | Stripped (mostly) |
+| `detailed` | CLI/debugging | No limit | Preserved |
 
-**Behavior**:
-- ALL responses condensed to 8-12 words max
-- No greetings, no emojis, no explanations
-- Just outcome + essential details
+---
 
-**Examples**:
+## Mode Descriptions
+
+### `JARVIS_RESPONSE_STYLE="casual"` (Voice-Friendly)
+
+**Best for:** Voice mode, speakers, TTS
+
+**Behavior:**
+- Q&A responses: Up to `JARVIS_QA_WORD_LIMIT` (default: 75 words)
+- Multi-turn summaries: Up to `JARVIS_MULTI_TURN_WORD_LIMIT` (default: 50 words)
+- Tool confirmations: 35 words max (hardcoded)
+- **Strips from speech:** stash:// refs, long URLs, file paths (added 2026-02-02)
+
+**Examples:**
 ```
 User: "What time is it?"
-Output: "It's 12:34 AM on November 13th"  (8 words ✅)
-
-User: "Start the tetris server"
-Output: "Tetris server started successfully with PID 128712"  (8 words ✅)
+Output: "It's 12:34 AM on November 13th"
 
 User: "What's the price of bitcoin?"
-Output: "Bitcoin is $103,664, down 0.17% today"  (7 words ✅)
+Output: "Bitcoin is $103,664, down 0.17% today"
+
+User: "Generate an image of a cat"
+Output: "Image generated and saved to stash"  (NOT stash://space_xxx/f_xxx)
 ```
 
 ---
 
-### `JARVIS_RESPONSE_STYLE="detailed"` 
-**Best for CLI/debugging** - More context for logs
+### `JARVIS_RESPONSE_STYLE="auto"` (RECOMMENDED)
 
-**Behavior**:
-- Uses LLM's full response
-- Includes explanations and context
-- May have numbered lists, markdown, emojis
+**Best for:** Voice mode with smart formatting decisions
 
-**Examples**:
+**Behavior:**
+- **Multi-turn (turn_num > 0):** Always uses `_format_multi_turn_summary()` to condense ALL tool results
+- **Single-turn decisions based on tool type:**
+
+| Tool Category | Examples | Behavior |
+|---------------|----------|----------|
+| **Search tools** | search_memory, brave_search | Always condense, remove URLs |
+| **Simple tools** | get_time, crypto_price, weather | Keep if <25 words, condense if longer |
+| **Complex tools** | opencode, execute_bash | Keep detailed if >50 words |
+| **Unlisted tools** | (anything else) | Default to condense |
+
+**GAP:** Complex tools with >50 word responses bypass stash/URL stripping. Added TODO in code.
+
+---
+
+### `JARVIS_RESPONSE_STYLE="detailed"`
+
+**Best for:** CLI/debugging, terminal output
+
+**Behavior:**
+- Uses LLM's raw response verbatim
+- No word limits
+- URLs, stash refs, file paths preserved
+- Markdown, emojis, numbered lists allowed
+
+**Examples:**
 ```
-User: "What time is it?"
-Output: "The current time is 12:34 AM on Wednesday, November 13th, 2025. 
-         I've retrieved this information from the system clock."
-
 User: "Start the tetris server"
 Output: "The tetris server has been successfully started! 
 
@@ -98,122 +90,99 @@ The server is now accessible at http://localhost:5000"
 
 ---
 
-### `JARVIS_RESPONSE_STYLE="auto"`
-**Smart mode** - Decides based on context
+## Configuration
 
-Currently defaults to `casual` but could be enhanced to:
-- Use `detailed` for complex multi-step operations
-- Use `casual` for simple queries
-- Adapt based on terminal vs voice mode
+### Environment Variables (cloud.env / local.env)
 
----
-
-## Technical Changes Made
-
-### 1. Router System Prompt (router_v2.py)
-Added explicit voice output rules:
-```
-VOICE OUTPUT RULES (ABSOLUTELY CRITICAL):
-When you respond with Q&A intent, your response will be SPOKEN ALOUD.
-
-MANDATORY FORMAT:
-- MAXIMUM 12 WORDS (hard limit)
-- NO emojis, NO markdown
-- NO explanations of process
-- STATE ONLY: outcome + essential detail
-
-CORRECT EXAMPLES:
-- "Server started on port 5000"
-- "It's 12:34 AM on November 13th"
-```
-
-### 2. Orchestrator Response Handling (orchestrator_v2.py)
-```python
-# NEW: _format_single_turn_casual() method
-# Condenses verbose Q&A responses for voice output
-# Only runs when JARVIS_RESPONSE_STYLE="casual"
-# Ensures single-turn responses are also concise
-```
-
-### 3. Multi-Turn Formatter Updates
-```python
-# Updated _format_multi_turn_summary()
-# Stricter word limits (15 words max)
-# Better examples in prompts
-# Handles both tool results and Q&A consolidation
-```
-
----
-
-## Testing Results
-
-### Casual Mode (cloud.env: `JARVIS_RESPONSE_STYLE="casual"`)
 ```bash
-$ python3 orchestrator/orchestrator_v2.py cloud "what time is it" --json | jq -r '.speech'
-It's 12:34 AM on November 13th, 2025.
-✅ 8 words
+# Response style: casual, detailed, auto
+JARVIS_RESPONSE_STYLE="auto"
 
-$ python3 orchestrator/orchestrator_v2.py cloud "start the tetris server" --json | jq -r '.speech'
-Tetris server started successfully with PID 128712.
-✅ 8 words
+# Word limit for Q&A/single-turn (used by _format_single_turn_casual)
+# Default: 75 words
+JARVIS_QA_WORD_LIMIT=75
 
-$ python3 orchestrator/orchestrator_v2.py cloud "what's the price of bitcoin" --json | jq -r '.speech'
-Bitcoin is $103,664, down 0.17% today.
-✅ 7 words
+# Word limit for multi-turn/multi-tool summaries (used by _format_multi_turn_summary)
+# Default: 50 words
+JARVIS_MULTI_TURN_WORD_LIMIT=50
 ```
 
-### Detailed Mode (cloud.env: `JARVIS_RESPONSE_STYLE="detailed"`)
-Would output the full LLM responses with explanations, context, and formatting.
+### One-off Testing
 
----
-
-## Why This Matters
-
-**For Voice Mode**:
-- TTS engines read everything aloud
-- Verbose responses are annoying to listen to
-- User hears: "Perfect! I've successfully looked up the time for you. It's currently..."
-- **With casual mode**: "It's 12:34 AM on November 13th" ✅
-
-**For CLI/Testing**:
-- Developers want details
-- Helpful to see what tools were called
-- Explanations aid debugging
-- **With detailed mode**: Get full context
-
----
-
-## How to Use
-
-### Set in config/cloud.env (or local.env):
-```bash
-# For voice mode (speakers):
-JARVIS_RESPONSE_STYLE="casual"
-
-# For CLI/debugging (terminal):
-JARVIS_RESPONSE_STYLE="detailed"
-```
-
-### Env var override (one-off testing):
 ```bash
 # Test casual mode
-JARVIS_RESPONSE_STYLE=casual python3 orchestrator/orchestrator_v2.py cloud "query"
+JARVIS_RESPONSE_STYLE=casual ./orchestrator/orchestrator_v2.py cloud "query" --speak
 
 # Test detailed mode  
-JARVIS_RESPONSE_STYLE=detailed python3 orchestrator/orchestrator_v2.py cloud "query"
+JARVIS_RESPONSE_STYLE=detailed ./orchestrator/orchestrator_v2.py cloud "query"
+
+# Test auto mode
+JARVIS_RESPONSE_STYLE=auto ./orchestrator/orchestrator_v2.py cloud "query" --speak
 ```
 
+---
+
+## Technical Implementation
+
+### Code Flow (orchestrator_v2.py)
+
+```
+raw_speech (LLM's verbose response with URLs, stash refs, etc.)
+    ↓
+[Check response_style]
+    ↓
+casual/auto mode? ──────────────────────────────────┐
+    ↓                                               │
+turn_num > 0? ──yes──► _format_multi_turn_summary() │
+    ↓ no                                            │
+tools_used? ──no──► _format_single_turn_casual()    │
+    ↓ yes                                           │
+[auto mode: check tool category]                    │
+    ↓                                               │
+detailed mode? ─────────────────► speech = raw_speech (no formatting)
+    ↓
+speech (final TTS output)
+```
+
+### Key Functions
+
+| Function | Called By | Word Limit | Strips Refs |
+|----------|-----------|------------|-------------|
+| `_format_single_turn_casual()` | casual, auto | 75 | ✅ Yes |
+| `_format_multi_turn_summary()` | casual, auto | 50 | ✅ Yes |
+| `_format_auto_mode()` | auto only | varies | ✅ Mostly |
+| `_format_tool_speech()` | tool confirmations | 35 | ❌ No |
+
+### What Gets Stripped (casual/auto modes)
+
+Added 2026-02-02 to prevent TTS from speaking technical references:
+
+1. **stash:// references** → "saved to stash" or "image generated"
+2. **Long URLs (>30 chars)** → domain only or "link saved"
+3. **File paths** → just the filename
+
+---
+
+## WebUI vs Terminal
+
+Both use the **same orchestrator** formatting:
+
+- **WebUI (jarvis-web):** Calls `orchestrator.process()` → gets `speech` field → sends to TTS
+- **Terminal (--speak):** Calls `orchestrator.process()` → gets `speech` field → sends to say.sh
+
+The `raw_llm_response` is preserved in the response for "expand details" in the WebUI.
 
 ---
 
 ## Summary
 
-**Before**: Both casual and detailed modes were broken, producing verbose output.  
-**After**: Casual mode = 8-12 word voice-friendly responses, Detailed mode = full context responses.  
-**Fixed by**: Strengthening system prompts + applying response_style to ALL responses (not just multi-turn).
+| Mode | Use Case | Formatting | Strips Technical Refs |
+|------|----------|------------|----------------------|
+| `casual` | Voice | Always condense | ✅ Yes |
+| `auto` | Voice (smart) | Condense based on tool type | ✅ Mostly |
+| `detailed` | CLI/debug | No formatting | ❌ No |
 
 ---
 
-*Last updated: 2025-11-13*  
-*Issue reported by: User testing voice mode*
-
+*Last updated: 2026-02-02*  
+*See also: `config/cloud.env` for full configuration options*

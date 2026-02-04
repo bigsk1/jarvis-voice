@@ -985,23 +985,28 @@ Your response:"""
     
     def _format_auto_mode(self, user_query: str, tools_used: list, accumulated_data: dict, raw_response: str, turn_num: int) -> str:
         """
-        Smart auto mode: Adapt response based on tool type and complexity.
+        Smart auto mode: Adapt response formatting based on tool type and complexity.
         
-        Rules:
-        - Search tools → Format for voice (remove URLs, summarize)
-        - Simple data tools → Keep concise
-        - Complex/build tools → More detail
-        - Multi-turn → Format summary
+        FLOW:
+        - Multi-turn (turn_num > 0) → ALWAYS uses _format_multi_turn_summary() for ALL tools
+        - Single-turn (turn_num == 0) → Checks tool category to decide formatting:
+          - SEARCH_TOOLS → Condense (remove URLs, summarize)
+          - SIMPLE_TOOLS → Keep if short (<25 words), condense if longer
+          - COMPLEX_TOOLS → Keep detailed if long (>50 words), condense if short
+          - Unlisted tools → Default to condense
+        
+        NOTE: The tool categories below only affect SINGLE-TURN responses.
+        Multi-turn always summarizes all tool results together.
         
         Args:
             user_query: Original user request
-            tools_used: List of tool names executed
+            tools_used: List of tool names executed (first tool checked for single-turn)
             accumulated_data: Results from all tools
             raw_response: Verbose response from LLM
-            turn_num: Current turn number
+            turn_num: Current turn number (0 = single-turn, >0 = multi-turn)
             
         Returns:
-            Intelligently formatted response
+            Formatted response for TTS
         """
         try:
             # Multi-turn: always format (could be complex)
@@ -1044,6 +1049,10 @@ Your response:"""
                 # If response is very long (>50 words), it's probably detailed - keep detailed
                 word_count = len(raw_response.split())
                 if word_count > 50:
+                    # GAP: This bypasses stash/URL stripping rules in _format_single_turn_casual()
+                    # If opencode/bash returns stash:// refs in long response, they'd be spoken.
+                    # For now acceptable since complex tools rarely output stash refs directly.
+                    # TODO: Consider post-processing to strip stash:// even for detailed mode.
                     return raw_response  # Keep detailed for complex operations
                 else:
                     # Short response for complex tool - condense it
@@ -1061,15 +1070,26 @@ Your response:"""
     
     def _format_single_turn_casual(self, user_query: str, raw_response: str) -> str:
         """
-        Format Q&A response for voice output (casual mode).
-        Uses JARVIS_QA_WORD_LIMIT for informational responses (default: 100 words).
+        Format Q&A or single-tool response for voice output (casual/auto mode).
+        Uses JARVIS_QA_WORD_LIMIT (default: 75 words).
+        
+        Called by:
+        - Casual mode: Always (for both Q&A and single-tool responses)
+        - Auto mode: For search tools, simple tools when long, and default fallback
+        
+        NOTE: This is the FINAL formatting before TTS. The LLM prompt includes rules to:
+        - Strip stash:// references (say "saved to stash" instead)
+        - Strip long URLs (say domain only or "link saved")
+        - Simplify file paths to just filename
+        These rules only apply HERE (final speech), not to internal LLM processing.
+        See rules 7-9 in the prompt below. Added 2026-02-02.
         
         Args:
             user_query: Original user request
             raw_response: Verbose response from LLM
             
         Returns:
-            Voice-friendly version
+            Voice-friendly version (condensed, no stash refs/long URLs)
         """
         try:
             # Get configurable word limit for Q&A (default 75)
@@ -1094,6 +1114,9 @@ RULES:
 4. No URLs unless critical
 5. NEVER drop named entities - movie titles, restaurant names, product names, people's names MUST be preserved
 6. If user asked for specific items (top 3, best restaurants, etc.), include those by name
+7. NEVER speak stash:// references (e.g., stash://space_xxx/f_xxx) - just say "saved to stash" or "image saved"
+8. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only (e.g., "on Wikipedia")
+9. Simplify file paths (/home/user/...) to just the filename
 
 EXAMPLES:
 Verbose: "Great! I've looked up ntfy. It's an open-source push notification service that lets you..."
@@ -1117,17 +1140,27 @@ Your condensed response:"""
     
     def _format_multi_turn_summary(self, user_query: str, tools_used: list, accumulated_data: dict, llm_response: str) -> str:
         """
-        Format multi-turn results for voice output (short & sweet).
-        Uses JARVIS_MULTI_TURN_WORD_LIMIT for multi-tool summaries (default: 50 words).
+        Format multi-turn (multiple tools) results for voice output.
+        Uses JARVIS_MULTI_TURN_WORD_LIMIT (default: 50 words).
+        
+        Called when turn_num > 0 (task used multiple tools across multiple LLM turns).
+        Summarizes ALL tool results together into a concise spoken summary.
+        
+        NOTE: This is the FINAL formatting before TTS. The LLM prompt includes rules to:
+        - Strip stash:// references (say "saved to stash" instead)
+        - Strip long URLs (say domain only or "link saved")
+        - Simplify file paths to just filename
+        These rules only apply HERE (final speech), not to internal LLM processing.
+        See rules 6-8 in the prompt below. Added 2026-02-02.
         
         Args:
             user_query: Original user request
-            tools_used: List of tool names executed
-            accumulated_data: Results from all tools
-            llm_response: Raw response from LLM
+            tools_used: List of ALL tool names executed (all turns)
+            accumulated_data: Results from ALL tools (all turns combined)
+            llm_response: LLM's final synthesized response
             
         Returns:
-            Concise voice-friendly summary
+            Concise voice-friendly summary (50 words max by default)
         """
         try:
             # Get configurable word limit for multi-turn (default 50)
@@ -1158,8 +1191,12 @@ RULES:
 3. PRESERVE key numbers (prices, temperatures, percentages, ratings)
 4. No emojis, no markdown, no bullet points, no explanations of what tools did
 5. If user asked for "top 3" items, include all 3 by name
+6. NEVER speak stash:// references (e.g., stash://space_xxx/f_xxx) - just say "saved to stash" or "image generated"
+7. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only
+8. Simplify file paths (/home/user/project/file.py) to just the filename (file.py)
 
 GOOD: "Top 3 date night spots: Copper River, BJ's Brewhouse, Thirsty Lion. Tonight: 47°F clear."
+GOOD: "Image generated and saved to stash." (NOT "Image saved to stash://space_20260201_xxx/f_abc")
 BAD: "[Names from results]" or "Found 3 options" ← Never use placeholders!
 
 Your response:"""
