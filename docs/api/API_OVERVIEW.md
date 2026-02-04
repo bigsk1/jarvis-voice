@@ -623,7 +623,6 @@ Body: {
   "mode": "cloud",
   "session_id": "n8n-workflow-123"
 }
-# Returns: { ok, speech, response, tools_used, session_id }
 
 # Quick query (JSON body)
 POST /api/query/quick
@@ -633,12 +632,40 @@ Body: { "query": "What time is it?", "mode": "cloud" }
 GET /api/query/quick?q=What+is+the+weather&mode=cloud
 ```
 
-**Example n8n integration:**
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ok` | bool | Success status |
+| `speech` | string | TTS-optimized response |
+| `response` | string | Full text response (raw LLM output) |
+| `tools_used` | string[] | Tools that were called |
+| `session_id` | string | Session ID for continuity |
+| `error` | string | Error message (if failed) |
+| `data` | object | Accumulated data from tool results |
+| `usage` | object | Token usage and cost (`input_tokens`, `output_tokens`, `cost_usd`) |
+| `server_side_tools` | object | LLM provider native tools (xAI `web_search`, `x_search`, etc.) |
+| `thinking` | string | LLM reasoning/thinking (if enabled) |
+| `raw_llm_response` | string | Original response before voice formatting |
+| `experience_id` | int | Experience ID for feedback linking |
+| `available_tools` | string[] | Tools the LLM could choose from |
+| `feedback` | object | Self-critique feedback (if collected) |
+| `cancelled` | bool | True if user stopped processing |
+| `max_turns_reached` | bool | True if hit max turns limit |
+| `workflow_executed` | string | Workflow ID if a workflow was triggered |
+
+**Example Response:**
 ```json
 {
-  "query": "Check if my servers are healthy",
-  "mode": "cloud",
-  "session_id": "n8n-health-check"
+  "ok": true,
+  "speech": "Bitcoin is at $89,651.",
+  "response": "Bitcoin is currently trading at $89,651 USD, up 2.05%.",
+  "tools_used": ["crypto_price"],
+  "data": {"btc_price": "89651", "btc_change": "2.05"},
+  "usage": {"input_tokens": 1500, "output_tokens": 200, "cost_usd": 0.0023},
+  "server_side_tools": {"SERVER_SIDE_TOOL_WEB_SEARCH": 1},
+  "experience_id": 1234,
+  "available_tools": ["crypto_price", "weather", "search_memory", "..."]
 }
 ```
 

@@ -1,6 +1,6 @@
 # Workflows API
 
-> **Version**: 1.0 | **Updated**: January 2026
+> **Version**: 1.1 | **Updated**: February 2026
 
 The Workflows API provides programmatic access to Jarvis workflow orchestration. Execute predefined multi-tool pipelines, list available workflows, and monitor execution history.
 
@@ -121,7 +121,22 @@ curl -X POST http://localhost:8880/api/workflows/crypto_market_report/execute \
 }
 ```
 
-**Response:**
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ok` | bool | Success status |
+| `workflow_id` | string | Workflow that was executed |
+| `speech` | string | Final speech response |
+| `tools_used` | string[] | Tools that were executed |
+| `steps_completed` | int | Number of steps completed |
+| `duration_ms` | float | Execution time in milliseconds |
+| `data` | object | Accumulated data from steps |
+| `usage` | object | LLM token usage (`input_tokens`, `output_tokens`, `cost_usd`) |
+| `server_side_tools` | object | LLM provider native tools (xAI `web_search`, `x_search`, etc.) |
+| `error` | string | Error message (if failed) |
+
+**Example Response:**
 ```json
 {
   "ok": true,
@@ -133,6 +148,16 @@ curl -X POST http://localhost:8880/api/workflows/crypto_market_report/execute \
   "data": {
     "coin1_price": "89651",
     "coin1_change": "2.05"
+  },
+  "usage": {
+    "input_tokens": 22666,
+    "output_tokens": 1645,
+    "total_tokens": 24311,
+    "cost_usd": 0.005356
+  },
+  "server_side_tools": {
+    "SERVER_SIDE_TOOL_X_SEARCH": 3,
+    "SERVER_SIDE_TOOL_WEB_SEARCH": 2
   }
 }
 ```
