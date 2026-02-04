@@ -947,12 +947,15 @@ class ChatUI {
       if (data.server_side_tools && Object.keys(data.server_side_tools).length > 0) {
         const tools = Object.entries(data.server_side_tools)
           .map(([name, count]) => {
-            // Clean up tool name: SERVER_SIDE_TOOL_X_SEARCH -> x search
-            const cleanName = name.replace('SERVER_SIDE_TOOL_', '').toLowerCase().replace(/_/g, ' ');
+            // Clean up tool name: SERVER_SIDE_TOOL_X_SEARCH -> X Search
+            const cleanName = name.replace('SERVER_SIDE_TOOL_', '')
+              .split('_')
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+              .join(' ');
             return `${cleanName}${count > 1 ? ` (${count}x)` : ''}`;
           })
           .join(', ');
-        Utils.toast(`🔍 Provider: ${tools}`, 'info', 4000);
+        Utils.toast(`🔍 Server-side: ${tools}`, 'info', 4000);
       }
     });
     
