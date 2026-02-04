@@ -6,6 +6,8 @@ Generate AI videos using xAI Grok Imagine Video or Google Gemini Veo directly fr
 
 The `generate_video` tool creates AI-generated videos from text prompts or images. Videos are saved locally and indexed in stash for use with other tools.
 
+![jarvis-web-video](../images/jarvis-web-video.png)
+
 ## Quick Start
 
 ```bash
