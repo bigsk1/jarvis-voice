@@ -309,6 +309,9 @@ class PipelineExecutor:
             
             item = items[item_index]
             
+            # Store loop index for LLM param generation
+            variables["_loop_index"] = item_index
+            
             # Resolve parameters for this item
             params = self._resolve_params(step, tool_defaults.get(tool_name, {}), variables)
             
@@ -316,12 +319,39 @@ class PipelineExecutor:
             if action:
                 params["action"] = action
             
-            # Add item-specific params (e.g., url)
+            # Add item-specific params based on tool type
             if isinstance(item, str):
                 # Assume it's a URL for crawl_url
                 params["url"] = item
             elif isinstance(item, dict):
-                params.update(item)
+                # Smart item handling based on tool
+                if tool_name == "stash" and action == "save":
+                    # For stash save from crawl results, extract the actual content
+                    # Crawl results have: {ok, data: {results: [{url, markdown, ...}]}, ...}
+                    content = None
+                    source_url = None
+                    if "data" in item and "results" in item.get("data", {}):
+                        results = item["data"]["results"]
+                        if results and len(results) > 0:
+                            content = results[0].get("markdown") or results[0].get("text", "")
+                            source_url = results[0].get("url", "")
+                    elif "markdown" in item:
+                        content = item.get("markdown") or item.get("text", "")
+                        source_url = item.get("url", "")
+                    
+                    if content:
+                        params["text"] = content
+                        # Generate name from URL if not provided
+                        if "name" not in params and source_url:
+                            from urllib.parse import urlparse
+                            domain = urlparse(source_url).netloc.replace("www.", "").split(".")[0]
+                            params["name"] = f"{domain}_article_{item_index + 1}.md"
+                        elif "name" not in params:
+                            topic = variables.get("topic", "source")
+                            params["name"] = f"{topic[:20].replace(' ', '_')}_source_{item_index + 1}.md"
+                else:
+                    # Default: merge item dict into params
+                    params.update(item)
             
             # Execute tool
             result = self.executor.execute(tool_name, params)
@@ -344,6 +374,9 @@ class PipelineExecutor:
                 outputs.append(result)
             
             item_index += 1
+        
+        # Clean up loop variable
+        variables.pop("_loop_index", None)
         
         # Check if we met required success count
         abort = False
@@ -883,7 +916,16 @@ class PipelineExecutor:
             return True
     
     def _llm_fill_params(self, step: dict, variables: dict) -> dict:
-        """Use LLM to fill in parameters based on llm_prompt."""
+        """Use LLM to fill in parameters based on llm_prompt.
+        
+        TODO: Support llm_hints - additional guidance for parameter generation.
+        When implemented, hints would be appended to the prompt like:
+            hints = step.get("llm_hints", {})
+            if hints:
+                prompt += "\\n\\nParameter hints:\\n"
+                for param, hint in hints.items():
+                    prompt += f"- {param}: {hint}\\n"
+        """
         if not self.provider:
             return {}
         
@@ -938,11 +980,26 @@ class PipelineExecutor:
             elif tool_name == "send_email":
                 return {"body": content}
             elif tool_name == "stash":
+                # stash save needs 'text' for content AND 'name' for filename
+                # Generate name from step context if not provided
+                action = step.get("params", {}).get("action", step.get("action", ""))
+                if action == "save":
+                    # Try to generate a sensible filename
+                    topic = variables.get("topic", "research")
+                    index = variables.get("_loop_index", 0)
+                    name = f"{topic.replace(' ', '_')[:30]}_source_{index + 1}.txt"
+                    return {"text": content, "name": name}
                 return {"text": content}
             elif tool_name == "canvas":
                 return {"content": content}
             elif tool_name == "generate_image":
                 return {"prompt": content}
+            elif tool_name == "remember":
+                # remember requires 'key' and 'value', NOT content/text/body
+                # Try to extract key from content or generate one
+                topic = variables.get("topic", "fact")
+                key = f"{topic.replace(' ', '_')[:40]}_{hash(content) % 10000}"
+                return {"key": key, "value": content}
             else:
                 # Generic fallback - return all common parameter names
                 return {"content": content, "text": content, "body": content}
