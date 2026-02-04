@@ -1345,7 +1345,28 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (February 2026):**
-- ✅ **xAI Image Generation** - Fast & cheap image generation ⭐ NEW
+- ✅ **ElevenLabs v3 TTS** - Upgraded to latest TTS model ⭐ NEW
+  - 68% error reduction for numbers, scores, times, symbols
+  - Configurable voice settings via `ELEVENLABS_TTS_STABILITY`, `_SIMILARITY_BOOST`
+  - v3 requires stability 0.0/0.5/1.0; v2 settings preserved for fallback
+  - TTS cache key includes voice settings (auto-invalidates on change)
+- ✅ **Server-side Tools Notification** - Toast when provider uses native search
+  - Shows "🔍 Server-side: X Search" when xAI/Anthropic use built-in tools
+  - No more digging in logs to see if native search was used
+- ✅ **Speech Formatting Improvements** - Cleaner voice output
+  - `stash://` references stripped from casual/auto mode speech
+  - Long URLs (>30 chars) removed or simplified
+  - File paths simplified to just filename
+  - Technical refs preserved in `detailed` mode and internal LLM processing
+- ✅ **TTS Cache Management** - Granular cache control
+  - `./bin/status-cache clear cloud` - clear cloud cache only
+  - `./bin/status-cache clear local` - clear local cache only
+  - Dashboard TUI updated with new cache commands
+- ✅ **Dashboard Security & Features** - Safer config viewing
+  - Removed commands that exposed API keys
+  - Added Port Check (shows ✅/❌ for all Jarvis services)
+  - Added View Crontab, DB Sizes, Ghost Tools, MCP Servers
+- ✅ **xAI Image Generation** - Fast & cheap image generation
   - Added `xai` provider to `generate_image` tool (grok-imagine-image model)
   - **$0.02/image** - 10x cheaper than alternatives!
   - **Batch generation**: `n=1-10` for multiple variations in one request
