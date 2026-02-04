@@ -61,7 +61,7 @@
       "parameters": {
         "calendar": {
           "__rl": true,
-          "value": "tksupps@gmail.com",
+          "value": "your-email@gmail.com",
           "mode": "id"
         },
         "start": "={{ $json.body.reminder.trigger_time }}",
@@ -81,7 +81,7 @@
       ],
       "credentials": {
         "googleCalendarOAuth2Api": {
-          "id": "wVtoAcFrU4utHVpD",
+          "id": "YOUR_CREDENTIAL_ID",
           "name": "Google Calendar account"
         }
       }
@@ -170,10 +170,10 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
   },
-  "versionId": "4b4f537c-ed44-4d11-8b9c-cdfb7f5d58f1",
+  "versionId": "EXAMPLE_VERSION_ID",
   "meta": {
-    "instanceId": "4152adc5d074bd01cc0ec9ba3eb0a17d15f2855e853b80bacc39291f703f7594"
+    "instanceId": "YOUR_INSTANCE_ID"
   },
-  "id": "rDqYkqg6otOWzgX2",
+  "id": "EXAMPLE_WORKFLOW_ID",
   "tags": []
 }

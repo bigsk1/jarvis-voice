@@ -12,7 +12,7 @@
         },
         "calendarId": {
           "__rl": true,
-          "value": "tksupps@gmail.com",
+          "value": "your-email@gmail.com",
           "mode": "id"
         },
         "triggerOn": "eventCreated",
@@ -28,7 +28,7 @@
       ],
       "credentials": {
         "googleCalendarOAuth2Api": {
-          "id": "wVtoAcFrU4utHVpD",
+          "id": "YOUR_CREDENTIAL_ID",
           "name": "Google Calendar account"
         }
       }
@@ -44,7 +44,7 @@
         },
         "calendarId": {
           "__rl": true,
-          "value": "tksupps@gmail.com",
+          "value": "your-email@gmail.com",
           "mode": "id"
         },
         "triggerOn": "eventCancelled",
@@ -60,7 +60,7 @@
       ],
       "credentials": {
         "googleCalendarOAuth2Api": {
-          "id": "wVtoAcFrU4utHVpD",
+          "id": "YOUR_CREDENTIAL_ID",
           "name": "Google Calendar account"
         }
       }
@@ -164,7 +164,7 @@
         },
         "calendarId": {
           "__rl": true,
-          "value": "tksupps@gmail.com",
+          "value": "your-email@gmail.com",
           "mode": "id"
         },
         "triggerOn": "eventUpdated",
@@ -180,7 +180,7 @@
       ],
       "credentials": {
         "googleCalendarOAuth2Api": {
-          "id": "wVtoAcFrU4utHVpD",
+          "id": "YOUR_CREDENTIAL_ID",
           "name": "Google Calendar account"
         }
       }
@@ -343,10 +343,10 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
   },
-  "versionId": "d516c097-b9ab-4fd2-b48c-c6ee941c4cf6",
+  "versionId": "EXAMPLE_VERSION_ID",
   "meta": {
-    "instanceId": "4152adc5d074bd01cc0ec9ba3eb0a17d15f2855e853b80bacc39291f703f7594"
+    "instanceId": "YOUR_INSTANCE_ID"
   },
-  "id": "ckEvanjTTZJGiH0V",
+  "id": "EXAMPLE_WORKFLOW_ID",
   "tags": []
 }

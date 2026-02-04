@@ -15,6 +15,7 @@ You are a security expert auditing the Jarvis Voice Assistant codebase. This is 
 - `config/contacts.json` - Personal contact information
 - `config/ssh.json` - SSH credentials and host configs
 - `config/webhook_registry.json` - Webhook endpoints
+- `docs/n8n/workflows/*.json` - n8n workflow exports (contain personal emails, n8n credential IDs)
 - `jarvis-intel/` - Knowledge base with IPs, credentials, network configs
 - `data/*.db` - SQLite databases with conversation history
 - `data/.spotify_cache` - OAuth tokens
@@ -134,18 +135,40 @@ rg "os\.(system|popen)" skills/*.py
 rg "requests\.(get|post)" --type py | grep -v "timeout"
 ```
 
-### 6. .gitignore Validation
+### 6. n8n Workflow Personal Data
+
+**Check n8n workflow exports for personal information:**
+```bash
+# Personal email addresses in workflow JSONs
+rg "@gmail\.com|@yahoo\.com|@hotmail\.com|@outlook\.com" docs/n8n/workflows/*.json --glob "!*.example"
+
+# Custom domain emails that might be personal
+rg "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}" docs/n8n/workflows/*.json --glob "!*.example"
+
+# n8n credential IDs (should be sanitized in examples)
+rg '"id":\s*"[A-Za-z0-9]{16}"' docs/n8n/workflows/*.json --glob "!*.example"
+
+# Instance IDs
+rg '"instanceId":\s*"[a-f0-9]{64}"' docs/n8n/workflows/*.json --glob "!*.example"
+```
+
+**Expected:** Only `.json.example` files should be tracked. Real workflow JSONs should be gitignored.
+
+### 7. .gitignore Validation
 
 **Verify sensitive patterns are ignored:**
 ```bash
 # Check if gitignore covers all secrets
-cat .gitignore | grep -E "(\.env|\.key|\.pem|ssh\.json|contacts)"
+cat .gitignore | grep -E "(\.env|\.key|\.pem|ssh\.json|contacts|n8n/workflows)"
 
 # Find files that SHOULD be ignored but aren't
 git ls-files | grep -E "(\.env|password|secret|credential)"
+
+# Check n8n workflows are properly ignored
+git ls-files docs/n8n/workflows/ | grep -v "\.example"
 ```
 
-### 7. Dependency Vulnerabilities
+### 8. Dependency Vulnerabilities
 
 ```bash
 # Check for known vulnerable packages
@@ -192,6 +215,7 @@ Before making this repo public, verify:
 - [ ] No hardcoded IPs in source (only in gitignored configs)
 - [ ] `jarvis-intel/` stays private (contains sensitive personal data)
 - [ ] `config/contacts.json` and `ssh.json` are gitignored
+- [ ] n8n workflow JSONs gitignored (contain personal emails, keep `.example` versions)
 - [ ] All API routes have appropriate auth
 - [ ] Rate limiting on public endpoints
 - [ ] Error messages don't leak internal paths/IPs
