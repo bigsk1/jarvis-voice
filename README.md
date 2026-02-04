@@ -1619,8 +1619,9 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - LLM dynamic summaries (gpt-4o-mini/qwen3 generates natural phrases)
   - Tool-aware updates (opencode, search, weather, fetch)
   - Rate limiting, error deduplication, collision prevention
-  - Cloud (OpenAI TTS) + Local (Kokoro TTS) support
+  - Cloud (ElevenLabs/OpenAI) + Local (Kokoro) TTS support
   - Phrase modes (`normal` / `unhinged`), audio caching, silence padding
+  - Cache management: `./bin/status-cache clear [cloud|local|all]`
 - ✅ **Weather Tool** - OpenWeatherMap with geocoding for accurate locations
 - ✅ **Intelligence Layer Phase 1.5** - Full insight lifecycle ⭐ MAJOR
   - Positive AND negative constraints (what to do AND what NOT to do)

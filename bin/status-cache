@@ -1,11 +1,16 @@
 #!/bin/bash
 # Jarvis Status Audio Cache Management
 #
+# NOTE: This caches STATUS UPDATES only (say-status.sh)
+#       Final speech (say.sh) is NOT cached - always fresh
+#
 # Usage:
-#   status-cache stats    - Show cache statistics
-#   status-cache clear    - Clear all cached audio
-#   status-cache list     - List cached files
-#   status-cache warm     - Pre-generate cache for all phrases
+#   status-cache stats              - Show cache statistics
+#   status-cache clear              - Clear all cached audio
+#   status-cache clear cloud        - Clear cloud cache only (ElevenLabs/OpenAI)
+#   status-cache clear local        - Clear local cache only (Kokoro)
+#   status-cache list               - List cached files
+#   status-cache warm [cloud|local] - Pre-generate cache for all phrases
 
 set -euo pipefail
 
@@ -48,17 +53,43 @@ show_stats() {
 }
 
 clear_cache() {
-    echo "Clearing status audio cache..."
+    TARGET="${1:-all}"
     
-    if [ -d "$CACHE_DIR_CLOUD" ]; then
-        rm -rf "$CACHE_DIR_CLOUD"
-        echo "✓ Cleared cloud cache"
-    fi
-    
-    if [ -d "$CACHE_DIR_LOCAL" ]; then
-        rm -rf "$CACHE_DIR_LOCAL"
-        echo "✓ Cleared local cache"
-    fi
+    case "$TARGET" in
+        cloud)
+            echo "Clearing cloud status audio cache..."
+            if [ -d "$CACHE_DIR_CLOUD" ]; then
+                rm -rf "$CACHE_DIR_CLOUD"
+                echo "✓ Cleared cloud cache (812 phrases)"
+            else
+                echo "Cloud cache doesn't exist"
+            fi
+            ;;
+        local)
+            echo "Clearing local status audio cache..."
+            if [ -d "$CACHE_DIR_LOCAL" ]; then
+                rm -rf "$CACHE_DIR_LOCAL"
+                echo "✓ Cleared local cache"
+            else
+                echo "Local cache doesn't exist"
+            fi
+            ;;
+        all)
+            echo "Clearing ALL status audio cache..."
+            if [ -d "$CACHE_DIR_CLOUD" ]; then
+                rm -rf "$CACHE_DIR_CLOUD"
+                echo "✓ Cleared cloud cache"
+            fi
+            if [ -d "$CACHE_DIR_LOCAL" ]; then
+                rm -rf "$CACHE_DIR_LOCAL"
+                echo "✓ Cleared local cache"
+            fi
+            ;;
+        *)
+            echo "Usage: status-cache clear [cloud|local|all]"
+            exit 1
+            ;;
+    esac
     
     echo "Done! Cache will rebuild automatically on next use."
 }
@@ -149,7 +180,7 @@ case "${1:-stats}" in
         show_stats
         ;;
     clear)
-        clear_cache
+        clear_cache "${2:-all}"
         ;;
     list)
         list_cache
@@ -158,7 +189,13 @@ case "${1:-stats}" in
         warm_cache "${2:-cloud}"
         ;;
     *)
-        echo "Usage: $0 {stats|clear|list|warm [cloud|local]}"
+        echo "Usage: $0 {stats|clear|list|warm}"
+        echo ""
+        echo "Commands:"
+        echo "  stats                  Show cache statistics"
+        echo "  clear [cloud|local|all]  Clear cache (default: all)"
+        echo "  list                   List cached files"
+        echo "  warm [cloud|local]     Pre-generate cache for all phrases"
         exit 1
         ;;
 esac

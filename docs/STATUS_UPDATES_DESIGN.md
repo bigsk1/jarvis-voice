@@ -103,11 +103,15 @@ Static phrases are cached to `~/.cache/jarvis/status-tts/` (cloud) or `~/.cache/
 
 **Manage cache with:**
 ```bash
-./bin/status-cache stats   # View cache statistics
-./bin/status-cache clear   # Clear all cached audio
-./bin/status-cache warm cloud   # Pre-generate all cloud phrases
-./bin/status-cache warm local   # Pre-generate all local phrases
+./bin/status-cache stats         # View cache statistics
+./bin/status-cache clear         # Clear all cached audio
+./bin/status-cache clear cloud   # Clear cloud cache only (ElevenLabs/OpenAI)
+./bin/status-cache clear local   # Clear local cache only (Kokoro)
+./bin/status-cache warm cloud    # Pre-generate all cloud phrases
+./bin/status-cache warm local    # Pre-generate all local phrases
 ```
+
+**Note:** Cache keys include text, provider, voice, model, and voice settings. Changing any setting (e.g., switching from `eleven_multilingual_v2` to `eleven_v3`) will generate new cache entries while preserving old ones.
 
 **Cache hit benefits:**
 - Zero LLM calls for cached phrases

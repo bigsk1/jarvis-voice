@@ -226,7 +226,9 @@ COMMANDS: List[Command] = [
     
     # === 🔊 STATUS UPDATES ===
     Command("TTS Cache Stats", "./bin/status-cache stats", "TTS cache statistics", "🔊 Status"),
-    Command("TTS Cache Clear", "./bin/status-cache clear", "Clear TTS cache", "🔊 Status", dangerous=True),
+    Command("TTS Cache Clear All", "./bin/status-cache clear", "Clear all TTS cache", "🔊 Status", dangerous=True),
+    Command("TTS Cache Clear Cloud", "./bin/status-cache clear cloud", "Clear cloud cache only", "🔊 Status", dangerous=True),
+    Command("TTS Cache Clear Local", "./bin/status-cache clear local", "Clear local cache only", "🔊 Status", dangerous=True),
     Command("TTS Warm (Cloud)", "./bin/status-cache warm cloud", "Pre-gen cloud phrases", "🔊 Status"),
     Command("TTS Warm (Local)", "./bin/status-cache warm local", "Pre-gen local phrases", "🔊 Status"),
     Command("Test TTS Cloud", './bin/say-status.sh "Testing status update" true', "Test cloud TTS", "🔊 Status"),

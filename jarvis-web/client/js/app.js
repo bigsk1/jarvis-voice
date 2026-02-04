@@ -994,9 +994,13 @@ class JarvisApp {
             </div>
             <div class="config-item">
               <span class="config-label">TTS_VOICE</span>
-              <span class="config-value">${c.TTS_VOICE || '(default)'}</span>
+              <span class="config-value">${c.TTS_VOICE || c.QWEN3_TTS_VOICE || '(default)'}</span>
             </div>
             ` : `
+            <div class="config-item">
+              <span class="config-label">ELEVENLABS_TTS_MODEL</span>
+              <span class="config-value">${c.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2'}</span>
+            </div>
             <div class="config-item">
               <span class="config-label">ELEVENLABS_TTS_VOICE</span>
               <span class="config-value">${c.ELEVENLABS_TTS_VOICE || '(default)'}</span>

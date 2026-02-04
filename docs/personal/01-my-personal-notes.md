@@ -778,6 +778,15 @@ curl http://localhost:8880/api/intelligence/meta-knowledge
 
 # View cache stats
 ```bash
+# Clear only cloud cache (keeps local)
+./bin/status-cache clear cloud
+
+# Clear only local cache (keeps cloud)
+./bin/status-cache clear local
+
+# Clear all (default)
+./bin/status-cache clear
+
 ./bin/status-cache stats
 
 # Clear cache (if you change voice settings)

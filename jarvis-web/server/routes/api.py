@@ -163,11 +163,14 @@ def get_system_config():
         config['OLLAMA_BASE_URL'] = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
         config['TTS_URL'] = get_jarvis_setting('TTS_URL', '')
         config['TTS_VOICE'] = get_jarvis_setting('TTS_VOICE', '')
+        # Kokoro doesn't have models, but Qwen3-TTS might
+        config['QWEN3_TTS_VOICE'] = get_jarvis_setting('QWEN3_TTS_VOICE', '')
     else:
         config['XAI_MODEL'] = get_jarvis_setting('XAI_MODEL', '')
         config['ANTHROPIC_MODEL'] = get_jarvis_setting('ANTHROPIC_MODEL', '')
         config['OPENAI_MODEL'] = get_jarvis_setting('OPENAI_MODEL', '')
         config['ELEVENLABS_TTS_VOICE'] = get_jarvis_setting('ELEVENLABS_TTS_VOICE', '')
+        config['ELEVENLABS_TTS_MODEL'] = get_jarvis_setting('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2')
     
     return jsonify({
         'ok': True,
