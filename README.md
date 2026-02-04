@@ -4,7 +4,13 @@
 >
 > That said, if you want to run your own version, the [Disaster Recovery Guide](docs/DISASTER_RECOVERY.md) walks through setting up a fresh Ubuntu 24.04 server from scratch. You'll need to change the static IPs and a few config values, but everything *should* work if you follow the steps. No promises, no support — just sharing what I built. If you care support and cover some of the api costs, please consider donating.
 
-A self-hosted voice assistant with tool calling, memory, and autonomous coding capabilities and a hell of alot more!
+## What is Jarvis?
+
+A self-hosted voice assistant with rag based tool calling, mcp support, memory and autonomous coding capabilities in dedicated workspace to start.
+
+Routes queries through Q&A, single tools, multi-tool pipelines, or autonomous workflows — all with persistent memory. Run via voice, CLI, or Web UI. Cloud LLMs or fully local. 
+
+UI's include Chat, Canvas, Image Gallery, Video Gallery, Intellegence Dashboard, Memory Dashboard, full API, and more!
 
 ![jarvis-info-graph](docs/images/jarvis-info-graph.jpeg)
 
