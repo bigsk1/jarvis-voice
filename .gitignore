@@ -13,6 +13,7 @@ config/elevenlabs_voices.json
 config/ssh.json
 jarvis-monitor/.env
 jarvis-web/config/web_config.json
+config/webhook_registry.json.template
 
 # ===== Stash (task artifacts) =====
 # Keep directory structure, ignore space contents

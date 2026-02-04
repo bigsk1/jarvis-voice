@@ -1148,7 +1148,7 @@ Mode: {mode}
             "voice_settings": voice_settings
         }
         
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
         
         if response.status_code != 200:
             print(f"[CHAT] ElevenLabs error: {response.status_code} - {response.text}")
@@ -1186,7 +1186,7 @@ Mode: {mode}
             "input": text
         }
         
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
         
         if response.status_code != 200:
             print(f"[CHAT] OpenAI TTS error: {response.status_code} - {response.text}")
