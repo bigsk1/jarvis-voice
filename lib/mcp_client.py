@@ -115,6 +115,36 @@ class MCPClient:
         # Expand ${VAR} in args as well
         expanded_args = self._expand_args()
         
+        # For Docker commands, add container naming to prevent duplicates
+        if self.command == "docker" and "run" in expanded_args:
+            container_name = f"jarvis-mcp-{self.name}"
+            
+            # Check if container with this name already exists (running or stopped)
+            try:
+                result = subprocess.run(
+                    ["docker", "ps", "-aq", "--filter", f"name=^{container_name}$"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.stdout.strip():
+                    # Container exists - remove it (handles both running and stopped)
+                    if os.environ.get("MCP_DEBUG"):
+                        print(f"[MCP DEBUG] Removing existing container: {container_name}", file=sys.stderr)
+                    subprocess.run(
+                        ["docker", "rm", "-f", result.stdout.strip()],
+                        capture_output=True, timeout=10
+                    )
+            except Exception as e:
+                if os.environ.get("MCP_DEBUG"):
+                    print(f"[MCP DEBUG] Container check failed: {e}", file=sys.stderr)
+            
+            # Inject --name after "run" in args
+            run_idx = expanded_args.index("run")
+            expanded_args = (
+                expanded_args[:run_idx + 1] + 
+                ["--name", container_name] + 
+                expanded_args[run_idx + 1:]
+            )
+        
         # Start process
         self.process = subprocess.Popen(
             [self.command] + expanded_args,
@@ -202,6 +232,17 @@ class MCPClient:
                 self.process.kill()
             finally:
                 self.process = None
+        
+        # For Docker commands, also explicitly stop the named container
+        if self.command == "docker":
+            container_name = f"jarvis-mcp-{self.name}"
+            try:
+                subprocess.run(
+                    ["docker", "rm", "-f", container_name],
+                    capture_output=True, timeout=10
+                )
+            except:
+                pass  # Ignore errors - container may already be gone
     
     def _initialize(self):
         """Initialize MCP connection with handshake (optional, some servers don't need it)."""
