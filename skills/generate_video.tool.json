@@ -31,11 +31,11 @@
       },
       "image_url": {
         "type": "string",
-        "description": "URL of an image to generate video from (image-to-video). The image will be animated based on the prompt. Works with both xAI and Gemini."
+        "description": "Image source for image-to-video. Accepts: stash reference (stash://space_xxx/file_id), local file path, or URL. For uploaded images, use the stash reference from 'Image stashed at:' in the conversation. The image will be animated based on the prompt."
       },
       "video_url": {
         "type": "string",
-        "description": "XAI ONLY: URL of a video to edit. Maximum source video length is 8.7 seconds. The prompt describes the edit to make."
+        "description": "XAI ONLY: Video to edit. Accepts stash reference (stash://space_xxx/file_id) for recently generated videos, or a public URL. Max 8.7 seconds. Note: stash videos only work if source_url was stored when generated."
       },
       "negative_prompt": {
         "type": "string",

@@ -62,6 +62,131 @@ MIN_DURATION = 1
 MAX_DURATION = 15
 
 
+def _resolve_video_source(video_source: str) -> str | None:
+    """
+    Resolve a video source to a public URL for xAI video editing.
+    
+    xAI video editing requires a publicly accessible URL (no base64).
+    This function checks if a stash reference has a stored source_url
+    from when the video was originally generated.
+    
+    Args:
+        video_source: stash:// reference or URL
+        
+    Returns:
+        Public URL if found, None otherwise
+    """
+    # Skip if already a URL
+    if video_source.startswith(('http://', 'https://')):
+        return None  # Let caller use directly
+    
+    # Handle stash:// references
+    if video_source.startswith('stash://'):
+        try:
+            from stash_helper import get_stash_dir
+            import json
+            
+            # Parse stash://space_id/file_id
+            parts = video_source.replace('stash://', '').split('/')
+            if len(parts) != 2:
+                return None
+            
+            space_id, file_id = parts
+            stash_root = get_stash_dir()
+            meta_path = stash_root / space_id / 'meta.json'
+            
+            if not meta_path.exists():
+                return None
+            
+            with open(meta_path) as f:
+                meta = json.load(f)
+            
+            # Find file and check for source_url
+            for f in meta.get('files', []):
+                if f.get('file_id') == file_id:
+                    source_url = f.get('source_url')
+                    if source_url and source_url.startswith('http'):
+                        # Check if URL might still be valid (within 24 hours)
+                        created = f.get('source_url_created', '')
+                        if created:
+                            from datetime import datetime, timedelta
+                            try:
+                                created_dt = datetime.fromisoformat(created)
+                                if datetime.now() - created_dt > timedelta(hours=24):
+                                    print(f"[VIDEO] Warning: source_url may be expired (created {created})")
+                            except:
+                                pass
+                        return source_url
+                    break
+        except Exception as e:
+            print(f"[VIDEO] Error resolving stash video: {e}")
+    
+    return None
+
+
+def _resolve_image_source(image_source: str) -> str | None:
+    """
+    Resolve an image source to a local file path.
+    
+    Handles:
+    - stash:// references (e.g., stash://space_xxx/file_id)
+    - Local file paths (absolute or relative)
+    - Relative web paths (e.g., /api/uploads/filename)
+    
+    Returns:
+        Local file path if resolved, None if should try as URL
+    """
+    from stash_helper import safe_resolve_file
+    
+    # Skip URLs and base64 - let caller handle those
+    if image_source.startswith(('http://', 'https://', 'data:')):
+        return None
+    
+    # Handle stash:// references
+    if image_source.startswith('stash://'):
+        result = safe_resolve_file(stash_ref=image_source)
+        if result['found']:
+            return result['path']
+        else:
+            raise ValueError(f"Stash file not found: {result.get('error', image_source)}")
+    
+    # Handle relative web paths (from WebUI uploads)
+    if image_source.startswith('/api/uploads/'):
+        filename = image_source.split('/')[-1]
+        uploads_path = Path(__file__).parent.parent / 'jarvis-web' / 'data' / 'uploads' / filename
+        if uploads_path.exists():
+            return str(uploads_path)
+    
+    # Handle generated images path
+    if image_source.startswith('/api/images/'):
+        filename = image_source.split('/')[-1]
+        images_path = Path(__file__).parent.parent / 'data' / 'generated_images' / filename
+        if images_path.exists():
+            return str(images_path)
+    
+    # Handle direct local paths
+    if Path(image_source).is_file():
+        return image_source
+    
+    # Check common image directories
+    project_root = Path(__file__).parent.parent
+    common_paths = [
+        project_root / 'data' / 'generated_images',
+        project_root / 'jarvis-web' / 'data' / 'uploads',
+        project_root / 'data' / 'stash',
+    ]
+    
+    # Try to find by filename in common directories
+    filename = Path(image_source).name
+    for base_path in common_paths:
+        candidate = base_path / filename
+        if candidate.exists():
+            return str(candidate)
+    
+    # Not found locally
+    return None
+
+
 def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
                        resolution: str = "720p", image_url: str = None,
                        video_url: str = None) -> dict:
@@ -73,7 +198,7 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         duration: Video duration in seconds (1-15)
         aspect_ratio: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3
         resolution: 720p or 480p
-        image_url: Optional image URL to generate video from
+        image_url: Optional image URL or local file path to generate video from
         video_url: Optional video URL to edit (max 8.7s source)
     
     Returns:
@@ -114,12 +239,41 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         }
         
         # Add image_url for image-to-video
+        # xAI requires either a URL (http/https) or base64-encoded image
         if image_url:
-            kwargs["image_url"] = image_url
+            resolved_path = _resolve_image_source(image_url)
+            if resolved_path:
+                # Convert local file to base64
+                import mimetypes
+                
+                mime_type, _ = mimetypes.guess_type(resolved_path)
+                if not mime_type:
+                    mime_type = 'image/png'  # Default to PNG
+                
+                with open(resolved_path, 'rb') as f:
+                    image_data = f.read()
+                
+                b64_data = base64.b64encode(image_data).decode('utf-8')
+                kwargs["image_url"] = f"data:{mime_type};base64,{b64_data}"
+            elif image_url.startswith(('http://', 'https://')):
+                # Already a valid URL - use as-is
+                kwargs["image_url"] = image_url
+            elif image_url.startswith('data:'):
+                # Already base64 data URI - use as-is
+                kwargs["image_url"] = image_url
+            else:
+                raise ValueError(f"Could not resolve image source: {image_url[:100]}")
         
         # Add video_url for video editing
+        # xAI requires a publicly accessible URL (no base64 for videos)
         if video_url:
-            kwargs["video_url"] = video_url
+            resolved_url = _resolve_video_source(video_url)
+            if resolved_url:
+                kwargs["video_url"] = resolved_url
+            elif video_url.startswith(('http://', 'https://')):
+                kwargs["video_url"] = video_url
+            else:
+                raise ValueError(f"Video editing requires a public URL. Local stash video doesn't have a valid source_url. Try generating a new video instead.")
         
         # Generate video with automatic polling (SDK handles waiting)
         # This can take 30-120+ seconds
@@ -418,15 +572,32 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
         # Get provider tag
         provider = video_data.get('provider', 'xai')
         
+        # Build tags with original URL (for video editing capability)
+        tags = ['ai_generated', 'video', provider, video_data.get('aspect_ratio', '16:9')]
+        
+        # Store original xAI/Gemini URL for potential video editing
+        # These URLs may expire but are valid for some time after generation
+        source_url = video_data.get('video_url')
+        
         # Save as binary to stash
         result = stash_file.save_binary(
             data=video_bytes,
             name=filename,
             mime_type='video/mp4',
             on_conflict='overwrite',
-            tags=['ai_generated', 'video', provider, video_data.get('aspect_ratio', '16:9')],
+            tags=tags,
             tool_origin='generate_video'
         )
+        
+        # Add source_url to the file metadata for video editing
+        if source_url and source_url.startswith('http'):
+            file_id = result.get('file_id')
+            for f in space.meta.get('files', []):
+                if f.get('file_id') == file_id:
+                    f['source_url'] = source_url  # xAI/Gemini public URL
+                    f['source_url_created'] = datetime.now().isoformat()
+                    break
+            space._save_meta()
         
         return {
             "saved": True,
@@ -436,7 +607,8 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
             "stash_path": result.get('path'),
             "filename": filename,
             "size_bytes": len(video_bytes),
-            "stash": True
+            "stash": True,
+            "source_url": source_url if source_url and source_url.startswith('http') else None
         }
     except Exception as e:
         # Stash failed but file is saved
