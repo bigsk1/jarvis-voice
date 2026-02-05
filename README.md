@@ -696,7 +696,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (54+)
+### Available Skills (55+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -730,6 +730,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
 - `samantha` - **Multi-agent**: Chat with Samantha (moltbot) AI, delegate tasks, fire-and-forget webhooks
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
+- `search_docs` - **Internal knowledge Q&A**: Semantic search over Jarvis docs (capabilities, parameters, features)
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
 - `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune
 - `youtube_transcript` - **YouTube transcripts**: Download video transcripts as .srt/.md files
