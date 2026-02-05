@@ -707,6 +707,55 @@ if not query:
     raise ValueError("query parameter is required")
 ```
 
+### ❌ Treating Environment Variables as Booleans
+
+**RECURRING BUG** - Python string `"false"` is truthy! This broke wake word JSON parsing.
+
+```python
+# BAD - String "false" is truthy in Python!
+if os.environ.get("MCP_DEBUG"):  # True when MCP_DEBUG="false"
+    print("Debug output")  # PRINTS EVEN WHEN DISABLED!
+
+# GOOD - Explicitly check for "true"
+if os.environ.get("MCP_DEBUG", "").lower() == "true":
+    print("Debug output")  # Only prints when MCP_DEBUG=true
+```
+
+**All debug/feature flags should use this pattern:**
+```python
+# For boolean env vars
+debug_enabled = os.environ.get("JARVIS_DEBUG", "").lower() == "true"
+feature_on = os.environ.get("FEATURE_FLAG", "").lower() == "true"
+```
+
+### ❌ Debug Output to stdout (Pollutes JSON)
+
+**CRITICAL** - Tools and orchestrator output JSON to stdout. Debug messages MUST go to stderr!
+
+```python
+# BAD - Breaks JSON parsing in shell scripts (jq fails!)
+if debug:
+    print(f"[DEBUG] Processing: {data}")  # Goes to stdout
+print(json.dumps({"ok": True, "speech": "Done"}))
+
+# GOOD - Debug to stderr, JSON to stdout
+if debug:
+    print(f"[DEBUG] Processing: {data}", file=sys.stderr)
+print(json.dumps({"ok": True, "speech": "Done"}))
+```
+
+**Why this matters:** Shell scripts like `question-orchestrator.sh` capture stdout and parse with `jq`. Any non-JSON output causes `jq: parse error`.
+
+**Common pattern for debug output:**
+```python
+import sys
+
+def debug_print(msg: str):
+    """Print debug message to stderr (won't pollute JSON output)."""
+    if os.environ.get("JARVIS_DEBUG", "").lower() == "true":
+        print(f"[DEBUG] {msg}", file=sys.stderr)
+```
+
 ### ❌ Breaking Tool Interface
 
 ```python

@@ -127,14 +127,14 @@ class MCPClient:
                 )
                 if result.stdout.strip():
                     # Container exists - remove it (handles both running and stopped)
-                    if os.environ.get("MCP_DEBUG"):
+                    if os.environ.get("MCP_DEBUG", "").lower() == "true":
                         print(f"[MCP DEBUG] Removing existing container: {container_name}", file=sys.stderr)
                     subprocess.run(
                         ["docker", "rm", "-f", result.stdout.strip()],
                         capture_output=True, timeout=10
                     )
             except Exception as e:
-                if os.environ.get("MCP_DEBUG"):
+                if os.environ.get("MCP_DEBUG", "").lower() == "true":
                     print(f"[MCP DEBUG] Container check failed: {e}", file=sys.stderr)
             
             # Inject --name after "run" in args
@@ -332,21 +332,21 @@ class MCPClient:
                     raise Exception(f"MCP server closed connection")
                 
                 # Debug: print raw response
-                if os.environ.get("MCP_DEBUG"):
-                    print(f"[MCP DEBUG] Raw response: {response_line.strip()}")
+                if os.environ.get("MCP_DEBUG", "").lower() == "true":
+                    print(f"[MCP DEBUG] Raw response: {response_line.strip()}", file=sys.stderr)
                 
                 response = json.loads(response_line)
                 
                 # Skip notifications, wait for actual response
                 if "method" in response:
                     # This is a notification, not a response
-                    if os.environ.get("MCP_DEBUG"):
-                        print(f"[MCP DEBUG] Skipping notification: {response.get('method')}")
+                    if os.environ.get("MCP_DEBUG", "").lower() == "true":
+                        print(f"[MCP DEBUG] Skipping notification: {response.get('method')}", file=sys.stderr)
                     continue
                 
                 # Debug: print parsed response
-                if os.environ.get("MCP_DEBUG"):
-                    print(f"[MCP DEBUG] Parsed response: {json.dumps(response, indent=2)}")
+                if os.environ.get("MCP_DEBUG", "").lower() == "true":
+                    print(f"[MCP DEBUG] Parsed response: {json.dumps(response, indent=2)}", file=sys.stderr)
                 
                 # Check for error
                 if "error" in response:
@@ -566,13 +566,13 @@ class MCPRemoteClient:
                         event_type = None
                         
         except Exception as e:
-            if os.environ.get("MCP_DEBUG"):
+            if os.environ.get("MCP_DEBUG", "").lower() == "true":
                 print(f"[MCP DEBUG] SSE listener error: {e}", file=sys.stderr)
             self._sse_response_queue.put({"error": str(e)})
     
     def _handle_sse_event(self, event_type: str | None, data: str):
         """Handle incoming SSE event."""
-        if os.environ.get("MCP_DEBUG"):
+        if os.environ.get("MCP_DEBUG", "").lower() == "true":
             print(f"[MCP DEBUG] SSE event: {event_type} - {data[:200]}", file=sys.stderr)
         
         if event_type == 'endpoint':
@@ -591,7 +591,7 @@ class MCPRemoteClient:
                 parsed = json.loads(data)
                 self._sse_response_queue.put(parsed)
             except json.JSONDecodeError:
-                if os.environ.get("MCP_DEBUG"):
+                if os.environ.get("MCP_DEBUG", "").lower() == "true":
                     print(f"[MCP DEBUG] Invalid JSON in SSE: {data}", file=sys.stderr)
     
     def _initialize_http(self):
@@ -623,7 +623,7 @@ class MCPRemoteClient:
             }
         }
         
-        if os.environ.get("MCP_DEBUG"):
+        if os.environ.get("MCP_DEBUG", "").lower() == "true":
             print(f"[MCP DEBUG] HTTP Initialize: {json.dumps(request)}", file=sys.stderr)
         
         response = requests.post(
@@ -638,7 +638,7 @@ class MCPRemoteClient:
         # Extract session ID from response headers
         self._session_id = response.headers.get('Mcp-Session-Id')
         
-        if os.environ.get("MCP_DEBUG"):
+        if os.environ.get("MCP_DEBUG", "").lower() == "true":
             print(f"[MCP DEBUG] Got session ID: {self._session_id}", file=sys.stderr)
         
         # Consume the SSE response (initialization result)
@@ -667,7 +667,7 @@ class MCPRemoteClient:
             self._send_notification("notifications/initialized")
             
         except Exception as e:
-            if os.environ.get("MCP_DEBUG"):
+            if os.environ.get("MCP_DEBUG", "").lower() == "true":
                 print(f"[MCP DEBUG] MCP init failed (may be ok): {e}", file=sys.stderr)
     
     def _send_notification(self, method: str, params: dict | None = None):
@@ -696,7 +696,7 @@ class MCPRemoteClient:
             if params:
                 request["params"] = params
             
-            if os.environ.get("MCP_DEBUG"):
+            if os.environ.get("MCP_DEBUG", "").lower() == "true":
                 print(f"[MCP DEBUG] Sending: {json.dumps(request)}", file=sys.stderr)
             
             if self.transport_type == "sse":
@@ -735,7 +735,7 @@ class MCPRemoteClient:
             if e.response.status_code == 400 and retry_count < 1:
                 error_text = e.response.text if hasattr(e.response, 'text') else ''
                 if 'session' in error_text.lower() or 'transport' in error_text.lower():
-                    if os.environ.get("MCP_DEBUG"):
+                    if os.environ.get("MCP_DEBUG", "").lower() == "true":
                         print(f"[MCP DEBUG] Stale SSE session detected for {self.name}, reconnecting...", file=sys.stderr)
                     # Reconnect SSE
                     self._reconnect_sse()
@@ -797,7 +797,7 @@ class MCPRemoteClient:
         if self._session_id:
             headers['Mcp-Session-Id'] = self._session_id
         
-        if os.environ.get("MCP_DEBUG"):
+        if os.environ.get("MCP_DEBUG", "").lower() == "true":
             print(f"[MCP DEBUG] HTTP Request: {json.dumps(request)}", file=sys.stderr)
             print(f"[MCP DEBUG] Session ID: {self._session_id}", file=sys.stderr)
         
@@ -820,7 +820,7 @@ class MCPRemoteClient:
             # Parse JSON response
             result = response.json()
         
-        if os.environ.get("MCP_DEBUG"):
+        if os.environ.get("MCP_DEBUG", "").lower() == "true":
             print(f"[MCP DEBUG] HTTP response: {json.dumps(result, indent=2)}", file=sys.stderr)
         
         if "error" in result:
@@ -888,7 +888,7 @@ class MCPRemoteClient:
         try:
             requests.post(endpoint, json=message, headers=headers, timeout=10)
         except Exception as e:
-            if os.environ.get("MCP_DEBUG"):
+            if os.environ.get("MCP_DEBUG", "").lower() == "true":
                 print(f"[MCP DEBUG] Post notification failed: {e}", file=sys.stderr)
     
     def stop(self):
@@ -960,7 +960,7 @@ class MCPRemoteClient:
             
         except Exception as e:
             import traceback
-            if os.environ.get("MCP_DEBUG"):
+            if os.environ.get("MCP_DEBUG", "").lower() == "true":
                 print(f"MCP remote tool error: {traceback.format_exc()}", file=sys.stderr)
             return {
                 "ok": False,
@@ -1056,7 +1056,7 @@ class MCPManager:
                 
                 self.servers[name] = MCPRemoteClient(name, url, transport_type, headers)
                 
-                if os.environ.get("MCP_DEBUG"):
+                if os.environ.get("MCP_DEBUG", "").lower() == "true":
                     print(f"[MCP DEBUG] Loaded remote server: {name} ({transport_type}) -> {url}", file=sys.stderr)
             
             elif "command" in server_config:
@@ -1067,7 +1067,7 @@ class MCPManager:
                 
                 self.servers[name] = MCPClient(name, command, args, env)
                 
-                if os.environ.get("MCP_DEBUG"):
+                if os.environ.get("MCP_DEBUG", "").lower() == "true":
                     print(f"[MCP DEBUG] Loaded stdio server: {name} -> {command}", file=sys.stderr)
             
             else:
