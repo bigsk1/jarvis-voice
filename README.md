@@ -598,6 +598,9 @@ source ~/jarvis-venv/bin/activate
 # Command Dashboard (all commands in one TUI!)
 ./bin/jarvis-dashboard
 ```
+### Terminal Wake Word Mode
+
+![jarvis-voice](docs/images/voice.png)
 
 Say **"Hey Jarvis"** to wake it up!
 

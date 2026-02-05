@@ -82,7 +82,7 @@ class ToolExecutor:
             if sys.stdout.isatty() or os.environ.get('JARVIS_JSON_MODE') != '1':
                 print(f"⚠️  Permission check: {warning}", file=sys.stderr)
             
-            # In future, could add verbal confirmation loop here
+            # TODO: In future, could add verbal confirmation loop here
             # For now, we announce and proceed with caution
         
         # Check if this is an MCP tool
@@ -115,6 +115,7 @@ class ToolExecutor:
             # Use longer timeout for local mode (Ollama can be slower)
             # OpenCode tasks need much more time (building, coding, etc.)
             # Ingest intel needs time for embedding generation (especially large profiles)
+            # Subprocess timeout settings see tool.json for HTTP timeouts
             if tool_name == "opencode":
                 timeout = 360  # 6 minutes for OpenCode tasks (complex builds)
             elif tool_name == "ingest_intel":
@@ -137,6 +138,8 @@ class ToolExecutor:
                 timeout = 90  # 60 seconds - search documentation with qmd
             elif tool_name == "convert_file":
                 timeout = 240  # 4 minutes - convert files various formats, audio, video, image, ect.
+            elif tool_name == "samantha":
+                timeout = 240  # 4 minutes - Samantha is a remote assistant, so we need to increase the timeout
             else:
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
             
