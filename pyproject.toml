@@ -50,6 +50,7 @@ dependencies = [
     "yt-dlp==2025.12.8",
     "paramiko>=3.0.0",
     "yfinance",
+    "python-multipart>=0.0.22",
 ]
 
 [build-system]

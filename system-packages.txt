@@ -21,6 +21,10 @@ inetutils-traceroute   # Alternative traceroute implementation
 ping                   # Network connectivity testing (usually pre-installed)
 dnsutils               # DNS lookup tools (dig, nslookup) - optional but recommended
 
+# Media Conversion (Required for convert_file tool)
+imagemagick            # Image format conversion (jpg, png, webp, gif, etc.)
+potrace                # Raster to vector conversion (jpg/png → svg)
+
 # Optional (Recommended)
 build-essential        # C/C++ compilers (needed for some Python packages)
 libportaudio2          # PortAudio library (for sounddevice)

@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "name": "convert_file",
+  "description": "Convert media files between formats using local tools. Supports: IMAGE formats (jpg, png, webp, gif, tiff, bmp), RASTER to VECTOR (jpg/png → svg via Potrace), VIDEO formats (mp4, webm, mov, avi, mkv), AUDIO formats (mp3, wav, flac, ogg, aac), and VIDEO to AUDIO extraction. Input can be a stash reference (stash://space_xxx/file_id) or file path. Output is saved to stash for download. Example: convert my uploaded image to SVG, convert video to mp3.",
+  "script": "convert_file.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "Source file: stash://space_id/file_id reference OR local file path"
+      },
+      "target_format": {
+        "type": "string",
+        "description": "Target format extension without dot: png, jpg, webp, gif, svg, mp4, webm, mp3, wav, flac, ogg, aac"
+      },
+      "options": {
+        "type": "object",
+        "description": "Optional conversion settings. Image: quality (1-100), resize ('800x600' or '50%'), strip_metadata (bool). Video: crf (quality 0-51), resolution ('1920x1080'), fps, duration (seconds). Audio: bitrate ('192k'), sample_rate (44100), channels (1 or 2). SVG: threshold ('50%' for tracing)"
+      }
+    },
+    "required": ["source", "target_format"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": true,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}

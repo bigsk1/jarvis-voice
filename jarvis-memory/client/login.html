@@ -86,8 +86,19 @@
     if (existingToken) {
       fetch('/api/auth/verify', { headers: { 'Authorization': `Bearer ${existingToken}` } })
         .then(r => r.json())
-        .then(data => { if (data.ok) window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/'; })
-        .catch(() => localStorage.removeItem('jarvis_auth_token'));
+        .then(data => {
+          if (data.ok) {
+            window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/';
+          } else {
+            // Token invalid, clear both localStorage AND cookie
+            localStorage.removeItem('jarvis_auth_token');
+            document.cookie = 'jarvis_auth=; path=/; max-age=0; SameSite=Lax';
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem('jarvis_auth_token');
+          document.cookie = 'jarvis_auth=; path=/; max-age=0; SameSite=Lax';
+        });
     }
     
     form.addEventListener('submit', async (e) => {

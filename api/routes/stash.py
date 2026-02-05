@@ -1,14 +1,20 @@
-"""Stash API endpoints - Read-only access to stash artifacts"""
+"""Stash API endpoints - Access to stash artifacts with upload support"""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import FileResponse
 import json
 import re
+import sys
 from pathlib import Path
+from typing import Optional
 
 from api.models.stash import (
     StashFile, StashSpace, StashResponse, StashStats
 )
+
+# Add lib to path for stash_helper
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "lib"))
+from stash_helper import open_space, StashFile as StashFileHelper
 
 router = APIRouter(prefix="/api/stash", tags=["stash"])
 
@@ -400,5 +406,98 @@ async def list_labels():
             "labels": dict(sorted(labels.items(), key=lambda x: x[1], reverse=True))
         }
         
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# Upload
+# ============================================
+
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(..., description="File to upload"),
+    labels: Optional[str] = Form(None, description="Comma-separated labels (e.g., 'uploaded,for_conversion')"),
+    space_id: Optional[str] = Form(None, description="Existing space_id to add file to, or None to create new space")
+):
+    """
+    Upload a file to stash.
+    
+    Creates a new stash space (or adds to existing) and stores the uploaded file.
+    Returns the stash reference that can be used with other tools like convert_file.
+    
+    **Example usage:**
+    ```
+    curl -X POST http://localhost:8991/api/stash/upload \
+      -F "file=@image.jpg" \
+      -F "labels=uploaded,for_conversion"
+    ```
+    
+    **Response:**
+    ```json
+    {
+      "ok": true,
+      "stash_ref": "stash://space_20260205_123456_abc123/f_xyz789",
+      "space_id": "space_20260205_123456_abc123",
+      "file_id": "f_xyz789",
+      "filename": "image.jpg",
+      "size_bytes": 123456,
+      "mime_type": "image/jpeg"
+    }
+    ```
+    """
+    try:
+        # Read file content
+        content = await file.read()
+        
+        if len(content) == 0:
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+        
+        # Max file size: 100MB
+        max_size = 100 * 1024 * 1024
+        if len(content) > max_size:
+            raise HTTPException(status_code=413, detail=f"File too large. Max size: {max_size // 1024 // 1024}MB")
+        
+        # Parse labels
+        label_list = ['uploaded']
+        if labels:
+            label_list.extend([l.strip() for l in labels.split(',') if l.strip()])
+        
+        # Open or create space
+        if space_id:
+            # Add to existing space
+            from stash_helper import get_space
+            space = get_space(space_id)
+            if not space:
+                raise HTTPException(status_code=404, detail=f"Space {space_id} not found")
+        else:
+            # Create new space
+            space = open_space(
+                labels=label_list,
+                scope='project'  # Longer retention for uploaded files
+            )
+        
+        # Save file to stash
+        stash_file = StashFileHelper(space)
+        result = stash_file.save_binary(
+            data=content,
+            name=file.filename or "uploaded_file",
+            tool_origin='api_upload',
+            on_conflict='version'
+        )
+        
+        return {
+            "ok": True,
+            "stash_ref": result.get('ref'),
+            "space_id": space.space_id,
+            "file_id": result.get('file_id'),
+            "filename": result.get('name'),
+            "size_bytes": len(content),
+            "mime_type": result.get('mime_type', file.content_type),
+            "message": f"File '{file.filename}' uploaded to stash"
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
