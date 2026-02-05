@@ -46,6 +46,7 @@
 - **[ssh/README.md](ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)
 - **[docker-tool/README.md](docker-tool/README.md)** - 🐳 **Docker Control** (containers, compose, images, networks, volumes, exec, prune)
 - **[DEEP_MEMORY_SEARCH.md](DEEP_MEMORY_SEARCH.md)** - 🔍 **Deep Memory Search** (unified search across all data sources)
+- **[qmd/README.md](qmd/README.md)** - 📚 **Internal Knowledge Search** (Q&A about Jarvis capabilities via QMD semantic search) ⭐ NEW
 
 ### Monitoring & Observability ⭐ ENHANCED
 - **[../monitoring/README.md](../monitoring/README.md)** - Grafana + Prometheus + Loki stack
@@ -301,6 +302,28 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-02-05:**
+- ✅ **Internal Knowledge Search** - Q&A about Jarvis capabilities without executing tools ⭐ NEW
+  - `search_docs` tool - Semantic search over 153 indexed docs using QMD
+  - Answers questions like "What video sizes can I generate?" without calling generate_video
+  - Uses vsearch (meaning-based) with 35% min score threshold
+  - Works in both cloud and local modes (uses local QMD models)
+  - See: `skills/search_docs.py`
+- ✅ **Docs Search API** - REST endpoint for programmatic doc queries
+  - `POST /api/docs/search` - Semantic search with topic filtering
+  - `GET /api/docs/status` - Index health (153 files, 1317 vectors)
+  - `GET /api/docs/topics` - List available topic filters
+  - Rate limited: 3 requests/minute per IP (CPU-intensive search)
+  - See: `api/routes/docs.py`
+- ✅ **@jarvis_docs Prompt** - WebUI prompt for Q&A mode
+  - Guides LLM to use search_docs instead of generative tools
+  - Use: `@jarvis_docs What video durations can I generate?`
+  - See: `jarvis-web/data/prompts/jarvis_docs.md`
+- ✅ **QMD Index Cleanup** - Excluded private directories from search
+  - Removed: `docs/personal/`, `docs/samantha-skill/`, `docs/vps2/`
+  - Updated maintenance docs with exclusion procedure
+  - See: `docs/qmd/README.md`
 
 **2026-02-04:**
 - ✅ **Server-Side Tools Logging** - Track xAI/Anthropic native tool usage ⭐ NEW
@@ -1052,6 +1075,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-01 (v2.37)  
-**Latest:** Video Gallery UI + Video Catalog + Canvas Modular Architecture  
+**Last Updated:** 2026-02-05 (v2.38)  
+**Latest:** Internal Knowledge Search + Docs API + @jarvis_docs Prompt  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
