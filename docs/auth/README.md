@@ -1,3 +1,32 @@
+# Jarvis Authentication Overview
+
+Comprehensive guide to authentication across all Jarvis components.
+
+**Last Updated:** February 2026
+
+## Auth Surface Summary
+
+| Component | Auth Type | Status | Notes |
+|-----------|-----------|--------|-------|
+| **Web UIs** (jarvis-web, canvas, memory, intel) | JWT (password) | ✅ Enabled | Single sign-on, see below |
+| **FastAPI** (`/api/*`) | API Key (Bearer) | ✅ Enabled | See [SECURITY_OPTIONS.md](../api/SECURITY_OPTIONS.md) |
+| **Internal API calls** (Canvas → API, etc.) | API Key | ✅ Fixed 2026-02-04 | Uses same `JARVIS_API_KEY` |
+| **UniFi webhook receiver** (inbound) | None | ⚠️ Local only | Port 5050, not exposed to internet |
+| **UniFi webhook → Jarvis API** (outbound) | API Key | ✅ Enabled | `JARVIS_API_KEY` in service config |
+| **MCP servers** | None | ⚠️ Local only | stdio transport, same machine |
+
+## Related Documentation
+
+- **API Security & Remote Access:** [docs/api/SECURITY_OPTIONS.md](../api/SECURITY_OPTIONS.md)
+- **UniFi Webhook Service:** [services/unifi-protect-webhook/README.md](../../services/unifi-protect-webhook/README.md)
+
+## Future Auth Considerations
+
+- **UniFi Webhook Inbound:** Could add webhook secret/signature validation if exposed
+- **MCP Remote Transport:** Would need auth if using HTTP/SSE transport instead of stdio
+
+---
+
 # WebUI Authentication
 
 Optional password protection for all Jarvis web interfaces.
