@@ -4,6 +4,9 @@
       "type": "http",
       "url": "https://mcp.api.coingecko.com/mcp",
       "description": "Cryptocurrency prices, market data, and coin information from CoinGecko",
+      "headers": {
+        "X-API-Key": "${COINGECKO_API_KEY}"
+      },
       "enabled": false
     },
     "duckduckgo": {
