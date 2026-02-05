@@ -94,7 +94,14 @@ sudo ./install-system-deps.sh
 ./setup.sh
 
 # 3. Python virtual environment and dependencies
-#    Creates ~/jarvis-venv, installs requirements.txt
+#    Creates ~/jarvis-venv, installs all packages
+
+# Option A: Using uv (RECOMMENDED - faster, reproducible)
+uv venv ~/jarvis-venv
+source ~/jarvis-venv/bin/activate
+uv sync  # Installs exact versions from uv.lock
+
+# Option B: Using pip (traditional)
 python3 -m venv ~/jarvis-venv
 source ~/jarvis-venv/bin/activate
 pip install --upgrade pip setuptools wheel
@@ -116,8 +123,9 @@ pip install -r requirements.txt
 |--------|--------------|
 | `install-system-deps.sh` | Installs system packages from `system-packages.txt` |
 | `setup.sh` | Creates directories, permissions, git setup |
+| `uv.lock` | **Lockfile with exact dependency versions** (use with `uv sync`) |
 | `requirements.txt` | Python dependencies (pip install -r) |
-| `pyproject.toml` | Project metadata, used by some tools |
+| `pyproject.toml` | Project metadata and dependencies |
 | `verify-env.sh` | Checks that everything is configured correctly |
 | `setup_tools.sh` | Syncs tool definitions to the database |
 | `setup_opencode_workspace.sh` | Sets up OpenCode autonomous coding workspace |
@@ -1008,10 +1016,11 @@ crontab -e
 
 ## Version Information
 
-**Last Updated:** 2025-11-25  
-**Jarvis Version:** v2.3  
-**Tested On:** Ubuntu 22.04 LTS  
-**Python Version:** 3.11+
+**Last Updated:** 2026-01-25  
+**Jarvis Version:** v2.39  
+**Tested On:** Ubuntu 24.04 LTS  
+**Python Version:** 3.12+  
+**Package Manager:** uv (recommended) or pip
 
 ---
 
