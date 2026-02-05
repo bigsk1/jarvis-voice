@@ -738,6 +738,15 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 
 **Artifact & Output Tools:**
+- `convert_file` - **Local media conversion**: ImageMagick, FFmpeg, Potrace
+  - Images: JPG ↔ PNG ↔ WebP ↔ GIF ↔ BMP ↔ TIFF ↔ ICO
+  - Raster to vector: PNG/JPG → SVG (Potrace tracing for logos, line art)
+  - Video: MP4 ↔ WebM ↔ MOV ↔ AVI ↔ MKV
+  - Audio: MP3 ↔ WAV ↔ FLAC ↔ OGG ↔ AAC ↔ M4A
+  - Extract audio from video (MP4 → MP3/WAV)
+  - Advanced options: resize, quality, bitrate, FPS, threshold, speckle size
+  - **Web UI 🔄 button** with format selector and inline results
+  - No API costs - all processing local
 - `generate_image` - **AI image generation**: Gemini, OpenAI, or xAI
   - **3 providers**: Gemini (grounding), OpenAI (best text), xAI (fast & cheap - $0.02/image!)
   - **Batch generation**: xAI `n=1-10` for multiple variations in one request

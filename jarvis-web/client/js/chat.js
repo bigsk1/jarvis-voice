@@ -181,6 +181,15 @@ class ChatUI {
     this.imagePreview = document.getElementById('imagePreview');
     this.removeImageBtn = document.getElementById('removeImageBtn');
     
+    // File conversion elements
+    this.convertBtn = document.getElementById('convertBtn');
+    this.convertInput = document.getElementById('convertInput');
+    this.convertModal = document.getElementById('convertModal');
+    this.convertTargetFormat = document.getElementById('convertTargetFormat');
+    this.convertFileName = document.getElementById('convertFileName');
+    this.convertPreview = document.getElementById('convertPreview');
+    this.pendingConvertFile = null;  // {file, stashRef}
+    
     this.currentMessageId = null;
     this.pendingTools = {};
     this.isProcessing = false;
@@ -215,6 +224,7 @@ class ChatUI {
     this._setupSocketListeners();
     this._setupVoiceRecording();
     this._setupImageUpload();
+    this._setupFileConversion();
     this._setupAutocomplete();
     this._setupEnhanceButton();
     this.refreshContextWindow();  // Get actual context window for current model
@@ -1054,6 +1064,377 @@ class ChatUI {
   }
   
   /**
+   * Setup file conversion functionality (bypasses vision analysis)
+   */
+  _setupFileConversion() {
+    if (!this.convertBtn || !this.convertInput) {
+      console.warn('[Chat] File conversion elements not found');
+      return;
+    }
+    
+    // Click convert button -> trigger file input
+    this.convertBtn.addEventListener('click', () => {
+      this.convertInput.click();
+    });
+    
+    // Handle file selection
+    this.convertInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        await this._showConvertModal(file);
+      }
+      this.convertInput.value = '';
+    });
+    
+    // Modal close button
+    const closeBtn = document.getElementById('closeConvertModal');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this._hideConvertModal());
+    }
+    
+    // Cancel button
+    const cancelBtn = document.getElementById('cancelConvert');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => this._hideConvertModal());
+    }
+    
+    // Start convert button
+    const startBtn = document.getElementById('startConvert');
+    if (startBtn) {
+      startBtn.addEventListener('click', () => this._executeConversion());
+    }
+    
+    // Close on overlay click
+    if (this.convertModal) {
+      this.convertModal.addEventListener('click', (e) => {
+        if (e.target === this.convertModal) {
+          this._hideConvertModal();
+        }
+      });
+    }
+    
+    // Update format description and options on change
+    if (this.convertTargetFormat) {
+      this.convertTargetFormat.addEventListener('change', () => {
+        this._updateFormatDescription();
+        this._updateConvertOptions();
+      });
+    }
+    
+    console.log('[Chat] File conversion ready');
+  }
+  
+  /**
+   * Update which advanced options are shown based on source and target format
+   */
+  _updateConvertOptions() {
+    const targetFormat = this.convertTargetFormat?.value || '';
+    const sourceType = this.pendingConvertFile?.file?.type || '';
+    
+    // Hide all option groups first
+    const imageOpts = document.getElementById('convertImageOptions');
+    const svgOpts = document.getElementById('convertSvgOptions');
+    const videoOpts = document.getElementById('convertVideoOptions');
+    const audioOpts = document.getElementById('convertAudioOptions');
+    
+    if (imageOpts) imageOpts.style.display = 'none';
+    if (svgOpts) svgOpts.style.display = 'none';
+    if (videoOpts) videoOpts.style.display = 'none';
+    if (audioOpts) audioOpts.style.display = 'none';
+    
+    // Show relevant options based on target format
+    const imageFormats = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'ico', 'tiff'];
+    const videoFormats = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
+    const audioFormats = ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'extract_mp3', 'extract_wav'];
+    
+    if (targetFormat === 'svg') {
+      // SVG has special potrace options
+      if (svgOpts) svgOpts.style.display = 'block';
+    } else if (imageFormats.includes(targetFormat)) {
+      if (imageOpts) imageOpts.style.display = 'block';
+    } else if (videoFormats.includes(targetFormat)) {
+      if (videoOpts) videoOpts.style.display = 'block';
+    } else if (audioFormats.includes(targetFormat)) {
+      if (audioOpts) audioOpts.style.display = 'block';
+    }
+  }
+  
+  /**
+   * Collect advanced options from the form
+   */
+  _collectConvertOptions() {
+    const options = {};
+    const targetFormat = this.convertTargetFormat?.value || '';
+    
+    // Image options
+    const resize = document.getElementById('convertResize')?.value?.trim();
+    const quality = document.getElementById('convertQuality')?.value;
+    const stripMetadata = document.getElementById('convertStripMetadata')?.checked;
+    const grayscale = document.getElementById('convertGrayscale')?.checked;
+    
+    if (resize) options.resize = resize;
+    if (quality) options.quality = parseInt(quality);
+    if (stripMetadata) options.strip_metadata = true;
+    if (grayscale) options.grayscale = true;
+    
+    // SVG options
+    const threshold = document.getElementById('convertThreshold')?.value?.trim();
+    const turdsize = document.getElementById('convertTurdsize')?.value;
+    
+    if (threshold) options.threshold = threshold;
+    if (turdsize) options.turdsize = parseInt(turdsize);
+    
+    // Video options
+    const resolution = document.getElementById('convertResolution')?.value?.trim();
+    const crf = document.getElementById('convertCrf')?.value;
+    const fps = document.getElementById('convertFps')?.value;
+    const duration = document.getElementById('convertDuration')?.value;
+    
+    if (resolution) options.resolution = resolution;
+    if (crf) options.crf = parseInt(crf);
+    if (fps) options.fps = parseInt(fps);
+    if (duration) options.duration = parseInt(duration);
+    
+    // Audio options
+    const bitrate = document.getElementById('convertBitrate')?.value;
+    const sampleRate = document.getElementById('convertSampleRate')?.value;
+    const channels = document.getElementById('convertChannels')?.value;
+    
+    if (bitrate) options.bitrate = bitrate;
+    if (sampleRate) options.sample_rate = parseInt(sampleRate);
+    if (channels) options.channels = parseInt(channels);
+    
+    return options;
+  }
+  
+  /**
+   * Reset advanced options form
+   */
+  _resetConvertOptions() {
+    // Reset all input fields
+    const inputs = ['convertResize', 'convertQuality', 'convertThreshold', 'convertTurdsize',
+                    'convertResolution', 'convertCrf', 'convertFps', 'convertDuration'];
+    inputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    
+    // Reset checkboxes
+    const checkboxes = ['convertStripMetadata', 'convertGrayscale'];
+    checkboxes.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.checked = false;
+    });
+    
+    // Reset selects
+    const selects = ['convertBitrate', 'convertSampleRate', 'convertChannels'];
+    selects.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    
+    // Close the details element
+    const details = document.getElementById('convertAdvanced');
+    if (details) details.removeAttribute('open');
+  }
+  
+  /**
+   * Show the conversion modal with file preview
+   */
+  async _showConvertModal(file) {
+    if (!this.convertModal) return;
+    
+    // Validate file size (max 100MB for video)
+    if (file.size > 100 * 1024 * 1024) {
+      Utils.toast('File too large (max 100MB)', 'error');
+      return;
+    }
+    
+    // Store the file
+    this.pendingConvertFile = { file, stashRef: null };
+    
+    // Update filename display
+    const sizeKB = Math.round(file.size / 1024);
+    const sizeStr = sizeKB > 1024 ? `${(sizeKB / 1024).toFixed(1)}MB` : `${sizeKB}KB`;
+    this.convertFileName.textContent = `${file.name} (${sizeStr})`;
+    
+    // Show preview based on file type
+    this.convertPreview.innerHTML = '';
+    if (file.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      img.style.maxWidth = '200px';
+      img.style.maxHeight = '150px';
+      img.style.borderRadius = 'var(--radius-md)';
+      this.convertPreview.appendChild(img);
+      
+      // Pre-select appropriate format based on current
+      this._preselectFormat(file.name, 'image');
+    } else if (file.type.startsWith('video/')) {
+      const video = document.createElement('video');
+      video.src = URL.createObjectURL(file);
+      video.style.maxWidth = '200px';
+      video.style.maxHeight = '150px';
+      video.style.borderRadius = 'var(--radius-md)';
+      video.controls = true;
+      this.convertPreview.appendChild(video);
+      
+      this._preselectFormat(file.name, 'video');
+    } else if (file.type.startsWith('audio/')) {
+      const audio = document.createElement('audio');
+      audio.src = URL.createObjectURL(file);
+      audio.controls = true;
+      this.convertPreview.appendChild(audio);
+      
+      this._preselectFormat(file.name, 'audio');
+    } else {
+      this.convertPreview.innerHTML = '<span style="font-size: 3rem;">📄</span>';
+    }
+    
+    this._updateFormatDescription();
+    this._updateConvertOptions();
+    this._resetConvertOptions();
+    this.convertModal.classList.add('active');
+  }
+  
+  /**
+   * Pre-select target format based on source file type
+   */
+  _preselectFormat(filename, mediaType) {
+    const ext = filename.split('.').pop().toLowerCase();
+    
+    if (mediaType === 'image') {
+      // If it's a raster image, suggest PNG or WebP; if PNG, suggest WebP
+      if (ext === 'png') {
+        this.convertTargetFormat.value = 'webp';
+      } else if (ext === 'jpg' || ext === 'jpeg') {
+        this.convertTargetFormat.value = 'png';
+      } else {
+        this.convertTargetFormat.value = 'png';
+      }
+    } else if (mediaType === 'video') {
+      // Suggest MP4 for compatibility
+      this.convertTargetFormat.value = ext === 'mp4' ? 'webm' : 'mp4';
+    } else if (mediaType === 'audio') {
+      // Suggest MP3 for compatibility
+      this.convertTargetFormat.value = ext === 'mp3' ? 'wav' : 'mp3';
+    }
+  }
+  
+  /**
+   * Update the format description based on selection
+   */
+  _updateFormatDescription() {
+    const format = this.convertTargetFormat.value;
+    const descEl = document.getElementById('convertFormatDesc');
+    if (!descEl) return;
+    
+    const descriptions = {
+      'png': 'Lossless compression, supports transparency',
+      'jpg': 'Good compression for photos, no transparency',
+      'webp': 'Modern format, excellent compression + transparency',
+      'gif': 'Supports animation, limited colors',
+      'svg': 'Vector format - best for logos, icons, line art',
+      'bmp': 'Uncompressed bitmap',
+      'ico': 'Icon format for favicons',
+      'mp4': 'Most compatible video format',
+      'webm': 'Web-optimized video, smaller files',
+      'mov': 'Apple QuickTime format',
+      'avi': 'Legacy video format',
+      'mp3': 'Universal audio format, good compression',
+      'wav': 'Lossless audio, larger files',
+      'flac': 'Lossless audio, good compression',
+      'ogg': 'Open audio format',
+      'aac': 'High-quality audio, Apple preferred',
+      'extract_mp3': 'Extract audio track from video as MP3',
+      'extract_wav': 'Extract audio track from video as WAV (lossless)'
+    };
+    
+    descEl.textContent = descriptions[format] || 'Select a target format';
+  }
+  
+  /**
+   * Hide the conversion modal
+   */
+  _hideConvertModal() {
+    if (this.convertModal) {
+      this.convertModal.classList.remove('active');
+    }
+    this.pendingConvertFile = null;
+  }
+  
+  /**
+   * Execute the file conversion
+   */
+  async _executeConversion() {
+    if (!this.pendingConvertFile?.file) {
+      Utils.toast('No file selected', 'error');
+      return;
+    }
+    
+    const file = this.pendingConvertFile.file;
+    let targetFormat = this.convertTargetFormat.value;
+    
+    // Handle extract audio special cases
+    const isExtract = targetFormat.startsWith('extract_');
+    if (isExtract) {
+      targetFormat = targetFormat.replace('extract_', '');
+    }
+    
+    // Collect advanced options
+    const options = this._collectConvertOptions();
+    
+    this._hideConvertModal();
+    Utils.toast('Uploading file for conversion...', 'info', 2000);
+    
+    try {
+      // Upload file to stash (bypasses vision analysis)
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('labels', 'for_conversion,uploaded');
+      
+      const uploadResponse = await fetch('/api/stash/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload file');
+      }
+      
+      const uploadData = await uploadResponse.json();
+      const stashRef = uploadData.stash_ref;
+      
+      // Build the conversion message
+      let message;
+      if (isExtract) {
+        message = `Extract audio from the video at ${stashRef} and save as ${targetFormat.toUpperCase()}`;
+      } else {
+        message = `Convert the file at ${stashRef} to ${targetFormat.toUpperCase()} format`;
+      }
+      
+      // Add options if any were specified
+      if (Object.keys(options).length > 0) {
+        const optionsList = Object.entries(options)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ');
+        message += ` with options: ${optionsList}`;
+      }
+      
+      // Add hint to use convert_file tool
+      message += `. Use the convert_file tool.`;
+      
+      // Send the message (no attached image = no vision analysis)
+      this.inputField.value = message;
+      this.sendMessage();
+      
+    } catch (err) {
+      console.error('[Chat] Conversion error:', err);
+      Utils.toast('Failed to start conversion: ' + err.message, 'error');
+    }
+  }
+  
+  /**
    * Attach an image file (upload to server)
    */
   async attachImage(file) {
@@ -1489,6 +1870,114 @@ class ChatUI {
       `;
     }
     
+    // Check for converted files (from convert_file tool)
+    let convertedFileHtml = '';
+    const hasConvertTool = toolsUsed.includes('convert_file') || 
+      Object.keys(this.pendingTools).some(k => k.startsWith('convert_file'));
+    
+    if (hasConvertTool) {
+      const convertResult = toolResultsData['convert_file'] || data.convert_file;
+      if (convertResult && convertResult.stash_ref) {
+        const stashMatch = convertResult.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
+        if (stashMatch) {
+          // Use existing stash route: /api/stash/{space_id}/{file_id}
+          const stashUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+          const targetFormat = convertResult.target_format || '';
+          const filename = convertResult.filename || 'converted file';
+          const sizeChange = convertResult.size_change || '';
+          
+          // Check if it's an image format
+          const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'];
+          const isImage = imageFormats.includes(targetFormat.toLowerCase());
+          
+          // Check if it's a video format
+          const videoFormats = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
+          const isVideo = videoFormats.includes(targetFormat.toLowerCase());
+          
+          // Check if it's an audio format
+          const audioFormats = ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a'];
+          const isAudio = audioFormats.includes(targetFormat.toLowerCase());
+          
+          // Download button HTML (reusable)
+          const downloadBtn = `
+            <a href="${stashUrl}" download="${filename}" class="convert-download-btn" title="Download ${filename}">
+              ⬇️ Download ${targetFormat.toUpperCase()}
+            </a>
+          `;
+          
+          if (isImage) {
+            // Display image inline with download button
+            convertedFileHtml = `
+              <div class="converted-media-container">
+                <div class="message-image converted-file" onclick="window.showImageLightbox('${stashUrl}')">
+                  <img src="${stashUrl}" alt="Converted ${targetFormat.toUpperCase()}" loading="lazy">
+                  <div class="image-overlay">
+                    <span>🔍 Click to expand</span>
+                  </div>
+                </div>
+                <div class="convert-actions">
+                  <span class="convert-info">${Utils.escapeHtml(filename)} ${sizeChange ? `(${sizeChange})` : ''}</span>
+                  ${downloadBtn}
+                </div>
+              </div>
+            `;
+          } else if (isVideo) {
+            // Display video player with download button
+            convertedFileHtml = `
+              <div class="converted-media-container">
+                <div class="message-video converted-file">
+                  <div class="video-header">
+                    <span class="video-icon">🎬</span>
+                    <span class="video-title">Converted: ${Utils.escapeHtml(filename)}</span>
+                  </div>
+                  <video controls preload="metadata" class="video-player">
+                    <source src="${stashUrl}" type="video/${targetFormat}">
+                    Your browser does not support video playback.
+                  </video>
+                </div>
+                <div class="convert-actions">
+                  <span class="convert-info">${sizeChange ? `Size: ${sizeChange}` : ''}</span>
+                  ${downloadBtn}
+                </div>
+              </div>
+            `;
+          } else if (isAudio) {
+            // Display audio player with download button
+            convertedFileHtml = `
+              <div class="converted-media-container">
+                <div class="message-audio converted-file">
+                  <div class="audio-header">
+                    <span class="audio-icon">🎵</span>
+                    <span class="audio-title">Converted: ${Utils.escapeHtml(filename)}</span>
+                  </div>
+                  <audio controls preload="metadata" class="audio-player">
+                    <source src="${stashUrl}" type="audio/${targetFormat}">
+                    Your browser does not support audio playback.
+                  </audio>
+                </div>
+                <div class="convert-actions">
+                  <span class="convert-info">${sizeChange ? `Size: ${sizeChange}` : ''}</span>
+                  ${downloadBtn}
+                </div>
+              </div>
+            `;
+          } else {
+            // Download link for other formats
+            convertedFileHtml = `
+              <div class="message-file converted-file">
+                <a href="${stashUrl}" download="${filename}" class="file-download-link">
+                  <span class="file-icon">📁</span>
+                  <span class="file-name">${Utils.escapeHtml(filename)}</span>
+                  ${sizeChange ? `<span class="file-size">(${sizeChange})</span>` : ''}
+                  <span class="download-icon">⬇️</span>
+                </a>
+              </div>
+            `;
+          }
+        }
+      }
+    }
+    
     const parsedText = Utils.parseMarkdown(text);
     
     // Build expandable details section
@@ -1516,6 +2005,7 @@ class ChatUI {
     messageEl.innerHTML = `
       ${toolCardsHtml}
       ${imageHtml}
+      ${convertedFileHtml}
       ${audioHtml}
       ${videoHtml}
       <div class="message-bubble">

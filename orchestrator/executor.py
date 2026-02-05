@@ -135,6 +135,8 @@ class ToolExecutor:
                 timeout = 90  # 90 seconds - web scraping with JS wait can be slow
             elif tool_name == "search_docs":
                 timeout = 90  # 60 seconds - search documentation with qmd
+            elif tool_name == "convert_file":
+                timeout = 240  # 4 minutes - convert files various formats, audio, video, image, ect.
             else:
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
             

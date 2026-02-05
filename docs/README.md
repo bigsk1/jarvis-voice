@@ -506,6 +506,16 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Useful for CLI testing without wake word
 
 **2026-01-25:**
+- ✅ **File Conversion Tool** - Local media conversion with ImageMagick, FFmpeg, and Potrace ⭐ NEW
+  - Converts images (JPG, PNG, WebP, GIF, BMP, TIFF, ICO), video (MP4, WebM, MOV, AVI, MKV), audio (MP3, WAV, FLAC, OGG, AAC)
+  - Raster to vector (PNG/JPG → SVG) using Potrace tracing
+  - Extract audio from video (MP4 → MP3/WAV)
+  - **Web UI 🔄 button** - Dedicated convert button bypasses vision analysis
+  - **Conversion modal** - Format selector with preview, descriptions, and advanced options
+  - **Advanced options** - Resize, quality, bitrate, FPS, threshold, speckle size per format type
+  - **Inline results** - Converted media displays with ⬇️ Download button
+  - All processing local (no API costs), output saved to stash
+  - See: `docs/convert-file-tool/README.md`, `skills/convert_file.py`
 - ✅ **Intel API** - Programmatic access to jarvis-intel knowledge files 
   - CRUD operations for intel files (create, read, update, delete)
   - `GET /api/intel/stats` - Folder statistics (total files, facts, size)
@@ -1075,6 +1085,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-05 (v2.38)  
-**Latest:** Internal Knowledge Search + Docs API + @jarvis_docs Prompt  
+**Last Updated:** 2026-01-25 (v2.39)  
+**Latest:** File Conversion Tool (🔄 button, advanced options, inline results)  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

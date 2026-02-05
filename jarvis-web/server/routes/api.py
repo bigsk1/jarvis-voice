@@ -1241,6 +1241,13 @@ def serve_stash_file(space_id, file_id):
         '.png': 'image/png',
         '.gif': 'image/gif',
         '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
+        '.bmp': 'image/bmp',
+        '.ico': 'image/x-icon',
+        '.tiff': 'image/tiff',
+        '.tif': 'image/tiff',
+        '.flac': 'audio/flac',
+        '.aac': 'audio/aac',
         '.json': 'application/json',
         '.txt': 'text/plain',
         '.md': 'text/markdown'
@@ -1249,6 +1256,107 @@ def serve_stash_file(space_id, file_id):
     mimetype = mime_types.get(ext, 'application/octet-stream')
     
     return send_from_directory(str(space_path), file_path.name, mimetype=mimetype)
+
+
+@api_bp.route('/stash/upload', methods=['POST'])
+def upload_to_stash():
+    """
+    Upload a file to the stash system.
+    Used for file conversion (bypasses vision analysis).
+    
+    Accepts: multipart/form-data with 'file' field
+    Optional: 'labels' field (comma-separated)
+    
+    Returns: { ok: true, stash_ref: "stash://...", space_id: "...", file_id: "..." }
+    """
+    import json
+    import uuid
+    import hashlib
+    from datetime import datetime
+    
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'ok': False, 'error': 'No file selected'}), 400
+    
+    try:
+        # Generate space and file IDs
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        space_id = f"space_{timestamp}_{uuid.uuid4().hex[:8]}"
+        file_id = f"f_{uuid.uuid4().hex[:12]}"
+        
+        # Create space directory
+        space_path = STASH_PATH / space_id
+        space_path.mkdir(parents=True, exist_ok=True)
+        
+        # Determine filename (preserve original name)
+        original_name = file.filename
+        safe_name = original_name.replace('/', '_').replace('\\', '_')
+        
+        # Read file content
+        content = file.read()
+        file_size = len(content)
+        
+        # Calculate hash
+        file_hash = hashlib.sha256(content).hexdigest()
+        
+        # Determine MIME type
+        mime_type = file.content_type or 'application/octet-stream'
+        
+        # Save file
+        file_path = space_path / safe_name
+        with open(file_path, 'wb') as f:
+            f.write(content)
+        
+        # Parse labels
+        labels = request.form.get('labels', 'uploaded')
+        label_list = [l.strip() for l in labels.split(',') if l.strip()]
+        
+        # Create meta.json
+        meta = {
+            'space_id': space_id,
+            'created_at': datetime.utcnow().isoformat() + 'Z',
+            'last_used_at': datetime.utcnow().isoformat() + 'Z',
+            'labels': label_list,
+            'owner': 'jarvis',
+            'scope': 'project',
+            'ttl_days': 7,
+            'pinned': False,
+            'files': [{
+                'file_id': file_id,
+                'name': original_name,
+                'stored_name': safe_name,
+                'mime_type': mime_type,
+                'size_bytes': file_size,
+                'hash_sha256': file_hash,
+                'tags': [],
+                'tool_origin': 'web_upload',
+                'created_at': datetime.utcnow().isoformat() + 'Z'
+            }]
+        }
+        
+        meta_path = space_path / 'meta.json'
+        with open(meta_path, 'w') as f:
+            json.dump(meta, f, indent=2)
+        
+        stash_ref = f"stash://{space_id}/{file_id}"
+        
+        print(f"[Stash Upload] Saved {original_name} ({file_size} bytes) -> {stash_ref}")
+        
+        return jsonify({
+            'ok': True,
+            'stash_ref': stash_ref,
+            'space_id': space_id,
+            'file_id': file_id,
+            'filename': original_name,
+            'size_bytes': file_size
+        })
+        
+    except Exception as e:
+        print(f"[Stash Upload] Error: {e}")
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 # =============================================================================

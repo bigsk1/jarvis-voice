@@ -163,10 +163,14 @@
                 </span>
                 <span class="speaker-progress" id="speakerProgress"></span>
               </button>
-              <button class="icon-btn upload-btn" id="uploadBtn" title="Attach image">
+              <button class="icon-btn upload-btn" id="uploadBtn" title="Attach image for vision">
                 📎
               </button>
               <input type="file" id="imageInput" accept="image/*" style="display: none;">
+              <button class="icon-btn convert-btn" id="convertBtn" title="Convert file format (image/video/audio)">
+                🔄
+              </button>
+              <input type="file" id="convertInput" accept="image/*,video/*,audio/*,.svg,.bmp,.ico,.tiff,.tif" style="display: none;">
               <button class="icon-btn enhance-btn" id="enhanceBtn" title="✨ Enhance with AI - transforms your input into an optimal prompt">
                 ✨
               </button>
@@ -436,6 +440,159 @@
         <div class="modal-footer">
           <button class="btn-secondary" id="closeSettingsBtn">Cancel</button>
           <button class="btn-primary" id="saveSettingsBtn">Save Changes</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Convert File Modal -->
+    <div class="modal-overlay" id="convertModal">
+      <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+          <h2 class="modal-title">🔄 Convert File</h2>
+          <button class="icon-btn" id="closeConvertModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="convert-preview" id="convertPreview" style="margin-bottom: var(--space-md); text-align: center;">
+            <!-- Preview will be inserted here -->
+          </div>
+          <div class="setting-group">
+            <label class="setting-label">Source File</label>
+            <div id="convertFileName" style="font-size: var(--text-sm); color: var(--text-secondary); padding: var(--space-xs) 0;">No file selected</div>
+          </div>
+          <div class="setting-group">
+            <label class="setting-label">Convert To</label>
+            <select class="setting-input" id="convertTargetFormat">
+              <optgroup label="Image Formats">
+                <option value="png">PNG (Lossless)</option>
+                <option value="jpg">JPG (Compressed)</option>
+                <option value="webp">WebP (Modern)</option>
+                <option value="gif">GIF</option>
+                <option value="svg">SVG (Vector - best for logos/icons)</option>
+                <option value="bmp">BMP</option>
+                <option value="ico">ICO (Icon)</option>
+              </optgroup>
+              <optgroup label="Video Formats">
+                <option value="mp4">MP4</option>
+                <option value="webm">WebM</option>
+                <option value="mov">MOV</option>
+                <option value="avi">AVI</option>
+              </optgroup>
+              <optgroup label="Audio Formats">
+                <option value="mp3">MP3</option>
+                <option value="wav">WAV (Lossless)</option>
+                <option value="flac">FLAC (Lossless)</option>
+                <option value="ogg">OGG</option>
+                <option value="aac">AAC</option>
+              </optgroup>
+              <optgroup label="Extract Audio">
+                <option value="extract_mp3">Extract Audio → MP3</option>
+                <option value="extract_wav">Extract Audio → WAV</option>
+              </optgroup>
+            </select>
+            <span class="setting-desc" id="convertFormatDesc">Select a target format</span>
+          </div>
+          
+          <!-- Advanced Options (collapsible) -->
+          <details class="convert-advanced" id="convertAdvanced">
+            <summary>⚙️ Advanced Options</summary>
+            
+            <!-- Image Options -->
+            <div class="convert-options-group" id="convertImageOptions" style="display: none;">
+              <div class="setting-group">
+                <label class="setting-label">Resize</label>
+                <input type="text" class="setting-input" id="convertResize" placeholder="e.g., 800x600 or 50%">
+                <span class="setting-desc">Width x Height or percentage</span>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Quality</label>
+                <input type="number" class="setting-input" id="convertQuality" min="1" max="100" placeholder="90">
+                <span class="setting-desc">1-100 (JPG/WebP only)</span>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">
+                  <input type="checkbox" id="convertStripMetadata"> Strip metadata (EXIF)
+                </label>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">
+                  <input type="checkbox" id="convertGrayscale"> Convert to grayscale
+                </label>
+              </div>
+            </div>
+            
+            <!-- SVG Options -->
+            <div class="convert-options-group" id="convertSvgOptions" style="display: none;">
+              <div class="setting-group">
+                <label class="setting-label">Threshold</label>
+                <input type="text" class="setting-input" id="convertThreshold" placeholder="50%">
+                <span class="setting-desc">Black/white cutoff (default: 50%)</span>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Speckle Size</label>
+                <input type="number" class="setting-input" id="convertTurdsize" min="0" max="100" placeholder="2">
+                <span class="setting-desc">Suppress speckles smaller than N pixels</span>
+              </div>
+            </div>
+            
+            <!-- Video Options -->
+            <div class="convert-options-group" id="convertVideoOptions" style="display: none;">
+              <div class="setting-group">
+                <label class="setting-label">Resolution</label>
+                <input type="text" class="setting-input" id="convertResolution" placeholder="e.g., 1920x1080 or 720p">
+                <span class="setting-desc">Output resolution</span>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Quality (CRF)</label>
+                <input type="number" class="setting-input" id="convertCrf" min="0" max="51" placeholder="23">
+                <span class="setting-desc">0-51, lower = better quality, larger file</span>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Frame Rate (FPS)</label>
+                <input type="number" class="setting-input" id="convertFps" min="1" max="120" placeholder="30">
+                <span class="setting-desc">Frames per second</span>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Max Duration (sec)</label>
+                <input type="number" class="setting-input" id="convertDuration" min="1" placeholder="">
+                <span class="setting-desc">Trim to max seconds (optional)</span>
+              </div>
+            </div>
+            
+            <!-- Audio Options -->
+            <div class="convert-options-group" id="convertAudioOptions" style="display: none;">
+              <div class="setting-group">
+                <label class="setting-label">Bitrate</label>
+                <select class="setting-input" id="convertBitrate">
+                  <option value="">Default</option>
+                  <option value="128k">128 kbps (Small)</option>
+                  <option value="192k">192 kbps (Good)</option>
+                  <option value="256k">256 kbps (Better)</option>
+                  <option value="320k">320 kbps (Best)</option>
+                </select>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Sample Rate</label>
+                <select class="setting-input" id="convertSampleRate">
+                  <option value="">Default</option>
+                  <option value="44100">44.1 kHz (CD Quality)</option>
+                  <option value="48000">48 kHz (Video Standard)</option>
+                  <option value="96000">96 kHz (High Res)</option>
+                </select>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Channels</label>
+                <select class="setting-input" id="convertChannels">
+                  <option value="">Default</option>
+                  <option value="1">Mono</option>
+                  <option value="2">Stereo</option>
+                </select>
+              </div>
+            </div>
+          </details>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="cancelConvert">Cancel</button>
+          <button class="btn-primary" id="startConvert">🔄 Convert</button>
         </div>
       </div>
     </div>

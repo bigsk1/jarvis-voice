@@ -6,6 +6,37 @@ Local media file conversion tool using ImageMagick, FFmpeg, and Potrace.
 
 The `convert_file` tool converts media files between formats using local system tools. No external APIs - all processing happens on your server.
 
+## Web UI Usage (Recommended)
+
+The easiest way to convert files is using the **🔄 Convert button** in the web UI:
+
+1. **Click the 🔄 button** (next to the 📎 attach button)
+2. **Select any media file** (image, video, or audio)
+3. **Choose target format** from the dropdown
+4. **Click "Convert"**
+
+The file uploads directly to stash (bypassing vision analysis) and converts immediately. Results display inline with a **⬇️ Download** button.
+
+### Why use the 🔄 button?
+- **Bypasses vision analysis** - no "I can't convert" responses
+- **Accepts all media types** - images, video, audio
+- **Format selector** with descriptions
+- **Advanced options** for fine-tuning conversions
+- **Direct download button** on converted files
+
+### Advanced Options
+
+Click "⚙️ Advanced Options" in the modal to reveal format-specific settings:
+
+| Source Type | Available Options |
+|-------------|-------------------|
+| **Images** | Resize (e.g., "800x600" or "50%"), Quality (1-100), Strip metadata, Grayscale |
+| **SVG conversion** | Threshold (black/white cutoff), Speckle size (suppress small dots) |
+| **Videos** | Resolution, CRF quality (0-51, lower=better), FPS, Max duration |
+| **Audio** | Bitrate (128k-320k), Sample rate (44.1kHz-96kHz), Channels (mono/stereo) |
+
+These options map directly to the tool parameters documented below.
+
 ## Supported Conversions
 
 ### Image Formats (ImageMagick)
@@ -61,18 +92,35 @@ Potrace traces bitmap images to vector. Works best on:
 
 ## Usage
 
+### Via Web UI (Recommended)
+
+Use the **🔄 Convert button** in the chat interface. This is the cleanest method as it:
+- Uploads directly to stash (no vision analysis)
+- Shows format options with descriptions
+- Displays results inline with download button
+
 ### Via Voice/Chat
 
+When using voice or typing directly, provide the stash reference:
+
 ```
-"Convert my image to PNG"
-"Convert stash://space_xxx/file_id to SVG"
-"Convert the video to WebM format"
-"Extract audio from this video as MP3"
+"Convert stash://space_xxx/file_id to PNG"
+"Convert the file at stash://space_xxx/f_yyy to SVG using the convert_file tool"
+"Extract audio from stash://space_xxx/f_video as MP3"
 ```
+
+**Note:** Uploading via the 📎 button triggers vision analysis first, which may give unhelpful responses before converting. Use the 🔄 button instead.
 
 ### Via API
 
-**1. Upload file to stash:**
+**1. Upload file to stash (Web UI server):**
+```bash
+curl -X POST http://localhost:5001/api/stash/upload \
+  -F "file=@image.jpg" \
+  -F "labels=for_conversion"
+```
+
+Or via main API:
 ```bash
 curl -X POST http://localhost:8880/api/stash/upload \
   -F "file=@image.jpg" \
@@ -92,10 +140,15 @@ Response:
 ```bash
 curl -X POST http://localhost:8880/api/query \
   -H "Content-Type: application/json" \
-  -d '{"query": "Convert stash://space_xxx/f_xyz to svg"}'
+  -d '{"query": "Convert stash://space_xxx/f_xyz to svg using the convert_file tool"}'
 ```
 
-**3. Download result:**
+**3. Download result (via Web UI server):**
+```bash
+curl -O http://localhost:5001/api/stash/{space_id}/{file_id}
+```
+
+Or via main API:
 ```bash
 curl -O http://localhost:8880/api/stash/space/{space_id}/file/{file_id}/download
 ```
@@ -187,9 +240,21 @@ python3 skills/convert_file.py '{
 
 Converted files are saved to **stash** (not generated_images/videos). 
 
-Access via:
-- Web UI: Stash section
-- API: `/api/stash/space/{space_id}/file/{file_id}/download`
+### In Web UI
+
+Converted files display **inline** in the chat:
+- **Images**: Thumbnail with lightbox (click to expand)
+- **Video**: Video player with controls
+- **Audio**: Audio player with controls
+- **Other**: Download card
+
+All formats show a **⬇️ Download** button for direct download.
+
+### Via API
+
+Access converted files:
+- Web UI server: `/api/stash/{space_id}/{file_id}`
+- Main API: `/api/stash/space/{space_id}/file/{file_id}/download`
 - Stash reference: `stash://space_xxx/f_yyy`
 
 ## Requirements

@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.0)  
-> **Last Updated**: December 31, 2025
+> **Status**: MVP Complete (v2.2)  
+> **Last Updated**: January 25, 2026
 
 ---
 
@@ -88,6 +88,10 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Expand details button** | ✅ | Show full LLM response before voice shortening |
 | **Auto-stash uploads** | ✅ | Uploaded images auto-stash + memory_db entry |
 | **analyze_image tool** | ✅ | Analyze URLs, files, stash refs with vision |
+| **🔄 File Conversion** | ✅ | Convert images/video/audio between formats |
+| **Convert modal** | ✅ | Format selector with preview, descriptions, and advanced options |
+| **Advanced convert options** | ✅ | Resize, quality, bitrate, FPS, etc. per format type |
+| **Inline converted media** | ✅ | Shows image/video/audio with download button |
 | Tool enable/disable | ⏳ | Planned (per-tool granular control) |
 
 ### Phase 5: Input Enhancement - COMPLETE ✅
@@ -234,6 +238,10 @@ jarvis-web/
 | GET | `/api/conversations/search?q=` | Search message content across all conversations |
 | GET | `/api/conversations/<id>/export?format=` | Export conversation (json/markdown) |
 | POST | `/api/conversations/import` | Import conversation from JSON file |
+| POST | `/api/stash/upload` | Upload file to stash (for conversion) |
+| GET | `/api/stash/<space_id>/<file_id>` | Serve file from stash |
+| GET | `/api/music/<filename>` | Serve generated music files |
+| GET | `/api/videos/<filename>` | Serve generated video files |
 
 ### WebSocket Events
 
@@ -680,6 +688,78 @@ A dedicated tool for analyzing images from various sources:
 **When to Use:**
 - Web UI image upload: Built-in vision (NOT this tool)
 - Analyze URL/file/stash via voice/CLI: Use this tool
+
+---
+
+### 🔄 File Conversion (NEW)
+
+A dedicated **🔄 button** in the input bar for converting files between formats. This bypasses vision analysis and goes directly to the `convert_file` tool.
+
+**How to Use:**
+1. Click the **🔄 button** (next to 📎 attach)
+2. Select any media file (image, video, or audio)
+3. Modal opens with file preview and format selector
+4. Choose target format from dropdown
+5. Click "Convert"
+
+**Why Use the 🔄 Button (vs 📎)?**
+
+| Button | Behavior |
+|--------|----------|
+| **📎 Attach** | Triggers vision analysis first → may say "can't convert" → then convert |
+| **🔄 Convert** | Uploads to stash directly → calls `convert_file` → no vision confusion |
+
+**Supported Formats:**
+
+| Category | Formats |
+|----------|---------|
+| **Images** | PNG, JPG, WebP, GIF, SVG, BMP, ICO, TIFF |
+| **Video** | MP4, WebM, MOV, AVI, MKV |
+| **Audio** | MP3, WAV, FLAC, OGG, AAC, M4A |
+| **Extract** | Extract audio from video → MP3/WAV |
+
+**Conversion Modal Features:**
+- **File preview**: Image thumbnail, video preview, or audio player
+- **Format dropdown**: Grouped by type (Image/Video/Audio/Extract)
+- **Format descriptions**: Explains each format (lossless, compressed, etc.)
+- **Smart pre-selection**: Suggests complementary format based on source
+- **Advanced options** (collapsible): Fine-tune conversion parameters
+
+**Advanced Options by Format Type:**
+
+| Target Type | Options Available |
+|-------------|-------------------|
+| **Images** | Resize (e.g., "800x600" or "50%"), Quality (1-100), Strip EXIF metadata, Convert to grayscale |
+| **SVG** | Threshold (black/white cutoff), Speckle size (suppress small artifacts) |
+| **Video** | Resolution, CRF quality (0-51, lower=better), Frame rate (FPS), Max duration (trim) |
+| **Audio** | Bitrate (128k-320k), Sample rate (44.1kHz-96kHz), Channels (mono/stereo) |
+
+**Output Display:**
+- **Images**: Inline thumbnail with lightbox + ⬇️ Download button
+- **Video**: Video player with controls + ⬇️ Download button
+- **Audio**: Audio player with controls + ⬇️ Download button
+- **Other**: Download card with file info
+
+**Technical Flow:**
+```
+🔄 button → File picker → Modal (preview + format)
+     ↓
+POST /api/stash/upload (bypasses vision)
+     ↓
+Message: "Convert stash://xxx to PNG using convert_file tool"
+     ↓
+Orchestrator → convert_file tool → ImageMagick/FFmpeg/Potrace
+     ↓
+Result displayed inline with download button
+```
+
+**Local Processing:**
+- Uses ImageMagick for image conversions
+- Uses Potrace for raster→SVG (best for logos, line art)
+- Uses FFmpeg for video/audio conversions
+- No external APIs - all processing on your server
+
+**Documentation:** See `docs/convert-file-tool/README.md` for full details.
 
 ---
 
@@ -1161,6 +1241,12 @@ Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 - [x] **Feedback Card** - Purple tool card with rating, summary, issues, tool ratings 
 - [x] **Feedback Toast** - 6-second notification with rating summary 
 - [x] **Always-log manual feedback** - Manual triggers always saved to logs 
+- [x] **🔄 File Conversion button** - Convert images/video/audio between formats 
+- [x] **Conversion modal** - Format selector with preview and descriptions 
+- [x] **Stash upload endpoint** - `/api/stash/upload` for direct stash uploads 
+- [x] **Inline converted media** - Images/video/audio display with ⬇️ Download button 
+- [x] **SVG/BMP/ICO/FLAC support** - Extended stash MIME types 
+- [x] **Advanced convert options** - Resize, quality, bitrate, FPS, etc. in collapsible panel 
 
 ---
 
@@ -1422,4 +1508,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*  
 *v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*  
 *v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*  
-*v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*
+*v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*  
+*v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*
