@@ -1,0 +1,33 @@
+{
+  "enabled": true,
+  "name": "search_docs",
+  "description": "Search Jarvis internal documentation for answers about capabilities, tool parameters, settings, and features. Use when user asks informational questions like: 'what video sizes can I generate?', 'how long can music be?', 'what image styles are available?', 'how does memory work?'. This is Q&A about Jarvis capabilities - NOT for executing tools. Returns documentation excerpts that answer the question.",
+  "script": "search_docs.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Natural language question about Jarvis capabilities, tool parameters, or features. Examples: 'video generation duration and sizes', 'music generation styles', 'image aspect ratios'"
+      },
+      "topic": {
+        "type": "string",
+        "enum": ["all", "video", "image", "music", "memory", "api", "tools", "workflows", "canvas", "stash"],
+        "description": "Optional: focus search on a specific topic. Default 'all' searches everything."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Number of documentation excerpts to return (default 5)",
+        "default": 5
+      }
+    },
+    "required": ["query"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": true,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}

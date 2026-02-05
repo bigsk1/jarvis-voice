@@ -4,7 +4,7 @@ Local search engine for Jarvis documentation using [tobi/qmd](https://github.com
 
 ## Why QMD?
 
-- **148 markdown docs** indexed with rich context descriptions
+- **153 markdown docs** indexed with rich context descriptions (excludes personal/private dirs)
 - **BM25 keyword search** - fast, accurate for exact terms
 - **Semantic search** - find by meaning when keywords fail
 - **33 context annotations** - sections have detailed descriptions to improve relevance
@@ -105,20 +105,63 @@ qmd multi-get "#abc123, #def456"    # Multiple docids
 
 ## Maintenance
 
-```bash
-# Re-index after adding/changing docs
-qmd update
+### Adding New Docs
 
+```bash
+# After adding a new markdown file to docs/:
+qmd update           # Re-scans for new/changed files
+qmd embed            # Only embeds new/modified files (incremental)
+
+# Verify
+qmd status
+```
+
+### Full Re-index
+
+```bash
 # Re-index with git pull first (for remote repos)
 qmd update --pull
 
-# Re-generate embeddings (after update or if models changed)
+# Force re-embed everything (if models changed or issues)
+qmd embed -f
+```
+
+### Excluding Directories
+
+QMD doesn't respect .gitignore. To exclude directories (e.g., `docs/personal/`):
+
+```bash
+# 1. Temporarily move excluded dirs
+mkdir -p /tmp/qmd-exclude
+mv docs/personal docs/samantha-skill docs/vps2 /tmp/qmd-exclude/
+
+# 2. Rebuild collection
+qmd collection remove jarvis-docs
+qmd collection add ./docs --name jarvis-docs --mask "**/*.md"
 qmd embed
 
-# Force re-embed everything
-qmd embed -f
+# 3. Restore excluded dirs
+mv /tmp/qmd-exclude/* docs/
+rmdir /tmp/qmd-exclude
+```
 
-# Add context to new section
+Index stored in: ~/.cache/qmd/index.sqlite
+
+collections     -- Indexed directories with name and glob patterns
+path_contexts   -- Context descriptions by virtual path (qmd://...)
+documents       -- Markdown content with metadata and docid (6-char hash)
+documents_fts   -- FTS5 full-text index
+content_vectors -- Embedding chunks (hash, seq, pos, 800 tokens each)
+vectors_vec     -- sqlite-vec vector index (hash_seq key)
+llm_cache       -- Cached LLM responses (query expansion, rerank scores)
+
+
+**Currently excluded:** `docs/personal/`, `docs/samantha-skill/`, `docs/vps2/`
+
+### Adding Context Descriptions
+
+```bash
+# Add context to new section (improves search relevance)
 qmd context add qmd://jarvis-docs/new-section "Description of what this section covers"
 
 # List all contexts

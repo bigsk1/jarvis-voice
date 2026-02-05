@@ -133,6 +133,8 @@ class ToolExecutor:
                 timeout = 180  # 3 minutes - calls multiple tools including generate_image
             elif tool_name == "crawl_url":
                 timeout = 90  # 90 seconds - web scraping with JS wait can be slow
+            elif tool_name == "search_docs":
+                timeout = 90  # 60 seconds - search documentation with qmd
             else:
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
             
