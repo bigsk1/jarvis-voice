@@ -109,7 +109,39 @@ sudo systemctl stop unifi-protect-webhook     # Stop
 | `WEBHOOK_PORT` | `5050` | Port to listen on |
 | `ALERT_START_HOUR` | `0` | Start of alert window (24h) |
 | `ALERT_END_HOUR` | `24` | End of alert window (24h) |
-| `COOLDOWN_SECONDS` | `60` | Default cooldown between alerts |
+| `COOLDOWN_SECONDS` | `60` | **Fallback only** - see Per-Event Cooldowns below |
+
+### Per-Event Cooldowns
+
+Each event type has its **own cooldown** defined in `webhook_receiver.py` (in the `ALERT_RULES` dict). The `COOLDOWN_SECONDS` env var is only used as a fallback for rules that don't specify one.
+
+| Event Type | Default Cooldown | Line in Code |
+|------------|------------------|--------------|
+| `person` | 60s | ~72 |
+| `package` | 300s (5 min) | ~80 |
+| `vehicle` | 120s (2 min) | ~88 |
+| `animal` | 300s (5 min) | ~95 |
+| `audio_alarm_glass_break` | 60s | ~106 |
+| `audio_alarm_smoke_co` | 60s | ~114 |
+| `sensor_battery_low` | 3600s (1 hour) | ~126 |
+| `sensor_water_leak` | 300s (5 min) | ~134 |
+| `sensor_alarm` | 300s (5 min) | ~142 |
+| `camera_offline` | 900s (15 min) | ~176 |
+| `sensor_offline` | 1800s (30 min) | ~184 |
+
+**To change a cooldown**, edit the `"cooldown"` value in `webhook_receiver.py`:
+
+```python
+"person": {
+    "enabled": True,
+    "severity": "high",
+    "auto_ack": True,
+    "cooldown": 600,  # Change from 60 to 600 (10 min)
+    ...
+}
+```
+
+Then restart: `sudo systemctl restart unifi-protect-webhook`
 
 ### Time Window Examples
 
