@@ -494,8 +494,10 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
     """
     
     # Determine provider
-    if provider is None:
-        provider = get_config_value('IMAGE_TOOL_PROVIDER', 'gemini').lower()
+    # get_config_value checks JARVIS_OVERRIDE_ prefix first (web UI settings),
+    # then falls back to cloud.env default. LLM-passed provider is ignored
+    # when a config/override value exists.
+    provider = get_config_value('IMAGE_TOOL_PROVIDER', provider or 'gemini').lower()
     
     if provider == 'openai':
         return generate_image_openai(

@@ -892,6 +892,16 @@ class JarvisApp {
           imageDefault.textContent = `⚡ override: ${s.image.provider.value}`;
         }
         
+        // Populate Video Provider
+        const videoSelect = document.getElementById('setting-video-provider');
+        videoSelect.value = s.video?.provider?.is_override ? s.video.provider.value : '';
+        const videoDefault = document.getElementById('video-provider-default');
+        videoDefault.textContent = `(${envFile}: ${s.video?.provider?.default || 'xai'})`;
+        videoDefault.className = s.video?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.video?.provider?.is_override) {
+          videoDefault.textContent = `⚡ override: ${s.video.provider.value}`;
+        }
+        
         // Populate Conversation History Limit
         const historyLimit = s.conversation?.history_limit || 20;
         document.getElementById('setting-history-limit').value = historyLimit;
@@ -1499,6 +1509,7 @@ class JarvisApp {
         llm_provider: document.getElementById('setting-llm-provider').value || null,
         llm_model: document.getElementById('setting-llm-model').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
+        video_provider: document.getElementById('setting-video-provider').value || null,
         history_limit: parseInt(document.getElementById('setting-history-limit').value) || 20
       };
       

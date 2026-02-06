@@ -2,6 +2,7 @@
 WebSocket handlers for chat functionality
 Real-time message handling and tool execution streaming
 """
+import os
 import sys
 import uuid
 import time
@@ -481,6 +482,25 @@ class ChatHandler:
             
             if provider_override:
                 print(f"[CHAT] Using {mode} override: provider={provider_override}, model={model_override}")
+            
+            # Apply image/video provider overrides via JARVIS_OVERRIDE_ prefix
+            # These survive load_config() in tool subprocesses (which re-reads cloud.env)
+            # get_config_value() checks JARVIS_OVERRIDE_{key} before os.environ[key]
+            image_provider_override = mode_overrides.get('image_provider')
+            video_provider_override = mode_overrides.get('video_provider')
+            
+            # Set or clear override env vars (cleared = fall back to cloud.env default)
+            if image_provider_override:
+                os.environ['JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER'] = image_provider_override
+            else:
+                os.environ.pop('JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER', None)
+            
+            if video_provider_override:
+                os.environ['JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER'] = video_provider_override
+            else:
+                os.environ.pop('JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER', None)
+            
+            print(f"[CHAT] Provider overrides - image: {image_provider_override or '(env default)'}, video: {video_provider_override or '(env default)'}")
             
             # Handle vision if image is provided
             vision_result = None

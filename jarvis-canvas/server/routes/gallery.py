@@ -6,9 +6,135 @@ import mimetypes
 from datetime import datetime
 from flask import Blueprint, jsonify, request, send_file, abort, render_template
 
-from config import GENERATED_IMAGES_DIR
+from config import GENERATED_IMAGES_DIR, STASH_DIR
 
 gallery_bp = Blueprint('gallery', __name__)
+
+# Central catalog file for image metadata (provider, tags, etc.)
+IMAGE_CATALOG_FILE = GENERATED_IMAGES_DIR / "image_catalog.json"
+
+
+def load_image_catalog():
+    """Load the image catalog from disk."""
+    if IMAGE_CATALOG_FILE.exists():
+        try:
+            with open(IMAGE_CATALOG_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_image_catalog(catalog):
+    """Save the image catalog to disk."""
+    try:
+        with open(IMAGE_CATALOG_FILE, 'w') as f:
+            json.dump(catalog, f, indent=2)
+    except Exception as e:
+        print(f"⚠️  Failed to save image catalog: {e}")
+
+
+def lookup_image_stash_metadata(filename):
+    """
+    Look up metadata for an image file from stash.
+    Returns dict with provider, tags, aspect if found.
+    """
+    if not STASH_DIR.exists():
+        return None
+    
+    for space_dir in STASH_DIR.iterdir():
+        if not space_dir.is_dir():
+            continue
+        
+        meta_file = space_dir / "meta.json"
+        if not meta_file.exists():
+            continue
+        
+        try:
+            with open(meta_file) as f:
+                meta = json.load(f)
+            
+            # Only process image stash spaces
+            if 'generated_images' not in meta.get('labels', []):
+                continue
+            
+            for file_info in meta.get('files', []):
+                stored_name = file_info.get('stored_name') or file_info.get('name')
+                if stored_name != filename:
+                    continue
+                
+                tags = file_info.get('tags', [])
+                
+                # Detect provider from tags
+                provider = None
+                if 'xai' in tags:
+                    provider = 'xAI'
+                elif 'gemini' in tags:
+                    provider = 'Gemini'
+                elif 'openai' in tags:
+                    provider = 'OpenAI'
+                elif 'dall-e' in tags or 'dalle' in tags:
+                    provider = 'DALL-E'
+                elif 'stability' in tags or 'stable-diffusion' in tags:
+                    provider = 'Stability'
+                
+                # Get aspect ratio from tags
+                aspect = None
+                for tag in tags:
+                    if ':' in tag and tag.replace(':', '').replace('.', '').isdigit():
+                        aspect = tag
+                        break
+                
+                return {
+                    'provider': provider,
+                    'aspect': aspect,
+                    'tags': tags,
+                    'tool_origin': file_info.get('tool_origin'),
+                    'created_at': file_info.get('created_at')
+                }
+        except Exception:
+            pass
+    
+    return None
+
+
+def sync_image_catalog():
+    """
+    Sync the image catalog with actual files and stash metadata.
+    
+    - Adds new images found in directory (with stash metadata if available)
+    - Removes entries for deleted images
+    - Returns the synced catalog
+    """
+    catalog = load_image_catalog()
+    changed = False
+    
+    # Get actual image files
+    actual_files = set()
+    if GENERATED_IMAGES_DIR.exists():
+        for f in GENERATED_IMAGES_DIR.iterdir():
+            if f.is_file() and f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp'):
+                actual_files.add(f.name)
+    
+    # Remove entries for deleted images
+    deleted = [name for name in catalog if name not in actual_files]
+    for name in deleted:
+        del catalog[name]
+        changed = True
+    
+    # Add new images (lookup stash metadata)
+    for filename in actual_files:
+        if filename not in catalog:
+            meta = lookup_image_stash_metadata(filename)
+            catalog[filename] = meta or {}
+            changed = True
+            if meta and meta.get('provider'):
+                print(f"📝 Image catalog: {filename} ({meta.get('provider')})")
+    
+    if changed:
+        save_image_catalog(catalog)
+    
+    return catalog
 
 
 @gallery_bp.route('/gallery')
@@ -23,15 +149,29 @@ def list_gallery_images():
     images = []
     total_size = 0
     
+    # Sync catalog with actual files (handles additions and deletions)
+    catalog = sync_image_catalog()
+    
     if GENERATED_IMAGES_DIR.exists():
         for f in GENERATED_IMAGES_DIR.iterdir():
             if f.is_file() and f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp'):
                 stat = f.stat()
-                images.append({
+                image_info = {
                     'name': f.name,
                     'size': stat.st_size,
                     'modified': datetime.fromtimestamp(stat.st_mtime).isoformat()
-                })
+                }
+                
+                # Get metadata from catalog
+                meta = catalog.get(f.name, {})
+                if meta.get('provider'):
+                    image_info['provider'] = meta['provider']
+                if meta.get('aspect'):
+                    image_info['aspect'] = meta['aspect']
+                if meta.get('tags'):
+                    image_info['tags'] = meta['tags']
+                
+                images.append(image_info)
                 total_size += stat.st_size
     
     # Sort by modified date descending by default
@@ -71,7 +211,7 @@ def delete_gallery_image(filename):
     
     try:
         filepath.unlink()
-        # Also remove from CDN catalog if present
+        # Remove from CDN catalog if present
         cdn_catalog = GENERATED_IMAGES_DIR / "cdn_catalog.json"
         if cdn_catalog.exists():
             try:
@@ -81,6 +221,11 @@ def delete_gallery_image(filename):
                     cdn_catalog.write_text(json.dumps(catalog, indent=2))
             except:
                 pass
+        # Remove from image catalog
+        img_catalog = load_image_catalog()
+        if filename in img_catalog:
+            del img_catalog[filename]
+            save_image_catalog(img_catalog)
         print(f"🗑️  Deleted gallery image: {filename}")
         return jsonify({'ok': True, 'deleted': filename})
     except Exception as e:

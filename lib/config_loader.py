@@ -65,15 +65,30 @@ def load_config(mode=None):
     
     env_vars = load_env_file(config_file)
     
+    # Web UI overrides are prefixed with JARVIS_OVERRIDE_ and take precedence
+    # over env file values. This prevents load_config() from overwriting
+    # runtime overrides set by the web UI settings panel.
+    override_prefix = 'JARVIS_OVERRIDE_'
+    
     # Set environment variables
     for key, value in env_vars.items():
+        # Don't overwrite if a web UI override exists for this key
+        if f'{override_prefix}{key}' in os.environ:
+            continue
         os.environ[key] = value
     
     return env_vars
 
 
 def get_config_value(key, default=None):
-    """Get a configuration value from environment."""
+    """Get a configuration value from environment.
+    
+    Checks for JARVIS_OVERRIDE_{key} first (set by web UI settings),
+    then falls back to the regular env var.
+    """
+    override = os.environ.get(f'JARVIS_OVERRIDE_{key}')
+    if override is not None:
+        return override
     return os.environ.get(key, default)
 
 

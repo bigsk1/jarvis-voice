@@ -120,6 +120,21 @@ body {
     object-fit: cover;
 }
 
+.image-provider {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: white;
+    text-transform: uppercase;
+    background: var(--accent);
+    pointer-events: none;
+    z-index: 1;
+}
+
 .image-info {
     padding: 12px 16px;
 }

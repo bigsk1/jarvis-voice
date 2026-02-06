@@ -23,9 +23,11 @@ async function fetchImages() {
 
 function filterImages() {
     const search = document.getElementById('searchInput').value.toLowerCase();
-    filteredImages = images.filter(img => 
-        img.name.toLowerCase().includes(search)
-    );
+    filteredImages = images.filter(img => {
+        const name = img.name.toLowerCase();
+        const provider = (img.provider || '').toLowerCase();
+        return name.includes(search) || provider.includes(search);
+    });
     sortImages();
 }
 
@@ -59,12 +61,17 @@ function renderGallery() {
     
     emptyState.style.display = 'none';
     
-    gallery.innerHTML = filteredImages.map((img, index) => `
+    gallery.innerHTML = filteredImages.map((img, index) => {
+        // Use provider from API if available, otherwise detect from filename
+        const provider = img.provider || detectProvider(img.name);
+        
+        return `
         <div class="image-card" data-index="${index}">
             <div class="image-wrapper" onclick="openLightboxByIndex(${index})">
                 <img src="/api/gallery/images/${encodeURIComponent(img.name)}" 
                      alt="${escapeHtml(img.name)}" 
                      loading="lazy">
+                ${provider ? `<span class="image-provider">${provider}</span>` : ''}
             </div>
             <div class="image-info">
                 <div class="image-name" title="${escapeHtml(img.name)}">${escapeHtml(formatImageName(img.name))}</div>
@@ -84,7 +91,19 @@ function renderGallery() {
                 </div>
             </div>
         </div>
-    `).join('');
+    `}).join('');
+}
+
+function detectProvider(name) {
+    // Detect provider from filename patterns (fallback when no stash metadata)
+    const lower = name.toLowerCase();
+    
+    if (lower.includes('xai') || lower.includes('grok')) return 'xAI';
+    if (lower.includes('gemini')) return 'Gemini';
+    if (lower.includes('openai') || lower.includes('dall-e') || lower.includes('dalle')) return 'OpenAI';
+    if (lower.includes('stability') || lower.includes('stable')) return 'Stability';
+    
+    return null;
 }
 
 function formatImageName(name) {

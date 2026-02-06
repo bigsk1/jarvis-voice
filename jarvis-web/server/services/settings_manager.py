@@ -70,8 +70,14 @@ def fetch_ollama_models(base_url: str = None) -> list:
     return [{'id': default_model, 'name': f'{default_model} (default)', 'context': 'local'}]
 
 IMAGE_PROVIDERS = {
+    'xai': {'name': 'xAI Grok', 'model': 'grok-imagine-image'},
     'gemini': {'name': 'Google Gemini', 'model': 'gemini-3-pro-image-preview'},
-    'openai': {'name': 'OpenAI DALL-E', 'model': 'gpt-image-1'}
+    'openai': {'name': 'OpenAI DALL-E', 'model': 'gpt-image-1.5'}
+}
+
+VIDEO_PROVIDERS = {
+    'xai': {'name': 'xAI Grok', 'model': 'grok-imagine-video'},
+    'gemini': {'name': 'Google Gemini Veo', 'model': 'veo-3.1'}
 }
 
 
@@ -85,6 +91,7 @@ class SettingsManager:
         'LLM_PROVIDER',
         'TTS_PROVIDER',
         'IMAGE_TOOL_PROVIDER',
+        'VIDEO_TOOL_PROVIDER',
         'TOOL_SIMILARITY_THRESHOLD',
         'SEMANTIC_SIMILARITY_THRESHOLD',
         'INTELLIGENCE_ENABLED',
@@ -117,6 +124,7 @@ class SettingsManager:
             'LLM_PROVIDER': ('llm', 'provider'),
             'LLM_MODEL': ('llm', 'model'),
             'IMAGE_TOOL_PROVIDER': ('image', 'provider'),
+            'VIDEO_TOOL_PROVIDER': ('video', 'provider'),
             'TOOL_SIMILARITY_THRESHOLD': ('thresholds', 'tool_similarity'),
             'SEMANTIC_SIMILARITY_THRESHOLD': ('thresholds', 'memory_similarity'),
         }
@@ -139,17 +147,20 @@ class SettingsManager:
         # Get env defaults for current mode
         env_provider = get_jarvis_setting('LLM_PROVIDER', 'xai' if self.mode == 'cloud' else 'ollama')
         env_image_provider = get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
+        env_video_provider = get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai')
         
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
         web_provider = mode_overrides.get('llm_provider')
         web_model = mode_overrides.get('llm_model')
         web_image = mode_overrides.get('image_provider')
+        web_video = mode_overrides.get('video_provider')
         
         # Calculate effective values
         effective_provider = web_provider or env_provider
         effective_model = web_model or self._get_default_model(effective_provider)
         effective_image = web_image or env_image_provider
+        effective_video = web_video or env_video_provider
         
         return {
             'mode': self.mode,
@@ -177,6 +188,16 @@ class SettingsManager:
                     'default': env_image_provider,
                     'is_override': web_image is not None,
                     'options': list(IMAGE_PROVIDERS.keys())
+                }
+            },
+            
+            # Video Settings
+            'video': {
+                'provider': {
+                    'value': effective_video,
+                    'default': env_video_provider,
+                    'is_override': web_video is not None,
+                    'options': list(VIDEO_PROVIDERS.keys())
                 }
             },
             
@@ -209,6 +230,7 @@ class SettingsManager:
             # Available models reference (with dynamic Ollama)
             'provider_models': self._get_provider_models(),
             'image_providers': IMAGE_PROVIDERS,
+            'video_providers': VIDEO_PROVIDERS,
             
             # Blocked tools
             'blocked_tools': web_config.get('tools', {}).get('blocked', [])
@@ -300,6 +322,10 @@ class SettingsManager:
         if 'image_provider' in overrides:
             mode_config['image_provider'] = overrides['image_provider'] or None
         
+        # Handle video overrides (per-mode)
+        if 'video_provider' in overrides:
+            mode_config['video_provider'] = overrides['video_provider'] or None
+        
         # Handle audio overrides (global, not per-mode)
         if 'tts_enabled' in overrides:
             if 'audio' not in config:
@@ -342,7 +368,8 @@ class SettingsManager:
         config[self.mode] = {
             'llm_provider': None,
             'llm_model': None,
-            'image_provider': None
+            'image_provider': None,
+            'video_provider': None
         }
         return save_web_config(config)
     

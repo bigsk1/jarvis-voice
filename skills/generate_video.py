@@ -485,8 +485,10 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
     """
     
     # Determine provider
-    if provider is None:
-        provider = get_config_value('VIDEO_TOOL_PROVIDER', 'xai').lower()
+    # get_config_value checks JARVIS_OVERRIDE_ prefix first (web UI settings),
+    # then falls back to cloud.env default. LLM-passed provider is ignored
+    # when a config/override value exists.
+    provider = get_config_value('VIDEO_TOOL_PROVIDER', provider or 'xai').lower()
     
     if provider == 'gemini':
         return generate_video_gemini(

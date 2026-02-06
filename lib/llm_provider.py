@@ -85,7 +85,6 @@ class OpenAIProvider(LLMProvider):
             response = self.client.chat.completions.create(**params)
             return response.choices[0].message.content or ""
         except Exception as e:
-            import sys
             print(f"OpenAI API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     
@@ -143,7 +142,6 @@ class OpenAIProvider(LLMProvider):
             return message.content, None, usage_info, None  # No thinking for standard models
             
         except Exception as e:
-            import sys
             print(f"OpenAI API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None, None, None
 
@@ -206,7 +204,6 @@ class AnthropicProvider(LLMProvider):
             
             return "No response from Claude"
         except Exception as e:
-            import sys
             print(f"Anthropic API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     
@@ -302,7 +299,6 @@ class AnthropicProvider(LLMProvider):
                         api_params["max_tokens"] = thinking_budget + 6000  # 2000 thinking + 6000 response
                         
                         if os.environ.get('JARVIS_DEBUG'):
-                            import sys
                             print(f"DEBUG: Thinking enabled! Config: {thinking_config}", file=sys.stderr)
                             print(f"DEBUG: max_tokens set to: {api_params['max_tokens']}", file=sys.stderr)
             
@@ -310,7 +306,6 @@ class AnthropicProvider(LLMProvider):
             
             # Debug: Show what we got back
             if os.environ.get('JARVIS_DEBUG'):
-                import sys
                 print(f"DEBUG: Response has thinking attr: {hasattr(response, 'thinking')}", file=sys.stderr)
                 if hasattr(response, 'thinking'):
                     print(f"DEBUG: Thinking content: {response.thinking}", file=sys.stderr)
@@ -323,7 +318,6 @@ class AnthropicProvider(LLMProvider):
                 from thinking import extract_thinking
                 thinking_text = extract_thinking(response, "anthropic")
                 if os.environ.get('JARVIS_DEBUG'):
-                    import sys
                     print(f"DEBUG: Extracted thinking text: {thinking_text[:100] if thinking_text else 'None'}", file=sys.stderr)
             
             # Extract usage info with cache metrics
@@ -384,7 +378,6 @@ class AnthropicProvider(LLMProvider):
             return "No response from Claude", None, usage_info, thinking_text
             
         except Exception as e:
-            import sys
             print(f"Anthropic API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None, None, None
 
@@ -780,7 +773,6 @@ class OllamaProvider(LLMProvider):
             result = response.json()
             return result["message"]["content"]
         except Exception as e:
-            import sys
             print(f"Ollama API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     

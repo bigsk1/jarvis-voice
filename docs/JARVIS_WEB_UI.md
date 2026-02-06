@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.2)  
-> **Last Updated**: January 25, 2026
+> **Status**: MVP Complete (v2.3)  
+> **Last Updated**: February 6, 2026
 
 ---
 
@@ -76,6 +76,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Settings persistence | ✅ | `web_config.json` with per-mode overrides |
 | Reset to defaults | ✅ | Button to clear web overrides for current mode |
 | Dynamic LLM switching | ✅ | Change provider/model on-the-fly, takes effect immediately |
+| Dynamic image/video provider | ✅ | Switch image (xAI/Gemini/OpenAI) and video (xAI/Gemini) providers on-the-fly |
 | MCP tool discovery | ✅ | Reads from memory_db, shows in Tools tab |
 | System config view | ✅ | Mode-specific .env values in Settings → System |
 | Per-mode settings | ✅ | `cloud`/`local` sections in web_config.json |
@@ -346,8 +347,17 @@ socket.on('feedback:complete', {
 
 | Config | Source | Affects | Editable |
 |--------|--------|---------|----------|
-| Core Settings | `cloud.env` | Terminal/TUI/Web | ❌ Restart required |
+| Core Settings | `cloud.env` / `local.env` | Terminal/TUI/Web | ❌ Restart required |
 | Web Overrides | `web_config.json` | Web only | ✅ On-the-fly |
+
+**Overridable Settings (per-mode):**
+
+| Setting | Dropdown | Options |
+|---------|----------|---------|
+| LLM Provider | AI Config → LLM Provider | xAI, Anthropic, OpenAI, Ollama |
+| LLM Model | AI Config → Model | Dynamic per provider |
+| Image Provider | AI Config → Image Provider | xAI Grok, Google Gemini, OpenAI DALL-E |
+| Video Provider | AI Config → Video Provider | xAI Grok, Google Gemini Veo |
 
 ### web_config.json
 
@@ -367,12 +377,14 @@ socket.on('feedback:complete', {
   "cloud": {
     "llm_provider": null,    // null = use cloud.env default (xai)
     "llm_model": null,       // null = use cloud.env model
-    "image_provider": null   // null = use cloud.env (gemini)
+    "image_provider": null,  // null = use cloud.env IMAGE_TOOL_PROVIDER
+    "video_provider": null   // null = use cloud.env VIDEO_TOOL_PROVIDER
   },
   "local": {
     "llm_provider": null,    // null = use local.env default (ollama)
     "llm_model": null,       // null = use local.env model
-    "image_provider": null   // null = use local.env (gemini)
+    "image_provider": null,  // null = use local.env IMAGE_TOOL_PROVIDER
+    "video_provider": null   // null = use local.env VIDEO_TOOL_PROVIDER
   },
   "conversation": {
     "history_limit": 20      // Messages to include as LLM context
@@ -385,6 +397,42 @@ socket.on('feedback:complete', {
 ```
 
 > **Note**: Settings are per-mode! Cloud and local have separate overrides. Thresholds are read-only from the active .env file.
+
+### JARVIS_OVERRIDE_ Mechanism (How Provider Overrides Actually Work)
+
+Web UI settings for image/video providers use a `JARVIS_OVERRIDE_` prefix to survive tool subprocess config loading.
+
+**The Problem:**
+Tool scripts (e.g., `generate_image.py`) call `load_config()` in their `main()`, which re-reads `cloud.env` and overwrites `os.environ` — blowing away any override we set before launching the subprocess.
+
+**The Solution:**
+```
+chat.py sets:     JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER=gemini
+                  JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER=gemini
+        ↓
+executor.py:      os.environ.copy() → subprocess inherits both vars
+        ↓
+tool main():      load_config() → skips IMAGE_TOOL_PROVIDER because
+                  JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER exists
+        ↓
+tool reads:       get_config_value('IMAGE_TOOL_PROVIDER')
+                  → checks JARVIS_OVERRIDE_ prefix first → returns 'gemini'
+```
+
+**Key Files:**
+- `lib/config_loader.py` — `load_config()` skips keys with active overrides; `get_config_value()` checks `JARVIS_OVERRIDE_{key}` first
+- `jarvis-web/server/sockets/chat.py` — Sets/clears `JARVIS_OVERRIDE_*` env vars per chat request based on `web_config.json`
+
+**Supported Overrides:**
+
+| Setting | Env Var | Override Var | Options |
+|---------|---------|-------------|---------|
+| Image Provider | `IMAGE_TOOL_PROVIDER` | `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` | xai, gemini, openai |
+| Video Provider | `VIDEO_TOOL_PROVIDER` | `JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER` | xai, gemini |
+
+**Adding New Overrides:**
+1. Add the `JARVIS_OVERRIDE_{KEY}` set/clear logic to `chat.py`
+2. `get_config_value()` will automatically check the override prefix — no tool changes needed
 
 ### Blocked Tools
 
@@ -417,7 +465,7 @@ curl -X PUT http://localhost:5001/api/settings/blocked-tools \
 
 ### Settings Panel (5 Tabs)
 - **General Tab**: Mode (cloud/local), TTS toggle, mode-aware help text
-- **AI Config Tab**: LLM provider/model dropdowns (per-mode), Image provider, History limit, Reset button
+- **AI Config Tab**: LLM provider/model dropdowns (per-mode), Image provider, Video provider, History limit, Reset button
 - **Tools Tab**: Blocked tools list, add/remove UI, blocked/MCP visual indicators
 - **System Tab**: Mode-specific .env values (thresholds, TTS settings, features) - shows cloud.env OR local.env
 - **API Keys Tab**: Status indicators (configured/missing)
@@ -1182,7 +1230,7 @@ Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 - [ ] Canvas integration (embed pages or link)
 
 ### Low Priority
-- [ ] Authentication (password/PIN for remote access)
+- [x] Authentication (JWT token-based) ✅ DONE
 - [ ] Multi-user support (separate conversation namespaces)
 - [ ] PWA manifest (installable app)
 - [ ] Light theme option
@@ -1247,6 +1295,10 @@ Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 - [x] **Inline converted media** - Images/video/audio display with ⬇️ Download button 
 - [x] **SVG/BMP/ICO/FLAC support** - Extended stash MIME types 
 - [x] **Advanced convert options** - Resize, quality, bitrate, FPS, etc. in collapsible panel 
+- [x] **Video provider dropdown** - Switch video generation between xAI Grok and Google Gemini Veo on-the-fly 
+- [x] **Image provider xAI option** - Added xAI Grok as image provider alongside Gemini and OpenAI 
+- [x] **JARVIS_OVERRIDE_ mechanism** - Provider overrides survive tool subprocess `load_config()` via prefixed env vars 
+- [x] **Image gallery provider badges** - Shows xAI/Gemini/OpenAI badges on generated images in Canvas gallery 
 
 ---
 
@@ -1403,9 +1455,12 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 ### Settings
 - [ ] Change LLM provider, new message uses it
 - [ ] Change LLM model, new message uses it
-- [ ] Reset to defaults clears overrides
+- [ ] Change image provider (xAI/Gemini/OpenAI), generate image uses new provider
+- [ ] Change video provider (xAI/Gemini), generate video uses new provider
+- [ ] Reset to defaults clears all overrides (LLM, image, video)
 - [ ] Block a tool, verify it's not called
 - [ ] Unblock a tool, verify it works again
+- [ ] Verify `web_config.json` updates correctly on save
 
 ### Expand Details
 - [ ] Tool-using response shows "▶ Show details" button
@@ -1509,4 +1564,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*  
 *v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*  
 *v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*  
-*v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*
+*v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*  
+*v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*
