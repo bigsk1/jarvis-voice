@@ -1208,10 +1208,18 @@ function renderStats(stats, toolPerformance) {
   
   document.getElementById('runAnomalyBtn')?.addEventListener('click', async () => {
     showToast('Running anomaly detection...', 'info');
+    // Show modal immediately with loading state
+    const modal = document.getElementById('anomalyModal');
+    const body = document.getElementById('anomalyModalBody');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    modal.classList.add('active');
+    
     try {
-      await api.runAnomalyDetection();
+      const result = await api.runAnomalyDetection();
+      showAnomalyResults(result);
       showToast('Anomaly detection completed', 'success');
     } catch (e) {
+      body.innerHTML = `<div class="error-message">❌ ${e.message}</div>`;
       showToast(`Anomaly detection failed: ${e.message}`, 'error');
     }
   });
@@ -1553,6 +1561,79 @@ async function runHealthCheck() {
   } catch (error) {
     body.innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-title">Health check failed</div><div class="empty-state-desc">${escapeHtml(error.message)}</div></div>`;
   }
+}
+
+function showAnomalyResults(result) {
+  const body = document.getElementById('anomalyModalBody');
+  
+  if (!result.ok) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-title">Detection failed</div><div class="empty-state-desc">${escapeHtml(result.error || 'Unknown error')}</div></div>`;
+    return;
+  }
+  
+  // Handle insufficient data case
+  if (result.status === 'insufficient_data') {
+    body.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📊</div>
+        <div class="empty-state-title">Insufficient Data</div>
+        <div class="empty-state-desc">Not enough experiences in the last 7 days to establish a baseline for anomaly detection.</div>
+      </div>`;
+    return;
+  }
+  
+  const anomalyCount = result.anomalies_found || result.anomalies?.length || 0;
+  const avgTurns = result.baseline_avg_turns ?? 'N/A';
+  const stdDev = result.baseline_std_dev ?? 'N/A';
+  
+  let html = `
+    <div class="anomaly-stats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-md); margin-bottom: var(--space-lg); padding: var(--space-md); background: var(--bg-secondary); border-radius: var(--radius-md);">
+      <div style="text-align: center;">
+        <div style="font-size: var(--text-2xl); font-weight: 600; color: ${anomalyCount > 0 ? 'var(--warning)' : 'var(--success)'};">${anomalyCount}</div>
+        <div style="font-size: var(--text-sm); color: var(--text-secondary);">Anomalies Found</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="font-size: var(--text-2xl); font-weight: 600; color: var(--text-primary);">${avgTurns}</div>
+        <div style="font-size: var(--text-sm); color: var(--text-secondary);">Avg Turns (7d)</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="font-size: var(--text-2xl); font-weight: 600; color: var(--text-primary);">${stdDev}</div>
+        <div style="font-size: var(--text-sm); color: var(--text-secondary);">Std Deviation</div>
+      </div>
+    </div>`;
+  
+  if (anomalyCount === 0) {
+    html += `
+      <div class="empty-state" style="padding: var(--space-lg);">
+        <div class="empty-state-icon">✅</div>
+        <div class="empty-state-title">No Anomalies Detected</div>
+        <div class="empty-state-desc">All recent experiences are within normal parameters.</div>
+      </div>`;
+  } else {
+    html += `<div class="anomaly-list" style="display: flex; flex-direction: column; gap: var(--space-md);">`;
+    
+    for (const anomaly of result.anomalies) {
+      const reasonBadges = anomaly.reasons.map(r => {
+        if (r.type === 'high_turns') {
+          return `<span style="display: inline-block; padding: 2px 8px; background: var(--warning); color: var(--bg-primary); border-radius: var(--radius-sm); font-size: var(--text-xs); margin-right: 4px;">⚡ High Turns: ${r.turns} (z=${r.z_score})</span>`;
+        } else if (r.type === 'failed_multi_turn') {
+          return `<span style="display: inline-block; padding: 2px 8px; background: var(--error); color: white; border-radius: var(--radius-sm); font-size: var(--text-xs); margin-right: 4px;">❌ Failed after ${r.turns} turns</span>`;
+        }
+        return `<span style="display: inline-block; padding: 2px 8px; background: var(--text-tertiary); color: var(--bg-primary); border-radius: var(--radius-sm); font-size: var(--text-xs); margin-right: 4px;">${r.type}</span>`;
+      }).join('');
+      
+      html += `
+        <div style="padding: var(--space-md); background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 3px solid var(--warning);">
+          <div style="font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-xs);">Experience #${anomaly.experience_id}</div>
+          <div style="font-size: var(--text-base); color: var(--text-primary); margin-bottom: var(--space-sm);">${escapeHtml(anomaly.query)}</div>
+          <div>${reasonBadges}</div>
+        </div>`;
+    }
+    
+    html += `</div>`;
+  }
+  
+  body.innerHTML = html;
 }
 
 // ============================================================================

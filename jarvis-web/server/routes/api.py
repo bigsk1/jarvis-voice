@@ -43,7 +43,7 @@ def get_status():
     return jsonify({
         'ok': True,
         'status': 'running',
-        'version': '1.0.0',
+        'version': '2.39',
         'mode': settings.mode,
         'tools_count': tool_service.get_tool_count(),
         'features': {

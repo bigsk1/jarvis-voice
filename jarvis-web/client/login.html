@@ -211,7 +211,7 @@
       
       <div class="error-message" id="errorMessage"></div>
       
-      <form id="loginForm">
+      <form id="loginForm" onsubmit="return false;">
         <div class="form-group">
           <label class="form-label" for="password">Password</label>
           <input 
@@ -224,7 +224,7 @@
           >
         </div>
         
-        <button type="submit" class="login-btn" id="loginBtn">
+        <button type="button" class="login-btn" id="loginBtn">
           Sign In
         </button>
       </form>
@@ -266,10 +266,9 @@
       });
     }
     
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
+    async function doLogin() {
       const password = passwordInput.value;
+      
       if (!password) {
         showError('Please enter a password');
         return;
@@ -308,7 +307,10 @@
         loginBtn.disabled = false;
         loginBtn.classList.remove('loading');
       }
-    });
+    }
+    
+    // Button click handler
+    loginBtn.addEventListener('click', doLogin);
     
     function showError(msg) {
       errorMessage.textContent = msg;
@@ -319,7 +321,8 @@
     // Handle Enter key
     passwordInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
-        form.dispatchEvent(new Event('submit'));
+        e.preventDefault();
+        doLogin();
       }
     });
   </script>

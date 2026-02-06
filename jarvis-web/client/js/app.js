@@ -287,6 +287,13 @@ class JarvisApp {
       this._addBlockedTool();
     });
     
+    // Logout button
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      if (confirm('Sign out from all Jarvis UIs?')) {
+        Utils.auth.logout();
+      }
+    });
+    
     // Close modal on outside click
     this.settingsModal.addEventListener('click', (e) => {
       if (e.target === this.settingsModal) {
@@ -922,6 +929,9 @@ class JarvisApp {
           `;
         }
         apiKeysContainer.innerHTML = apiHtml;
+        
+        // Populate Profile section
+        this._updateProfileSection(s);
       }
       
       // Load system config (read-only values from cloud.env)
@@ -1074,6 +1084,39 @@ class JarvisApp {
       }
     } catch (err) {
       console.error('[App] Failed to load system config:', err);
+    }
+  }
+  
+  /**
+   * Update the profile section with current settings
+   */
+  async _updateProfileSection(settings) {
+    // Update mode display
+    const profileMode = document.getElementById('profile-mode');
+    if (profileMode) {
+      const mode = settings.mode || 'cloud';
+      profileMode.textContent = mode === 'cloud' ? '☁️ Cloud' : '💻 Local';
+    }
+    
+    // Fetch status from API for version and auth info
+    try {
+      const response = await fetch('/api/status');
+      const status = await response.json();
+      
+      // Update version from API
+      const versionEl = document.getElementById('profile-version');
+      if (versionEl && status.version) {
+        versionEl.textContent = `v${status.version}`;
+      }
+      
+      // Update auth status from API (this is the actual server-side auth state)
+      const authStatus = document.getElementById('profile-auth-status');
+      if (authStatus) {
+        const authEnabled = status.features?.auth;
+        authStatus.textContent = authEnabled ? '🔒 Secured' : '🔓 Open';
+      }
+    } catch (err) {
+      console.error('[App] Failed to fetch status for profile:', err);
     }
   }
   
