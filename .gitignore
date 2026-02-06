@@ -58,6 +58,10 @@ tmp/
 tests/integration/logs
 tests/integration/logs/*
 
+# ===== Backup & Temp Files =====
+*.bak
+*.orig
+
 # ===== IDE & Editors =====
 .vscode/
 .idea/

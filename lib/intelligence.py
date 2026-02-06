@@ -242,6 +242,15 @@ class IntelligenceLayer:
         """Initialize intelligence database with experience and insight tables."""
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        
+        # SECURITY: Restrict DB file to owner-only (600) since it contains
+        # learning data and interaction history. sqlite3.connect() uses the
+        # process umask (typically 022 → 644), so we fix it after creation.
+        try:
+            os.chmod(self.db_path, 0o600)
+        except OSError:
+            pass  # Non-fatal: may fail on some filesystems
+        
         cursor = self.conn.cursor()
         
         # ============================================

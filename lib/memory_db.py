@@ -46,6 +46,14 @@ class MemoryDB:
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row  # Return rows as dictionaries
         
+        # SECURITY: Restrict DB file to owner-only (600) since it contains
+        # conversations, memories, and personal data. sqlite3.connect() uses
+        # the process umask (typically 022 → 644), so we fix it after creation.
+        try:
+            os.chmod(self.db_path, 0o600)
+        except OSError:
+            pass  # Non-fatal: may fail on some filesystems
+        
         cursor = self.conn.cursor()
         
         # Knowledge base - facts the AI should remember

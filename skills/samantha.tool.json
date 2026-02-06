@@ -24,7 +24,7 @@
       "timeout": {
         "type": "integer",
         "description": "Timeout in seconds. Quick tasks: 30-60s. Complex research: 120s (default). Very long tasks: up to 300s.",
-        "default": 120
+        "default": 240
       }
     },
     "required": ["message"]

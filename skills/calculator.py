@@ -13,6 +13,8 @@ import json
 import math
 import statistics
 import re
+import ast
+import operator
 from typing import Any
 
 # Add lib to path
@@ -265,20 +267,166 @@ def parse_statistics(expr: str) -> tuple[str, list] | None:
     return None
 
 
+class _SafeExprEvaluator(ast.NodeVisitor):
+    """
+    AST-based math expression evaluator.
+    
+    Only allows: numbers, arithmetic operators, unary +/-, function calls
+    to whitelisted SAFE_MATH_FUNCS, and list/tuple literals (for stats functions).
+    
+    This replaces eval() to eliminate code injection risk entirely — arbitrary
+    Python code (imports, attribute access, comprehensions, etc.) is rejected
+    at the AST level before any execution occurs.
+    """
+    
+    # Allowed binary operators
+    _ops = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod,
+        ast.Pow: operator.pow,
+    }
+    
+    # Allowed unary operators
+    _unary_ops = {
+        ast.UAdd: operator.pos,
+        ast.USub: operator.neg,
+    }
+    
+    # Allowed comparison operators (for chained expressions like 2 < 3)
+    _cmp_ops = {
+        ast.Lt: operator.lt,
+        ast.LtE: operator.le,
+        ast.Gt: operator.gt,
+        ast.GtE: operator.ge,
+        ast.Eq: operator.eq,
+        ast.NotEq: operator.ne,
+    }
+    
+    def __init__(self, funcs: dict):
+        self._funcs = funcs
+    
+    def evaluate(self, expr: str) -> float:
+        """Parse and evaluate a math expression string."""
+        try:
+            tree = ast.parse(expr, mode='eval')
+        except SyntaxError as e:
+            raise ValueError(f"Invalid expression syntax: {e}")
+        return float(self.visit(tree.body))
+    
+    def visit_Expression(self, node):
+        return self.visit(node.body)
+    
+    def visit_Constant(self, node):
+        """Allow numeric and boolean constants only."""
+        if isinstance(node.value, (int, float)):
+            return node.value
+        raise ValueError(f"Unsupported constant type: {type(node.value).__name__}")
+    
+    # Python 3.7 compat (ast.Num deprecated but may appear)
+    def visit_Num(self, node):
+        return node.n
+    
+    def visit_BinOp(self, node):
+        """Handle binary operations: +, -, *, /, //, %, **"""
+        op_func = self._ops.get(type(node.op))
+        if op_func is None:
+            raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        # Guard against exponent bombs (e.g. 10**10**10)
+        if isinstance(node.op, ast.Pow) and isinstance(right, (int, float)) and right > 1000:
+            raise ValueError(f"Exponent too large: {right}")
+        return op_func(left, right)
+    
+    def visit_UnaryOp(self, node):
+        """Handle unary +/-"""
+        op_func = self._unary_ops.get(type(node.op))
+        if op_func is None:
+            raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
+        return op_func(self.visit(node.operand))
+    
+    def visit_Call(self, node):
+        """Handle function calls — only whitelisted functions."""
+        if not isinstance(node.func, ast.Name):
+            raise ValueError("Only direct function calls allowed (no method calls)")
+        
+        func_name = node.func.id
+        func = self._funcs.get(func_name)
+        if func is None:
+            raise ValueError(f"Unknown function: {func_name}")
+        if callable(func):
+            args = [self.visit(arg) for arg in node.args]
+            return func(*args)
+        else:
+            # It's a constant (like pi, e, tau) — shouldn't be called
+            raise ValueError(f"'{func_name}' is a constant, not a function")
+    
+    def visit_Name(self, node):
+        """Handle named constants (pi, e, tau, inf)."""
+        value = self._funcs.get(node.id)
+        if value is None:
+            raise ValueError(f"Unknown variable: {node.id}")
+        if callable(value):
+            # Functions referenced without calling — return the function
+            # This handles cases like statistics where it might be used differently
+            return value
+        return value
+    
+    def visit_List(self, node):
+        """Allow list literals for stats functions like mean([1,2,3])."""
+        return [self.visit(elt) for elt in node.elts]
+    
+    def visit_Tuple(self, node):
+        """Allow tuple literals."""
+        return tuple(self.visit(elt) for elt in node.elts)
+    
+    def visit_Compare(self, node):
+        """Handle comparisons (e.g. 2 < 3)."""
+        left = self.visit(node.left)
+        for op, comparator in zip(node.ops, node.comparators):
+            op_func = self._cmp_ops.get(type(op))
+            if op_func is None:
+                raise ValueError(f"Unsupported comparison: {type(op).__name__}")
+            right = self.visit(comparator)
+            if not op_func(left, right):
+                return 0.0
+            left = right
+        return 1.0
+    
+    def generic_visit(self, node):
+        """Reject any AST node type not explicitly handled."""
+        raise ValueError(
+            f"Unsupported expression element: {type(node).__name__}. "
+            f"Only arithmetic, function calls, and constants are allowed."
+        )
+
+
+# Singleton evaluator instance
+_evaluator = _SafeExprEvaluator(SAFE_MATH_FUNCS)
+
+
 def safe_eval(expr: str) -> float:
-    """Safely evaluate a mathematical expression."""
+    """
+    Safely evaluate a mathematical expression using AST parsing.
+    
+    SECURITY: Uses ast.parse + NodeVisitor instead of eval().
+    Only allows numbers, arithmetic operators (+, -, *, /, //, %, **),
+    unary +/-, whitelisted function calls, and list/tuple literals.
+    Rejects any other Python construct (imports, attribute access,
+    comprehensions, lambdas, string operations, etc.).
+    """
     # Normalize expression
     expr = expr.replace('^', '**')  # Support ^ for exponents
     expr = expr.replace('×', '*').replace('÷', '/')
     expr = expr.replace('²', '**2').replace('³', '**3')
     expr = expr.replace('√', 'sqrt')
     
-    # Create safe namespace
-    namespace = {'__builtins__': {}}
-    namespace.update(SAFE_MATH_FUNCS)
-    
     try:
-        result = eval(expr, namespace)
+        result = _evaluator.evaluate(expr)
         return float(result)
     except Exception as e:
         raise ValueError(f"Cannot evaluate expression: {e}")

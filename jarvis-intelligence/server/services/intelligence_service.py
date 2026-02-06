@@ -4,6 +4,7 @@ Handles both cloud and local databases
 """
 import sqlite3
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -28,6 +29,12 @@ def get_connection(mode: str) -> sqlite3.Connection:
     db_path = get_db_path(mode)
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # SECURITY: Ensure DB file is owner-only (600) on every connect,
+    # since sqlite3.connect() creates files with umask defaults (644).
+    try:
+        os.chmod(str(db_path), 0o600)
+    except OSError:
+        pass
     return conn
 
 
