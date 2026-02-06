@@ -4,10 +4,6 @@
     "port": 5001,
     "debug": false
   },
-  "auth": {
-    "enabled": false,
-    "password_hash": null
-  },
   "ui": {
     "theme": "dark",
     "show_tool_details": true,
@@ -24,14 +20,16 @@
     "mode": "cloud"
   },
   "cloud": {
-    "llm_provider": "xai",
-    "llm_model": "grok-4-1-fast-non-reasoning-latest",
-    "image_provider": "gemini"
+    "llm_provider": null,
+    "llm_model": null,
+    "image_provider": null,
+    "video_provider": null
   },
   "local": {
-    "llm_provider": "ollama",
-    "llm_model": "ministral-3:14b",
-    "image_provider": null
+    "llm_provider": null,
+    "llm_model": null,
+    "image_provider": null,
+    "video_provider": null
   },
   "conversation": {
     "history_limit": 20,

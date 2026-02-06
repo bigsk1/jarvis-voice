@@ -10,6 +10,7 @@ from flask import Blueprint, jsonify, request, send_from_directory, abort
 from ..services.tool_discovery import get_tool_service
 from ..services.settings_manager import get_settings_manager
 from ..config import get_web_setting, JARVIS_ROOT, reload_web_config
+from webui_auth import is_auth_enabled
 import sys
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -48,7 +49,7 @@ def get_status():
         'features': {
             'tts': get_web_setting('audio.tts_enabled', False),
             'stt': get_web_setting('audio.stt_enabled', False),
-            'auth': get_web_setting('auth.enabled', False)
+            'auth': is_auth_enabled()  # Dynamic from WEBUI_PASSWORD env var
         }
     })
 

@@ -22,10 +22,8 @@ DEFAULT_CONFIG = {
         "port": 5001,
         "debug": False
     },
-    "auth": {
-        "enabled": False,
-        "password_hash": None
-    },
+    # NOTE: Auth is controlled by WEBUI_PASSWORD env var, not this config.
+    # Use is_auth_enabled() from lib/webui_auth.py to check auth state.
     "ui": {
         "theme": "dark",
         "show_tool_details": True,
