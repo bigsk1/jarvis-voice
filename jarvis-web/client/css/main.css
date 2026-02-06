@@ -601,6 +601,7 @@ body {
   border-radius: var(--radius-lg);
   padding: var(--space-sm);
   transition: border-color var(--transition-fast);
+  overflow: hidden; /* Prevent contents from overflowing */
 }
 
 .chat-input-wrapper:focus-within {
@@ -1726,8 +1727,30 @@ body {
   z-index: 99;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
+/* Responsive - Tablet/iPad Portrait */
+@media (max-width: 900px) {
+  /* Ensure input actions don't overflow */
+  .input-actions {
+    flex-shrink: 0;
+  }
+  
+  .input-actions .send-btn {
+    flex-shrink: 0 !important; /* Never shrink the send button */
+  }
+  
+  /* Reduce header right gap slightly */
+  .header-right {
+    gap: var(--space-sm);
+  }
+  
+  /* Reduce chat input padding to give more room */
+  .chat-input-container {
+    padding: var(--space-sm) var(--space-md);
+  }
+}
+
+/* Responsive - Mobile & iPad Portrait */
+@media (max-width: 820px) {
   .hamburger-btn {
     display: block;
   }
@@ -1760,9 +1783,18 @@ body {
     display: none; /* Hide "JARVIS" text, keep robot icon */
   }
   
+  .header-right {
+    gap: var(--space-sm); /* Reduce gap between header icons */
+  }
+  
   .mode-selector select {
     font-size: var(--text-xs);
     padding: var(--space-xs);
+  }
+  
+  /* Hide Intelligence button on mobile - accessible via Memory UI */
+  #intelligenceBtn {
+    display: none !important;
   }
   
   .chat-messages {
@@ -1822,6 +1854,15 @@ body {
   .log-panel {
     max-height: 60vh;
   }
+  
+  /* Settings modal on tablet/mobile */
+  .modal-body {
+    overflow-x: hidden; /* Only vertical scroll in modal content */
+  }
+  
+  .settings-panel {
+    overflow-x: hidden; /* Prevent horizontal scroll in settings content */
+  }
 }
 
 /* Extra small screens (phones) */
@@ -1840,6 +1881,11 @@ body {
   
   #toolsCount {
     display: none; /* Hide tools count on tiny screens */
+  }
+  
+  /* Hide Intelligence button on mobile - accessible via Memory UI */
+  #intelligenceBtn {
+    display: none !important;
   }
   
   /* Hide log panel on small phones - too cramped */
@@ -1892,6 +1938,15 @@ body {
   .input-actions .speaker-btn.playing,
   .input-actions .speaker-btn.paused {
     display: flex !important;
+  }
+  
+  /* Settings modal on mobile */
+  .modal-body {
+    overflow-x: hidden; /* Only vertical scroll in modal content */
+  }
+  
+  .settings-panel {
+    overflow-x: hidden; /* Prevent horizontal scroll in settings content */
   }
 }
 
@@ -1954,6 +2009,8 @@ body {
   overflow: hidden;
   transform: scale(0.95);
   transition: transform var(--transition-base);
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-overlay.active .modal {
@@ -1966,6 +2023,7 @@ body {
   justify-content: space-between;
   padding: var(--space-md) var(--space-lg);
   border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0; /* Don't shrink header */
 }
 
 .modal-title {
@@ -1976,7 +2034,8 @@ body {
 .modal-body {
   padding: var(--space-lg);
   overflow-y: auto;
-  max-height: calc(80vh - 120px);
+  flex: 1; /* Take available space between header and footer */
+  min-height: 0; /* Allow flexbox shrinking for scroll */
 }
 
 /* Search Modal */
@@ -2278,7 +2337,9 @@ body {
   justify-content: flex-end;
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-lg);
+  padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom, 8px)); /* Extra bottom padding + iOS safe area 8px doesnt change anything in ui */
   border-top: 1px solid var(--border-primary);
+  flex-shrink: 0; /* Don't shrink footer */
 }
 
 /* Settings Panel Styles */
@@ -2288,6 +2349,14 @@ body {
   margin-bottom: var(--space-lg);
   border-bottom: 1px solid var(--border-primary);
   padding-bottom: var(--space-sm);
+  overflow-x: auto; /* Horizontal scroll on mobile */
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch; /* Smooth scroll on iOS */
+  scrollbar-width: none; /* Hide scrollbar Firefox */
+}
+
+.settings-tabs::-webkit-scrollbar {
+  display: none; /* Hide scrollbar Chrome/Safari */
 }
 
 .settings-tab {
@@ -2299,6 +2368,8 @@ body {
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
+  flex-shrink: 0; /* Don't shrink tabs */
+  white-space: nowrap; /* Keep text on one line */
 }
 
 .settings-tab:hover {
