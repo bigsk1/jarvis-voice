@@ -68,6 +68,7 @@ PUBLIC_ROUTES = {
     '/api/auth/login',
     '/api/auth/status',
     '/api/auth/verify',
+    '/api/status',        # Health check (used by ./bin/start --list)
 }
 
 # Static file extensions that don't need auth
