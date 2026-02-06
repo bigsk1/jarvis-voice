@@ -18,6 +18,7 @@ DATA_PATH = JARVIS_ROOT / 'data'
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from webui_auth import is_auth_enabled, get_token_from_request, verify_token
+from flask_error_logger import setup_error_logging
 from config_loader import load_config
 
 # Import routes after path setup
@@ -43,6 +44,9 @@ app.register_blueprint(stats_bp)
 app.register_blueprint(maintenance_bp)
 app.register_blueprint(feedback_bp)
 app.register_blueprint(auth_bp)
+
+# Error logging → logs/intelligence-ui/errors-YYYY-MM-DD.jsonl
+setup_error_logging(app, 'intelligence-ui')
 
 # Auth middleware
 PUBLIC_ROUTES = {'/login', '/api/auth/login', '/api/auth/status', '/api/auth/verify', '/api/status'}

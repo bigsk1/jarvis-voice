@@ -14,6 +14,7 @@ JARVIS_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from webui_auth import is_auth_enabled, get_token_from_request, verify_token
+from flask_error_logger import setup_error_logging
 from config_loader import load_config
 
 
@@ -48,6 +49,9 @@ def create_app(mode='cloud'):
     app.register_blueprint(stash_bp)
     app.register_blueprint(views_bp)
     app.register_blueprint(auth_bp)
+    
+    # Error logging → logs/canvas-ui/errors-YYYY-MM-DD.jsonl
+    setup_error_logging(app, 'canvas-ui')
     
     # Auth middleware
     # Note: /api/pages/* routes are public for internal tool access (canvas skill)

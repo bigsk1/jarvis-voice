@@ -24,6 +24,7 @@ from .sockets.chat import ChatHandler
 # Import auth utilities
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from webui_auth import is_auth_enabled, get_token_from_request, verify_token
+from flask_error_logger import setup_error_logging
 
 # Global to track startup mode (set in run_server)
 _startup_mode = 'cloud'
@@ -52,6 +53,9 @@ socketio = SocketIO(
 # Register blueprints
 app.register_blueprint(api_bp)
 app.register_blueprint(auth_bp)
+
+# Error logging → logs/web-ui/errors-YYYY-MM-DD.jsonl
+setup_error_logging(app, 'web-ui')
 
 # Initialize chat handler
 chat_handler = ChatHandler(socketio)
