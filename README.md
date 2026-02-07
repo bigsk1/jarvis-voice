@@ -141,6 +141,7 @@ UI's include Chat, Canvas, Image Gallery, Video Gallery, Intellegence Dashboard,
   - See [`docs/api/IMAGES.md`](docs/api/IMAGES.md)
 - **Generated Images API**: Full management of AI-generated images
   - **3 providers**: Gemini (grounding), OpenAI (best text), xAI (fast & cheap!)
+  - **Image-to-image editing**: Edit existing images via `reference_image` parameter
   - **Batch generation**: xAI supports `n=1-10` for multiple variations ($0.02/image!)
   - List, search, download, delete local images
   - Generate new images with optional `upload_to_cdn` for one-step CDN URL
@@ -750,8 +751,9 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
   - Advanced options: resize, quality, bitrate, FPS, threshold, speckle size
   - **Web UI 🔄 button** with format selector and inline results
   - No API costs - all processing local
-- `generate_image` - **AI image generation**: Gemini, OpenAI, or xAI
+- `generate_image` - **AI image generation & editing**: Gemini, OpenAI, or xAI
   - **3 providers**: Gemini (grounding), OpenAI (best text), xAI (fast & cheap - $0.02/image!)
+  - **Image-to-image editing**: Upload an image + describe changes → edited image
   - **Batch generation**: xAI `n=1-10` for multiple variations in one request
   - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
   - **Gemini Search Grounding** - Real-time data in images (weather, crypto prices, news)
@@ -1571,15 +1573,17 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **Image upload**: Drag-drop/paste/click with vision analysis
   - Real-time WebSocket chat with tool streaming
   - See: [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
-- ✅ **AI Image Generation (Gemini/OpenAI/xAI)** - Multi-provider image generation ⭐ ENHANCED
+- ✅ **AI Image Generation & Editing (Gemini/OpenAI/xAI)** - Multi-provider image generation ⭐ ENHANCED
   - **3 providers**: Gemini (grounding), OpenAI (best text), xAI (fast & cheap!)
+  - **Image-to-image editing**: Upload image → describe changes → edited image (all 3 providers)
+  - **Image Action Modal**: Upload image → choose Analyze, Image-to-Image, or Image-to-Video
   - **xAI Grok Imagine**: $0.02/image, batch generation `n=1-10` for variations
   - "Generate a bitcoin infographic with current price" → Gemini creates with real data
   - Aspect ratios (1:1, 16:9, 9:16, 3:4, etc.), styles, negative prompts
   - **Gemini Search Grounding** - Images can include real-time data (weather, prices, news)
   - Auto-saves to stash + memory for cross-session recall
   - Multi-tool workflows: generate → email, generate → print, generate → canvas
-  - See: `skills/generate_image.py`, [`docs/api/GENERATED_IMAGES.md`](docs/api/GENERATED_IMAGES.md)
+  - See: `skills/generate_image.py`, [`docs/generate-image-tool/README.md`](docs/generate-image-tool/README.md)
 - ✅ **AI Video Generation (xAI Grok + Gemini Veo)** - Dual-provider video generation
   - "Generate a video of a cat playing with a ball" → xAI/Gemini creates video
   - xAI: 1-15s, 7 aspect ratios, video editing | Gemini: 4/6/8s, native audio, 4K
@@ -1749,6 +1753,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.39 (February 2026)  
+**Current Version:** v2.40 (February 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** xAI Image Generation (batch n=1-10, $0.02/image!) + Progress Events + Stop Button
+**Latest Features:** Image-to-Image Editing (all 3 providers) + Image Action Modal + Video Gallery Lazy Loading

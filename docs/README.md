@@ -303,6 +303,28 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-02-06:**
+- ✅ **Image-to-Image Editing** - Edit existing images with all 3 providers ⭐ NEW
+  - Upload an image in Web UI → select "Image to Image" → describe changes
+  - **xAI**: Uses `/v1/images/edits` endpoint with `image: { url: "data:..." }` (separate from generation)
+  - **Gemini**: Includes image as `inline_data` in contents array alongside text prompt
+  - **OpenAI**: Uses `/v1/images/edits` endpoint with multipart/form-data
+  - New `reference_image` parameter on `generate_image` tool (stash ref, path, URL, or data URI)
+  - `_resolve_image_to_base64()` helper converts any image source to base64 + mime type
+  - LLM instructed to keep edit prompts short and direct for best results
+  - See: [`docs/generate-image-tool/README.md`](generate-image-tool/README.md)
+- ✅ **Image Action Modal** - Upload image → choose action (Analyze, Image-to-Image, Image-to-Video)
+  - Provider-specific settings (aspect ratio, resolution, duration, model) per action
+  - Parameters enforced via `tool_overrides` (bypasses LLM parameter choices)
+  - Context-aware follow-up: type edit instructions after selecting action
+- ✅ **Video Gallery Lazy Loading** - Videos load on scroll instead of all at once
+  - `IntersectionObserver` with 200px rootMargin loads videos before they're visible
+  - `data-src` + `preload="none"` prevents any network requests until needed
+  - Hover-to-play still works (loads src on demand if observer hasn't fired)
+- ✅ **Image Gallery Lightbox Fix** - Options bar no longer overlaps the image
+  - Changed from `position: absolute` overlay to flexbox layout (matches video gallery)
+  - Bottom margin prevents bar from touching desktop taskbar
+
 **2026-02-05:**
 - ✅ **Internal Knowledge Search** - Q&A about Jarvis capabilities without executing tools ⭐ NEW
   - `search_docs` tool - Semantic search over 153 indexed docs using QMD
@@ -1085,6 +1107,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-01-25 (v2.39)  
-**Latest:** File Conversion Tool (🔄 button, advanced options, inline results)  
+**Last Updated:** 2026-02-06 (v2.40)  
+**Latest:** Image-to-Image Editing (all 3 providers) + Image Action Modal + Video Gallery Lazy Loading  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

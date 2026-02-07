@@ -1,8 +1,8 @@
 # Generated Images API
 
-Manage locally generated images in `data/generated_images/`.
+Generate, edit, and manage locally generated images in `data/generated_images/`.
 
-Unlike `/api/images` (Cloudflare CDN uploads), these routes manage the **local** generated images folder where AI-generated images are stored privately.
+Unlike `/api/images` (Cloudflare CDN uploads), these routes manage the **local** generated images folder where AI-generated images are stored privately. Supports both text-to-image generation and image-to-image editing with all 3 providers.
 
 **Base URL**: `http://localhost:8880/api/generated-images`
 
@@ -189,9 +189,9 @@ Use this to:
 
 ---
 
-## Generate New Image
+## Generate or Edit Image
 
-Generate a new image using the configured AI provider (Gemini, OpenAI, or xAI).
+Generate a new image from text, or edit an existing image by providing a `reference_image`.
 
 ```bash
 curl -X POST http://localhost:8880/api/generated-images/generate \
@@ -207,7 +207,8 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `prompt` | string | **required** | What to generate |
+| `prompt` | string | **required** | What to generate, or edit instructions when `reference_image` is provided |
+| `reference_image` | string | null | Source image to edit. Accepts: `stash://` ref, local file path, public URL, or base64 data URI. When provided, edits this image instead of generating from scratch. |
 | `aspect_ratio` | string | "square" | square, landscape, portrait, wide, tall, 16:9, 4:3 |
 | `image_size` | string | "2K" | 1K, 2K, or 4K (Gemini/OpenAI only) |
 | `style` | string | null | Art style (photorealistic, watercolor, anime, etc.) |
@@ -215,7 +216,7 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
 | `use_grounding` | bool | false | Use Google Search for real-time data (Gemini only) |
 | `provider` | string | null | Override provider: "gemini", "openai", or "xai" |
 | `transparent` | bool | false | Transparent background (OpenAI only, png/webp) |
-| `n` | int | 1 | Number of images to generate, 1-10 (xAI only) |
+| `n` | int | 1 | Number of images to generate, 1-10 (xAI only; forced to 1 when editing) |
 | `save` | bool | true | Save to disk and stash |
 | `mode` | string | "cloud" | "cloud" uses cloud.env, "local" uses local.env |
 | `upload_to_cdn` | bool | false | Upload to Cloudflare CDN and return public URL |
@@ -344,6 +345,78 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
   }'
 ```
 
+### Image-to-Image Editing
+
+Edit an existing image by providing a `reference_image`. All 3 providers (Gemini, OpenAI, xAI) support editing. Keep prompts short and direct for best results.
+
+**Edit with stash reference:**
+```bash
+curl -X POST http://localhost:8880/api/generated-images/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Change the dog to a cat, keep everything else the same",
+    "reference_image": "stash://space_20260207_061950_d52e6091/f_8f9e57ebe3d3",
+    "provider": "xai"
+  }'
+```
+
+**Edit with URL:**
+```bash
+curl -X POST http://localhost:8880/api/generated-images/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Make the sky a sunset orange",
+    "reference_image": "https://example.com/landscape.jpg",
+    "provider": "gemini"
+  }'
+```
+
+**Edit with local file path:**
+```bash
+curl -X POST http://localhost:8880/api/generated-images/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Add a hat to the character",
+    "reference_image": "/home/boss/jarvis-voice/data/generated_images/my_character.png",
+    "provider": "openai"
+  }'
+```
+
+**Edit + upload to CDN (one step):**
+```bash
+curl -X POST http://localhost:8880/api/generated-images/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Change the background to a beach scene",
+    "reference_image": "stash://space_xxx/file_id",
+    "upload_to_cdn": true
+  }'
+```
+
+Response includes both the edited image and CDN URL:
+```json
+{
+  "ok": true,
+  "speech": "Edited image with xai: Change the background...",
+  "cdn_url": "https://imagedelivery.net/xxx/yyy/public",
+  "data": {
+    "prompt": "Change the background to a beach scene",
+    "provider": "xai",
+    "is_edit": true,
+    "saved": { "filename": "generated_change_the_background_20260206_221950.png" },
+    "cdn": { "url": "https://imagedelivery.net/xxx/yyy/public", "image_id": "yyy" }
+  }
+}
+```
+
+**Editing tips:**
+- Keep prompts short: "change X to Y" works better than long descriptions
+- The model preserves the rest of the image automatically
+- xAI uses a separate `/v1/images/edits` endpoint (not the generation endpoint)
+- OpenAI uses multipart `/v1/images/edits` endpoint
+- Gemini includes the image inline in the request body
+- `n` is forced to 1 when editing (batch editing not supported)
+
 ---
 
 ## Health Check
@@ -392,6 +465,7 @@ You can override the provider per-request using the `provider` parameter.
 | Feature | Gemini | OpenAI | xAI |
 |---------|--------|--------|-----|
 | Model | gemini-2.0-flash-preview | gpt-image-1.5 | grok-imagine-image |
+| Image-to-image editing | ✅ | ✅ | ✅ |
 | Grounding (real-time data) | ✅ | ❌ | ❌ |
 | Text rendering | Good | Best | Good |
 | Transparent backgrounds | ❌ | ✅ | ❌ |

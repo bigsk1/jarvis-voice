@@ -210,7 +210,9 @@ curl http://localhost:8880/api/alerts
 ✅ Conversations API (read-only history access) 
 ✅ Stash API (read-only artifacts access) 
 ✅ Canvas API (read-only pages access) 
-✅ Intel API (CRUD for knowledge files) 
+✅ Intel API (CRUD for knowledge files)
+✅ Image Generation & Editing API (Gemini, OpenAI, xAI)
+✅ Video Generation & Editing API (xAI Grok + Gemini Veo)
 ✅ Dark mode Swagger UI 
 
 ---

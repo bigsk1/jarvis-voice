@@ -4,13 +4,17 @@ Generated Images API routes - Manage locally generated images.
 Unlike /api/images (Cloudflare uploads), these routes manage the local
 data/generated_images/ folder where AI-generated images are stored.
 
+Supports text-to-image generation AND image-to-image editing via the
+`reference_image` parameter. All 3 providers (Gemini, OpenAI, xAI)
+support both modes.
+
 Endpoints:
 - GET  /api/generated-images              - List all images
 - GET  /api/generated-images/{name}       - Get image file
 - GET  /api/generated-images/{name}/base64 - Get image as base64
 - GET  /api/generated-images/{name}/cdn-url - Get/create CDN URL
 - DELETE /api/generated-images/{name}     - Delete image
-- POST /api/generated-images/generate     - Generate new image
+- POST /api/generated-images/generate     - Generate or edit image
 - GET  /api/generated-images/cdn-catalog  - List all CDN URLs
 """
 import sys
@@ -150,8 +154,9 @@ class CdnCatalogResponse(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    """Request to generate a new image."""
-    prompt: str = Field(..., description="What to generate")
+    """Request to generate or edit an image."""
+    prompt: str = Field(..., description="What to generate, or edit instructions when reference_image is provided")
+    reference_image: Optional[str] = Field(None, description="Source image to edit. Accepts: stash:// ref, local file path, public URL, or base64 data URI. When provided, edits this image based on the prompt instead of generating from scratch.")
     aspect_ratio: str = Field("square", description="square, landscape, portrait, wide, tall, 16:9, 4:3")
     image_size: str = Field("2K", description="1K, 2K, or 4K")
     style: Optional[str] = Field(None, description="Art style (e.g., 'photorealistic', 'watercolor', 'anime')")
@@ -159,7 +164,7 @@ class GenerateRequest(BaseModel):
     use_grounding: bool = Field(False, description="Use Google Search for real-time data (Gemini only)")
     provider: Optional[str] = Field(None, description="Override provider: 'gemini', 'openai', or 'xai'")
     transparent: bool = Field(False, description="Transparent background (OpenAI only, png/webp)")
-    n: Optional[int] = Field(None, ge=1, le=10, description="Number of images (xAI only, 1-10)")
+    n: Optional[int] = Field(None, ge=1, le=10, description="Number of images (xAI only, 1-10; forced to 1 when editing)")
     save: bool = Field(True, description="Save to disk and stash")
     mode: str = Field("cloud", description="'cloud' uses cloud.env, 'local' uses local.env")
     upload_to_cdn: bool = Field(False, description="Upload to Cloudflare CDN and return public URL")
@@ -269,12 +274,12 @@ async def generated_images_health():
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_image(request: GenerateRequest):
     """
-    Generate a new image using the generate_image tool.
+    Generate or edit an image using the generate_image tool.
     
-    Uses the configured image provider (Gemini or OpenAI) based on
+    Uses the configured image provider (Gemini, OpenAI, or xAI) based on
     IMAGE_TOOL_PROVIDER in cloud.env or the `provider` override.
     
-    **Example**:
+    **Text-to-Image (generate)**:
     ```bash
     curl -X POST http://localhost:8880/api/generated-images/generate \\
       -H "Content-Type: application/json" \\
@@ -285,43 +290,26 @@ async def generate_image(request: GenerateRequest):
       }'
     ```
     
+    **Image-to-Image (edit)**:
+    ```bash
+    curl -X POST http://localhost:8880/api/generated-images/generate \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "prompt": "Change the dog to a cat, keep everything else",
+        "reference_image": "stash://space_xxx/file_id",
+        "provider": "xai"
+      }'
+    ```
+    
+    `reference_image` accepts: stash:// ref, local file path, public URL,
+    or base64 data URI. All 3 providers support editing. Keep edit prompts
+    short and direct for best results.
+    
     **With CDN upload** (get public URL in one step):
     ```json
     {
       "prompt": "A cute robot dog playing in a park",
       "upload_to_cdn": true
-    }
-    ```
-    
-    **Response with CDN URL**:
-    ```json
-    {
-      "ok": true,
-      "speech": "Generated image with gemini: A cute robot dog...",
-      "cdn_url": "https://imagedelivery.net/xxx/yyy/public",
-      "data": {
-        "prompt": "A cute robot dog playing in a park",
-        "provider": "gemini",
-        "saved": { "filename": "generated_a_cute_robot_dog_20260128_123456.jpg" },
-        "cdn": { "url": "https://imagedelivery.net/xxx/yyy/public", "image_id": "yyy" }
-      }
-    }
-    ```
-    
-    **Response without CDN** (default):
-    ```json
-    {
-      "ok": true,
-      "speech": "Generated image with gemini: A cute robot dog...",
-      "data": {
-        "prompt": "A cute robot dog playing in a park",
-        "provider": "gemini",
-        "model": "gemini-3-pro-image-preview",
-        "saved": {
-          "path": "data/generated_images/generated_a_cute_robot_dog_20260128_123456.jpg",
-          "filename": "generated_a_cute_robot_dog_20260128_123456.jpg"
-        }
-      }
     }
     ```
     """
@@ -335,6 +323,8 @@ async def generate_image(request: GenerateRequest):
             "use_grounding": request.use_grounding
         }
         
+        if request.reference_image:
+            args["reference_image"] = request.reference_image
         if request.style:
             args["style"] = request.style
         if request.negative_prompt:
