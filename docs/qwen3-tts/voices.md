@@ -1,6 +1,6 @@
 # Qwen3-TTS Available Voices
 
-Server: `http://192.168.70.226:8881`
+Server: `http://localhost:8881`
 
 ## Custom Cloned Voices (28)
 
@@ -58,13 +58,13 @@ For drop-in replacement compatibility:
 
 ```bash
 # Test a voice
-curl -X POST http://192.168.70.226:8881/v1/audio/speech \
+curl -X POST http://localhost:8881/v1/audio/speech \
   -H "Content-Type: application/json" \
   -d '{"model":"tts-1","voice":"Jarvis","input":"Hello!"}' \
   -o test.mp3
 
 # List all voices
-curl http://192.168.70.226:8881/v1/voices
+curl http://localhost:8881/v1/voices
 ```
 
 ## Performance

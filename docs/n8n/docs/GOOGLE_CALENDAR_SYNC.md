@@ -24,7 +24,7 @@ This document describes the bidirectional synchronization between Jarvis reminde
 | Service | IP Address | Port | Description |
 |---------|------------|------|-------------|
 | Jarvis API | localhost | 8880 | Reminder API endpoints |
-| n8n | 192.168.70.226 | 5678 | Workflow automation |
+| n8n | localhost | 5678 | Workflow automation |
 | Google Calendar | cloud | - | External API |
 
 ## Sync Directions
@@ -52,7 +52,7 @@ When an event is created/modified/deleted in Google Calendar:
 
 ### Workflow 1: Jarvis → Google Calendar
 
-**Webhook URL**: `http://192.168.70.226:5678/webhook/jarvis-reminder`
+**Webhook URL**: `http://localhost:5678/webhook/jarvis-reminder`
 
 **Input Payload**:
 ```json
@@ -197,9 +197,9 @@ DateTime.fromISO($json.start.dateTime).toUTC().toFormat("yyyy-MM-dd'T'HH:mm:ss'Z
 Add to `config/cloud.env` and `config/local.env`:
 ```bash
 # n8n Integration (Google Calendar Sync)
-N8N_LOCAL_API_URL="http://192.168.70.226:5678"
+N8N_LOCAL_API_URL="http://localhost:5678"
 N8N_LOCAL_API_KEY="your-n8n-api-key"
-N8N_JARVIS_WEBHOOK_URL="http://192.168.70.226:5678/webhook/jarvis-reminder"
+N8N_JARVIS_WEBHOOK_URL="http://localhost:5678/webhook/jarvis-reminder"
 ```
 
 ### n8n Credentials Required
@@ -237,7 +237,7 @@ N8N_JARVIS_WEBHOOK_URL="http://192.168.70.226:5678/webhook/jarvis-reminder"
 ./jarvis-local "Remind me Wednesday at 11am to go to dentist"
 
 # Or test webhook directly
-curl -X POST http://192.168.70.226:5678/webhook/jarvis-reminder \
+curl -X POST http://localhost:5678/webhook/jarvis-reminder \
   -H "Content-Type: application/json" \
   -d '{"action":"create","reminder":{"id":1,"title":"Test","trigger_time":"2025-11-26T11:00:00Z"}}'
 ```
@@ -254,7 +254,7 @@ curl http://localhost:8880/api/reminders | jq
 
 ### Webhook not working
 1. Verify n8n workflow is active (green toggle)
-2. Check webhook URL: `http://192.168.70.226:5678/webhook/jarvis-reminder`
+2. Check webhook URL: `http://localhost:5678/webhook/jarvis-reminder`
 3. Check n8n execution logs for errors
 
 ### Google Calendar API errors

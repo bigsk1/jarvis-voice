@@ -34,10 +34,10 @@ Fair warning: this project has hardcoded IPs, paths that assume a user named "bo
 - Speakers or audio output
 - Ethernet preferred over WiFi
 
-### My network IPs (change these to yours)
+### My network IPs (change these to your local ip 192.168.1.xxx)
 - Jarvis server: `localhost`
-- Ollama server: `192.168.70.226`
-- n8n (Docker): same host or `192.168.70.226`
+- Ollama server: `localhost`
+- n8n (Docker): same host or `localhost`
 
 If your IPs are different, you'll need to update:
 - `config/cloud.env` and `config/local.env`
@@ -147,7 +147,7 @@ nano config/cloud.env
 - `TTS_PROVIDER` and associated API key (ElevenLabs, OpenAI, etc.)
 
 **For local mode:**
-- Ollama endpoint (default: `http://192.168.70.226:11434`)
+- Ollama endpoint (default: `http://OLLAMA_BASE_URL:11434`)
 - Local TTS setup (Kokoro or Qwen3-TTS)
 
 ---
@@ -285,11 +285,11 @@ Should see:
 
 ```bash
 # In config/cloud.env and local.env
-N8N_LOCAL_API_URL="http://192.168.70.226:5678"
-N8N_JARVIS_WEBHOOK_URL="http://192.168.70.226:5678/webhook/jarvis-reminder"
+N8N_LOCAL_API_URL="http://localhost:5678"
+N8N_JARVIS_WEBHOOK_URL="http://localhost:5678/webhook/jarvis-reminder"
 
 # In config/webhook_registry.json
-# Update all URLs with 192.168.70.226 to new n8n IP
+# Update all URLs with OLLAMA_BASE_URL to new n8n IP
 ```
 
 ---
@@ -362,8 +362,8 @@ docker run -d \
   --name n8n \
   --restart unless-stopped \
   -p 5678:5678 \
-  -e N8N_HOST=192.168.70.226 \
-  -e WEBHOOK_URL=http://192.168.70.226:5678/ \
+  -e N8N_HOST=OLLAMA_BASE_URL \
+  -e WEBHOOK_URL=http://localhost:5678/ \
   -e N8N_PROTOCOL=http \
   -v ~/.n8n:/home/node/.n8n \
   n8nio/n8n:latest
@@ -374,7 +374,7 @@ docker ps | grep n8n
 
 ### Step 3: Access n8n Web UI
 
-Open browser: `http://192.168.70.226:5678`
+Open browser: `http://localhost:5678`
 
 **First-time setup:**
 1. Create owner account
@@ -776,7 +776,7 @@ docker restart n8n
 ```bash
 # Workflow must be ACTIVE for production webhooks
 # Check webhook URL matches config
-# Format: http://192.168.70.226:5678/webhook/endpoint-name
+# Format: http://localhost:5678/webhook/endpoint-name
 ```
 
 ### API Key Issues
@@ -812,7 +812,7 @@ head -20 config/cloud.env
 **Can't reach n8n:**
 ```bash
 # Check n8n is running
-curl http://192.168.70.226:5678
+curl http://localhost:5678
 
 # Check firewall
 sudo ufw status

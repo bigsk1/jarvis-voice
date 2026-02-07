@@ -42,7 +42,7 @@ Named webhooks with URLs, descriptions, and required fields:
 {
   "webhooks": {
     "send_email": {
-      "url": "http://192.168.70.226:5678/webhook/jarvis-email",
+      "url": "http://localhost:5678/webhook/jarvis-email",
       "description": "Send email via n8n SMTP",
       "required_fields": ["to", "subject", "body"],
       "rate_limit_seconds": 10
@@ -127,10 +127,10 @@ Contact list for email lookup:
 ### Email Workflow
 
 **Workflow ID:** `F38Tpz6OH4JqMLzW`  
-**Webhook URL:** `http://192.168.70.226:5678/webhook/jarvis-email`
+**Webhook URL:** `http://localhost:5678/webhook/jarvis-email`
 
 **Setup steps:**
-1. Open n8n: http://192.168.70.226:5678/workflow/F38Tpz6OH4JqMLzW
+1. Open n8n: http://loclahost:5678/workflow/F38Tpz6OH4JqMLzW
 2. Click the "Send Email" node
 3. Add SMTP credentials (click "Create new credential")
 4. Configure SMTP settings:
@@ -164,7 +164,7 @@ Edit `config/webhook_registry.json`:
 {
   "webhooks": {
     "my_new_webhook": {
-      "url": "http://192.168.70.226:5678/webhook/my-webhook",
+      "url": "http://localhost:5678/webhook/my-webhook",
       "description": "What this webhook does",
       "required_fields": ["field1", "field2"],
       "rate_limit_seconds": 5,
@@ -234,7 +234,7 @@ Now you can say: "Send email to John about the project"
 3. Check n8n execution logs for errors
 4. Test webhook directly:
 ```bash
-curl -X POST http://192.168.70.226:5678/webhook/jarvis-email \
+curl -X POST http://lo:5678/webhook/jarvis-email \
   -H "Content-Type: application/json" \
   -d '{"to": "test@example.com", "subject": "Test", "body": "Hello"}'
 ```

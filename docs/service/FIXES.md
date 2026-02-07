@@ -100,13 +100,13 @@ curl http://localhost:8880/api/status | jq '.mode, .database'
 
 **Issue**: Local mode doesn't speak (no audio).
 
-**Cause**: Kokoro TTS server not running at `192.168.70.226:8880`
+**Cause**: Kokoro TTS server not running at `localhost:8880`
 
 **Options to fix:**
 
 ### Option 1: Start Kokoro TTS Server (Recommended for offline)
 ```bash
-# On the machine at 192.168.70.226, start Kokoro server
+# On the machine at localhost, start Kokoro server
 # (You probably have this configured somewhere)
 ```
 

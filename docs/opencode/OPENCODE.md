@@ -115,7 +115,7 @@ journalctl -u opencode-jarvis.service -f
 **Local mode** (when using `jarvis-local`):
 - Provider: Ollama
 - Model: `qwen3-vl` (8B, best for tool calling on 16GB GPU)
-- Server: Remote at `http://192.168.70.226:11434`
+- Server: Remote at `http://localhost:11434`
 
 Configured in `~/.config/opencode/opencode.json`
 
@@ -309,7 +309,7 @@ OPENAI_API_KEY=sk-proj-...
 ```bash
 OPENCODE_ENABLED=true
 OPENCODE_BASE_URL=http://localhost:4096
-OLLAMA_BASE_URL=http://192.168.70.226:11434
+OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3-vl
 ```
 

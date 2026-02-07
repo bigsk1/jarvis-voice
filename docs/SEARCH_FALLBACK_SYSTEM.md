@@ -74,12 +74,13 @@ Jarvis uses a **comprehensive multi-tier fallback architecture** for all search 
 
 **Example**:
 ```python
-# Query: "what is the IP of Mini-AI"
-# 1. Try semantic: Similarity scores all < 0.40 threshold → 0 results
-# 2. Fall back to FTS5: Extracts "IP" and "Mini-AI" → 3 results ✅
-#    - Servers - Mini-AI server (192.168.70.226)
-#    - Network info
-#    - OpenCode server (port 4096)
+Query: "what is the IP of Mini-AI"
+
+1. Try semantic: Similarity scores all < 0.40 threshold → 0 results
+2. Fall back to FTS5: Extracts "IP" and "Mini-AI" → 3 results ✅
+   - Servers - Mini-AI server (192.168.1.xxx)
+   - Network info
+   - OpenCode server (port 4096)
 ```
 
 ---

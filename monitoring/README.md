@@ -27,9 +27,9 @@ Fred (localhost) - Jarvis Host
 ├── Prometheus (metrics)
 │   └── Monitors:
 │  
-│       - Ollama (192.168.70.226:11434)
-│       - Mini-AI n8n (192.168.70.226:5678)
-│       - Mini-AI Qdrant (192.168.70.226:6333)
+│       - Ollama (localhost:11434)
+│       - Mini-AI n8n (localhost:5678)
+│       - Mini-AI Qdrant (localhost:6333)
 └── Grafana (visualization)
     └── Dashboards + Alerts
 ```
@@ -175,7 +175,7 @@ rate(node_cpu_seconds_total[5m])
    alerting:
      alertmanagers:
        - static_configs:
-           - targets: ['192.168.70.226:5678/webhook/alert-receiver']
+           - targets: ['localhost:5678/webhook/alert-receiver']
    ```
 
 3. Restart Prometheus:
@@ -306,7 +306,7 @@ import requests
 def _send_monitoring_event(event_type, data):
     try:
         requests.post(
-            "http://192.168.70.226:5678/webhook/jarvis-monitoring",
+            "http://localhost:5678/webhook/jarvis-monitoring",
             json={
                 "event_type": event_type,
                 "timestamp": datetime.now().isoformat(),

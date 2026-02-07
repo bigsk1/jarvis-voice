@@ -13,7 +13,7 @@ The **Jarvis Intel System** lets you drop technical documents into a folder, and
 ### Why This Exists
 
 **Problem**: Whisper voice recognition struggles with:
-- IP addresses (192.168.70.226 → "one ninety two dot one sixty eight dot seventy dot two twenty six")
+- IP addresses (localhost → "one ninety two dot one sixty eight dot seventy dot two twenty six")
 - URLs and endpoints
 - Technical IDs and hashes
 - Network configurations
@@ -130,7 +130,7 @@ API endpoint: https://api.example.com
 
 **Bullet lists**:
 ```
-- Ollama server: 192.168.70.226:11434
+- Ollama server: localhost:11434
 - Main router: 192.168.70.1
 ```
 
@@ -295,7 +295,7 @@ When you ask Jarvis to use OpenCode:
 
 **What happens**:
 1. Jarvis searches memory for "ollama", "server", "ping"
-2. Finds: "Ollama AI Server: 192.168.70.226:11434"
+2. Finds: "Ollama AI Server: localhost:11434"
 3. Passes this to OpenCode in the context
 4. OpenCode creates: `ping_ollama.py` with the correct IP
 
@@ -304,7 +304,7 @@ When you ask Jarvis to use OpenCode:
 #!/usr/bin/env python3
 import requests
 
-OLLAMA_SERVER = "http://192.168.70.226:11434"
+OLLAMA_SERVER = "http://localhost:11434"
 
 response = requests.get(f"{OLLAMA_SERVER}/api/tags")
 if response.status_code == 200:
@@ -329,7 +329,7 @@ else:
 ### Example Intel in System ✅
 
 Currently stored (from `example_network.md`):
-- Ollama AI Server: 192.168.70.226:11434
+- Ollama AI Server: localhost:11434
 - Main router gateway: 192.168.70.1
 - Fred workstation: localhost
 - VLAN 10: IoT devices (192.168.10.0/24)

@@ -35,7 +35,7 @@ Not all memories are useful for OpenCode. We need to distinguish:
 
 {
     "key": "ollama_server",
-    "value": "Ollama at 192.168.70.226:11434 (remote on mini-ai)",
+    "value": "Ollama at OLLAMA_BASE_URL:11434 (remote on mini-ai)",
     "category": "network_topology"
 }
 ```

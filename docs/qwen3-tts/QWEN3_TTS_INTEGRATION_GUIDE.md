@@ -1,6 +1,6 @@
 # Qwen3-TTS Integration Guide
 
-**Server**: `http://192.168.70.226:8881`  
+**Server**: `http://localhost:8881`  
 **API**: OpenAI-compatible `/v1/audio/speech`  
 **GPU**: NVIDIA RTX 5060 Ti (16GB VRAM)  
 **Model**: Qwen3-TTS-12Hz-1.7B-Base (Voice Cloning)
@@ -21,7 +21,7 @@ from openai import OpenAI
 
 # AFTER: Local Qwen3-TTS
 client = OpenAI(
-    base_url="http://192.168.70.226:8881/v1",
+    base_url="http://localhost:8881/v1",
     api_key="not-needed"
 )
 
@@ -53,7 +53,7 @@ TTS_PROVIDER = os.getenv("TTS_PROVIDER", "qwen3")
 
 if TTS_PROVIDER == "qwen3":
     client = OpenAI(
-        base_url="http://192.168.70.226:8881/v1",
+        base_url="http://localhost:8881/v1",
         api_key="not-needed"
     )
     default_voice = "Jarvis"  # Custom cloned voice
@@ -89,7 +89,7 @@ class TTSProvider:
         
         if provider == "qwen3":
             self.client = OpenAI(
-                base_url="http://192.168.70.226:8881/v1",
+                base_url="http://localhost:8881/v1",
                 api_key="not-needed"
             )
             self.voices = [
@@ -191,7 +191,7 @@ POST /v1/audio/speech
 ### cURL Example
 
 ```bash
-curl -X POST http://192.168.70.226:8881/v1/audio/speech \
+curl -X POST http://localhost:8881/v1/audio/speech \
   -H "Content-Type: application/json" \
   -d '{
     "model": "tts-1",
@@ -205,13 +205,13 @@ curl -X POST http://192.168.70.226:8881/v1/audio/speech \
 ### List Voices
 
 ```bash
-curl http://192.168.70.226:8881/v1/voices
+curl http://localhost:8881/v1/voices
 ```
 
 ### Health Check
 
 ```bash
-curl http://192.168.70.226:8881/health
+curl http://localhost:8881/health
 ```
 
 ---
@@ -273,7 +273,7 @@ import io
 app = FastAPI()
 
 tts_client = OpenAI(
-    base_url="http://192.168.70.226:8881/v1",
+    base_url="http://localhost:8881/v1",
     api_key="not-needed"
 )
 
@@ -302,7 +302,7 @@ import OpenAI from 'openai';
 import fs from 'fs';
 
 const ttsClient = new OpenAI({
-  baseURL: 'http://192.168.70.226:8881/v1',
+  baseURL: 'http://localhost:8881/v1',
   apiKey: 'not-needed',
 });
 
@@ -328,7 +328,7 @@ import gradio as gr
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://192.168.70.226:8881/v1",
+    base_url="http://localhost:8881/v1",
     api_key="not-needed"
 )
 
@@ -364,7 +364,7 @@ demo.launch()
 ### Open WebUI Integration
 
 Add as TTS provider in Open WebUI settings:
-- **URL**: `http://192.168.70.226:8881/v1`
+- **URL**: `http://localhost:8881/v1`
 - **API Key**: `not-needed`
 - **Model**: `tts-1`
 - **Voice**: `Jarvis` (or any custom voice)
@@ -375,7 +375,7 @@ Add as TTS provider in Open WebUI settings:
 tts:
   - platform: openai_tts
     api_key: "not-needed"
-    base_url: "http://192.168.70.226:8881/v1"
+    base_url: "http://localhost:8881/v1"
     model: "tts-1"
     voice: "Jarvis"
 ```
@@ -390,7 +390,7 @@ To add your own voice samples:
 2. **Name the file**: `VoiceName.wav` (e.g., `MyVoice.wav`)
 3. **Copy to server**:
    ```bash
-   scp Samantha.wav boss@192.168.70.226:/home/boss/apps/Qwen3-TTS-Openai-Fastapi/sample-voices-xtts/
+   scp Samantha.wav boss@localhost:/home/boss/apps/Qwen3-TTS-Openai-Fastapi/sample-voices-xtts/
    ```
 4. **Restart container**:
    ```bash
@@ -421,7 +421,7 @@ docker compose down
 docker compose up -d qwen3-tts-gpu
 
 # Check health
-curl http://192.168.70.226:8881/health
+curl http://localhost:8881/health
 ```
 
 ---
@@ -472,5 +472,5 @@ Female Voices:
 ---
 
 *Last updated: January 2026*  
-*Server: 192.168.70.226:8881*  
+*Server: localhost:8881*  
 *Model: Qwen3-TTS-12Hz-1.7B-Base*

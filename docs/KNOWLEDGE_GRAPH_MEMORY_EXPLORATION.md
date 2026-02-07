@@ -537,7 +537,7 @@ Result: ❌ "Ollama runs on Mini AI Server. No GPU details found."
 ```
 Query: "Is my ollama server up and running?"
 semantic_recall found: OLD IP 192.168.1.68 (stale from previous ingest)
-mcp_fetch checked: CURRENT IP 192.168.70.226 ✅
+mcp_fetch checked: CURRENT IP OLLAMA_BASE_URL ✅
 ```
 **Partial success** - Jarvis was smart enough to verify, but stale data in DB.
 
@@ -737,7 +737,7 @@ class KnowledgeGraph:
 
 1. **Intel Relationships** (High Value)
    - Connect entities across intel files
-   - "Ollama → RUNS_ON → Mini AI Server → HAS_IP → 192.168.70.226"
+   - "Ollama → RUNS_ON → Mini AI Server → HAS_IP → OLLAMA_BASE_URL"
 
 2. **Tool Learning** (High Value)
    - Track which tools work for which queries

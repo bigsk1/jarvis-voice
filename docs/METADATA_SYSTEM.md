@@ -125,7 +125,7 @@ db.remember(
 db.remember(
     category="technical",
     key="network_config",
-    value="192.168.70.226",
+    value="localhost",
     metadata={
         "source_file": "jarvis-intel/example_network.md",
         "ingested_at": "2025-11-14T10:30:00Z",

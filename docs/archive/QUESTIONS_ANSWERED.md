@@ -70,7 +70,7 @@ relevant_memories = db.semantic_search(query=task, limit=5)
 ### Test Result:
 ```bash
 ✅ Semantic search now works:
-  • Servers - Ollama AI Server: 192.168.70.226:11434 (similarity: 0.69)
+  • Servers - Ollama AI Server: localhost:11434 (similarity: 0.69)
 ```
 
 ---
@@ -143,7 +143,7 @@ Drop `.txt` or `.md` files into `jarvis-intel/` folder, tell Jarvis to ingest th
 
 #### Why This Is Better Than Voice
 - **Problem**: Whisper transcription struggles with:
-  - IPs: "192.168.70.226" → "one ninety two dot one sixty eight..."
+  - IPs: "OLLAMA_BASE_URL" → "one ninety two dot one sixty eight..."
   - URLs: "https://api.example.com/v2/users"
   - Technical IDs, hashes, configurations
 
@@ -281,14 +281,14 @@ Router: Detects "opencode" tool needed
 skills/opencode.py: get_memory_context(task="...ping ollama...")
   ↓
 MemoryDB: semantic_search("ping ollama")
-  → Finds: "Ollama AI Server: 192.168.70.226:11434"
+  → Finds: "Ollama AI Server: localhost:11434"
   ↓
 OpenCode receives context:
 {
   "relevant_memories": [
     {
       "key": "Servers - Ollama AI Server",
-      "value": "192.168.70.226:11434",
+      "value": "localhost:11434",
       "relevance": "69%"
     }
   ]
@@ -385,7 +385,7 @@ $ ./orchestrator/orchestrator_v2.py cloud "Ingest intel files"
 ### Memory Recall ✅
 ```bash
 $ python3 -c "semantic_search('Ollama server IP')"
-→ "Servers - Ollama AI Server: 192.168.70.226:11434 (similarity: 0.69)"
+→ "Servers - Ollama AI Server: localhost:11434 (similarity: 0.69)"
 ```
 
 ### OpenCode Using Intel ✅

@@ -39,7 +39,7 @@ A complete, self-hosted observability stack for Jarvis Voice Assistant
 ### **4. Prometheus** (Port 9090)
 - **Purpose**: Metrics collection and alerting
 - **Scrapes**:
-  - Mini-AI Ollama (192.168.70.226:11434)
+  - Mini-AI Ollama (localhost:11434)
   - (Future) Jarvis API metrics endpoint
 - **Features**:
   - Alert rules for service degradation

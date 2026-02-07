@@ -132,7 +132,7 @@ Both are gitignored and auto-created on first use.
   
   "webhooks": {
     "webhook_name": {
-      "url": "http://192.168.70.226:5678/webhook/endpoint",
+      "url": "http://localhost:5678/webhook/endpoint",
       "description": "What this webhook does (shown to LLM)",
       "required_fields": ["field1", "field2"],
       "rate_limit_seconds": 10,
@@ -166,7 +166,7 @@ Both are gitignored and auto-created on first use.
 ```json
 {
   "test_echo": {
-    "url": "http://192.168.70.226:5678/webhook/test-echo",
+    "url": "http://localhost:5678/webhook/test-echo",
     "description": "Test webhook that echoes back",
     "required_fields": ["message"],
     "rate_limit_seconds": 5
@@ -368,7 +368,7 @@ send_webhook(
 ```json
 {
   "send_email": {
-    "url": "http://192.168.70.226:5678/webhook/jarvis-email",
+    "url": "http://localhost:5678/webhook/jarvis-email",
     "description": "Send email via n8n SMTP",
     "required_fields": ["to", "subject", "body"],
     "rate_limit_seconds": 10
@@ -394,7 +394,7 @@ Webhook → Send Email (SMTP) → Respond
 ```json
 {
   "jarvis_reminder": {
-    "url": "http://192.168.70.226:5678/webhook/jarvis-reminder",
+    "url": "http://localhost:5678/webhook/jarvis-reminder",
     "description": "Sync reminder to Google Calendar",
     "required_fields": ["action", "reminder"],
     "rate_limit_seconds": 5
@@ -478,7 +478,7 @@ Slack webhooks are simple POST requests - no auth header needed, token in URL.
 ```json
 {
   "github_deploy": {
-    "url": "http://192.168.70.226:5678/webhook/github-action",
+    "url": "http://localhost:5678/webhook/github-action",
     "description": "Trigger GitHub Actions workflow",
     "required_fields": ["repo", "workflow"],
     "rate_limit_seconds": 30
@@ -530,7 +530,7 @@ Edit `config/webhook_registry.json`:
 {
   "webhooks": {
     "my_new_webhook": {
-      "url": "http://192.168.70.226:5678/webhook/my-endpoint",
+      "url": "http://localhost:5678/webhook/my-endpoint",
       "description": "Clear description for LLM - what it does, when to use it",
       "required_fields": ["field1", "field2"],
       "rate_limit_seconds": 10,
@@ -721,8 +721,8 @@ rm data/.webhook_rate_limit data/.email_rate_limit
 
 **Debug:**
 ```bash
-# Check n8n execution logs for details
-# Open: http://192.168.70.226:5678/executions
+Check n8n execution logs for details
+Open: http://localhost:5678/executions
 ```
 
 ---

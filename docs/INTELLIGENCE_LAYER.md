@@ -1145,7 +1145,7 @@ You can edit insights directly in SQLite (e.g., using SQLite Pro, DB Browser, or
 ### How Embeddings Work
 
 ```
-Query: "curl 192.168.70.226 to check ollama"
+Query: "curl localhost to check ollama"
          │
          ▼
     [Get query embedding]

@@ -242,7 +242,7 @@ LLM_PROVIDER="anthropic"
 ```bash
 LLM_PROVIDER="ollama"
 OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
-OLLAMA_BASE_URL="http://192.168.70.226:11434"
+OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
 ### Semantic Search Threshold

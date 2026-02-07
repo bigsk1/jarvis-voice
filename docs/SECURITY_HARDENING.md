@@ -360,7 +360,7 @@ openssl rand -hex 32
 ```bash
 # With auth enabled, external requests need the Authorization header
 curl -H "Authorization: Bearer your-api-key-here" \
-     http://192.168.70.228:8880/api/memory
+     http://192.168.1.xxx:8880/api/memory
 
 # Localhost requests don't need auth (whitelisted)
 curl http://localhost:8880/api/memory
