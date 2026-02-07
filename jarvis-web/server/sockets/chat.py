@@ -575,7 +575,7 @@ class ChatHandler:
                     self.socketio.emit('chat:status', {
                         'message_id': message_id,
                         'conversation_id': conversation_id,
-                        'status': 'Preparing image for generation...',
+                        'status': 'Preparing image for editing...',
                         'timestamp': time.time()
                     }, room=session_id)
                     
@@ -583,35 +583,49 @@ class ChatHandler:
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
                     
                     if stash_ref:
-                        print(f"[CHAT] Auto-stashed image for generation: {stash_ref}")
+                        print(f"[CHAT] Auto-stashed image for editing: {stash_ref}")
                     
                     # Build forced overrides for generate_image
                     img_overrides = {}
                     for key, val in image_settings.items():
                         if val is not None and val != '' and val is not False:
                             img_overrides[key] = val
+                    
+                    # Pass the reference image so the tool actually edits it
+                    if stash_ref:
+                        img_overrides['reference_image'] = stash_ref
+                    
                     tool_overrides['generate_image'] = img_overrides
                     
                     # Build context message for LLM (params are hints, overrides enforce)
                     param_lines = []
                     for key, val in img_overrides.items():
+                        if key == 'reference_image':
+                            continue  # Don't clutter the LLM message with the stash ref
                         param_lines.append(f"- {key}: \"{val}\"" if isinstance(val, str) else f"- {key}: {val}")
                     params_str = '\n'.join(param_lines) if param_lines else '(use defaults)'
                     
                     message = (
-                        f"[User uploaded a reference image for IMAGE generation.\n"
+                        f"[User uploaded a reference image for IMAGE EDITING (image-to-image).\n"
                         f"Image stashed at: {stash_ref}\n"
-                        f"Use generate_image tool. IMPORTANT: The user has pre-selected these image "
-                        f"settings via the UI and they will be applied automatically as overrides:\n"
+                        f"Use generate_image tool. The reference_image parameter is set automatically "
+                        f"via overrides - you do NOT need to pass it. The tool will edit the uploaded "
+                        f"image based on your prompt.\n"
+                        f"IMPORTANT: The user has pre-selected these image settings via the UI and "
+                        f"they will be applied automatically as overrides:\n"
                         f"{params_str}\n"
                         f"These parameters are USER-CONTROLLED and will override whatever you pass. "
                         f"Do NOT worry if the tool result shows different values than what you sent - "
                         f"that is expected and correct. The user's chosen settings take priority.\n"
-                        f"Your job: craft a detailed, creative prompt from the user's instructions below. "
+                        f"Your job: pass the user's edit instructions as the prompt. "
+                        f"KEEP THE PROMPT SHORT AND DIRECT - image editing models work best with "
+                        f"simple instructions like 'change X to Y' rather than over-detailed prompts. "
+                        f"Do NOT add extra details about keeping textures, lighting, colors etc. "
+                        f"The model already knows to preserve the rest of the image. "
                         f"Do NOT retry if the result looks successful. Do NOT run vision analysis.]\n\n"
                         f"User's image instructions: {message}"
                     )
-                    print(f"[CHAT] Image-to-image - forced overrides: {img_overrides}")
+                    print(f"[CHAT] Image-to-image editing - forced overrides: {img_overrides}")
                     
                 else:
                     # ANALYZE (default): Current vision analysis flow
@@ -1547,7 +1561,7 @@ Mode: {mode}
             print("[VISION] ANTHROPIC_API_KEY not configured")
             return None
         
-        model = model or get_jarvis_setting('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514')
+        model = model or get_jarvis_setting('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
         print(f"[VISION] Anthropic model: {model}")
         
         payload = {
@@ -1593,7 +1607,7 @@ Mode: {mode}
         return None
     
     def _vision_xai(self, image_base64: str, prompt: str, model: str = None) -> str:
-        """Use xAI Grok for vision (grok-4 or newer)"""
+        """Use xAI Grok for vision (grok-4-1-fast-non-reasoning or newer)"""
         import requests
         from ..config import get_jarvis_setting
         
@@ -1603,7 +1617,7 @@ Mode: {mode}
             return None
         
         # Use VISION_MODEL if set, otherwise fall back to XAI_MODEL or grok-4
-        model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', 'grok-4')
+        model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', 'grok-4-1-fast-non-reasoning')
         print(f"[VISION] xAI model: {model}")
         
         # xAI uses OpenAI-compatible format with detail parameter

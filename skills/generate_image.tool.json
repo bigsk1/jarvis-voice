@@ -1,14 +1,18 @@
 {
   "enabled": true,
   "name": "generate_image",
-  "description": "🎨 Generate AI images with Gemini, OpenAI, or xAI. Create pictures, artwork, infographics, visualizations. Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize'. PROVIDERS: Gemini (default) has Google Search grounding; OpenAI has best text rendering; xAI is fast and cheap. Example: 'Create an infographic of today's weather' with use_grounding=true (Gemini). Images save to stash for email, print, canvas, PDF.",
+  "description": "🎨 Generate or edit AI images with Gemini, OpenAI, or xAI. Create pictures, artwork, infographics, visualizations. Edit existing images by providing a reference_image (stash ref, path, or URL). Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize', 'edit this image', 'change the image'. PROVIDERS: Gemini (default) has Google Search grounding; OpenAI has best text rendering; xAI is fast and cheap. All 3 support image-to-image editing. Images save to stash for email, print, canvas, PDF.",
   "script": "generate_image.py",
   "parameters": {
     "type": "object",
     "properties": {
       "prompt": {
         "type": "string",
-        "description": "Detailed description of the image. Be specific about subject, colors, mood, composition. Example: 'A cozy coffee shop with warm lighting, plants, and a cat on a chair'"
+        "description": "Detailed description of the image to generate, or edit instructions when reference_image is provided. For generation: be specific about subject, colors, mood, composition. For editing: describe the changes to make. Example generation: 'A cozy coffee shop with warm lighting'. Example edit: 'Change the dog to a cat, keep everything else the same'."
+      },
+      "reference_image": {
+        "type": "string",
+        "description": "Source image to edit. Accepts: stash:// ref (e.g. stash://space_xxx/file_id), local file path, public URL, or base64 data URI. When provided, the tool EDITS this image based on the prompt instead of generating from scratch. All 3 providers (Gemini, OpenAI, xAI) support image editing."
       },
       "provider": {
         "type": "string",

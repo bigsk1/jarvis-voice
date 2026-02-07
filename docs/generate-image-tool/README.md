@@ -71,23 +71,28 @@ The current flow tells the LLM about the uploaded reference image and asks it to
 
 All three providers have image editing APIs. Here's what they look like:
 
-### xAI - same endpoint, add `image_url`
+### xAI - separate `/v1/images/edits` endpoint
 
-xAI editing uses the same `/v1/images/generations` endpoint. You just add `image_url` to the JSON payload. The model understands the image and applies changes based on the prompt.
+xAI editing uses a **separate endpoint** from generation. The `/v1/images/generations` endpoint ignores the image even if you pass it -- you must use `/v1/images/edits` with the image nested as `{ "image": { "url": "..." } }`.
 
 ```
-POST https://api.x.ai/v1/images/generations
+POST https://api.x.ai/v1/images/edits
 {
   "model": "grok-imagine-image",
   "prompt": "Change the golden retriever to a black labrador",
-  "image_url": "data:image/jpeg;base64,{base64_data}",
+  "image": {
+    "url": "data:image/jpeg;base64,{base64_data}"
+  },
+  "n": 1,
   "response_format": "b64_json"
 }
 ```
 
-`image_url` accepts:
+The `image.url` field accepts:
 - A public URL pointing to an image
 - A base64 data URI: `data:image/jpeg;base64,...`
+
+Note: The xAI Python SDK uses gRPC internally (not REST), which maps differently. The SDK's `image_url` parameter gets translated to the proto's `image.image_url` field. For REST calls, use the structure above.
 
 xAI also supports multi-turn editing (feed output URL back as input) and style transfer.
 
@@ -189,11 +194,11 @@ def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
 
 ### 3. Update each provider function
 
-**`generate_image_xai()`** - add `image_url` param:
+**`generate_image_xai()`** - add `reference_image` param:
 - If `reference_image` is provided, resolve to base64 data URI
-- Add `image_url` field to the JSON payload
-- Same endpoint, same response handling
-- Simplest change of the three
+- Switch endpoint from `/v1/images/generations` to `/v1/images/edits`
+- Nest image as `{ "image": { "url": "data:<mime>;base64,<data>" } }`
+- Force `n=1` when editing
 
 **`generate_image_gemini()`** - add `reference_image` param:
 - If provided, resolve to base64 bytes
@@ -245,7 +250,7 @@ After updating `generate_image.tool.json`:
 - **Missing/invalid stash ref**: If the stash ref can't be resolved, fall back to text-to-image with a warning rather than failing.
 - **Provider doesn't support editing**: Not applicable here (all three do), but the code should handle it gracefully if a future provider lacks support.
 - **Aspect ratio mismatch**: The reference image might be 9:16 but the user selects 1:1. Each provider handles this differently. Document the behavior and let the provider decide.
-- **xAI batch + editing**: Does xAI support `n > 1` with `image_url`? Need to test. If not, force `n=1` when editing.
+- **xAI batch + editing**: xAI editing via `/v1/images/edits` forces `n=1`. Batch editing is not supported.
 
 ## Testing plan
 

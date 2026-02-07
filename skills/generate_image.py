@@ -22,6 +22,7 @@ Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
 import sys
 import json
 import base64
+import mimetypes
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -85,6 +86,7 @@ OPENAI_QUALITY_MAP = {
 # Provider: xAI Grok Imagine
 # =============================================================================
 XAI_API_BASE = "https://api.x.ai/v1/images/generations"
+XAI_EDIT_API = "https://api.x.ai/v1/images/edits"
 DEFAULT_XAI_IMAGE_MODEL = "grok-imagine-image"
 
 # xAI aspect ratios (supports common ratios)
@@ -106,18 +108,92 @@ XAI_ASPECT_RATIOS = {
 # Shared image sizes
 IMAGE_SIZES = ["1K", "2K", "4K"]
 
+# OpenAI edit endpoint (separate from generations)
+OPENAI_EDIT_API = "https://api.openai.com/v1/images/edits"
+
+
+# =============================================================================
+# Image resolution helper
+# =============================================================================
+def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
+    """
+    Resolve an image source to (base64_data, mime_type).
+    
+    Handles:
+    - stash:// refs -> resolve to local path -> read + encode
+    - Local file paths -> read + encode
+    - http/https URLs -> download + encode
+    - data: URIs -> extract base64 + mime
+    - /api/uploads/ and /api/images/ web paths
+    
+    Returns:
+        Tuple of (base64_encoded_data, mime_type)
+    """
+    from stash_helper import safe_resolve_file
+    
+    # Already a data URI - extract parts
+    if image_source.startswith('data:'):
+        # Format: data:image/jpeg;base64,/9j/4AAQ...
+        header, data = image_source.split(',', 1)
+        mime = header.split(':')[1].split(';')[0]
+        return data, mime
+    
+    # HTTP/HTTPS URL - download it
+    if image_source.startswith(('http://', 'https://')):
+        resp = requests.get(image_source, timeout=60)
+        resp.raise_for_status()
+        content_type = resp.headers.get('Content-Type', 'image/jpeg').split(';')[0]
+        return base64.b64encode(resp.content).decode('utf-8'), content_type
+    
+    # Stash reference
+    local_path = None
+    if image_source.startswith('stash://'):
+        result = safe_resolve_file(stash_ref=image_source)
+        if result['found']:
+            local_path = result['path']
+        else:
+            raise ValueError(f"Stash file not found: {result.get('error', image_source)}")
+    
+    # Relative web paths from WebUI
+    if not local_path and image_source.startswith('/api/uploads/'):
+        filename = image_source.split('/')[-1]
+        candidate = Path(__file__).parent.parent / 'jarvis-web' / 'data' / 'uploads' / filename
+        if candidate.exists():
+            local_path = str(candidate)
+    
+    if not local_path and image_source.startswith('/api/images/'):
+        filename = image_source.split('/')[-1]
+        candidate = Path(__file__).parent.parent / 'data' / 'generated_images' / filename
+        if candidate.exists():
+            local_path = str(candidate)
+    
+    # Direct local file path
+    if not local_path and Path(image_source).is_file():
+        local_path = image_source
+    
+    if not local_path:
+        raise ValueError(f"Could not resolve image source: {image_source[:200]}")
+    
+    # Read file and encode
+    mime_type = mimetypes.guess_type(local_path)[0] or 'image/jpeg'
+    with open(local_path, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode('utf-8'), mime_type
+
 
 def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = None,
-                       negative_prompt: str = None, n: int = 1) -> dict:
+                       negative_prompt: str = None, n: int = 1,
+                       reference_image: str = None) -> dict:
     """
-    Generate an image using xAI Grok Imagine API.
+    Generate or edit an image using xAI Grok Imagine API.
     
     Args:
-        prompt: What to generate
+        prompt: What to generate or edit instructions
         aspect_ratio: square, landscape, portrait, wide, tall, 4:3, 3:4, etc.
         style: Optional art style to prepend
         negative_prompt: Things to avoid (appended to prompt)
         n: Number of images to generate (1-10)
+        reference_image: Source image for editing (stash ref, path, URL, or data URI)
     """
     
     api_key = get_config_value('XAI_API_KEY')
@@ -137,8 +213,11 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
     # Map aspect ratio
     ar = XAI_ASPECT_RATIOS.get(aspect_ratio, XAI_ASPECT_RATIOS.get(aspect_ratio, "1:1"))
     
-    # Validate n (1-10)
-    n = max(1, min(10, n))
+    # Validate n (1-10), force n=1 when editing
+    if reference_image:
+        n = 1
+    else:
+        n = max(1, min(10, n))
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -163,10 +242,22 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
     if ar != "1:1":
         payload["aspect_ratio"] = ar
     
+    # Add reference image for editing (image-to-image)
+    # xAI /v1/images/edits requires: "image": { "url": "data:<mime>;base64,<data>" }
+    is_edit = False
+    if reference_image:
+        is_edit = True
+        img_b64, img_mime = _resolve_image_to_base64(reference_image)
+        payload["image"] = {"url": f"data:{img_mime};base64,{img_b64}"}
+        print(f"[generate_image] xAI image editing mode - using /v1/images/edits endpoint", file=sys.stderr)
+    
+    # Use /v1/images/edits for editing, /v1/images/generations for new images
+    api_url = XAI_EDIT_API if is_edit else XAI_API_BASE
+    
     # Make request (longer timeout for batch)
     timeout = 120 + (n - 1) * 30  # Extra time per image
     response = requests.post(
-        XAI_API_BASE,
+        api_url,
         headers=headers,
         json=payload,
         timeout=timeout
@@ -218,24 +309,27 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
         "model": model_name,
         "provider": "xai",
         "aspect_ratio": ar,
+        "is_edit": reference_image is not None,
         "used_grounding": False
     }
 
 
 def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size: str = "2K",
                           use_grounding: bool = False, style: str = None, 
-                          negative_prompt: str = None, context_data: str = None) -> dict:
+                          negative_prompt: str = None, context_data: str = None,
+                          reference_image: str = None) -> dict:
     """
-    Generate an image using Google Gemini API.
+    Generate or edit an image using Google Gemini API.
     
     Args:
-        prompt: What to generate
+        prompt: What to generate or edit instructions
         aspect_ratio: square, landscape, portrait, wide, tall, 4:3, 3:4
         image_size: 1K, 2K, or 4K resolution
         use_grounding: Enable Google Search for real-time data (weather, stocks, etc.)
         style: Optional art style
         negative_prompt: Things to avoid
         context_data: Additional data from other Jarvis tools to incorporate
+        reference_image: Source image for editing (stash ref, path, URL, or data URI)
     """
     
     api_key = get_config_value('GEMINI_API_KEY')
@@ -267,13 +361,29 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
         "Content-Type": "application/json"
     }
     
-    # Build payload with Gemini 3 format
+    # Build content parts
+    parts = []
+    
+    # Add reference image for editing (image-to-image)
+    # Gemini accepts inline_data in the parts array alongside the text prompt
+    if reference_image:
+        img_b64, img_mime = _resolve_image_to_base64(reference_image)
+        parts.append({
+            "inline_data": {
+                "mime_type": img_mime,
+                "data": img_b64
+            }
+        })
+        parts.append({"text": f"Edit this image: {full_prompt}"})
+        print(f"[generate_image] Gemini image editing mode - reference image resolved", file=sys.stderr)
+    else:
+        parts.append({"text": f"Generate an image: {full_prompt}"})
+    
+    # Build payload with Gemini format
     payload = {
         "contents": [
             {
-                "parts": [
-                    {"text": f"Generate an image: {full_prompt}"}
-                ]
+                "parts": parts
             }
         ],
         "generationConfig": {
@@ -355,6 +465,7 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
         "provider": "gemini",
         "aspect_ratio": ar,
         "image_size": size,
+        "is_edit": reference_image is not None,
         "text_response": text_response,
         "grounding": grounding_metadata,
         "used_grounding": use_grounding
@@ -363,18 +474,23 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
 
 def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: str = "medium",
                           style: str = None, negative_prompt: str = None,
-                          transparent: bool = False, output_format: str = "png") -> dict:
+                          transparent: bool = False, output_format: str = "png",
+                          reference_image: str = None) -> dict:
     """
-    Generate an image using OpenAI gpt-image-1 API.
+    Generate or edit an image using OpenAI gpt-image-1 API.
+    
+    For text-to-image: uses POST /v1/images/generations (JSON body).
+    For image editing: uses POST /v1/images/edits (multipart/form-data).
     
     Args:
-        prompt: What to generate
+        prompt: What to generate or edit instructions
         aspect_ratio: square, landscape, portrait
         quality: low, medium, high (or 1K, 2K, 4K mapped to quality)
         style: Optional art style to prepend
         negative_prompt: Things to avoid (appended to prompt)
         transparent: Enable transparent background (png/webp only)
         output_format: png, jpeg, or webp
+        reference_image: Source image for editing (stash ref, path, URL, or data URI)
     """
     
     api_key = get_config_value('OPENAI_API_KEY')
@@ -398,35 +514,72 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
     quality_setting = OPENAI_QUALITY_MAP.get(quality.upper() if quality else "2K", 
                                               OPENAI_QUALITY_MAP.get(quality.lower() if quality else "medium", "medium"))
     
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": model_name,
-        "prompt": full_prompt,
-        "size": size,
-        "quality": quality_setting,
-        "n": 1
-    }
-    
-    # Handle transparent background
-    if transparent and output_format in ("png", "webp"):
-        payload["background"] = "transparent"
-    
-    # Set output format (default png)
-    if output_format in ("jpeg", "webp"):
-        payload["output_format"] = output_format
-    
-    # Make request
     timeout = 180  # OpenAI can take up to 2 minutes for complex prompts
-    response = requests.post(
-        OPENAI_API_BASE,
-        headers=headers,
-        json=payload,
-        timeout=timeout
-    )
+    
+    if reference_image:
+        # ---- IMAGE EDITING: POST /v1/images/edits (multipart/form-data) ----
+        print(f"[generate_image] OpenAI image editing mode - reference image resolved", file=sys.stderr)
+        
+        img_b64, img_mime = _resolve_image_to_base64(reference_image)
+        img_bytes = base64.b64decode(img_b64)
+        
+        # Determine file extension from mime
+        ext_map = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+        ext = ext_map.get(img_mime, "png")
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}"
+            # No Content-Type - requests sets multipart boundary automatically
+        }
+        
+        files = {
+            "image": (f"source.{ext}", img_bytes, img_mime)
+        }
+        
+        form_data = {
+            "model": model_name,
+            "prompt": full_prompt,
+            "size": size,
+            "quality": quality_setting,
+            "n": "1"
+        }
+        
+        response = requests.post(
+            OPENAI_EDIT_API,
+            headers=headers,
+            files=files,
+            data=form_data,
+            timeout=timeout
+        )
+    else:
+        # ---- TEXT-TO-IMAGE: POST /v1/images/generations (JSON) ----
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": model_name,
+            "prompt": full_prompt,
+            "size": size,
+            "quality": quality_setting,
+            "n": 1
+        }
+        
+        # Handle transparent background
+        if transparent and output_format in ("png", "webp"):
+            payload["background"] = "transparent"
+        
+        # Set output format (default png)
+        if output_format in ("jpeg", "webp"):
+            payload["output_format"] = output_format
+        
+        response = requests.post(
+            OPENAI_API_BASE,
+            headers=headers,
+            json=payload,
+            timeout=timeout
+        )
     
     if response.status_code != 200:
         error_msg = response.text
@@ -439,7 +592,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
     
     result = response.json()
     
-    # Extract image from response
+    # Extract image from response (same format for both endpoints)
     data = result.get('data', [])
     if not data:
         raise Exception("No image generated - empty response from OpenAI")
@@ -467,6 +620,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         "size": size,
         "quality": quality_setting,
         "transparent": transparent,
+        "is_edit": reference_image is not None,
         "used_grounding": False  # OpenAI doesn't have grounding
     }
 
@@ -475,12 +629,16 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
                    use_grounding: bool = False, style: str = None, 
                    negative_prompt: str = None, context_data: str = None,
                    transparent: bool = False, output_format: str = "png",
-                   provider: str = None, n: int = 1) -> dict:
+                   provider: str = None, n: int = 1,
+                   reference_image: str = None) -> dict:
     """
-    Generate an image using configured provider (Gemini, OpenAI, or xAI).
+    Generate or edit an image using configured provider (Gemini, OpenAI, or xAI).
+    
+    When reference_image is provided, edits that image based on the prompt.
+    Otherwise generates a new image from the text prompt.
     
     Args:
-        prompt: What to generate
+        prompt: What to generate or edit instructions
         aspect_ratio: square, landscape, portrait, wide, tall, 4:3, 3:4
         image_size: 1K, 2K, or 4K (maps to quality for OpenAI)
         use_grounding: Enable Google Search for real-time data (Gemini only)
@@ -491,6 +649,7 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
         output_format: png, jpeg, or webp (OpenAI only)
         provider: Override provider (gemini, openai, or xai)
         n: Number of images to generate (xAI only, 1-10)
+        reference_image: Source image for editing (stash ref, path, URL, or data URI)
     """
     
     # Determine provider
@@ -498,6 +657,10 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
     # then falls back to cloud.env default. LLM-passed provider is ignored
     # when a config/override value exists.
     provider = get_config_value('IMAGE_TOOL_PROVIDER', provider or 'gemini').lower()
+    
+    if reference_image:
+        mode_label = "editing" if reference_image else "generating"
+        print(f"[generate_image] {mode_label} with {provider}, reference_image={'yes' if reference_image else 'no'}", file=sys.stderr)
     
     if provider == 'openai':
         return generate_image_openai(
@@ -507,7 +670,8 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
             style=style,
             negative_prompt=negative_prompt,
             transparent=transparent,
-            output_format=output_format
+            output_format=output_format,
+            reference_image=reference_image
         )
     elif provider == 'xai':
         return generate_image_xai(
@@ -515,7 +679,8 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
             aspect_ratio=aspect_ratio,
             style=style,
             negative_prompt=negative_prompt,
-            n=n
+            n=n,
+            reference_image=reference_image
         )
     else:
         # Default to Gemini
@@ -526,7 +691,8 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
             use_grounding=use_grounding,
             style=style,
             negative_prompt=negative_prompt,
-            context_data=context_data
+            context_data=context_data,
+            reference_image=reference_image
         )
 
 
@@ -564,6 +730,10 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
         
         # Get provider tag
         provider = image_data.get('provider', 'gemini')
+        is_edit = image_data.get('is_edit', False)
+        
+        # Tag differently for edited vs generated
+        base_tag = 'image_edited' if is_edit else 'ai_generated'
         
         # Save as binary to stash
         result = stash_file.save_binary(
@@ -571,7 +741,7 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
             name=filename,
             mime_type=mime,
             on_conflict='overwrite',
-            tags=['ai_generated', provider, image_data.get('aspect_ratio', 'square')],
+            tags=[base_tag, provider, image_data.get('aspect_ratio', 'square')],
             tool_origin='generate_image'
         )
         
@@ -692,7 +862,10 @@ def main():
         # xAI-specific parameters
         n = args.get('n', 1)  # Number of images (xAI supports 1-10)
         
-        # Generate the image
+        # Image-to-image editing
+        reference_image = args.get('reference_image')  # stash ref, path, URL, or data URI
+        
+        # Generate or edit the image
         result = generate_image(
             prompt=prompt,
             aspect_ratio=aspect_ratio,
@@ -704,7 +877,8 @@ def main():
             transparent=transparent,
             output_format=output_format,
             provider=provider,
-            n=n
+            n=n,
+            reference_image=reference_image
         )
         
         # Save to stash if requested
@@ -746,7 +920,9 @@ def main():
         
         # Build response
         provider_used = result.get('provider', 'gemini')
-        speech = f"Generated image with {provider_used}: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+        is_edit = result.get('is_edit', False)
+        action_word = "Edited image" if is_edit else "Generated image"
+        speech = f"{action_word} with {provider_used}: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
         
         response = {
             "ok": True,
@@ -757,6 +933,7 @@ def main():
                 "model": result['model'],
                 "aspect_ratio": result.get('aspect_ratio'),
                 "mime_type": result['mime_type'],
+                "is_edit": is_edit,
                 "used_grounding": result.get('used_grounding', False)
             }
         }
