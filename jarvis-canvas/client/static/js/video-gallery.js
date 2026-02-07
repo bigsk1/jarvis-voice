@@ -68,8 +68,8 @@ function renderGallery() {
         return `
         <div class="video-card" data-index="${index}">
             <div class="video-wrapper" onclick="openLightboxByIndex(${index})">
-                <video src="/api/gallery/videos/${encodeURIComponent(vid.name)}" 
-                       preload="metadata"
+                <video data-src="/api/gallery/videos/${encodeURIComponent(vid.name)}" 
+                       preload="none"
                        muted></video>
                 <div class="video-play-overlay">
                     <div class="video-play-icon">▶</div>
@@ -95,8 +95,34 @@ function renderGallery() {
         </div>
     `}).join('');
     
-    // Add hover preview
+    // Lazy-load videos as they scroll into view + hover preview
+    setupLazyLoad();
     setupHoverPreviews();
+}
+
+let lazyObserver = null;
+
+function setupLazyLoad() {
+    // Disconnect previous observer if gallery re-renders
+    if (lazyObserver) lazyObserver.disconnect();
+    
+    lazyObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const video = entry.target.querySelector('video');
+            if (video && video.dataset.src && !video.src) {
+                video.src = video.dataset.src;
+                video.preload = 'metadata';
+            }
+            lazyObserver.unobserve(entry.target);
+        });
+    }, {
+        rootMargin: '200px'  // Start loading 200px before card scrolls into view
+    });
+    
+    document.querySelectorAll('.video-card').forEach(card => {
+        lazyObserver.observe(card);
+    });
 }
 
 function setupHoverPreviews() {
@@ -105,6 +131,11 @@ function setupHoverPreviews() {
         const overlay = card.querySelector('.video-play-overlay');
         
         card.addEventListener('mouseenter', () => {
+            // Ensure src is loaded before trying to play (lazy-load may not have fired yet)
+            if (!video.src && video.dataset.src) {
+                video.src = video.dataset.src;
+                video.preload = 'metadata';
+            }
             video.play().catch(() => {});
             overlay.style.opacity = '0';
         });
