@@ -309,7 +309,8 @@ Mode: {self.mode}
         return result
     
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
-                conversation_history: list = None, excluded_tools: list = None) -> dict[str, Any]:
+                conversation_history: list = None, excluded_tools: list = None,
+                tool_overrides: dict[str, dict] | None = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
         Supports multi-turn tool execution until task is complete.
@@ -322,6 +323,10 @@ Mode: {self.mode}
                                   [{role: 'user'|'assistant', content: str}, ...]
                                   If provided, used instead of auto_context from memory_db.
             excluded_tools: Optional list of tool names to exclude from this request.
+            tool_overrides: Optional dict of {tool_name: {param: value}} to force-override
+                           LLM-chosen arguments before tool execution. Used by web UI to
+                           enforce user-selected parameters (e.g. aspect_ratio, duration)
+                           that the LLM may otherwise ignore.
                            Used by web app to block tools that don't make sense in web context.
             
         Returns:
@@ -345,6 +350,9 @@ Mode: {self.mode}
         except ImportError:
             # security_utils not available, continue without sanitization
             pass
+        
+        # Store tool overrides for this request
+        self._tool_overrides = tool_overrides or {}
         
         # Reset status updater for new task
         self.status_updater.reset()
@@ -489,6 +497,15 @@ Mode: {self.mode}
             if route["intent"] == "tool":
                 tool_name = route["tool_name"]
                 arguments = route["arguments"]
+                
+                # Apply forced overrides from web UI (e.g. aspect_ratio, duration)
+                # The LLM generates the creative prompt, but technical params are
+                # enforced from the user's explicit modal selections
+                if self._tool_overrides and tool_name in self._tool_overrides:
+                    overrides = self._tool_overrides[tool_name]
+                    if sys.stdout.isatty():
+                        print(f"📌 Applying forced overrides for {tool_name}: {overrides}")
+                    arguments.update(overrides)
                 
                 # Emit routing progress
                 self._emit_progress('routing',

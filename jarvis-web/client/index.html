@@ -675,6 +675,154 @@
     </div>
   </div>
   
+  <!-- Image Action Modal -->
+    <div class="modal-overlay" id="imageActionModal">
+      <div class="modal" style="max-width: 440px;">
+        <div class="modal-header">
+          <h2 class="modal-title">🖼️ Image Action</h2>
+          <button class="icon-btn" id="closeImageActionModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="convert-preview" id="imageActionPreview" style="margin-bottom: var(--space-md); text-align: center;">
+            <!-- Preview image inserted here -->
+          </div>
+
+          <!-- Action Selection -->
+          <div class="setting-group">
+            <label class="setting-label">What do you want to do?</label>
+            <div class="image-action-radios" style="display: flex; flex-direction: column; gap: var(--space-xs); margin-top: var(--space-xs);">
+              <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <input type="radio" name="imageAction" value="analyze" checked>
+                <span>🔍 <strong>Analyze Image</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Vision analysis, then chat</span></span>
+              </label>
+              <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <input type="radio" name="imageAction" value="video">
+                <span>🎬 <strong>Image to Video</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Animate this image (xAI)</span></span>
+              </label>
+              <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <input type="radio" name="imageAction" value="image">
+                <span>🎨 <strong>Image to Image</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Generate new image from reference</span></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Video Options (shown when Image to Video selected) -->
+          <div class="image-action-options" id="imageActionVideoOpts" style="display: none; margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border-color);">
+            <span class="setting-desc" style="margin-bottom: var(--space-sm); display: block; color: var(--text-secondary);">Provider: xAI (only provider supporting image-to-video)</span>
+            <div class="setting-group">
+              <label class="setting-label">Aspect Ratio</label>
+              <select class="setting-input" id="imgActionVideoRatio">
+                <option value="16:9">16:9 (Widescreen)</option>
+                <option value="9:16">9:16 (Vertical)</option>
+                <option value="3:4">3:4 (Portrait)</option>
+                <option value="4:3">4:3 (Classic TV)</option>
+                <option value="1:1">1:1 (Square)</option>
+                <option value="3:2">3:2 (Photo)</option>
+                <option value="2:3">2:3 (Tall Portrait)</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">Duration (seconds)</label>
+              <input type="number" class="setting-input" id="imgActionVideoDuration" min="1" max="15" value="5" placeholder="1-15">
+              <span class="setting-desc">xAI supports 1-15 seconds</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">Resolution</label>
+              <select class="setting-input" id="imgActionVideoResolution">
+                <option value="720p">720p (HD)</option>
+                <option value="480p">480p (SD)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Image Options (shown when Image to Image selected) -->
+          <div class="image-action-options" id="imageActionImageOpts" style="display: none; margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border-color);">
+            <div class="setting-group">
+              <label class="setting-label">Provider</label>
+              <select class="setting-input" id="imgActionImageProvider">
+                <option value="gemini">Gemini (grounding)</option>
+                <option value="openai">OpenAI (best text)</option>
+                <option value="xai">xAI (fast)</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">Aspect Ratio</label>
+              <select class="setting-input" id="imgActionImageRatio">
+                <option value="">Default</option>
+                <option value="square">Square (1:1)</option>
+                <option value="landscape">Landscape (16:9)</option>
+                <option value="portrait">Portrait (9:16)</option>
+                <option value="wide">Wide (21:9)</option>
+                <option value="4:3">4:3</option>
+                <option value="3:4">3:4</option>
+                <option value="3:2">3:2</option>
+                <option value="2:3">2:3</option>
+                <option value="4:5">4:5</option>
+                <option value="5:4">5:4</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">Size</label>
+              <select class="setting-input" id="imgActionImageSize">
+                <option value="2K">2K (Default)</option>
+                <option value="1K">1K (Fast)</option>
+                <option value="4K">4K (Best)</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">Style</label>
+              <input type="text" class="setting-input" id="imgActionImageStyle" placeholder="e.g. photorealistic, anime, watercolor...">
+            </div>
+
+            <!-- Gemini-specific options -->
+            <div id="imgActionGeminiOpts" style="display: none;">
+              <div class="setting-group">
+                <label class="setting-label">
+                  <input type="checkbox" id="imgActionGrounding"> Use Google Search grounding
+                </label>
+                <span class="setting-desc">For real-time data (weather, stocks, etc.)</span>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Negative Prompt</label>
+                <input type="text" class="setting-input" id="imgActionNegPrompt" placeholder="Things to avoid: blurry, low quality...">
+              </div>
+            </div>
+
+            <!-- OpenAI-specific options -->
+            <div id="imgActionOpenaiOpts" style="display: none;">
+              <div class="setting-group">
+                <label class="setting-label">
+                  <input type="checkbox" id="imgActionTransparent"> Transparent background
+                </label>
+                <span class="setting-desc">For logos, sprites, overlays (png/webp)</span>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label">Output Format</label>
+                <select class="setting-input" id="imgActionOutputFormat">
+                  <option value="png">PNG (Lossless)</option>
+                  <option value="jpeg">JPEG (Smaller)</option>
+                  <option value="webp">WebP (Modern)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- xAI-specific options -->
+            <div id="imgActionXaiOpts" style="display: none;">
+              <div class="setting-group">
+                <label class="setting-label">Number of Images</label>
+                <input type="number" class="setting-input" id="imgActionCount" min="1" max="10" value="1" placeholder="1-10">
+                <span class="setting-desc">Generate multiple variations (1-10)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="cancelImageAction">Cancel</button>
+          <button class="btn-primary" id="confirmImageAction">Continue</button>
+        </div>
+      </div>
+    </div>
+
   <!-- Application Scripts -->
   <script src="/js/utils.js"></script>
   <script src="/js/socket.js"></script>

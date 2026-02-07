@@ -89,8 +89,8 @@ class ChatHandler:
             mode = data.get('mode', self.sessions.get(session_id, {}).get('mode', 'cloud'))
             conversation_id = data.get('conversation_id')
             
-            # Image data for vision requests
-            image_data = data.get('image')  # {base64, url, filename}
+            # Image data (with optional action routing and settings)
+            image_data = data.get('image')  # {base64, url, filename, action?, settings?}
             
             # Feedback request - either from toggle or --feedback flag in message
             request_feedback = data.get('request_feedback', False)
@@ -502,43 +502,150 @@ class ChatHandler:
             
             print(f"[CHAT] Provider overrides - image: {image_provider_override or '(env default)'}, video: {video_provider_override or '(env default)'}")
             
-            # Handle vision if image is provided
+            # Image action modal can override providers further (takes priority over AI config)
+            if image_data and image_data.get('action') == 'video':
+                # Image-to-video is always xAI
+                os.environ['JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER'] = 'xai'
+                print(f"[CHAT] Image modal override - video provider: xai (image-to-video)")
+            elif image_data and image_data.get('action') == 'image':
+                modal_provider = image_data.get('settings', {}).get('provider')
+                if modal_provider:
+                    os.environ['JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER'] = modal_provider
+                    print(f"[CHAT] Image modal override - image provider: {modal_provider}")
+            
+            # Handle image if provided - route based on action
             vision_result = None
             stash_info = None
+            tool_overrides = {}  # Forced param overrides that bypass LLM decisions
             
             if image_data and image_data.get('base64'):
-                print(f"[CHAT] Processing image with vision model...")
-                self.socketio.emit('chat:status', {
-                    'message_id': message_id,
-                    'conversation_id': conversation_id,
-                    'status': 'Analyzing image...',
-                    'timestamp': time.time()
-                }, room=session_id)
+                image_action = image_data.get('action', 'analyze')
+                image_settings = image_data.get('settings', {})
+                print(f"[CHAT] Image action: {image_action}, settings: {image_settings}")
                 
-                vision_result = self._process_vision(
-                    image_data['base64'], 
-                    message, 
-                    mode
-                )
-                
-                if vision_result:
-                    # Auto-stash the uploaded image for future tool access
-                    stash_info = self._auto_stash_image(
-                        image_data, 
-                        vision_result, 
+                if image_action == 'video':
+                    # IMAGE TO VIDEO: Skip vision, stash image, force params via overrides
+                    print(f"[CHAT] Image-to-video mode - skipping vision analysis")
+                    self.socketio.emit('chat:status', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'status': 'Preparing image for video generation...',
+                        'timestamp': time.time()
+                    }, room=session_id)
+                    
+                    stash_info = self._auto_stash_image(image_data, '', mode)
+                    stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
+                    
+                    if stash_ref:
+                        print(f"[CHAT] Auto-stashed image for video: {stash_ref}")
+                    
+                    # Build forced overrides - these WILL be applied regardless of
+                    # what the LLM decides. The LLM generates the creative prompt,
+                    # but technical params are enforced from the user's modal selections.
+                    aspect_ratio = image_settings.get('aspect_ratio', '16:9')
+                    duration = image_settings.get('duration', 5)
+                    resolution = image_settings.get('resolution', '720p')
+                    
+                    tool_overrides['generate_video'] = {
+                        'image_url': stash_ref,
+                        'aspect_ratio': aspect_ratio,
+                        'duration': int(duration),
+                        'resolution': resolution,
+                        'provider': 'xai',
+                    }
+                    
+                    message = (
+                        f"[User uploaded an image for VIDEO generation (image-to-video).\n"
+                        f"Image stashed at: {stash_ref}\n"
+                        f"Use generate_video tool. IMPORTANT: The user has pre-selected these video "
+                        f"settings via the UI and they will be applied automatically as overrides:\n"
+                        f"  aspect_ratio={aspect_ratio}, duration={duration}s, resolution={resolution}, provider=xai\n"
+                        f"These parameters are USER-CONTROLLED and will override whatever you pass. "
+                        f"Do NOT worry if the tool result shows different values than what you sent - "
+                        f"that is expected and correct. The user's chosen settings take priority.\n"
+                        f"Your job: craft a detailed, creative prompt from the user's instructions below. "
+                        f"Do NOT retry if the result looks successful.]\n\n"
+                        f"User's video instructions: {message}"
+                    )
+                    print(f"[CHAT] Image-to-video - forced overrides: {aspect_ratio}, {duration}s, {resolution}")
+                    
+                elif image_action == 'image':
+                    # IMAGE TO IMAGE: Skip vision, stash image, force params via overrides
+                    print(f"[CHAT] Image-to-image mode - skipping vision analysis")
+                    self.socketio.emit('chat:status', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'status': 'Preparing image for generation...',
+                        'timestamp': time.time()
+                    }, room=session_id)
+                    
+                    stash_info = self._auto_stash_image(image_data, '', mode)
+                    stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
+                    
+                    if stash_ref:
+                        print(f"[CHAT] Auto-stashed image for generation: {stash_ref}")
+                    
+                    # Build forced overrides for generate_image
+                    img_overrides = {}
+                    for key, val in image_settings.items():
+                        if val is not None and val != '' and val is not False:
+                            img_overrides[key] = val
+                    tool_overrides['generate_image'] = img_overrides
+                    
+                    # Build context message for LLM (params are hints, overrides enforce)
+                    param_lines = []
+                    for key, val in img_overrides.items():
+                        param_lines.append(f"- {key}: \"{val}\"" if isinstance(val, str) else f"- {key}: {val}")
+                    params_str = '\n'.join(param_lines) if param_lines else '(use defaults)'
+                    
+                    message = (
+                        f"[User uploaded a reference image for IMAGE generation.\n"
+                        f"Image stashed at: {stash_ref}\n"
+                        f"Use generate_image tool. IMPORTANT: The user has pre-selected these image "
+                        f"settings via the UI and they will be applied automatically as overrides:\n"
+                        f"{params_str}\n"
+                        f"These parameters are USER-CONTROLLED and will override whatever you pass. "
+                        f"Do NOT worry if the tool result shows different values than what you sent - "
+                        f"that is expected and correct. The user's chosen settings take priority.\n"
+                        f"Your job: craft a detailed, creative prompt from the user's instructions below. "
+                        f"Do NOT retry if the result looks successful. Do NOT run vision analysis.]\n\n"
+                        f"User's image instructions: {message}"
+                    )
+                    print(f"[CHAT] Image-to-image - forced overrides: {img_overrides}")
+                    
+                else:
+                    # ANALYZE (default): Current vision analysis flow
+                    print(f"[CHAT] Processing image with vision model...")
+                    self.socketio.emit('chat:status', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'status': 'Analyzing image...',
+                        'timestamp': time.time()
+                    }, room=session_id)
+                    
+                    vision_result = self._process_vision(
+                        image_data['base64'], 
+                        message, 
                         mode
                     )
-                    if stash_info:
-                        print(f"[CHAT] Auto-stashed image: {stash_info.get('stash_ref')}")
                     
-                    # Prepend vision analysis to message for orchestrator
-                    # This way the LLM has context about the image
-                    stash_note = ""
-                    if stash_info:
-                        stash_note = f" Image stashed at: {stash_info.get('stash_ref')}"
-                    
-                    message = f"[User uploaded an image. Vision analysis: {vision_result}]{stash_note}\n\nUser's message: {message}"
-                    print(f"[CHAT] Image analyzed - passing to orchestrator with vision context")
+                    if vision_result:
+                        # Auto-stash the uploaded image for future tool access
+                        stash_info = self._auto_stash_image(
+                            image_data, 
+                            vision_result, 
+                            mode
+                        )
+                        if stash_info:
+                            print(f"[CHAT] Auto-stashed image: {stash_info.get('stash_ref')}")
+                        
+                        # Prepend vision analysis to message for orchestrator
+                        stash_note = ""
+                        if stash_info:
+                            stash_note = f" Image stashed at: {stash_info.get('stash_ref')}"
+                        
+                        message = f"[User uploaded an image. Vision analysis: {vision_result}]{stash_note}\n\nUser's message: {message}"
+                        print(f"[CHAT] Image analyzed - passing to orchestrator with vision context")
             
             # Create orchestrator instance with overrides
             print(f"[CHAT] Creating orchestrator (mode={mode})...")
@@ -643,12 +750,14 @@ class ChatHandler:
                 print(f"[CHAT] Prepending prompt instruction ({len(system_instruction)} chars)")
                 enhanced_message = f"[CONTEXT - Use these guidelines for the request below]\n\n{system_instruction}\n\n[END CONTEXT]\n\nUser's request: {message}"
             
-            # Process the query with conversation context and excluded tools
-            print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools...")
+            # Process the query with conversation context, excluded tools, and forced overrides
+            override_info = f", tool_overrides={list(tool_overrides.keys())}" if tool_overrides else ""
+            print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools{override_info}...")
             result = orchestrator.process(
                 enhanced_message,
                 conversation_history=conversation_history,
-                excluded_tools=blocked_tools
+                excluded_tools=blocked_tools,
+                tool_overrides=tool_overrides if tool_overrides else None
             )
             
             # Clean up cancellation flag
@@ -1218,10 +1327,11 @@ Mode: {mode}
         
         return output_path
 
-    def _auto_stash_image(self, image_data: dict, vision_analysis: str, mode: str) -> dict:
+    def _auto_stash_image(self, image_data: dict, vision_analysis: str = '', mode: str = 'cloud') -> dict:
         """
         Auto-stash uploaded image for future tool access.
         Also adds to memory_db as stash_artifact for cross-session recall.
+        vision_analysis can be empty for non-vision flows (image-to-video, image-to-image).
         
         Returns stash info dict or None on failure.
         """
@@ -1251,8 +1361,12 @@ Mode: {mode}
             
             # Create stash space for web uploads
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            has_vision = bool(vision_analysis)
+            space_labels = ['web_upload', 'image']
+            if has_vision:
+                space_labels.append('vision_analyzed')
             space, is_new = open_space(
-                labels=['web_upload', 'image', 'vision_analyzed'],
+                labels=space_labels,
                 scope='session',
                 ttl_days=7
             )
@@ -1278,10 +1392,10 @@ Mode: {mode}
                 'mime_type': 'image/jpeg',
                 'size_bytes': file_size,
                 'hash_sha256': file_hash,
-                'tags': ['user_upload', 'vision_analyzed'],
+                'tags': ['user_upload', 'vision_analyzed'] if has_vision else ['user_upload'],
                 'tool_origin': 'web_upload',
                 'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z',
-                'vision_analysis': vision_analysis[:500]  # Store truncated analysis
+                'vision_analysis': vision_analysis[:500] if has_vision else ''
             }
             
             # Update space meta
@@ -1297,9 +1411,17 @@ Mode: {mode}
                 db = MemoryDB()
                 
                 memory_key = f"stash_image_{space.space_id}"
-                # Truncate vision analysis for memory
-                short_analysis = vision_analysis[:200] + "..." if len(vision_analysis) > 200 else vision_analysis
-                memory_value = f"Uploaded image: {short_analysis}. STASH: {stash_ref}. FILE: {dest_filename}"
+                # Build memory value based on whether vision was performed
+                if has_vision:
+                    short_analysis = vision_analysis[:200] + "..." if len(vision_analysis) > 200 else vision_analysis
+                    memory_value = f"Uploaded image: {short_analysis}. STASH: {stash_ref}. FILE: {dest_filename}"
+                else:
+                    image_action = image_data.get('action', 'upload')
+                    memory_value = f"Uploaded image for {image_action}. STASH: {stash_ref}. FILE: {dest_filename}"
+                
+                memory_tags = ["image", "user_upload"]
+                if has_vision:
+                    memory_tags.append("vision_analyzed")
                 
                 db.remember(
                     key=memory_key,
@@ -1312,7 +1434,7 @@ Mode: {mode}
                         "space_id": space.space_id,
                         "file_id": file_id,
                         "filename": dest_filename,
-                        "tags": ["image", "user_upload", "vision_analyzed"],
+                        "tags": memory_tags,
                         "type": "image"
                     }
                 )

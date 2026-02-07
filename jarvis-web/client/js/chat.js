@@ -190,6 +190,11 @@ class ChatUI {
     this.convertPreview = document.getElementById('convertPreview');
     this.pendingConvertFile = null;  // {file, stashRef}
     
+    // Image action modal elements
+    this.imageActionModal = document.getElementById('imageActionModal');
+    this.imageActionPreview = document.getElementById('imageActionPreview');
+    this.pendingImageData = null;  // Temp storage while modal is open
+    
     this.currentMessageId = null;
     this.pendingTools = {};
     this.isProcessing = false;
@@ -224,6 +229,7 @@ class ChatUI {
     this._setupSocketListeners();
     this._setupVoiceRecording();
     this._setupImageUpload();
+    this._setupImageActionModal();
     this._setupFileConversion();
     this._setupAutocomplete();
     this._setupEnhanceButton();
@@ -1064,6 +1070,283 @@ class ChatUI {
   }
   
   /**
+   * Setup image action modal (Analyze / Video / Image)
+   */
+  _setupImageActionModal() {
+    if (!this.imageActionModal) {
+      console.warn('[Chat] Image action modal not found');
+      return;
+    }
+    
+    // Close button
+    const closeBtn = document.getElementById('closeImageActionModal');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this._hideImageActionModal());
+    }
+    
+    // Cancel button
+    const cancelBtn = document.getElementById('cancelImageAction');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => this._hideImageActionModal());
+    }
+    
+    // Confirm button
+    const confirmBtn = document.getElementById('confirmImageAction');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => this._confirmImageAction());
+    }
+    
+    // Close on overlay click
+    this.imageActionModal.addEventListener('click', (e) => {
+      if (e.target === this.imageActionModal) {
+        this._hideImageActionModal();
+      }
+    });
+    
+    // Radio button change -> show/hide option panels
+    const radios = this.imageActionModal.querySelectorAll('input[name="imageAction"]');
+    radios.forEach(radio => {
+      radio.addEventListener('change', () => this._updateImageActionOptions());
+    });
+    
+    // Image provider change -> show/hide provider-specific options
+    const imageProviderSelect = document.getElementById('imgActionImageProvider');
+    if (imageProviderSelect) {
+      imageProviderSelect.addEventListener('change', () => this._updateImageProviderOptions());
+    }
+    
+    console.log('[Chat] Image action modal ready');
+  }
+  
+  /**
+   * Show the image action modal with preview
+   */
+  _showImageActionModal(uploadData) {
+    if (!this.imageActionModal) return;
+    
+    // Store upload data temporarily
+    this.pendingImageData = uploadData;
+    
+    // Show image preview
+    if (this.imageActionPreview) {
+      this.imageActionPreview.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = uploadData.url;
+      img.style.maxWidth = '200px';
+      img.style.maxHeight = '150px';
+      img.style.borderRadius = 'var(--radius-md)';
+      this.imageActionPreview.appendChild(img);
+    }
+    
+    // Reset to default (Analyze)
+    const analyzeRadio = this.imageActionModal.querySelector('input[name="imageAction"][value="analyze"]');
+    if (analyzeRadio) analyzeRadio.checked = true;
+    
+    // Reset options visibility
+    this._updateImageActionOptions();
+    this._resetImageActionOptions();
+    
+    // Show modal
+    this.imageActionModal.classList.add('active');
+  }
+  
+  /**
+   * Hide the image action modal
+   */
+  _hideImageActionModal() {
+    if (this.imageActionModal) {
+      this.imageActionModal.classList.remove('active');
+    }
+    this.pendingImageData = null;
+  }
+  
+  /**
+   * Update which option panel is visible based on selected action
+   */
+  _updateImageActionOptions() {
+    const selected = this.imageActionModal?.querySelector('input[name="imageAction"]:checked')?.value || 'analyze';
+    
+    const videoOpts = document.getElementById('imageActionVideoOpts');
+    const imageOpts = document.getElementById('imageActionImageOpts');
+    
+    if (videoOpts) videoOpts.style.display = selected === 'video' ? 'block' : 'none';
+    if (imageOpts) imageOpts.style.display = selected === 'image' ? 'block' : 'none';
+    
+    // Update provider-specific options if image panel is now visible
+    if (selected === 'image') {
+      this._updateImageProviderOptions();
+    }
+  }
+  
+  /**
+   * Show/hide provider-specific options for Image to Image
+   */
+  _updateImageProviderOptions() {
+    const provider = document.getElementById('imgActionImageProvider')?.value || 'gemini';
+    
+    const geminiOpts = document.getElementById('imgActionGeminiOpts');
+    const openaiOpts = document.getElementById('imgActionOpenaiOpts');
+    const xaiOpts = document.getElementById('imgActionXaiOpts');
+    
+    if (geminiOpts) geminiOpts.style.display = provider === 'gemini' ? 'block' : 'none';
+    if (openaiOpts) openaiOpts.style.display = provider === 'openai' ? 'block' : 'none';
+    if (xaiOpts) xaiOpts.style.display = provider === 'xai' ? 'block' : 'none';
+  }
+  
+  /**
+   * Reset all image action options to defaults
+   */
+  _resetImageActionOptions() {
+    // Video options
+    const videoRatio = document.getElementById('imgActionVideoRatio');
+    const videoDuration = document.getElementById('imgActionVideoDuration');
+    const videoResolution = document.getElementById('imgActionVideoResolution');
+    if (videoRatio) videoRatio.value = '16:9';
+    if (videoDuration) videoDuration.value = '5';
+    if (videoResolution) videoResolution.value = '720p';
+    
+    // Image options
+    const imageProvider = document.getElementById('imgActionImageProvider');
+    const imageRatio = document.getElementById('imgActionImageRatio');
+    const imageSize = document.getElementById('imgActionImageSize');
+    const imageStyle = document.getElementById('imgActionImageStyle');
+    if (imageProvider) imageProvider.value = 'gemini';
+    if (imageRatio) imageRatio.value = '';
+    if (imageSize) imageSize.value = '2K';
+    if (imageStyle) imageStyle.value = '';
+    
+    // Gemini options
+    const grounding = document.getElementById('imgActionGrounding');
+    const negPrompt = document.getElementById('imgActionNegPrompt');
+    if (grounding) grounding.checked = false;
+    if (negPrompt) negPrompt.value = '';
+    
+    // OpenAI options
+    const transparent = document.getElementById('imgActionTransparent');
+    const outputFormat = document.getElementById('imgActionOutputFormat');
+    if (transparent) transparent.checked = false;
+    if (outputFormat) outputFormat.value = 'png';
+    
+    // xAI options
+    const count = document.getElementById('imgActionCount');
+    if (count) count.value = '1';
+    
+    // Reset provider-specific visibility
+    this._updateImageProviderOptions();
+  }
+  
+  /**
+   * Collect settings from the image action modal based on selected action
+   */
+  _collectImageActionSettings() {
+    const action = this.imageActionModal?.querySelector('input[name="imageAction"]:checked')?.value || 'analyze';
+    const settings = {};
+    
+    if (action === 'video') {
+      settings.aspect_ratio = document.getElementById('imgActionVideoRatio')?.value || '16:9';
+      settings.duration = parseInt(document.getElementById('imgActionVideoDuration')?.value) || 5;
+      settings.resolution = document.getElementById('imgActionVideoResolution')?.value || '720p';
+      settings.provider = 'xai';  // Always xAI for image-to-video
+    } else if (action === 'image') {
+      const provider = document.getElementById('imgActionImageProvider')?.value || 'gemini';
+      settings.provider = provider;
+      
+      const ratio = document.getElementById('imgActionImageRatio')?.value;
+      if (ratio) settings.aspect_ratio = ratio;
+      
+      settings.image_size = document.getElementById('imgActionImageSize')?.value || '2K';
+      
+      const style = document.getElementById('imgActionImageStyle')?.value?.trim();
+      if (style) settings.style = style;
+      
+      // Provider-specific settings (only collect from the active provider)
+      if (provider === 'gemini') {
+        const grounding = document.getElementById('imgActionGrounding')?.checked;
+        if (grounding) settings.use_grounding = true;
+        const negPrompt = document.getElementById('imgActionNegPrompt')?.value?.trim();
+        if (negPrompt) settings.negative_prompt = negPrompt;
+      } else if (provider === 'openai') {
+        const transparent = document.getElementById('imgActionTransparent')?.checked;
+        if (transparent) settings.transparent = true;
+        const outputFormat = document.getElementById('imgActionOutputFormat')?.value;
+        if (outputFormat) settings.output_format = outputFormat;
+      } else if (provider === 'xai') {
+        const count = parseInt(document.getElementById('imgActionCount')?.value);
+        if (count && count > 1) settings.n = count;
+      }
+    }
+    // For 'analyze', settings stays empty (current behavior)
+    
+    return { action, settings };
+  }
+  
+  /**
+   * Confirm the image action and attach image with settings
+   */
+  _confirmImageAction() {
+    if (!this.pendingImageData) return;
+    
+    const { action, settings } = this._collectImageActionSettings();
+    
+    // Store the image data with action and settings
+    this.attachedImage = {
+      base64: this.pendingImageData.base64,
+      url: this.pendingImageData.url,
+      filename: this.pendingImageData.filename,
+      action: action,
+      settings: settings
+    };
+    
+    // Show preview with action badge
+    this._showImagePreviewWithBadge(this.pendingImageData.url, action, settings);
+    
+    // Close modal and focus input
+    this._hideImageActionModal();
+    this.inputField.focus();
+    
+    // Toast with action info
+    const actionLabels = { analyze: 'Analyze', video: 'Video', image: 'Image' };
+    Utils.toast(`Image attached: ${actionLabels[action] || action}`, 'success', 1500);
+  }
+  
+  /**
+   * Show image preview with an action badge overlay
+   */
+  _showImagePreviewWithBadge(url, action, settings) {
+    if (this.imagePreview && this.imagePreviewContainer) {
+      this.imagePreview.src = url;
+      this.imagePreviewContainer.style.display = 'block';
+      
+      // Remove any existing badge
+      const existingBadge = this.imagePreviewContainer.querySelector('.image-action-badge');
+      if (existingBadge) existingBadge.remove();
+      
+      // Build badge text
+      let badgeText = '';
+      if (action === 'video') {
+        badgeText = `VIDEO ${settings.aspect_ratio || ''} ${settings.duration || 5}s`;
+      } else if (action === 'image') {
+        badgeText = `IMAGE ${settings.provider || ''}`;
+      } else {
+        badgeText = 'ANALYZE';
+      }
+      
+      // Add badge
+      const badge = document.createElement('span');
+      badge.className = 'image-action-badge';
+      badge.textContent = badgeText;
+      badge.style.cssText = 'position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;';
+      
+      // Make sure container is positioned for absolute badge
+      const previewDiv = this.imagePreviewContainer.querySelector('.image-preview');
+      if (previewDiv) {
+        previewDiv.style.position = 'relative';
+        previewDiv.appendChild(badge);
+      }
+    }
+  }
+  
+  /**
    * Setup file conversion functionality (bypasses vision analysis)
    */
   _setupFileConversion() {
@@ -1435,7 +1718,7 @@ class ChatUI {
   }
   
   /**
-   * Attach an image file (upload to server)
+   * Attach an image file (upload to server, then show action modal)
    */
   async attachImage(file) {
     // Validate file type
@@ -1464,18 +1747,8 @@ class ChatUI {
       const data = await response.json();
       
       if (data.ok) {
-        this.attachedImage = {
-          base64: data.base64,
-          url: data.url,
-          filename: data.filename
-        };
-        
-        // Show preview
-        this.showImagePreview(data.url);
-        Utils.toast(`Image attached (${data.size_kb}KB)`, 'success', 1500);
-        
-        // Focus input for typing question
-        this.inputField.focus();
+        // Show image action modal to let user choose what to do
+        this._showImageActionModal(data);
       } else {
         Utils.toast(data.error || 'Failed to upload image', 'error');
       }
@@ -1502,6 +1775,9 @@ class ChatUI {
     this.attachedImage = null;
     if (this.imagePreviewContainer) {
       this.imagePreviewContainer.style.display = 'none';
+      // Remove any action badge
+      const badge = this.imagePreviewContainer.querySelector('.image-action-badge');
+      if (badge) badge.remove();
     }
     if (this.imagePreview) {
       this.imagePreview.src = '';
