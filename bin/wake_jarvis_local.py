@@ -20,11 +20,19 @@ warnings.filterwarnings(
     module="onnxruntime.capi.onnxruntime_inference_collection",
 )
 
+# Read Jarvis version
+from pathlib import Path as _P
+try:
+    _jarvis_version = (_P(SCRIPT_DIR).parent / 'VERSION').read_text().strip()
+except Exception:
+    _jarvis_version = '0.0.0'
+
 # Load configuration
 print("🔧 Loading local configuration...")
 load_config('local')
 
 # Display mode and model info
+print(f"🤖 Jarvis v{_jarvis_version}")
 print(f"📡 Mode: local")
 print(f"🤖 LLM Provider: {get_config_value('LLM_PROVIDER', 'ollama')}")
 print(f"🧠 Model: {get_config_value('OLLAMA_MODEL', 'qwen3')}")

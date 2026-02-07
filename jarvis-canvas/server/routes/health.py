@@ -9,12 +9,26 @@ from server.pages import load_pages
 health_bp = Blueprint('health', __name__)
 
 
+def _get_jarvis_version():
+    """Read Jarvis version from central VERSION file."""
+    try:
+        from version import JARVIS_VERSION
+        return JARVIS_VERSION
+    except ImportError:
+        try:
+            from pathlib import Path
+            return (Path(__file__).parent.parent.parent.parent / 'VERSION').read_text().strip()
+        except Exception:
+            return '0.0.0'
+
+
 @health_bp.route('/api/health')
 def health():
     """Health check endpoint."""
     return jsonify({
         "status": "healthy",
         "service": "jarvis-canvas",
+        "version": _get_jarvis_version(),
         "pages": len(load_pages()),
         "timestamp": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"
     })

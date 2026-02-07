@@ -8,6 +8,7 @@ import time
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.managers.alert_manager import AlertManager
+from lib.version import JARVIS_VERSION
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -20,7 +21,7 @@ async def health_check():
     return {
         "status": "ok",
         "service": "jarvis-api",
-        "version": "1.0.0"
+        "version": JARVIS_VERSION
     }
 
 @router.get("/status")

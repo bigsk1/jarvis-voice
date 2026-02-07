@@ -314,7 +314,7 @@ body { background-color: #1a1a2e !important; }
 app = FastAPI(
     title="Jarvis Proactive Assistant API",
     description="REST API for alerts, reminders, intelligence, and proactive notifications",
-    version="1.1.0",
+    version=__import__('lib.version', fromlist=['JARVIS_VERSION']).JARVIS_VERSION,
     docs_url=None,  # Disable default, we'll add custom
     redoc_url="/redoc",
     swagger_ui_oauth2_redirect_url=None
@@ -494,7 +494,7 @@ async def root():
     
     return {
         "service": "Jarvis Proactive Assistant API",
-        "version": "1.2.0",
+        "version": __import__('lib.version', fromlist=['JARVIS_VERSION']).JARVIS_VERSION,
         "docs": {
             "swagger": "/docs",
             "swagger_dark": "/docs/dark",

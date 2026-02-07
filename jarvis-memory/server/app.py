@@ -22,6 +22,19 @@ from webui_auth import is_auth_enabled, get_token_from_request, verify_token
 from flask_error_logger import setup_error_logging
 from config_loader import load_config
 
+
+def _get_jarvis_version():
+    """Read Jarvis version from central VERSION file."""
+    try:
+        from version import JARVIS_VERSION
+        return JARVIS_VERSION
+    except ImportError:
+        try:
+            return (JARVIS_ROOT / 'VERSION').read_text().strip()
+        except Exception:
+            return '0.0.0'
+
+
 # Import routes after path setup
 from .routes.memories import memories_bp
 from .routes.intel import intel_bp
@@ -101,7 +114,7 @@ def get_status():
     return jsonify({
         'ok': True,
         'status': 'running',
-        'version': '1.0.0',
+        'version': _get_jarvis_version(),
         'databases': {
             'cloud': str(DATA_PATH / 'jarvis_memory.db'),
             'local': str(DATA_PATH / 'jarvis_memory_local.db')

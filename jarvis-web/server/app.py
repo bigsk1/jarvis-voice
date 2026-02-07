@@ -179,10 +179,16 @@ def run_server(host: str = None, port: int = None, mode: str = 'cloud', debug: b
     # Load Jarvis config for the specified mode
     load_jarvis_config(mode)
     
+    # Read version
+    try:
+        _version = (JARVIS_ROOT / 'VERSION').read_text().strip()
+    except Exception:
+        _version = '0.0.0'
+    
     auth_status = "ENABLED (password required)" if is_auth_enabled() else "DISABLED (open access)"
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
-║                     🤖 JARVIS WEB UI                          ║
+║                  🤖 JARVIS WEB UI v{_version:<25} ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  Mode:     {mode.upper():<52} ║
 ║  Address:  http://{host}:{port:<42} ║

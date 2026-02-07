@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# ============================================================================
+# bump-version - Update Jarvis version everywhere from VERSION file
+#
+# Usage:
+#   ./bin/bump-version              # Sync all files to current VERSION
+#   ./bin/bump-version 2.41.0       # Set new version and sync
+#   ./bin/bump-version patch        # Bump patch (2.40.0 -> 2.40.1)
+#   ./bin/bump-version minor        # Bump minor (2.40.0 -> 2.41.0)
+#   ./bin/bump-version major        # Bump major (2.40.0 -> 3.0.0)
+# ============================================================================
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VERSION_FILE="$PROJECT_ROOT/VERSION"
+
+# Read current version
+if [[ ! -f "$VERSION_FILE" ]]; then
+    echo "ERROR: VERSION file not found at $VERSION_FILE"
+    exit 1
+fi
+
+CURRENT=$(cat "$VERSION_FILE" | tr -d '[:space:]')
+IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+# Handle argument: explicit version, patch/minor/major, or sync-only
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        patch)
+            PATCH=$((PATCH + 1))
+            ;;
+        minor)
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            ;;
+        major)
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            ;;
+        *)
+            # Explicit version string
+            if [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                IFS='.' read -r MAJOR MINOR PATCH <<< "$1"
+            else
+                echo "ERROR: Invalid version '$1'. Use X.Y.Z, patch, minor, or major"
+                exit 1
+            fi
+            ;;
+    esac
+fi
+
+NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+SHORT_VERSION="${MAJOR}.${MINOR}"
+DATE_STR=$(date +%Y-%m-%d)
+MONTH_YEAR=$(date +'%B %Y')
+
+echo "Jarvis Version Bump"
+echo "  Current: $CURRENT"
+echo "  New:     $NEW_VERSION"
+echo ""
+
+# 1. Write VERSION file
+echo "$NEW_VERSION" > "$VERSION_FILE"
+echo "  [OK] VERSION file"
+
+# 2. Update pyproject.toml
+if [[ -f "$PROJECT_ROOT/pyproject.toml" ]]; then
+    sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PROJECT_ROOT/pyproject.toml"
+    echo "  [OK] pyproject.toml"
+fi
+
+# 3. Update README.md footer
+if [[ -f "$PROJECT_ROOT/README.md" ]]; then
+    sed -i "s/\*\*Current Version:\*\* v[0-9][0-9.]*/**Current Version:** v${NEW_VERSION}/" "$PROJECT_ROOT/README.md"
+    echo "  [OK] README.md footer"
+fi
+
+# 4. Update docs/README.md footer
+if [[ -f "$PROJECT_ROOT/docs/README.md" ]]; then
+    sed -i "s/(v[0-9][0-9.]*)/(v${NEW_VERSION})/" "$PROJECT_ROOT/docs/README.md"
+    sed -i "s/\*\*Last Updated:\*\* [0-9-]* (v[0-9][0-9.]*)/**Last Updated:** $DATE_STR (v${NEW_VERSION})/" "$PROJECT_ROOT/docs/README.md"
+    echo "  [OK] docs/README.md footer"
+fi
+
+echo ""
+echo "Done. Version is now $NEW_VERSION"
+echo ""
+echo "Files that auto-read VERSION at runtime (no sed needed):"
+echo "  - api/__init__.py, api/server.py, api/routes/health.py"
+echo "  - jarvis-web/server/routes/api.py"
+echo "  - jarvis-canvas/__init__.py, jarvis-canvas/server/routes/health.py"
+echo "  - jarvis-memory/server/app.py, jarvis-intelligence/server/app.py"
+echo "  - bin/jarvis-dashboard, bin/wake_jarvis.py, bin/wake_jarvis_local.py"

@@ -28,6 +28,12 @@ from textual.binding import Binding
 
 PROJECT_ROOT = Path(__file__).parent.parent
 VENV_PATH = Path.home() / "jarvis-venv"
+
+# Read Jarvis version
+try:
+    JARVIS_VERSION = (PROJECT_ROOT / "VERSION").read_text().strip()
+except Exception:
+    JARVIS_VERSION = "0.0.0"
 VENV_PYTHON = str(VENV_PATH / "bin" / "python")
 
 # Full environment setup for subprocess
@@ -90,7 +96,7 @@ class SystemStatus(Static):
         except:
             pass
 
-        self.update(f"CPU: {cpu}%  |  RAM: {ram}%  |  API: {api_status}")
+        self.update(f"Jarvis v{JARVIS_VERSION}  |  CPU: {cpu}%  |  RAM: {ram}%  |  API: {api_status}")
 
 # ============================================================================
 # DATA

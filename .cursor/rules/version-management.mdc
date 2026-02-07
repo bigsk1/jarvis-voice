@@ -1,0 +1,50 @@
+---
+description: Version management rules - never manually edit version numbers, use VERSION file and bump-version script
+alwaysApply: true
+---
+# Version Management
+
+## Single Source of Truth
+
+The Jarvis application version lives in one place: `VERSION` (project root).
+All services read from `lib/version.py` or the VERSION file directly at runtime.
+
+## NEVER Do This
+
+- NEVER manually edit version strings in code files (api/__init__.py, server.py, health.py, etc.)
+- NEVER manually edit the version in README.md or docs/README.md footers
+- NEVER hardcode a version like `"2.40.0"` in Python files - always import from `lib/version.py`
+- NEVER update pyproject.toml version manually
+
+## How to Change the Version
+
+Use the bump script:
+```bash
+./bin/bump-version patch    # 2.40.0 -> 2.40.1
+./bin/bump-version minor    # 2.40.0 -> 2.41.0
+./bin/bump-version major    # 2.40.0 -> 3.0.0
+./bin/bump-version 2.50.0   # Set explicit version
+./bin/bump-version           # Sync all files to current VERSION (no change)
+```
+
+The script updates: VERSION file, pyproject.toml, README.md footer, docs/README.md footer.
+All Python services read VERSION at runtime so they pick up changes on restart.
+
+## What Reads VERSION at Runtime
+
+- `lib/version.py` -> exports `JARVIS_VERSION`
+- api/__init__.py, api/server.py, api/routes/health.py
+- jarvis-web/server/routes/api.py, jarvis-web/server/app.py (startup banner)
+- jarvis-canvas/__init__.py, jarvis-canvas/server/routes/health.py
+- jarvis-memory/server/app.py, jarvis-intelligence/server/app.py
+- bin/jarvis-dashboard (TUI status bar)
+- bin/wake_jarvis.py, bin/wake_jarvis_local.py (startup output)
+
+## Independent Versions (Do NOT Centralize)
+
+These have their own versioning and should NOT be tied to JARVIS_VERSION:
+- Workflow schema versions (data/workflows/*.json)
+- Tool versions in *.tool.json (managed by evolution system)
+- Config format versions (status_phrases.json, etc.)
+- Individual doc page revisions
+- External API versions

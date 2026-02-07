@@ -20,6 +20,13 @@ warnings.filterwarnings(
     module="onnxruntime.capi.onnxruntime_inference_collection",
 )
 
+# Read Jarvis version
+from pathlib import Path as _P
+try:
+    _jarvis_version = (_P(SCRIPT_DIR).parent / 'VERSION').read_text().strip()
+except Exception:
+    _jarvis_version = '0.0.0'
+
 # Load configuration
 print("🔧 Loading cloud configuration...")
 load_config('cloud')
@@ -34,6 +41,7 @@ elif provider == 'openai':
     model = get_config_value('OPENAI_MODEL', 'gpt-4o')
 else:
     model = 'unknown'
+print(f"🤖 Jarvis v{_jarvis_version}")
 print(f"📡 Mode: cloud")
 print(f"🤖 LLM Provider: {provider}")
 print(f"🧠 Model: {model}")

@@ -1107,6 +1107,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-06 (v2.40)  
+**Last Updated:** 2026-02-07 (v2.40.1)  
 **Latest:** Image-to-Image Editing (all 3 providers) + Image Action Modal + Video Gallery Lazy Loading  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

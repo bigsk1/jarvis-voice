@@ -3,5 +3,7 @@ Jarvis Proactive Assistant API
 REST API for alerts, reminders, and proactive notifications
 """
 
-__version__ = "1.0.0"
+from lib.version import JARVIS_VERSION
+
+__version__ = JARVIS_VERSION
 

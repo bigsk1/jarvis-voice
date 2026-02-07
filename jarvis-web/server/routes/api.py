@@ -15,6 +15,19 @@ import sys
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
+
+def _get_jarvis_version():
+    """Read Jarvis version from central VERSION file."""
+    try:
+        from version import JARVIS_VERSION
+        return JARVIS_VERSION
+    except ImportError:
+        try:
+            return (JARVIS_ROOT / 'VERSION').read_text().strip()
+        except Exception:
+            return '0.0.0'
+
+
 # Path to generated images
 IMAGES_PATH = JARVIS_ROOT / 'data' / 'generated_images'
 
@@ -43,7 +56,7 @@ def get_status():
     return jsonify({
         'ok': True,
         'status': 'running',
-        'version': '2.39',
+        'version': _get_jarvis_version(),
         'mode': settings.mode,
         'tools_count': tool_service.get_tool_count(),
         'features': {
