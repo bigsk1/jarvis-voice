@@ -276,7 +276,7 @@ test_tool "Send Webhook (httpbin)" \
     "true"
 
 test_tool "Send Webhook (n8n)" \
-    "Send a test webhook to http://192.168.70.226:5678/webhook/test-echo with message 'jarvis test'" \
+    "Send a test webhook to ${N8N_LOCAL_API_URL:-http://localhost:5678}/webhook/test-echo with message 'jarvis test'" \
     "success|sent|200|webhook|echo" \
     "true"
 

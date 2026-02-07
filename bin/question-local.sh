@@ -13,11 +13,6 @@ if [ -z "$QUESTION" ]; then
   exit 1
 fi
 
-#OLLAMA="${OLLAMA:-http://192.168.70.226:11434}"
-#MODEL="${MODEL:-Godmoded/llama3-lexi-uncensored:latest}" # Godmoded/llama3-lexi-uncensored:latest
-#TTS_URL="${TTS_URL:-http://192.168.70.226:8880/v1/audio/speech}"
-#VOICE="${VOICE:-am_v0michael}"
-#SPEED="${SPEED:-1.0}"
 
 OUTDIR="${AUDIO_DIR}"
 mkdir -p "$OUTDIR/tts" "$OUTDIR/logs"

@@ -77,7 +77,7 @@ else
         # ============================================================================
         # QWEN3-TTS (OpenAI-compatible voice cloning)
         # ============================================================================
-        QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://192.168.70.226:8881/v1/audio/speech}"
+        QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://localhost:8881/v1/audio/speech}"
         QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE:-Jarvis}"
         QWEN3_TTS_FORMAT="${QWEN3_TTS_FORMAT:-mp3}"
         QWEN3_TTS_SPEED="${QWEN3_TTS_SPEED:-1.0}"

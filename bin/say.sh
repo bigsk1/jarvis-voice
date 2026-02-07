@@ -27,7 +27,7 @@ if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
     # ============================================================================
     # QWEN3-TTS (Local network, OpenAI-compatible voice cloning)
     # ============================================================================
-    QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://192.168.70.226:8881/v1/audio/speech}"
+    QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://localhost:8881/v1/audio/speech}"
     # QWEN3_TTS_VOICE_OVERRIDE allows API calls to specify a different voice
     QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE_OVERRIDE:-${QWEN3_TTS_VOICE:-Jarvis}}"
     QWEN3_TTS_FORMAT="${QWEN3_TTS_FORMAT:-mp3}"

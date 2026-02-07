@@ -856,7 +856,7 @@ Example for FACTUAL (should NOT be stored here):
 {{
     "is_procedural": false,
     "knowledge_type": "factual",
-    "insight_summary": "The Ollama server is at 192.168.70.226 - this is a fact, not a procedure"
+    "insight_summary": "The Ollama server is at <host-ip> - this is a fact, not a procedure"
 }}
 ```
 """

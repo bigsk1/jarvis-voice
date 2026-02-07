@@ -1313,7 +1313,7 @@ cd ~/opencode && npm start
 
 **"Ollama connection failed"**
 ```bash
-curl http://192.168.70.226:11434
+curl http://localhost:11434
 ollama serve
 ```
 

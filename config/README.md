@@ -123,7 +123,7 @@ systemctl --user start opencode
 ### "Ollama connection failed"
 ```bash
 # Check Ollama status
-curl http://192.168.70.226:11434
+curl http://localhost:11434
 # Start Ollama
 ollama serve
 ```
@@ -140,8 +140,8 @@ ollama pull nomic-embed-text
 ### Network Setup (WireGuard VPN example)
 ```bash
 # If services run on different machine:
-OLLAMA_BASE_URL="http://192.168.70.226:11434"
-OPENCODE_BASE_URL="http://192.168.70.226:4096"
+OLLAMA_BASE_URL="http://localhost:11434"
+OPENCODE_BASE_URL="http://localhost:4096"
 ```
 
 ### GPU Optimization

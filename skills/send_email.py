@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
+from config_loader import load_config, get_config_value
 from stash_helper import safe_resolve_file, extract_filename_from_stash_ref
 
 # Rate limit storage (simple file-based)
@@ -244,9 +244,15 @@ def main():
             available = list(contacts.keys())
             raise ValueError(f"Contact '{to}' not found. Available contacts: {', '.join(available) if available else 'none configured'}")
         
-        # Get webhook URL
+        # Get webhook URL (resolve ${VAR} references from config)
+        import re
         email_webhook = webhooks.get('send_email', {})
-        webhook_url = email_webhook.get('url')
+        webhook_url = email_webhook.get('url', '')
+        webhook_url = re.sub(
+            r'\$\{([^}]+)\}',
+            lambda m: get_config_value(m.group(1)) or os.environ.get(m.group(1), m.group(0)),
+            webhook_url
+        )
         
         if not webhook_url:
             raise ValueError("Email webhook not configured in config/webhook_registry.json")

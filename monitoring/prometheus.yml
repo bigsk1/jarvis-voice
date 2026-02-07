@@ -1,4 +1,7 @@
 # Prometheus configuration for Jarvis metrics collection
+# NOTE: Prometheus YAML doesn't support env var substitution.
+# LAN IPs below must be updated manually if your network changes.
+# mini-ai (ollama/n8n/qdrant host): 192.168.70.226
 
 global:
   scrape_interval: 15s        # Scrape targets every 15 seconds

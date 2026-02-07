@@ -101,7 +101,8 @@ def get_webhook_url(webhook_name: str, url: str, webhooks: dict) -> tuple[str, d
         if not webhook_config.get('url'):
             raise ValueError(f"Webhook '{webhook_name}' has no URL configured")
         
-        return webhook_config['url'], webhook_config
+        # TODO: Do we pass everysingle var in the config to the webhook?
+        return substitute_env_vars(webhook_config['url']), webhook_config
     
     # Otherwise use direct URL
     if url:
