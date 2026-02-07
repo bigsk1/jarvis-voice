@@ -1,28 +1,29 @@
 # generate_image tool
 
-Image generation and editing tool for Jarvis. Three providers, each with different strengths. Currently text-to-image only; image-to-image editing is the next feature to add.
+Image generation and editing tool for Jarvis. Supports text-to-image and image-to-image editing across three providers: Gemini, OpenAI, and xAI.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `skills/generate_image.py` | Main tool script. Provider functions + dispatch + stash save |
+| `skills/generate_image.py` | Main tool script. Provider functions, image resolution, dispatch, stash save |
 | `skills/generate_image.tool.json` | Tool definition (params the LLM sees) |
 | `jarvis-web/client/js/chat.js` | Web UI modal: action select + provider-specific options |
 | `jarvis-web/client/index.html` | Image action modal HTML |
 | `jarvis-web/server/sockets/chat.py` | Backend routing: action -> tool_overrides -> orchestrator |
 | `orchestrator/orchestrator_v2.py` | Applies tool_overrides before executing tool calls |
 
-## Current providers
+## Providers
 
 ### Gemini (default)
 
 - Model: `gemini-2.0-flash-preview-image-generation` (configurable via `GEMINI_IMAGE_MODEL`)
-- Supports aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 4:5, 5:4
+- Aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 4:5, 5:4
 - Resolution/size: 1K, 2K, 4K
 - Google Search grounding for real-time data (weather, stocks, current events)
 - Can accept `context_data` from other Jarvis tools
-- API: `POST /v1beta/models/{model}:generateContent` with `responseModalities: ["TEXT", "IMAGE"]`
+- Generation API: `POST /v1beta/models/{model}:generateContent` with `responseModalities: ["TEXT", "IMAGE"]`
+- Editing: same endpoint -- include the reference image as `inline_data` in `contents[].parts[]` alongside the text prompt. Supports up to 14 reference images per request.
 
 ### OpenAI
 
@@ -32,51 +33,21 @@ Image generation and editing tool for Jarvis. Three providers, each with differe
 - Quality: low, medium, high (mapped from 1K/2K/4K)
 - Transparent backgrounds (png/webp only)
 - Output formats: png, jpeg, webp
-- API: `POST /v1/images/generations` (JSON body, base64 response)
+- Generation API: `POST /v1/images/generations` (JSON body, base64 response)
+- Editing API: `POST /v1/images/edits` (multipart/form-data). Image bytes sent as a file field, prompt and other params as form fields. Supports `mask` for inpainting and `input_fidelity` (high/low).
 
 ### xAI
 
 - Model: `grok-imagine-image` (configurable via `XAI_IMAGE_MODEL`)
 - Fast and cheap
-- Batch generation: 1-10 images per request
+- Batch generation: 1-10 images per request (text-to-image only)
 - Aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 2:1, 1:2, 19.5:9, 9:19.5, 20:9, 9:20
-- API: `POST /v1/images/generations` (JSON body, base64 or URL response)
+- Generation API: `POST /v1/images/generations` (JSON body, base64 or URL response)
+- Editing API: `POST /v1/images/edits` -- separate endpoint from generation. The generations endpoint ignores images even if you pass one. Editing forces `n=1`.
 
-## Provider selection
+#### xAI editing payload
 
-The provider is determined by `config_loader.py` with this priority:
-
-1. `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` env var (set by web UI modal per-request)
-2. `IMAGE_TOOL_PROVIDER` in `config/cloud.env` or `config/local.env`
-3. Fallback: `gemini`
-
-The `JARVIS_OVERRIDE_` mechanism lets the web UI override the default provider for a single request without changing the global config. The override env var is set in `chat.py` before spawning the orchestrator subprocess.
-
-## Web UI flow (current)
-
-1. User uploads/drops an image in the chat input
-2. Image action modal appears with three choices:
-   - **Analyze image** - runs vision analysis (default, existing behavior)
-   - **Image to video** - routes to `generate_video` with xAI (forces params via tool_overrides)
-   - **Image to image** - routes to `generate_image` (forces provider/params via tool_overrides)
-3. For "Image to image", the modal shows provider-specific options (Gemini grounding, OpenAI transparency, xAI batch count)
-4. Backend stashes the uploaded image, builds `tool_overrides`, and sends to orchestrator
-5. Orchestrator applies overrides after the LLM generates creative arguments but before tool execution
-
-## What "Image to image" does today (the problem)
-
-The current flow tells the LLM about the uploaded reference image and asks it to use `generate_image`. But `generate_image.py` has no `reference_image` parameter. None of the three provider functions accept a source image. The result is text-to-image generation where the LLM tries to describe the uploaded image in its prompt. The output is a brand new image, not an edit of the original.
-
-## Image-to-image editing: what each provider API supports
-
-All three providers have image editing APIs. Here's what they look like:
-
-### xAI - separate `/v1/images/edits` endpoint
-
-xAI editing uses a **separate endpoint** from generation. The `/v1/images/generations` endpoint ignores the image even if you pass it -- you must use `/v1/images/edits` with the image nested as `{ "image": { "url": "..." } }`.
-
-```
-POST https://api.x.ai/v1/images/edits
+```json
 {
   "model": "grok-imagine-image",
   "prompt": "Change the golden retriever to a black labrador",
@@ -88,180 +59,71 @@ POST https://api.x.ai/v1/images/edits
 }
 ```
 
-The `image.url` field accepts:
-- A public URL pointing to an image
-- A base64 data URI: `data:image/jpeg;base64,...`
-
-Note: The xAI Python SDK uses gRPC internally (not REST), which maps differently. The SDK's `image_url` parameter gets translated to the proto's `image.image_url` field. For REST calls, use the structure above.
-
-xAI also supports multi-turn editing (feed output URL back as input) and style transfer.
+The `image.url` field accepts a public URL or a base64 data URI. The xAI Python SDK uses gRPC internally (not REST), so the SDK's `image_url` parameter maps differently than the REST API's `image` object. For direct REST calls, use the structure above.
 
 Ref: https://docs.x.ai/developers/model-capabilities/images/generation
 
-### Gemini - include image in contents array
+## Provider selection
 
-Gemini editing uses the same `generateContent` endpoint. Include the image as `inline_data` in the `contents[].parts[]` array alongside the text prompt.
+Determined by `config_loader.py` with this priority:
 
-```
-POST /v1beta/models/gemini-2.5-flash-image:generateContent
-{
-  "contents": [{
-    "parts": [
-      {"text": "Change the bunny head to a goat head"},
-      {"inline_data": {"mime_type": "image/jpeg", "data": "<base64>"}}
-    ]
-  }],
-  "generationConfig": {
-    "responseModalities": ["TEXT", "IMAGE"]
-  }
-}
-```
+1. `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` env var (set by web UI modal per-request)
+2. `IMAGE_TOOL_PROVIDER` in `config/cloud.env` or `config/local.env`
+3. Fallback: `gemini`
 
-gemini-3-pro-image-preview supports up to 14 reference images in a single request. The model uses advanced reasoning ("Thinking") to handle complex multi-image compositions.
+The `JARVIS_OVERRIDE_` mechanism lets the web UI override the default provider for a single request without changing the global config. Set in `chat.py` before spawning the orchestrator subprocess.
 
-Ref: https://ai.google.dev/gemini-api/docs/image-generation
+## Image-to-image editing
 
-### OpenAI - two options
+### How it works
 
-OpenAI has two APIs that support image editing:
+The `reference_image` parameter on the tool accepts any of:
+- `stash://` ref (resolved to local path, then read + base64 encoded)
+- Local file path (read + base64 encoded)
+- `http`/`https` URL (downloaded + base64 encoded)
+- `data:` URI (base64 extracted directly)
 
-**Option A: Images API** (`POST /v1/images/edits`) - multipart/form-data
+The helper function `_resolve_image_to_base64(image_source)` handles all of these and returns `(base64_data, mime_type)`.
 
-```
-POST https://api.openai.com/v1/images/edits
-Content-Type: multipart/form-data
+When `reference_image` is present, each provider switches from its generation endpoint/mode to its editing mode:
+- **Gemini**: adds the image as an `inline_data` part in the contents array (same endpoint)
+- **OpenAI**: switches from `/v1/images/generations` to `/v1/images/edits` and changes from JSON to multipart/form-data
+- **xAI**: switches from `/v1/images/generations` to `/v1/images/edits` and nests the image as `{"image": {"url": "data:..."}}`
 
--F "image[]=@source.png"
--F "prompt=Change the bunny head to a goat head"
--F "model=gpt-image-1"
--F "size=1024x1024"
--F "quality=medium"
-```
+The output data includes `"is_edit": true` when editing, and stash entries are tagged `image_edited` instead of `ai_generated`.
 
-Supports up to 16 input images (gpt-image-1/1.5). Also supports `mask` for inpainting, `input_fidelity` (high/low) for controlling how closely to match the source. Response is the same format as generations (base64_json).
+### Prompt tips for editing
 
-Python's `requests` handles multipart cleanly:
-```python
-response = requests.post(
-    "https://api.openai.com/v1/images/edits",
-    headers={"Authorization": f"Bearer {api_key}"},
-    files={"image": ("image.png", image_bytes, "image/png")},
-    data={"model": "gpt-image-1", "prompt": prompt, "size": size},
-    timeout=180
-)
-```
+Editing models work best with short, direct prompts. "Change the rabbit head to a goat head" produces better results than a multi-sentence description of textures, lighting, and composition. The web UI's `chat.py` instructs the LLM to keep editing prompts brief.
 
-**Option B: Responses API** (`POST /v1/responses`) - JSON, no multipart
+## Web UI flow
 
-The Responses API accepts images 3 ways: public URL, base64 data URL, or File ID. It's JSON-based. But it's a completely different API surface -- it wraps image generation as a tool inside a chat/agent flow. More complex to integrate, designed for multi-turn conversational editing.
+1. User uploads/drops an image in the chat input
+2. Image action modal appears with three choices:
+   - **Analyze image** -- runs vision analysis (default, existing behavior)
+   - **Image to video** -- routes to `generate_video` with provider params forced via tool_overrides
+   - **Image to image** -- routes to `generate_image` with provider/reference_image forced via tool_overrides
+3. For "Image to image", the modal shows provider-specific options (Gemini grounding, OpenAI transparency, xAI batch count)
+4. Backend stashes the uploaded image, builds `tool_overrides` including `reference_image: stash_ref`, and sends to orchestrator
+5. Orchestrator applies overrides after the LLM generates creative arguments but before tool execution
+6. User types their edit instructions in the chat (the LLM sees the image context and knows to call `generate_image`)
 
-**Recommendation: Option A (Images API).** It's a direct edit call that returns the same response format as the current generation endpoint. The multipart difference is ~5 lines of code.
+## tool_overrides mechanism
 
-Ref: https://platform.openai.com/docs/api-reference/images/createEdit
-
-## Implementation plan
-
-### 1. Add `reference_image` parameter to the tool
-
-New parameter in `generate_image.tool.json`:
-
-```json
-"reference_image": {
-  "type": "string",
-  "description": "Source image for editing. Accepts: stash:// ref, local file path, public URL, or base64 data URI. When provided, the tool edits this image based on the prompt instead of generating from scratch."
-}
-```
-
-This follows the same pattern as `generate_video`'s `image_url` parameter, which already handles stash refs, local paths, URLs, and base64 data URIs.
-
-### 2. Add `_resolve_image_to_base64()` helper in `generate_image.py`
-
-Resolves the reference image from any supported format to raw base64 + mime_type. Reuse logic from `generate_video.py`'s `_resolve_image_source()` and `safe_resolve_file()`.
+The orchestrator accepts a `tool_overrides` dict keyed by tool name. After the LLM decides which tool to call and generates arguments, but before execution, the orchestrator merges the overrides into the arguments:
 
 ```python
-def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
-    """
-    Resolve image source to (base64_data, mime_type).
-    
-    Handles:
-    - stash:// refs -> resolve to local path -> read + encode
-    - Local file paths -> read + encode
-    - http/https URLs -> download + encode
-    - data: URIs -> extract base64 + mime
-    - Raw base64 -> pass through (assume jpeg)
-    """
+if tool_name in tool_overrides:
+    arguments.update(tool_overrides[tool_name])
 ```
 
-### 3. Update each provider function
+This lets the web UI force parameters like `provider`, `aspect_ratio`, `reference_image` without the LLM needing to know about them. The LLM focuses on the creative prompt; the UI handles the technical settings.
 
-**`generate_image_xai()`** - add `reference_image` param:
-- If `reference_image` is provided, resolve to base64 data URI
-- Switch endpoint from `/v1/images/generations` to `/v1/images/edits`
-- Nest image as `{ "image": { "url": "data:<mime>;base64,<data>" } }`
-- Force `n=1` when editing
-
-**`generate_image_gemini()`** - add `reference_image` param:
-- If provided, resolve to base64 bytes
-- Add as `inline_data` part in the `contents[].parts[]` array (after the text prompt)
-- Same endpoint, same response handling
-- Also straightforward
-
-**`generate_image_openai()`** - add `reference_image` param:
-- If provided, switch from `/v1/images/generations` to `/v1/images/edits`
-- Change from JSON body to multipart/form-data (using `requests` `files=` + `data=`)
-- Send image as file bytes, prompt as form field
-- Response format stays the same (base64_json)
-- About 5 extra lines vs the generation code path -- add an `if reference_image:` branch
-
-### 4. Update the dispatch function
-
-`generate_image()` gains the `reference_image` param and passes it through to whichever provider is active.
-
-### 5. Update `main()` to parse `reference_image` from args
-
-Same pattern as the existing params: `args.get('reference_image')`.
-
-### 6. Update `chat.py` to pass `reference_image` in tool_overrides
-
-The "Image to image" action in `chat.py` already stashes the uploaded image and gets a `stash_ref`. Currently that ref is only mentioned in the LLM's context message. With this change, it also goes into `tool_overrides['generate_image']['reference_image']`.
-
-```python
-# In the 'image' action block:
-tool_overrides['generate_image'] = {
-    'reference_image': stash_ref,  # NEW: actual image editing
-    # ... existing provider, aspect_ratio, etc.
-}
-```
-
-### 7. Update tool_overrides metadata
-
-Add `reference_image` to the response data so the output shows whether the image was generated from scratch or edited from a reference. Tag stash entries with `'image_edited'` vs `'ai_generated'`.
-
-### 8. Sync tool definitions
-
-After updating `generate_image.tool.json`:
-```bash
-./bin/sync_tools.py cloud
-```
-
-## Edge cases to handle
-
-- **Large images**: base64 encoding doubles file size. A 10MB image becomes 13MB+ in base64. Set reasonable limits or resize before encoding.
-- **Missing/invalid stash ref**: If the stash ref can't be resolved, fall back to text-to-image with a warning rather than failing.
-- **Provider doesn't support editing**: Not applicable here (all three do), but the code should handle it gracefully if a future provider lacks support.
-- **Aspect ratio mismatch**: The reference image might be 9:16 but the user selects 1:1. Each provider handles this differently. Document the behavior and let the provider decide.
-- **xAI batch + editing**: xAI editing via `/v1/images/edits` forces `n=1`. Batch editing is not supported.
-
-## Testing plan
-
-Test each provider with a simple edit (change a color, swap an element):
+## Testing
 
 ```bash
-# xAI: change dog breed in a photo
-./orchestrator/orchestrator_v2.py cloud "edit the image at stash://xxx to change the dog to a cat"
-
 # Direct tool test via FastAPI
-curl -X POST http://localhost:8880/api/tools/generate_image \
+curl -X POST http://localhost:8880/api/images/generate \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Change the bunny head to a goat head",
@@ -269,17 +131,16 @@ curl -X POST http://localhost:8880/api/tools/generate_image \
     "reference_image": "stash://space_xxx/file_xxx"
   }'
 
-# Web UI test
-# 1. Upload image -> select "Image to Image" -> pick xAI -> type edit instructions -> send
+# Web UI
+# Upload image -> select "Image to Image" -> pick provider -> type edit instructions -> send
+
+# CLI
+./orchestrator/orchestrator_v2.py cloud "edit the image at stash://xxx to change the dog to a cat"
 ```
 
-## File change summary
+## Edge cases
 
-| File | Change |
-|------|--------|
-| `skills/generate_image.py` | Add `_resolve_image_to_base64()`, update all 3 provider functions + dispatch |
-| `skills/generate_image.tool.json` | Add `reference_image` parameter |
-| `jarvis-web/server/sockets/chat.py` | Pass `reference_image: stash_ref` in tool_overrides for image action |
-| -- | Run `./bin/sync_tools.py cloud` after tool.json update to refresh LLM's tool list |
-
-The web UI modal (`index.html`, `chat.js`) and orchestrator (`orchestrator_v2.py`) need no changes -- they already handle the flow correctly. The modal collects params, `chat.py` builds overrides, and the orchestrator applies them. We just need to add the actual image data to the override payload and teach the tool how to use it.
+- **Large images**: base64 encoding roughly doubles file size. A 10MB image becomes ~13MB in base64. No explicit resize, but providers have their own input limits.
+- **Missing/invalid stash ref**: if the ref can't be resolved, the tool falls back to text-to-image with a warning rather than failing.
+- **Aspect ratio mismatch**: the reference image might be 9:16 but the user selects 1:1. Each provider handles this differently (crop, pad, or ignore). The tool passes the requested ratio and lets the provider decide.
+- **xAI batch + editing**: xAI editing forces `n=1`. Batch editing is not supported by their API.
