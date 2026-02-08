@@ -509,16 +509,42 @@ def status_callback(message):
 
 ### Conversation Context
 
-Web conversations are passed to LLM (separate from terminal's memory_db):
+Web conversations use a **completely separate** context system from CLI/TUI:
 
 ```python
-# Last 20 messages from web conversation
+# Last 20 messages from web conversation JSON file
 result = orchestrator.process(
     message,
-    conversation_history=history,  # Web's own history
+    conversation_history=history,  # Web's own history from JSON
     excluded_tools=blocked_tools   # Web-blocked tools
 )
 ```
+
+**⚠️ IMPORTANT: Web UI context is NOT the same as AUTO_CONTEXT_* settings!**
+
+| Setting | Used By | Config |
+|---------|---------|--------|
+| `AUTO_CONTEXT_WINDOW` / `AUTO_CONTEXT_MINUTES` | CLI/TUI only | `config/cloud.env` |
+| `conversation.history_limit` | Web UI only | `jarvis-web/config/web_config.json` |
+
+The orchestrator checks: if `conversation_history` is passed (web UI always passes it), use that. Otherwise fall back to `AUTO_CONTEXT_*` settings (CLI/TUI).
+
+**What's included in web context (per message):**
+- `role`: user or assistant
+- `content`: the message text
+- `tools_used`: array of tool names used (for assistant messages)
+
+This means the LLM sees previous messages like:
+```
+User: whats the current price of bitcoin?
+Jarvis [tools: crypto_price]: Bitcoin is currently $70,741...
+User: ok thanks
+Jarvis: You're welcome!
+```
+
+The `[tools: ...]` tag helps the LLM understand what tools were used without needing to call `search_conversations` or `check_tool_logs`.
+
+See `docs/AUTO_CONTEXT_SYSTEM.md` for full details on CLI/TUI context.
 
 ### TTS Generation (Mode-Aware)
 
@@ -1525,7 +1551,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 
 | Aspect | Terminal/TUI/Jarvis | Web UI |
 |--------|---------------------|--------|
-| **Conversation History** | `memory_db` + `AUTO_CONTEXT_*` | JSON files + `conversation.history_limit` |
+| **Conversation History** | `memory_db` + `AUTO_CONTEXT_*` (cloud.env, local.env) | JSON files + `conversation.history_limit` (web_config.json) - **COMPLETELY SEPARATE SYSTEMS** |
 | **LLM Provider** | `.env` file (restart to change) | `web_config.json` per-mode (on-the-fly) |
 | **Blocked Tools** | None (all tools available) | `tools.blocked` array |
 | **Status Updates** | Local speaker | Browser WebSocket + optional TTS |

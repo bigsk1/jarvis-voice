@@ -4,9 +4,48 @@
 
 The Auto-Context System gives Jarvis **automatic short-term memory** of recent conversations, enabling natural follow-up responses, self-learning from failures, and seamless multi-step workflows **without requiring explicit tool calls**.
 
-### NOTE about webui
+---
 
-If only using Jarvis WEBUI then you can set AUTO_CONTEXT_ENABLED=false in .env because the webui keeps it's own conversation history in  jarvis-web/config/web_config.json and you can set the "history_limit": 20, to whatever you want. 
+## ⚠️ IMPORTANT: Web UI vs CLI/TUI Context Systems
+
+**These are COMPLETELY SEPARATE systems that do NOT overlap:**
+
+| Setting | Used By | Source | Config Location |
+|---------|---------|--------|-----------------|
+| `AUTO_CONTEXT_WINDOW` | **CLI/TUI only** | `conversations` table in DB | `config/cloud.env` or `config/local.env` |
+| `conversation.history_limit` | **Web UI only** | JSON file per chat | `jarvis-web/config/web_config.json` |
+
+### Why They're Separate
+
+The orchestrator uses an `if/elif` check:
+
+```python
+# In orchestrator_v2.py process():
+if conversation_history:
+    # Web UI ALWAYS passes this from JSON file
+    enhanced_transcript = self._format_conversation_context(transcript, conversation_history)
+elif self.auto_context_enabled:
+    # CLI/TUI falls back to this (reads from DB)
+    enhanced_transcript = self._build_conversation_context(transcript)
+```
+
+**Web UI always passes `conversation_history`** from its JSON file, so the `AUTO_CONTEXT_*` settings are never used for web requests.
+
+### Practical Implications
+
+1. **If you only use Web UI**: Set `AUTO_CONTEXT_ENABLED=false` in `.env` - it won't affect anything
+2. **If you only use CLI**: Configure `AUTO_CONTEXT_WINDOW` and `AUTO_CONTEXT_MINUTES` - web settings don't matter
+3. **If you use both**: Each system works independently with its own config
+
+### Key Differences
+
+| Aspect | CLI/TUI Auto-Context | Web UI Context |
+|--------|---------------------|----------------|
+| **Scope** | Cross-session (all recent conversations) | Single chat session only |
+| **Source** | SQLite `conversations` table | JSON file (`data/web_conversations/<uuid>.json`) |
+| **Content** | Query, response, tools, success, metadata | Role, content, tools_used per message |
+| **Isolation** | Sees ALL recent convos (CLI + web) | Only sees THIS chat's history |
+| **Time filter** | `AUTO_CONTEXT_MINUTES` | None (just message count) |
 
 ---
 

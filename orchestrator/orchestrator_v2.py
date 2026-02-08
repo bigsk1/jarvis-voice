@@ -1364,13 +1364,22 @@ Your BEST EFFORT response:"""
         for msg in recent:
             role = msg.get('role', 'user')
             content = msg.get('content', '')
+            tools_used = msg.get('tools_used', [])
             
             # Truncate long messages
             if len(content) > 500:
                 content = content[:500] + "..."
             
             prefix = "User" if role == 'user' else "Jarvis"
-            context_lines.append(f"{prefix}: {content}")
+            
+            # Include tools used for assistant messages (helps LLM know what was done)
+            if role == 'assistant' and tools_used:
+                # Dedupe tools (sometimes same tool called multiple times)
+                unique_tools = list(dict.fromkeys(tools_used))
+                tools_str = ", ".join(unique_tools)
+                context_lines.append(f"{prefix} [tools: {tools_str}]: {content}")
+            else:
+                context_lines.append(f"{prefix}: {content}")
         
         context_lines.append("=== END CONTEXT ===")
         context_lines.append("")

@@ -441,13 +441,17 @@ class ChatHandler:
             # Get configurable history limit (default 20)
             history_limit = get_web_setting('conversation.history_limit', 20)
             
-            # Format for orchestrator: [{role: str, content: str}, ...]
+            # Format for orchestrator: [{role: str, content: str, tools_used: list}, ...]
             history = []
             for msg in messages[-history_limit:]:
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
                 if content:
-                    history.append({'role': role, 'content': content})
+                    entry = {'role': role, 'content': content}
+                    # Include tools_used for assistant messages so LLM knows what tools were run
+                    if role == 'assistant' and msg.get('tools_used'):
+                        entry['tools_used'] = msg.get('tools_used')
+                    history.append(entry)
             
             return history
         except Exception as e:
