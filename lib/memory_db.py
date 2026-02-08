@@ -531,16 +531,94 @@ class MemoryDB:
         
         return [dict(row) for row in results]
     
-    def search_conversations(self, query: str, limit: int = 5) -> list[dict]:
-        """Search conversation history."""
+    def search_conversations(self, query: str, limit: int = 5, 
+                             web_conversation_id: str = None) -> list[dict]:
+        """
+        Search conversation history with tiered approach.
+        
+        Search strategy (similar to fts_search):
+        1. Try exact phrase match (original query as-is)
+        2. Try ANY term match (OR logic - finds conversations with any keyword)
+        3. Search metadata for web_conversation_id if provided
+        
+        Args:
+            query: Search query (supports multiple words)
+            limit: Max results
+            web_conversation_id: Optional - filter by web UI conversation ID
+            
+        Returns:
+            List of matching conversations
+        """
         cursor = self.conn.cursor()
         
+        # If searching by web conversation ID, filter by metadata
+        if web_conversation_id:
+            results = cursor.execute("""
+                SELECT * FROM conversations
+                WHERE metadata LIKE ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (f'%"web_conversation_id": "{web_conversation_id}"%', limit)).fetchall()
+            if results:
+                return [dict(row) for row in results]
+        
+        # Stop words to filter out for term extraction
+        stop_words = {'the', 'is', 'at', 'on', 'and', 'or', 'to', 'a', 'an', 'in', 
+                      'of', 'for', 'with', 'as', 'by', 'my', 'can', 'you', 'check', 
+                      'see', 'if', 'up', 'what', 'how', 'when', 'where', 'why', 'do',
+                      'did', 'does', 'was', 'were', 'have', 'has', 'had', 'about',
+                      'this', 'that', 'these', 'those', 'it', 'its', 'i', 'me', 'we'}
+        
+        # 1. Try exact phrase match first
         results = cursor.execute("""
             SELECT * FROM conversations
             WHERE user_query LIKE ? OR jarvis_response LIKE ?
             ORDER BY timestamp DESC
             LIMIT ?
         """, (f"%{query}%", f"%{query}%", limit)).fetchall()
+        
+        if results:
+            return [dict(row) for row in results]
+        
+        # 2. Extract terms and try ANY match (OR logic)
+        # Handle "term1 OR term2" syntax and plain space-separated words
+        if ' OR ' in query.upper():
+            # Explicit OR syntax: "video OR poster OR pickle"
+            terms = [t.strip() for t in query.upper().split(' OR ')]
+            terms = [t for t in terms if t.lower() not in stop_words and len(t) > 1]
+        else:
+            # Space-separated: treat as implicit OR
+            terms = [t.strip('?,!.').lower() for t in query.split() 
+                     if t.lower() not in stop_words and len(t) > 2]
+        
+        if terms:
+            # Build OR query: (user_query LIKE '%term1%' OR user_query LIKE '%term2%' ...)
+            conditions = []
+            params = []
+            for term in terms:
+                conditions.append("(user_query LIKE ? OR jarvis_response LIKE ?)")
+                params.extend([f"%{term}%", f"%{term}%"])
+            
+            where_clause = " OR ".join(conditions)
+            params.append(limit)
+            
+            results = cursor.execute(f"""
+                SELECT * FROM conversations
+                WHERE {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, params).fetchall()
+            
+            if results:
+                return [dict(row) for row in results]
+        
+        # 3. Try metadata search (for queries about tools, providers, etc.)
+        results = cursor.execute("""
+            SELECT * FROM conversations
+            WHERE metadata LIKE ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (f"%{query}%", limit)).fetchall()
         
         return [dict(row) for row in results]
     

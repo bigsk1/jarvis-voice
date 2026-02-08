@@ -19,6 +19,7 @@ def main():
         
         query = args.get('query')
         limit = args.get('limit', 10)
+        web_conversation_id = args.get('web_conversation_id')
         
         if not query:
             result = {
@@ -29,9 +30,13 @@ def main():
             print(json.dumps(result))
             return result
         
-        # Search conversations
+        # Search conversations with tiered approach (exact -> OR terms -> metadata)
         db = get_memory_db()
-        conversations = db.search_conversations(query=query, limit=limit)
+        conversations = db.search_conversations(
+            query=query, 
+            limit=limit,
+            web_conversation_id=web_conversation_id
+        )
         db.close()
         
         if not conversations:

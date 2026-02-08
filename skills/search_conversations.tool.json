@@ -1,18 +1,22 @@
 {
   "enabled": true,
   "name": "search_conversations",
-  "description": "Search previous conversation history for a specific TOPIC or KEYWORD. Use ONLY when user asks to find conversations about a specific subject, like: 'did I ask about Bitcoin before?', 'when did I mention Flask?', 'show conversations about reminders'. Requires a 'query' parameter. For temporal queries like 'what was my last question?' or 'what did I just ask?', use 'get_recent_conversations' instead (no query needed, returns by time).",
+  "description": "Search previous conversation history for a specific TOPIC or KEYWORD. Use ONLY when user asks to find conversations about a specific subject, like: 'did I ask about Bitcoin before?', 'when did I mention Flask?', 'show conversations about reminders'. Supports multiple keywords (space-separated or 'term1 OR term2'). For temporal queries like 'what was my last question?', use 'get_recent_conversations' instead.",
   "parameters": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "What to search for in previous conversations (searches both user queries and responses)"
+        "description": "What to search for in previous conversations. Supports multiple keywords (e.g., 'video poster' or 'video OR poster') - will find conversations containing ANY of the terms"
       },
       "limit": {
         "type": "integer",
         "description": "Maximum number of conversations to return (default: 10)",
         "default": 10
+      },
+      "web_conversation_id": {
+        "type": "string",
+        "description": "Optional: filter to a specific web UI conversation by its ID (e.g., 'ebf30410')"
       }
     },
     "required": [

@@ -682,6 +682,10 @@ class ChatHandler:
             
             orchestrator.set_status_callback(status_callback)
             
+            # Set web conversation ID for tracking in conversation metadata
+            # This allows searching/filtering conversations by web chat session
+            orchestrator.set_web_conversation_id(conversation_id)
+            
             # Set up progress callback for real-time tool execution events
             # Check if progress events are enabled (default: True)
             from ..config import get_web_setting

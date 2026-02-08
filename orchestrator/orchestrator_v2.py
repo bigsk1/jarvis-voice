@@ -153,6 +153,8 @@ class Orchestrator:
         self.progress_callback = None
         # Cancel check callback - returns True if processing should be cancelled
         self.cancel_check = None
+        # Web conversation ID for tracking web UI chat sessions (stored in metadata)
+        self.web_conversation_id = None
     
     def set_status_callback(self, callback):
         """Set callback for status updates (for web UI to emit via WebSocket)."""
@@ -167,6 +169,14 @@ class Orchestrator:
         - routing(message)
         """
         self.progress_callback = callback
+    
+    def set_web_conversation_id(self, conversation_id: str):
+        """Set web UI conversation ID for tracking in metadata.
+        
+        This allows filtering conversations by web chat session when searching.
+        Only set this for web UI requests, not CLI/voice.
+        """
+        self.web_conversation_id = conversation_id
     
     def set_cancel_check(self, callback):
         """Set callback to check if processing should be cancelled.
@@ -1705,6 +1715,10 @@ Your BEST EFFORT response:"""
             
             # Add tool count
             metadata["tool_count"] = len(tools_used)
+            
+            # Add web conversation ID if this is a web UI request
+            if self.web_conversation_id:
+                metadata["web_conversation_id"] = self.web_conversation_id
             
             db = get_memory_db()
             db.log_conversation(
