@@ -58,6 +58,8 @@ logs/test/*.json
 tmp/
 tests/integration/logs
 tests/integration/logs/*
+skills/profiles/*
+!skills/profiles/.gitkeep
 
 # ===== Backup & Temp Files =====
 *.bak
