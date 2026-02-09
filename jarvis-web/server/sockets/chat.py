@@ -451,12 +451,80 @@ class ChatHandler:
                     # Include tools_used for assistant messages so LLM knows what tools were run
                     if role == 'assistant' and msg.get('tools_used'):
                         entry['tools_used'] = msg.get('tools_used')
+                    # Include key tool result data for follow-up capability
+                    if role == 'assistant' and msg.get('data'):
+                        tool_data = self._extract_followup_data(msg.get('data', {}))
+                        if tool_data:
+                            entry['tool_results'] = tool_data
                     history.append(entry)
             
             return history
         except Exception as e:
             print(f"[CHAT] Error getting conversation context: {e}")
             return []
+    
+    def _extract_followup_data(self, data: dict) -> dict:
+        """
+        Extract key data from tool results that enables follow-up actions.
+        Returns a dict of tool_name -> relevant fields for each tool result.
+        
+        This allows the LLM to:
+        - Edit/remix videos using stash_ref or video_id
+        - Reference previous images for variations
+        - Continue multi-step workflows
+        """
+        followup = {}
+        
+        # Fields we want to extract for follow-up capability
+        # These are the "actionable" fields that enable edits/remixes
+        FOLLOWUP_FIELDS = {
+            'generate_video': ['provider', 'model', 'duration', 'aspect_ratio', 'resolution', 
+                               'video_id', 'video_url', 'generated_from'],
+            'generate_image': ['provider', 'model', 'size', 'style'],
+            'generate_music': ['provider', 'model', 'duration'],
+            'stash': ['stash_ref', 'space_id', 'filename'],
+        }
+        
+        for key, value in data.items():
+            if not isinstance(value, dict):
+                continue
+            
+            extracted = {}
+            
+            # Extract stash_ref from nested 'saved' object (common pattern)
+            if 'saved' in value and isinstance(value['saved'], dict):
+                saved = value['saved']
+                if saved.get('stash_ref'):
+                    extracted['stash_ref'] = saved['stash_ref']
+                if saved.get('filename'):
+                    extracted['filename'] = saved['filename']
+            
+            # Direct stash_ref on the object
+            if value.get('stash_ref'):
+                extracted['stash_ref'] = value['stash_ref']
+            
+            # Get tool-specific fields
+            fields_to_extract = FOLLOWUP_FIELDS.get(key, [])
+            for field in fields_to_extract:
+                if value.get(field):
+                    extracted[field] = value[field]
+            
+            # Always include provider if present (needed for follow-ups)
+            if value.get('provider') and 'provider' not in extracted:
+                extracted['provider'] = value['provider']
+            
+            if extracted:
+                followup[key] = extracted
+        
+        # Also extract top-level stash info (from image uploads)
+        if data.get('stash') and isinstance(data['stash'], dict):
+            stash = data['stash']
+            followup['uploaded_image'] = {
+                'stash_ref': stash.get('stash_ref'),
+                'filename': stash.get('filename')
+            }
+        
+        return followup if followup else None
     
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,

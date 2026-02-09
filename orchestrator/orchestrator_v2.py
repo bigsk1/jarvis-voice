@@ -1348,7 +1348,7 @@ Your BEST EFFORT response:"""
         
         Args:
             current_query: User's current question/request
-            history: List of previous messages [{role: str, content: str}, ...]
+            history: List of previous messages [{role: str, content: str, tools_used: list, tool_results: dict}, ...]
             
         Returns:
             Enhanced query with conversation context
@@ -1356,8 +1356,9 @@ Your BEST EFFORT response:"""
         if not history:
             return current_query
         
-        # Limit to recent messages (last 10 exchanges)
-        recent = history[-20:]  # 10 user + 10 assistant max
+        # Use all messages passed - the caller (chat.py) already applies history_limit setting
+        # Don't truncate here to respect web UI's conversation.history_limit setting
+        recent = history
         
         context_lines = ["=== RECENT CONVERSATION CONTEXT ==="]
         
@@ -1365,6 +1366,7 @@ Your BEST EFFORT response:"""
             role = msg.get('role', 'user')
             content = msg.get('content', '')
             tools_used = msg.get('tools_used', [])
+            tool_results = msg.get('tool_results', {})
             
             # Truncate long messages
             if len(content) > 500:
@@ -1378,6 +1380,19 @@ Your BEST EFFORT response:"""
                 unique_tools = list(dict.fromkeys(tools_used))
                 tools_str = ", ".join(unique_tools)
                 context_lines.append(f"{prefix} [tools: {tools_str}]: {content}")
+                
+                # Include tool result data for follow-up capability
+                # This allows LLM to reference stash_refs, video_ids, providers for edits/remixes
+                if tool_results:
+                    for tool_name, result_data in tool_results.items():
+                        if isinstance(result_data, dict):
+                            # Format key fields concisely
+                            fields = []
+                            for k, v in result_data.items():
+                                if v:  # Skip None/empty values
+                                    fields.append(f"{k}={v}")
+                            if fields:
+                                context_lines.append(f"  └─ {tool_name} data: {', '.join(fields)}")
             else:
                 context_lines.append(f"{prefix}: {content}")
         
