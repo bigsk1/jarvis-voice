@@ -911,7 +911,6 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 | **Remote access** | Access from any device on network |
 | **No TTS cutoff** | Browser audio cleaner than speaker wake-up |
 | **Visual status updates** | See progress without audio |
-| **Tool blocking** | Restrict tools for web without affecting terminal |
 
 ---
 
@@ -949,44 +948,6 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 
 ---
 
-### Slash Commands (`/commands`)
-
-Type `/` in the chat input to see available commands. Commands modify how Jarvis processes your request.
-
-| Command | Icon | Description |
-|---------|------|-------------|
-| `/canvas` | 📄 | Research topic, then save comprehensive results to Canvas |
-| `/search` | 🌐 | Force native web search (excludes external search tools) |
-| `/recall` | 🧠 | Search memories and past conversations |
-| `/remember` | 💾 | Save information to long-term memory |
-| `/detailed` | 📝 | Get comprehensive response (no voice shortening) |
-| `/image` | 🖼️ | Generate an image with AI |
-| `/email` | ✉️ | Compose and send an email |
-| `/call` | 📞 | Make a phone call |
-| `/weather` | 🌤️ | Get weather information |
-| `/bash` | 💻 | Execute a shell command |
-
-**How Commands Work:**
-1. Commands inject instructions AFTER your message (so task executes first)
-2. Some commands exclude competing tools (e.g., `/search` excludes `mcp_fetch_fetch`)
-3. Commands can set response style (e.g., `/detailed` sets `response_style: detailed`)
-
-**File Location:** `jarvis-web/data/commands/*.json`
-
-**Example command definition (`canvas.json`):**
-```json
-{
-  "name": "canvas",
-  "description": "Use native search, then save to Canvas",
-  "icon": "📄",
-  "instruction": "USE YOUR NATIVE WEB SEARCH - NOT EXTERNAL TOOLS!...",
-  "exclude_tools": ["crypto_price", "mcp_fetch_fetch", "mcp_brave_search"],
-  "response_style": "detailed"
-}
-```
-
----
-
 ### @Prompts
 
 Type `@` in the chat input to see available prompts. Prompts inject methodology/guidelines for how to approach a task.
@@ -1015,10 +976,6 @@ Prompts are injected **BEFORE** the user's message to provide context first:
 ```
 This ensures the LLM understands the methodology before seeing the task.
 
-**Combining Commands + Prompts:**
-```
-/canvas @research kubernetes security best practices
-```
 This: Uses research methodology → Gathers comprehensive info → Saves to Canvas
 
 **File Location:** `jarvis-web/data/prompts/*.md`

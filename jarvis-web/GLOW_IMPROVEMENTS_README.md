@@ -36,7 +36,6 @@ New setting in ⚙️ Settings → General → **Holographic Glow Intensity**:
 
 ### New Files
 - `jarvis-web/client/css/glow-refinements.css` - New refined glow stylesheet
-- `docs/WEB_UI_IMPROVEMENTS.md` - Detailed design documentation
 
 ### Modified Files
 - `jarvis-web/client/index.html` - Added glow stylesheet + intensity control
