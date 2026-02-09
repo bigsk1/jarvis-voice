@@ -9,30 +9,52 @@ echo
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_ROOT"
 
-# Make Python scripts executable
-echo "📝 Making tool scripts executable..."
+# Make all scripts executable
+echo "📝 Making scripts executable..."
+
+# Root level shell scripts
+chmod +x *.sh 2>/dev/null || true
+
+# All bin scripts (no extension or any extension)
+chmod +x bin/* 2>/dev/null || true
+
+# Core Python directories
 chmod +x skills/*.py 2>/dev/null || true
-chmod +x bin/question-orchestrator.sh
-chmod +x bin/question-orchestrator-local.sh
-chmod +x orchestrator/*.py
-chmod +x lib/*.py
+chmod +x orchestrator/*.py 2>/dev/null || true
+chmod +x lib/*.py lib/*.sh 2>/dev/null || true
+chmod +x services/*.py 2>/dev/null || true
+chmod +x api/*.py 2>/dev/null || true
+
+# Web UIs (Flask apps - all nested Python files)
+find jarvis-web -name "*.py" -exec chmod +x {} \; 2>/dev/null || true
+find jarvis-canvas -name "*.py" -exec chmod +x {} \; 2>/dev/null || true
+find jarvis-memory -name "*.py" -exec chmod +x {} \; 2>/dev/null || true
+find jarvis-intelligence -name "*.py" -exec chmod +x {} \; 2>/dev/null || true
+chmod +x jarvis-monitor/*.py 2>/dev/null || true
+
+# Monitoring
+chmod +x monitoring/*.sh 2>/dev/null || true
+
+# Tests
+find tests -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
 
 echo "✅ Scripts are now executable"
 echo
 
-# Check Python dependencies
-echo "📦 Checking Python dependencies..."
-source ~/jarvis-venv/bin/activate || {
-    echo "❌ Virtual environment not found at ~/jarvis-venv"
-    echo "   Please activate your Python virtual environment first"
-    exit 1
-}
-
-# Install dependencies
-echo "Installing required packages..."
-pip install --quiet --upgrade anthropic openai requests
-
-echo "✅ Dependencies installed"
+# Check Python virtual environment
+echo "📦 Checking Python environment..."
+if [ -z "$VIRTUAL_ENV" ]; then
+    if [ -d "$HOME/jarvis-venv" ]; then
+        source ~/jarvis-venv/bin/activate
+        echo "✅ Activated ~/jarvis-venv"
+    else
+        echo "⚠️  No virtual environment active"
+        echo "   Create one first: uv venv ~/jarvis-venv && source ~/jarvis-venv/bin/activate"
+        exit 1
+    fi
+else
+    echo "✅ Using virtual environment: $VIRTUAL_ENV"
+fi
 echo
 
 # Verify tool registration
@@ -47,21 +69,17 @@ for tool in tools:
 "
 
 echo
-echo "✅ Setup complete!"
+echo "✅ Tool setup complete!"
 echo
 echo "📚 Next steps:"
-echo "  1. Configure your API key in config/cloud.env"
-echo "     Edit: ANTHROPIC_API_KEY=\"your-key-here\""
-echo
-echo "  2. Test a tool:"
-echo "     echo '{}' | ./skills/time.sh"
-echo
-echo "  3. Test the orchestrator:"
+echo "  1. Test the orchestrator:"
 echo "     ./orchestrator/orchestrator_v2.py cloud 'What time is it?'"
 echo
-echo "  4. Start Jarvis with tools:"
-echo "     jarvis"
+echo "  2. Start all services:"
+echo "     ./bin/start"
 echo
-echo "📖 Read TEST_TOOL_SYSTEM.md for comprehensive testing guide"
-echo "📖 Read TOOL_SYSTEM_SUMMARY.md for architecture overview"
+echo "  3. Or start wake word listener:"
+echo "     ./jarvis"
+echo
+echo "📖 See docs/DISASTER_RECOVERY.md for full setup guide"
 
