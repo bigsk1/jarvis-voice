@@ -939,7 +939,7 @@ wheels = [
 
 [[package]]
 name = "jarvis-voice"
-version = "1.0.0"
+version = "2.40.2"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1038,7 +1038,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = "==4.15.0" },
     { name = "urllib3", specifier = "==2.5.0" },
     { name = "xai-sdk", specifier = ">=1.6.1" },
-    { name = "yfinance" },
+    { name = "yfinance", specifier = ">=1.1.0" },
     { name = "yt-dlp", specifier = "==2025.12.8" },
 ]
 

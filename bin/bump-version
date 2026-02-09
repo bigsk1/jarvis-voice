@@ -84,6 +84,14 @@ if [[ -f "$PROJECT_ROOT/docs/README.md" ]]; then
     echo "  [OK] docs/README.md footer"
 fi
 
+# 5. Regenerate uv.lock if uv is available
+if command -v uv &> /dev/null; then
+    echo "  Regenerating uv.lock..."
+    (cd "$PROJECT_ROOT" && uv lock --quiet 2>/dev/null) && echo "  [OK] uv.lock" || echo "  [SKIP] uv.lock (uv lock failed)"
+else
+    echo "  [SKIP] uv.lock (uv not installed)"
+fi
+
 echo ""
 echo "Done. Version is now $NEW_VERSION"
 echo ""
