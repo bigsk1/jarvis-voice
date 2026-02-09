@@ -215,6 +215,9 @@ async function getCdnUrl(filename) {
 }
 
 async function copyToClipboard(text) {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+              (navigator.userAgent.includes('Mac') && navigator.maxTouchPoints > 1);
+    
     // Try modern API first
     if (navigator.clipboard && navigator.clipboard.writeText) {
         try {
@@ -225,7 +228,18 @@ async function copyToClipboard(text) {
         }
     }
     
-    // Fallback for non-HTTPS contexts
+    // iOS fallback: Use Web Share API to share URL (has "Copy" option)
+    if (isIOS && navigator.share) {
+        try {
+            await navigator.share({ url: text });
+            return true;  // User used share sheet (may have copied)
+        } catch (e) {
+            if (e.name === 'AbortError') return false;  // User cancelled
+            // Fall through to prompt
+        }
+    }
+    
+    // Fallback for non-HTTPS contexts (desktop)
     try {
         const textarea = document.createElement('textarea');
         textarea.value = text;
@@ -235,11 +249,20 @@ async function copyToClipboard(text) {
         textarea.select();
         const success = document.execCommand('copy');
         document.body.removeChild(textarea);
-        return success;
+        if (success) return true;
     } catch (e) {
-        console.error('Clipboard fallback failed:', e);
-        return false;
+        // Fall through to prompt
     }
+    
+    // Final fallback: Show prompt where user can manually copy
+    if (isIOS) {
+        // iOS: Use prompt() which allows native text selection/copy
+        window.prompt('Copy this URL:', text);
+        return true;  // Assume user copied from prompt
+    }
+    
+    console.log('CDN URL:', text);
+    return false;
 }
 
 function showToast(message, type = 'success') {
