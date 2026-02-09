@@ -1,116 +1,104 @@
 #!/bin/bash
-# Script to safely update .bashrc aliases for new Jarvis structure
+# Script to set up .bashrc aliases for Jarvis Voice Assistant
+# For fresh installs or updating existing aliases
 
 set -e
 
 echo "======================================"
-echo "  Update Jarvis Aliases"
+echo "  Jarvis Aliases Setup"
 echo "======================================"
 echo ""
 
 BASHRC="$HOME/.bashrc"
+JARVIS_ROOT="$HOME/jarvis-voice"
 
 # Check if .bashrc exists
 if [ ! -f "$BASHRC" ]; then
-    echo "❌ ~/.bashrc not found"
-    exit 1
+    echo "Creating ~/.bashrc..."
+    touch "$BASHRC"
 fi
 
-echo "📋 Current Jarvis aliases in ~/.bashrc:"
+echo "Checking for existing Jarvis aliases..."
 echo ""
-grep -n "alias jarvis" "$BASHRC" || echo "   (none found)"
-echo ""
+if grep -q "alias jarvis" "$BASHRC" 2>/dev/null; then
+    echo "Found existing aliases:"
+    grep -n "alias jarvis" "$BASHRC" || true
+    echo ""
+    read -p "Replace existing aliases? (y/n): " replace
+    if [[ "$replace" != "y" && "$replace" != "Y" ]]; then
+        echo "Aborted. No changes made."
+        exit 0
+    fi
+    
+    # Create backup
+    BACKUP="$HOME/.bashrc.backup-$(date +%Y%m%d-%H%M%S)"
+    cp "$BASHRC" "$BACKUP"
+    echo "Backup created: $BACKUP"
+    
+    # Remove old jarvis aliases
+    sed -i '/^alias jarvis/d' "$BASHRC"
+    sed -i '/^alias say/d' "$BASHRC"
+    sed -i '/^alias question/d' "$BASHRC"
+    sed -i '/^# Jarvis Voice Assistant/d' "$BASHRC"
+    sed -i '/^# Cloud mode/d' "$BASHRC"
+    sed -i '/^# Local mode/d' "$BASHRC"
+    sed -i '/^# Quick shortcuts/d' "$BASHRC"
+    sed -i '/^# Tools/d' "$BASHRC"
+    # Clean up any "# OLD:" commented lines from previous runs
+    sed -i '/^# OLD: alias jarvis/d' "$BASHRC"
+    sed -i '/^# OLD: alias say/d' "$BASHRC"
+    sed -i '/^# OLD: alias question/d' "$BASHRC"
+fi
 
-# Create backup
-BACKUP="$HOME/.bashrc.backup-$(date +%Y%m%d-%H%M%S)"
-cp "$BASHRC" "$BACKUP"
-echo "✅ Backup created: $BACKUP"
 echo ""
+echo "Adding Jarvis aliases..."
 
-# Offer options
-echo "Choose an option:"
-echo ""
-echo "1) UPDATE aliases to point to new structure (recommended)"
-echo "2) COMMENT OUT old aliases (keeps them for reference)"
-echo "3) EXIT without changes"
-echo ""
-read -p "Enter choice (1-3): " choice
+# Add new aliases
+cat >> "$BASHRC" << 'EOF'
 
-case $choice in
-    1)
-        echo ""
-        echo "Updating aliases..."
-        
-        # Comment out old aliases
-        sed -i 's/^alias jarvis=/# OLD: alias jarvis=/g' "$BASHRC"
-        sed -i 's/^alias jarvis-local=/# OLD: alias jarvis-local=/g' "$BASHRC"
-        sed -i 's/^alias say=/# OLD: alias say=/g' "$BASHRC"
-        sed -i 's/^alias say-local=/# OLD: alias say-local=/g' "$BASHRC"
-        sed -i 's/^alias question=/# OLD: alias question=/g' "$BASHRC"
-        sed -i 's/^alias question-mic=/# OLD: alias question-mic=/g' "$BASHRC"
-        sed -i 's/^alias question-local=/# OLD: alias question-local=/g' "$BASHRC"
-        sed -i 's/^alias question-mic-local=/# OLD: alias question-mic-local=/g' "$BASHRC"
-        
-        # Add new aliases
-        cat >> "$BASHRC" << 'EOF'
+# ============================================================================
+# Jarvis Voice Assistant
+# ============================================================================
 
-# Jarvis Voice Assistant - Structured Project (Updated $(date +%Y-%m-%d))
-# Cloud mode
+# Cloud mode (uses cloud APIs: Anthropic, xAI, OpenAI, etc.)
 alias jarvis="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/wake_jarvis.py"
 alias say="$HOME/jarvis-voice/bin/say.sh"
 alias question="$HOME/jarvis-voice/bin/question.sh"
 alias question-mic="$HOME/jarvis-voice/bin/question-mic.sh"
 
-# Local mode
+# Local mode (uses Ollama for LLM, local Whisper for STT)
 alias jarvis-local="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/wake_jarvis_local.py"
 alias say-local="$HOME/jarvis-voice/bin/say-local.sh"
 alias question-local="$HOME/jarvis-voice/bin/question-local.sh"
 alias question-mic-local="$HOME/jarvis-voice/bin/question-mic-local.sh"
 
+# Tools
+alias jarvis-d="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/jarvis-dashboard"
+alias jarvis-web="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/start web"
+alias jarvis-api="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/start api"
+
 # Quick shortcuts
 alias jarvis-cd="cd $HOME/jarvis-voice"
 alias jarvis-env="source $HOME/jarvis-venv/bin/activate"
+alias jarvis-logs="tail -f $HOME/jarvis-voice/logs/*.log"
 EOF
-        
-        echo "✅ Aliases updated!"
-        echo ""
-        echo "Reload with: source ~/.bashrc"
-        ;;
-        
-    2)
-        echo ""
-        echo "Commenting out old aliases..."
-        
-        sed -i 's/^alias jarvis=/# OLD: alias jarvis=/g' "$BASHRC"
-        sed -i 's/^alias jarvis-local=/# OLD: alias jarvis-local=/g' "$BASHRC"
-        sed -i 's/^alias say=/# OLD: alias say=/g' "$BASHRC"
-        sed -i 's/^alias say-local=/# OLD: alias say-local=/g' "$BASHRC"
-        sed -i 's/^alias question=/# OLD: alias question=/g' "$BASHRC"
-        sed -i 's/^alias question-mic=/# OLD: alias question-mic=/g' "$BASHRC"
-        sed -i 's/^alias question-local=/# OLD: alias question-local=/g' "$BASHRC"
-        sed -i 's/^alias question-mic-local=/# OLD: alias question-mic-local=/g' "$BASHRC"
-        
-        echo "✅ Old aliases commented out"
-        echo ""
-        echo "You can now use the new structure with explicit paths."
-        echo "Reload with: source ~/.bashrc"
-        ;;
-        
-    3)
-        echo ""
-        echo "No changes made."
-        exit 0
-        ;;
-        
-    *)
-        echo "Invalid choice. No changes made."
-        exit 1
-        ;;
-esac
 
 echo ""
-echo "======================================"
-echo "New aliases (copy manually if needed):"
-echo "======================================"
-cat "$HOME/jarvis-voice/.bashrc-aliases"
-
+echo "✅ Aliases added to ~/.bashrc"
+echo ""
+echo "Reload with:"
+echo "  source ~/.bashrc"
+echo ""
+echo "Available commands:"
+echo "  jarvis          - Start wake word listener (cloud mode)"
+echo "  jarvis-local    - Start wake word listener (local mode)"
+echo "  jarvis-d        - Open TUI dashboard"
+echo "  jarvis-web      - Start web UI"
+echo "  jarvis-api      - Start API server"
+echo "  say             - Text-to-speech"
+echo "  question        - Ask a question (text input)"
+echo "  question-mic    - Ask a question (voice input)"
+echo "  jarvis-cd       - cd to jarvis-voice directory"
+echo "  jarvis-env      - Activate Python venv"
+echo "  jarvis-logs     - Tail log files"
+echo ""

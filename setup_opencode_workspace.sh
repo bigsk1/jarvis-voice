@@ -37,22 +37,46 @@ mkdir -p "$WORKSPACE_ROOT/deployments"
 cat > ~/jarvis-workspace/README.md << 'EOF'
 # Jarvis Workspace
 
-This workspace is used by Jarvis + OpenCode for building projects, experiments, and deployments.
+This directory contains projects built by Jarvis + OpenCode.
 
-## Structure
+## Git Strategy
 
-- **projects/** - Long-term projects organized by type
+**This workspace itself is NOT tracked by jarvis-voice git.**
+
+However, you can (and should) initialize git repos for individual projects:
+
+```bash
+# Example: Create a website project with git
+cd ~/jarvis-workspace/projects/websites/my-portfolio
+git init
+git add .
+git commit -m "Initial commit"
+git remote add origin https://github.com/yourusername/my-portfolio.git
+git push -u origin main
+```
+
+## Directory Structure
+
+- **projects/** - Long-term projects (can have their own git repos)
   - **websites/** - Web applications and sites
   - **scripts/** - Utility scripts and tools
   - **experiments/** - Experimental code and prototypes
-- **temp/** - Temporary builds (auto-cleanup after 24h)
+- **temp/** - Temporary builds (auto-cleanup after 24h, NEVER git track)
 - **deployments/** - Ready-to-deploy artifacts
+
+## Backup Strategy
+
+Since this is outside git, consider:
+1. Individual git repos per project
+2. Cloud sync (Dropbox, Google Drive, etc.)
+3. Regular backups of important projects
+4. Keep source in jarvis-voice repo, builds here
 
 ## Security
 
-- This directory is isolated from the Jarvis codebase
-- OpenCode can only modify files within this workspace
-- Jarvis system files in `/home/boss/jarvis-voice` are read-only
+- Jarvis system files are READ-ONLY from OpenCode builds
+- This workspace is isolated and safe for experimentation
+- Each project can have its own .gitignore
 
 ## Usage
 
@@ -60,6 +84,11 @@ When you say:
 - "Hey Jarvis, build a website" → Creates in `projects/websites/`
 - "Hey Jarvis, test this code" → Creates in `temp/`
 - "Hey Jarvis, deploy my app" → Reads from `deployments/`
+
+---
+
+**Note**: If you accidentally build something here and want to move it to a tracked repo, 
+just copy the files to a proper git repository location.
 EOF
 
 cat > ~/jarvis-workspace/projects/README.md << 'EOF'

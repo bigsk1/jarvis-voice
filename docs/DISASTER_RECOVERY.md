@@ -4,7 +4,7 @@ This is a rebuild guide. If you're reading this, either my server died or you're
 
 Fair warning: this project has hardcoded IPs, paths that assume a user named "boss", and other quirks from being a personal project. You'll need to adapt things to your setup. The IPs throughout this doc are from my network — change them to match yours.
 
-**Time estimate:** 2-4 hours depending on how much you're restoring vs starting fresh.
+Best method is use llm like opus 4.6 and after cloning the repo have it use this guide to get everything setup. Can troubleshoot issues if they accure (system packages or python libs and paths to get going quickly) also have aliases in .bashrc but make sure $HOME/jarvis-venv is were your python enviroment is. see 
 
 ---
 
@@ -34,7 +34,7 @@ Fair warning: this project has hardcoded IPs, paths that assume a user named "bo
 - Speakers or audio output
 - Ethernet preferred over WiFi
 
-### My network IPs (change these to your local ip 192.168.1.xxx)
+### Network IPs (change these to your local ip 192.168.1.xxx or leave to localhost if running everything on same server)
 - Jarvis server: `localhost`
 - Ollama server: `localhost`
 - n8n (Docker): same host or `localhost`
@@ -160,11 +160,31 @@ These paths are hardcoded throughout the codebase:
 /home/boss/
 ├── jarvis-voice/          # Main codebase
 ├── jarvis-venv/           # Python virtual environment
-├── jarvis-workspace/      # OpenCode projects
+├── jarvis-workspace/      # OpenCode projects (autonomous coding sandbox)
 └── .config/opencode/      # OpenCode config
+    └── plugin/            # OpenCode safety plugins
 ```
 
 **Don't change these paths** unless you want to grep through everything and update references.
+
+### OpenCode Plugin Setup
+
+Copy workspace protection plugins (prevents OpenCode from modifying Jarvis code):
+
+```bash
+# Create plugin directory
+mkdir -p ~/.config/opencode/plugin
+
+# Copy plugins from repo
+cp ~/jarvis-voice/docs/opencode/plugin/*.js ~/.config/opencode/plugin/
+cp ~/jarvis-voice/docs/opencode/plugin/README.md ~/.config/opencode/plugin/
+
+# Verify
+ls ~/.config/opencode/plugin/
+# Should show: 00-workspace-protection.js  README.md
+```
+
+See: `docs/opencode/OPENCODE_PLUGINS.md` for details.
 
 ---
 
@@ -281,6 +301,9 @@ Should see:
 - OpenAI: https://platform.openai.com/api-keys
 - Brave: https://api.search.brave.com/
 
+**Note might need to comment out for vars in env if not using certain tools or leave "" empty**
+- Tools like stash and memory tools need to stay enabled = true
+
 ### Step 4: Update Network URLs (if IPs changed)
 
 ```bash
@@ -314,7 +337,7 @@ sqlite3 jarvis_memory_local.db "SELECT COUNT(*) FROM memories;"
 
 ```bash
 # They'll be auto-created on first run, but you'll lose history
-# Better: Restore from your latest rsync backup!
+# Better: Restore from your latest rsync backup! if availible
 ```
 
 ### Step 2: Test Database Access
@@ -338,7 +361,7 @@ TEST
 
 ---
 
-## n8n Setup (Docker)
+## n8n Setup (Docker) OPTIONAL!
 
 ### Step 1: Install Docker (if not done)
 
@@ -353,8 +376,10 @@ sudo usermod -aG docker $USER
 
 ### Step 2: Create n8n Container
 
+- see docs/n8n/
+
 ```bash
-# Create n8n data directory
+# Create n8n data directory or install on another host
 mkdir -p ~/.n8n
 
 # Run n8n container
@@ -419,7 +444,7 @@ See [`docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`](n8n/docs/GOOGLE_CALENDAR_SYNC.md) 
 # 5. Activate workflow
 ```
 
-**Required workflows:**
+**Required workflows if using these systems:**
 1. **Jarvis → Send Email** - Email sending via SMTP
 2. **Jarvis → Google Calendar Sync** - Reminder to calendar
 3. **Google Calendar → Jarvis Sync** - Calendar to reminder (with update/delete)
@@ -441,81 +466,74 @@ N8N_LOCAL_API_KEY="your-api-key-here"
 
 ---
 
-## Systemd Services
+## Starting Jarvis Services
 
-### Step 1: Install Service Files
+### Primary Method: tmux Sessions (Recommended)
 
-```bash
-cd /home/boss/jarvis-voice/systemd
-
-# Copy to systemd directory
-sudo cp jarvis-api.service /etc/systemd/system/
-sudo cp reminder-scheduler.service /etc/systemd/system/
-sudo cp opencode-agent.service /etc/systemd/system/
-sudo cp jarvis-follow-up.service /etc/systemd/system/
-sudo cp jarvis-self-healing.service /etc/systemd/system/
-
-# Reload systemd
-sudo systemctl daemon-reload
-```
-
-### Step 2: Verify Service Paths
-
-**CRITICAL:** Services reference `/home/boss/jarvis-voice`. Verify:
+Jarvis services run in tmux sessions, managed by `./bin/start`:
 
 ```bash
-grep "WorkingDirectory" /etc/systemd/system/jarvis-api.service
-# Should show: WorkingDirectory=/home/boss/jarvis-voice
+cd /home/boss/jarvis-voice
+source ~/jarvis-venv/bin/activate
 
-grep "ExecStart" /etc/systemd/system/jarvis-api.service
-# Should show: /home/boss/jarvis-venv/bin/python
-```
+# Start all services
+./bin/start
 
-**If paths wrong, edit services:**
-```bash
-sudo systemctl edit --full jarvis-api.service
-# Update WorkingDirectory and ExecStart paths
-```
-
-### Step 3: Enable and Start Services
-
-```bash
-# Enable services to start on boot
-sudo systemctl enable jarvis-api.service
-sudo systemctl enable reminder-scheduler.service
-sudo systemctl enable opencode-agent.service
-sudo systemctl enable jarvis-follow-up.service
-sudo systemctl enable jarvis-self-healing.service
-
-# Start services
-sudo systemctl start jarvis-api.service
-sudo systemctl start reminder-scheduler.service
-sudo systemctl start opencode-agent.service
-sudo systemctl start jarvis-follow-up.service
-sudo systemctl start jarvis-self-healing.service
+# Or start specific services
+./bin/start api        # API server only
+./bin/start web        # Web UI only
+./bin/start --ui-only  # Web, Canvas, Memory (no API)
 
 # Check status
-sudo systemctl status jarvis-api.service
-sudo systemctl status reminder-scheduler.service
+./bin/start --list
+
+# Stop all
+./bin/start --stop
 ```
 
-### Step 4: Verify Services Running
+**tmux session names:**
+- `jarvis-api` - Main API server (port 5050)
+- `jarvis-services` - Background services
+- `jarvis-web` - Web UI (port 3000)
+- `jarvis-canvas` - Canvas service (port 5001)
+- `jarvis-memory` - Memory service (port 5002)
+- `jarvis-intelligence` - Intelligence service (port 5003)
+
+**Attach to a session:**
+```bash
+tmux attach -t jarvis-api    # View API logs
+tmux attach -t jarvis-web    # View web UI logs
+# Detach: Ctrl+B then D
+```
+
+### TUI Dashboard
+
+For monitoring all services:
+```bash
+./bin/jarvis-dashboard
+# Or with alias:
+jarvis-d
+```
+
+### Systemd Service (Optional - OpenCode Only)
+
+Only one systemd service exists for OpenCode server:
 
 ```bash
-# Check all Jarvis services
-systemctl list-units --type=service --state=running | grep jarvis
+# Install (if using OpenCode integration)
+sudo cp /home/boss/jarvis-voice/systemd/opencode-jarvis.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable opencode-jarvis.service
+sudo systemctl start opencode-jarvis.service
 
-# Check logs
-sudo journalctl -u jarvis-api.service -n 50 --no-pager
-sudo journalctl -u reminder-scheduler.service -n 20 --no-pager
+# Check status
+sudo systemctl status opencode-jarvis.service
+sudo journalctl -u opencode-jarvis.service -n 50 --no-pager
 ```
 
-**Expected output:**
-- jarvis-api.service - active (running)
-- reminder-scheduler.service - active (running)
-- opencode-agent.service - active (running)
-- jarvis-follow-up.service - active (running)
-- jarvis-self-healing.service - active (running)
+**Note:** The main Jarvis services (API, Web, etc.) run via tmux, not systemd.
+This allows easy log viewing, debugging, and manual restarts during development.
+could always run on systemd later
 
 ---
 
@@ -709,13 +727,13 @@ nano config/cloud.env
 
 **Service fails to start:**
 ```bash
-# Check logs
-sudo journalctl -u jarvis-api.service -n 100
+# Check tmux session status
+./bin/start --list
 
-# Check paths
-grep "WorkingDirectory\|ExecStart" /etc/systemd/system/jarvis-api.service
+# Attach to session and check errors
+tmux attach -t jarvis-api
 
-# Test manually
+# Test API manually
 cd /home/boss/jarvis-voice
 source ~/jarvis-venv/bin/activate
 python api/main.py  # Should start API
@@ -738,8 +756,8 @@ chmod +x /home/boss/jarvis-voice/bin/*
 lsof | grep jarvis_memory.db
 
 # Restart services
-sudo systemctl restart jarvis-api.service
-sudo systemctl restart reminder-scheduler.service
+./bin/start --stop
+./bin/start
 ```
 
 **Corrupted database:**
@@ -825,15 +843,16 @@ docker inspect n8n | grep IPAddress
 
 **Jarvis API unreachable:**
 ```bash
-# Check API is running
-sudo systemctl status jarvis-api.service
-curl http://localhost:8880/api/health
+# Check API is running (tmux session)
+./bin/start --list
+tmux attach -t jarvis-api
 
-# Check firewall
-sudo ufw allow 8880/tcp
+# Test API health
+curl http://localhost:5050/api/health
 
-# Check from other machine
-curl http://localhost:8880/api/health
+# Restart API
+./bin/start --stop
+./bin/start api
 ```
 
 ### Memory/Performance Issues
@@ -844,8 +863,8 @@ curl http://localhost:8880/api/health
 htop
 
 # Restart services
-sudo systemctl restart jarvis-api.service
-sudo systemctl restart opencode-agent.service
+./bin/start --stop
+./bin/start
 
 # Adjust LLM context window in config
 nano config/cloud.env
@@ -875,10 +894,11 @@ Once everything is working, verify:
 - [ ] Reminders sync to Google Calendar
 - [ ] Email tool sends emails successfully
 - [ ] API server responds on port 8880
-- [ ] All systemd services running and enabled
+- [ ] All tmux sessions running (./bin/start --list)
 - [ ] n8n workflows active and webhooks responding
 - [ ] Logs being written to logs/ directory
 - [ ] OpenCode can create projects in ~/jarvis-workspace
+- [ ] OpenCode plugins installed (~/.config/opencode/plugin/)
 
 **Optional but recommended:**
 - [ ] Set up cron job for daily database backups
@@ -893,29 +913,44 @@ Once everything is working, verify:
 
 ### Start/Stop Services
 ```bash
-# Start all
-sudo systemctl start jarvis-api reminder-scheduler opencode-agent jarvis-follow-up jarvis-self-healing
+# Start all (tmux sessions)
+./bin/start
 
 # Stop all
-sudo systemctl stop jarvis-api reminder-scheduler opencode-agent jarvis-follow-up jarvis-self-healing
+./bin/start --stop
+
+# Check status
+./bin/start --list
+
+# View dashboard
+./bin/jarvis-dashboard
 
 # Restart API only
-sudo systemctl restart jarvis-api
+./bin/start --stop
+./bin/start api
+
+# Attach to session for debugging
+tmux attach -t jarvis-api
+tmux attach -t jarvis-web
+# Detach: Ctrl+B then D
 ```
 
 ### View Logs
 ```bash
-# API logs
-sudo journalctl -u jarvis-api.service -f
+# API logs (attach to tmux session)
+tmux attach -t jarvis-api
 
-# Reminder scheduler
-sudo journalctl -u reminder-scheduler.service -f
+# Web UI logs
+tmux attach -t jarvis-web
 
 # Tool execution logs
 tail -f logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl
 
 # n8n logs
 docker logs n8n --tail 100 -f
+
+# OpenCode logs (if using systemd service)
+sudo journalctl -u opencode-jarvis.service -f
 ```
 
 ### Test Audio

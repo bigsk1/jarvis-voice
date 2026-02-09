@@ -1,10 +1,29 @@
 # OpenCode Plugins Integration
 
-> **Plugin Location**: `~/.config/opencode/plugin/` (global, applies to all OpenCode sessions)
+> **Plugin Location**: `~/.config/opencode/plugin/` (global, applies to all OpenCode sessions)  
+> **Source Files**: `docs/opencode/plugin/` (in this repo)
 
 OpenCode plugins extend OpenCode's capabilities and enforce safety boundaries when Jarvis delegates tasks to it.
 
-**Last Updated**: November 15, 2025
+**Last Updated**: February 2026
+
+---
+
+## Quick Setup
+
+Copy plugin files from repo to OpenCode config:
+
+```bash
+# Create plugin directory if it doesn't exist
+mkdir -p ~/.config/opencode/plugin
+
+# Copy plugins from repo
+cp ~/jarvis-voice/docs/opencode/plugin/*.js ~/.config/opencode/plugin/
+cp ~/jarvis-voice/docs/opencode/plugin/README.md ~/.config/opencode/plugin/
+
+# Verify
+ls -la ~/.config/opencode/plugin/
+```
 
 ---
 
