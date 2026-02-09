@@ -84,6 +84,7 @@ function renderGallery() {
         <div class="video-card" data-index="${index}">
             <div class="video-wrapper" onclick="openLightboxByIndex(${index})">
                 <video data-src="/api/gallery/videos/${encodeURIComponent(vid.name)}" 
+                       poster="/api/gallery/videos/${encodeURIComponent(vid.name)}/thumbnail"
                        preload="none"
                        muted></video>
                 <div class="video-play-overlay">
@@ -270,14 +271,48 @@ function downloadVideo() {
     if (currentVideo) downloadDirect(currentVideo);
 }
 
-function downloadDirect(filename) {
-    const a = document.createElement('a');
-    a.href = `/api/gallery/videos/${encodeURIComponent(filename)}`;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showToast('Download started');
+async function downloadDirect(filename) {
+    // Use download endpoint with Content-Disposition header
+    const url = `/api/gallery/videos/${encodeURIComponent(filename)}/download`;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    
+    try {
+        showToast('Preparing video...');
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const blob = await response.blob();
+        // Ensure .mp4 extension for iOS to recognize as video
+        const safeName = filename.endsWith('.mp4') ? filename : `${filename}.mp4`;
+        const file = new File([blob], safeName, { type: 'video/mp4' });
+
+        if (isIOS && navigator.canShare && navigator.canShare({ files: [file] })) {
+            // CRITICAL: Only pass 'files'. Adding title/text breaks "Save Video" option.
+            await navigator.share({ files: [file] });
+            showToast('Done!');
+        } else {
+            // Desktop and fallback
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = safeName;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
+            }, 100);
+            
+            showToast('Download started');
+        }
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            console.error('Download failed:', err);
+            showToast('Download failed', 'error');
+        }
+    }
 }
 
 async function deleteVideo(filename) {

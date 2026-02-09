@@ -186,7 +186,7 @@ def list_gallery_images():
 
 @gallery_bp.route('/api/gallery/images/<filename>')
 def serve_gallery_image(filename):
-    """Serve an image from the gallery."""
+    """Serve an image from the gallery (inline)."""
     # Security: prevent path traversal
     if '..' in filename or '/' in filename:
         abort(400, "Invalid filename")
@@ -196,6 +196,23 @@ def serve_gallery_image(filename):
         abort(404, "Image not found")
     
     return send_file(filepath)
+
+
+@gallery_bp.route('/api/gallery/images/<filename>/download')
+def download_gallery_image(filename):
+    """
+    Download an image with Content-Disposition: attachment header.
+    This triggers Safari's native download prompt on iOS.
+    """
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename:
+        abort(400, "Invalid filename")
+    
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        abort(404, "Image not found")
+    
+    return send_file(filepath, as_attachment=True, download_name=filename)
 
 
 @gallery_bp.route('/api/gallery/images/<filename>', methods=['DELETE'])

@@ -228,7 +228,7 @@ def list_gallery_videos():
 
 @video_gallery_bp.route('/api/gallery/videos/<filename>')
 def serve_gallery_video(filename):
-    """Serve a video from the gallery."""
+    """Serve a video from the gallery (inline/streaming)."""
     # Security: prevent path traversal
     if '..' in filename or '/' in filename:
         abort(400, "Invalid filename")
@@ -238,6 +238,82 @@ def serve_gallery_video(filename):
         abort(404, "Video not found")
     
     return send_file(filepath)
+
+
+@video_gallery_bp.route('/api/gallery/videos/<filename>/download')
+def download_gallery_video(filename):
+    """
+    Download a video with Content-Disposition: attachment header.
+    This triggers Safari's native download prompt on iOS.
+    """
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename:
+        abort(400, "Invalid filename")
+    
+    filepath = GENERATED_VIDEOS_DIR / filename
+    if not filepath.exists():
+        abort(404, "Video not found")
+    
+    return send_file(filepath, as_attachment=True, download_name=filename)
+
+
+# Thumbnail cache directory
+THUMBNAIL_CACHE_DIR = GENERATED_VIDEOS_DIR / ".thumbnails"
+
+
+@video_gallery_bp.route('/api/gallery/videos/<filename>/thumbnail')
+def serve_video_thumbnail(filename):
+    """
+    Serve a thumbnail image for a video (first frame).
+    Thumbnails are cached to avoid regenerating on every request.
+    """
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename:
+        abort(400, "Invalid filename")
+    
+    video_path = GENERATED_VIDEOS_DIR / filename
+    if not video_path.exists():
+        abort(404, "Video not found")
+    
+    # Create thumbnail cache directory if needed
+    THUMBNAIL_CACHE_DIR.mkdir(exist_ok=True)
+    
+    # Thumbnail filename: video name + .jpg
+    thumb_name = Path(filename).stem + ".jpg"
+    thumb_path = THUMBNAIL_CACHE_DIR / thumb_name
+    
+    # Check if thumbnail exists and is newer than video
+    if thumb_path.exists():
+        if thumb_path.stat().st_mtime >= video_path.stat().st_mtime:
+            return send_file(thumb_path, mimetype='image/jpeg')
+    
+    # Generate thumbnail using ffmpeg (extract first frame)
+    try:
+        result = subprocess.run(
+            [
+                'ffmpeg', '-y',           # Overwrite output
+                '-i', str(video_path),    # Input video
+                '-vframes', '1',          # Extract 1 frame
+                '-vf', 'scale=480:-1',    # Scale to 480px width, maintain aspect
+                '-q:v', '3',              # JPEG quality (2-5 is good)
+                str(thumb_path)           # Output thumbnail
+            ],
+            capture_output=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0 and thumb_path.exists():
+            return send_file(thumb_path, mimetype='image/jpeg')
+        else:
+            # ffmpeg failed - return a placeholder or 404
+            print(f"⚠️  Failed to generate thumbnail for {filename}: {result.stderr.decode()[:200]}")
+            abort(500, "Failed to generate thumbnail")
+            
+    except subprocess.TimeoutExpired:
+        abort(500, "Thumbnail generation timed out")
+    except Exception as e:
+        print(f"⚠️  Thumbnail error for {filename}: {e}")
+        abort(500, str(e))
 
 
 @video_gallery_bp.route('/api/gallery/videos/<filename>', methods=['DELETE'])
@@ -255,6 +331,13 @@ def delete_gallery_video(filename):
         # Delete the video file
         filepath.unlink()
         print(f"🗑️  Deleted gallery video: {filename}")
+        
+        # Delete cached thumbnail if exists
+        thumb_name = Path(filename).stem + ".jpg"
+        thumb_path = THUMBNAIL_CACHE_DIR / thumb_name
+        if thumb_path.exists():
+            thumb_path.unlink()
+            print(f"🗑️  Deleted thumbnail: {thumb_name}")
         
         # Remove from catalog
         catalog = load_video_catalog()

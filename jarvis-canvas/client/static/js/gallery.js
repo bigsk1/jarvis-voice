@@ -268,13 +268,50 @@ function downloadImage() {
     if (currentImage) downloadDirect(currentImage);
 }
 
-function downloadDirect(filename) {
-    const a = document.createElement('a');
-    a.href = `/api/gallery/images/${encodeURIComponent(filename)}`;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+async function downloadDirect(filename) {
+    // Use download endpoint with Content-Disposition header
+    const url = `/api/gallery/images/${encodeURIComponent(filename)}/download`;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+              (navigator.userAgent.includes('Mac') && navigator.maxTouchPoints > 1);
+    
+    try {
+        showToast('Preparing image...');
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const blob = await response.blob();
+        // Determine proper extension and mime type
+        const ext = filename.split('.').pop()?.toLowerCase() || 'png';
+        const mimeMap = { 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp', 'gif': 'image/gif' };
+        const mimeType = mimeMap[ext] || blob.type || 'image/png';
+        const file = new File([blob], filename, { type: mimeType });
+
+        if (isIOS && navigator.canShare && navigator.canShare({ files: [file] })) {
+            // CRITICAL: Only pass 'files'. Adding title/text breaks "Save Image" option.
+            await navigator.share({ files: [file] });
+            showToast('Done!');
+        } else {
+            // Desktop and fallback
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
+            }, 100);
+            
+            showToast('Download started');
+        }
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            console.error('Download failed:', err);
+            showToast('Download failed', 'error');
+        }
+    }
 }
 
 async function deleteImage(filename) {

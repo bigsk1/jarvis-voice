@@ -90,6 +90,7 @@ data/.email_rate_limit
 data/.webhook_rate_limit
 data/canvas/*
 data/generated_videos/*
+data/generated_videos/.thumbnails/
 data/generated_music/*
 docs/personal
 
