@@ -517,7 +517,7 @@ graph LR
 | Variable | Impact | Example Values |
 |----------|--------|----------------|
 | `LLM_PROVIDER` | Which LLM to use | `xai`, `anthropic`, `openai`, `ollama` |
-| `XAI_MODEL` | xAI Grok model (2M context!) | `grok-4-fast-reasoning-latest` ⭐ RECOMMENDED |
+| `XAI_MODEL` | xAI Grok model (2M context!) | `grok-4-1-fast-non-reasoning` ⭐ RECOMMENDED |
 | `ANTHROPIC_MODEL` | Cloud model selection | `claude-sonnet-4-5-20250929` |
 | `OLLAMA_MODEL` | Local model selection | `qwen3:14b`, `qwen3-vl`, `deepseek-r1` |
 | `JARVIS_DEBUG_THINKING` | Show LLM reasoning | `true`, `false` |

@@ -196,7 +196,7 @@ avg by (model) (
 count by (model) (count_over_time({job="jarvis", log_type="llm"} | json [24h]))
 ```
 
-**Result**: Compare average response times for grok-4-fast-reasoning-latest, claude-sonnet-4-5, qwen3-vl, etc.
+**Result**: Compare average response times for grok-4-1-fast-non-reasoning, claude-sonnet-4-5, qwen3-vl, etc.
 
 ### **Scenario 3: "What was Jarvis doing at 2pm yesterday?"**
 

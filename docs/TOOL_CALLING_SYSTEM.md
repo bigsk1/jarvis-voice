@@ -30,7 +30,7 @@ OPENAI_API_KEY="sk-your-key-here"
 # Or use xAI Grok-4-fast
 LLM_PROVIDER="xai"
 XAI_API_KEY="xai-your-key-here"
-XAI_MODEL="grok-4-fast-reasoning-latest"
+XAI_MODEL="grok-4-1-fast-non-reasoning"
 
 ### 3. Test It
 
@@ -264,7 +264,7 @@ bin/
 ```bash
 LLM_PROVIDER="xai"
 XAI_API_KEY="xai-..."
-XAI_MODEL="grok-4-fast-reasoning-latest"
+XAI_MODEL="grok-4-1-fast-non-reasoning"
 ```
 
 ### To Anthropic Claude

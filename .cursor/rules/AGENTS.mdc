@@ -431,7 +431,7 @@ config/
 | Variable | Purpose | Example |
 |----------|---------|---------|
 | `LLM_PROVIDER` | Main LLM | `xai`, `anthropic`, `openai`, `ollama` |
-| `XAI_MODEL` | xAI Grok model (2M context!) | `grok-4-fast-reasoning-latest` |
+| `XAI_MODEL` | xAI Grok model (2M context!) | `grok-4-1-fast-non-reasoning` |
 | `ANTHROPIC_MODEL` | Claude model | `claude-sonnet-4-5-20250929` |
 | `OLLAMA_MODEL` | Local model | `qwen3-vl`, `qwen2.5:7b` |
 | `OPENCODE_PROVIDER` | OpenCode LLM | `anthropic` (recommended) |

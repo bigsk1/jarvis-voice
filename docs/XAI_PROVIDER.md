@@ -258,8 +258,8 @@ LLM_PROVIDER="xai"
 XAI_API_KEY="xai-..."
 
 # Model Selection
-# Recommended: grok-4-fast-reasoning-latest (reasoning + 2M context)
-XAI_MODEL="grok-4-fast-reasoning-latest"
+# Recommended: grok-4-1-fast-non-reasoning (reasoning + 2M context)
+XAI_MODEL="grok-4-1-fast-non-reasoning"
 
 # Native Web Search (NEW!)
 # When true: Grok searches web + X posts internally (no external tool calls)
@@ -293,14 +293,14 @@ XAI_SEARCH=true
 
 | Model | Context | Use Case | Reasoning |
 |-------|---------|----------|-----------|
-| `grok-4-fast-reasoning-latest` | 2M | **Best overall** | ✅ Yes |
+| `grok-4-1-fast-non-reasoning` | 2M | **Best overall** | ✅ Yes |
 | `grok-4-1-fast-reasoning-latest` | 2M | Latest reasoning | ✅ Yes |
 | `grok-4-fast-non-reasoning-latest` | 2M | Fast, no reasoning | ❌ No |
 | `grok-4-1-fast-non-reasoning-latest` | 2M | Latest, no reasoning | ❌ No |
 
 **Pricing**: All grok-4-fast models: **$0.20 input / $0.50 output**
 
-**Recommendation**: Use `grok-4-fast-reasoning-latest` - same price, better quality.
+**Recommendation**: Use `grok-4-1-fast-non-reasoning` - same price, better quality.
 
 ### Grok Code Fast (256K Context)
 
@@ -391,7 +391,7 @@ Reasoning models (`*-reasoning-*`) perform extended internal thinking before res
 
 ### When to Use Reasoning Models
 
-✅ **Use reasoning** (`grok-4-fast-reasoning-latest`):
+✅ **Use reasoning** (`grok-4-1-fast-non-reasoning`):
 - Complex multi-step tasks
 - Financial decisions (e.g., "Should I invest?")
 - Code debugging
@@ -485,7 +485,7 @@ Assuming 90% cache hit rate after first query:
    
    # To:
    LLM_PROVIDER="xai"
-   XAI_MODEL="grok-4-fast-reasoning-latest"
+   XAI_MODEL="grok-4-1-fast-non-reasoning"
    XAI_API_KEY="xai-..."  # Get from console.x.ai
    ```
 
@@ -510,7 +510,7 @@ Assuming 90% cache hit rate after first query:
    
    # To:
    LLM_PROVIDER="xai"
-   XAI_MODEL="grok-4-fast-reasoning-latest"
+   XAI_MODEL="grok-4-1-fast-non-reasoning"
    XAI_API_KEY="xai-..."
    ```
 
@@ -546,7 +546,7 @@ Jarvis's `LLMProvider` abstraction means **zero code changes** needed. Just upda
 
 ### Q: Should I use reasoning or non-reasoning models?
 
-**A**: **Always use reasoning models** (`grok-4-fast-reasoning-latest`). They're the same price, same speed, but give better quality answers. There's literally no downside.
+**A**: **Always use reasoning models** (`grok-4-1-fast-non-reasoning`). They're the same price, same speed, but give better quality answers. There's literally no downside.
 
 ### Q: What about rate limits?
 

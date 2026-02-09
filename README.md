@@ -554,7 +554,7 @@ nano config/cloud.env  # Add your API keys
 # Recommended cloud provider: xAI Grok
 # LLM_PROVIDER="xai"
 # XAI_API_KEY="xai-..."  # Get from https://console.x.ai
-# XAI_MODEL="grok-4-fast-reasoning-latest"  # 2M context, $0.20/$0.50, reasoning mode
+# XAI_MODEL="grok-4-1-fast-non-reasoning"  # 2M context, $0.20/$0.50, reasoning mode
 
 # For local mode (Ollama)
 cp config/local.env.example config/local.env
