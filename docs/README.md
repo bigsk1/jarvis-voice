@@ -46,7 +46,7 @@
 - **[ssh/README.md](ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)
 - **[docker-tool/README.md](docker-tool/README.md)** - 🐳 **Docker Control** (containers, compose, images, networks, volumes, exec, prune)
 - **[DEEP_MEMORY_SEARCH.md](DEEP_MEMORY_SEARCH.md)** - 🔍 **Deep Memory Search** (unified search across all data sources)
-- **[qmd/README.md](qmd/README.md)** - 📚 **Internal Knowledge Search** (Q&A about Jarvis capabilities via QMD semantic search) ⭐ NEW
+- **[qmd/README.md](qmd/README.md)** - 📚 **Internal Knowledge Search** (Q&A about Jarvis capabilities via QMD semantic search) 
 
 ### Monitoring & Observability ⭐ ENHANCED
 - **[../monitoring/README.md](../monitoring/README.md)** - Grafana + Prometheus + Loki stack
@@ -304,7 +304,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-02-06:**
-- ✅ **Image-to-Image Editing** - Edit existing images with all 3 providers ⭐ NEW
+- ✅ **Image-to-Image Editing** - Edit existing images with all 3 providers 
   - Upload an image in Web UI → select "Image to Image" → describe changes
   - **xAI**: Uses `/v1/images/edits` endpoint with `image: { url: "data:..." }` (separate from generation)
   - **Gemini**: Includes image as `inline_data` in contents array alongside text prompt
@@ -326,7 +326,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Bottom margin prevents bar from touching desktop taskbar
 
 **2026-02-05:**
-- ✅ **Internal Knowledge Search** - Q&A about Jarvis capabilities without executing tools ⭐ NEW
+- ✅ **Internal Knowledge Search** - Q&A about Jarvis capabilities without executing tools 
   - `search_docs` tool - Semantic search over 153 indexed docs using QMD
   - Answers questions like "What video sizes can I generate?" without calling generate_video
   - Uses vsearch (meaning-based) with 35% min score threshold
@@ -348,7 +348,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: `docs/qmd/README.md`
 
 **2026-02-04:**
-- ✅ **Server-Side Tools Logging** - Track xAI/Anthropic native tool usage ⭐ NEW
+- ✅ **Server-Side Tools Logging** - Track xAI/Anthropic native tool usage 
   - New dedicated log folder: `logs/server-side-tools/`
   - Tracks `web_search`, `x_search`, `code_execution` usage with counts
   - Auto-logged from LLM calls and workflow executions
@@ -365,7 +365,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Helps debug auth issues across web UIs
 
 **2026-02-02:**
-- ✅ **xAI Image Generation** - Fast & cheap image generation ⭐ NEW
+- ✅ **xAI Image Generation** - Fast & cheap image generation 
   - Added `xai` provider to `generate_image` tool (grok-imagine-image model)
   - Batch generation: `n` parameter (1-10 images) for variations
   - All batch images saved to same stash space with individual refs
@@ -373,12 +373,12 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Set `IMAGE_TOOL_PROVIDER=xai` or use `provider: "xai"` per-request
   - Note: Quality parameter not supported by xAI (no 1K/2K/4K)
   - See: [`docs/api/GENERATED_IMAGES.md`](api/GENERATED_IMAGES.md)
-- ✅ **Real-time Progress Events** - See tool execution as it happens ⭐ NEW
+- ✅ **Real-time Progress Events** - See tool execution as it happens 
   - WebUI shows "Using weather...", "Using brave_search..." during processing
   - Tool cards appear with status (pending → complete with duration)
   - Toggle in Settings → UI → Progress Events
   - Duplicate tool calls tracked separately (e.g., `search_0`, `search_1`)
-- ✅ **Stop Button** - Graceful processing cancellation ⭐ NEW
+- ✅ **Stop Button** - Graceful processing cancellation 
   - Red stop button (⏹) appears during processing
   - Cancels between turns, returns partial results
   - "Stopped after 2 tool(s). Results so far: ..."
@@ -393,14 +393,14 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Configurable via `JARVIS_MULTI_TURN_WORD_LIMIT` (default 50)
 
 **2026-02-01:**
-- ✅ **Video Gallery UI** - Browse generated videos in jarvis-canvas ⭐ NEW
+- ✅ **Video Gallery UI** - Browse generated videos in jarvis-canvas 
   - Grid view with hover preview and provider badges (xAI/Gemini)
   - Lightbox viewer with video controls below video
   - Search, sort by date/name/size/duration
   - Download and delete functionality
   - Access via `/video-gallery` or "🎬 Videos" link in Canvas header
   - See: [`docs/CANVAS_SYSTEM.md`](CANVAS_SYSTEM.md)
-- ✅ **Video Catalog System** - Persistent metadata for generated videos ⭐ NEW
+- ✅ **Video Catalog System** - Persistent metadata for generated videos 
   - `video_catalog.json` stores provider, aspect ratio, tags per video
   - Auto-syncs with stash metadata, survives stash TTL cleanup
   - Shared between `jarvis-api` (8880) and `jarvis-canvas` (8890)
@@ -528,7 +528,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Useful for CLI testing without wake word
 
 **2026-01-25:**
-- ✅ **File Conversion Tool** - Local media conversion with ImageMagick, FFmpeg, and Potrace ⭐ NEW
+- ✅ **File Conversion Tool** - Local media conversion with ImageMagick, FFmpeg, and Potrace 
   - Converts images (JPG, PNG, WebP, GIF, BMP, TIFF, ICO), video (MP4, WebM, MOV, AVI, MKV), audio (MP3, WAV, FLAC, OGG, AAC)
   - Raster to vector (PNG/JPG → SVG) using Potrace tracing
   - Extract audio from video (MP4 → MP3/WAV)

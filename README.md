@@ -1376,7 +1376,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (February 2026):**
-- ✅ **ElevenLabs v3 TTS** - Upgraded to latest TTS model ⭐ NEW
+- ✅ **ElevenLabs v3 TTS** - Upgraded to latest TTS model 
   - 68% error reduction for numbers, scores, times, symbols
   - Configurable voice settings via `ELEVENLABS_TTS_STABILITY`, `_SIMILARITY_BOOST`
   - v3 requires stability 0.0/0.5/1.0; v2 settings preserved for fallback
