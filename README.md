@@ -12,6 +12,9 @@ Routes queries through Q&A, single tools, multi-tool pipelines, or autonomous wo
 
 UI's include Chat, Canvas, Image Gallery, Video Gallery, Intellegence Dashboard, Memory Dashboard, full API, and more!
 
+Deterministic = more reliable because the control flow is fixed by code.
+You decide the steps, tool, order, retries, timeouts, and validation—so runs are predictable and failures are contained.
+
 ![jarvis-info-graph](docs/images/jarvis-info-graph.jpeg)
 
 
@@ -233,12 +236,16 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 
 ![jarvis-canvas](docs/images/jarvis-canvas.png)
 
+---
+
 - **Image Gallery UI**: Browse generated images in Canvas web UI
   - Grid view with thumbnails, search, sort options
   - Lightbox viewer, download, get CDN URL, delete
   - Access via "🖼️ Gallery" link in Canvas header
 
-![jarvis-gallery](docs/images/jarvis-gallery.png)
+![jarvis-image-gallery](docs/images/jarvis-image-gallery.png)
+
+---
 
 - **Video Gallery UI**: Browse generated videos in Canvas web UI (Feb 2026)
   - Grid view with hover preview, provider badges (xAI/Gemini)
@@ -247,6 +254,9 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - Download and delete functionality
   - Access via "🎬 Videos" link in Canvas header
 
+![jarvis-video-gallery](docs/images/jarvis-video-gallery.png)
+
+---
 
 ### Speech Modes - Smart Adaptive Response System
 
