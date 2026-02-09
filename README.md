@@ -248,7 +248,7 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 ---
 
 - **Video Gallery UI**: Browse generated videos in Canvas web UI (Feb 2026)
-  - Grid view with hover preview, provider badges (xAI/Gemini)
+  - Grid view with hover preview, provider badges (xAI/OpenAI/Gemini)
   - Lightbox viewer with video controls
   - Search, sort by date/name/size/duration
   - Download and delete functionality
@@ -768,10 +768,11 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
   - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
   - **Gemini Search Grounding** - Real-time data in images (weather, crypto prices, news)
   - Auto-saves to stash + memory for cross-session recall
-- `generate_video` - **AI video generation**: xAI Grok or Gemini Veo
-  - xAI: 1-15s duration, 7 aspect ratios, video editing
-  - Gemini: 4/6/8s, native audio, up to 4K resolution
-  - Text-to-video and image-to-video modes
+- `generate_video` - **AI video generation**: xAI Grok, OpenAI Sora, or Gemini Veo
+  - xAI: 1-15s duration, 7 aspect ratios, video editing ($0.05/s)
+  - OpenAI: 4/8/12s, native audio, image-to-video, remix ($0.10-0.50/s)
+  - Gemini: 4/6/8s, native audio, up to 4K resolution ($0.15/s)
+  - Text-to-video and image-to-video modes (all providers)
   - Auto-saves to stash + memory for cross-session recall
 - `analyze_image` - **Vision analysis**: Analyze images from URLs, files, or stash refs
   - Cloud=Grok/Claude/GPT-4o, Local=llava
@@ -1765,4 +1766,4 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.41.0 (February 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Image-to-Image Editing (all 3 providers) + Image Action Modal + Video Gallery Lazy Loading
+**Latest Features:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal

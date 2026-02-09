@@ -385,8 +385,9 @@
               </label>
               <select class="setting-input" id="setting-video-provider">
                 <option value="">Use env default</option>
-                <option value="xai">xAI Grok</option>
-                <option value="gemini">Google Gemini Veo</option>
+                <option value="xai">xAI Grok ($0.05/s)</option>
+                <option value="openai">OpenAI Sora ($0.10/s)</option>
+                <option value="gemini">Google Gemini Veo ($0.15/s)</option>
               </select>
             </div>
             <div class="setting-group" style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary);">
@@ -697,7 +698,7 @@
               </label>
               <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                 <input type="radio" name="imageAction" value="video">
-                <span>🎬 <strong>Image to Video</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Animate this image (xAI)</span></span>
+                <span>🎬 <strong>Image to Video</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Animate this image</span></span>
               </label>
               <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                 <input type="radio" name="imageAction" value="image">
@@ -708,7 +709,14 @@
 
           <!-- Video Options (shown when Image to Video selected) -->
           <div class="image-action-options" id="imageActionVideoOpts" style="display: none; margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border-color);">
-            <span class="setting-desc" style="margin-bottom: var(--space-sm); display: block; color: var(--text-secondary);">Provider: xAI (only provider supporting image-to-video)</span>
+            <div class="setting-group">
+              <label class="setting-label">Video Provider</label>
+              <select class="setting-input" id="imgActionVideoProvider">
+                <option value="xai">xAI Grok ($0.05/s, 1-15s)</option>
+                <option value="openai">OpenAI Sora ($0.10/s, 4-12s, audio)</option>
+                <option value="gemini">Gemini Veo ($0.15/s, 4-8s, audio)</option>
+              </select>
+            </div>
             <div class="setting-group">
               <label class="setting-label">Aspect Ratio</label>
               <select class="setting-input" id="imgActionVideoRatio">
@@ -724,7 +732,7 @@
             <div class="setting-group">
               <label class="setting-label">Duration (seconds)</label>
               <input type="number" class="setting-input" id="imgActionVideoDuration" min="1" max="15" value="5" placeholder="1-15">
-              <span class="setting-desc">xAI supports 1-15 seconds</span>
+              <span class="setting-desc">xAI: 1-15s, OpenAI: 4/8/12s, Gemini: 4/6/8s</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">Resolution</label>

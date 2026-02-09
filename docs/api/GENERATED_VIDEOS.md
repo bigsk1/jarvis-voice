@@ -61,7 +61,7 @@ List all generated videos with metadata.
 **New Fields (Feb 2026)**:
 | Field | Type | Description |
 |-------|------|-------------|
-| `provider` | string | AI provider: `xAI`, `Gemini`, `Runway`, etc. |
+| `provider` | string | AI provider: `xAI`, `OpenAI`, `Gemini`, `Runway`, etc. |
 | `aspect` | string | Aspect ratio: `16:9`, `9:16`, `1:1`, etc. |
 | `tags` | array | Tags from generation: `ai_generated`, `video`, provider, aspect |
 
@@ -183,7 +183,7 @@ curl -X DELETE http://localhost:8880/api/generated-videos/video_a_cat_playing_20
 POST /api/generated-videos/generate
 ```
 
-Generate a new AI video using xAI Grok Imagine Video or Google Gemini Veo.
+Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini Veo.
 
 **Request Body**:
 
@@ -193,51 +193,54 @@ Generate a new AI video using xAI Grok Imagine Video or Google Gemini Veo.
 | `duration` | int | No | 5 | Video length |
 | `aspect_ratio` | string | No | `16:9` | Video shape |
 | `resolution` | string | No | `720p` | Video quality |
-| `image_url` | string | No | - | Image URL for image-to-video |
-| `video_url` | string | No | - | Video URL to edit (xAI only, ≤8.7s) |
+| `image_url` | string | No | - | Image for image-to-video (all providers) |
+| `video_url` | string | No | - | Video to edit (xAI ≤8.7s) or remix (OpenAI video ID) |
 | `negative_prompt` | string | No | - | What to avoid (Gemini only) |
-| `provider` | string | No | `xai` | Video provider: `xai` or `gemini` |
+| `provider` | string | No | `xai` | Video provider: `xai`, `openai`, or `gemini` |
 | `save` | bool | No | true | Save to disk and stash |
 | `mode` | string | No | `cloud` | Config mode (cloud/local) |
 
 **Provider Comparison**:
 
-| Feature | xAI Grok | Gemini Veo |
-|---------|----------|------------|
-| Duration | 1-15s (any value) | 4, 6, or 8s (discrete) |
-| Aspect Ratios | 7 options | 2 options (16:9, 9:16) |
-| Resolution | 720p, 480p | 720p, 1080p, 4k |
-| Native Audio | ❌ | ✅ (dialogue, SFX) |
-| Video Editing | ✅ | ❌ |
-| Negative Prompt | ❌ | ✅ |
+| Feature | xAI Grok | OpenAI Sora | Gemini Veo |
+|---------|----------|-------------|------------|
+| Duration | 1-15s (any) | 4, 8, or 12s | 4, 6, or 8s |
+| Aspect Ratios | 7 options | 2 options | 2 options |
+| Resolution | 720p, 480p | 720p, 1080p | 720p-4k |
+| Native Audio | ❌ | ✅ | ✅ |
+| Image-to-Video | ✅ | ✅ | ✅ |
+| Video Editing | ✅ | ✅ (remix) | ❌ |
+| Negative Prompt | ❌ | ❌ | ✅ |
+| Cost/second | $0.05 | $0.10-0.50 | $0.15+ |
 
 **Duration Options**:
 
 | Provider | Range | Notes |
 |----------|-------|-------|
 | xAI | 1-15 seconds | Any integer value |
+| OpenAI | 4, 8, or 12 seconds | Discrete values only |
 | Gemini | 4, 6, or 8 seconds | Rounded to nearest |
 
 **Aspect Ratio Options**:
 
-| Value | Description | xAI | Gemini |
-|-------|-------------|-----|--------|
-| `16:9` | Widescreen (default) | ✅ | ✅ |
-| `4:3` | Classic | ✅ | ➡️ 16:9 |
-| `1:1` | Square | ✅ | ➡️ 16:9 |
-| `9:16` | Vertical | ✅ | ✅ |
-| `3:4` | Portrait | ✅ | ➡️ 9:16 |
-| `3:2` | Photo standard | ✅ | ➡️ 16:9 |
-| `2:3` | Tall portrait | ✅ | ➡️ 9:16 |
+| Value | Description | xAI | OpenAI | Gemini |
+|-------|-------------|-----|--------|--------|
+| `16:9` | Widescreen (default) | ✅ | ✅ | ✅ |
+| `4:3` | Classic | ✅ | ➡️ 16:9 | ➡️ 16:9 |
+| `1:1` | Square | ✅ | ➡️ 16:9 | ➡️ 16:9 |
+| `9:16` | Vertical | ✅ | ✅ | ✅ |
+| `3:4` | Portrait | ✅ | ➡️ 9:16 | ➡️ 9:16 |
+| `3:2` | Photo standard | ✅ | ➡️ 16:9 | ➡️ 16:9 |
+| `2:3` | Tall portrait | ✅ | ➡️ 9:16 | ➡️ 9:16 |
 
 **Resolution Options**:
 
-| Value | xAI | Gemini | Notes |
-|-------|-----|--------|-------|
-| `720p` | ✅ | ✅ | HD (default) |
-| `480p` | ✅ | ➡️ 720p | SD |
-| `1080p` | ❌ | ✅ | Full HD (8s only) |
-| `4k` | ❌ | ✅ | Ultra HD (8s only) |
+| Value | xAI | OpenAI | Gemini | Notes |
+|-------|-----|--------|--------|-------|
+| `720p` | ✅ | ✅ | ✅ | HD (default) |
+| `480p` | ✅ | ➡️ 720p | ➡️ 720p | SD |
+| `1080p` | ❌ | ✅ (pro) | ✅ | Full HD |
+| `4k` | ❌ | ❌ | ✅ | Ultra HD (8s only) |
 
 **Response**:
 ```json
@@ -324,6 +327,15 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
     "provider": "gemini"
   }'
 
+# OpenAI Sora with audio
+curl -X POST http://localhost:8880/api/generated-videos/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A close-up of a woman saying Hello world! in a cafe with background chatter",
+    "duration": 8,
+    "provider": "openai"
+  }'
+
 # Video with dialogue (Gemini)
 curl -X POST http://localhost:8880/api/generated-videos/generate \
   -H "Content-Type: application/json" \
@@ -345,12 +357,14 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
 ```
 
 **Notes**:
-- Generation takes 30-120+ seconds depending on duration and resolution
+- Generation takes 30-120+ seconds depending on provider, duration, and resolution
 - API timeout is 10 minutes
 - The `video_url` in response is temporary (may expire)
 - Local file path is permanent storage
-- Gemini videos include native audio (dialogue, sound effects)
+- OpenAI and Gemini videos include native audio (dialogue, sound effects)
+- OpenAI 1080p requires sora-2-pro model ($0.30-0.50/s)
 - Gemini 1080p/4k requires 8-second duration
+- OpenAI videos also viewable at platform.openai.com/playground/videos
 
 ---
 
@@ -371,8 +385,8 @@ Check video generation service status.
   "video_count": 5,
   "total_size": 16789012,
   "total_size_human": "16.0 MB",
-  "configured_provider": "xai",
-  "configured_model": "grok-imagine-video"
+  "configured_provider": "openai",
+  "configured_model": "sora-2"
 }
 ```
 

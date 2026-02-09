@@ -1,5 +1,15 @@
 """
 Jarvis Canvas - Video Gallery routes
+
+TODO: REFACTOR - This file duplicates logic from api/routes/generated_videos.py
+The shared functions (lookup_stash_metadata, sync_video_catalog, load/save_video_catalog,
+provider detection) should be extracted to lib/video_catalog.py and imported by both:
+  - This Flask Blueprint (jarvis-canvas)
+  - The FastAPI router (api/routes/generated_videos.py)
+
+Current situation: jarvis-canvas is Flask, main api/ is FastAPI. The duplication exists
+because routes can't be shared across frameworks, but the underlying logic CAN be.
+When adding new providers (like OpenAI), changes must be made in BOTH files until refactored.
 """
 import json
 import subprocess
@@ -128,7 +138,9 @@ def lookup_stash_metadata(filename):
                 
                 # Detect provider from tags
                 provider = None
-                if 'gemini' in tags:
+                if 'openai' in tags:
+                    provider = 'OpenAI'
+                elif 'gemini' in tags:
                     provider = 'Gemini'
                 elif 'xai' in tags:
                     provider = 'xAI'

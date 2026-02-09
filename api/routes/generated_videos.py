@@ -94,7 +94,9 @@ def lookup_stash_metadata(filename: str) -> Optional[dict]:
                 
                 # Detect provider from tags
                 provider = None
-                if 'gemini' in tags:
+                if 'openai' in tags:
+                    provider = 'OpenAI'
+                elif 'gemini' in tags:
                     provider = 'Gemini'
                 elif 'xai' in tags:
                     provider = 'xAI'
@@ -200,13 +202,13 @@ class DeleteResponse(BaseModel):
 class GenerateRequest(BaseModel):
     """Request to generate a new video."""
     prompt: str = Field(..., description="What to generate - describe the video content")
-    duration: int = Field(5, ge=1, le=15, description="Video duration in seconds (xAI: 1-15, Gemini: 4/6/8)")
-    aspect_ratio: str = Field("16:9", description="xAI: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3 | Gemini: 16:9 or 9:16")
-    resolution: str = Field("720p", description="xAI: 720p/480p | Gemini: 720p/1080p/4k")
-    image_url: Optional[str] = Field(None, description="Image source for image-to-video. Accepts: URL, local path, or stash ref (stash://space_xxx/file_id)")
-    video_url: Optional[str] = Field(None, description="Video to edit (xAI only, max 8.7s). Accepts: URL or stash ref for recently generated videos")
+    duration: int = Field(5, ge=1, le=15, description="Video duration: xAI 1-15s, OpenAI 4/8/12s, Gemini 4/6/8s")
+    aspect_ratio: str = Field("16:9", description="xAI: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3 | OpenAI/Gemini: 16:9 or 9:16")
+    resolution: str = Field("720p", description="xAI: 720p/480p | OpenAI: 720p/1080p | Gemini: 720p/1080p/4k")
+    image_url: Optional[str] = Field(None, description="Image for image-to-video (all providers). Accepts: URL, local path, or stash ref (stash://space_xxx/file_id)")
+    video_url: Optional[str] = Field(None, description="Video to edit: xAI (max 8.7s source) or OpenAI remix (video ID)")
     negative_prompt: Optional[str] = Field(None, description="What to avoid in video (Gemini only)")
-    provider: Optional[str] = Field(None, description="Override provider: 'xai' or 'gemini'")
+    provider: Optional[str] = Field(None, description="Override provider: 'xai', 'openai', or 'gemini'")
     save: bool = Field(True, description="Save to disk and stash")
     mode: str = Field("cloud", description="'cloud' uses cloud.env, 'local' uses local.env")
 
@@ -319,9 +321,14 @@ async def generated_videos_health():
     """Check generated videos directory status."""
     videos, total_size, _ = get_video_list()
     
-    # Check configured provider
+    # Check configured provider and model
     provider = get_config_value("VIDEO_TOOL_PROVIDER", "xai")
-    model = get_config_value("XAI_VIDEO_MODEL", "grok-imagine-video")
+    if provider == "openai":
+        model = get_config_value("OPENAI_VIDEO_MODEL", "sora-2")
+    elif provider == "gemini":
+        model = get_config_value("GEMINI_VIDEO_MODEL", "veo-3.1-generate-preview")
+    else:
+        model = get_config_value("XAI_VIDEO_MODEL", "grok-imagine-video")
     
     return {
         "ok": True,
@@ -340,7 +347,12 @@ async def generate_video(request: GenerateRequest):
     """
     Generate a new video using the generate_video tool.
     
-    Uses xAI Grok Imagine Video by default. Generation can take 30-120+ seconds.
+    Supports three providers:
+    - **xAI** (default): Grok Imagine Video - $0.05/s, 1-15s, many aspect ratios
+    - **OpenAI**: Sora 2 - $0.10/s, 4/8/12s, native audio, image-to-video
+    - **Gemini**: Veo 3.1 - $0.15/s, 4/6/8s, native audio, up to 4K
+    
+    Generation can take 30-120+ seconds depending on provider and duration.
     
     **Example**:
     ```bash
@@ -349,16 +361,18 @@ async def generate_video(request: GenerateRequest):
       -d '{
         "prompt": "A cat playing with a ball, slow motion",
         "duration": 5,
-        "aspect_ratio": "16:9"
+        "aspect_ratio": "16:9",
+        "provider": "openai"
       }'
     ```
     
-    **Image-to-Video**:
+    **Image-to-Video** (all providers):
     ```json
     {
       "prompt": "Animate this image with gentle movement",
-      "image_url": "https://example.com/image.jpg",
-      "duration": 10
+      "image_url": "stash://space_xxx/file_id",
+      "duration": 8,
+      "provider": "gemini"
     }
     ```
     
@@ -366,11 +380,11 @@ async def generate_video(request: GenerateRequest):
     ```json
     {
       "ok": true,
-      "speech": "Generated 5s video with xai: A cat playing...",
+      "speech": "Generated 5s video with openai: A cat playing...",
       "data": {
         "prompt": "A cat playing with a ball, slow motion",
-        "provider": "xai",
-        "model": "grok-imagine-video",
+        "provider": "openai",
+        "model": "sora-2",
         "duration": 5,
         "saved": {
           "path": "data/generated_videos/video_a_cat_playing_20260128_123456.mp4",

@@ -303,6 +303,23 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-02-09:**
+- ✅ **OpenAI Sora Video Generation** - Third video provider with native audio
+  - 4/8/12s durations, 16:9 or 9:16 aspect ratios, 720p/1080p resolution
+  - Image-to-video support (auto-resizes input to match Sora's dimension requirements)
+  - Video remix support (extend/edit existing videos via video ID)
+  - Native audio generation (dialogue, sound effects)
+  - $0.10/s (sora-2) or $0.30-0.50/s (sora-2-pro for 1080p)
+  - Videos also viewable at platform.openai.com/playground/videos
+  - Web UI: Added OpenAI option to video provider dropdowns
+  - See: [`docs/video/README.md`](video/README.md)
+- ✅ **Video Gallery OpenAI Support** - Provider badges now include OpenAI
+  - Fixed provider detection to recognize `openai` tags in stash metadata
+  - Client-side fallback also checks tags (not just filenames)
+  - Temp file cleanup for Sora downloads
+- ✅ **Gemini Image-to-Video Fix** - Now properly resolves stash refs and local files
+  - Previously only handled HTTP URLs, now uses `_resolve_image_source()` like other providers
+
 **2026-02-06:**
 - ✅ **Image-to-Image Editing** - Edit existing images with all 3 providers 
   - Upload an image in Web UI → select "Image to Image" → describe changes
@@ -1108,5 +1125,5 @@ tail -f logs/tools/tool-calls-*.jsonl
 ---
 
 **Last Updated:** 2026-02-09 (v2.41.0)  
-**Latest:** Image-to-Image Editing (all 3 providers) + Image Action Modal + Video Gallery Lazy Loading  
+**Latest:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

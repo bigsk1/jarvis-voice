@@ -508,9 +508,10 @@ class ChatHandler:
             
             # Image action modal can override providers further (takes priority over AI config)
             if image_data and image_data.get('action') == 'video':
-                # Image-to-video is always xAI
-                os.environ['JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER'] = 'xai'
-                print(f"[CHAT] Image modal override - video provider: xai (image-to-video)")
+                # Image-to-video - use provider from modal settings (xai, openai, or gemini)
+                modal_video_provider = image_data.get('settings', {}).get('provider', 'xai')
+                os.environ['JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER'] = modal_video_provider
+                print(f"[CHAT] Image modal override - video provider: {modal_video_provider} (image-to-video)")
             elif image_data and image_data.get('action') == 'image':
                 modal_provider = image_data.get('settings', {}).get('provider')
                 if modal_provider:
@@ -549,13 +550,14 @@ class ChatHandler:
                     aspect_ratio = image_settings.get('aspect_ratio', '16:9')
                     duration = image_settings.get('duration', 5)
                     resolution = image_settings.get('resolution', '720p')
+                    video_provider = image_settings.get('provider', 'xai')
                     
                     tool_overrides['generate_video'] = {
                         'image_url': stash_ref,
                         'aspect_ratio': aspect_ratio,
                         'duration': int(duration),
                         'resolution': resolution,
-                        'provider': 'xai',
+                        'provider': video_provider,
                     }
                     
                     message = (
@@ -563,7 +565,7 @@ class ChatHandler:
                         f"Image stashed at: {stash_ref}\n"
                         f"Use generate_video tool. IMPORTANT: The user has pre-selected these video "
                         f"settings via the UI and they will be applied automatically as overrides:\n"
-                        f"  aspect_ratio={aspect_ratio}, duration={duration}s, resolution={resolution}, provider=xai\n"
+                        f"  aspect_ratio={aspect_ratio}, duration={duration}s, resolution={resolution}, provider={video_provider}\n"
                         f"These parameters are USER-CONTROLLED and will override whatever you pass. "
                         f"Do NOT worry if the tool result shows different values than what you sent - "
                         f"that is expected and correct. The user's chosen settings take priority.\n"
@@ -571,7 +573,7 @@ class ChatHandler:
                         f"Do NOT retry if the result looks successful.]\n\n"
                         f"User's video instructions: {message}"
                     )
-                    print(f"[CHAT] Image-to-video - forced overrides: {aspect_ratio}, {duration}s, {resolution}")
+                    print(f"[CHAT] Image-to-video - forced overrides: {aspect_ratio}, {duration}s, {resolution}, provider={video_provider}")
                     
                 elif image_action == 'image':
                     # IMAGE TO IMAGE: Skip vision, stash image, force params via overrides

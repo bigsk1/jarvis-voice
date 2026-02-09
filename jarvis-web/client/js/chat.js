@@ -1198,9 +1198,11 @@ class ChatUI {
    */
   _resetImageActionOptions() {
     // Video options
+    const videoProvider = document.getElementById('imgActionVideoProvider');
     const videoRatio = document.getElementById('imgActionVideoRatio');
     const videoDuration = document.getElementById('imgActionVideoDuration');
     const videoResolution = document.getElementById('imgActionVideoResolution');
+    if (videoProvider) videoProvider.value = 'xai';
     if (videoRatio) videoRatio.value = '16:9';
     if (videoDuration) videoDuration.value = '5';
     if (videoResolution) videoResolution.value = '720p';
@@ -1246,7 +1248,7 @@ class ChatUI {
       settings.aspect_ratio = document.getElementById('imgActionVideoRatio')?.value || '16:9';
       settings.duration = parseInt(document.getElementById('imgActionVideoDuration')?.value) || 5;
       settings.resolution = document.getElementById('imgActionVideoResolution')?.value || '720p';
-      settings.provider = 'xai';  // Always xAI for image-to-video
+      settings.provider = document.getElementById('imgActionVideoProvider')?.value || 'xai';
     } else if (action === 'image') {
       const provider = document.getElementById('imgActionImageProvider')?.value || 'gemini';
       settings.provider = provider;

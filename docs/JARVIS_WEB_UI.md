@@ -1278,7 +1278,7 @@ Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 - [x] **Inline converted media** - Images/video/audio display with ⬇️ Download button 
 - [x] **SVG/BMP/ICO/FLAC support** - Extended stash MIME types 
 - [x] **Advanced convert options** - Resize, quality, bitrate, FPS, etc. in collapsible panel 
-- [x] **Video provider dropdown** - Switch video generation between xAI Grok and Google Gemini Veo on-the-fly 
+- [x] **Video provider dropdown** - Switch video generation between xAI Grok and Google Gemini Veo or Openai Sora on-the-fly 
 - [x] **Image provider xAI option** - Added xAI Grok as image provider alongside Gemini and OpenAI 
 - [x] **JARVIS_OVERRIDE_ mechanism** - Provider overrides survive tool subprocess `load_config()` via prefixed env vars 
 - [x] **Image gallery provider badges** - Shows xAI/Gemini/OpenAI badges on generated images in Canvas gallery 
@@ -1439,7 +1439,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - [ ] Change LLM provider, new message uses it
 - [ ] Change LLM model, new message uses it
 - [ ] Change image provider (xAI/Gemini/OpenAI), generate image uses new provider
-- [ ] Change video provider (xAI/Gemini), generate video uses new provider
+- [ ] Change video provider (xAI/Gemini/OpenAI), generate video uses new provider
 - [ ] Reset to defaults clears all overrides (LLM, image, video)
 - [ ] Block a tool, verify it's not called
 - [ ] Unblock a tool, verify it works again
@@ -1549,3 +1549,4 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*  
 *v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*  
 *v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*
+*v2.4: OpenAI Sora - Third video provider with native audio, image-to-video, remix support - February 9, 2026*
