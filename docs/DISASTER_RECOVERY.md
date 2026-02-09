@@ -1,32 +1,36 @@
 # Jarvis Voice Assistant - Disaster Recovery Guide
 
-This is a rebuild guide. If you're reading this, either my server died or you're trying to set this up yourself. Either way, here's everything you need to get Jarvis running from scratch.
+Complete rebuild guide. Follow these steps **in order** from top to bottom.
 
-Fair warning: this project has hardcoded IPs, paths that assume a user named "boss", and other quirks from being a personal project. You'll need to adapt things to your setup. The IPs throughout this doc are from my network — change them to match yours.
-
-Best method is use llm like opus 4.6 and after cloning the repo have it use this guide to get everything setup. Can troubleshoot issues if they accure (system packages or python libs and paths to get going quickly) also have aliases in .bashrc but make sure $HOME/jarvis-venv is were your python enviroment is. see 
+**Note:** This project assumes a user named `boss` with paths like `/home/boss/jarvis-voice`. Adapt to your setup if different.
 
 ---
 
-## Table of contents
+## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Base system setup](#base-system-setup)
-3. [Clone and install](#clone-and-install)
-4. [Configuration](#configuration)
-5. [Database restoration](#database-restoration)
-6. [Services and validation](#services-and-validation)
-7. [Troubleshooting](#troubleshooting)
+2. [Step 1: Create User](#step-1-create-user)
+3. [Step 2: Clone Repository](#step-2-clone-repository)
+4. [Step 3: Install System Packages](#step-3-install-system-packages)
+5. [Step 4: Create Python Environment](#step-4-create-python-environment)
+6. [Step 5: Configure Environment Files](#step-5-configure-environment-files)
+7. [Step 6: Run Setup Scripts](#step-6-run-setup-scripts)
+8. [Step 7: Configure Audio Devices](#step-7-configure-audio-devices)
+9. [Step 8: Install OpenCode Plugins](#step-8-install-opencode-plugins)
+10. [Step 9: Setup Aliases](#step-9-setup-aliases)
+11. [Step 10: Verify and Start](#step-10-verify-and-start)
+12. [Database Restoration](#database-restoration)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Prerequisites
 
-### Server requirements
+### Server Requirements
 - **OS:** Ubuntu Server 24.04 LTS (fresh install recommended)
 - **RAM:** 8GB minimum, 16GB+ if running local LLMs
 - **Storage:** 50GB+ SSD
-- **Network:** Static IP (you'll need to update configs if your IPs differ from mine)
+- **Network:** Static IP recommended
 - **User:** Admin user named `boss` with sudo access
 
 ### Hardware
@@ -34,21 +38,9 @@ Best method is use llm like opus 4.6 and after cloning the repo have it use this
 - Speakers or audio output
 - Ethernet preferred over WiFi
 
-### Network IPs (change these to your local ip 192.168.1.xxx or leave to localhost if running everything on same server)
-- Jarvis server: `localhost`
-- Ollama server: `localhost`
-- n8n (Docker): same host or `localhost`
-
-If your IPs are different, you'll need to update:
-- `config/cloud.env` and `config/local.env`
-- `config/webhook_registry.json`
-- Any n8n workflows that call back to Jarvis
-
 ---
 
-## Base system setup
-
-### 1. Create the boss user
+## Step 1: Create User
 
 If you didn't create `boss` during Ubuntu install:
 
@@ -56,23 +48,16 @@ If you didn't create `boss` during Ubuntu install:
 sudo useradd -m -s /bin/bash boss
 sudo passwd boss
 sudo usermod -aG sudo boss
-sudo usermod -aG docker boss
+sudo usermod -aG docker boss  # Optional: if using Docker for n8n
 
-# Switch to boss
+# Switch to boss for remaining steps
 su - boss
-```
-
-### 2. Update system and install base packages
-
-```bash
-sudo apt update && sudo apt upgrade -y
+cd ~
 ```
 
 ---
 
-## Clone and install
-
-### 1. Clone the repository
+## Step 2: Clone Repository
 
 ```bash
 cd /home/boss
@@ -80,82 +65,253 @@ git clone https://github.com/bigsk1/jarvis-voice.git
 cd jarvis-voice
 ```
 
-### 2. Run setup scripts in order
+---
 
-Run these scripts in this order. Each one handles a specific part of the setup:
+## Step 3: Install System Packages
 
 ```bash
-# 1. System dependencies (apt packages)
-#    Installs: ffmpeg, sox, sqlite3, portaudio, pulseaudio, jq, etc.
+# Update system first
+sudo apt update && sudo apt upgrade -y
+
+# Install all system dependencies
 sudo ./install-system-deps.sh
 
-# 2. Initial project setup
-#    Creates directories, sets permissions, initializes git hooks
-./setup.sh
-
-# 3. Python virtual environment and dependencies
-#    Creates ~/jarvis-venv, installs all packages
-
-# Option A: Using uv (RECOMMENDED - faster, reproducible)
-uv venv ~/jarvis-venv
-source ~/jarvis-venv/bin/activate
-uv sync  # Installs exact versions from uv.lock
-
-# Option B: Using pip (traditional)
-python3 -m venv ~/jarvis-venv
-source ~/jarvis-venv/bin/activate
-pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-
-# 4. Verify environment is correct
-./verify-env.sh
-
-# 5. Sync tools to database (registers all skills)
-./setup_tools.sh
-
-# 6. OpenCode workspace (if using autonomous coding)
-./setup_opencode_workspace.sh
+# This installs: ffmpeg, sox, sqlite3, portaudio, pulseaudio, jq, curl, git, etc.
+# See system-packages.txt for full list
 ```
 
-### Script reference
-
-| Script | What it does |
-|--------|--------------|
-| `install-system-deps.sh` | Installs system packages from `system-packages.txt` |
-| `setup.sh` | Creates directories, permissions, git setup |
-| `uv.lock` | **Lockfile with exact dependency versions** (use with `uv sync`) |
-| `requirements.txt` | Python dependencies (pip install -r) |
-| `pyproject.toml` | Project metadata and dependencies |
-| `verify-env.sh` | Checks that everything is configured correctly |
-| `setup_tools.sh` | Syncs tool definitions to the database |
-| `setup_opencode_workspace.sh` | Sets up OpenCode autonomous coding workspace |
-
-### 3. Configure environment files
-
-Copy the example configs and edit with your API keys:
-
+**Verify key packages:**
 ```bash
-cp config/cloud.env.example config/cloud.env
-cp config/local.env.example config/local.env
-
-# Edit with your API keys and settings
-nano config/cloud.env
+ffmpeg -version
+sox --version
+python3 --version  # Should be 3.12+
 ```
-
-**Minimum required for cloud mode:**
-- `XAI_API_KEY` or `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
-- `TTS_PROVIDER` and associated API key (ElevenLabs, OpenAI, etc.)
-
-**For local mode:**
-- Ollama endpoint (default: `http://OLLAMA_BASE_URL:11434`)
-- Local TTS setup (Kokoro or Qwen3-TTS)
 
 ---
 
-## Directory structure
+## Step 4: Create Python Environment
 
-These paths are hardcoded throughout the codebase:
+**Option A: Using uv (Recommended - faster, exact versions)**
+```bash
+# Install uv if not present
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc  # or restart terminal
 
+# Create virtual environment
+uv venv ~/jarvis-venv
+
+# Activate it
+source ~/jarvis-venv/bin/activate
+
+# Install all packages from lockfile (exact versions)
+cd ~/jarvis-voice
+uv sync
+```
+
+**Option B: Using pip (Traditional)**
+```bash
+# Create virtual environment
+python3 -m venv ~/jarvis-venv
+
+# Activate it
+source ~/jarvis-venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip setuptools wheel
+
+# Install packages
+cd ~/jarvis-voice
+pip install -r requirements.txt
+```
+
+---
+
+## Step 5: Configure Environment Files
+
+**This must be done BEFORE running setup.sh**
+
+```bash
+cd ~/jarvis-voice
+
+# Copy example configs
+cp config/cloud.env.example config/cloud.env
+cp config/local.env.example config/local.env
+
+# Secure permissions
+chmod 600 config/cloud.env config/local.env
+
+# Edit cloud config with your API keys
+nano config/cloud.env
+nano config/local.env
+```
+
+**Minimum required settings in cloud.env:**
+```bash
+# LLM Provider (at least one)
+XAI_API_KEY=your-xai-key
+# or ANTHROPIC_API_KEY=your-anthropic-key
+# or OPENAI_API_KEY=your-openai-key
+
+# TTS Provider (at least one)
+ELEVENLABS_API_KEY=your-elevenlabs-key
+# or use OPENAI_API_KEY for OpenAI TTS
+
+# Audio devices (configure after Step 7)
+SPEAKER_DEVICE_NAME=plughw:CARD=Device,DEV=0
+MIC_DEVICE_NAME=plughw:CARD=Microphone,DEV=0
+```
+
+---
+
+## Step 6: Run Setup Scripts
+
+Now run the setup scripts **in this order**:
+
+```bash
+cd ~/jarvis-voice
+source ~/jarvis-venv/bin/activate
+
+# 1. Initial setup (creates directories, permissions, symlinks)
+./setup.sh
+
+# 2. Verify everything is configured
+./verify-env.sh
+
+# 3. Sync tools to database (registers all 60+ skills)
+./setup_tools.sh
+
+# 4. Create OpenCode workspace (for autonomous coding) install opencode first see docs/opencode/OPENCODE.md
+./setup_opencode_workspace.sh
+```
+
+### Script Reference
+
+| Script | Purpose |
+|--------|---------|
+| `setup.sh` | Creates audio dirs, symlinks, permissions |
+| `verify-env.sh` | Validates config files and dependencies |
+| `setup_tools.sh` | Syncs tool definitions to SQLite database |
+| `setup_opencode_workspace.sh` | Creates ~/jarvis-workspace for OpenCode projects |
+| `install-system-deps.sh` | Installs apt packages (run with sudo) |
+
+---
+
+## Step 7: Configure Audio Devices
+
+**Find your audio devices:**
+```bash
+# List playback devices (speakers)
+aplay -L | grep -E '^(plughw|hw):'
+
+# List recording devices (microphones)
+arecord -L | grep -E '^(plughw|hw):'
+```
+
+**Test audio:**
+```bash
+# Test speakers (should hear white noise)
+speaker-test -D plughw:CARD=Device,DEV=0 -c 2 -t wav
+
+# Test microphone (record 5 seconds)
+arecord -D plughw:CARD=Microphone,DEV=0 -f cd -d 5 test.wav
+aplay test.wav  # Play it back
+rm test.wav
+```
+
+**Update config/cloud.env with your device names:**
+```bash
+SPEAKER_DEVICE_NAME=plughw:CARD=YourSpeaker,DEV=0
+MIC_DEVICE_NAME=plughw:CARD=YourMic,DEV=0
+```
+
+---
+
+## Step 8: Install OpenCode Plugins
+
+If using OpenCode for autonomous coding:
+
+```bash
+# Create plugin directory
+mkdir -p ~/.config/opencode/plugin
+
+# Copy safety plugins from repo
+cp ~/jarvis-voice/docs/opencode/plugin/*.js ~/.config/opencode/plugin/
+cp ~/jarvis-voice/docs/opencode/plugin/README.md ~/.config/opencode/plugin/
+
+# Verify
+ls ~/.config/opencode/plugin/
+# Should show: 00-workspace-protection.js  README.md
+```
+
+---
+
+## Step 9: Setup Aliases
+
+Add convenient bash aliases:
+
+```bash
+cd ~/jarvis-voice
+
+# Run alias setup script
+./update-aliases.sh
+
+# Reload bashrc
+source ~/.bashrc
+```
+
+**Available aliases after setup:**
+| Alias | Command |
+|-------|---------|
+| `jarvis` | Start wake word listener (cloud mode) |
+| `jarvis-local` | Start wake word listener (local mode) |
+| `jarvis-d` | Open TUI dashboard |
+| `jarvis-web` | Start web UI |
+| `jarvis-api` | Start API server |
+| `jarvis-cd` | cd to jarvis-voice directory |
+| `jarvis-env` | Activate Python venv |
+
+---
+
+## Step 10: Verify and Start
+
+**Final verification:**
+```bash
+cd ~/jarvis-voice
+source ~/jarvis-venv/bin/activate
+
+# Check everything
+./verify-env.sh
+
+# Start all services
+./bin/start
+
+# Check status
+./bin/start --list
+```
+
+**Test voice mode:**
+```bash
+# Start wake word listener
+./jarvis
+# Say "Hey Jarvis" followed by a question
+
+# Or use dashboard for TUI
+./bin/jarvis-dashboard
+```
+
+**Test web UI:**
+```bash
+# Start web UI (if not already running)
+./bin/start web
+
+# Open in browser: http://localhost:3000
+```
+
+---
+
+## Quick Reference
+
+### Directory Structure
 ```
 /home/boss/
 ├── jarvis-voice/          # Main codebase
@@ -165,154 +321,28 @@ These paths are hardcoded throughout the codebase:
     └── plugin/            # OpenCode safety plugins
 ```
 
-**Don't change these paths** unless you want to grep through everything and update references.
-
-### OpenCode Plugin Setup
-
-Copy workspace protection plugins (prevents OpenCode from modifying Jarvis code):
-
-```bash
-# Create plugin directory
-mkdir -p ~/.config/opencode/plugin
-
-# Copy plugins from repo
-cp ~/jarvis-voice/docs/opencode/plugin/*.js ~/.config/opencode/plugin/
-cp ~/jarvis-voice/docs/opencode/plugin/README.md ~/.config/opencode/plugin/
-
-# Verify
-ls ~/.config/opencode/plugin/
-# Should show: 00-workspace-protection.js  README.md
-```
-
-See: `docs/opencode/OPENCODE_PLUGINS.md` for details.
+### Key Config Files
+| File | Purpose |
+|------|---------|
+| `config/cloud.env` | API keys, LLM/TTS providers, audio devices |
+| `config/local.env` | Ollama settings for local mode |
+| `config/ssh.json` | SSH hosts for remote command execution |
+| `config/web_config.json` | Web UI settings |
 
 ---
 
-## Audio configuration
+## API Key Reference
 
-### Detect your devices
+Get API keys from:
+- **xAI**: https://console.x.ai/
+- **Anthropic**: https://console.anthropic.com/
+- **OpenAI**: https://platform.openai.com/api-keys
+- **ElevenLabs**: https://elevenlabs.io/
+- **Brave Search**: https://api.search.brave.com/
 
-```bash
-aplay -l    # List playback devices
-arecord -l  # List recording devices
-```
-
-Note your card and device numbers. Format: `hw:CARD,DEVICE`
-
-### Test audio
-
-```bash
-# Record 5 seconds
-arecord -D hw:3,0 -f cd -d 5 test.wav
-
-# Play it back
-aplay test.wav
-
-# Test speakers
-speaker-test -D hw:0,0 -c 2 -t wav
-```
-
-### Configure ALSA (if needed)
-
-Create `~/.asoundrc` for custom device mapping:
-
-```bash
-cat > ~/.asoundrc << 'EOF'
-pcm.!default {
-    type asym
-    playback.pcm "plughw:0,0"
-    capture.pcm "plughw:3,0"
-}
-ctl.!default {
-    type hw
-    card 0
-}
-EOF
-```
-
-Update the device numbers to match your hardware.
-
----
-
-## Configuration
-
-### Verify config files exist
-
-```bash
-cd /home/boss/jarvis-voice/config
-
-# These should exist (from backup or created from templates):
-ls -la cloud.env
-ls -la local.env
-ls -la contacts.json
-ls -la webhook_registry.json
-```
-
-If missing, copy from templates:
-
-```bash
-cp cloud.env.example cloud.env
-cp local.env.example local.env
-cp contacts.json.example contacts.json
-cp webhook_registry.json.template webhook_registry.json
-```
-
-### Update audio device paths
-
-Edit `config/cloud.env` and `config/local.env`:
-
-```bash
-nano config/cloud.env
-```
-
-Find and update these lines with your audio devices:
-
-```bash
-# Audio Configuration (UPDATE THESE!)
-MICROPHONE_DEVICE="hw:3,0"           # From arecord -l
-SPEAKER_DEVICE="plughw:CARD=PCH"     # From aplay -l
-SPEAKER_DEVICE_KOKORO="hw:0,0"       # For Kokoro TTS (local mode)
-```
-
-**Test audio paths:**
-```bash
-# Test mic
-arecord -D hw:3,0 -f cd -d 3 test.wav && aplay test.wav
-
-# Test speaker
-speaker-test -D hw:0,0 -c 2 -t wav -l 1
-```
-
-### Step 3: Verify API Keys
-
-**Required for cloud mode:**
+**Verify keys are set:**
 ```bash
 grep "API_KEY" config/cloud.env | grep -v "^#"
-```
-
-Should see:
-- `XAI_API_KEY` or `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
-- `OPENAI_API_KEY` (for embeddings)
-- `BRAVE_API_KEY` (optional, for web search)
-
-**If missing, get from:**
-- xAI: https://console.x.ai/
-- Anthropic: https://console.anthropic.com/
-- OpenAI: https://platform.openai.com/api-keys
-- Brave: https://api.search.brave.com/
-
-**Note might need to comment out for vars in env if not using certain tools or leave "" empty**
-- Tools like stash and memory tools need to stay enabled = true
-
-### Step 4: Update Network URLs (if IPs changed)
-
-```bash
-# In config/cloud.env and local.env
-N8N_LOCAL_API_URL="http://localhost:5678"
-N8N_JARVIS_WEBHOOK_URL="http://localhost:5678/webhook/jarvis-reminder"
-
-# In config/webhook_registry.json
-# Update all URLs with OLLAMA_BASE_URL to new n8n IP
 ```
 
 ---
@@ -563,7 +593,7 @@ source ~/jarvis-venv/bin/activate
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull models
-ollama pull qwen3-vl
+ollama pull qwen3:14b
 ollama pull nomic-embed-text
 
 # Test
@@ -657,6 +687,7 @@ sudo ufw allow 8090/tcp   # Canvas Viewer
 sudo ufw allow 5050/tcp   # UniFi Protect webhook receiver
 sudo ufw allow 9090/tcp   # Prometheus (if monitoring enabled)
 sudo ufw allow 3000/tcp   # Grafana (if monitoring enabled)
+sudo ufw allow 5678/tcp   # N8N
 ```
 
 ### If Ollama is on another server
@@ -686,6 +717,10 @@ sudo ufw status verbose
 ## Troubleshooting
 
 ### Audio Issues
+
+**NOTE: You will have to tweak mic settings based on your mic and enviroment**
+
+- Needs silence to stop wake word and continue on, this would be fine tuning based on hardware
 
 **Microphone not detected:**
 ```bash

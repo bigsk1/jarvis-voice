@@ -82,32 +82,13 @@ ln -sf "$PROJECT_ROOT/bin/wake_jarvis.py" "$PROJECT_ROOT/jarvis" 2>/dev/null || 
 ln -sf "$PROJECT_ROOT/bin/wake_jarvis_local.py" "$PROJECT_ROOT/jarvis-local" 2>/dev/null || true
 echo "✅ Symlinks created (./jarvis and ./jarvis-local)"
 
-# Git setup
+# Git check (repo should already be cloned)
 echo ""
 if [ -d ".git" ]; then
-  echo "✅ Git repository already initialized"
+  echo "✅ Git repository detected"
 else
-  echo "🔧 Initializing git repository..."
-  git init
-  git config user.name "Jarvis Dev"
-  git config user.email "jarvis@localhost"
-  echo "✅ Git initialized"
-fi
-
-# Initial commit
-if [ -z "$(git log --oneline 2>/dev/null)" ]; then
-  echo ""
-  echo "📝 Creating initial commit..."
-  git add -A
-  git commit -m "Initial commit: Jarvis Voice Assistant structured project
-
-- Organized directory structure
-- Centralized configuration (cloud.env, local.env)
-- Refactored scripts to use config loader
-- Separate audio storage for cloud/local modes
-- Git-based version control (local only)
-- Ready for future extensions (orchestrator, tools)"
-  echo "✅ Initial commit created"
+  echo "⚠️  No .git directory found. Did you clone the repo?"
+  echo "   git clone https://github.com/bigsk1/jarvis-voice.git"
 fi
 
 echo ""
@@ -117,22 +98,24 @@ echo "======================================"
 echo ""
 echo "Next steps:"
 echo ""
-echo "1. Edit config files:"
-echo "   • config/cloud.env (API keys, LLM provider)"
-echo "   • config/local.env (Ollama endpoints)"
-echo "   • config/ssh.json (SSH hosts for remote execution)"
+echo "1. Configure audio devices in config/cloud.env:"
+echo "   • SPEAKER_DEVICE_NAME - run: aplay -L | grep -E '^(plughw|hw):'"
+echo "   • MIC_DEVICE_NAME - run: arecord -L | grep -E '^(plughw|hw):'"
 echo ""
-echo "2. Activate your Python virtual environment:"
-echo "   source ~/jarvis-venv/bin/activate"
+echo "2. Add your API keys to config/cloud.env:"
+echo "   • XAI_API_KEY or ANTHROPIC_API_KEY (LLM)"
+echo "   • ELEVENLABS_API_KEY or OPENAI_API_KEY (TTS)"
 echo ""
-echo "3. Run Jarvis:"
-echo "   • Cloud mode:  ./jarvis"
-echo "   • Local mode:  ./jarvis-local"
+echo "3. Run verification:"
+echo "   ./verify-env.sh"
 echo ""
-echo "4. Create feature branches for experiments:"
-echo "   git checkout -b feature/my-new-capability"
+echo "4. Sync tools to database:"
+echo "   ./setup_tools.sh"
 echo ""
-echo "5. Your will need to set your own speaker and mic names in the config files and requirements.txt has full packages needed using uv to install everything is prefered"
-echo "   This setup was never designed to be reproducible or used by others so you will need to set your own values and install the packages yourself."
+echo "5. Start Jarvis:"
+echo "   ./bin/start        # Start all services"
+echo "   ./jarvis           # Start wake word listener"
+echo ""
+echo "See docs/DISASTER_RECOVERY.md for full setup guide."
 echo ""
 
