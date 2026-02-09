@@ -23,10 +23,25 @@ async function fetchImages() {
 
 function filterImages() {
     const search = document.getElementById('searchInput').value.toLowerCase();
+    const providerFilter = document.getElementById('providerFilter').value;
+    
     filteredImages = images.filter(img => {
         const name = img.name.toLowerCase();
-        const provider = (img.provider || '').toLowerCase();
-        return name.includes(search) || provider.includes(search);
+        const imgProvider = (img.provider || detectProvider(img.name) || '').toLowerCase();
+        
+        // Text search (name or provider)
+        if (search && !name.includes(search) && !imgProvider.includes(search)) {
+            return false;
+        }
+        
+        // Provider filter
+        if (providerFilter !== 'all') {
+            if (!imgProvider.includes(providerFilter)) {
+                return false;
+            }
+        }
+        
+        return true;
     });
     sortImages();
 }
@@ -388,7 +403,29 @@ function updateVideoOptions() {
     
     // Clear and rebuild duration options based on provider
     durationSelect.innerHTML = '';
-    if (provider === 'gemini') {
+    
+    if (provider === 'openai') {
+        // OpenAI Sora supports 4, 8, or 12 seconds
+        ['4', '8', '12'].forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d;
+            opt.text = d + ' seconds';
+            durationSelect.appendChild(opt);
+        });
+        durationSelect.value = '8';
+        
+        // Sora supports 720p and 1080p (1080p only with sora-2-pro)
+        resolutionSelect.innerHTML = `
+            <option value="720p">720p (HD) - $0.10/s</option>
+            <option value="1080p">1080p (Full HD) - $0.30-0.50/s</option>
+        `;
+        
+        // Sora only supports 2 aspect ratios
+        aspectSelect.innerHTML = `
+            <option value="16:9">16:9 (Landscape)</option>
+            <option value="9:16">9:16 (Portrait)</option>
+        `;
+    } else if (provider === 'gemini') {
         // Gemini only supports 4, 6, or 8 seconds
         ['4', '6', '8'].forEach(d => {
             const opt = document.createElement('option');
@@ -454,7 +491,8 @@ async function generateVideo() {
     // Show progress
     document.getElementById('videoModalForm').style.display = 'none';
     document.getElementById('videoProgress').classList.add('active');
-    document.getElementById('videoProgressStatus').textContent = `Using ${provider === 'gemini' ? 'Gemini Veo' : 'xAI Grok'}...`;
+    const providerName = provider === 'openai' ? 'OpenAI Sora' : provider === 'gemini' ? 'Gemini Veo' : 'xAI Grok';
+    document.getElementById('videoProgressStatus').textContent = `Using ${providerName}...`;
     
     try {
         const response = await fetch(`/api/gallery/images/${encodeURIComponent(videoModalImage)}/to-video`, {

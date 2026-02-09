@@ -76,7 +76,8 @@ body {
     border-color: var(--accent);
 }
 
-.sort-select {
+.sort-select,
+.filter-select {
     padding: 10px 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);

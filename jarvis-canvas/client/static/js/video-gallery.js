@@ -22,9 +22,24 @@ async function fetchVideos() {
 
 function filterVideos() {
     const search = document.getElementById('searchInput').value.toLowerCase();
-    filteredVideos = videos.filter(vid => 
-        vid.name.toLowerCase().includes(search)
-    );
+    const providerFilter = document.getElementById('providerFilter').value;
+    
+    filteredVideos = videos.filter(vid => {
+        // Text search
+        if (search && !vid.name.toLowerCase().includes(search)) {
+            return false;
+        }
+        
+        // Provider filter
+        if (providerFilter !== 'all') {
+            const vidProvider = (vid.provider || detectProvider(vid.name, vid.tags) || '').toLowerCase();
+            if (!vidProvider.includes(providerFilter)) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
     sortVideos();
 }
 

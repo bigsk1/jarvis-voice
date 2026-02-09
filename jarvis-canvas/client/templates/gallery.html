@@ -29,6 +29,12 @@
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Search images..." oninput="filterImages()">
             </div>
+            <select class="filter-select" id="providerFilter" onchange="filterImages()">
+                <option value="all">All Providers</option>
+                <option value="xai">xAI</option>
+                <option value="openai">OpenAI</option>
+                <option value="gemini">Gemini</option>
+            </select>
             <select class="sort-select" id="sortSelect" onchange="sortImages()">
                 <option value="date-desc">Newest First</option>
                 <option value="date-asc">Oldest First</option>
@@ -85,7 +91,8 @@
                         <label for="videoProvider">Provider</label>
                         <select id="videoProvider" onchange="updateVideoOptions()">
                             <option value="xai">xAI Grok (1-15s)</option>
-                            <option value="gemini">Gemini Veo (4-8s, audio)</option>
+                            <option value="openai">OpenAI Sora (4-12s, audio)</option>
+                            <option value="gemini">Gemini Veo (4-8s)</option>
                         </select>
                     </div>
                     <div class="form-group">

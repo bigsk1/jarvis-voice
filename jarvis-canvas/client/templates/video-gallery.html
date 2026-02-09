@@ -29,6 +29,12 @@
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Search videos..." oninput="filterVideos()">
             </div>
+            <select class="filter-select" id="providerFilter" onchange="filterVideos()">
+                <option value="all">All Providers</option>
+                <option value="xai">xAI</option>
+                <option value="openai">OpenAI</option>
+                <option value="gemini">Gemini</option>
+            </select>
             <select class="sort-select" id="sortSelect" onchange="sortVideos()">
                 <option value="date-desc">Newest First</option>
                 <option value="date-asc">Oldest First</option>
