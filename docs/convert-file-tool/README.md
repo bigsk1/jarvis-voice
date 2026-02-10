@@ -10,7 +10,7 @@ The `convert_file` tool converts media files between formats using local system 
 
 The easiest way to convert files is using the **🔄 Convert button** in the web UI:
 
-1. **Click the 🔄 button** (next to the 📎 attach button)
+1. **Click the 🔄 button** (next to the 🖼️ attach button)
 2. **Select any media file** (image, video, or audio)
 3. **Choose target format** from the dropdown
 4. **Click "Convert"**
@@ -109,7 +109,7 @@ When using voice or typing directly, provide the stash reference:
 "Extract audio from stash://space_xxx/f_video as MP3"
 ```
 
-**Note:** Uploading via the 📎 button triggers vision analysis first, which may give unhelpful responses before converting. Use the 🔄 button instead.
+**Note:** Uploading via the 🖼️ button triggers vision analysis first, which may give unhelpful responses before converting. Use the 🔄 button instead.
 
 ### Via API
 

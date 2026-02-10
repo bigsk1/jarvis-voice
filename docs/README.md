@@ -428,7 +428,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - "Stopped after 2 tool(s). Results so far: ..."
 - ✅ **Mobile Layout Fixes** - Better button visibility on small screens
   - Send button no longer cut off on iPhone 13 Pro (428px)
-  - Mobile shows: Upload (📎), Enhance (✨), Send (➤), Stop (⏹)
+  - Mobile shows: Upload (🖼️), Enhance (✨), Send (➤), Stop (⏹)
   - Mic hidden on mobile (native keyboard has voice input)
 - ✅ **Voice Compression Fix** - Preserves named entities in multi-tool summaries
   - Before: "Animation adventure at Regal" (useless!)

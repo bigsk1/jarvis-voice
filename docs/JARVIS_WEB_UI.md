@@ -656,7 +656,7 @@ def speech_to_text():
 The web UI has **native image upload** - this is NOT a tool call, it's built directly into the chat:
 
 **How to Upload:**
-1. **Click** the 📎 button next to input
+1. **Click** the 🖼️ button next to input
 2. **Drag-drop** an image onto the chat
 3. **Paste** from clipboard (Ctrl+V)
 
@@ -775,17 +775,17 @@ A dedicated tool for analyzing images from various sources:
 A dedicated **🔄 button** in the input bar for converting files between formats. This bypasses vision analysis and goes directly to the `convert_file` tool.
 
 **How to Use:**
-1. Click the **🔄 button** (next to 📎 attach)
+1. Click the **🔄 button** (next to 🖼️ attach)
 2. Select any media file (image, video, or audio)
 3. Modal opens with file preview and format selector
 4. Choose target format from dropdown
 5. Click "Convert"
 
-**Why Use the 🔄 Button (vs 📎)?**
+**Why Use the 🔄 Button (vs 🖼️)?**
 
 | Button | Behavior |
 |--------|----------|
-| **📎 Attach** | Triggers vision analysis first → may say "can't convert" → then convert |
+| **🖼️ Attach** | Triggers vision analysis first → may say "can't convert" → then convert |
 | **🔄 Convert** | Uploads to stash directly → calls `convert_file` → no vision confusion |
 
 **Supported Formats:**
@@ -1422,7 +1422,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - [ ] Image in tool card expandable section
 
 ### Images (Uploaded)
-- [ ] Click 📎 button opens file picker
+- [ ] Click 🖼️ button opens file picker
 - [ ] Drag-drop image onto chat area works
 - [ ] Paste image (Ctrl+V) works
 - [ ] Preview appears before sending
