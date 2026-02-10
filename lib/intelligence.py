@@ -764,11 +764,19 @@ CRITICAL: Look for signs the user-provided info might be WRONG:
 - A "not running" result could actually mean "wrong IP" if memory wasn't checked first
 - When something FAILS and memory wasn't checked → strongly consider first_tool_optimal = FALSE
 
+TOOL FAILURE RECOVERY (important for generation tools):
+- If a generation tool (generate_video, generate_image, generate_music) was called multiple times, check WHY
+- If the tool returned unexpected results (wrong duration, wrong size) and was retried → the LLM should have searched memory for known provider limitations instead of retrying
+- Provider API limitations are NOT fixable by retrying with different params (e.g., xAI video editing cannot change duration)
+- Pattern: tool fails/unexpected → retry same tool = BAD. Tool fails/unexpected → search_memory for limitations → inform user = GOOD.
+- If multiple turns were used on the SAME generation tool → first_tool_optimal may be true but the RECOVERY STRATEGY was wrong
+
 RESULT-BASED EVALUATION (most important):
 - 1 tool used + good result = likely optimal first choice
 - Multiple tools + had to retry = first tool probably suboptimal
 - Action tool first + connection failed = should have checked memory
 - Memory empty + action succeeded = action was correct fallback
+- Same generation tool called 2+ times = recovery strategy failure (should search memory or inform user)
 
 IMPORTANT CLASSIFICATION:
 - A FACT is data like "The server IP is 10.0.0.1" → belongs in Memory DB, NOT here

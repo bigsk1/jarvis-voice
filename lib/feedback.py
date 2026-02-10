@@ -190,11 +190,13 @@ Rate the interaction (1-5) using this STRICT rubric:
   - Important information missing
   - System prompt guidance not followed
   - Native search DISABLED but no tool used for real-time data
+  - Tool failed and LLM retried with same/similar params instead of searching memory for known limitations
   
 **1 = FAILURE** - Major problems:
   - Task failed or wrong result
   - Hallucinated information (ONLY if native search is DISABLED)
   - Completely wrong approach taken
+  - Expensive tool (video/image/music generation) called multiple times when first result had a provider limitation (e.g., duration ignored)
 
 BE CONSISTENT: Apply this rubric the same way every time.
 
@@ -230,7 +232,13 @@ Provide SPECIFIC, ACTIONABLE feedback:
    - Did known failures help avoid mistakes?
    - Were tool preferences accurate?
 
-4. **Suggestions**: 
+4. **Tool Failure Recovery**:
+   - If a tool failed or returned unexpected results, did the LLM search memory (search_memory/semantic_recall) for known limitations BEFORE retrying?
+   - If a generation tool (video/image/music) was called multiple times, was it because the provider ignored a parameter (API limitation, not fixable by retrying)?
+   - Did the LLM inform the user about the limitation instead of silently retrying?
+   - Suggestion: "When a tool returns unexpected results, use search_memory to check for known provider limitations before retrying"
+
+5. **Suggestions**: 
    - QUOTE the specific text that should change
    - Provide the improved version
 

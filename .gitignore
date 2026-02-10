@@ -109,6 +109,7 @@ logs/auth/
 
 # User knowledge base (contains sensitive info: IPs, credentials, network configs)
 jarvis-intel/*
+!jarvis-intel/jarvis-tool-knowledge.md
 
 
 # ===== Blinko Integration =====
