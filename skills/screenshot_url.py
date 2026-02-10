@@ -172,12 +172,12 @@ def main():
                 )
             else:
                 return_success(
-                    speech=f"Screenshot saved to {file_path}. Vision analysis failed.",
+                    speech="Screenshot saved. Vision analysis failed.",
                     data=response_data
                 )
         else:
             return_success(
-                speech=f"Screenshot saved to {file_path}",
+                speech="Screenshot saved to stash.",
                 data=response_data
             )
         

@@ -996,7 +996,7 @@ def main():
         if save_info:
             response["data"]["saved"] = save_info
             if save_info.get('path'):
-                response["speech"] += f". Saved to: {save_info['filename']}"
+                response["speech"] += ". Saved to stash."
                 response["data"]["file_path"] = save_info['path']
         
         print(json.dumps(response))

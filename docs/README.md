@@ -1124,6 +1124,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-09 (v2.42.1)  
+**Last Updated:** 2026-02-09 (v2.42.2)  
 **Latest:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

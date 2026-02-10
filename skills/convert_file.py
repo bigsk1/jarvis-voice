@@ -426,7 +426,7 @@ def main():
             
             print(json.dumps({
                 "ok": True,
-                "speech": f"Converted {source_format.upper()} to {target_format.upper()}. File saved to stash: {output_filename}",
+                "speech": f"Converted {source_format.upper()} to {target_format.upper()}. Saved to stash.",
                 "data": result_data
             }))
             

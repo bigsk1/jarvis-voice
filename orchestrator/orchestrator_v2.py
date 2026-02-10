@@ -1152,6 +1152,7 @@ RULES:
 7. NEVER speak stash:// references (e.g., stash://space_xxx/f_xxx) - just say "saved to stash" or "image saved"
 8. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only (e.g., "on Wikipedia")
 9. Simplify file paths (/home/user/...) to just the filename
+10. NEVER speak auto-generated filenames (e.g., "generated_modify_the_previous_20260209.png") - just say "saved" or "saved to stash"
 
 EXAMPLES:
 Verbose: "Great! I've looked up ntfy. It's an open-source push notification service that lets you..."
@@ -1229,6 +1230,7 @@ RULES:
 6. NEVER speak stash:// references (e.g., stash://space_xxx/f_xxx) - just say "saved to stash" or "image generated"
 7. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only
 8. Simplify file paths (/home/user/project/file.py) to just the filename (file.py)
+9. NEVER speak auto-generated filenames (e.g., "generated_modify_the_previous_20260209.png") - just say "saved" or "saved to stash"
 
 GOOD: "Top 3 date night spots: Copper River, BJ's Brewhouse, Thirsty Lion. Tonight: 47°F clear."
 GOOD: "Image generated and saved to stash." (NOT "Image saved to stash://space_20260201_xxx/f_abc")
