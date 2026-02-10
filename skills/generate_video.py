@@ -110,6 +110,7 @@ def _resolve_video_source(video_source: str) -> str | None:
             # Parse stash://space_id/file_id
             parts = video_source.replace('stash://', '').split('/')
             if len(parts) != 2:
+                print(f"[VIDEO] Invalid stash ref format (expected space_id/file_id): {video_source}", file=sys.stderr)
                 return None
             
             space_id, file_id = parts
@@ -117,30 +118,46 @@ def _resolve_video_source(video_source: str) -> str | None:
             meta_path = stash_root / space_id / 'meta.json'
             
             if not meta_path.exists():
+                print(f"[VIDEO] Stash meta not found: {meta_path}", file=sys.stderr)
                 return None
             
             with open(meta_path) as f:
                 meta = json.load(f)
             
             # Find file and check for source_url
+            # Provider URL expiration limits (conservative estimates):
+            #   xAI: ~8h+ observed, using 4h safe cutoff
+            #   OpenAI: 60min (but uses video_id for remix, not URLs)
+            #   Gemini: unknown, using 4h
+            VIDEO_URL_MAX_AGE_HOURS = 4
+            
             for f in meta.get('files', []):
                 if f.get('file_id') == file_id:
                     source_url = f.get('source_url')
                     if source_url and source_url.startswith('http'):
-                        # Check if URL might still be valid (within 24 hours)
+                        # Enforce expiration cutoff
                         created = f.get('source_url_created', '')
                         if created:
                             from datetime import datetime, timedelta
                             try:
                                 created_dt = datetime.fromisoformat(created)
-                                if datetime.now() - created_dt > timedelta(hours=24):
-                                    print(f"[VIDEO] Warning: source_url may be expired (created {created})")
-                            except:
-                                pass
+                                age = datetime.now() - created_dt
+                                age_hours = age.total_seconds() / 3600
+                                if age_hours > VIDEO_URL_MAX_AGE_HOURS:
+                                    print(f"[VIDEO] source_url expired: {age_hours:.1f}h old (limit {VIDEO_URL_MAX_AGE_HOURS}h, created {created})", file=sys.stderr)
+                                    return None
+                            except Exception as e:
+                                print(f"[VIDEO] Could not parse source_url_created: {created} ({e})", file=sys.stderr)
                         return source_url
+                    else:
+                        print(f"[VIDEO] File found in stash but no valid source_url (got: {source_url})", file=sys.stderr)
                     break
+            else:
+                print(f"[VIDEO] File {file_id} not found in stash space {space_id}", file=sys.stderr)
         except Exception as e:
-            print(f"[VIDEO] Error resolving stash video: {e}")
+            import traceback
+            print(f"[VIDEO] Error resolving stash video: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
     
     return None
 
@@ -287,14 +304,17 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         
         # Add video_url for video editing
         # xAI requires a publicly accessible URL (no base64 for videos)
+        # Provider URLs expire: xAI ~4h, OpenAI 60min
         if video_url:
             resolved_url = _resolve_video_source(video_url)
             if resolved_url:
                 kwargs["video_url"] = resolved_url
             elif video_url.startswith(('http://', 'https://')):
                 kwargs["video_url"] = video_url
+            elif video_url.startswith('stash://'):
+                raise ValueError(f"The video URL for editing has expired or is unavailable. Provider URLs are only valid for ~4 hours. To make changes, regenerate the video from the source image using image_url instead.")
             else:
-                raise ValueError(f"Video editing requires a public URL. Local stash video doesn't have a valid source_url. Try generating a new video instead.")
+                raise ValueError(f"Video editing requires a public http(s) URL. Got: {video_url[:80]}. Stash refs are not directly usable — provide the original provider URL or regenerate from the source image.")
         
         # Generate video with automatic polling (SDK handles waiting)
         # This can take 30-120+ seconds
@@ -984,9 +1004,12 @@ def main():
             }
         }
         
-        # Add mode indicators
+        # Add mode indicators and source references
         if result.get('from_image'):
             response["data"]["generated_from"] = "image"
+            # Include source image ref so LLM can regenerate from same image
+            if image_url:
+                response["data"]["source_image"] = image_url
         if result.get('is_edit'):
             response["data"]["mode"] = "edit"
         if result.get('has_audio'):

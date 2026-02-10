@@ -284,6 +284,11 @@ chmod +x skills/mytool.py
 ./bin/sync_tools.py cloud
 ```
 
+## Note 
+If you add a new tool and want to be able to follow up on the result, you need to add it to the `FOLLOWUP_FIELDS` dict in `jarvis-web/server/sockets/chat.py` → `_extract_followup_data()`.
+
+Print statements must have in tool *.py files file=sys.stderr so they are not printed to the console.
+
 ---
 
 ## Testing Tools

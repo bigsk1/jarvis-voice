@@ -110,12 +110,32 @@ def lookup_stash_metadata(filename: str) -> Optional[dict]:
                         aspect = tag
                         break
                 
+                # Compute edit URL status (xAI URLs expire after ~4h)
+                source_url = file_info.get('source_url')
+                source_url_created = file_info.get('source_url_created')
+                edit_url_status = None
+                if source_url and source_url.startswith('http'):
+                    edit_url_status = 'available'
+                    if source_url_created:
+                        try:
+                            created_dt = datetime.fromisoformat(source_url_created)
+                            age_hours = (datetime.now() - created_dt).total_seconds() / 3600
+                            if age_hours > 4:
+                                edit_url_status = 'expired'
+                        except Exception:
+                            pass
+                
                 return {
                     'provider': provider,
                     'aspect': aspect,
                     'tags': tags,
                     'tool_origin': file_info.get('tool_origin'),
-                    'created_at': file_info.get('created_at')
+                    'created_at': file_info.get('created_at'),
+                    'stash_ref': f"stash://{meta.get('space_id')}/{file_info.get('file_id')}",
+                    'space_id': meta.get('space_id'),
+                    'source_url': source_url,
+                    'source_url_created': source_url_created,
+                    'edit_url_status': edit_url_status,
                 }
         except Exception:
             pass
@@ -164,6 +184,8 @@ class VideoInfo(BaseModel):
     provider: Optional[str] = None
     aspect: Optional[str] = None
     tags: Optional[list[str]] = None
+    stash_ref: Optional[str] = None
+    edit_url_status: Optional[str] = None  # 'available', 'expired', or None
 
 
 class VideoListResponse(BaseModel):
@@ -190,6 +212,11 @@ class VideoDetailResponse(BaseModel):
     tags: Optional[list[str]] = None
     tool_origin: Optional[str] = None
     created_at: Optional[str] = None
+    stash_ref: Optional[str] = None
+    space_id: Optional[str] = None
+    source_url: Optional[str] = None
+    source_url_created: Optional[str] = None
+    edit_url_status: Optional[str] = None  # 'available', 'expired', or None
 
 
 class DeleteResponse(BaseModel):
@@ -206,7 +233,7 @@ class GenerateRequest(BaseModel):
     aspect_ratio: str = Field("16:9", description="xAI: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3 | OpenAI/Gemini: 16:9 or 9:16")
     resolution: str = Field("720p", description="xAI: 720p/480p | OpenAI: 720p/1080p | Gemini: 720p/1080p/4k")
     image_url: Optional[str] = Field(None, description="Image for image-to-video (all providers). Accepts: URL, local path, or stash ref (stash://space_xxx/file_id)")
-    video_url: Optional[str] = Field(None, description="Video to edit: xAI (max 8.7s source) or OpenAI remix (video ID)")
+    video_url: Optional[str] = Field(None, description="Video to edit. xAI: MUST be a public http(s) URL (use source_url from /info endpoint, expires ~4h). Cannot change duration/aspect. OpenAI: video ID to remix (starts with 'video_').")
     negative_prompt: Optional[str] = Field(None, description="What to avoid in video (Gemini only)")
     provider: Optional[str] = Field(None, description="Override provider: 'xai', 'openai', or 'gemini'")
     save: bool = Field(True, description="Save to disk and stash")
@@ -255,7 +282,9 @@ def get_video_list() -> tuple[list[VideoInfo], int, dict]:
                     extension=f.suffix.lower(),
                     provider=meta.get('provider'),
                     aspect=meta.get('aspect'),
-                    tags=meta.get('tags')
+                    tags=meta.get('tags'),
+                    stash_ref=meta.get('stash_ref'),
+                    edit_url_status=meta.get('edit_url_status'),
                 ))
                 total_size += stat.st_size
     
@@ -500,7 +529,12 @@ async def get_video_info(filename: str):
         aspect=meta.get('aspect'),
         tags=meta.get('tags'),
         tool_origin=meta.get('tool_origin'),
-        created_at=meta.get('created_at')
+        created_at=meta.get('created_at'),
+        stash_ref=meta.get('stash_ref'),
+        space_id=meta.get('space_id'),
+        source_url=meta.get('source_url'),
+        source_url_created=meta.get('source_url_created'),
+        edit_url_status=meta.get('edit_url_status'),
     )
 
 

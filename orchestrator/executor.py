@@ -112,12 +112,13 @@ class ToolExecutor:
                 # Run bash scripts or other executables directly
                 cmd = [str(tool_script)]
             
+            # @TOOL_CONFIG: tool execution timeouts — add new tools with custom timeouts here
             # Use longer timeout for local mode (Ollama can be slower)
             # OpenCode tasks need much more time (building, coding, etc.)
             # Ingest intel needs time for embedding generation (especially large profiles)
             # Subprocess timeout settings see tool.json for HTTP timeouts
             if tool_name == "opencode":
-                timeout = 360  # 6 minutes for OpenCode tasks (complex builds)
+                timeout = 480  # 8 minutes for OpenCode tasks (complex builds)
             elif tool_name == "ingest_intel":
                 timeout = 180  # 3 minutes for ingesting files with embeddings (large profiles can have 300+ facts)
             elif tool_name == "manage_intel":
@@ -137,9 +138,9 @@ class ToolExecutor:
             elif tool_name == "search_docs":
                 timeout = 90  # 60 seconds - search documentation with qmd
             elif tool_name == "convert_file":
-                timeout = 240  # 4 minutes - convert files various formats, audio, video, image, ect.
+                timeout = 180  # 3 minutes - convert files various formats, audio, video, image, ect.
             elif tool_name == "samantha":
-                timeout = 240  # 4 minutes - Samantha is a remote assistant, so we need to increase the timeout
+                timeout = 180  # 3 minutes - Samantha is a remote assistant, so we need to increase the timeout
             else:
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
             

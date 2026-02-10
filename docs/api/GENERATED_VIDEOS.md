@@ -42,7 +42,9 @@ List all generated videos with metadata.
       "extension": ".mp4",
       "provider": "xAI",
       "aspect": "16:9",
-      "tags": ["ai_generated", "video", "xai", "16:9"]
+      "tags": ["ai_generated", "video", "xai", "16:9"],
+      "stash_ref": "stash://space_20260201_101028_abc/f_123def",
+      "edit_url_status": "available"
     },
     {
       "name": "video_sunset_timelapse_20260131_180045.mp4",
@@ -52,18 +54,22 @@ List all generated videos with metadata.
       "extension": ".mp4",
       "provider": "Gemini",
       "aspect": "16:9",
-      "tags": ["ai_generated", "video", "gemini", "16:9"]
+      "tags": ["ai_generated", "video", "gemini", "16:9"],
+      "stash_ref": "stash://space_20260131_180045_def/f_456abc",
+      "edit_url_status": "expired"
     }
   ]
 }
 ```
 
-**New Fields (Feb 2026)**:
+**Fields**:
 | Field | Type | Description |
 |-------|------|-------------|
-| `provider` | string | AI provider: `xAI`, `OpenAI`, `Gemini`, `Runway`, etc. |
+| `provider` | string | AI provider: `xAI`, `OpenAI`, `Gemini` |
 | `aspect` | string | Aspect ratio: `16:9`, `9:16`, `1:1`, etc. |
 | `tags` | array | Tags from generation: `ai_generated`, `video`, provider, aspect |
+| `stash_ref` | string | Stash reference for cross-tool use (null if stash expired) |
+| `edit_url_status` | string | `"available"` (< 4h), `"expired"` (> 4h), or `null` (no URL) |
 
 **Example**:
 ```bash
@@ -130,9 +136,16 @@ Get detailed metadata about a video.
   "aspect": "16:9",
   "tags": ["ai_generated", "video", "xai", "16:9"],
   "tool_origin": "generate_video",
-  "created_at": "2026-02-01T10:10:28Z"
+  "created_at": "2026-02-01T10:10:28Z",
+  "stash_ref": "stash://space_20260201_101028_abc/f_123def",
+  "space_id": "space_20260201_101028_abc",
+  "source_url": "https://vidgen.x.ai/xai-vidgen-bucket/xai-video-abc123.mp4",
+  "source_url_created": "2026-02-01T02:10:28.123456",
+  "edit_url_status": "available"
 }
 ```
+
+**Editing fields**: Use `source_url` as the `video_url` when calling the generate endpoint for video editing. Check `edit_url_status` first  -- `"expired"` means the provider URL is no longer valid (xAI URLs last ~4 hours).
 
 **Example**:
 ```bash
@@ -194,7 +207,7 @@ Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini Veo.
 | `aspect_ratio` | string | No | `16:9` | Video shape |
 | `resolution` | string | No | `720p` | Video quality |
 | `image_url` | string | No | - | Image for image-to-video (all providers) |
-| `video_url` | string | No | - | Video to edit (xAI ≤8.7s) or remix (OpenAI video ID) |
+| `video_url` | string | No | - | Video to edit (xAI: public URL only, ≤8.7s source, expires ~4h) or remix (OpenAI video ID). Use `source_url` from `/info`. Cannot change duration/aspect/resolution. |
 | `negative_prompt` | string | No | - | What to avoid (Gemini only) |
 | `provider` | string | No | `xai` | Video provider: `xai`, `openai`, or `gemini` |
 | `save` | bool | No | true | Save to disk and stash |
@@ -308,12 +321,13 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
     "duration": 8
   }'
 
-# Edit existing video (xAI only)
+# Edit existing video style (xAI only — cannot change duration/aspect/resolution)
+# Use source_url from the /info endpoint (expires ~4h after generation)
 curl -X POST http://localhost:8880/api/generated-videos/generate \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Make the colors more vibrant",
-    "video_url": "https://example.com/my-video.mp4",
+    "video_url": "https://vidgen.x.ai/xai-vidgen-bucket/xai-video-abc123.mp4",
     "provider": "xai"
   }'
 
@@ -359,8 +373,10 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
 **Notes**:
 - Generation takes 30-120+ seconds depending on provider, duration, and resolution
 - API timeout is 10 minutes
-- The `video_url` in response is temporary (may expire)
-- Local file path is permanent storage
+- The `video_url` in response is the provider's temporary URL (xAI expires ~4h, OpenAI ~60min)
+- Local file path and stash_ref are permanent storage
+- xAI video editing can only change visual content/style, not duration, aspect ratio, or resolution
+- xAI video editing requires a public http(s) URL (use `source_url` from `/info`, not `stash_ref`)
 - OpenAI and Gemini videos include native audio (dialogue, sound effects)
 - OpenAI 1080p requires sora-2-pro model ($0.30-0.50/s)
 - Gemini 1080p/4k requires 8-second duration
@@ -421,7 +437,12 @@ The `video_catalog.json` file stores metadata for all videos:
     "aspect": "16:9",
     "tags": ["ai_generated", "video", "xai", "16:9"],
     "tool_origin": "generate_video",
-    "created_at": "2026-02-01T10:10:28Z"
+    "created_at": "2026-02-01T10:10:28Z",
+    "stash_ref": "stash://space_20260201_101028_abc/f_123def",
+    "space_id": "space_20260201_101028_abc",
+    "source_url": "https://vidgen.x.ai/xai-vidgen-bucket/xai-video-abc123.mp4",
+    "source_url_created": "2026-02-01T02:10:28.123456",
+    "edit_url_status": "expired"
   }
 }
 ```

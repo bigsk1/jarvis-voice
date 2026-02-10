@@ -243,7 +243,7 @@ class Orchestrator:
             # Get system prompt from router
             system_prompt = self.router.system_prompt if hasattr(self.router, 'system_prompt') else None
             
-            # Get tool descriptions for relevant tools
+            # @TOOL_CONFIG: feedback relevant tools — keyword-to-tool mapping for feedback context
             tool_descriptions = {}
             relevant_tools = set(tools_used)
             query_lower = transcript.lower()
@@ -530,9 +530,25 @@ Mode: {self.mode}
                 
                 # Detect duplicate tool calls (same tool, similar/empty args)
                 current_call = (tool_name, json.dumps(arguments, sort_keys=True))
-                if last_tool_call and last_tool_call == current_call:
+                is_exact_duplicate = last_tool_call and last_tool_call == current_call
+                
+                # @TOOL_CONFIG: single-call cap — expensive tools limited to 1 successful call per request
+                # These are slow (30-120s), costly, and the LLM tends to loop when
+                # the result doesn't match expectations (e.g. duration ignored by provider)
+                # NOTE: failures don't hit this — they go through recursive retry with fresh counts
+                SINGLE_CALL_TOOLS = {
+                    'generate_video', 'generate_image', 'generate_music',
+                    'send_email',
+                }
+                is_over_cap = (
+                    tool_name in SINGLE_CALL_TOOLS
+                    and tool_call_counts.get(tool_name, 0) >= 1
+                )
+                
+                if is_exact_duplicate or is_over_cap:
+                    reason = "exact duplicate" if is_exact_duplicate else f"{tool_name} already called (max 1)"
                     if sys.stdout.isatty():
-                        print(f"⚠️  Duplicate tool call detected: {tool_name}")
+                        print(f"⚠️  Duplicate/capped tool call detected: {tool_name} ({reason})")
                         print(f"   Forcing Q&A mode to synthesize results")
                     
                     # Generate intelligent summary using accumulated data (not just tool list!)
@@ -565,7 +581,7 @@ Mode: {self.mode}
                 # Status update before tool execution
                 self.status_updater.set_turn(turn_num + 1)
                 
-                # Determine category based on tool type
+                # @TOOL_CONFIG: status update categories — route tools to UI status messages
                 if tool_name == 'opencode':
                     # OpenCode is long-running - start background updates
                     self.status_updater.update(category='building', tool_name=tool_name)
@@ -730,8 +746,7 @@ Mode: {self.mode}
                 if tools_used:
                     self.status_updater.update(category='near_complete')
                 
-                # Check if last tool has high-quality built-in speech that should be used directly
-                # (LLM tends to mangle numbers/prices when reformulating)
+                # @TOOL_CONFIG: direct speech bypass — tools whose speech is used as-is (LLM won't reformat)
                 DIRECT_SPEECH_TOOLS = {'status_recap', 'generate_music', 'phone_call'}
                 last_tool = tools_used[-1] if tools_used else None
                 use_direct_speech = False
@@ -1055,8 +1070,7 @@ Your response:"""
             
             tool_name = tools_used[0] if tools_used else ""
             
-            # TODO: Need to be able to dynamiticly add tools as tool list grows to the categories without having to edit the code. Search tools might be fine to hardcode like below. 
-            # Define tool categories
+            # @TOOL_CONFIG: response formatting categories — controls how tool output is spoken
             SEARCH_TOOLS = [
                 'search_memory', 'semantic_recall', 'recall', 'search_conversations',
                 'mcp_brave_search',  # Matches all brave search variants (web, local, news, image, video)
@@ -1615,7 +1629,7 @@ Your BEST EFFORT response:"""
                 result_summary = "\n   ".join(summary_parts)
             else:
                 # For success: Pass full result (ok, speech, data, etc.) so LLM sees everything
-                # Dynamically adjust truncation based on tool type
+                # @TOOL_CONFIG: context truncation limits — tools with large outputs get more chars
                 if "search" in tool_name.lower() or "fetch" in tool_name.lower():
                     # Search/fetch tools: need MORE context (3000 chars) to capture movie titles, URLs, descriptions
                     max_chars = 3000
@@ -1906,10 +1920,9 @@ def main():
         # Get the ACTUAL system prompt from router (it's a property)
         system_prompt = orch.router.system_prompt if hasattr(orch.router, 'system_prompt') else None
         
-        # Get tool descriptions for tools that were used (and some that should have been)
+        # @TOOL_CONFIG: feedback relevant tools — keyword-to-tool mapping for explicit feedback
         tool_descriptions = {}
         relevant_tools = set(tools_used)
-        # Add likely relevant tools based on query keywords
         query_lower = transcript.lower()
         if "time" in query_lower:
             relevant_tools.add("get_time")

@@ -138,6 +138,15 @@ curl -X POST http://localhost:8880/api/images/generate \
 ./orchestrator/orchestrator_v2.py cloud "edit the image at stash://xxx to change the dog to a cat"
 ```
 
+## Orchestrator integration
+
+The `generate_image` tool has config in several places beyond this skill. Search for `@TOOL_CONFIG` to find all locations:
+
+- **Single-call cap**: `orchestrator_v2.py` limits `generate_image` to 1 call per request (prevents LLM retry loops)
+- **Follow-up extraction**: `chat.py` extracts `provider`, `model`, `size`, `style` from results for conversation context
+- **Execution timeout**: `executor.py` sets 5-minute timeout for image generation
+- **Response formatting**: `orchestrator_v2.py` categorizes the tool for speech output formatting
+
 ## Edge cases
 
 - **Large images**: base64 encoding roughly doubles file size. A 10MB image becomes ~13MB in base64. No explicit resize, but providers have their own input limits.

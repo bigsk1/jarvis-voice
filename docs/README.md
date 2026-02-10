@@ -303,6 +303,30 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-02-10:**
+- ✅ **Video Follow-up Context** - LLM now gets previous video results for smarter follow-ups
+  - `source_image` extracted from image-to-video results (enables regeneration from same image)
+  - `tool_args` saved in error data for post-mortem debugging
+  - Video URL expiration tracked: `(expired)` injected into context after 4 hours
+- ✅ **Video Editing Guardrails** - Prevents common xAI editing mistakes
+  - Tool description rewritten: xAI editing requires public URLs, cannot change duration/aspect/resolution
+  - 4-hour hard cutoff on provider URLs (xAI ~8h observed, 4h safe limit)
+  - `_resolve_video_source` now logs failures to stderr instead of silently returning None
+- ✅ **Single-Call Tool Cap** - Expensive tools limited to 1 successful call per request
+  - Prevents LLM loops when results don't match expectations (e.g., duration ignored by provider)
+  - Affects: `generate_video`, `generate_image`, `generate_music`, `send_email`
+  - Failures don't count — recursive retry gets fresh counts
+- ✅ **Generated Videos API** - New metadata fields in list and detail endpoints
+  - `stash_ref`, `source_url`, `source_url_created`, `edit_url_status` exposed
+  - `edit_url_status`: `available`, `expired`, or `null` based on 4h cutoff
+  - `video_url` parameter docs updated with xAI limitations
+- ✅ **@TOOL_CONFIG Tagging System** - Codebase convention for tool-specific config locations
+  - Search `@TOOL_CONFIG` to find every spot that needs updating when adding a new tool
+  - 12 tags across orchestrator, chat, executor covering timeouts, extraction, caps, formatting
+  - See: `docs/TOOL_CALLING_SYSTEM.md`
+- ✅ **Debug Output Fix** - All `print()` in `generate_video.py` redirected to stderr
+  - Prevents JSON output corruption when tool subprocess writes debug info to stdout
+
 **2026-02-09:**
 - ✅ **OpenAI Sora Video Generation** - Third video provider with native audio
   - 4/8/12s durations, 16:9 or 9:16 aspect ratios, 720p/1080p resolution
@@ -1124,6 +1148,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-09 (v2.42.2)  
+**Last Updated:** 2026-02-10 (v2.42.3)  
 **Latest:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

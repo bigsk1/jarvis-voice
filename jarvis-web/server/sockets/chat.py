@@ -479,12 +479,11 @@ class ChatHandler:
         """
         followup = {}
         
-        # Fields we want to extract for follow-up capability per tool
-        # These are the "actionable" fields that enable edits/remixes/references
+        # @TOOL_CONFIG: follow-up data extraction — fields extracted from tool results for LLM context
         FOLLOWUP_FIELDS = {
             # --- Media generation ---
             'generate_video': ['provider', 'model', 'duration', 'aspect_ratio', 'resolution', 
-                               'video_id', 'video_url', 'generated_from'],
+                               'video_id', 'video_url', 'generated_from', 'source_image'],
             'generate_image': ['provider', 'model', 'size', 'style'],
             'generate_music': ['provider', 'model', 'duration'],
             # --- File/artifact producers ---
@@ -550,6 +549,21 @@ class ChatHandler:
             if value.get('provider') and 'provider' not in extracted:
                 extracted['provider'] = value['provider']
             
+            # @TOOL_CONFIG: video URL expiration — provider URLs have time limits
+            # xAI ~4h, OpenAI 60min
+            if key == 'generate_video' and extracted.get('video_url'):
+                try:
+                    saved = value.get('saved', {})
+                    created_str = saved.get('source_url_created', '')
+                    if created_str:
+                        from datetime import datetime
+                        created_dt = datetime.fromisoformat(created_str)
+                        age_hours = (datetime.now() - created_dt).total_seconds() / 3600
+                        if age_hours > 4:
+                            extracted['video_url'] = '(expired)'
+                except Exception:
+                    pass
+            
             if extracted:
                 followup[key] = extracted
         
@@ -564,11 +578,15 @@ class ChatHandler:
         # Extract error details (enables "what went wrong?" follow-ups)
         if data.get('_error') and isinstance(data['_error'], dict):
             err = data['_error']
-            followup['error'] = {
+            error_info = {
                 'tool_failed': err.get('tool_failed'),
                 'message': err.get('message', '')[:500],
                 'retries': err.get('retries', 0),
             }
+            # Include tool arguments so LLM can see what was passed when it failed
+            if err.get('tool_args'):
+                error_info['tool_args'] = err['tool_args']
+            followup['error'] = error_info
         
         return followup if followup else None
     
@@ -658,9 +676,8 @@ class ChatHandler:
                     if stash_ref:
                         print(f"[CHAT] Auto-stashed image for video: {stash_ref}")
                     
-                    # Build forced overrides - these WILL be applied regardless of
-                    # what the LLM decides. The LLM generates the creative prompt,
-                    # but technical params are enforced from the user's modal selections.
+                    # @TOOL_CONFIG: web UI forced overrides — params enforced from user's modal selections
+                    # The LLM generates the creative prompt, but technical params are overridden.
                     aspect_ratio = image_settings.get('aspect_ratio', '16:9')
                     duration = image_settings.get('duration', 5)
                     resolution = image_settings.get('resolution', '720p')
@@ -1001,11 +1018,17 @@ class ChatHandler:
                 # Include error details for failed tool calls (enables follow-up debugging)
                 # Without this, errors only exist in the speech text and can't be analyzed
                 if not result.get('ok') and result.get('error'):
-                    save_data['_error'] = {
+                    error_data = {
                         'message': str(result['error'])[:2000],
                         'retries': result.get('retries', 0),
                         'tool_failed': tools_used[-1] if tools_used else result.get('tool_name', 'unknown'),
                     }
+                    # Include tool arguments for debugging (truncated to avoid bloat)
+                    if result.get('tool_args'):
+                        # Keep only non-prompt args to save space (prompts are in the message text)
+                        args_copy = {k: v for k, v in result['tool_args'].items() if k != 'prompt'}
+                        error_data['tool_args'] = {k: str(v)[:300] for k, v in args_copy.items()}
+                    save_data['_error'] = error_data
                 store.add_message(
                     conversation_id, 
                     'assistant', 
@@ -1138,7 +1161,7 @@ class ChatHandler:
             # Get system prompt from router
             system_prompt = orchestrator.router.system_prompt if hasattr(orchestrator.router, 'system_prompt') else None
             
-            # Get tool descriptions for relevant tools
+            # @TOOL_CONFIG: feedback relevant tools — keyword-to-tool mapping for web UI feedback
             tool_descriptions = {}
             relevant_tools = set(tools_used)
             query_lower = query.lower()

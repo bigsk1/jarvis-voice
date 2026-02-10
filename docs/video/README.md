@@ -54,7 +54,7 @@ GEMINI_VIDEO_MODEL="veo-3.1-generate-preview"  # or veo-3.1-fast-generate-previe
 | **Aspect Ratios** | 7 options | 2 options | 2 options |
 | **Resolution** | 720p, 480p | 720p, 1080p | 720p-4k |
 | **Native Audio** | ❌ No | ✅ Yes | ✅ Yes |
-| **Video Editing** | ✅ Yes | ✅ Yes (remix) | ❌ No |
+| **Video Editing** | ✅ Style only | ✅ Yes (remix) | ❌ No |
 | **Negative Prompt** | ❌ No | ❌ No | ✅ Yes |
 | **Image-to-Video** | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Cost/second** | $0.05 | $0.10-0.50 | $0.15+ |
@@ -121,16 +121,22 @@ Animate an existing image (both providers):
 ```
 
 ### Video Editing (xAI only)
-Edit an existing video:
+Edit an existing video's visual content or style:
 ```json
 {
-  "prompt": "Make the colors more vibrant",
-  "video_url": "https://example.com/my-video.mp4",
+  "prompt": "Make the colors more vibrant and add lens flare",
+  "video_url": "https://vidgen.x.ai/xai-vidgen-bucket/xai-video-abc123.mp4",
   "provider": "xai"
 }
 ```
 
-**Note**: Input video for editing must be ≤8.7 seconds.
+**Limitations**:
+- Can only change visual content/style (what happens in the video)
+- Cannot change duration, aspect ratio, or resolution -- regenerate from the source image instead
+- `video_url` must be a public http(s) URL (stash refs will not work)
+- Use the `source_url` from the `/info` API endpoint or stash `meta.json`
+- Provider URLs expire after ~4 hours; check `edit_url_status` in the API
+- Input video must be ≤8.7 seconds
 
 ### With Audio (OpenAI & Gemini)
 Both OpenAI Sora and Gemini Veo generate native audio including dialogue and sound effects:
@@ -187,7 +193,10 @@ The `video_catalog.json` stores persistent metadata for all videos:
     "aspect": "16:9",
     "tags": ["ai_generated", "video", "xai", "16:9"],
     "tool_origin": "generate_video",
-    "created_at": "2026-02-01T10:10:28Z"
+    "created_at": "2026-02-01T10:10:28Z",
+    "stash_ref": "stash://space_20260201_101028_abc/f_123def",
+    "source_url": "https://vidgen.x.ai/xai-vidgen-bucket/xai-video-abc123.mp4",
+    "edit_url_status": "expired"
   }
 }
 ```
@@ -201,9 +210,10 @@ The `video_catalog.json` stores persistent metadata for all videos:
 ### 3. Stash (Cross-Tool Use)
 ```
 data/stash/space_{timestamp}_{id}/
-├── meta.json    ← Original tags: ai_generated, video, {provider}, {aspect}
+├── meta.json    ← Tags, source_url (for editing), source_url_created
 └── video_file.mp4
 ```
+The `meta.json` stores the provider's public `source_url` for video editing. This URL expires after ~4 hours for xAI. The `source_url_created` timestamp tracks when it was saved.
 
 ### 4. Memory (Discovery)
 Entry created for cross-session recall:
@@ -269,12 +279,15 @@ See [API Documentation](../api/GENERATED_VIDEOS.md) for full endpoint reference.
 | `/api/generated-videos/generate` | POST | Generate new video |
 | `/api/generated-videos/health` | GET | Health check |
 
-**New response fields (Feb 2026):**
+**Response fields:**
 - `provider`: AI provider name (xAI, Gemini, etc.)
 - `aspect`: Aspect ratio (16:9, 9:16, etc.)
 - `tags`: Array of tags from generation
 - `tool_origin`: Tool that created the video
 - `created_at`: ISO timestamp
+- `stash_ref`: Stash reference for cross-tool use
+- `edit_url_status`: `"available"`, `"expired"`, or `null` (xAI URLs expire ~4h)
+- `source_url`: Provider's public URL for video editing (detail endpoint only)
 
 ## Requirements
 
@@ -407,10 +420,12 @@ Gemini only supports 16:9 and 9:16. Other ratios are automatically mapped:
 ```
 
 ### Video Edit (xAI only)
+Edit visual style only. Cannot change duration/aspect/resolution.
 ```json
 {
   "prompt": "Make the ball larger and add more contrast",
-  "video_url": "https://example.com/original-video.mp4",
+  "video_url": "https://vidgen.x.ai/xai-vidgen-bucket/xai-video-abc123.mp4",
   "provider": "xai"
 }
 ```
+Use `source_url` from the API `/info` endpoint. URLs expire after ~4 hours.

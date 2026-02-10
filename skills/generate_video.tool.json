@@ -35,7 +35,7 @@
       },
       "video_url": {
         "type": "string",
-        "description": "xAI: Video URL to edit (max 8.7s). OpenAI: Video ID to remix (starts with 'video_'). Accepts stash references for xAI."
+        "description": "Edit an existing video's visual content/style ONLY. xAI editing CANNOT change duration, aspect ratio, or resolution — only what happens visually. If user wants different duration/size, regenerate from source image using image_url instead. xAI: MUST be a public http(s) URL, stash refs will NOT work. OpenAI: video ID to remix (starts with 'video_'). Provider URLs expire after ~4 hours."
       },
       "negative_prompt": {
         "type": "string",
