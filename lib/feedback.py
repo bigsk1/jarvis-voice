@@ -114,6 +114,35 @@ Tools Used: {tools_used}
 5. **CHECK THE SYSTEM PROMPT BELOW** - it shows what context the LLM had available.
    If data was already in the system prompt, the LLM didn't need to call a tool for it.
 
+6. **CONVERSATION FOLLOW-UP CONTEXT**:
+   Check the Configuration "Interface:" line to understand what context the LLM had:
+   
+   - **"Interface: web"** → Web UI with full conversation history and extracted follow-up data
+     (stash_refs, video_ids, memory_ids, providers) from prior tool results in the same chat session.
+   - **"Interface: cli/voice (auto-context enabled...)"** → CLI/voice with recent prior
+     conversations included (time-limited window). LLM has some prior context.
+   - **"Interface: cli/voice (no prior conversation context)"** → Single-shot, no history.
+   
+   When conversation context IS available, the LLM can act on previous results
+   WITHOUT re-calling the original tool. This is CORRECT behavior.
+   
+   NOTE: On the FIRST message in a new chat session, there is no prior context.
+   The LLM calling tools normally on the first turn is expected — not a problem.
+   
+   Examples of CORRECT follow-up behavior (when context is available):
+   → Previous turn used generate_video → User says "make it longer" → LLM calls generate_video
+     with the stash_ref from conversation context = CORRECT (no need to search/recall first)
+   → Previous turn used pdf_create → User says "email that PDF" → LLM calls send_email
+     with the ref from conversation context = CORRECT (tools used: send_email only)
+   → Previous turn used remember → User says "update that memory" → LLM calls update_memory
+     with the memory_id from context = CORRECT
+   → User asks "what was the video stash ref?" → LLM answers from context, no tool = CORRECT
+   
+   DO NOT penalize for:
+   - Not re-calling a tool to "look up" data that was in the conversation context
+   - Using stash_refs, IDs, or provider names from previous turns
+   - Answering reference questions about previous results without tools
+
 === SYSTEM PROMPT THE LLM WAS GIVEN ===
 {system_prompt_excerpt}
 

@@ -273,7 +273,13 @@ class Orchestrator:
             }
             style_explanation = style_explanations.get(response_style, 'Unknown style')
             
+            if self.auto_context_enabled:
+                interface_line = f"Interface: cli/voice (auto-context enabled, last {self.auto_context_window} conversations within {self.auto_context_minutes} minutes)"
+            else:
+                interface_line = "Interface: cli/voice (no prior conversation context)"
+            
             config_context = f"""
+{interface_line}
 Auto-Context: {'Enabled' if self.auto_context_enabled else 'Disabled'} (window={self.auto_context_window}, minutes={self.auto_context_minutes})
 Response Style: {response_style}
   → Style Behavior: {style_explanation}
@@ -712,7 +718,9 @@ Mode: {self.mode}
                         "speech": final_speech,
                         "ok": False,
                         "error": error,
-                        "tools_used": tools_used,
+                        "tool_name": tool_name,
+                        "tool_args": arguments,
+                        "tools_used": tools_used or [tool_name],
                         "retries": retry_count
                     }
             
@@ -1932,7 +1940,13 @@ def main():
         }
         style_explanation = style_explanations.get(response_style, 'Unknown style')
         
+        if orch.auto_context_enabled:
+            interface_line = f"Interface: cli/voice (auto-context enabled, last {orch.auto_context_window} conversations within {orch.auto_context_minutes} minutes)"
+        else:
+            interface_line = "Interface: cli/voice (no prior conversation context)"
+        
         config_context = f"""
+{interface_line}
 Auto-Context: {'Enabled' if orch.auto_context_enabled else 'Disabled'} (window={orch.auto_context_window}, minutes={orch.auto_context_minutes})
 Response Style: {response_style}
   → Style Behavior: {style_explanation}

@@ -471,22 +471,52 @@ class ChatHandler:
         This allows the LLM to:
         - Edit/remix videos using stash_ref or video_id
         - Reference previous images for variations
-        - Continue multi-step workflows
+        - Act on created PDFs, converted files, transcripts, canvas pages
+        - Continue multi-step workflows across separate API calls
+        
+        Only extracts identifiers and references, not content.
+        The LLM already sees the speech/content summary in the message text.
         """
         followup = {}
         
-        # Fields we want to extract for follow-up capability
-        # These are the "actionable" fields that enable edits/remixes
+        # Fields we want to extract for follow-up capability per tool
+        # These are the "actionable" fields that enable edits/remixes/references
         FOLLOWUP_FIELDS = {
+            # --- Media generation ---
             'generate_video': ['provider', 'model', 'duration', 'aspect_ratio', 'resolution', 
                                'video_id', 'video_url', 'generated_from'],
             'generate_image': ['provider', 'model', 'size', 'style'],
             'generate_music': ['provider', 'model', 'duration'],
-            'stash': ['stash_ref', 'space_id', 'filename'],
+            # --- File/artifact producers ---
+            'pdf_create': ['ref', 'name', 'size_bytes'],
+            'pdf_read': ['page_count', 'stash_ref'],
+            'convert_file': ['stash_ref', 'filename', 'source_format', 'target_format'],
+            'upload_cloudflare': ['url', 'image_id', 'filename'],
+            'youtube_transcript': ['video_title', 'srt_stash_ref', 'md_stash_ref'],
+            'screenshot_url': ['url', 'screenshot_path'],
+            # --- Knowledge/session refs ---
+            'canvas': ['page_id', 'title'],
+            'opencode': ['session_id'],
+            # --- Entity references (for modify/repeat/cancel follow-ups) ---
+            'remember': ['memory_id', 'key', 'category'],
+            'create_reminder': ['reminder_id', 'formatted_time'],
+            'send_email': ['to', 'subject', 'status'],
+            'api_call': ['url', 'method', 'status_code'],
+            'spotify': ['name', 'artist'],
+            'docker_control': ['container', 'status'],
+            'ssh_remote': ['host'],
+            'status_recap': ['stash_ref', 'canvas_id'],
+            # NOTE: 'stash' is NOT here — top-level data.stash is from image uploads
+            # and is handled separately below as 'uploaded_image'.
+            # The stash tool's own results (when LLM calls stash directly) will still
+            # get stash_ref/ref extracted by the generic checks above.
         }
         
         for key, value in data.items():
             if not isinstance(value, dict):
+                continue
+            # Skip keys handled specially below or that aren't tool results
+            if key in ('stash', 'usage', 'raw_llm_response', 'vision_analysis', '_error'):
                 continue
             
             extracted = {}
@@ -503,9 +533,16 @@ class ChatHandler:
             if value.get('stash_ref'):
                 extracted['stash_ref'] = value['stash_ref']
             
+            # Some tools use 'ref' instead of 'stash_ref' (e.g. pdf_create, stash)
+            # Include it as-is so the LLM sees the actual field name the tool uses
+            if value.get('ref') and 'stash_ref' not in extracted:
+                extracted['ref'] = value['ref']
+            
             # Get tool-specific fields
             fields_to_extract = FOLLOWUP_FIELDS.get(key, [])
             for field in fields_to_extract:
+                if field in extracted:
+                    continue  # Already got it above
                 if value.get(field):
                     extracted[field] = value[field]
             
@@ -522,6 +559,15 @@ class ChatHandler:
             followup['uploaded_image'] = {
                 'stash_ref': stash.get('stash_ref'),
                 'filename': stash.get('filename')
+            }
+        
+        # Extract error details (enables "what went wrong?" follow-ups)
+        if data.get('_error') and isinstance(data['_error'], dict):
+            err = data['_error']
+            followup['error'] = {
+                'tool_failed': err.get('tool_failed'),
+                'message': err.get('message', '')[:500],
+                'retries': err.get('retries', 0),
             }
         
         return followup if followup else None
@@ -952,6 +998,14 @@ class ChatHandler:
                 # Include token usage for tracking
                 if result.get('usage'):
                     save_data['usage'] = result['usage']
+                # Include error details for failed tool calls (enables follow-up debugging)
+                # Without this, errors only exist in the speech text and can't be analyzed
+                if not result.get('ok') and result.get('error'):
+                    save_data['_error'] = {
+                        'message': str(result['error'])[:2000],
+                        'retries': result.get('retries', 0),
+                        'tool_failed': tools_used[-1] if tools_used else result.get('tool_name', 'unknown'),
+                    }
                 store.add_message(
                     conversation_id, 
                     'assistant', 
@@ -1115,6 +1169,8 @@ class ChatHandler:
             style_explanation = style_explanations.get(response_style, 'Unknown style')
             
             config_context = f"""
+Interface: web (Jarvis Web UI with conversation history)
+  → Conversation context with follow-up data (stash_refs, IDs, providers) from prior tool results IS available to the LLM
 Auto-Context: {'Enabled' if orchestrator.auto_context_enabled else 'Disabled'}
 Response Style: {response_style}
   → Style Behavior: {style_explanation}

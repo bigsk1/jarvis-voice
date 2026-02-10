@@ -319,6 +319,60 @@ Example in printer tool:
 }
 ```
 
+### Field Naming: `ref` vs `stash_ref`
+
+The stash URI appears under two different field names depending on where you're looking. This is by design, not a bug.
+
+**Layer 1 — `stash_helper.py` (`save_binary()` return)**
+
+The core library returns `ref`. From the stash's own perspective, it's just a reference — it doesn't need to say "stash" because it IS the stash.
+
+```python
+# lib/stash_helper.py save_binary() returns:
+{
+    "file_id": "f_abc123",
+    "name": "image.jpg",
+    "ref": "stash://space_xxx/f_abc123",   # <-- "ref"
+    "path": "/data/stash/space_xxx/image.jpg",
+    ...
+}
+```
+
+**Layer 2 — Tool `save_to_stash()` wrappers**
+
+Media generation tools have their own `save_to_stash()` wrapper that renames it to `stash_ref` for clarity in the broader tool result context (where "ref" alone would be ambiguous).
+
+```python
+# generate_video.py, generate_image.py, generate_music.py, convert_file.py
+# Their save_to_stash() returns:
+{
+    "saved": True,
+    "stash_ref": result.get('ref'),   # <-- renamed to "stash_ref"
+    "space_id": space.space_id,
+    ...
+}
+```
+
+**Layer 3 — Tool response `data` field (what lands in conversation)**
+
+| Tool | Where the stash URI lives | Field name |
+|------|--------------------------|------------|
+| `generate_video` | `data.saved.stash_ref` | `stash_ref` (nested in `saved`) |
+| `generate_image` | `data.saved.stash_ref` | `stash_ref` (nested in `saved`) |
+| `generate_music` | `data.saved.stash_ref` + `data.stash_ref` | `stash_ref` (both) |
+| `convert_file` | `data.stash_ref` | `stash_ref` (top-level) |
+| `pdf_create` | `data.ref` | `ref` (top-level, no wrapper) |
+| `stash` tool | `data.ref` | `ref` (top-level, no wrapper) |
+
+**Why `pdf_create` and `stash` use `ref`**: These tools call `stash_file.save_binary()` directly and pass through its return dict without a `save_to_stash()` wrapper, so the field keeps the helper's original `ref` name.
+
+**Rule for consuming code**: Always check for both. The follow-up extraction in `chat.py` handles this:
+1. Check `data.saved.stash_ref` (nested pattern from media tools)
+2. Check `data.stash_ref` (direct, from convert_file/music)
+3. Check `data.ref` (direct, from pdf_create/stash tool)
+
+**Do not rename or normalize** — the naming works as-is across all tool paths (FastAPI, web UI, terminal, tools). Changing it would risk regressions in 4+ months of integrated code.
+
 ---
 
 ### 3.4 `stash.list`
@@ -1386,5 +1440,5 @@ See: `docs/api/STASH.md` for full API documentation.
 
 ---
 
-*Last updated: 2026-01-21*
+*Last updated: 2026-02-09*
 

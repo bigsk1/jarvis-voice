@@ -179,6 +179,33 @@ jarvis
 > "Turn on the lights"  ← LLM automatically calls my_automation tool
 ```
 
+### New Tool Checklist
+
+When adding a new tool, don't forget these steps beyond the script + schema:
+
+1. **Follow-up extraction** — If your tool produces artifacts (files, stash refs), entity IDs
+   (memory_id, reminder_id, page_id), or session state (host, container, URL) that a user
+   might reference in follow-up questions, add it to the `FOLLOWUP_FIELDS` dict in
+   `jarvis-web/server/sockets/chat.py` → `_extract_followup_data()`.
+
+   This is what lets the LLM act on previous results across separate API calls (e.g.,
+   "email that PDF" after a `pdf_create`, or "cancel that reminder" after `create_reminder`).
+
+   Only extract identifiers and references — not content. The LLM already sees the speech text.
+
+   ```python
+   # In _extract_followup_data() FOLLOWUP_FIELDS dict:
+   'my_new_tool': ['some_id', 'stash_ref', 'relevant_field'],
+   ```
+
+2. **Memory entry** — If the tool creates a stash artifact, save a memory entry pointing
+   to it (see `generate_image.py` for the pattern). This enables cross-session discovery.
+
+3. **Stash integration** — If the tool produces files, save to stash and return a
+   `stash_ref` or `ref`. See `docs/STASH_SYSTEM.md` for the `ref` vs `stash_ref` naming.
+
+---
+
 ## Managing Tools (Enable/Disable)
 
 Control which tools are loaded to reduce token count and improve performance:

@@ -533,16 +533,21 @@ The orchestrator checks: if `conversation_history` is passed (web UI always pass
 - `role`: user or assistant
 - `content`: the message text
 - `tools_used`: array of tool names used (for assistant messages)
+- `tool_results`: extracted follow-up data (stash refs, IDs, providers) for actionable tools
 
 This means the LLM sees previous messages like:
 ```
 User: whats the current price of bitcoin?
 Jarvis [tools: crypto_price]: Bitcoin is currently $70,741...
-User: ok thanks
-Jarvis: You're welcome!
+User: download a youtube transcript for <url>
+Jarvis [tools: youtube_transcript]: Downloaded transcript for "How AI Works"
+  └─ youtube_transcript data: video_title=How AI Works, md_stash_ref=stash://space_xxx/f_zzz
+User: summarize that transcript
 ```
 
-The `[tools: ...]` tag helps the LLM understand what tools were used without needing to call `search_conversations` or `check_tool_logs`.
+The `[tools: ...]` tag helps the LLM understand what tools were used. The `└─ data:` lines give the LLM actionable references (stash refs, IDs, providers) so follow-up requests like "email that", "edit that video", or "cancel that reminder" work across separate LLM API calls.
+
+**Follow-up data extraction** is defined in `jarvis-web/server/sockets/chat.py` → `_extract_followup_data()`. Only identifiers and references are extracted (not content) to keep token cost low. When adding a new tool that produces artifacts, files, or entity IDs, update the `FOLLOWUP_FIELDS` dict in that method. See the "New Tool Checklist" in `docs/TOOL_CALLING_SYSTEM.md`.
 
 See `docs/AUTO_CONTEXT_SYSTEM.md` for full details on CLI/TUI context.
 
