@@ -35,8 +35,7 @@ Last updated: November 22, 2025
 - `CONVERSATION_STATE_ARCHITECTURE.md` - State management between cycles **[NEW - Nov 2025]**
 
 **Operations:**
-- `INTEL_UPDATE_WORKFLOW.md` - How to update jarvis-intel **[USEFUL]**
-- `JARVIS_INTEL_SYSTEM.md` - Intelligence knowledge base
+- `JARVIS_INTEL_SYSTEM.md` - Intel system: ingestion, self-learning, manage_intel tool
 - `ERROR_RECOVERY.md` - Error handling patterns
 - `MCP_QUICKSTART.md` - MCP server integration
 - `MCP_NAMING_CONVENTIONS.md` - MCP snake_case requirements **[NEW - Nov 2025]**
@@ -202,7 +201,6 @@ docs/
 │   ├── CONVERSATION_STATE_ARCHITECTURE.md (NEW - Nov 2025)
 │
 ├── Operational (Keep)
-│   ├── INTEL_UPDATE_WORKFLOW.md
 │   ├── JARVIS_INTEL_SYSTEM.md
 │   ├── ERROR_RECOVERY.md
 │   ├── MCP_QUICKSTART.md

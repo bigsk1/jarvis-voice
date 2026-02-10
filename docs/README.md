@@ -303,6 +303,9 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-02-11:**
+- ✅ **Jarvis Intel System** 
+  - Added new documentation for the Jarvis Intel System
 **2026-02-10:**
 - ✅ **Video Follow-up Context** - LLM now gets previous video results for smarter follow-ups
   - `source_image` extracted from image-to-video results (enables regeneration from same image)
