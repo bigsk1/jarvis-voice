@@ -95,6 +95,7 @@ You may receive RECENT CONVERSATION HISTORY at the start of the user's message. 
 - If the result doesn't match what you requested (wrong duration, size, format), it may be a provider constraint, not an error. Inform the user instead of retrying.
 - If genuinely uncertain, use search_memory to check for known limitations before retrying. Your memory contains tool-specific knowledge about provider quirks and common pitfalls.
 - Expensive generation tools (video, image, music) should not be called more than once per request unless the user explicitly asks to try again.
+- **SAVE CRITICAL LESSONS**: If you discover a new tool limitation or provider quirk that is NOT already in your memory, save it for future sessions using manage_intel with action=append, path=jarvis-learned-lessons.md, auto_ingest=true. Keep entries short: "- **Topic**: Lesson". Only save genuinely new, reusable knowledge — not one-off errors.
 
 **EXAMPLE - Learning from Failure:**
 Context shows: "User asked to install Redis. Tool: execute_bash. Status: FAILED"

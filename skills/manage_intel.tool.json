@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "manage_intel",
-  "description": "SAVE TO INTEL FOLDER: Create, read, update, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. Sandboxed to jarvis-intel/ only (FLAT - no subdirs). Set auto_ingest=true to add facts to memory. Actions: create, read, update, delete, list.",
+  "description": "SAVE TO INTEL FOLDER: Create, read, update, append, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. SELF-LEARNING: When you discover a critical tool limitation, provider quirk, or recurring failure pattern, use action=append with path=jarvis-learned-lessons.md to save the lesson for future sessions. Format: '- **Topic**: Lesson learned'. Always set auto_ingest=true. Sandboxed to jarvis-intel/ only (FLAT - no subdirs).",
   "parameters": {
     "type": "object",
     "properties": {
@@ -11,10 +11,11 @@
           "create",
           "read",
           "update",
+          "append",
           "delete",
           "list"
         ],
-        "description": "Action to perform: create (new file), read (get content), update (modify existing), delete (remove file + memories), list (show all files)"
+        "description": "Action to perform: create (new file), read (get content), update (replace content), append (add to end of file - SAFE, cannot overwrite), delete (remove file + memories), list (show all files). Prefer append over update for adding lessons."
       },
       "path": {
         "type": "string",

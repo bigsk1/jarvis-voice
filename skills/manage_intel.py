@@ -122,6 +122,44 @@ def update_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
     }
 
 
+def append_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any]:
+    """Append content to an existing intel file. Safe — can only add, never overwrite."""
+    from datetime import datetime
+    
+    file_path = validate_path(path, intel_dir)
+    
+    # Add .md extension if missing
+    if not file_path.suffix:
+        file_path = file_path.with_suffix('.md')
+    
+    if not file_path.exists():
+        raise ValueError(f"File not found: {path}. Use 'create' action instead.")
+    
+    # Read existing content
+    existing = file_path.read_text(encoding='utf-8')
+    
+    # Ensure separation
+    separator = "\n\n" if not existing.endswith("\n\n") else ""
+    if existing.endswith("\n"):
+        separator = "\n"
+    
+    # Prepend date stamp to the content
+    date_stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    dated_content = f"[{date_stamp}] {content}"
+    
+    # Append new content
+    file_path.write_text(existing + separator + dated_content + "\n", encoding='utf-8')
+    
+    new_size = file_path.stat().st_size
+    
+    return {
+        "file": str(file_path.relative_to(intel_dir)),
+        "size_bytes": new_size,
+        "appended_bytes": len(content),
+        "appended": True
+    }
+
+
 def delete_intel_file(intel_dir: Path, path: str, db: MemoryDB) -> dict[str, Any]:
     """
     Delete an intel file and remove its facts from memory.
@@ -230,7 +268,7 @@ def main():
         if not action:
             raise ValueError("'action' parameter required")
         
-        if action not in ['create', 'read', 'update', 'delete', 'list']:
+        if action not in ['create', 'read', 'update', 'append', 'delete', 'list']:
             raise ValueError(f"Invalid action: {action}")
         
         # Get project paths (resolve to handle symlinks and .. in path)
@@ -272,6 +310,15 @@ def main():
             result_data = update_intel_file(intel_dir, path, content)
             speech = f"Updated intel file: {result_data['file']}"
         
+        elif action == 'append':
+            path = args.get('path')
+            content = args.get('content')
+            if not path or not content:
+                raise ValueError("'path' and 'content' required for append")
+            
+            result_data = append_intel_file(intel_dir, path, content)
+            speech = f"Appended to intel file: {result_data['file']}"
+        
         elif action == 'delete':
             path = args.get('path')
             if not path:
@@ -291,7 +338,7 @@ def main():
                     speech += "s"
         
         # Auto-ingest if requested and action modifies files
-        if args.get('auto_ingest', False) and action in ['create', 'update', 'delete']:
+        if args.get('auto_ingest', False) and action in ['create', 'update', 'append', 'delete']:
             ingest_result = auto_ingest(project_root)
             result_data['ingest'] = ingest_result
             
