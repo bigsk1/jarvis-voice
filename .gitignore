@@ -111,7 +111,7 @@ logs/auth/
 jarvis-intel/*
 !jarvis-intel/jarvis-tool-knowledge.md
 !jarvis-intel/jarvis-learned-lessons.md
-
+!jarvis-intel/README.md
 
 # ===== Blinko Integration =====
 # Ignore runtime data but keep setup files
