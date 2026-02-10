@@ -21,6 +21,10 @@ class JarvisApp {
     // Audio playback control elements
     this.speakerBtn = document.getElementById('speakerBtn');
     
+    // Conversation ID badge
+    this.convIdBadge = document.getElementById('convIdBadge');
+    this.convIdText = document.getElementById('convIdText');
+    
     // State
     this.audioEnabled = Utils.storage.get('audioEnabled', false);
     this.glowIntensity = Utils.storage.get('glowIntensity', 'low');
@@ -139,6 +143,7 @@ class JarvisApp {
     this.socket.on('conversationCreated', (data) => {
       console.log('[App] New conversation created:', data);
       this.socket.conversationId = data.conversation_id;
+      this._updateConvIdBadge(data.conversation_id);
       this._loadConversationHistory();
     });
     
@@ -305,6 +310,39 @@ class JarvisApp {
     this.newChatBtn.addEventListener('click', () => {
       this._startNewChat();
     });
+    
+    // Conversation ID badge - click to copy
+    if (this.convIdBadge) {
+      this.convIdBadge.addEventListener('click', () => {
+        const convId = this.socket.conversationId;
+        if (!convId) return;
+        
+        const onCopied = () => {
+          this.convIdBadge.classList.add('copied');
+          const orig = this.convIdText.textContent;
+          this.convIdText.textContent = 'copied!';
+          setTimeout(() => {
+            this.convIdText.textContent = orig;
+            this.convIdBadge.classList.remove('copied');
+          }, 1200);
+        };
+        
+        // navigator.clipboard requires HTTPS — fallback for HTTP
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(convId).then(onCopied);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = convId;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          onCopied();
+        }
+      });
+    }
     
     // Conversation filter (quick filter by title)
     const filterInput = document.getElementById('conversationFilter');
@@ -1190,6 +1228,7 @@ class JarvisApp {
     this.socket.conversationId = null;
     this.chat.clearChat();
     this._updateActiveConversation(null);
+    this._updateConvIdBadge(null);
     Utils.toast('Started new chat', 'info');
   }
   
@@ -1225,6 +1264,7 @@ class JarvisApp {
           html += `
             <div class="history-item ${isActive ? 'active' : ''}" 
                  data-conv-id="${conv.id}"
+                 title="${conv.id}"
                  onclick="window.jarvisApp.loadConversation('${conv.id}')">
               <div class="history-item-content">
                 <div class="history-title">${Utils.escapeHtml(conv.title || 'Untitled')}</div>
@@ -1462,6 +1502,7 @@ class JarvisApp {
     // Update socket's conversation ID
     this.socket.conversationId = conversation.id;
     this._updateActiveConversation(conversation.id);
+    this._updateConvIdBadge(conversation.id);
     
     // Clear and rebuild chat
     this.chat.clearChat();
@@ -1517,6 +1558,20 @@ class JarvisApp {
         item.classList.remove('active');
       }
     });
+  }
+  
+  /**
+   * Update conversation ID badge in chat area
+   */
+  _updateConvIdBadge(convId) {
+    if (!this.convIdBadge || !this.convIdText) return;
+    
+    if (convId) {
+      this.convIdText.textContent = convId;
+      this.convIdBadge.style.display = 'block';
+    } else {
+      this.convIdBadge.style.display = 'none';
+    }
   }
   
   /**

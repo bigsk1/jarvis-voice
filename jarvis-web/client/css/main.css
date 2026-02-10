@@ -366,6 +366,34 @@ body {
   gap: var(--space-md);
 }
 
+/* Conversation ID Badge (top right of chat area) */
+.conv-id-badge {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 10;
+  background: var(--bg-tertiary, rgba(255,255,255,0.06));
+  border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  user-select: none;
+}
+
+.conv-id-badge:hover {
+  opacity: 1;
+  background: var(--bg-secondary, rgba(255,255,255,0.1));
+}
+
+.conv-id-badge.copied {
+  color: var(--success, #4caf50);
+}
+
 /* Token Counter (bottom right of chat area) */
 .token-counter {
   position: absolute;
