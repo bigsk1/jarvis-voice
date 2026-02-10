@@ -83,7 +83,7 @@ class ChatHandler:
         
         @self.socketio.on('chat:send')
         def handle_chat_send(data):
-            """Handle incoming chat message (with optional image and command metadata)"""
+            """Handle incoming chat message (with optional image, text file, and command metadata)"""
             session_id = request.sid
             message = data.get('message', '').strip()
             mode = data.get('mode', self.sessions.get(session_id, {}).get('mode', 'cloud'))
@@ -91,6 +91,9 @@ class ChatHandler:
             
             # Image data (with optional action routing and settings)
             image_data = data.get('image')  # {base64, url, filename, action?, settings?}
+            
+            # Text file context (read client-side, no server upload needed)
+            file_context = data.get('file_context')  # {name, content, size}
             
             # Feedback request - either from toggle or --feedback flag in message
             request_feedback = data.get('request_feedback', False)
@@ -104,7 +107,7 @@ class ChatHandler:
                 'prompt_name': data.get('prompt_name')
             }
             
-            if not message and not image_data:
+            if not message and not image_data and not file_context:
                 emit('chat:error', {
                     'error': 'Empty message',
                     'conversation_id': conversation_id
@@ -114,6 +117,10 @@ class ChatHandler:
             # Default message for image-only
             if not message and image_data:
                 message = "What's in this image?"
+            
+            # Default message for file-only
+            if not message and file_context:
+                message = "Summarize this file."
             
             # Create or get conversation
             from ..services.conversation_store import get_conversation_store
@@ -129,10 +136,12 @@ class ChatHandler:
                     'title': conv['title']
                 })
             
-            # Save user message (include image URL and prompt info if present)
+            # Save user message (include image URL, file info, and prompt info if present)
             user_msg_data = {}
             if image_data:
                 user_msg_data['image_url'] = image_data.get('url')
+            if file_context:
+                user_msg_data['attached_file'] = file_context.get('name')
             if prompt_meta.get('prompt_name'):
                 user_msg_data['prompt'] = prompt_meta['prompt_name']
             store.add_message(conversation_id, 'user', message, data=user_msg_data if user_msg_data else None)
@@ -161,7 +170,8 @@ class ChatHandler:
                 conversation_id,
                 image_data,
                 prompt_meta,
-                request_feedback
+                request_feedback,
+                file_context
             )
         
         @self.socketio.on('conversation:load')
@@ -592,8 +602,9 @@ class ChatHandler:
     
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
-                         prompt_meta: dict = None, request_feedback: bool = False):
-        """Process a chat message through the orchestrator (with optional vision, prompt metadata, and feedback)"""
+                         prompt_meta: dict = None, request_feedback: bool = False,
+                         file_context: dict = None):
+        """Process a chat message through the orchestrator (with optional vision, text file, prompt metadata, and feedback)"""
         start_time = time.time()
         prompt_meta = prompt_meta or {}
         prompt_info = f", prompt={prompt_meta.get('prompt_name')}" if prompt_meta.get('prompt_name') else ""
@@ -649,6 +660,19 @@ class ChatHandler:
                 if modal_provider:
                     os.environ['JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER'] = modal_provider
                     print(f"[CHAT] Image modal override - image provider: {modal_provider}")
+            
+            # Handle text file context if provided - prepend to message
+            if file_context and file_context.get('content'):
+                fname = file_context.get('name', 'file.txt')
+                content = file_context['content'][:100000]  # 100KB safety cap
+                char_count = len(content)
+                message = (
+                    f"[Attached file: {fname} ({char_count} chars)]\n\n"
+                    f"{content}\n\n"
+                    f"[End of attached file]\n\n"
+                    f"User's message: {message}"
+                )
+                print(f"[CHAT] Text file attached: {fname} ({char_count} chars)")
             
             # Handle image if provided - route based on action
             vision_result = None

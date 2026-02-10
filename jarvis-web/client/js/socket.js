@@ -134,13 +134,14 @@ class JarvisSocket {
   }
 
   /**
-   * Send a chat message (with optional image and prompt metadata)
+   * Send a chat message (with optional image, prompt metadata, and text file)
    * @param {string} message - The message text
    * @param {Object} imageData - Optional image data {base64, url, filename}
    * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name}
    * @param {boolean} requestFeedback - Whether to request feedback analysis after response
+   * @param {Object} fileContext - Optional text file data {name, content, size, type}
    */
-  sendMessage(message, imageData = null, promptMeta = null, requestFeedback = false) {
+  sendMessage(message, imageData = null, promptMeta = null, requestFeedback = false, fileContext = null) {
     if (!this.connected) {
       console.error('[Socket] Not connected');
       return false;
@@ -155,6 +156,15 @@ class JarvisSocket {
     // Include image data if provided
     if (imageData) {
       payload.image = imageData;
+    }
+    
+    // Include text file context if provided
+    if (fileContext) {
+      payload.file_context = {
+        name: fileContext.name,
+        content: fileContext.content,
+        size: fileContext.size
+      };
     }
     
     // Include prompt metadata if provided (workflows are handled by orchestrator via /trigger)

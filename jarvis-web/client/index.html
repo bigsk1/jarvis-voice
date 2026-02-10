@@ -140,6 +140,15 @@
               <button class="remove-image-btn" id="removeImageBtn" title="Remove image">&times;</button>
             </div>
           </div>
+          <!-- Text File Preview (shown when .md/.txt attached) -->
+          <div class="file-preview-container" id="filePreviewContainer" style="display: none;">
+            <div class="file-preview">
+              <span class="file-icon">📄</span>
+              <span class="file-name" id="filePreviewName"></span>
+              <span class="file-size" id="filePreviewSize"></span>
+              <button class="remove-image-btn" id="removeFileBtn" title="Remove file">&times;</button>
+            </div>
+          </div>
           
           <div class="chat-input-wrapper">
             <textarea 
@@ -163,10 +172,10 @@
                 </span>
                 <span class="speaker-progress" id="speakerProgress"></span>
               </button>
-              <button class="icon-btn upload-btn" id="uploadBtn" title="Attach image">
-                🖼️
+              <button class="icon-btn upload-btn" id="uploadBtn" title="Attach file">
+                📎
               </button>
-              <input type="file" id="imageInput" accept="image/*" style="display: none;">
+              <input type="file" id="fileInput" accept="image/*,.md,.txt,text/plain,text/markdown" style="display: none;">
               <button class="icon-btn convert-btn" id="convertBtn" title="Convert file format (image/video/audio)">
                 🔄
               </button>

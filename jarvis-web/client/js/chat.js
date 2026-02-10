@@ -174,12 +174,18 @@ class ChatUI {
     this.enhanceBtn = document.getElementById('enhanceBtn');
     this.stopBtn = document.getElementById('stopBtn');
     
-    // Image upload elements
+    // File upload elements (images + text files)
     this.uploadBtn = document.getElementById('uploadBtn');
-    this.imageInput = document.getElementById('imageInput');
+    this.fileInput = document.getElementById('fileInput');
     this.imagePreviewContainer = document.getElementById('imagePreviewContainer');
     this.imagePreview = document.getElementById('imagePreview');
     this.removeImageBtn = document.getElementById('removeImageBtn');
+    
+    // Text file preview elements
+    this.filePreviewContainer = document.getElementById('filePreviewContainer');
+    this.filePreviewName = document.getElementById('filePreviewName');
+    this.filePreviewSize = document.getElementById('filePreviewSize');
+    this.removeFileBtn = document.getElementById('removeFileBtn');
     
     // File conversion elements
     this.convertBtn = document.getElementById('convertBtn');
@@ -995,27 +1001,30 @@ class ChatUI {
   }
 
   /**
-   * Setup image upload functionality
+   * Setup file upload functionality (images + text files)
    */
   _setupImageUpload() {
-    if (!this.uploadBtn || !this.imageInput) {
-      console.warn('[Chat] Image upload elements not found');
+    if (!this.uploadBtn || !this.fileInput) {
+      console.warn('[Chat] File upload elements not found');
       return;
     }
     
+    // Attached text file state
+    this.attachedFile = null;
+    
     // Click upload button -> trigger file input
     this.uploadBtn.addEventListener('click', () => {
-      this.imageInput.click();
+      this.fileInput.click();
     });
     
-    // Handle file selection
-    this.imageInput.addEventListener('change', async (e) => {
+    // Handle file selection (routes by type)
+    this.fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (file) {
-        await this.attachImage(file);
+        await this.attachFile(file);
       }
       // Reset input so same file can be selected again
-      this.imageInput.value = '';
+      this.fileInput.value = '';
     });
     
     // Remove image button
@@ -1025,7 +1034,14 @@ class ChatUI {
       });
     }
     
-    // Drag and drop support
+    // Remove text file button
+    if (this.removeFileBtn) {
+      this.removeFileBtn.addEventListener('click', () => {
+        this.clearAttachedFile();
+      });
+    }
+    
+    // Drag and drop support (images + text files)
     const container = document.querySelector('.chat-input-container');
     if (container) {
       container.addEventListener('dragover', (e) => {
@@ -1043,13 +1059,13 @@ class ChatUI {
         container.classList.remove('drag-over');
         
         const file = e.dataTransfer.files[0];
-        if (file && file.type.startsWith('image/')) {
-          await this.attachImage(file);
+        if (file) {
+          await this.attachFile(file);
         }
       });
     }
     
-    // Paste image from clipboard
+    // Paste image from clipboard (text paste goes to textarea normally)
     document.addEventListener('paste', async (e) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -1066,7 +1082,7 @@ class ChatUI {
       }
     });
     
-    console.log('[Chat] Image upload ready');
+    console.log('[Chat] File upload ready (images + text)');
   }
   
   /**
@@ -1720,6 +1736,93 @@ class ChatUI {
   }
   
   /**
+   * Route file attachment by type (images vs text files)
+   */
+  async attachFile(file) {
+    if (!file) return;
+    
+    const ext = file.name.split('.').pop().toLowerCase();
+    const isText = ext === 'md' || ext === 'txt' || file.type === 'text/plain' || file.type === 'text/markdown';
+    
+    if (file.type.startsWith('image/')) {
+      await this.attachImage(file);
+    } else if (isText) {
+      await this.attachTextFile(file);
+    } else {
+      Utils.toast('Unsupported file type. Use images, .md, or .txt files.', 'error');
+    }
+  }
+  
+  /**
+   * Attach a text file (.md, .txt) — read in browser, no server upload
+   */
+  async attachTextFile(file) {
+    // Validate size (100KB max — ~25K tokens)
+    if (file.size > 100 * 1024) {
+      Utils.toast('Text file too large (max 100KB)', 'error');
+      return;
+    }
+    
+    try {
+      const content = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(file);
+      });
+      
+      // Clear any existing image attachment
+      this.clearAttachedImage();
+      
+      // Store text file data
+      this.attachedFile = {
+        name: file.name,
+        size: file.size,
+        content: content,
+        type: 'text'
+      };
+      
+      // Show text file preview
+      this._showFilePreview(file.name, file.size);
+      
+      Utils.toast(`Attached ${file.name}`, 'info', 1500);
+      console.log(`[Chat] Text file attached: ${file.name} (${file.size} bytes)`);
+      
+    } catch (err) {
+      console.error('[Chat] Text file read error:', err);
+      Utils.toast('Failed to read text file', 'error');
+    }
+  }
+  
+  /**
+   * Show text file preview indicator
+   */
+  _showFilePreview(name, size) {
+    if (this.filePreviewContainer && this.filePreviewName && this.filePreviewSize) {
+      this.filePreviewName.textContent = name;
+      const sizeKb = (size / 1024).toFixed(1);
+      this.filePreviewSize.textContent = `(${sizeKb} KB)`;
+      this.filePreviewContainer.style.display = 'block';
+    }
+  }
+  
+  /**
+   * Clear attached text file
+   */
+  clearAttachedFile() {
+    this.attachedFile = null;
+    if (this.filePreviewContainer) {
+      this.filePreviewContainer.style.display = 'none';
+    }
+    if (this.filePreviewName) {
+      this.filePreviewName.textContent = '';
+    }
+    if (this.filePreviewSize) {
+      this.filePreviewSize.textContent = '';
+    }
+  }
+  
+  /**
    * Attach an image file (upload to server, then show action modal)
    */
   async attachImage(file) {
@@ -1728,6 +1831,9 @@ class ChatUI {
       Utils.toast('Please select an image file', 'error');
       return;
     }
+    
+    // Clear any existing text file attachment
+    this.clearAttachedFile();
     
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
@@ -1787,14 +1893,15 @@ class ChatUI {
   }
 
   /**
-   * Send a message (with optional attached image)
+   * Send a message (with optional attached image or text file)
    */
   sendMessage() {
     let rawMessage = this.inputField.value.trim();
     const hasImage = this.attachedImage !== null;
+    const hasFile = this.attachedFile !== null;
     
-    // Need either message or image
-    if (!rawMessage && !hasImage) return;
+    // Need either message, image, or file
+    if (!rawMessage && !hasImage && !hasFile) return;
     if (this.isProcessing) return;
     
     // Check for --feedback flag in message
@@ -1825,6 +1932,12 @@ class ChatUI {
       activeBadge += (activeBadge ? ' ' : '') + '<span class="badge badge-feedback">📊</span>';
     }
     
+    // Add file attachment indicator to display if text file attached
+    if (hasFile) {
+      const fileLabel = `📄 ${this.attachedFile.name}`;
+      displayMessage = displayMessage ? `${fileLabel}\n${displayMessage}` : fileLabel;
+    }
+    
     // Add user message to UI (with image if attached)
     this.addUserMessage(displayMessage, this.attachedImage, activeBadge);
     
@@ -1841,10 +1954,11 @@ class ChatUI {
     window.jarvisSocket.sendMessage(parsed.message || rawMessage, this.attachedImage, {
       system_instruction: parsed.instruction,
       prompt_name: parsed.prompt
-    }, requestFeedback);
+    }, requestFeedback, this.attachedFile);
     
-    // Clear attached image after sending
+    // Clear attachments after sending
     this.clearAttachedImage();
+    this.clearAttachedFile();
   }
 
   /**
