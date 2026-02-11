@@ -513,7 +513,7 @@ class ChatUI {
         <div class="autocomplete-item" data-index="${i}" data-type="${s.type}" data-name="${s.name}">
           <span class="autocomplete-icon">${s.icon}</span>
           <span class="autocomplete-name">${s.type === 'prompt' ? '@' : '/'}${s.name}</span>
-          <span class="autocomplete-desc">${Utils.truncate(s.description, 85)}</span>
+          <span class="autocomplete-desc">${Utils.escapeHtml(s.description || '')}</span>
           ${tooltipHtml}
         </div>
       `;
@@ -530,20 +530,23 @@ class ChatUI {
       });
       item.addEventListener('mouseenter', (e) => {
         this._highlightSuggestion(parseInt(item.dataset.index));
-        // Position tooltip for workflow and prompt items
+        // Position tooltip BELOW the row so it doesn't cover the command
         const tooltip = item.querySelector('.workflow-tooltip, .prompt-tooltip');
         if (tooltip) {
           const rect = item.getBoundingClientRect();
           tooltip.style.display = 'block';
-          tooltip.style.left = `${rect.right + 8}px`;
-          tooltip.style.top = `${rect.top}px`;
+          tooltip.style.top = `${rect.bottom + 6}px`;
+          tooltip.style.left = `${rect.left}px`;
           // Keep tooltip on screen
           const tooltipRect = tooltip.getBoundingClientRect();
           if (tooltipRect.right > window.innerWidth) {
-            tooltip.style.left = `${rect.left - tooltipRect.width - 8}px`;
+            tooltip.style.left = `${rect.right - tooltipRect.width}px`;
           }
           if (tooltipRect.bottom > window.innerHeight) {
-            tooltip.style.top = `${window.innerHeight - tooltipRect.height - 8}px`;
+            tooltip.style.top = `${rect.top - tooltipRect.height - 6}px`;
+          }
+          if (parseFloat(tooltip.style.left) < 8) {
+            tooltip.style.left = '8px';
           }
         }
       });
@@ -589,6 +592,11 @@ class ChatUI {
       item.classList.toggle('selected', i === index);
     });
     this.selectedSuggestionIndex = index;
+    // Keep selected item in view when using arrow keys
+    const selected = items[index];
+    if (selected) {
+      selected.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    }
   }
   
   /**
