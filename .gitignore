@@ -97,8 +97,8 @@ docs/personal
 # Cursor chat history files
 cursor_*.md
 *.cursor.*
-.cursor/mcp.json
-.cursor/mcp copy.json
+.cursor/
+.agents
 
 # OpenCode sessions and logs
 logs/opencode/
