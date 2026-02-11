@@ -10,7 +10,7 @@
 # Log directories cleaned:
 #   - logs/api/           - API request logs
 #   - logs/services/      - Daemon logs (reminder, follow-up, self-healing)
-#   - logs/               - LLM calls, workflows, tools, intelligence, etc.
+#   - logs/               - LLM calls, workflows, tools, etc.
 #   - logs/opencode/      - OpenCode session logs
 #   - logs/server-side-tools/ - xAI/Anthropic native tool usage logs
 #
@@ -18,6 +18,9 @@
 #   - logs/*.pid          - PID files (needed for running daemons)
 #   - logs/baseline-*.json - Token baseline files
 #   - logs/test/          - Test logs (manually managed)
+#   - logs/feedback/      - Feedback logs (used by intelligence UI)
+#   - logs/evolution/    - Evolution prompts (manually managed)
+#   - logs/intelligence/ - Intelligence logs (manually managed)
 
 set -e
 
@@ -82,17 +85,14 @@ PATTERNS=(
     "*.jsonl"
 )
 
-# Directories to scan
+# Directories to scan (feedback and evolution excluded - persist for intelligence UI)
 DIRS=(
     "$LOGS_DIR"
     "$LOGS_DIR/api"
     "$LOGS_DIR/services"
     "$LOGS_DIR/opencode"
     "$LOGS_DIR/tools"
-    "$LOGS_DIR/intelligence"
     "$LOGS_DIR/thinking"
-    "$LOGS_DIR/feedback"
-    "$LOGS_DIR/evolution"
     "$LOGS_DIR/tool-builder"
     "$LOGS_DIR/self-play"
     "$LOGS_DIR/validate-system-prompt"
