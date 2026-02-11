@@ -231,7 +231,8 @@ function escapeHtml(str) {
 
 function openLightboxByIndex(index) {
     if (index >= 0 && index < filteredVideos.length) {
-        openLightbox(filteredVideos[index].name);
+        const name = filteredVideos[index].name;
+        if (name) openLightbox(name);
     }
 }
 
@@ -248,6 +249,7 @@ function deleteByIndex(index) {
 }
 
 function openLightbox(filename) {
+    if (!filename || filename === 'null' || filename === 'undefined') return;
     currentVideo = filename;
     const video = document.getElementById('lightboxVideo');
     video.src = `/api/gallery/videos/${encodeURIComponent(filename)}`;
@@ -316,6 +318,10 @@ async function downloadDirect(filename) {
 }
 
 async function deleteVideo(filename) {
+    if (!filename || filename === 'null' || filename === 'undefined') {
+        showToast('Cannot delete: no video selected', 'error');
+        return;
+    }
     if (!confirm(`Delete "${filename}"?\n\nThis cannot be undone.`)) return;
     
     try {
@@ -336,9 +342,12 @@ async function deleteVideo(filename) {
 }
 
 function deleteFromLightbox() {
-    if (currentVideo) {
+    const filename = currentVideo || document.getElementById('lightboxFilename')?.textContent?.trim();
+    if (filename && filename !== 'null') {
         closeLightbox();
-        deleteVideo(currentVideo);
+        deleteVideo(filename);
+    } else {
+        showToast('Cannot delete: no video selected', 'error');
     }
 }
 

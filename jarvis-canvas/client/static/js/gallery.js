@@ -153,7 +153,8 @@ function escapeHtml(str) {
 
 function openLightboxByIndex(index) {
     if (index >= 0 && index < filteredImages.length) {
-        openLightbox(filteredImages[index].name);
+        const name = filteredImages[index].name;
+        if (name) openLightbox(name);
     }
 }
 
@@ -273,6 +274,7 @@ function showToast(message, type = 'success') {
 }
 
 function openLightbox(filename) {
+    if (!filename || filename === 'null' || filename === 'undefined') return;
     currentImage = filename;
     document.getElementById('lightboxImage').src = `/api/gallery/images/${encodeURIComponent(filename)}`;
     document.getElementById('lightboxFilename').textContent = filename;
@@ -338,6 +340,10 @@ async function downloadDirect(filename) {
 }
 
 async function deleteImage(filename) {
+    if (!filename || filename === 'null' || filename === 'undefined') {
+        showToast('Cannot delete: no image selected', 'error');
+        return;
+    }
     if (!confirm(`Delete "${filename}"?\n\nThis cannot be undone.`)) return;
     
     try {
@@ -358,9 +364,12 @@ async function deleteImage(filename) {
 }
 
 function deleteFromLightbox() {
-    if (currentImage) {
+    const filename = currentImage || document.getElementById('lightboxFilename')?.textContent?.trim();
+    if (filename && filename !== 'null') {
         closeLightbox();
-        deleteImage(currentImage);
+        deleteImage(filename);
+    } else {
+        showToast('Cannot delete: no image selected', 'error');
     }
 }
 
