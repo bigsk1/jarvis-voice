@@ -74,7 +74,7 @@ def list_feedback():
     # Apply filters
     filtered = []
     for entry in all_entries:
-        rating = entry.get('rating', 0)
+        rating = entry.get('rating') or 0
         if rating < rating_min or rating > rating_max:
             continue
         if mode_filter and entry.get('mode') != mode_filter:
@@ -143,21 +143,28 @@ def feedback_stats():
     total_rating = 0
     
     for entry in all_entries:
-        rating = entry.get('rating', 0)
-        if 1 <= rating <= 5:
-            by_rating[rating] += 1
+        rating = entry.get('rating') or 0
+        if isinstance(rating, (int, float)) and 1 <= rating <= 5:
+            by_rating[int(rating)] += 1
             total_rating += rating
         
         # Count issues by category
-        for issue in entry.get('issues', []):
-            cat = issue.get('category', 'other')
+        for issue in (entry.get('issues') or []):
+            if not isinstance(issue, dict):
+                continue
+            cat = issue.get('category', 'other') or 'other'
             issues_by_category[cat] = issues_by_category.get(cat, 0) + 1
         
         # Aggregate tool ratings
-        for tool_name, tool_data in entry.get('tool_ratings', {}).items():
+        for tool_name, tool_data in (entry.get('tool_ratings') or {}).items():
+            if not isinstance(tool_data, dict):
+                continue
             if tool_name not in tool_ratings:
                 tool_ratings[tool_name] = {'total': 0, 'count': 0}
-            tool_ratings[tool_name]['total'] += tool_data.get('rating', 0)
+            tr = tool_data.get('rating') or 0
+            if not isinstance(tr, (int, float)):
+                tr = 0
+            tool_ratings[tool_name]['total'] += tr
             tool_ratings[tool_name]['count'] += 1
     
     # Calculate averages
