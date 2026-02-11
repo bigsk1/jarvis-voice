@@ -9,6 +9,9 @@ Provides token usage tracking and cost estimates for cloud providers.
 PRICING = {
     "openai": {
         # GPT-5.1 series (Nov 2025) - Official pricing from openai.com/api/pricing
+        "gpt-5.2": {"input": 1.75, "output": 14.00, "cached": 0.17},
+        "gpt-5.2-2025-12-11": {"input": 1.75, "output": 14.00, "cached": 0.17},
+        "gpt-5.2-chat-latest": {"input": 1.75, "output": 14.00, "cached": 0.17},
         "gpt-5.1": {"input": 1.25, "output": 10.00, "cached": 0.125},
         "gpt-5.1-2025-11-13": {"input": 1.25, "output": 10.00, "cached": 0.125},
         "gpt-5.1-chat-latest": {"input": 1.25, "output": 10.00, "cached": 0.125},
@@ -30,17 +33,17 @@ PRICING = {
         # GPT-4.1 series (Apr 2025) - Based on fine-tuning pricing
         "gpt-4.1": {"input": 3.00, "output": 12.00, "cached": 0.75},
         "gpt-4.1-2025-04-14": {"input": 3.00, "output": 12.00, "cached": 0.75},
-        "gpt-4.1-mini": {"input": 0.25, "output": 2.00, "cached": 0.025},
-        "gpt-4.1-mini-2025-04-14": {"input": 0.25, "output": 2.00, "cached": 0.025},
+        "gpt-4.1-mini": {"input": 0.15, "output": 2.00, "cached": 0.025},
+        "gpt-4.1-mini-2025-04-14": {"input": 0.15, "output": 2.00, "cached": 0.025},
         "gpt-4.1-nano": {"input": 0.05, "output": 0.40, "cached": 0.005},
         "gpt-4.1-nano-2025-04-14": {"input": 0.05, "output": 0.40, "cached": 0.005},
         
         # GPT-4o series (Legacy compatibility - maps to GPT-4.1 pricing)
-        "gpt-4o": {"input": 3.00, "output": 12.00, "cached": 0.75},
-        "gpt-4o-mini": {"input": 0.25, "output": 2.00, "cached": 0.025},
-        "gpt-4o-2024-11-20": {"input": 3.00, "output": 12.00, "cached": 0.75},
-        "gpt-4o-2024-08-06": {"input": 3.00, "output": 12.00, "cached": 0.75},
-        "gpt-4o-2024-05-13": {"input": 3.00, "output": 12.00, "cached": 0.75},
+        "gpt-4o": {"input": 5.00, "output": 15.00, "cached": 0.75},
+        "gpt-4o-mini": {"input": 0.15, "output": 0.60, "cached": 0.025},
+        "gpt-4o-2024-11-20": {"input": 5.00, "output": 15.00, "cached": 0.75},
+        "gpt-4o-2024-08-06": {"input": 5.00, "output": 15.00, "cached": 0.75},
+        "gpt-4o-2024-05-13": {"input": 5.00, "output": 15.00, "cached": 0.75},
         "chatgpt-4o-latest": {"input": 3.00, "output": 12.00, "cached": 0.75},
         
         # Specialized models (estimated pricing based on model tier)
@@ -66,6 +69,8 @@ PRICING = {
     },
     "anthropic": {
         # Claude 4 series (most recent)
+        "opus-4.6": {"input": 15.00, "output": 75.00},
+        "opus-4.5": {"input": 15.00, "output": 75.00},
         "opus-4.1": {"input": 15.00, "output": 75.00},
         "sonnet-4.5": {"input": 3.00, "output": 15.00},  # Base tier (≤200K tokens)
         "haiku-4.5": {"input": 1.00, "output": 5.00},

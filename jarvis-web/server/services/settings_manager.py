@@ -18,6 +18,10 @@ PROVIDER_MODELS = {
         {'id': 'grok-3-fast', 'name': 'Grok 3 Fast (Legacy)', 'context': '131K'},
     ],
     'anthropic': [
+        {'id': 'claude-opus-4-6', 'name': 'Claude Opus 4.6', 'context': '200K'},
+        {'id': 'claude-opus-4-5', 'name': 'Claude Opus 4.5', 'context': '200K'},
+        {'id': 'claude-4-opus', 'name': 'Claude 4 Opus', 'context': '200K'},
+        {'id': 'claude-4-5', 'name': 'Claude 4.5', 'context': '200K'},
         {'id': 'claude-sonnet-4-5-20250929', 'name': 'Claude Sonnet 4.5 (Default)', 'context': '200K'},
         {'id': 'claude-sonnet-4-20250514', 'name': 'Claude Sonnet 4', 'context': '200K'},
         {'id': 'claude-3-5-sonnet-20241022', 'name': 'Claude 3.5 Sonnet', 'context': '200K'},
@@ -25,7 +29,7 @@ PROVIDER_MODELS = {
     ],
     'openai': [
         {'id': 'gpt-5.1', 'name': 'GPT-5.1', 'context': '128K'},
-        {'id': 'gpt-4o', 'name': 'GPT-4o (Default)', 'context': '128K'},
+        {'id': 'gpt-4o', 'name': 'GPT-4o', 'context': '128K'},
         {'id': 'gpt-4.1', 'name': 'GPT-4.1', 'context': '128K'},
         {'id': 'gpt-5.1-codex-mini', 'name': 'GPT-5.1 Codex Mini', 'context': '128K'},
         {'id': 'gpt-5.1-codex', 'name': 'GPT-5.1 Codex', 'context': '128K'},
@@ -33,7 +37,9 @@ PROVIDER_MODELS = {
         {'id': 'gpt-5-codex', 'name': 'GPT-5 Codex', 'context': '128K'},
         {'id': 'gpt-5.1-chat-latest', 'name': 'GPT-5.1 Chat Latest', 'context': '128K'},
         {'id': 'gpt-5-nano-2025-08-07', 'name': 'GPT-5 Nano (Aug 2025)', 'context': '128K'},
-        {'id': 'gpt-5.2-2025-12-11', 'name': 'GPT-5.2 (Dec 2025)', 'context': '128K'},
+        {'id': 'gpt-5.2-2025-12-11', 'name': 'GPT-5.2 (Dec 2025)', 'context': '400K'},
+        {'id': 'gpt-5.2-chat-latest', 'name': 'GPT-5.2 Chat Latest', 'context': '400K'},
+        {'id': 'gpt-5.2', 'name': 'GPT-5.2', 'context': '400K'},
     ],
     'ollama': []  # Populated dynamically from Ollama server
 }
@@ -266,7 +272,8 @@ class SettingsManager:
         """Check which API keys are configured"""
         self._ensure_jarvis_config()
         keys = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 
-                'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY']
+                'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY',
+                'COINGECKO_API_KEY', 'OPENWEATHER_API_KEY', 'CLOUDFLARE_API_TOKEN']
         return {key: bool(get_jarvis_setting(key, '')) for key in keys}
     
     def get_settings_with_status(self) -> dict[str, dict]:
@@ -286,7 +293,8 @@ class SettingsManager:
         # Add status for common API keys (don't show value)
         api_keys = [
             'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY',
-            'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY'
+            'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY',
+            'COINGECKO_API_KEY', 'OPENWEATHER_API_KEY', 'CLOUDFLARE_API_TOKEN',
         ]
         for key in api_keys:
             value = get_jarvis_setting(key, '')
