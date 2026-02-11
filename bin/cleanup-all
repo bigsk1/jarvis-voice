@@ -5,7 +5,7 @@
 # Runs all cleanup tasks with appropriate retention periods:
 #   - Logs: 60 days
 #   - Audio: 30 days  
-#   - Generated images: 90 days
+#   - Generated images:120 days
 #   - Stash spaces: Uses built-in TTL (via Python)
 #
 # Usage:
@@ -29,7 +29,7 @@ fi
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║             Jarvis Master Cleanup                            ║"
 echo "║                                                              ║"
-echo "║  Logs: 60 days | Audio: 30 days | Images: 90 days | Stash   ║"
+echo "║  Logs: 60 days | Audio: 30 days | Images: 120 days | Stash   ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -43,10 +43,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 "$SCRIPT_DIR/cleanup-audio" --days 30 $DRY_RUN
 echo ""
 
-# 3. Cleanup generated images (90 days)
+# 3. Cleanup generated images (120 days)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 IMAGES_DIR="$PROJECT_ROOT/data/generated_images"
-RETENTION_DAYS=90
+RETENTION_DAYS=120
 
 echo "🖼️  Generated Images Cleanup"
 echo "   Retention: $RETENTION_DAYS days"
