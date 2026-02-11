@@ -118,11 +118,11 @@ class ToolDiscoveryService:
         self._load_tools()
     
     def get_tools_summary(self) -> list[dict]:
-        """Return simplified tool list for UI"""
+        """Return simplified tool list for UI (full descriptions for sidebar tooltip)"""
         return [
             {
                 'name': t['name'],
-                'description': t['description'][:100] + '...' if len(t['description']) > 100 else t['description'],
+                'description': t['description'],
                 'source': t.get('source', 'local'),
                 'enabled': t.get('enabled', True),
                 'blocked': t.get('blocked', False)

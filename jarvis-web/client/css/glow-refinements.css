@@ -83,6 +83,33 @@
 
 
 /* ============================================
+   INITIALIZATION ANIMATION
+   ============================================ */
+
+@keyframes fadeInGlow {
+  from { opacity: 0; transform: scale(0.95); box-shadow: 0 0 0 rgba(0, 255, 255, 0); }
+  to { opacity: 1; transform: scale(1); box-shadow: 0 4px 15px rgba(0, 255, 255, 0.1); }
+}
+@keyframes typeIn {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+/* Welcome "Command me" line: typewriter on desktop, wraps on mobile */
+.welcome-capabilities {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: typeIn 2s steps(40, end) forwards;
+}
+@media (max-width: 768px) {
+  .welcome-capabilities {
+    white-space: normal;
+    overflow: visible;
+    animation: fadeInGlow 1s ease-in-out;
+  }
+}
+
+/* ============================================
    USER MESSAGE BUBBLES - NO GLOW
    ============================================ */
 

@@ -821,12 +821,58 @@ class JarvisApp {
         }
         
         container.innerHTML = html || '<p style="color: var(--text-muted); padding: var(--space-md);">No tools loaded</p>';
+        this._setupToolHoverTooltips(container);
       } else {
         container.innerHTML = '<p style="color: var(--error); padding: var(--space-md);">Failed to load tools</p>';
       }
     } catch (err) {
       container.innerHTML = `<p style="color: var(--error); padding: var(--space-md);">Error: ${err.message}</p>`;
     }
+  }
+  
+  /**
+   * Setup hover tooltips for tool items (desktop only)
+   * Tooltip stays visible when hovering over item OR tooltip, with delay before hide
+   * so user can move mouse into tooltip to scroll long descriptions.
+   */
+  _setupToolHoverTooltips(container) {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    const gap = 4;
+    container.querySelectorAll('.tool-item').forEach(item => {
+      const tooltip = item.querySelector('.tool-item-tooltip');
+      if (!tooltip) return;
+      item.removeAttribute('title');
+      let hideTimeout = null;
+      const scheduleHide = () => {
+        if (hideTimeout) clearTimeout(hideTimeout);
+        hideTimeout = setTimeout(() => {
+          tooltip.style.display = 'none';
+          hideTimeout = null;
+        }, 150);
+      };
+      const cancelHide = () => {
+        if (hideTimeout) clearTimeout(hideTimeout);
+        hideTimeout = null;
+      };
+      const show = () => {
+        cancelHide();
+        const rect = item.getBoundingClientRect();
+        tooltip.style.display = 'block';
+        tooltip.style.left = `${rect.right + gap}px`;
+        tooltip.style.top = `${rect.top}px`;
+        const tooltipRect = tooltip.getBoundingClientRect();
+        if (tooltipRect.right > window.innerWidth) {
+          tooltip.style.left = `${Math.max(8, rect.left - tooltipRect.width - gap)}px`;
+        }
+        if (tooltipRect.bottom > window.innerHeight) {
+          tooltip.style.top = `${window.innerHeight - tooltipRect.height - 8}px`;
+        }
+      };
+      item.addEventListener('mouseenter', show);
+      item.addEventListener('mouseleave', scheduleHide);
+      tooltip.addEventListener('mouseenter', show);
+      tooltip.addEventListener('mouseleave', scheduleHide);
+    });
   }
   
   /**
@@ -845,10 +891,13 @@ class JarvisApp {
     const badge = isBlocked ? '<span class="tool-badge blocked">blocked</span>' : 
                   isMcp ? '<span class="tool-badge mcp">mcp</span>' : '';
     
+    const tooltipDesc = Utils.escapeHtml(Utils.truncate(desc, 2000));
+    
     return `
       <div class="${classes.join(' ')}" title="${Utils.escapeHtml(tool.description || tool.name)}">
         <div class="tool-item-name">${emoji} ${Utils.escapeHtml(tool.name)} ${badge}</div>
-        <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 200))}</div>
+        <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 500))}</div>
+        <div class="tool-item-tooltip" aria-hidden="true">${tooltipDesc}</div>
       </div>
     `;
   }
