@@ -213,6 +213,9 @@ else
     fi
 fi
 
+# Save mode for watchdog cron to pick up on restart
+echo "$MODE" > "$PIDDIR/services_mode"
+
 echo -e "${GREEN}📡 Starting background services...${NC}"
 echo -e "   Mode: ${BLUE}$MODE${NC}"
 echo ""

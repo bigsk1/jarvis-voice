@@ -182,6 +182,17 @@ Jarvis: "Your Netflix Premium plan is $15.99."
 ./jarvis-local "Show me scheduled reminders"
 ```
 
+The voice tool returns each reminder with both UTC and local time:
+
+| Field | Example | Notes |
+|-------|---------|-------|
+| `trigger_time` | `2026-02-12T01:00:00.000002` | UTC (database value) |
+| `trigger_time_local` | `Wednesday, February 11, 2026 at 05:00 PM PST` | Converted using `JARVIS_TIMEZONE` |
+| `relative_time` | `in 21 hours` | Human-friendly relative |
+
+This helps the LLM reason about times without needing UTC-to-local conversion.
+The REST API (`/api/reminders`) returns UTC only, which is correct for external consumers.
+
 ### Acknowledge Reminders
 
 **Via Voice:**
@@ -325,23 +336,30 @@ CREATE TABLE reminders (
 
 ### Reminder not triggering
 
-1. Check reminder exists and is scheduled:
+1. Check reminder_scheduler is running (most common cause!):
+```bash
+ps aux | grep reminder_scheduler
+# If not running, the watchdog cron should auto-restart self_healing_daemon
+# which in turn restarts reminder_scheduler. Check:
+cat logs/watchdog.log
+```
+
+2. Check reminder exists and is scheduled:
 ```bash
 curl http://localhost:8880/api/reminders?status=scheduled | jq
 ```
 
-2. Check trigger time is in the past (UTC):
+3. Check trigger time is in the past (UTC):
 ```bash
 sqlite3 data/jarvis_memory.db "SELECT id, title, trigger_time, datetime('now') FROM reminders WHERE id=X;"
 ```
 
-3. Check reminder_scheduler is running:
+4. Check the scheduler log:
 ```bash
-ps aux | grep reminder_scheduler
-tail -f logs/services/reminder_scheduler-$(date +%Y-%m-%d).log
+tail -f logs/reminder_scheduler.log
 ```
 
-4. Restart services:
+5. Restart services if needed:
 ```bash
 ./bin/restart-services
 ```

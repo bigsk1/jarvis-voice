@@ -22,10 +22,11 @@ import os
 import json
 import sqlite3
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
+from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
 
 def format_time_relative(trigger_time_str: str) -> str:
@@ -68,6 +69,18 @@ def format_time_relative(trigger_time_str: str) -> str:
             else:
                 days = int(seconds / 86400)
                 return f"in {days} day{'s' if days != 1 else ''}"
+    except:
+        return trigger_time_str
+
+
+def format_trigger_time_local(trigger_time_str: str, tz: ZoneInfo) -> str:
+    """Convert UTC trigger_time to a human-readable local time string."""
+    try:
+        trigger_time = datetime.fromisoformat(trigger_time_str.replace('Z', '+00:00'))
+        if trigger_time.tzinfo is None:
+            trigger_time = trigger_time.replace(tzinfo=timezone.utc)
+        local_time = trigger_time.astimezone(tz)
+        return local_time.strftime('%A, %B %d, %Y at %I:%M %p %Z')
     except:
         return trigger_time_str
 
@@ -118,11 +131,15 @@ def main():
         rows = cursor.execute(query, params).fetchall()
         conn.close()
         
+        # Get local timezone for display
+        local_tz = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
+        
         # Format reminders
         reminders = []
         for row in rows:
             reminder = dict(row)
             reminder['relative_time'] = format_time_relative(reminder['trigger_time'])
+            reminder['trigger_time_local'] = format_trigger_time_local(reminder['trigger_time'], local_tz)
             reminders.append(reminder)
         
         # Generate speech

@@ -529,6 +529,23 @@ source ~/jarvis-venv/bin/activate
 - `jarvis-memory` - Memory service (port 5002)
 - `jarvis-intelligence` - Intelligence service (port 5003)
 
+### Service Watchdog (Cron)
+
+After starting services, install the watchdog cron job. This ensures the
+self-healing daemon (which monitors all other background services) auto-restarts
+if it crashes unexpectedly.
+
+```bash
+# Add watchdog cron entry
+(crontab -l 2>/dev/null; echo "# Jarvis watchdog - restart self_healing_daemon if it crashes"; echo "*/5 * * * * /home/boss/jarvis-voice/bin/watchdog-services.sh >> /home/boss/jarvis-voice/logs/watchdog.log 2>&1") | crontab -
+```
+
+The watchdog checks every 5 minutes. It only restarts if the PID file exists
+but the process is dead (crash). If you intentionally stop services with
+`jarvis-services --stop`, the PID files are removed and the watchdog does nothing.
+
+See `docs/service/README.md` for the full supervision chain.
+
 **Attach to a session:**
 ```bash
 tmux attach -t jarvis-api    # View API logs
@@ -936,6 +953,7 @@ Once everything is working, verify:
 - [ ] OpenCode plugins installed (~/.config/opencode/plugin/)
 
 **Optional but recommended:**
+- [ ] Install watchdog cron (`bin/watchdog-services.sh`) for self-healing daemon
 - [ ] Set up cron job for daily database backups
 - [ ] Configure rsync to backup /home/boss nightly
 - [ ] Test disaster recovery on a VM (validate these docs!)
@@ -1071,6 +1089,9 @@ Router IP:        192.168.70.___
 crontab -e
 
 # Add these lines:
+
+# Jarvis watchdog - restart self_healing_daemon if it crashes
+*/5 * * * * /home/boss/jarvis-voice/bin/watchdog-services.sh >> /home/boss/jarvis-voice/logs/watchdog.log 2>&1
 
 # Daily database backup at 2 AM
 0 2 * * * cp /home/boss/jarvis-voice/data/jarvis_memory.db /home/boss/jarvis-voice/data/backups/jarvis_memory-$(date +\%Y\%m\%d).db

@@ -94,7 +94,9 @@ MAX_CHECKS_PER_LOOP = 10  # Only check 10 URLs per minute
 **If services crash:**
 - ✅ Wake word keeps working
 - ✅ API keeps working
-- ❌ No follow-ups (but alerts still stored)
+- ✅ Watchdog cron restarts self-healing within 5 minutes
+- ✅ Self-healing restarts reminder_scheduler and follow_up_daemon
+- ❌ No follow-ups during the gap (but alerts still stored)
 
 **If wake word crashes:**
 - ✅ API keeps working
@@ -378,6 +380,24 @@ jq 'select(.event == "shutdown")' logs/services/*-2025-11-18.jsonl
 "Hey Jarvis, show me service statistics"
 ```
 
+### Q: "What happens if self-healing daemon crashes?"
+
+**A: The watchdog cron restarts it!**
+
+A cron job (`bin/watchdog-services.sh`) runs every 5 minutes. If the self-healing
+daemon's PID file exists but the process is dead, it restarts it and announces
+via TTS: "Warning: self healing daemon crashed and has been restarted by watchdog."
+
+```
+Supervision chain:
+  cron (5 min) → watchdog → self_healing_daemon → reminder_scheduler
+                                                 → follow_up_daemon
+                                                 → jarvis_api (notify only)
+```
+
+If you intentionally stop services with `jarvis-services --stop`, PID files are
+removed, and the watchdog does nothing. Log: `logs/watchdog.log`
+
 ### Q: "Are there any edge cases of concern?"
 
 **A: Only one edge case:**
@@ -405,7 +425,7 @@ jq 'select(.event == "shutdown")' logs/services/*-2025-11-18.jsonl
 | say.sh conflicts when busy | ❌ Separate processes, no conflicts |
 | Services crash if API down | ❌ Independent processes |
 | Tool limit applies to services | ❌ Services don't use tools |
-| Cron triggers cause problems | ❌ Daemons, not cron (no cron used) |
+| Cron triggers cause problems | ❌ Daemons, not cron (cron only used for watchdog) |
 
 **Your concerns are valid for voice mode (LLM calls), but services are simple and safe!** 🎯
 

@@ -499,8 +499,11 @@ For current info, news, prices, events - use external search tools from your ava
 - crawl_url (if available) for extracting content from URLs
 """
         
+        now_utc = datetime.now(ZoneInfo("UTC"))
         time_prefix = f"""CURRENT DATE AND TIME:
-Today is {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p %Z')}.
+Local: {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p %Z')}
+UTC:   {now_utc.strftime('%A, %B %d, %Y')} at {now_utc.strftime('%H:%M UTC')}
+Database times are stored in UTC. Convert to local time when presenting to the user.
 Use this for any time-sensitive queries, web searches, or temporal references.
 When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
 {native_search_note}{style_note}"""

@@ -9,19 +9,22 @@ Background services (follow-up daemon, self-healing daemon, reminder scheduler) 
 ## Log Location
 
 ```
-logs/services/
-├── follow_up_daemon-2025-11-18.jsonl         # JSON logs
-├── follow_up_daemon-2025-11-18.log           # Human-readable logs
-├── self_healing_daemon-2025-11-18.jsonl
-├── self_healing_daemon-2025-11-18.log
-├── reminder_scheduler-2025-11-18.jsonl
-└── reminder_scheduler-2025-11-18.log
+logs/
+├── watchdog.log                               # Cron watchdog (plain text, append-only)
+├── services/
+│   ├── follow_up_daemon-2025-11-18.jsonl      # JSON logs
+│   ├── follow_up_daemon-2025-11-18.log        # Human-readable logs
+│   ├── self_healing_daemon-2025-11-18.jsonl
+│   ├── self_healing_daemon-2025-11-18.log
+│   ├── reminder_scheduler-2025-11-18.jsonl
+│   └── reminder_scheduler-2025-11-18.log
 ```
 
 - **`.jsonl`** files: Structured JSON (one JSON object per line) - Machine-readable
 - **`.log`** files: Human-readable text logs with timestamps
+- **`watchdog.log`**: Cron watchdog output — only written when a restart occurs
 
-Both are created automatically when services start. Logs rotate daily.
+Service logs are created automatically when services start. Logs rotate daily.
 
 ---
 
@@ -264,6 +267,25 @@ grep "error\|failed" logs/services/*.log
 [15:00:00] Check: Found 1 item(s)
 [15:00:00] Triggered reminder 12: Check Docker v29 in Coolify
 ```
+
+### Watchdog (Cron)
+
+The watchdog is a cron job, not a daemon. It only writes to `logs/watchdog.log`
+when a restart occurs.
+
+**Log format:**
+```
+[2026-02-10 17:35:00] self_healing_daemon crashed (stale PID 5093) - restarting...
+[2026-02-10 17:35:01] self_healing_daemon restarted (PID 1243056) [mode=cloud]
+```
+
+**Viewing:**
+```bash
+cat logs/watchdog.log
+# Empty = no crashes detected (good!)
+```
+
+The watchdog does not write to `logs/services/` — it has its own top-level log.
 
 ---
 

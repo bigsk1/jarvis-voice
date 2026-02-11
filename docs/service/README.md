@@ -76,6 +76,43 @@ This prevents daemons from crashing during database sync operations or heavy API
 
 ---
 
+## Watchdog (Cron)
+
+The self-healing daemon monitors the other services, but nothing monitors
+self-healing itself. A lightweight cron job fills that gap.
+
+**Script:** `bin/watchdog-services.sh`
+
+**Schedule:** Every 5 minutes via cron
+
+```
+*/5 * * * * /home/boss/jarvis-voice/bin/watchdog-services.sh >> /home/boss/jarvis-voice/logs/watchdog.log 2>&1
+```
+
+**Logic:**
+
+| PID File | Process | Action |
+|----------|---------|--------|
+| Missing | — | Do nothing (intentional stop) |
+| Exists | Alive | Do nothing (healthy) |
+| Exists | Dead | Restart + TTS announce |
+
+This design respects `jarvis-services --stop` which removes PID files.
+Only unexpected crashes (stale PID file left behind) trigger a restart.
+
+**Mode awareness:** `jarvis-services` writes the active mode (`cloud` or `local`)
+to `logs/services_mode`. The watchdog reads this to source the correct env file
+before restarting, so it works for both cloud and local deployments.
+
+**Supervision chain:**
+```
+cron (5 min) → watchdog → self_healing_daemon → reminder_scheduler
+                                               → follow_up_daemon
+                                               → jarvis_api (notify only)
+```
+
+---
+
 ## Management
 
 ### Start All Services
@@ -111,8 +148,8 @@ The self-healing daemon monitors two types of processes:
 ```python
 # In services/self_healing_daemon.py
 MONITORED_SYSTEMD_SERVICES = {
-    "unifi-protect-webhook": {"required": True, "restart": True},
-    "opencode-jarvis": {"required": False, "restart": True},  # Optional
+    "unifi-protect-webhook": {"required": True, "restart": False},
+    "opencode-jarvis": {"required": False, "restart": False},  # Optional
 }
 SERVICE_GRACE_PERIOD = 90  # seconds before alerting
 ```
@@ -179,6 +216,7 @@ DAEMON_GRACE_PERIOD = 60  # seconds before alerting
 ✅ **Structured Logging** - JSON + text logs for debugging
 ✅ **Jarvis Awareness** - Can query logs via `query_service_logs` tool
 ✅ **Independent** - Runs separately from API and wake word
+✅ **Watchdog Cron** - Self-healing daemon auto-restarted if it crashes
 
 ---
 

@@ -36,8 +36,8 @@ MAX_CHECKS_PER_LOOP = 10
 # - required: If True, service must exist. If False, skip if not installed.
 # - restart: If True, attempt automatic restart when down.
 MONITORED_SYSTEMD_SERVICES = {
-    "unifi-protect-webhook": {"required": True, "restart": True},
-    "opencode-jarvis": {"required": False, "restart": True},  # Optional - may not be installed
+    "unifi-protect-webhook": {"required": False, "restart": False}, # Optional - may not be installed - this is already running as a systemd service with its own restart logic
+    "opencode-jarvis": {"required": False, "restart": False},  # Optional - may not be installed - this is already running as a systemd service with its own restart logic
 }
 
 # Sibling daemon monitoring (via PID files)

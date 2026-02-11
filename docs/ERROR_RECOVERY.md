@@ -2,7 +2,7 @@
 
 ## Overview
 
-Jarvis now has the ability to self-diagnose errors, check logs, and retry failed operations with corrected parameters. This makes the system more robust and able to recover from common failures automatically.
+Jarvis now has the ability to self-diagnose errors, check logs, and retry failed operations with corrected parameters ( depending on the tool ). This makes the system more robust and able to recover from common failures automatically.
 
 ## How It Works
 
@@ -21,7 +21,7 @@ When a tool fails, the orchestrator automatically:
 
 ### 2. Tool Log Access
 
-Claude has access to the `check_tool_logs` tool which allows it to:
+Jarvis has access to the `check_tool_logs` tool which allows it to:
 - See recent tool executions
 - Understand what went wrong
 - Learn from errors

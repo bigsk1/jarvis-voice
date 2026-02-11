@@ -520,6 +520,7 @@ jarvis-voice/
 ├── bin/
 │   ├── jarvis-api                 # NEW: Start API server
 │   ├── jarvis-services            # NEW: Start background services
+│   ├── watchdog-services.sh       # Cron watchdog for self-healing daemon
 │   ├── sync-memory-db.py          # ENHANCED: Sync new tables
 │   └── ... (existing scripts)
 │
@@ -609,8 +610,8 @@ The self-healing daemon now monitors two types of processes:
 **1. Systemd Services** (external services like unifi-protect-webhook):
 ```python
 MONITORED_SYSTEMD_SERVICES = {
-    "unifi-protect-webhook": {"required": True, "restart": True},
-    "opencode-jarvis": {"required": False, "restart": True},  # Optional
+    "unifi-protect-webhook": {"required": True, "restart": False},
+    "opencode-jarvis": {"required": False, "restart": False},  # Optional
 }
 SERVICE_GRACE_PERIOD = 90  # Avoid false alarms during reboots
 ```
@@ -637,6 +638,27 @@ All daemons now include database resilience:
 - Retry on DB lock (5 attempts, exponential backoff)
 - 30-second connection timeout
 - Continue after transient errors (only exit after 10 consecutive failures)
+
+**Watchdog Cron (February 2026):**
+
+The self-healing daemon monitors all other services but nothing monitors it.
+A cron-based watchdog (`bin/watchdog-services.sh`) runs every 5 minutes and
+restarts self-healing if it crashes unexpectedly.
+
+```
+cron (5 min) → watchdog → self_healing_daemon → reminder_scheduler
+                                               → follow_up_daemon
+                                               → jarvis_api (notify only)
+```
+
+Key design:
+- **Crash detection**: PID file exists but process is dead = crash, restart it
+- **Intentional stop**: PID file missing (`jarvis-services --stop` removes them) = do nothing
+- **Mode-aware**: Reads `logs/services_mode` (written by `jarvis-services`) to source the correct env (cloud.env or local.env)
+- **TTS alert**: Announces via `/api/voice/announce` when restarting
+
+Note: Systemd services have `restart: False` because they have their own
+systemd restart policies. Self-healing only monitors and alerts for those.
 
 ### Phase 5: Tasks & Extensions (Week 5+)
 
