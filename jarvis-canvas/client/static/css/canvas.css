@@ -237,15 +237,27 @@
 }
 
 .folder-item .folder-icon {
-    transition: transform 0.2s;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
 }
 
 .folder-item.expanded .folder-icon {
     transform: rotate(90deg);
 }
 
+.folder-item:hover .folder-icon {
+    color: var(--text-secondary);
+}
+
 .folder-name {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .folder-count {
@@ -256,23 +268,39 @@
     border-radius: 10px;
 }
 
-.folder-pages {
+/* Tree children - nested container for sub-folders and pages */
+.tree-children {
+    list-style: none;
     display: none;
-    padding-left: 12px;
-    border-left: 1px solid var(--border-color);
+    padding-left: 0;
     margin-left: 24px;
+    border-left: 1px solid var(--border-color);
 }
 
-.folder-pages.expanded {
+.tree-children.expanded {
     display: block;
 }
 
-.folder-pages .page-item {
-    padding: 8px 12px;
+.tree-children .folder-item {
+    padding: 6px 12px 6px 14px;
+    font-size: 0.88rem;
 }
 
-.folder-pages .page-title {
+.tree-children .page-item {
+    padding: 6px 12px 6px 14px;
+}
+
+.tree-children .page-title {
     font-size: 0.85rem;
+}
+
+.tree-children .page-meta {
+    font-size: 0.7rem;
+}
+
+/* Deeper nesting gets subtler connector lines */
+.tree-children .tree-children {
+    border-left-color: color-mix(in srgb, var(--border-color) 60%, transparent);
 }
 
 /* Sidebar Actions */
@@ -362,11 +390,37 @@
     gap: 16px;
 }
 
+.page-title-block {
+    flex: 1;
+    min-width: 0;
+}
+
+.page-breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.page-breadcrumb span {
+    white-space: nowrap;
+}
+
+.breadcrumb-sep {
+    color: var(--text-muted);
+    opacity: 0.5;
+    margin: 0 2px;
+}
+
 .page-view-title {
     font-size: 2rem;
     font-weight: 700;
     line-height: 1.3;
     color: var(--text-primary);
+    word-break: break-word;
 }
 
 .page-header-actions {
@@ -776,8 +830,21 @@
         max-width: 100%;
     }
 
+    .page-header-top {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .page-header-actions {
+        order: -1;
+    }
+
     .page-view-title {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
+    }
+
+    .page-breadcrumb {
+        font-size: 0.75rem;
     }
 
     .page-header-meta {

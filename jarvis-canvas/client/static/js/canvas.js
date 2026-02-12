@@ -67,6 +67,7 @@ async function fetchPages() {
     try {
         const res = await fetch('/api/pages');
         pages = await res.json();
+        lastPagesHash = computePagesHash(pages);
         renderSidebar();
         document.getElementById('pageCount').textContent = `${pages.length} page${pages.length !== 1 ? 's' : ''}`;
         
@@ -256,6 +257,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // Extract folder from title (e.g., "Phone Calls/2025-12-14" → "Phone Calls")
 // Handles nested folders: "Workflows/Archive/bigsk1.com" → "Workflows/Archive"
 // Ignores URLs: "Archive: https://example.com" → null (no folder)
+// Smart boundary: stops splitting when a segment is too long to be a folder name,
+// so titles containing "/" (e.g., "6 3/4 ft") don't create spurious folders.
 function getFolder(title) {
     if (!title || !title.includes('/')) {
         return null;
@@ -266,27 +269,33 @@ function getFolder(title) {
         return null;
     }
     
-    // Return everything except the last segment as the folder path
+    const MAX_FOLDER_SEGMENT = 50;
     const parts = title.split('/');
-    if (parts.length >= 2) {
-        return parts.slice(0, -1).join('/').trim();
+    if (parts.length < 2) return null;
+    
+    // Walk segments: only treat short ones as folder names.
+    // Once we hit a long segment, everything from there on is the page title.
+    const folderParts = [];
+    for (let i = 0; i < parts.length - 1; i++) {
+        const segment = parts[i].trim();
+        if (segment.length > MAX_FOLDER_SEGMENT) {
+            break;
+        }
+        folderParts.push(segment);
     }
-    return null;
+    
+    return folderParts.length > 0 ? folderParts.join('/') : null;
 }
 
-// Get display title (last segment after folder path)
+// Get display title (everything after the folder path)
 function getDisplayTitle(title) {
-    if (!title || !title.includes('/')) {
-        return title;
-    }
+    if (!title) return title;
     
-    // Skip if title contains a URL
-    if (title.includes('://')) {
-        return title;
-    }
+    const folder = getFolder(title);
+    if (!folder) return title;
     
-    const parts = title.split('/');
-    return parts[parts.length - 1].trim();
+    // Return everything after the folder prefix
+    return title.substring(folder.length + 1).trim();
 }
 
 // Track expanded folders
@@ -301,7 +310,121 @@ function toggleFolder(folderName) {
     renderSidebar();
 }
 
+// =========================================================================
+// Tree Builder - Parse flat page list into nested hierarchy
+// =========================================================================
+
+// Build a nested tree from flat pages array.
+// Each node has _children (sub-folders) and _pages (leaf pages at that level).
+// Pages with no folder path go into the root _pages array.
+function buildTree(pages) {
+    const tree = { _children: {}, _pages: [] };
+    
+    pages.forEach(page => {
+        const folder = getFolder(page.title);
+        if (!folder) {
+            tree._pages.push(page);
+            return;
+        }
+        
+        // Split folder path into segments, skip empty parts
+        const parts = folder.split('/').map(p => p.trim()).filter(p => p.length > 0);
+        let current = tree;
+        
+        parts.forEach(part => {
+            if (!current._children[part]) {
+                current._children[part] = { _children: {}, _pages: [] };
+            }
+            current = current._children[part];
+        });
+        
+        current._pages.push(page);
+    });
+    
+    return tree;
+}
+
+// Count total pages under a tree node (recursive)
+function countTreePages(node) {
+    let count = node._pages.length;
+    for (const child of Object.values(node._children)) {
+        count += countTreePages(child);
+    }
+    return count;
+}
+
+// Check if any page under this node is the currently active page (recursive)
+function hasActivePageInTree(node) {
+    if (node._pages.some(p => p.id === currentPage)) return true;
+    for (const child of Object.values(node._children)) {
+        if (hasActivePageInTree(child)) return true;
+    }
+    return false;
+}
+
+// Auto-expand all ancestor folders of the currently active page
+function autoExpandAncestors() {
+    if (!currentPage) return;
+    const page = pages.find(p => p.id === currentPage);
+    if (!page) return;
+    
+    const folder = getFolder(page.title);
+    if (!folder) return;
+    
+    const parts = folder.split('/').map(p => p.trim()).filter(p => p.length > 0);
+    let path = '';
+    parts.forEach((part, i) => {
+        path = i === 0 ? part : path + '/' + part;
+        expandedFolders.add(path);
+    });
+}
+
+// Render a single tree node (folder) and its children recursively
+function renderTreeNode(name, node, depth, path) {
+    const totalPages = countTreePages(node);
+    if (totalPages === 0) return '';
+    
+    const hasActive = hasActivePageInTree(node);
+    
+    // Auto-expand if this folder contains the active page
+    if (hasActive) {
+        expandedFolders.add(path);
+    }
+    
+    const expanded = expandedFolders.has(path);
+    const childNames = Object.keys(node._children).sort();
+    
+    let html = `
+        <li class="folder-item ${expanded ? 'expanded' : ''} ${hasActive ? 'active' : ''}"
+            onclick="toggleFolder('${escapeHtml(path)}')">
+            <svg class="folder-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M6 3.5l4.5 4.5-4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="folder-name" title="${escapeHtml(path)}">${escapeHtml(name)}</span>
+            <span class="folder-count">${totalPages}</span>
+        </li>
+        <ul class="tree-children ${expanded ? 'expanded' : ''}">
+    `;
+    
+    // Render sub-folders first (sorted alphabetically)
+    childNames.forEach(childName => {
+        const childPath = path + '/' + childName;
+        html += renderTreeNode(childName, node._children[childName], depth + 1, childPath);
+    });
+    
+    // Render leaf pages in this folder
+    node._pages.forEach(page => {
+        html += renderPageItem(page, false, true);
+    });
+    
+    html += '</ul>';
+    return html;
+}
+
+// =========================================================================
 // Render Functions
+// =========================================================================
+
 function renderSidebar() {
     const pinnedList = document.getElementById('pinnedList');
     const pinnedSection = document.getElementById('pinnedSection');
@@ -316,55 +439,25 @@ function renderSidebar() {
     pinnedSection.style.display = pinned.length > 0 ? 'block' : 'none';
     pinnedList.innerHTML = pinned.map(p => renderPageItem(p, true)).join('');
     
-    // Group unpinned pages by folder
-    const folders = {};
-    const noFolder = [];
+    // Build hierarchical tree from unpinned pages
+    const tree = buildTree(unpinned);
     
-    unpinned.forEach(page => {
-        const folder = getFolder(page.title);
-        if (folder) {
-            if (!folders[folder]) {
-                folders[folder] = [];
-            }
-            folders[folder].push(page);
-        } else {
-            noFolder.push(page);
-        }
-    });
-    
-    // Sort folders alphabetically
-    const sortedFolders = Object.keys(folders).sort();
+    // Sort top-level folders alphabetically
+    const sortedFolders = Object.keys(tree._children).sort();
     
     // Show/hide folders section
     foldersSection.style.display = sortedFolders.length > 0 ? 'block' : 'none';
     
-    // Render folders
+    // Auto-expand ancestor folders of the active page
+    autoExpandAncestors();
+    
+    // Render the tree recursively
     folderList.innerHTML = sortedFolders.map(folderName => {
-        const folderPages = folders[folderName];
-        const isExpanded = expandedFolders.has(folderName);
-        const hasActivePage = folderPages.some(p => p.id === currentPage);
-        
-        // Auto-expand folder if it contains the active page
-        if (hasActivePage && !isExpanded) {
-            expandedFolders.add(folderName);
-        }
-        const expanded = expandedFolders.has(folderName);
-        
-        return `
-            <li class="folder-item ${expanded ? 'expanded' : ''} ${hasActivePage ? 'active' : ''}" 
-                onclick="toggleFolder('${escapeHtml(folderName)}')">
-                <span class="folder-icon">▶</span>
-                <span class="folder-name">${escapeHtml(folderName)}</span>
-                <span class="folder-count">${folderPages.length}</span>
-            </li>
-            <ul class="folder-pages ${expanded ? 'expanded' : ''}">
-                ${folderPages.map(p => renderPageItem(p, false, true)).join('')}
-            </ul>
-        `;
+        return renderTreeNode(folderName, tree._children[folderName], 0, folderName);
     }).join('');
     
-    // Render pages without folders
-    pageList.innerHTML = noFolder.map(p => renderPageItem(p, false)).join('');
+    // Render pages without folders (root-level pages)
+    pageList.innerHTML = tree._pages.map(p => renderPageItem(p, false)).join('');
 }
 
 function renderPageItem(page, isPinned, inFolder = false) {
@@ -434,10 +527,20 @@ function selectPage(id) {
     const created = new Date(page.created).toLocaleString();
     const updated = page.updated ? new Date(page.updated).toLocaleString() : null;
     
+    // Build breadcrumb from folder path, show only leaf name as title
+    const folder = getFolder(page.title);
+    const displayTitle = getDisplayTitle(page.title);
+    const breadcrumbHtml = folder ? `
+        <div class="page-breadcrumb">${folder.split('/').map(s => `<span>${escapeHtml(s.trim())}</span>`).join('<span class="breadcrumb-sep">/</span>')}</div>
+    ` : '';
+    
     pageView.innerHTML = `
         <div class="page-header">
             <div class="page-header-top">
-                <h1 class="page-view-title">${escapeHtml(page.title)}</h1>
+                <div class="page-title-block">
+                    ${breadcrumbHtml}
+                    <h1 class="page-view-title">${escapeHtml(displayTitle)}</h1>
+                </div>
                 <div class="page-header-actions">
                     <button class="btn btn-secondary btn-icon" onclick="togglePin('${page.id}')" title="${page.pinned ? 'Unpin' : 'Pin'}">
                         ${page.pinned ? '📌' : '📍'}
@@ -507,9 +610,15 @@ function filterPages(query) {
     
     const pageList = document.getElementById('pageList');
     const pinnedList = document.getElementById('pinnedList');
+    const foldersSection = document.getElementById('foldersSection');
+    const pinnedSection = document.getElementById('pinnedSection');
     
     if (q) {
+        // When searching, show flat results and hide tree/pinned sections
+        pinnedSection.style.display = 'none';
         pinnedList.innerHTML = '';
+        foldersSection.style.display = 'none';
+        document.getElementById('folderList').innerHTML = '';
         pageList.innerHTML = filtered.map(p => renderPageItem(p, false)).join('');
     } else {
         renderSidebar();
@@ -581,14 +690,21 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// Polling for updates (simple live reload)
-let lastPageCount = 0;
+// Polling for updates (live reload with hash-based comparison)
+// Detects adds, deletes, renames, and moves (not just count changes)
+let lastPagesHash = '';
+
+function computePagesHash(pageList) {
+    return pageList.map(p => p.id + ':' + p.title + ':' + (p.pinned ? '1' : '0')).join('|');
+}
+
 setInterval(async () => {
     try {
         const res = await fetch('/api/pages');
         const newPages = await res.json();
-        if (newPages.length !== lastPageCount) {
-            lastPageCount = newPages.length;
+        const newHash = computePagesHash(newPages);
+        if (newHash !== lastPagesHash) {
+            lastPagesHash = newHash;
             pages = newPages;
             renderSidebar();
             document.getElementById('pageCount').textContent = `${pages.length} page${pages.length !== 1 ? 's' : ''}`;
