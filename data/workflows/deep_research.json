@@ -18,7 +18,7 @@
   },
   
   "variables": {
-    "topic": {"from": "query", "extract": "main_subject"}
+    "topic": {"from": "query", "extract": "short_title"}
   },
   
   "tool_defaults": {

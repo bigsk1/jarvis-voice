@@ -1,12 +1,10 @@
 # Jarvis Canvas System
 
-A beautiful visual viewer for rich content that Jarvis can populate. Think of it as a personal wiki/knowledge canvas that Jarvis writes to when displaying complex information.
+A visual viewer for rich content that Jarvis populates. Think of it as a personal wiki/knowledge canvas that Jarvis writes to when displaying complex information.
 
-**Includes:** Canvas Pages + Image Gallery
+**Includes:** Canvas Pages + Image Gallery + Video Gallery
 
 ## Overview
-
-
 
 ![jarvis-canvas](images/jarvis-canvas.jpeg)
 
@@ -56,7 +54,7 @@ You: "Save that code snippet to my canvas"
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| **Canvas Server** | `bin/jarvis-canvas` | Flask web server with beautiful dark UI |
+| **Canvas Server** | `bin/jarvis-canvas` | Flask web server with dark UI |
 | **Canvas Tool** | `skills/canvas.py` | Tool for Jarvis to create/manage pages |
 | **Page Storage** | `data/canvas/*.json` | JSON files for each page |
 | **Memory Integration** | Automatic | Pages saved to Jarvis memory for recall |
@@ -75,6 +73,87 @@ You: "Save that code snippet to my canvas"
 
 None required. Canvas uses defaults.
 
+---
+
+## Sidebar: Hierarchical Tree View
+
+The sidebar renders pages as a collapsible tree, parsing `/` in page titles to build nested folders.
+
+### How it works
+
+Pages with titles like `Workflows/Research/Claude 4 release date` produce a tree:
+
+```
+▸ Workflows (29)
+  ▸ Crypto (2)
+  ▸ Daily Status (10)
+  ▸ Research (13)
+    Claude 4 release date
+    openclaw ai assistant app...
+```
+
+The tree is built entirely client-side from the flat page list returned by `GET /api/pages`. The backend stores titles as-is and has no concept of folders.
+
+### Key behaviors
+
+- **Expand/collapse** -- click a folder to toggle. SVG chevron rotates smoothly.
+- **Auto-expand** -- ancestor folders of the active page expand automatically.
+- **Smart folder parsing** -- only segments under 50 characters are treated as folder names. This prevents slashes in page titles (like "3/4 ft" or fractions) from creating spurious sub-folders.
+- **Pinned pages** -- shown in a separate "Pinned" section at the top, removed from the tree to avoid duplication.
+- **Search** -- hides the tree and shows flat results matching the query. Clearing the search restores the tree with folder states preserved.
+- **Live updates** -- polling every 2 seconds compares a hash of page IDs + titles + pin states, so renames and moves trigger re-renders (not just count changes).
+- **Folder counts** -- badge next to each folder shows total pages underneath (recursive).
+- **Title truncation** -- long page titles truncate with ellipsis in the sidebar. Full title shown on hover via tooltip.
+- **Connector lines** -- subtle vertical lines at each nesting level show parent/child relationships. Deeper levels get progressively fainter lines.
+
+### Breadcrumb titles
+
+When viewing a page, the header shows:
+1. A breadcrumb path in small muted text (e.g., `Workflows / Research`)
+2. The page's display name as the h1 (e.g., `Claude 4 release date`)
+
+This replaces the old behavior of dumping the full path as the title, which wrapped badly on mobile.
+
+### Implementation files
+
+| File | What changed |
+|------|-------------|
+| `jarvis-canvas/client/static/js/canvas.js` | `buildTree()`, `renderTreeNode()`, updated `renderSidebar()`, breadcrumb in `selectPage()` |
+| `jarvis-canvas/client/static/css/canvas.css` | `.tree-children` nesting, `.folder-icon` SVG, `.page-breadcrumb`, mobile layout fixes |
+| `jarvis-canvas/client/templates/canvas.html` | No changes -- JS generates all sidebar DOM |
+
+---
+
+## Workflow Title Summarization
+
+The research workflow (`/research`) used to set page titles to the user's raw query verbatim. A 100-word question became a 100-word title. Now the pipeline executor can generate short titles using the LLM.
+
+### How it works
+
+The `deep_research.json` workflow uses a `short_title` variable extraction type:
+
+```json
+"variables": {
+  "topic": {"from": "query", "extract": "short_title"}
+}
+```
+
+The pipeline executor's `_generate_short_title()` method sends the raw query to the LLM with a system prompt requesting a 5-8 word title. If the LLM call fails, it falls back to the first 8 words of the query.
+
+**Before:** `Workflows/Research/i need to get a breakdown of my truck for fair market value, 2017 Ford F250 Super Duty Crew Cab Lariat Pickup 4D 6 3/4 ft 45,506 miles...`
+
+**After:** `Workflows/Research/2017 Ford F250 Fair Market Value`
+
+### Implementation files
+
+| File | What changed |
+|------|-------------|
+| `orchestrator/pipeline_executor.py` | Added `_generate_short_title()` method and `short_title` extraction type in `_extract_variables()` |
+| `data/workflows/deep_research.json` | Changed topic extract from `main_subject` to `short_title` |
+
+The `short_title` extraction type is available to any workflow that needs concise LLM-generated titles.
+
+---
 
 ![Jarvis Gallery](images/jarvis-gallery.png)
 
@@ -84,37 +163,28 @@ The canvas server includes an integrated image gallery for browsing generated im
 
 ### Access
 - **URL:** `http://localhost:8890/gallery`
-- **Navigation:** Click "🖼️ Gallery" in canvas header, or "📝 Canvas" in gallery header
+- **Navigation:** Click "Gallery" in canvas header, or "Canvas" in gallery header
 
 ### Features
-- **Thumbnail grid** with lazy loading
-- **Lightbox view** - click any image to enlarge
-- **Search** - filter by filename
-- **Sort** - by date, name, or size
-- **Download** - save images locally
-- **CDN Upload** - get Cloudflare CDN URL for sharing (🔗 button)
-- **Convert to Video** - create AI video from image (🎬 button) ✨ NEW
-- **Delete** - remove unwanted images
-- **Keyboard shortcuts:**
-  - `Escape` - close lightbox
-  - `←` / `→` - navigate between images
+- Thumbnail grid with lazy loading
+- Lightbox view with click-to-enlarge
+- Search by filename
+- Sort by date, name, or size
+- Download images locally
+- CDN Upload for Cloudflare CDN URL sharing
+- Convert to Video (AI video from image)
+- Delete unwanted images
+- Keyboard shortcuts: `Escape` close, `←` / `→` navigate
 
-### Image to Video Conversion (Feb 2026)
+### Image to Video Conversion
 
-Convert any gallery image to AI video with the 🎬 button:
+Convert any gallery image to AI video with the video button:
 
-1. Click 🎬 on any image (in grid or lightbox)
-2. Modal opens with:
-   - **Animation Prompt** - describe how the image should animate
-   - **Provider** - xAI Grok (1-15s) or Gemini Veo (4-8s, native audio)
-   - **Duration** - options vary by provider
-   - **Aspect Ratio** - 16:9, 9:16, etc.
-   - **Resolution** - 720p to 4K (Gemini)
+1. Click the video icon on any image
+2. Configure animation prompt, provider (xAI Grok or Gemini Veo), duration, aspect ratio, resolution
 3. Click "Generate Video"
-4. Wait 2-5 minutes for generation
-5. Video saves to `data/generated_videos/`
+4. Video saves to `data/generated_videos/`
 
-**API Endpoint:**
 ```bash
 POST /api/gallery/images/{filename}/to-video
 Content-Type: application/json
@@ -131,51 +201,35 @@ Content-Type: application/json
 ### Source Directory
 Images are served from: `data/generated_images/`
 
-This is where the `generate_image` tool saves AI-generated images.
-
 ---
 
-## Video Gallery (Feb 2026)
-
-The canvas server includes an integrated video gallery for browsing generated videos.
+## Video Gallery
 
 ![Jarvis Video Gallery](images/jarvis-video-gallery.png)
 
 ### Access
 - **URL:** `http://localhost:8890/video-gallery`
-- **Navigation:** Click "🎬 Videos" in any canvas header
+- **Navigation:** Click "Videos" in any canvas header
 
 ### Features
-- **Video grid** with hover preview
-- **Lightbox view** - click to play full size with controls
-- **Search** - filter by filename
-- **Sort** - by date, name, size, or duration
-- **Download** - save videos locally
-- **Delete** - remove unwanted videos
-- **Provider badges** - shows xAI/Gemini source
-- **Duration display** - shows video length
-- **Keyboard shortcuts:**
-  - `Escape` - close lightbox
-  - `←` / `→` - navigate between videos
-  - `Space` - play/pause
+- Video grid with hover preview
+- Lightbox view with playback controls
+- Search by filename
+- Sort by date, name, size, or duration
+- Download and delete
+- Provider badges (xAI/Gemini)
+- Duration display
+- Keyboard shortcuts: `Escape` close, `←` / `→` navigate, `Space` play/pause
 
 ### Source Directory
 Videos are served from: `data/generated_videos/`
 
-This is where the `generate_video` tool saves AI-generated videos.
-
 ### API Endpoints
 
 ```bash
-# List all videos
-GET /api/gallery/videos
-# Response: { videos: [...], count: N, total_size: bytes }
-
-# Get video file
-GET /api/gallery/videos/<filename>
-
-# Delete video
-DELETE /api/gallery/videos/<filename>
+GET /api/gallery/videos          # List all videos
+GET /api/gallery/videos/<name>   # Get video file
+DELETE /api/gallery/videos/<name> # Delete video
 ```
 
 ---
@@ -188,13 +242,12 @@ DELETE /api/gallery/videos/<filename>
 curl http://localhost:8890/api/health
 ```
 
-Response:
 ```json
 {
   "status": "healthy",
   "service": "jarvis-canvas",
   "pages": 5,
-  "timestamp": "2024-12-01T14:30:22Z"
+  "timestamp": "2026-02-01T14:30:22Z"
 }
 ```
 
@@ -234,38 +287,21 @@ curl -X PUT http://localhost:8890/api/pages/page_20241201_143022 \
 curl -X DELETE http://localhost:8890/api/pages/page_20241201_143022
 ```
 
-### Download Page  (Jan 2026)
+### Download Page
 
 Export a page as JSON or Markdown:
 
 ```bash
 # Download as JSON (default)
-curl http://localhost:8890/api/pages/page_20241201_143022/download
+curl http://localhost:8890/api/pages/{id}/download
 
 # Download as Markdown with frontmatter
-curl "http://localhost:8890/api/pages/page_20241201_143022/download?format=markdown"
+curl "http://localhost:8890/api/pages/{id}/download?format=markdown"
 ```
 
-Markdown format includes frontmatter:
-```markdown
----
-title: My Research Page
-id: page_20241201_143022
-created: 2024-12-01T14:30:22
-updated: 2024-12-01T15:45:00
-tags: ["research", "reference"]
-pinned: false
----
-
-## Content here...
-```
-
-### Upload/Import Page  (Jan 2026)
-
-Import a page from JSON:
+### Upload/Import Page
 
 ```bash
-# Create new page
 curl -X POST http://localhost:8890/api/pages/upload \
   -H "Content-Type: application/json" \
   -d '{
@@ -273,25 +309,9 @@ curl -X POST http://localhost:8890/api/pages/upload \
     "content": "## Imported Content\n\nHello world!",
     "tags": ["imported"]
   }'
-
-# Force new page even if ID exists
-curl -X POST http://localhost:8890/api/pages/upload \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "page_20241201_143022",
-    "title": "Re-imported",
-    "content": "...",
-    "force_new": true
-  }'
 ```
 
-Response:
-```json
-{
-  "action": "created",  // or "updated" if ID matched
-  "page": { ... }
-}
-```
+---
 
 ## Tool Usage
 
@@ -304,36 +324,24 @@ Response:
 | `delete` | Remove page | `page_id` |
 | `list` | Show all pages | None |
 | `open` | Get canvas URL | None |
-| `read` | Get page content  | `page_id` or `search` |
+| `read` | Get page content | `page_id` or `search` |
 
-### Example Tool Calls
+### Read Action
 
-**Create a research page:**
 ```json
-{
-  "action": "create",
-  "title": "Top Time-Series Databases",
-  "content": "## Comparison\n\n| Database | Performance | Ease of Use |\n|----------|------------|-------------|\n| InfluxDB | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |\n| TimescaleDB | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |",
-  "tags": ["research", "databases"],
-  "source_query": "best databases for time series"
-}
+// Read most recent page
+{"action": "read"}
+
+// Read by page ID
+{"action": "read", "page_id": "page_20260115_175126"}
+
+// Search by keyword
+{"action": "read", "search": "bitcoin"}
 ```
 
-**List pages:**
-```json
-{
-  "action": "list",
-  "limit": 5
-}
-```
+Falls back to direct file access if the canvas server is down.
 
-**Delete a page:**
-```json
-{
-  "action": "delete",
-  "page_id": "page_20241201_143022"
-}
-```
+---
 
 ## Page Data Structure
 
@@ -351,380 +359,134 @@ Response:
 }
 ```
 
+---
+
 ## UI Features
 
 ### Dark Theme
-Professional dark UI with:
 - Space Grotesk font for UI
 - JetBrains Mono for code
 - GitHub Dark syntax highlighting
 
 ### Sidebar
-- **Pinned section** - Important pages at top (shows when pinned pages exist)
-- **Folders section** - Auto-grouped by title prefix (e.g., "Phone Calls/", "System Prompt Suggestion")
-- **Pages section** - Ungrouped pages
-- **Search** - Full-text search (Ctrl+K)
+
+The sidebar has three sections:
+
+1. **Pinned** -- important pages pinned to the top (hidden when empty)
+2. **Folders** -- hierarchical tree view of pages grouped by `/` in their titles
+3. **Pages** -- ungrouped pages (no `/` in title)
+
+Search with `Ctrl+K`. Results show as a flat list; clearing the search restores the tree.
 
 ### Folder Organization
-Pages are automatically grouped into folders based on their title using `/` as separator:
-- `Phone Calls/2025-12-14...` → 📁 **Phone Calls** folder
-- `Workflows/Archive/bigsk1.com` → 📁 **Workflows/Archive** folder (nested!)
-- `System Prompt Suggestion...` → No folder (no `/` in title)
 
-**Important:** Titles with URLs (containing `://`) are NOT treated as folders:
-- `Archive: https://bigsk1.com` → NOT a folder (URL detected)
-- `Workflows/Archive/bigsk1.com` → Proper folder structure ✅
+Pages are grouped into folders by splitting their title on `/`:
+- `Phone Calls/2025-12-14...` goes under **Phone Calls**
+- `Workflows/Research/Claude 4` goes under **Workflows** > **Research**
+- `System Prompt Suggestion...` has no folder (no `/`)
 
-**Folder features:**
-- Click folder to expand/collapse
-- Shows page count badge
-- Auto-expands when active page is inside
-- Folders sorted alphabetically, always at top
-- Supports nested folders (e.g., `Workflows/Archive/page`)
+**URL safety:** Titles containing `://` (URLs) are never treated as folders.
 
-**Workflow Organization:**
-Workflows create canvas pages with folder structure:
+**Smart segment detection:** Segments over 50 characters are not treated as folder names. This prevents page titles that happen to contain slashes (like "6 3/4 ft" or date fractions) from creating broken folder structures.
+
+**Workflow organization:**
+
 | Workflow | Canvas Title Pattern |
 |----------|---------------------|
 | `/archive` | `Workflows/Archive/{domain}` |
-| `/research` | `Workflows/Research/{topic}` |
+| `/research` | `Workflows/Research/{short_title}` |
 | `/crypto` | `Workflows/Crypto/{date}` |
+| `/status` | `Workflows/Daily Status/{date}` |
+| `/dive` | `Workflows/Deep Dive/{domain}` |
+| `/youtube_research` | `Workflows/YouTube/{video_title}` |
 
 ### Page View
-- **Markdown rendering** - Headers, lists, tables, blockquotes
-- **Syntax highlighting** - Code blocks with language detection
-- **Source query** - Shows what user asked
-- **Edit/Delete** - Modify or remove pages
-- **Pin toggle** - Keep important pages accessible (also pins referenced stash images)
-- **Print button** - Print current page using browser print dialog (🖨️)
+- Breadcrumb path above the title (e.g., `Workflows / Research`)
+- Markdown rendering with syntax highlighting
+- Source query display
+- Edit, delete, pin, download, print buttons
+- Image lightbox on click
 
 ### Pinning and Image Preservation
 
-When you **pin a canvas page**, any stash images referenced in that page are automatically pinned too. This prevents the images from being cleaned up by the stash TTL expiration (default 7 days).
+Pinning a canvas page automatically pins any stash images referenced in that page. This prevents images from being cleaned up by stash TTL expiration (default 7 days).
 
-**How it works:**
+How it works:
 - Canvas pages embed images as `![img](stash://space_xxx/file.jpg)`
-- When you click the pin button, the canvas server extracts all `stash://` references
-- Each referenced stash space is automatically pinned (`pinned: true` in meta.json)
-- Pinned stash spaces never expire, so your images stay intact
+- Clicking pin extracts all `stash://` references and pins those stash spaces
+- Pinned stash spaces never expire
 
-**Note:** Unpinning a page does NOT auto-unpin the stash spaces (to avoid breaking other pages that may reference them). To unpin stash spaces, use the stash tool directly.
+Unpinning a page does NOT auto-unpin stash spaces (other pages might reference them).
 
 ### Print Support
-Click the 🖨️ button to print a page:
-- Uses browser's native print dialog
-- Hides sidebar, header, and action buttons
-- Clean black-on-white output
-- Code blocks formatted with borders
+Click the print button for clean black-on-white output. Hides sidebar, header, and action buttons.
 
 ### Live Reload
-Pages auto-refresh every 2 seconds when new content is added.
+Pages auto-refresh every 2 seconds. The polling compares a hash of all page IDs, titles, and pin states, so it catches renames and moves, not just additions and deletions.
+
+---
 
 ## Integration with Jarvis
 
 ### When Jarvis Uses Canvas
 
-1. **Research results** - Multi-item comparisons, detailed findings
-2. **Code snippets** - Scripts, configs with syntax highlighting
-3. **Server/network info** - IP tables, connection details
-4. **Reference material** - Documentation, how-tos
-5. **Explicit requests** - "Save to canvas", "Put in viewer"
+1. Research results and multi-item comparisons
+2. Code snippets with syntax highlighting
+3. Server/network info and IP tables
+4. Reference material and documentation
+5. Explicit requests ("save to canvas", "put in viewer")
 
 ### Memory Integration
 
-Every canvas page is automatically saved to Jarvis memory:
+Every canvas page is saved to Jarvis memory:
 - Key: `canvas_page_{id}`
 - Category: `canvas`
 - Importance: 6
 
-This allows Jarvis to recall canvas pages later:
+This lets Jarvis recall pages later:
 ```
 You: "What's in my canvas about databases?"
 Jarvis: [searches memory, finds canvas_page_xxx]
-        "You have a comparison of time-series databases saved. Check your canvas."
+        "You have a comparison of time-series databases saved."
 ```
 
 ### Fallback Behavior
 
-If canvas server is down:
-- Tool returns error gracefully
-- Jarvis continues with other tasks
-- No crash or hang
-- User informed to start canvas
-
-## Running as Service
-
-### Manual Start
-```bash
-./bin/jarvis-canvas &
-```
-
-### With tmux (recommended)
-```bash
-tmux new-session -d -s jarvis-canvas "./bin/jarvis-canvas"
-
-# Attach to see output
-tmux attach -t jarvis-canvas
-
-# Detach: Ctrl+B, then d
-```
-
-### Future: systemd Service
-```ini
-# /etc/systemd/system/jarvis-canvas.service
-[Unit]
-Description=Jarvis Canvas Server
-After=network.target
-
-[Service]
-Type=simple
-User=boss
-WorkingDirectory=/home/boss/jarvis-voice
-ExecStart=/home/boss/jarvis-venv/bin/python /home/boss/jarvis-voice/bin/jarvis-canvas
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-## Dashboard Integration
-
-Add to `jarvis-dashboard`:
-```python
-Command("Start Canvas", "./bin/jarvis-canvas", "Visual knowledge viewer", "🔧 Services", interactive=True),
-Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq", "Canvas status", "📊 Monitor"),
-```
-
-## Future Enhancements
-
-### Recently Added (Feb 2026)
-
-- [x] **Image to Video** - Convert gallery images to AI video (xAI Grok or Gemini Veo)
-- [x] **Video modal** - Configure provider, duration, aspect ratio, resolution
-- [x] **CDN auto-upload** - Images automatically uploaded to CDN for video generation
-
-### Added (Jan 2026)
-
-- [x] **Download/Upload API** - Export pages as JSON/Markdown, import from JSON
-- [x] **Nested folders** - Support `Workflows/Archive/page` structure
-- [x] **URL-aware folders** - Titles with `://` don't create broken folders
-- [x] **Workflow organization** - Workflows create pages in `Workflows/{type}/` folders
-
-### Added (Dec 2025)
-
-- [x] **Folder organization** - Auto-group pages by title prefix
-- [x] **Print support** - Browser print dialog with clean output
-- [x] **Image lightbox** - Click images to view full size
-- [x] **Wider sidebar** - 350px width, resizable
-- [x] **Hover tooltips** - See full page title on hover
-- [x] **Web UI integration** - Canvas icon in jarvis-web header
-
----
-
-## Web UI + Canvas + Stash Integration
-
-### Current Integration (Dec 2025)
-
-| Feature | Status | Description |
-|---------|--------|-------------|
-| **Canvas icon in header** | ✅ Done | Click 📄 in web UI header to open Canvas |
-| **Image support** | ✅ Done | Markdown images render with lightbox |
-
-### Planned Features
-
-#### `/canvas` Command (Web UI)
-Type `/canvas` in the web UI chat to send content directly to Canvas:
-```
-/canvas Research the best Node.js frameworks
-/canvas [with attached image] Create a blog post about this
-```
-
-#### Save to Canvas Button
-Add button on assistant messages to save response to Canvas:
-- Preserves markdown formatting
-- Includes images from stash
-- Auto-names based on query
-
-#### Canvas + Stash Flow
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Web UI    │────▶│    Stash    │────▶│   Canvas    │
-│  (upload)   │     │  (staging)  │     │  (publish)  │
-└─────────────┘     └─────────────┘     └─────────────┘
-```
-
-**Workflow:**
-1. User uploads image → goes to Stash (temp storage)
-2. User says "save this to canvas" → Stash ref copied to Canvas
-3. Canvas renders from stash:// URL or copies to permanent storage
-
-#### Image in Canvas Pages
-Canvas pages can include images via:
-```markdown
-## Blog Post Title
-
-![Hero Image](http://localhost:8890/images/hero.jpg)
-
-Content goes here...
-```
-
-Or with stash references:
-```markdown
-![Uploaded Image](stash://space_xxx/file_id)
-```
-
-### Implementation Notes
-
-**Canvas Page with Image (JSON):**
-```json
-{
-  "id": "page_20251218_xxx",
-  "title": "Blog Post Title",
-  "content": "![Hero](http://localhost:8890/images/hero.jpg)\n\n## Content...",
-  "images": ["stash://space_xxx/file_id"],  // Optional: track stash refs
-  "hero_image": "/images/hero.jpg"           // Optional: dedicated hero
-}
-```
-
-**Canvas API for Images:**
-```bash
-# Create page with image
-POST /api/pages
-{
-  "title": "My Blog Post",
-  "content": "...",
-  "hero_image": "stash://space_xxx/file_id"  # Resolved to URL
-}
-```
-
-### Planned Features
-
-- [x] **Video Gallery** - Browse generated videos like image gallery (Feb 2026)
-- [x] **Modular architecture** - Refactored to proper Flask app structure (Feb 2026)
-- [ ] **Video editing** - Send video back to xAI for revisions
-- [ ] **Command Center** - System status dashboard
-- [ ] **Service monitors** - API health widgets
-- [ ] **"Explain this" button** - Ask Jarvis about content
-- [ ] **Export** - Download as PDF/HTML
-- [ ] **Share** - Generate shareable links
-- [ ] **Templates** - Pre-defined page layouts
-- [ ] **Dark/Light toggle** - Theme switching
-- [ ] **Keyboard navigation** - Arrow keys, shortcuts
-- [ ] **Drag-drop reorder** - Manual page ordering
-
-### Health Injection (Future)
-
-Canvas status in system prompt:
-```python
-# In orchestrator startup
-canvas_health = check_canvas_health()
-system_prompt += f"\nCanvas: {'✅ running' if canvas_health else '❌ offline'}"
-```
-
-## Troubleshooting
-
-### Canvas won't start
-
-```bash
-# Check if port is in use
-lsof -i :8890
-
-# Check for Python errors
-./bin/jarvis-canvas --debug
-```
-
-### Pages not appearing
-
-```bash
-# Check data directory
-ls -la data/canvas/
-
-# Check API directly
-curl http://localhost:8890/api/pages | jq
-```
-
-### Memory not saving
-
-```bash
-# Check memory entries
-sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canvas'"
-```
-
-## File Locations
-
-| File | Purpose |
-|------|---------|
-| `bin/jarvis-canvas` | Entry point script |
-| `jarvis-canvas/` | Modular Flask app (Feb 2026 refactor) |
-| `jarvis-canvas/server/app.py` | Flask app factory |
-| `jarvis-canvas/server/routes/` | API route blueprints |
-| `jarvis-canvas/client/templates/` | Jinja2 templates |
-| `jarvis-canvas/client/static/` | CSS and JavaScript |
-| `skills/canvas.py` | Tool implementation |
-| `skills/canvas.tool.json` | Tool definition |
-| `data/canvas/*.json` | Page storage |
-| `data/generated_images/` | Image gallery source |
-| `data/generated_videos/` | Video gallery source |
-| `api/routes/canvas.py` | FastAPI routes (port 8880) |
-| `docs/CANVAS_SYSTEM.md` | This documentation |
+If the canvas server is down, the tool returns an error gracefully. No crash, no hang. User gets told to start canvas.
 
 ---
 
 ## Two API Systems
 
-Canvas has **two separate API systems** for different use cases:
+Canvas has two separate API systems for different purposes.
 
 ### 1. Canvas Server API (Port 8890)
-The internal Flask server for the Canvas web UI viewer.
+
+Internal Flask server for the web UI and tool operations.
 
 ```bash
-# Health check
 curl http://localhost:8890/api/health
-
-# List pages (for web UI)
 curl http://localhost:8890/api/pages
-
-# Create/Update/Delete pages
 POST/PUT/DELETE http://localhost:8890/api/pages/{id}
 ```
 
-**Used by:**
-- Canvas tool (`skills/canvas.py`) for create/update/delete
-- Canvas web viewer (localhost:8890)
+**Used by:** Canvas tool (`skills/canvas.py`), Canvas web viewer
 
-### 2. Jarvis FastAPI (Port 8880)  (Jan 2026)
-Read-only API for external integrations, scripts, and programmatic access.
+### 2. Jarvis FastAPI (Port 8880)
+
+Read-only API for external integrations and scripts.
 
 ```bash
-# Statistics
 curl http://localhost:8880/api/canvas/stats
-# → {total_pages, total_size_human, by_tag, by_tool}
-
-# List pages with filters
 curl "http://localhost:8880/api/canvas?limit=20&tag=status"
-
-# Search pages
 curl "http://localhost:8880/api/canvas/search?q=bitcoin"
-
-# Get recent pages
 curl "http://localhost:8880/api/canvas/recent?limit=5"
-
-# List all tags
 curl http://localhost:8880/api/canvas/tags
-
-# List source tools
 curl http://localhost:8880/api/canvas/tools
-
-# Get specific page with content
 curl http://localhost:8880/api/canvas/page_20260115_175126
 ```
 
-**Used by:**
-- n8n workflows
-- External scripts and integrations
-- Jarvis Dashboard TUI (API section)
-- Monitoring and debugging
+**Used by:** n8n workflows, external scripts, Dashboard TUI, monitoring
 
 ### When to Use Which
 
@@ -736,46 +498,132 @@ curl http://localhost:8880/api/canvas/page_20260115_175126
 | External integrations (n8n) | FastAPI | 8880 |
 | Programmatic queries | FastAPI | 8880 |
 | Monitoring/debugging | FastAPI | 8880 |
-| Dashboard TUI commands | FastAPI | 8880 |
 
-See: `docs/api/CANVAS.md` for full FastAPI documentation.
+See `docs/api/CANVAS.md` for full FastAPI documentation.
 
 ---
 
-## Tool Read Action  (Jan 2026)
+## Running as Service
 
-The canvas tool now supports reading pages back:
-
-```json
-// Read most recent page
-{"action": "read"}
-
-// Read by page ID
-{"action": "read", "page_id": "page_20260115_175126"}
-
-// Search by keyword
-{"action": "read", "search": "bitcoin"}
+### Manual Start
+```bash
+./bin/jarvis-canvas &
 ```
 
-**Use cases:**
-- Verify a page was created correctly
-- Read back content for troubleshooting
-- Find pages by keyword
-- Self-correction workflows (read → update)
+### With tmux
+```bash
+tmux new-session -d -s jarvis-canvas "./bin/jarvis-canvas"
+tmux attach -t jarvis-canvas
+# Detach: Ctrl+B, then d
+```
 
-**Fallback behavior:**
-- Tries Canvas server API first (port 8890)
-- Falls back to direct file access if server is down
-- Works even when canvas viewer isn't running
+### Dashboard Integration
+
+```python
+Command("Start Canvas", "./bin/jarvis-canvas", "Visual knowledge viewer", "Services", interactive=True),
+Command("Canvas Health", "curl -sf http://localhost:8890/api/health | jq", "Canvas status", "Monitor"),
+```
 
 ---
 
-**Version:** 2.0  
-**Last Updated:** 2026-02-01
+## File Locations
+
+### Application structure
+
+```
+jarvis-canvas/
+├── __init__.py
+├── config.py                      # Configuration (paths, ports)
+├── client/
+│   ├── static/
+│   │   ├── css/
+│   │   │   ├── base.css           # Shared styles (dark theme, fonts)
+│   │   │   ├── canvas.css         # Canvas pages + tree view
+│   │   │   ├── gallery.css        # Image gallery
+│   │   │   └── video-gallery.css  # Video gallery
+│   │   └── js/
+│   │       ├── canvas.js          # Canvas pages + tree builder
+│   │       ├── gallery.js         # Image gallery logic
+│   │       └── video-gallery.js   # Video gallery logic
+│   └── templates/
+│       ├── base.html              # Shared layout (header, nav)
+│       ├── canvas.html            # Canvas pages view
+│       ├── gallery.html           # Image gallery view
+│       └── video-gallery.html     # Video gallery view
+└── server/
+    ├── __init__.py
+    ├── app.py                     # Flask app factory + run_server()
+    ├── pages.py                   # Page storage functions
+    ├── utils.py                   # Utility functions
+    └── routes/
+        ├── __init__.py            # Blueprint registration
+        ├── auth.py                # Authentication
+        ├── health.py              # /api/health
+        ├── pages.py               # /api/pages/*
+        ├── gallery.py             # /api/gallery/images/*
+        ├── video_gallery.py       # /api/gallery/videos/*
+        ├── stash.py               # /api/stash/*
+        └── views.py               # / and /gallery, /video-gallery
+```
+
+### Related files
+
+| File | Purpose |
+|------|---------|
+| `bin/jarvis-canvas` | Entry point script (thin wrapper) |
+| `skills/canvas.py` | Tool implementation |
+| `skills/canvas.tool.json` | Tool definition |
+| `data/canvas/*.json` | Page storage |
+| `data/generated_images/` | Image gallery source |
+| `data/generated_videos/` | Video gallery source |
+| `api/routes/canvas.py` | FastAPI routes (port 8880) |
+| `orchestrator/pipeline_executor.py` | Workflow title generation (`short_title`) |
+| `data/workflows/deep_research.json` | Research workflow (uses `short_title`) |
+
+---
+
+## Stash Integration
+
+Canvas pages can include stash-hosted images:
+
+```markdown
+![Uploaded Image](stash://space_xxx/file_id)
+```
+
+The canvas server resolves `stash://` URLs to API endpoints at render time. Pinning a page pins its stash references to prevent TTL expiration.
+
+---
+
+## Troubleshooting
+
+### Canvas won't start
+
+```bash
+lsof -i :8890              # Check if port is in use
+./bin/jarvis-canvas --debug # Check for Python errors
+```
+
+### Pages not appearing
+
+```bash
+ls -la data/canvas/                          # Check data directory
+curl http://localhost:8890/api/pages | jq    # Check API directly
+```
+
+### Memory not saving
+
+```bash
+sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canvas'"
+```
+
+---
+
+**Version:** 2.1
+**Last Updated:** 2026-02-09
 
 ### Changelog
 
-- **v2.0** (Feb 2026): Modular architecture refactor + Video Gallery
+- **v2.1** (Feb 2026): Hierarchical tree view sidebar, breadcrumb titles, LLM title summarization for research workflow, smart folder segment detection, hash-based polling
+- **v2.0** (Feb 2026): Modular architecture refactor (monolith to Flask blueprints) + Video Gallery
 - **v1.4** (Feb 2026): Image-to-video conversion
-- **v1.3** (Jan 2026): Download/upload API, nested folders
-
+- **v1.3** (Jan 2026): Download/upload API, nested folders, URL-aware folder parsing

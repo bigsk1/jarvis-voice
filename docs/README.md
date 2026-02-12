@@ -454,7 +454,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Migrated from monolithic 3,770-line file to proper Flask app structure
   - Matches pattern of jarvis-web, jarvis-memory, jarvis-intelligence
   - Separate CSS/JS/templates for canvas, gallery, video-gallery
-  - See: [`docs/CANVAS_MIGRATION_PLAN.md`](CANVAS_MIGRATION_PLAN.md)
+  - See: [`docs/CANVAS_SYSTEM.md`](CANVAS_SYSTEM.md)
 - ✅ **Image Gallery UI Improvements** - Delete button moved to right side
 - ✅ **Video Generation Tool** - AI video generation with dual provider support
   - **xAI Grok Imagine Video**: 1-15s duration, 7 aspect ratios, video editing
@@ -1151,6 +1151,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-11 (v2.42.4)  
+**Last Updated:** 2026-02-11 (v2.42.5)  
 **Latest:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

@@ -88,6 +88,28 @@ class PipelineExecutor:
             print(f"Warning: chat_with_usage failed, falling back: {e}", file=sys.stderr)
             return self.provider.chat(message, system_prompt, max_tokens) if self.provider else ""
     
+    def _generate_short_title(self, query: str) -> str | None:
+        """
+        Use LLM to generate a concise title (5-8 words) from a raw user query.
+        Falls back to None if the LLM call fails so the caller can use a fallback.
+        """
+        system_prompt = (
+            "Generate a brief title (5-8 words max) for this research query. "
+            "Reply with ONLY the title text, no quotes, no punctuation at the end, no explanation."
+        )
+        try:
+            result = self._chat_with_usage(query, system_prompt=system_prompt, max_tokens=60)
+            if result and result.strip():
+                # Strip surrounding quotes and trailing punctuation
+                title = result.strip().strip('"\'').rstrip('.')
+                # Sanity check: if the LLM returned something too long or empty, reject it
+                if 2 < len(title) < 120:
+                    return title
+            return None
+        except Exception as e:
+            print(f"Warning: short title generation failed: {e}", file=sys.stderr)
+            return None
+    
     def _create_provider(self):
         """Create LLM provider for parameter filling and validation."""
         try:
@@ -736,6 +758,14 @@ class PipelineExecutor:
                     extracted_value = self._extract_url_from_text(topic)
                 elif extract_type == "main_subject":
                     extracted_value = topic if topic and topic.strip() else None
+                elif extract_type == "short_title":
+                    # Use LLM to generate a concise title from the query
+                    if topic and topic.strip():
+                        extracted_value = self._generate_short_title(topic.strip())
+                    if not extracted_value:
+                        # Fallback: first 8 words joined by spaces
+                        words = topic.strip().split()[:8] if topic and topic.strip() else []
+                        extracted_value = " ".join(words) if words else None
                 elif extract_type == "first_words":
                     # Extract first N words from topic for use in titles/keys
                     max_words = var_def.get("max_words", 4)
