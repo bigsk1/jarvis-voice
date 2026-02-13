@@ -22,13 +22,13 @@ watchlist:
     enabled: true
     conditions:
     - type: above
-      value: 95000
-      severity: high
-      message: BTC above $95,000
-    - type: below
       value: 85000
       severity: high
-      message: Bitcoin dropped below $85k
+      message: BTC above $85k
+    - type: below
+      value: 63000
+      severity: high
+      message: Bitcoin dropped below $63k
     - type: percent_change_24h
       value: 8
       severity: high
@@ -39,13 +39,13 @@ watchlist:
     enabled: true
     conditions:
     - type: above
-      value: 128
+      value: 95
       severity: high
-      message: Solana above $128
+      message: Solana above $95
     - type: below
-      value: 110
+      value: 70
       severity: high
-      message: Solana dropped below $110
+      message: Solana dropped below $70
     - type: percent_change_24h
       value: 10
       severity: high
@@ -72,13 +72,13 @@ watchlist:
     enabled: true
     conditions:
     - type: above
-      value: 4800
+      value: 5200
       severity: high
-      message: Gold above $4,800/oz
+      message: Gold above $5,200/oz
     - type: below
-      value: 4400
+      value: 4000
       severity: high
-      message: Gold dropped below $4,400/oz
+      message: Gold dropped below $4,000/oz
     - type: percent_change_24h
       value: 3
       severity: high
