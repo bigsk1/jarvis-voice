@@ -39,6 +39,12 @@ chmod +x monitoring/*.sh 2>/dev/null || true
 find tests -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
 
 echo "✅ Scripts are now executable"
+
+# Ignore permission changes in git (so chmod 644 security lockdown won't show as modified)
+if [ -d ".git" ]; then
+  git config core.fileMode false
+  echo "✅ Git configured to ignore file mode changes"
+fi
 echo
 
 # Check Python virtual environment
