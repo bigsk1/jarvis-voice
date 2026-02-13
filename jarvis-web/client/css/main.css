@@ -475,6 +475,13 @@ body {
   animation: fadeIn 0.2s ease;
 }
 
+/* Large screens: cap message width for readability */
+@media (min-width: 1301px) {
+  .message {
+    max-width: min(85%, 1100px);
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1855,7 +1862,7 @@ body {
   }
   
   .chat-messages {
-    padding: var(--space-md);
+    padding: var(--space-lg);
   }
   
   .message {
