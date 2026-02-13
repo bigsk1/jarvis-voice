@@ -14,6 +14,7 @@ config/ssh.json
 jarvis-monitor/.env
 jarvis-web/config/web_config.json
 config/webhook_registry.json.template
+config/price-alerts.yaml
 
 # ===== n8n Workflows (contain personal emails, keep .example versions) =====
 docs/n8n/workflows/*.json
