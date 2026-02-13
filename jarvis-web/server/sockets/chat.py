@@ -1028,6 +1028,18 @@ class ChatHandler:
                 response_text = result.get('speech', result.get('raw_llm_response', ''))
                 # Include raw_llm_response and vision_analysis in saved data for "expand details"
                 save_data = data.copy() if data else {}
+                # Workflow results store tool output in data.results (array); client expects
+                # tool-name-keyed map when loading from history. Populate flat map for workflows.
+                if is_workflow:
+                    step_results = save_data.get('results', [])
+                    for step_data in step_results:
+                        tool = step_data.get('tool', 'unknown')
+                        if 'outputs' in step_data:
+                            outputs = step_data.get('outputs', [])
+                            step_output = outputs[0].get('data', outputs[0]) if outputs and isinstance(outputs[0], dict) else {}
+                        else:
+                            step_output = step_data.get('data', {})
+                        save_data[tool] = step_output  # last wins for duplicate tools
                 raw_response = result.get('raw_llm_response', '')
                 if raw_response:
                     save_data['raw_llm_response'] = raw_response

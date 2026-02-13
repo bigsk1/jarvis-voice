@@ -2028,7 +2028,19 @@ class ChatUI {
     }, 2500);
     
     // Build tool cards HTML from pendingTools (supports duplicate tools with unique keys)
-    const toolResultsData = data.data || data || {};
+    let toolResultsData = data.data || data || {};
+    // Workflow messages store tool output in data.results (array); build flat map for loading
+    if (data.results && Array.isArray(data.results)) {
+      const flat = {};
+      for (const step of data.results) {
+        const tool = step.tool || 'unknown';
+        const stepOutput = step.outputs
+          ? (step.outputs[0]?.data ?? step.outputs[0] ?? {})
+          : (step.data ?? {});
+        flat[tool] = stepOutput;
+      }
+      toolResultsData = { ...toolResultsData, ...flat };
+    }
     let toolCardsHtml = '';
     const pendingToolEntries = Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
