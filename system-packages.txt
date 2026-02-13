@@ -11,6 +11,7 @@ alsa-utils             # ALSA audio utilities (includes aplay)
 jq                     # JSON processing for CLI tools
 curl                   # HTTP requests and API calls
 git                    # Version control
+tmux                   # Terminal multiplexer (for bin/start services)
 python3                # Python 3.x runtime
 python3-pip            # Python package manager
 python3-venv           # Python virtual environment support
@@ -30,5 +31,5 @@ build-essential        # C/C++ compilers (needed for some Python packages)
 libportaudio2          # PortAudio library (for sounddevice)
 libsndfile1            # Audio file reading/writing library
 cups                   # printer tool
-sqlite3-dev            # db search
+libsqlite3-dev         # db search
 ripgrep                # search

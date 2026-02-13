@@ -40,6 +40,7 @@ apt install -y \
     jq \
     curl \
     git \
+    tmux \
     python3 \
     python3-pip \
     python3-venv
@@ -57,7 +58,7 @@ apt install -y \
     libsndfile1 \
     sqlite3 \
     cups \
-    sqlite3-dev \
+    libsqlite3-dev \
     ripgrep
 
 echo ""

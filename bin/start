@@ -145,6 +145,13 @@ wait_for_health() {
 stop_all() {
     log "Stopping all Jarvis sessions..."
     
+    # Stop background service daemons first (they run via nohup, not just tmux)
+    local running_daemons=$(check_services_pids)
+    if [ "$running_daemons" -gt 0 ]; then
+        "$PROJECT_ROOT/bin/jarvis-services" --stop 2>/dev/null || true
+    fi
+    
+    # Stop all tmux sessions
     for name in "${!SESSIONS[@]}"; do
         local session=${SESSIONS[$name]}
         if is_session_running "$session"; then
@@ -153,6 +160,23 @@ stop_all() {
     done
     
     success "All sessions stopped"
+}
+
+check_services_pids() {
+    # Check if background service daemons are running via PID files
+    local running=0
+    local piddir="$PROJECT_ROOT/logs"
+    
+    for pidfile in follow_up_daemon.pid self_healing_daemon.pid reminder_scheduler.pid; do
+        if [ -f "$piddir/$pidfile" ]; then
+            local pid=$(cat "$piddir/$pidfile")
+            if kill -0 "$pid" 2>/dev/null; then
+                running=$((running + 1))
+            fi
+        fi
+    done
+    
+    echo $running
 }
 
 list_sessions() {
@@ -168,7 +192,20 @@ list_sessions() {
         local status=""
         local health=""
         
-        if is_session_running "$session"; then
+        # Special handling for services - check PID files, not tmux session
+        if [ "$name" == "services" ]; then
+            local running_daemons=$(check_services_pids)
+            if [ "$running_daemons" -eq 3 ]; then
+                status="${GREEN}RUNNING${NC}"
+                health="${GREEN}✓ 3/3 daemons${NC}"
+            elif [ "$running_daemons" -gt 0 ]; then
+                status="${YELLOW}PARTIAL${NC}"
+                health="${YELLOW}$running_daemons/3 daemons${NC}"
+            else
+                status="${RED}STOPPED${NC}"
+                health=""
+            fi
+        elif is_session_running "$session"; then
             status="${GREEN}RUNNING${NC}"
             
             # Check health if port exists
@@ -197,6 +234,7 @@ list_sessions() {
     echo "    Detach:  Ctrl+B then D"
     echo "    List:    tmux ls"
     echo "    Stop:    ./bin/start --stop"
+    echo "    Services: ./bin/jarvis-services --status"
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
 }

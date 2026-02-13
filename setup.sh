@@ -116,6 +116,6 @@ echo "5. Start Jarvis:"
 echo "   ./bin/start        # Start all services"
 echo "   ./jarvis           # Start wake word listener"
 echo ""
-echo "See docs/DISASTER_RECOVERY.md for full setup guide."
+echo "See docs/INSTALL_GUIDE.md for full setup guide."
 echo ""
 

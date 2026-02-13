@@ -2,7 +2,7 @@
 
 > **Heads up** — This is my personal AI voice assistant that I have been building for about four months now. I never planned to release it publicly. The codebase reflects that: there are hardcoded paths assume a user named "boss", and some things are wired together in ways that made sense for my setup but might confuse you.
 >
-> That said, if you want to run your own version, the [Disaster Recovery Guide](docs/DISASTER_RECOVERY.md) walks through setting up a fresh Ubuntu 24.04 server from scratch. You'll need to change a few config values, but everything *should* work if you follow the steps. No promises, no support — just sharing what I built. If you care to support and cover some of the api costs, please consider donating.
+> That said, if you want to run your own version, the [Install Guide](docs/INSTALL_GUIDE.md) walks through setting up a fresh Ubuntu 24.04 server from scratch. You'll need to change a few config values, but everything *should* work if you follow the steps. No promises, no support — just sharing what I built. If you care to support and cover some of the api costs, please consider donating.
 
 ## What is Jarvis?
 
@@ -520,7 +520,7 @@ jarvis-voice/
 
 ### 1. Initial Setup
 
-see [DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md) for detailed instructions.
+see [INSTALL_GUIDE.md](docs/INSTALL_GUIDE.md) for detailed instructions.
 see [QUICKSTART.md](docs/QUICKSTART.md) for detailed instructions.
 
 ### 1.1. Clone the repository
@@ -1431,7 +1431,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - API keys never logged, remote services (jarvis-monitor, unifi-protect-webhook) updated
   - See: [`docs/SECURITY_HARDENING.md`](docs/SECURITY_HARDENING.md)
 - ✅ **Docker Monitoring Fixes** - `host.docker.internal` for container-to-host connectivity
-- ✅ **UFW Firewall Documentation** - Essential ports added to DISASTER_RECOVERY.md
+- ✅ **UFW Firewall Documentation** - Essential ports added to INSTALL_GUIDE.md
 - ✅ **Generated Images API** - Full management of local generated images 
   - List, search, download, delete, generate images via API
   - `upload_to_cdn` parameter for one-step generate + CDN upload
@@ -1764,6 +1764,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.42.5 (February 2026)  
+**Current Version:** v2.43.0 (February 2026)  
 **Status:** Production Ready ✅  
 **Latest Features:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal

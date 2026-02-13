@@ -1,6 +1,6 @@
-# Jarvis Voice Assistant - Disaster Recovery Guide
+# Jarvis Voice Assistant - Installation Guide
 
-Complete rebuild guide. Follow these steps **in order** from top to bottom.
+Complete installation guide. Follow these steps **in order** from top to bottom.
 
 **Note:** This project assumes a user named `boss` with paths like `/home/boss/jarvis-voice`. Adapt to your setup if different.
 
@@ -32,6 +32,8 @@ Complete rebuild guide. Follow these steps **in order** from top to bottom.
 - **Storage:** 50GB+ SSD
 - **Network:** Static IP recommended
 - **User:** Admin user named `boss` with sudo access
+- **Virtual Environment:** ~/jarvis-venv
+- **Python Version:** 3.12+
 
 ### Hardware
 - USB microphone or audio interface
@@ -105,7 +107,7 @@ source ~/jarvis-venv/bin/activate
 
 # Install all packages from lockfile (exact versions)
 cd ~/jarvis-voice
-uv sync
+uv sync --active --no-install-project
 ```
 
 **Option B: Using pip (Traditional)**
@@ -140,26 +142,54 @@ cp config/local.env.example config/local.env
 # Secure permissions
 chmod 600 config/cloud.env config/local.env
 
-# Edit cloud config with your API keys
+# Edit cloud config with your API keys and settings
 nano config/cloud.env
 nano config/local.env
 ```
 
 **Minimum required settings in cloud.env:**
 ```bash
-# LLM Provider (at least one)
+# ===== LLM Provider (pick ONE) =====
+LLM_PROVIDER="xai"  # Options: "xai", "anthropic", "openai"
+
+# API Key for your chosen provider
 XAI_API_KEY=your-xai-key
 # or ANTHROPIC_API_KEY=your-anthropic-key
 # or OPENAI_API_KEY=your-openai-key
 
-# TTS Provider (at least one)
-ELEVENLABS_API_KEY=your-elevenlabs-key
-# or use OPENAI_API_KEY for OpenAI TTS
+# Model for your provider
+XAI_MODEL="grok-4-1-fast-non-reasoning-latest"
+# or ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
+# or OPENAI_MODEL="gpt-4o"
 
-# Audio devices (configure after Step 7)
-SPEAKER_DEVICE_NAME=plughw:CARD=Device,DEV=0
-MIC_DEVICE_NAME=plughw:CARD=Microphone,DEV=0
+# ===== Speech-to-Text (STT) =====
+STT_PROVIDER="openai"  # Options: "openai", "local" (uses faster-whisper)
+STT_MODEL="gpt-4o-mini-transcribe"  # For openai provider
+OPENAI_API_KEY=your-openai-key
+
+# ===== Text-to-Speech (TTS) =====
+TTS_PROVIDER="elevenlabs"  # Options: "elevenlabs", "openai", "qwen3-tts"
+
+# If using ElevenLabs:
+ELEVENLABS_API_KEY=your-elevenlabs-key
+ELEVENLABS_TTS_VOICE=your-voice-id  # Get from elevenlabs.io/app/voice-library
+ELEVENLABS_TTS_MODEL=eleven_v3
+
+# Or if using OpenAI TTS (uses OPENAI_API_KEY):
+# TTS_MODEL="gpt-4o-mini-tts"
+
+# ===== Audio Devices (configure after Step 7) =====
+# Linux native:
+IN_DEV="plughw:CARD=Microphone,DEV=0"
+OUT_DEV="plughw:CARD=Device,DEV=0"
+
+# WSL2 with PulseAudio:
+# IN_DEV="pulse"
+# OUT_DEV="pulse"
 ```
+
+> **Tip:** Copy values from `cloud.env.example` and only change the API keys and audio devices.
+> The example file has sensible defaults for most settings.
 
 ---
 
@@ -207,6 +237,14 @@ aplay -L | grep -E '^(plughw|hw):'
 arecord -L | grep -E '^(plughw|hw):'
 ```
 
+or
+
+```bash
+aplay -L
+arecord -L
+```
+
+
 **Test audio:**
 ```bash
 # Test speakers (should hear white noise)
@@ -217,6 +255,32 @@ arecord -D plughw:CARD=Microphone,DEV=0 -f cd -d 5 test.wav
 aplay test.wav  # Play it back
 rm test.wav
 ```
+
+or
+
+```bash
+speaker-test -D pulse -c 2 -t wav
+# if pulse doesn't work:
+speaker-test -D default -c 2 -t wav
+```
+
+```bash
+arecord -D pulse -f cd -d 5 test.wav
+# if pulse doesn't work:
+arecord -D default -f cd -d 5 test.wav
+
+aplay test.wav
+rm test.wav
+```
+
+If `pulse` isn't listed at all, you can try:
+
+```bash
+cat /proc/version
+echo $DISPLAY
+```
+
+Figure out your own mic and speaker setup and update config/local.env and config/cloud.env with your device names.
 
 **Update config/cloud.env with your device names:**
 ```bash
@@ -247,16 +311,23 @@ ls ~/.config/opencode/plugin/
 
 ## Step 9: Setup Aliases
 
-Add convenient bash aliases:
+Add convenient shell aliases (auto-detects bash or zsh):
 
 ```bash
 cd ~/jarvis-voice
 
-# Run alias setup script
+# Run alias setup script (detects .bashrc or .zshrc automatically)
 ./update-aliases.sh
 
-# Reload bashrc
-source ~/.bashrc
+# Reload your shell config
+source ~/.bashrc   # for bash
+# or
+source ~/.zshrc    # for zsh
+```
+
+**Test aliases:**
+```bash
+say hello 
 ```
 
 **Available aliases after setup:**
@@ -282,7 +353,18 @@ source ~/jarvis-venv/bin/activate
 # Check everything
 ./verify-env.sh
 
-# Start all services
+# Sync tools to database (required before first run)
+./bin/sync_tools.py cloud
+./bin/sync_tools.py local
+
+# Test orchestrator
+./orchestrator/orchestrator_v2.py cloud "what time is it"
+
+### If you get any WARNINGS like xai_sdk not installed it is because uv really wants you to use the .venv in current dir but we override that so just install it manually 
+source ~/jarvis-venv/bin/activate
+pip install xai-sdk
+
+# Start all services background services, web ui, api, in tmux
 ./bin/start
 
 # Check status

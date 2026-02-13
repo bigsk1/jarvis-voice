@@ -100,7 +100,7 @@ qmd multi-get "#abc123, #def456"    # Multiple docids
 | `CANVAS_SYSTEM.md` | Visual artifacts, pins, gallery |
 | `TOOL_MANAGEMENT.md` | 54+ tools, enable/disable, roadmap |
 | `WORKFLOW_ORCHESTRATION.md` | Deterministic multi-tool workflows |
-| `DISASTER_RECOVERY.md` | Backup, restore, migration |
+| `INSTALL_GUIDE.md` | Installation and setup guide |
 | `JARVIS_WEB_UI.md` | Web interface, routes, WebSocket |
 
 ## Maintenance

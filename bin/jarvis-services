@@ -6,6 +6,7 @@
 #   ./bin/jarvis-services         # Cloud mode (default)
 #   ./bin/jarvis-services --local # Local mode (Ollama)
 #   ./bin/jarvis-services --stop  # Stop all services
+#   ./bin/jarvis-services --status # Check if daemons are running
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -13,12 +14,15 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # Parse arguments
 MODE="cloud"
 STOP=false
+STATUS=false
 
 for arg in "$@"; do
     if [ "$arg" == "--local" ]; then
         MODE="local"
     elif [ "$arg" == "--stop" ]; then
         STOP=true
+    elif [ "$arg" == "--status" ]; then
+        STATUS=true
     fi
 done
 
@@ -93,6 +97,72 @@ stop_services() {
 # Handle --stop flag
 if [ "$STOP" = true ]; then
     stop_services
+fi
+
+# Status check function
+show_status() {
+    echo -e "${BLUE}╔═══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║     Jarvis Background Services Status                 ║${NC}"
+    echo -e "${BLUE}╚═══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    running_count=0
+    
+    # Check follow-up daemon
+    if [ -f "$FOLLOW_UP_PID" ]; then
+        PID=$(cat "$FOLLOW_UP_PID")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo -e "  follow-up daemon     ${GREEN}RUNNING${NC}  (PID $PID)"
+            running_count=$((running_count + 1))
+        else
+            echo -e "  follow-up daemon     ${RED}STOPPED${NC}  (stale PID file)"
+        fi
+    else
+        echo -e "  follow-up daemon     ${RED}STOPPED${NC}"
+    fi
+    
+    # Check self-healing daemon
+    if [ -f "$SELF_HEALING_PID" ]; then
+        PID=$(cat "$SELF_HEALING_PID")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo -e "  self-healing daemon  ${GREEN}RUNNING${NC}  (PID $PID)"
+            running_count=$((running_count + 1))
+        else
+            echo -e "  self-healing daemon  ${RED}STOPPED${NC}  (stale PID file)"
+        fi
+    else
+        echo -e "  self-healing daemon  ${RED}STOPPED${NC}"
+    fi
+    
+    # Check reminder scheduler
+    if [ -f "$REMINDER_PID" ]; then
+        PID=$(cat "$REMINDER_PID")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo -e "  reminder scheduler   ${GREEN}RUNNING${NC}  (PID $PID)"
+            running_count=$((running_count + 1))
+        else
+            echo -e "  reminder scheduler   ${RED}STOPPED${NC}  (stale PID file)"
+        fi
+    else
+        echo -e "  reminder scheduler   ${RED}STOPPED${NC}"
+    fi
+    
+    echo ""
+    if [ $running_count -eq 3 ]; then
+        echo -e "${GREEN}All 3 services running${NC}"
+    elif [ $running_count -gt 0 ]; then
+        echo -e "${YELLOW}$running_count of 3 services running${NC}"
+    else
+        echo -e "${RED}No services running${NC}"
+    fi
+    echo ""
+    
+    exit 0
+}
+
+# Handle --status flag
+if [ "$STATUS" = true ]; then
+    show_status
 fi
 
 # Banner

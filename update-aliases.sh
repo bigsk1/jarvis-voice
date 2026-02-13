@@ -1,5 +1,6 @@
 #!/bin/bash
-# Script to set up .bashrc aliases for Jarvis Voice Assistant
+# Script to set up shell aliases for Jarvis Voice Assistant
+# Supports bash (.bashrc) and zsh (.zshrc)
 # For fresh installs or updating existing aliases
 
 set -e
@@ -9,20 +10,36 @@ echo "  Jarvis Aliases Setup"
 echo "======================================"
 echo ""
 
-BASHRC="$HOME/.bashrc"
 JARVIS_ROOT="$HOME/jarvis-voice"
 
-# Check if .bashrc exists
-if [ ! -f "$BASHRC" ]; then
-    echo "Creating ~/.bashrc..."
-    touch "$BASHRC"
+# Detect shell and set appropriate rc file
+if [ -n "$ZSH_VERSION" ] || [ "$SHELL" = "/bin/zsh" ] || [ "$SHELL" = "/usr/bin/zsh" ]; then
+    RCFILE="$HOME/.zshrc"
+    SHELL_NAME="zsh"
+elif [ -n "$BASH_VERSION" ] || [ "$SHELL" = "/bin/bash" ] || [ "$SHELL" = "/usr/bin/bash" ]; then
+    RCFILE="$HOME/.bashrc"
+    SHELL_NAME="bash"
+else
+    # Default to bashrc
+    RCFILE="$HOME/.bashrc"
+    SHELL_NAME="bash"
+fi
+
+echo "Detected shell: $SHELL_NAME"
+echo "Using config file: $RCFILE"
+echo ""
+
+# Check if rc file exists
+if [ ! -f "$RCFILE" ]; then
+    echo "Creating $RCFILE..."
+    touch "$RCFILE"
 fi
 
 echo "Checking for existing Jarvis aliases..."
 echo ""
-if grep -q "alias jarvis" "$BASHRC" 2>/dev/null; then
+if grep -q "alias jarvis" "$RCFILE" 2>/dev/null; then
     echo "Found existing aliases:"
-    grep -n "alias jarvis" "$BASHRC" || true
+    grep -n "alias jarvis" "$RCFILE" || true
     echo ""
     read -p "Replace existing aliases? (y/n): " replace
     if [[ "$replace" != "y" && "$replace" != "Y" ]]; then
@@ -31,30 +48,30 @@ if grep -q "alias jarvis" "$BASHRC" 2>/dev/null; then
     fi
     
     # Create backup
-    BACKUP="$HOME/.bashrc.backup-$(date +%Y%m%d-%H%M%S)"
-    cp "$BASHRC" "$BACKUP"
+    BACKUP="$RCFILE.backup-$(date +%Y%m%d-%H%M%S)"
+    cp "$RCFILE" "$BACKUP"
     echo "Backup created: $BACKUP"
     
     # Remove old jarvis aliases
-    sed -i '/^alias jarvis/d' "$BASHRC"
-    sed -i '/^alias say/d' "$BASHRC"
-    sed -i '/^alias question/d' "$BASHRC"
-    sed -i '/^# Jarvis Voice Assistant/d' "$BASHRC"
-    sed -i '/^# Cloud mode/d' "$BASHRC"
-    sed -i '/^# Local mode/d' "$BASHRC"
-    sed -i '/^# Quick shortcuts/d' "$BASHRC"
-    sed -i '/^# Tools/d' "$BASHRC"
+    sed -i '/^alias jarvis/d' "$RCFILE"
+    sed -i '/^alias say/d' "$RCFILE"
+    sed -i '/^alias question/d' "$RCFILE"
+    sed -i '/^# Jarvis Voice Assistant/d' "$RCFILE"
+    sed -i '/^# Cloud mode/d' "$RCFILE"
+    sed -i '/^# Local mode/d' "$RCFILE"
+    sed -i '/^# Quick shortcuts/d' "$RCFILE"
+    sed -i '/^# Tools/d' "$RCFILE"
     # Clean up any "# OLD:" commented lines from previous runs
-    sed -i '/^# OLD: alias jarvis/d' "$BASHRC"
-    sed -i '/^# OLD: alias say/d' "$BASHRC"
-    sed -i '/^# OLD: alias question/d' "$BASHRC"
+    sed -i '/^# OLD: alias jarvis/d' "$RCFILE"
+    sed -i '/^# OLD: alias say/d' "$RCFILE"
+    sed -i '/^# OLD: alias question/d' "$RCFILE"
 fi
 
 echo ""
-echo "Adding Jarvis aliases..."
+echo "Adding Jarvis aliases to $RCFILE..."
 
 # Add new aliases
-cat >> "$BASHRC" << 'EOF'
+cat >> "$RCFILE" << 'EOF'
 
 # ============================================================================
 # Jarvis Voice Assistant
@@ -84,10 +101,10 @@ alias jarvis-logs="tail -f $HOME/jarvis-voice/logs/*.log"
 EOF
 
 echo ""
-echo "✅ Aliases added to ~/.bashrc"
+echo "✅ Aliases added to $RCFILE"
 echo ""
 echo "Reload with:"
-echo "  source ~/.bashrc"
+echo "  source $RCFILE"
 echo ""
 echo "Available commands:"
 echo "  jarvis          - Start wake word listener (cloud mode)"

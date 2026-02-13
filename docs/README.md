@@ -7,7 +7,7 @@
 ### Getting Started
 - **[JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md)** - 🆕 **Complete workflow guide with visual flowcharts** (START HERE!)
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
-- **[DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)** - 🆕 **Complete disaster recovery guide** (rebuild from scratch) ⭐ CRITICAL
+- **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (setup from scratch) ⭐ CRITICAL
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
@@ -489,7 +489,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Docker Monitoring Fixes** - Prometheus container-to-host connectivity
   - `host.docker.internal` with `extra_hosts` for portable configs
   - Fixed jarvis_api scrape target for Docker environments
-- ✅ **UFW Firewall Documentation** - Added to DISASTER_RECOVERY.md
+- ✅ **UFW Firewall Documentation** - Added to INSTALL_GUIDE.md
   - Essential ports for Jarvis services (8880, 5001, 5002, 5003, 8090, etc.)
   - Example UFW rules for quick setup
 
@@ -1084,7 +1084,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Hardware-specific configuration (audio devices, network IPs)
   - Data restoration procedures
   - Validation tests for each component
-  - See: `docs/DISASTER_RECOVERY.md`
+  - See: `docs/INSTALL_GUIDE.md`
 - ✅ **Ghost Tools Pattern** - Critical tools always available via `GHOST_TOOLS` env var
   - Bypasses semantic search for frequently used tools
   - Ensures reliable tool discovery (e.g., send_email, send_webhook)
@@ -1151,6 +1151,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-11 (v2.42.5)  
+**Last Updated:** 2026-02-12 (v2.43.0)  
 **Latest:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

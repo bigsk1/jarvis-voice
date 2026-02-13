@@ -60,6 +60,8 @@ echo
 # Verify tool registration
 echo "🔍 Verifying tool registry..."
 python3 -c "
+import sys
+sys.path.insert(0, 'lib')
 from lib.tool_schema import ToolRegistry
 registry = ToolRegistry('skills')
 tools = registry.list_tools()
@@ -81,5 +83,5 @@ echo
 echo "  3. Or start wake word listener:"
 echo "     ./jarvis"
 echo
-echo "📖 See docs/DISASTER_RECOVERY.md for full setup guide"
+echo "📖 See docs/INSTALL_GUIDE.md for full setup guide"
 

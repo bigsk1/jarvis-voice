@@ -15,8 +15,18 @@ python-multipart>=0.0.22  # Required for form data uploads
 # Prometheus metrics
 prometheus-fastapi-instrumentator>=6.0.0  
 
-# Canvas Viewer
+# Web UIs (jarvis-web, jarvis-canvas, jarvis-memory, jarvis-intelligence)
+flask>=3.0.0
 flask-cors>=4.0.0
+flask-socketio>=5.3.0
+python-socketio>=5.10.0
+eventlet>=0.35.0
+
+# Docker monitoring (jarvis-monitor)
+docker>=7.0.0
+
+# Dashboard TUI
+textual>=6.0.0
 
 # Existing dependencies
 av==15.1.0
@@ -56,7 +66,6 @@ tokenizers==0.22.0
 tqdm==4.67.1
 typing_extensions==4.15.0
 urllib3==2.5.0
-textual==6.6.0
 fpdf2==2.10.0
 pymupdf>=1.26.0
 spotipy>=2.25.0
