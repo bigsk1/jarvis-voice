@@ -282,15 +282,11 @@ echo $DISPLAY
 
 Figure out your own mic and speaker setup and update config/local.env and config/cloud.env with your device names.
 
-**Update config/cloud.env with your device names:**
-```bash
-SPEAKER_DEVICE_NAME=plughw:CARD=YourSpeaker,DEV=0
-MIC_DEVICE_NAME=plughw:CARD=YourMic,DEV=0
-```
-
 ---
 
 ## Step 8: Install OpenCode Plugins
+
+See [OPENCODE.md](docs/opencode/OPENCODE.md) for more information.
 
 If using OpenCode for autonomous coding:
 
@@ -386,7 +382,7 @@ pip install xai-sdk
 # Start web UI (if not already running)
 ./bin/start web
 
-# Open in browser: http://localhost:3000
+# Open in browser: http://localhost:5001
 ```
 
 ---
@@ -443,32 +439,6 @@ ls -lh jarvis_memory.db jarvis_memory_local.db
 sqlite3 jarvis_memory.db "SELECT COUNT(*) FROM memories;"
 sqlite3 jarvis_memory.db "SELECT COUNT(*) FROM conversations;"
 sqlite3 jarvis_memory_local.db "SELECT COUNT(*) FROM memories;"
-```
-
-**If databases missing or corrupted:**
-
-```bash
-# They'll be auto-created on first run, but you'll lose history
-# Better: Restore from your latest rsync backup! if availible
-```
-
-### Step 2: Test Database Access
-
-```bash
-source ~/jarvis-venv/bin/activate
-cd /home/boss/jarvis-voice
-
-python3 << 'TEST'
-import sys
-sys.path.insert(0, 'lib')
-from memory_db import MemoryDB
-from config_loader import load_config
-
-load_config('cloud')
-db = MemoryDB()
-count = db.conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
-print(f"✓ Database loaded: {count} memories")
-TEST
 ```
 
 ---
@@ -556,7 +526,7 @@ See [`docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`](n8n/docs/GOOGLE_CALENDAR_SYNC.md) 
 # 5. Activate workflow
 ```
 
-**Required workflows if using these systems:**
+**Required workflows if using these systems with jarvis:**
 1. **Jarvis → Send Email** - Email sending via SMTP
 2. **Jarvis → Google Calendar Sync** - Reminder to calendar
 3. **Google Calendar → Jarvis Sync** - Calendar to reminder (with update/delete)
