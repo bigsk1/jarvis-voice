@@ -112,6 +112,7 @@ LOCATION_TIMEZONES = {
     "denver": "America/Denver",
     "phoenix": "America/Phoenix",
     "los angeles": "America/Los_Angeles",
+    "hillsboro": "America/Los_Angeles",
     "la": "America/Los_Angeles",
     "san francisco": "America/Los_Angeles",
     "sf": "America/Los_Angeles",
@@ -220,9 +221,19 @@ def get_time_for_location(location: str = None, timezone: str = None):
             tz_name = LOCATION_TIMEZONES[location_lower]
             display_location = location.title()
         else:
-            # Try to use location as timezone directly
-            tz_name = location
-            display_location = location
+            # Try "city, state" or "city, country" - use city part for lookup
+            if "," in location_lower:
+                city_part = location_lower.split(",")[0].strip()
+                if city_part in LOCATION_TIMEZONES:
+                    tz_name = LOCATION_TIMEZONES[city_part]
+                    display_location = location.title()
+                else:
+                    tz_name = location
+                    display_location = location
+            else:
+                # Try to use location as timezone directly
+                tz_name = location
+                display_location = location
     
     # Get the time
     if tz_name and HAS_ZONEINFO is not None:
