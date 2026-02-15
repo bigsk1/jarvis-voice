@@ -135,6 +135,26 @@ class ConversationStore:
         self._save_index()
         return True
     
+    def clear_conversation(self, conv_id: str) -> bool:
+        """Clear all messages from a conversation (keeps the conversation, resets to empty)"""
+        conversation = self.get_conversation(conv_id)
+        if conversation:
+            conversation['messages'] = []
+            conversation['title'] = f'Chat {datetime.now().strftime("%m/%d %H:%M")}'
+            conversation['updated_at'] = datetime.now().isoformat()
+            conv_file = self.conversations_dir / f'{conv_id}.json'
+            with open(conv_file, 'w') as f:
+                json.dump(conversation, f, indent=2)
+            for idx_conv in self._index['conversations']:
+                if idx_conv['id'] == conv_id:
+                    idx_conv['updated_at'] = conversation['updated_at']
+                    idx_conv['message_count'] = 0
+                    idx_conv['title'] = conversation['title']
+                    break
+            self._save_index()
+            return True
+        return False
+
     def update_title(self, conv_id: str, title: str) -> bool:
         """Update conversation title"""
         conversation = self.get_conversation(conv_id)

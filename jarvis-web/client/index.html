@@ -105,6 +105,8 @@
         </div>
         <div class="sidebar-footer">
           <div class="sidebar-footer-actions">
+            <button class="footer-action-btn" id="clearChatBtn" title="Clear current chat">🧻</button>
+            <button class="footer-action-btn" id="importKnowledgeBtn" title="Import knowledge (txt/md)">📚</button>
             <button class="footer-action-btn" id="exportImportBtn" title="Export/Import">📤</button>
           </div>
           <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
@@ -293,6 +295,24 @@
             <input type="file" id="importFile" accept=".json" style="display: none;">
             <button class="btn btn-secondary" id="importBtn">📥 Import JSON</button>
           </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Import Knowledge Modal -->
+    <div class="modal-overlay" id="importKnowledgeModal">
+      <div class="modal" style="max-width: 420px;">
+        <div class="modal-header">
+          <h2 class="modal-title">📚 Import Knowledge</h2>
+          <button class="icon-btn" id="closeImportKnowledge">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size: var(--text-sm); color: var(--text-muted); margin-bottom: var(--space-md);">
+            Upload a .txt or .md file to jarvis-intel. Content will be saved and ingested into memory.
+          </p>
+          <input type="file" id="importKnowledgeFile" accept=".txt,.md,text/plain,text/markdown" style="display: none;">
+          <button class="btn btn-primary" id="importKnowledgeBtnModal" style="width: 100%;">📄 Choose File (.txt or .md)</button>
+          <div id="importKnowledgeStatus" style="margin-top: var(--space-sm); font-size: var(--text-sm); color: var(--text-muted);"></div>
         </div>
       </div>
     </div>

@@ -449,6 +449,41 @@ class JarvisApp {
       });
     }
     
+    // Clear chat button
+    const clearChatBtn = document.getElementById('clearChatBtn');
+    if (clearChatBtn) {
+      clearChatBtn.addEventListener('click', () => this._clearChat());
+    }
+    
+    // Import knowledge button
+    const importKnowledgeBtn = document.getElementById('importKnowledgeBtn');
+    const importKnowledgeModal = document.getElementById('importKnowledgeModal');
+    const closeImportKnowledge = document.getElementById('closeImportKnowledge');
+    const importKnowledgeBtnModal = document.getElementById('importKnowledgeBtnModal');
+    const importKnowledgeFile = document.getElementById('importKnowledgeFile');
+    if (importKnowledgeBtn) {
+      importKnowledgeBtn.addEventListener('click', () => {
+        importKnowledgeModal?.classList.add('active');
+        document.getElementById('importKnowledgeStatus').textContent = '';
+      });
+    }
+    if (closeImportKnowledge) {
+      closeImportKnowledge.addEventListener('click', () => importKnowledgeModal?.classList.remove('active'));
+    }
+    if (importKnowledgeModal) {
+      importKnowledgeModal.addEventListener('click', (e) => {
+        if (e.target === importKnowledgeModal) importKnowledgeModal.classList.remove('active');
+      });
+    }
+    if (importKnowledgeBtnModal) {
+      importKnowledgeBtnModal.addEventListener('click', () => importKnowledgeFile?.click());
+    }
+    if (importKnowledgeFile) {
+      importKnowledgeFile.addEventListener('change', (e) => {
+        if (e.target.files[0]) this._importKnowledge(e.target.files[0]);
+      });
+    }
+    
     // Sidebar tabs
     document.querySelectorAll('.sidebar-tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -1505,6 +1540,69 @@ class JarvisApp {
     
     // Reset file input
     document.getElementById('importFile').value = '';
+  }
+  
+  /**
+   * Clear current chat (clears messages, keeps conversation)
+   */
+  async _clearChat() {
+    const convId = this.socket.conversationId;
+    if (convId) {
+      try {
+        const response = await fetch(`/api/conversations/${convId}/clear`, { method: 'POST' });
+        const data = await response.json();
+        if (data.ok) {
+          this.chat.clearChat();
+          this._loadConversationHistory();
+          Utils.toast('Chat cleared', 'info');
+        } else {
+          Utils.toast(data.error || 'Failed to clear', 'error');
+        }
+      } catch (err) {
+        Utils.toast(`Error: ${err.message}`, 'error');
+      }
+    } else {
+      this._startNewChat();
+    }
+  }
+  
+  /**
+   * Import knowledge file (txt/md) to jarvis-intel and ingest
+   */
+  async _importKnowledge(file) {
+    const statusEl = document.getElementById('importKnowledgeStatus');
+    if (!file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
+      if (statusEl) statusEl.textContent = 'Only .txt or .md files allowed';
+      Utils.toast('Only .txt or .md files allowed', 'error');
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      if (statusEl) statusEl.textContent = 'File too large (max 1MB)';
+      Utils.toast('File too large (max 1MB)', 'error');
+      return;
+    }
+    if (statusEl) statusEl.textContent = 'Uploading...';
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch('/api/intel/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (data.ok) {
+        if (statusEl) statusEl.textContent = `Saved ${data.filename} – ingestion started`;
+        Utils.toast(data.message || 'Knowledge imported', 'success');
+        document.getElementById('importKnowledgeModal')?.classList.remove('active');
+      } else {
+        if (statusEl) statusEl.textContent = data.error || 'Upload failed';
+        Utils.toast(data.error || 'Upload failed', 'error');
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+      Utils.toast(`Error: ${err.message}`, 'error');
+    }
+    document.getElementById('importKnowledgeFile').value = '';
   }
   
   /**

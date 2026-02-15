@@ -214,6 +214,7 @@ body {
 .sidebar-footer-actions {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-xs);
   margin-bottom: var(--space-sm);
 }
 

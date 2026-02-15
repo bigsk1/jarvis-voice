@@ -495,6 +495,23 @@ def update_conversation_title(conv_id):
         }), 404
 
 
+@api_bp.route('/conversations/<conv_id>/clear', methods=['POST'])
+def clear_conversation(conv_id):
+    """Clear all messages from a conversation (keeps conversation, resets to empty)"""
+    from ..services.conversation_store import get_conversation_store
+    store = get_conversation_store()
+
+    if store.clear_conversation(conv_id):
+        return jsonify({
+            'ok': True,
+            'message': 'Conversation cleared'
+        })
+    return jsonify({
+        'ok': False,
+        'error': 'Conversation not found'
+    }), 404
+
+
 @api_bp.route('/conversations/search', methods=['GET'])
 def search_conversations():
     """Search across all conversations for keywords
@@ -717,6 +734,70 @@ def import_conversation():
         return jsonify({'ok': False, 'error': 'Invalid JSON format'}), 400
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# Intel directory (jarvis-intel knowledge files)
+INTEL_DIR = JARVIS_ROOT / 'jarvis-intel'
+SKILLS_DIR = JARVIS_ROOT / 'skills'
+
+
+def _validate_intel_filename(filename):
+    """Validate intel filename - .md or .txt, safe chars only"""
+    from pathlib import Path
+    name = Path(filename).name
+    if not name.endswith(('.md', '.txt')):
+        raise ValueError('Filename must end in .md or .txt')
+    if name == 'README.md':
+        raise ValueError('Cannot modify README.md')
+    safe = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.')
+    if not all(c in safe for c in name):
+        raise ValueError('Use only letters, numbers, hyphens, underscores, and dots')
+    return name
+
+
+@api_bp.route('/intel/upload', methods=['POST'])
+def upload_intel_file():
+    """Upload a .txt or .md file to jarvis-intel and trigger ingestion.
+    
+    Accepts: multipart file upload
+    Returns: ok, message, filename
+    """
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'error': 'No file provided'}), 400
+    file = request.files['file']
+    if not file or file.filename == '':
+        return jsonify({'ok': False, 'error': 'No file selected'}), 400
+    try:
+        filename = _validate_intel_filename(file.filename)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    if file.content_length and file.content_length > 1024 * 1024:
+        return jsonify({'ok': False, 'error': 'File too large (max 1MB)'}), 400
+    try:
+        content = file.read().decode('utf-8', errors='replace')
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Could not read file: {e}'}), 400
+    INTEL_DIR.mkdir(parents=True, exist_ok=True)
+    filepath = INTEL_DIR / filename
+    try:
+        filepath.write_text(content, encoding='utf-8')
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    ingest_script = SKILLS_DIR / 'ingest_intel.py'
+    if ingest_script.exists():
+        import subprocess
+        subprocess.Popen(
+            ['python3', str(ingest_script), '--sync'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=str(JARVIS_ROOT)
+        )
+    return jsonify({
+        'ok': True,
+        'message': f'Saved {filename} and started ingestion',
+        'filename': filename
+    })
 
 
 @api_bp.route('/stt', methods=['POST'])

@@ -261,7 +261,17 @@ def main():
             
             facts = extract_facts_from_content(content, filepath.name)
             
-            if not facts:
+            # If no structured facts extracted, store full content as single fact
+            # (handles plain text like "hello world" or unstructured notes)
+            if not facts and content.strip():
+                section = filepath.name.replace('.txt', '').replace('.md', '').replace('_', ' ').title()
+                facts = [{
+                    "key": f"{section} content",
+                    "value": content.strip(),
+                    "category": "fact",
+                    "source": f"intel/{filepath.name}"
+                }]
+            elif not facts:
                 continue
             
             # Before adding new facts, check if this file was previously ingested
