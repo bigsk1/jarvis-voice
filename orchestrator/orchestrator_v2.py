@@ -1694,12 +1694,28 @@ Your BEST EFFORT response:"""
             
             # Always-include ONLY addressing/response-style (call me sir, tone, language)
             # Topic-specific prefs (dog, Spotify) go through semantic search only
+            # Skip "no preference" values - user said forget/stop, don't inject those
+            NO_PREFERENCE_VALUES = frozenset([
+                'no specific preference', 'no preference', 'none', 'nothing',
+                'n/a', 'na', 'forget', 'remove', 'delete'
+            ])
+            def _is_no_preference(val: str) -> bool:
+                v = (val or '').strip().lower()
+                if not v:
+                    return True
+                if v in NO_PREFERENCE_VALUES:
+                    return True
+                if 'no specific' in v or 'no preference' in v:
+                    return True
+                return False
+
             seen_keys: set[str] = set()
             merged: list[tuple[float, int, dict, str]] = []  # (score, importance, memory, source)
             if addressing_limit > 0:
                 for m in db.get_addressing_preferences(limit=addressing_limit):
                     key = m.get('key', '')
-                    if key and key not in seen_keys:
+                    value = m.get('value', '')
+                    if key and key not in seen_keys and not _is_no_preference(value):
                         seen_keys.add(key)
                         merged.append((1.1, m.get('importance', 5), m, 'always'))
             
@@ -1754,21 +1770,25 @@ Your BEST EFFORT response:"""
             if not top:
                 return ""
             
-            lines = [
-                "=== RELEVANT STORED KNOWLEDGE (use this without calling search tools) ===",
-                "When these conflict with your defaults, prefer these (user explicitly told you):",
-                ""
-            ]
+            memory_lines = []
             for _, _, m, source in top:
                 key = m.get('key', '')
                 value = m.get('value', '')
+                if _is_no_preference(value):
+                    continue  # User said forget/no preference - don't show
                 cat = m.get('category', '')
                 if source == 'always':
                     label = "user preference (always included)"
                 else:
                     label = f"relevance: {m.get('similarity', 0) * 100:.0f}%"
-                lines.append(f"- {key}: {value} (category: {cat}, {label})")
-            lines.append("===")
+                memory_lines.append(f"- {key}: {value} (category: {cat}, {label})")
+            if not memory_lines:
+                return ""
+            lines = [
+                "=== RELEVANT STORED KNOWLEDGE (use this without calling search tools) ===",
+                "When these conflict with your defaults, prefer these (user explicitly told you):",
+                ""
+            ] + memory_lines + ["==="]
             return "\n".join(lines) + "\n\n"
         except Exception as e:
             if os.environ.get('JARVIS_DEBUG'):

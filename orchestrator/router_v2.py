@@ -364,6 +364,8 @@ CRITICAL EXAMPLES:
 ❌ BAD: User says "From now on, call me sir" → Acknowledge but don't save
 ✅ GOOD: User says "From now on, call me sir" → Call 'remember' with category=preference, key=how_to_address_user, value="call me sir", importance=8
 ✅ GOOD: User says "Address me as Captain" → Call 'remember' immediately - this applies to ALL future chats
+❌ BAD: User says "Forget calling me sir" / "Stop calling me X" → Call 'remember' with value="no preference"
+✅ GOOD: User says "Forget calling me sir" / "Don't call me that anymore" → Call 'forget' with search_query="call me sir" or "how_to_address_user" to remove the memory
 
 SYSTEM ENVIRONMENT:
 - Running on a **headless Ubuntu server** (no GUI/display)
@@ -523,7 +525,19 @@ DEFAULT LOCATION (weather and location-based queries only):
 When the user asks for weather or location-based info WITHOUT specifying a place, use: "{default_loc}"
 Do NOT use this when the user specifies a different location (e.g. "weather in Seattle" → use Seattle).
 Time and timezone use JARVIS_TIMEZONE - this is separate."""
-        return time_prefix + location_block + self._system_prompt_base
+        # Time-of-day personal touch for new conversations (first message, new chat)
+        greeting_hint = ""
+        hour = now.hour
+        if hour >= 22 or hour < 7:
+            if hour >= 22:
+                time_context = "late night (10pm–midnight)"
+            else:
+                time_context = "early morning (12am–7am)"
+            greeting_hint = f"""
+
+PERSONAL TOUCH (new conversations only):
+When this appears to be the start of a fresh conversation (no prior assistant messages in context), you may add a brief time-aware greeting before the main response. Current time: {time_context}. Use your own phrasing—e.g. working late, early bird—one short natural phrase. Skip if continuing an existing conversation."""
+        return time_prefix + location_block + greeting_hint + self._system_prompt_base
     
     def _create_provider(self):
         """Create appropriate LLM provider based on config or overrides."""
