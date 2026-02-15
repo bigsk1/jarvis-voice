@@ -13,7 +13,7 @@ from datetime import datetime
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_int
+from config_loader import load_config, get_int, get_float, get_config_value
 from memory_db import get_memory_db
 from status_updater import StatusUpdater
 
@@ -405,6 +405,12 @@ Mode: {self.mode}
             available_tool_names = db.get_enabled_tool_names() if hasattr(db, 'get_enabled_tool_names') else []
         except Exception:
             available_tool_names = []  # Fallback: no filtering
+        
+        # Auto-inject relevant memories (semantic search + recency weighting)
+        # Works for CLI, WebUI, wake word - all go through orchestrator.process()
+        memory_context = self._get_relevant_memories(transcript)
+        if memory_context:
+            enhanced_transcript = f"{memory_context}\n\n{enhanced_transcript}"
         
         # Inject learned insights from self-learning intelligence
         learning_context, applied_insights = self._get_learning_insights(transcript, available_tool_names)
@@ -1663,6 +1669,111 @@ Your BEST EFFORT response:"""
             context_parts.append("\n⚠️ NEWS REQUESTED: The user asked for news. Use your NATIVE SEARCH capability to get current news headlines. DO NOT call external search tools - use your built-in web search to find 3-5 relevant news headlines and include them in your response.")
         
         return "\n".join(context_parts)
+    
+    def _get_relevant_memories(self, transcript: str) -> str:
+        """
+        Fetch memories semantically relevant to the current query.
+        Injected into context so LLM doesn't need to call search_memory/semantic_recall.
+        
+        Applies recency weighting: more recent memories rank slightly higher.
+        Older memories (60+ days) fade in relevance; recently used/updated stay higher.
+        Importance is preserved for conflict resolution (user preferences override defaults).
+        
+        Works for CLI, WebUI, and wake word - all entry points use orchestrator.process().
+        """
+        if get_config_value('AUTO_MEMORY_INJECTION_ENABLED', 'true').lower() != 'true':
+            return ""
+        try:
+            from datetime import timedelta
+            
+            db = get_memory_db()
+            limit = get_int('AUTO_MEMORY_LIMIT', 8)
+            threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.38)
+            recency_enabled = get_config_value('AUTO_MEMORY_RECENCY_ENABLED', 'true').lower() == 'true'
+            addressing_limit = get_int('AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT', 2)
+            
+            # Always-include ONLY addressing/response-style (call me sir, tone, language)
+            # Topic-specific prefs (dog, Spotify) go through semantic search only
+            seen_keys: set[str] = set()
+            merged: list[tuple[float, int, dict, str]] = []  # (score, importance, memory, source)
+            if addressing_limit > 0:
+                for m in db.get_addressing_preferences(limit=addressing_limit):
+                    key = m.get('key', '')
+                    if key and key not in seen_keys:
+                        seen_keys.add(key)
+                        merged.append((1.1, m.get('importance', 5), m, 'always'))
+            
+            # Semantic search for query-relevant memories
+            candidate_limit = min(limit * 2, 20)
+            candidate_threshold = min(threshold - 0.05, 0.30)
+            memories = db.semantic_search(
+                query=transcript,
+                limit=candidate_limit,
+                similarity_threshold=candidate_threshold
+            )
+            
+            # Apply recency weighting to semantic results
+            now = datetime.now()
+            for m in memories:
+                key = m.get('key', '')
+                if key and key in seen_keys:
+                    continue
+                if key:
+                    seen_keys.add(key)
+                sim = m.get('similarity', 0)
+                importance = m.get('importance', 5)
+                recency_factor = 1.0
+                if recency_enabled:
+                    updated = m.get('updated_at') or m.get('created_at')
+                    if updated:
+                        try:
+                            if isinstance(updated, str):
+                                ts = datetime.fromisoformat(updated.replace('Z', '+00:00'))
+                            else:
+                                ts = updated
+                            ts_naive = ts.replace(tzinfo=None) if getattr(ts, 'tzinfo', None) else ts
+                            days_old = (now - ts_naive).days
+                            if days_old <= 7:
+                                recency_factor = 1.0
+                            elif days_old <= 30:
+                                recency_factor = 0.95
+                            elif days_old <= 60:
+                                recency_factor = 0.9
+                            else:
+                                recency_factor = 0.85
+                        except (ValueError, TypeError, AttributeError):
+                            pass
+                adjusted = sim * recency_factor
+                if adjusted >= threshold:
+                    merged.append((adjusted, importance, m, 'semantic'))
+            
+            # Sort by score desc, then importance desc; take top N
+            merged.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            top = merged[:limit]
+            
+            if not top:
+                return ""
+            
+            lines = [
+                "=== RELEVANT STORED KNOWLEDGE (use this without calling search tools) ===",
+                "When these conflict with your defaults, prefer these (user explicitly told you):",
+                ""
+            ]
+            for _, _, m, source in top:
+                key = m.get('key', '')
+                value = m.get('value', '')
+                cat = m.get('category', '')
+                if source == 'always':
+                    label = "user preference (always included)"
+                else:
+                    label = f"relevance: {m.get('similarity', 0) * 100:.0f}%"
+                lines.append(f"- {key}: {value} (category: {cat}, {label})")
+            lines.append("===")
+            return "\n".join(lines) + "\n\n"
+        except Exception as e:
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"⚠️ Auto-memory injection failed: {e}", file=sys.stderr)
+            return ""
     
     def _get_learning_insights(self, transcript: str, available_tools: list[str] = None) -> tuple[str, list[dict]]:
         """

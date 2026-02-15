@@ -9,6 +9,7 @@
 3. **Semantic search** working (vector embeddings)
 4. **Conversation search** working (text search)
 5. **Tool definitions** have good descriptions
+6. **Auto-memory injection** (2026-02-15) – Relevant memories injected into context before each LLM call; no tool calls needed for recall. Always-include = addressing/response-style only; topic-specific memories via semantic search. See `docs/AUTO_MEMORY_INJECTION_FEATURE.md`.
 
 ## Issues Found 🔍
 
@@ -31,21 +32,16 @@
 
 **Fix**: Harmonize categories across all tools
 
-### 2. **LLM Not Always Searching Memory** (Priority: High)
+### 2. **LLM Not Always Searching Memory** (Priority: High) – MITIGATED ✅
 
 **Test Case**: "When do I celebrate my birth date?"
 - **Expected**: Call `semantic_recall` → Find "birthday: December 25th" → Answer
 - **Actual**: Respond directly "I don't have your birth date"
 - **Why**: LLM didn't route to memory search tool
 
-**Root Cause**: 
-- System prompt has guidance (line 97: "ALWAYS use recall/search_memory/semantic_recall FIRST")
-- But LLM sometimes ignores it (probabilistic behavior)
+**Mitigation (2026-02-15)**: **Auto-memory injection** – Orchestrator now injects relevant memories into context before each LLM call. Semantic search runs on the query; matching memories appear in the prompt. LLM no longer needs to call search_memory/semantic_recall for many recall cases. See `docs/AUTO_MEMORY_INJECTION_FEATURE.md`.
 
-**Possible Fixes**:
-1. **Strengthen system prompt** with more examples
-2. **Add explicit memory check** in orchestrator before QA response
-3. **Train/fine-tune** model to prefer memory tools for "what/when/who" questions
+**Remaining**: System prompt guidance still helps when injected memories don't cover the query; LLM can still call tools for deeper search.
 
 ### 3. **Importance Scoring Inconsistent** (Priority: Medium)
 

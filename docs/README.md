@@ -16,7 +16,7 @@
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) 
 - **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice) ⭐ ENHANCED
 - **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support) 
-- **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search
+- **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search + auto-injection
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
 - **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization** ⭐ ENHANCED)
@@ -115,6 +115,7 @@
 | Document | Purpose |
 |----------|---------|
 | **MEMORY_SYSTEM.md** | Memory database architecture and tools |
+| **AUTO_MEMORY_INJECTION_FEATURE.md** | Auto-inject relevant memories into context (no tool calls) |
 | **DEEP_MEMORY_SEARCH.md** | 🔍 **Deep search across ALL data sources** (memory, conversations, intel, canvas, stash)  |
 | **USER_PROFILE_SYSTEM.md** | User profile management (intel + dynamic memories)  |
 | **SEARCH_FALLBACK_SYSTEM.md** | Multi-tier search fallbacks (AND→OR→LIKE) |
@@ -302,6 +303,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-02-15:**
+- ✅ **Auto-Memory Injection** - Relevant memories loaded into LLM context automatically
+  - No tool calls needed for recall; "What do you know about Jessi?" works without search_memory
+  - **Always-include**: Addressing/response-style only (call me sir, tone, language) – 1–2 items max
+  - **Semantic search**: Topic-specific memories (dog, Spotify, etc.) only when relevant to query
+  - Recency weighting: recent memories rank slightly higher; 60+ day old fade
+  - Config: `AUTO_MEMORY_INJECTION_ENABLED`, `AUTO_MEMORY_LIMIT`, `AUTO_MEMORY_SIMILARITY_THRESHOLD`, `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT`
+  - Works for CLI, WebUI, and wake word
+  - See: `docs/AUTO_MEMORY_INJECTION_FEATURE.md`
 
 **2026-02-11:**
 - ✅ **Jarvis Intel System** 

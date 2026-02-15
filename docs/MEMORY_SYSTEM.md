@@ -211,6 +211,16 @@ sqlite3 data/jarvis_memory.db "UPDATE knowledge_base SET value='green' WHERE key
 sqlite3 data/jarvis_memory.db "DELETE FROM knowledge_base WHERE key='favorite_color';"
 ```
 
+## Auto-Memory Injection
+
+**NEW:** Relevant memories are automatically injected into the LLM context before each request—no tool calls needed.
+
+- **Always-include** (1–2 items): Addressing/response-style only (`how_to_address_user`, `response_tone`, etc.). E.g. "call me sir" appears in every chat.
+- **Semantic search**: Topic-specific memories (dog name, Spotify playlist, etc.) only when relevant to the current query.
+- **Recency weighting**: Recent memories rank slightly higher; older ones fade.
+
+Config: `AUTO_MEMORY_*` in cloud.env / local.env. See `docs/AUTO_MEMORY_INJECTION_FEATURE.md`.
+
 ## How Memory Works
 
 ### Automatic Memory
@@ -276,6 +286,12 @@ EMBEDDING_PROVIDER="openai"  # or "ollama"
 
 # Ollama embedding model (local only)
 OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
+
+# Auto-memory injection (inject relevant memories before each LLM call)
+AUTO_MEMORY_INJECTION_ENABLED=true
+AUTO_MEMORY_LIMIT=8
+AUTO_MEMORY_SIMILARITY_THRESHOLD=0.38
+AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=2
 ```
 
 ## Troubleshooting

@@ -404,6 +404,30 @@ class MemoryDB:
         
         return [dict(row) for row in results]
     
+    def get_addressing_preferences(self, limit: int = 2) -> list[dict]:
+        """
+        Get ONLY addressing/response-style preferences that affect every response.
+        E.g. how_to_address_user, address_user, response_tone, response_style.
+        These are the only memories that should be always-included regardless of query.
+        Topic-specific preferences (dog, Spotify, etc.) go through semantic search only.
+        """
+        cursor = self.conn.cursor()
+        # Use ESCAPE for underscore - in LIKE, _ matches any char; we want literal "how_to"
+        results = cursor.execute(
+            """SELECT id, category, key, value, importance, created_at, updated_at, source, metadata
+               FROM knowledge_base
+               WHERE (
+                   key LIKE '%address%' ESCAPE '\\'
+                   OR key LIKE '%how\\_to%' ESCAPE '\\'
+                   OR key LIKE '%response_tone%' OR key LIKE '%response_style%'
+                   OR key LIKE '%preferred_language%'
+               )
+               ORDER BY importance DESC, updated_at DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in results]
+    
     def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = None) -> list[dict]:
         """
         Semantic search using vector embeddings with smart fallback.
