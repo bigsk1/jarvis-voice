@@ -10,7 +10,7 @@ import subprocess
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
-from config_loader import load_config
+from config_loader import load_config, get_config_value
 
 # Tool locations
 SKILLS_DIR = os.path.join(os.path.dirname(__file__), '..')
@@ -130,7 +130,8 @@ def main():
         
         # 2. Weather
         if 'weather' in sections:
-            result = call_tool('weather', {'location': 'Hillsboro, Oregon'})
+            weather_loc = get_config_value('JARVIS_DEFAULT_LOCATION', 'Hillsboro, Oregon')
+            result = call_tool('weather', {'location': weather_loc})
             if result.get('ok'):
                 report_data['weather'] = result.get('data', {})
             else:
@@ -443,8 +444,9 @@ def main():
         # Weather section
         if 'weather' in report_data:
             w = report_data['weather']
+            weather_loc = get_config_value('JARVIS_DEFAULT_LOCATION', 'Hillsboro, Oregon')
             canvas_lines.extend([
-                "## 🌤️ Weather (Hillsboro, OR)",
+                f"## 🌤️ Weather ({weather_loc})",
                 f"- **Condition:** {w.get('condition', 'N/A')}",
                 f"- **Temperature:** {w.get('temperature', 'N/A')}°F (feels like {w.get('feels_like', 'N/A')}°F)",
                 f"- **Humidity:** {w.get('humidity', 'N/A')}%",

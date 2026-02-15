@@ -203,6 +203,7 @@ def get_system_config():
             
             # System
             'JARVIS_TIMEZONE': get_jarvis_setting('JARVIS_TIMEZONE', 'America/Los_Angeles'),
+            'JARVIS_DEFAULT_LOCATION': get_jarvis_setting('JARVIS_DEFAULT_LOCATION', 'Hillsboro, Oregon'),
         }
     })
 

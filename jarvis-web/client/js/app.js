@@ -1193,6 +1193,10 @@ class JarvisApp {
               <span class="config-value">${c.JARVIS_TIMEZONE}</span>
             </div>
             <div class="config-item">
+              <span class="config-label">JARVIS_DEFAULT_LOCATION</span>
+              <span class="config-value">${c.JARVIS_DEFAULT_LOCATION || 'Hillsboro, Oregon'}</span>
+            </div>
+            <div class="config-item">
               <span class="config-label">Mode</span>
               <span class="config-value">${data.mode}</span>
             </div>

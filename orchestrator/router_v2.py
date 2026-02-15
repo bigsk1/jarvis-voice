@@ -513,7 +513,17 @@ Database times are stored in UTC. Convert to local time when presenting to the u
 Use this for any time-sensitive queries, web searches, or temporal references.
 When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
 {native_search_note}{style_note}"""
-        return time_prefix + self._system_prompt_base
+        # Default location for weather/location queries only - never override user-specified locations
+        location_block = ""
+        default_loc = get_config_value("JARVIS_DEFAULT_LOCATION", "").strip()
+        if default_loc:
+            location_block = f"""
+
+DEFAULT LOCATION (weather and location-based queries only):
+When the user asks for weather or location-based info WITHOUT specifying a place, use: "{default_loc}"
+Do NOT use this when the user specifies a different location (e.g. "weather in Seattle" → use Seattle).
+Time and timezone use JARVIS_TIMEZONE - this is separate."""
+        return time_prefix + location_block + self._system_prompt_base
     
     def _create_provider(self):
         """Create appropriate LLM provider based on config or overrides."""

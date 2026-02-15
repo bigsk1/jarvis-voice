@@ -5,7 +5,8 @@
 # Runs all cleanup tasks with appropriate retention periods:
 #   - Logs: 60 days
 #   - Audio: 30 days  
-#   - Generated images:120 days
+#   - Generated images: 120 days
+#   - Web uploads: 30 days
 #   - Stash spaces: Uses built-in TTL (via Python)
 #
 # Usage:
@@ -29,7 +30,7 @@ fi
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║             Jarvis Master Cleanup                            ║"
 echo "║                                                              ║"
-echo "║  Logs: 60 days | Audio: 30 days | Images: 120 days | Stash   ║"
+echo "║  Logs: 60d | Audio: 30d | Images: 120d | Uploads: 30d | Stash  ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -112,7 +113,75 @@ else
 fi
 echo ""
 
-# 4. Cleanup stash expired spaces (uses built-in TTL)
+# 4. Cleanup web uploads (30 days)
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+UPLOADS_DIR="$PROJECT_ROOT/jarvis-web/data/uploads"
+UPLOADS_RETENTION_DAYS=30
+
+echo "📤 Web Uploads Cleanup"
+echo "   Retention: $UPLOADS_RETENTION_DAYS days"
+echo "   Uploads dir: $UPLOADS_DIR"
+if [[ -n "$DRY_RUN" ]]; then
+    echo "   Mode:      DRY RUN (no files will be deleted)"
+fi
+echo ""
+
+if [[ -d "$UPLOADS_DIR" ]]; then
+    BEFORE_COUNT=$(find "$UPLOADS_DIR" -type f 2>/dev/null | wc -l)
+    BEFORE_SIZE=$(du -sh "$UPLOADS_DIR" 2>/dev/null | cut -f1 || echo "0")
+    
+    echo "📊 Before cleanup:"
+    echo "   Files: $BEFORE_COUNT"
+    echo "   Size:  $BEFORE_SIZE"
+    echo ""
+    
+    TOTAL_DELETED=0
+    TOTAL_BYTES=0
+    
+    while IFS= read -r file; do
+        if [[ -n "$file" ]]; then
+            size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+            TOTAL_BYTES=$((TOTAL_BYTES + size))
+            TOTAL_DELETED=$((TOTAL_DELETED + 1))
+            
+            if [[ -n "$DRY_RUN" ]]; then
+                if [[ $TOTAL_DELETED -le 10 ]]; then
+                    echo "   Would delete: $(basename "$file") ($(numfmt --to=iec $size 2>/dev/null || echo "${size}B"))"
+                fi
+            else
+                rm -f "$file"
+            fi
+        fi
+    done < <(find "$UPLOADS_DIR" -type f -mtime +$UPLOADS_RETENTION_DAYS ! -name '.gitkeep' 2>/dev/null)
+    
+    echo ""
+    
+    if [[ $TOTAL_DELETED -eq 0 ]]; then
+        echo "✅ No uploads older than $UPLOADS_RETENTION_DAYS days found."
+    else
+        SIZE_HUMAN=$(numfmt --to=iec $TOTAL_BYTES 2>/dev/null || echo "${TOTAL_BYTES}B")
+        if [[ -n "$DRY_RUN" ]]; then
+            [[ $TOTAL_DELETED -gt 10 ]] && echo "   ... and $((TOTAL_DELETED - 10)) more files"
+            echo ""
+            echo "📋 Would delete $TOTAL_DELETED upload(s) ($SIZE_HUMAN)"
+        else
+            echo "✅ Deleted $TOTAL_DELETED upload(s) ($SIZE_HUMAN)"
+            
+            AFTER_COUNT=$(find "$UPLOADS_DIR" -type f 2>/dev/null | wc -l)
+            AFTER_SIZE=$(du -sh "$UPLOADS_DIR" 2>/dev/null | cut -f1 || echo "0")
+            
+            echo ""
+            echo "📊 After cleanup:"
+            echo "   Files: $AFTER_COUNT"
+            echo "   Size:  $AFTER_SIZE"
+        fi
+    fi
+else
+    echo "   (directory does not exist)"
+fi
+echo ""
+
+# 5. Cleanup stash expired spaces (uses built-in TTL)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📦 Stash Spaces Cleanup (TTL-based)"
 STASH_DIR="$PROJECT_ROOT/data/stash"
@@ -189,9 +258,11 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🎉 Cleanup complete!"
 echo ""
 
-# Show overall disk usage
+# Show overall disk usage (only existing dirs to avoid du failures)
 echo "📊 Current disk usage:"
-du -sh "$PROJECT_ROOT/logs" "$PROJECT_ROOT/logs/server-side-tools" "$PROJECT_ROOT/audio" "$PROJECT_ROOT/data/generated_images" "$PROJECT_ROOT/data/stash" 2>/dev/null | while read size dir; do
+for d in logs logs/server-side-tools audio data/generated_images jarvis-web/data/uploads data/stash; do
+    [[ -d "$PROJECT_ROOT/$d" ]] && du -sh "$PROJECT_ROOT/$d" 2>/dev/null
+done | while read size dir; do
     name=$(basename "$dir")
     printf "   %-20s %s\n" "$name/" "$size"
 done
