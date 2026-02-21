@@ -346,6 +346,10 @@ CRITICAL EXAMPLES:
 
 **Rule**: TEMPORAL queries (last/recent/just asked) → get_recent_conversations. TOPIC queries (find/search/mention X) → search_conversations
 
+**Image Re-Analysis (follow-up questions about uploaded image):**
+❌ BAD: User corrects vision result or asks "look again" → analyze_image with image="1" or "image ID 1" (fails)
+✅ GOOD: Use stash_ref from uploaded_image in context: analyze_image with image="stash://space_id/file_id"
+
 **Intelligent Auto-Save (Critical for YOU CREATE/BUILD scenarios):**
 ❌ BAD: Build project with OpenCode → Build succeeds → Respond "Done" → DON'T save location/run command
 ✅ GOOD: Build project with OpenCode → Build succeeds → Call 'remember' with project location, port, run command → Respond "Done"

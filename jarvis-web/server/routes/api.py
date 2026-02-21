@@ -1471,7 +1471,7 @@ def upload_image():
     """
     import base64
     from datetime import datetime
-    from PIL import Image
+    from PIL import Image, ImageOps
     import io
     
     if 'image' not in request.files:
@@ -1490,6 +1490,8 @@ def upload_image():
     try:
         # Read and process image
         img = Image.open(file.stream)
+        # Apply EXIF orientation (iPhone photos often have Orientation tag; PIL doesn't auto-apply)
+        img = ImageOps.exif_transpose(img)
         
         # Convert to RGB if necessary (for JPEG output)
         if img.mode in ('RGBA', 'P'):

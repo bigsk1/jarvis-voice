@@ -1426,6 +1426,17 @@ Your BEST EFFORT response:"""
             else:
                 context_lines.append(f"{prefix}: {content}")
         
+        # If a previous message has uploaded_image with stash_ref, inject hint for follow-ups
+        # (LLM was passing "image ID 1" instead of stash_ref, causing analyze_image to fail)
+        for msg in recent:
+            tr = msg.get('tool_results', {}) or {}
+            ui = tr.get('uploaded_image', {}) if isinstance(tr, dict) else {}
+            stash_ref = ui.get('stash_ref') if isinstance(ui, dict) else None
+            if stash_ref and str(stash_ref).startswith('stash://'):
+                context_lines.append("")
+                context_lines.append("IMAGE RE-ANALYSIS: If the user asks to look again, correct, or re-identify the image: use analyze_image with image=\"" + str(stash_ref) + "\". Do NOT use '1', 'image ID 1', or attachment indices.")
+                break
+        
         context_lines.append("=== END CONTEXT ===")
         context_lines.append("")
         context_lines.append(f"Current request: {current_query}")

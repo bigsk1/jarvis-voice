@@ -1745,7 +1745,7 @@ Mode: {mode}
             return self._vision_xai(image_base64, prompt, vision_model)
     
     def _vision_anthropic(self, image_base64: str, prompt: str, model: str = None) -> str:
-        """Use Anthropic Claude for vision"""
+        """Use Anthropic Claude for vision. No detail parameter - Claude API does not support high/low."""
         import requests
         from ..config import get_jarvis_setting
         
@@ -1754,7 +1754,12 @@ Mode: {mode}
             print("[VISION] ANTHROPIC_API_KEY not configured")
             return None
         
-        model = model or get_jarvis_setting('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+        # VISION_MODEL may be xAI-specific (grok-*); use only if it looks like Claude
+        vision_model = model or get_jarvis_setting('VISION_MODEL', '')
+        if vision_model and str(vision_model).lower().startswith('claude-'):
+            model = vision_model
+        else:
+            model = get_jarvis_setting('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
         print(f"[VISION] Anthropic model: {model}")
         
         payload = {
@@ -1813,7 +1818,10 @@ Mode: {mode}
         model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', 'grok-4-1-fast-non-reasoning')
         print(f"[VISION] xAI model: {model}")
         
-        # xAI uses OpenAI-compatible format with detail parameter
+        # xAI uses OpenAI-compatible format with detail parameter (high = better accuracy)
+        detail = get_jarvis_setting('VISION_DETAIL', 'high').lower()
+        if detail not in ('low', 'high'):
+            detail = 'high'
         payload = {
             "model": model,
             "messages": [{
@@ -1823,7 +1831,7 @@ Mode: {mode}
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:image/jpeg;base64,{image_base64}",
-                            "detail": "high"
+                            "detail": detail
                         }
                     },
                     {
