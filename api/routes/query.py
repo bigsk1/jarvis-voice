@@ -1,6 +1,6 @@
 """Query/Chat API endpoints - Send queries to Jarvis programmatically"""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, HTTPException
 import sys
 import os
 from pathlib import Path
@@ -13,9 +13,23 @@ from api.models.query import QueryRequest, QueryResponse, QuickQueryRequest
 router = APIRouter(prefix="/api/query", tags=["query"])
 
 
+def _check_rate_limit(request: Request) -> None:
+    """Raise 429 if rate limit exceeded. QUERY_RATE_LIMIT_PER_MINUTE=0 disables."""
+    from rate_limiter import get_query_rate_limiter
+    client_ip = request.client.host if request.client else "unknown"
+    limiter = get_query_rate_limiter()
+    allowed, retry_after = limiter.is_allowed(client_ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
 @router.post("", response_model=QueryResponse)
 @router.post("/", response_model=QueryResponse, include_in_schema=False)
-async def query_jarvis(request: QueryRequest):
+async def query_jarvis(request: Request, body: QueryRequest):
     """
     Send a query to Jarvis and get a response.
     
@@ -41,13 +55,14 @@ async def query_jarvis(request: QueryRequest):
     
     **Note**: Long-running queries may take 10-60+ seconds depending on tools used.
     """
+    _check_rate_limit(request)
     try:
         # Load config for the requested mode
         from config_loader import load_config
-        load_config(request.mode)
+        load_config(body.mode)
         
         # Set mode in environment for downstream components
-        if request.mode == "local":
+        if body.mode == "local":
             os.environ['LLM_PROVIDER'] = 'ollama'
         else:
             # Keep existing provider for cloud mode
@@ -57,15 +72,15 @@ async def query_jarvis(request: QueryRequest):
         from orchestrator_v2 import Orchestrator
         
         # Create orchestrator and process query
-        orch = Orchestrator(request.mode)
+        orch = Orchestrator(body.mode)
         
         # Build conversation history if session context provided
         conversation_history = None
-        if request.context and 'messages' in request.context:
-            conversation_history = request.context['messages']
+        if body.context and 'messages' in body.context:
+            conversation_history = body.context['messages']
         
         result = orch.process(
-            transcript=request.query,
+            transcript=body.query,
             conversation_history=conversation_history
         )
         
@@ -74,7 +89,7 @@ async def query_jarvis(request: QueryRequest):
             speech=result.get('speech'),
             response=result.get('raw_llm_response') or result.get('speech'),  # Raw response or speech
             tools_used=result.get('tools_used', []),
-            session_id=request.session_id,
+            session_id=body.session_id,
             error=result.get('error'),
             # Extended fields
             data=result.get('data'),
@@ -98,7 +113,7 @@ async def query_jarvis(request: QueryRequest):
 
 
 @router.post("/quick", response_model=QueryResponse)
-async def quick_query(request: QuickQueryRequest):
+async def quick_query(http_request: Request, body: QuickQueryRequest):
     """
     Quick query endpoint with minimal parameters (JSON body).
     
@@ -109,12 +124,13 @@ async def quick_query(request: QuickQueryRequest):
       -d '{"query": "What time is it?"}'
     ```
     """
-    full_request = QueryRequest(query=request.query, mode=request.mode)
-    return await query_jarvis(full_request)
+    full_request = QueryRequest(query=body.query, mode=body.mode)
+    return await query_jarvis(http_request, full_request)
 
 
 @router.get("/quick")
 async def quick_query_get(
+    http_request: Request,
     q: str,
     mode: str = "cloud"
 ):
@@ -128,5 +144,5 @@ async def quick_query_get(
     **Warning**: GET requests may be logged in server logs.
     Use POST for sensitive queries.
     """
-    request = QueryRequest(query=q, mode=mode)
-    return await query_jarvis(request)
+    body = QueryRequest(query=q, mode=mode)
+    return await query_jarvis(http_request, body)
