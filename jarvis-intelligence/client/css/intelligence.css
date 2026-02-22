@@ -772,10 +772,24 @@ body {
 }
 
 /* Tool performance table */
+.performance-table-wrapper {
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  overflow: auto;
+  max-height: 400px;
+}
+
 .performance-table {
   width: 100%;
   border-collapse: collapse;
   margin-top: var(--space-md);
+}
+
+@media (max-width: 909px) {
+  .performance-table {
+    min-width: 600px;
+  }
 }
 
 .performance-table th,
@@ -1108,9 +1122,10 @@ textarea.form-input {
   font-size: var(--text-sm);
   color: var(--text-primary);
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 .queue-priority {

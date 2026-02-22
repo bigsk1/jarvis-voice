@@ -395,6 +395,7 @@ function renderStats(data) {
   const convStats = data.conversations || {};
   
   container.innerHTML = `
+    <div class="memory-list" style="min-height: 0;">
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-value">${memory.total_memories || 0}</div>
@@ -451,6 +452,7 @@ function renderStats(data) {
       </div>
     </div>
     ` : ''}
+    </div>
   `;
 }
 

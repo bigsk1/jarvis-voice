@@ -953,7 +953,7 @@ function renderReflectionPanel(queue, metaKnowledge) {
               <div class="queue-item" style="display: flex; align-items: center; gap: var(--space-sm);">
                 <button class="btn btn-icon delete-reflection-btn" data-id="${item.id}" title="Cancel this reflection (don't process)">✕</button>
                 <div style="flex: 1; min-width: 0;">
-                  <span class="queue-query">${escapeHtml(truncate(item.query || 'Unknown', 70))}</span>
+                  <span class="queue-query">${escapeHtml(item.query || 'Unknown')}</span>
                   <span class="queue-meta" style="font-size: var(--text-xs); color: var(--text-muted); margin-left: var(--space-sm);">
                     ${item.outcome_success ? '✅' : '❌'} Exp #${item.experience_id}
                   </span>
@@ -1153,7 +1153,7 @@ function renderStats(stats, toolPerformance) {
     ${toolPerformance.length > 0 ? `
       <div style="padding: 0 var(--space-lg) var(--space-lg);">
         <h3 style="color: var(--text-primary); margin-bottom: var(--space-md);">🛠️ Tool Performance (${toolPerformance.length} tools)</h3>
-        <div style="background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); overflow: hidden; max-height: 400px; overflow-y: auto;">
+        <div class="performance-table-wrapper">
           <table class="performance-table">
             <thead>
               <tr>
