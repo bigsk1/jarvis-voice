@@ -1,6 +1,6 @@
 # Security Hardening Guide
 
-**Last Updated:** January 29, 2026  
+**Last Updated:** February 15, 2026  
 **Status:** In Progress
 
 ## Overview
@@ -328,7 +328,7 @@ The Jarvis API (port 8880) has:
 | Request Logging | ✅ | All requests logged to `logs/api/` |
 | Error Logging | ✅ | 4xx/5xx logged with details |
 | CORS | ⚠️ | `allow_origins=["*"]` - OK for local network |
-| Rate Limiting | ⬜ | Not implemented - low risk on local network |
+| Rate Limiting | ✅ | Per-IP limit on `/api/query` (configurable, 0 = disabled) |
 | Authentication | ✅ | Optional Bearer token auth (toggle via env) |
 
 ### API Authentication ✅ IMPLEMENTED
@@ -386,6 +386,25 @@ JARVIS_API_KEY=your-api-key-here
 - All internal services (self_healing_daemon, price_alert, jarvis-web) use localhost and don't need keys
 
 The API is intended for local network use only. External access should be through Tailscale or similar VPN, with API auth as an additional layer.
+
+### API Query Rate Limiting ✅ IMPLEMENTED
+
+The `/api/query` endpoint (and `/api/query/quick`) has per-IP rate limiting to reduce abuse risk from runaway scripts or accidental loops. LLM calls and tool execution are expensive; rate limiting caps the blast radius.
+
+**Configuration:**
+
+```bash
+# In config/cloud.env or config/local.env
+QUERY_RATE_LIMIT_PER_MINUTE=30   # Default: 30 requests/min per IP
+# QUERY_RATE_LIMIT_PER_MINUTE=0   # Disable rate limiting
+```
+
+**Behavior:**
+- Sliding-window, per-IP (in-memory, no Redis)
+- When exceeded: HTTP 429 with `Retry-After` header
+- Other API endpoints (memories, health, etc.) are not rate limited
+
+**Implementation:** `lib/rate_limiter.py` + `api/routes/query.py`
 
 ---
 
