@@ -1008,6 +1008,7 @@ class ToolBuilder:
         
         retries = 0
         last_error = ""
+        max_output_tokens = int(get_config_value("TOOL_BUILDER_MAX_TOKENS", "8192") or 8192)
         
         while retries < max_retries:
             try:
@@ -1018,13 +1019,22 @@ class ToolBuilder:
                     # Detect network/connection errors and add proxy instructions
                     if self._is_network_error(last_error):
                         error_context += self._get_proxy_fix_instructions()
+
+                    # Detect truncated model output and ask for a tighter response
+                    if self._is_truncated_generation_error(last_error):
+                        error_context += (
+                            "\n\n⚠️ PREVIOUS OUTPUT WAS TRUNCATED.\n"
+                            "Return valid JSON in a single response.\n"
+                            "Keep python_code concise (target < 300 lines) and avoid unnecessary comments/examples.\n"
+                            "Ensure the response ends with a complete JSON object."
+                        )
                     
                     prompt += error_context
                 
                 response = self.provider.chat(
                     prompt,
                     system_prompt="You are an expert Python developer creating tools for a voice assistant. Always respond with valid JSON only, no explanations.",
-                    max_tokens=4096  # Need enough tokens for full tool code
+                    max_tokens=max_output_tokens
                 )
                 
                 # Parse response
@@ -1090,25 +1100,7 @@ class ToolBuilder:
     def _parse_llm_response(self, response: str) -> dict:
         """Parse LLM response, handling markdown code blocks and common issues."""
         original = response
-        
-        # Try to extract JSON from markdown code block
-        if "```json" in response:
-            # Try with closing ``` first
-            match = re.search(r'```json\s*(.*?)\s*```', response, re.DOTALL)
-            if match:
-                response = match.group(1)
-            else:
-                # Handle missing closing ``` (truncated response)
-                start_idx = response.find("```json") + 7
-                response = response[start_idx:].strip()
-        elif "```" in response:
-            match = re.search(r'```\s*(.*?)\s*```', response, re.DOTALL)
-            if match:
-                response = match.group(1)
-            else:
-                # Handle missing closing ``` 
-                start_idx = response.find("```") + 3
-                response = response[start_idx:].strip()
+        response = self._extract_outer_fenced_block(response)
         
         # Clean up common JSON issues from local models
         response = response.strip()
@@ -1141,7 +1133,57 @@ class ToolBuilder:
                     return json.loads(self._repair_json(fixed_json))
                 except:
                     pass
-            raise ValueError(f"Failed to parse JSON: {e}\nResponse preview: {original[:500]}...")
+            debug_path = self._dump_parse_failure(original, response, repaired, str(e))
+            raise ValueError(
+                f"Failed to parse JSON: {e}\n"
+                f"Debug dump: {debug_path}\n"
+                f"Response preview: {original[:500]}..."
+            )
+
+    def _extract_outer_fenced_block(self, text: str) -> str:
+        """
+        Extract content from the outermost markdown fence.
+        Uses the first opening fence and the last closing fence to avoid
+        truncation when inner ``` appears inside generated python_code.
+        """
+        if "```" not in text:
+            return text.strip()
+
+        # Prefer ```json fence if present
+        json_start = text.find("```json")
+        if json_start != -1:
+            start = json_start + len("```json")
+        else:
+            start = text.find("```") + len("```")
+
+        end = text.rfind("```")
+        if end <= start:
+            return text[start:].strip()
+        return text[start:end].strip()
+
+    def _dump_parse_failure(self, original: str, extracted: str, repaired: str, error: str) -> str:
+        """Write parse failure artifacts to logs/tool-builder for debugging."""
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = LOGS_DIR / f"parse-failure-{ts}.json"
+        payload = {
+            "timestamp": datetime.now().isoformat(),
+            "error": error,
+            "original_preview": original[:2000],
+            "original_length": len(original),
+            "extracted_preview": extracted[:2000],
+            "extracted_length": len(extracted),
+            "repaired_preview": repaired[:2000],
+            "repaired_length": len(repaired),
+            "original": original,
+            "extracted": extracted,
+            "repaired": repaired,
+        }
+        try:
+            with open(path, "w") as f:
+                json.dump(payload, f, indent=2)
+            return str(path)
+        except Exception:
+            return "unavailable"
     
     def _repair_json(self, text: str) -> str:
         """Attempt to repair common JSON issues from local models."""
@@ -1185,62 +1227,69 @@ class ToolBuilder:
         Extract python_code field separately to handle unescaped newlines.
         Returns (extracted_code, text_with_placeholder) or (None, original_text).
         """
-        # Look for "python_code": followed by a string
-        # The code often has unescaped newlines which break JSON
-        
-        # Pattern: "python_code": "...code..." (with possible newlines)
-        # We look for the field and try to find where it ends
-        
+        # Look for "python_code": followed by a string. The generated code often
+        # contains unescaped newlines/quotes that break strict JSON parsing.
         match = re.search(r'"python_code"\s*:\s*"', text)
         if not match:
             return None, text
-        
+
         start_idx = match.end()  # Position right after opening quote
-        
-        # Find the end of the python_code string
-        # This is tricky because we need to handle:
-        # - Escaped quotes \"
-        # - The actual closing quote followed by , or }
-        
-        # Walk through finding the real end
+
+        # Preferred strategy: anchor python_code end at the next known top-level key.
+        # This is much more robust than quote-scanning when code contains raw quotes.
+        trailing_keys = [
+            "parameters",
+            "permissions",
+            "test_input",
+            "expected_output_contains",
+            "packages_needed",
+            "requires_new_api_key",
+            "suggested_env_var",
+        ]
+        key_pattern = r'\n\s*"(?:' + "|".join(trailing_keys) + r')"\s*:'
+        next_key = re.search(key_pattern, text[start_idx:], re.DOTALL)
+        if next_key:
+            next_key_start = start_idx + next_key.start()
+            code = text[start_idx:next_key_start]
+
+            # Strip any malformed/partial JSON terminator that may have been emitted
+            # before the next key.
+            code = re.sub(r'"\s*,\s*$', '', code, flags=re.DOTALL)
+            code = re.sub(r'"\s*$', '', code, flags=re.DOTALL)
+            code = code.rstrip()
+
+            escaped_code = (code
+                .replace('\\', '\\\\')  # Escape backslashes first
+                .replace('\n', '\\n')   # Escape newlines
+                .replace('\r', '\\r')   # Escape carriage returns
+                .replace('\t', '\\t')   # Escape tabs
+                .replace('"', '\\"'))   # Escape quotes
+
+            # Rebuild JSON with an explicit closing quote + comma before next key.
+            new_text = text[:start_idx] + escaped_code + '",' + text[next_key_start:]
+            return code, new_text
+
+        # Fallback: quote scanner for responses that don't include the usual keys.
         i = start_idx
-        depth = 0
         while i < len(text):
             c = text[i]
-            
-            # Handle escapes
             if c == '\\' and i + 1 < len(text):
                 i += 2
                 continue
-            
-            # Track nested braces for f-strings like {{
-            if c == '{':
-                depth += 1
-            elif c == '}':
-                depth -= 1
-            
-            # Found potential end quote
             if c == '"':
-                # Check if followed by , or } or whitespace then , or }
-                rest = text[i+1:i+20].strip()
+                rest = text[i + 1:i + 20].strip()
                 if rest.startswith(',') or rest.startswith('}'):
-                    # This is the end
                     code = text[start_idx:i]
-                    
-                    # Properly escape the code for JSON
                     escaped_code = (code
-                        .replace('\\', '\\\\')  # Escape backslashes first
-                        .replace('\n', '\\n')   # Escape newlines
-                        .replace('\r', '\\r')   # Escape carriage returns  
-                        .replace('\t', '\\t')   # Escape tabs
-                        .replace('"', '\\"'))   # Escape quotes
-                    
-                    # Replace in original text
+                        .replace('\\', '\\\\')
+                        .replace('\n', '\\n')
+                        .replace('\r', '\\r')
+                        .replace('\t', '\\t')
+                        .replace('"', '\\"'))
                     new_text = text[:start_idx] + escaped_code + text[i:]
                     return code, new_text
-            
             i += 1
-        
+
         return None, text
     
     def _create_tool(
@@ -1471,6 +1520,21 @@ class ToolBuilder:
         ]
         error_lower = error_message.lower()
         return any(indicator in error_lower for indicator in network_indicators)
+
+    def _is_truncated_generation_error(self, error_message: str) -> bool:
+        """Detect parse failures that are likely from token truncation."""
+        e = error_message.lower()
+        indicators = [
+            "failed to parse json",
+            "expecting ',' delimiter",
+            "unterminated string",
+            "response preview",
+        ]
+        trunc_hints = [
+            "char ",
+            "line ",
+        ]
+        return all(x in e for x in indicators[:1]) and any(h in e for h in trunc_hints)
     
     def _get_proxy_fix_instructions(self) -> str:
         """Return instructions for adding proxy support to fix network errors."""
@@ -1651,4 +1715,3 @@ if __name__ == "__main__":
         print(json.dumps(asdict(result) if hasattr(result, '__dict__') else result.__dict__, indent=2, default=str))
     else:
         parser.print_help()
-
