@@ -1,0 +1,80 @@
+{
+  "enabled": true,
+  "name": "qr_code_generator",
+  "description": "Generate QR codes for URLs, plain text, WiFi configurations, or contact info. Saves as PNG to stash for printing, canvas display, or email attachment. Use when user says 'create a QR code', 'make a QR code for', 'generate QR', 'QR code for wifi', 'QR code for website'.",
+  "script": "qr_code_generator.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "text",
+          "url",
+          "wifi",
+          "email"
+        ],
+        "description": "Type of QR code: 'text' for plain text, 'url' for websites, 'wifi' for WiFi network config, 'email' for email addresses. Defaults to 'text'."
+      },
+      "content": {
+        "type": "string",
+        "description": "The content to encode. For text/url/email types, put the value here. For wifi, you can put the SSID here or use the ssid parameter."
+      },
+      "ssid": {
+        "type": "string",
+        "description": "WiFi network name (SSID). Required for type='wifi'."
+      },
+      "password": {
+        "type": "string",
+        "description": "WiFi password. Used for type='wifi'. Leave empty for open networks."
+      },
+      "security": {
+        "type": "string",
+        "enum": [
+          "WPA",
+          "WEP",
+          "nopass"
+        ],
+        "description": "WiFi security type: 'WPA' (default), 'WEP', or 'nopass' for open networks. Used for type='wifi'."
+      },
+      "hidden": {
+        "type": "boolean",
+        "description": "Whether the WiFi network is hidden. Default false. Used for type='wifi'."
+      },
+      "filename": {
+        "type": "string",
+        "description": "Optional custom filename for the saved PNG. Auto-generated if not provided."
+      },
+      "box_size": {
+        "type": "integer",
+        "description": "Pixels per QR module/box. Default 10. Higher = larger image."
+      },
+      "border": {
+        "type": "integer",
+        "description": "Border width in QR modules. Default 4 (QR spec minimum)."
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "test_input": {
+    "type": "url",
+    "content": "https://www.google.com",
+    "filename": "google_qr.png"
+  },
+  "expected_output_contains": [
+    "ok",
+    "stash_ref",
+    "filename",
+    "google_qr.png"
+  ],
+  "auto_generated": true,
+  "created_at": "2026-02-23T17:32:05.750582",
+  "feedback_ids": []
+}

@@ -23,7 +23,7 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
 ![jarvis-web](docs/images/jarvis-web.png)
 
 ### Web Interface
-- **Jarvis Web UI v2.0** - Full-featured chat interface at localhost:5001
+- **Jarvis Web UI** - Full-featured chat interface at localhost:5001
   - Real-time WebSocket communication with tool streaming
   - Mode switching (cloud/local) with per-mode settings
   - **Audio playback controls**: Speaker button with pause/resume/stop

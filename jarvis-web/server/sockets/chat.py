@@ -500,6 +500,7 @@ class ChatHandler:
             'pdf_create': ['ref', 'name', 'size_bytes'],
             'pdf_read': ['page_count', 'stash_ref'],
             'convert_file': ['stash_ref', 'filename', 'source_format', 'target_format'],
+            'qr_code_generator': ['stash_ref', 'filename'],
             'upload_cloudflare': ['url', 'image_id', 'filename'],
             'youtube_transcript': ['video_title', 'srt_stash_ref', 'md_stash_ref'],
             'screenshot_url': ['url', 'screenshot_path'],

@@ -2110,6 +2110,37 @@ class ChatUI {
       `;
     }
     
+    // Method 3: Generic stash_ref image (qr_code_generator, screenshot_url, any tool saving images to stash)
+    // Modular: no hardcoded tool names - any tool with stash_ref + image indicator displays
+    // Skip tools that have their own display blocks (convert_file, generate_image)
+    const toolsWithOwnImageDisplay = ['convert_file', 'generate_image'];
+    if (!imageHtml) {
+      const imageExtensions = /\.(png|jpg|jpeg|gif|webp|bmp|ico|tiff?|svg)$/i;
+      for (const [toolName, toolResult] of Object.entries(toolResultsData)) {
+        if (toolsWithOwnImageDisplay.includes(toolName)) continue;
+        if (!toolResult || typeof toolResult !== 'object') continue;
+        const ref = toolResult.stash_ref || toolResult.ref;
+        if (!ref) continue;
+        const fn = toolResult.filename || toolResult.name || '';
+        const mime = (toolResult.mime_type || '').toLowerCase();
+        const isImage = imageExtensions.test(fn) || mime.startsWith('image/');
+        if (!isImage) continue;
+        const stashMatch = ref.match(/stash:\/\/([^/]+)\/(.+)/);
+        if (stashMatch) {
+          const stashUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+          imageHtml = `
+            <div class="message-image" onclick="window.showImageLightbox('${stashUrl}')">
+              <img src="${stashUrl}" alt="Image from stash" loading="lazy">
+              <div class="image-overlay">
+                <span>🔍 Click to expand</span>
+              </div>
+            </div>
+          `;
+          break;
+        }
+      }
+    }
+    
     // Check for generated music
     let audioHtml = '';
     let audioUrl = null;
