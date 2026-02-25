@@ -330,6 +330,61 @@ Video generation costs vary by provider, duration, and resolution:
 - OpenAI: [platform.openai.com/docs/pricing](https://platform.openai.com/docs/pricing)
 - Gemini: [ai.google.dev/pricing](https://ai.google.dev/gemini-api/docs/pricing#veo-3.1)
 
+## YouTube Download Tool (`youtube_video`)
+
+Jarvis also supports direct YouTube downloads via the `youtube_video` tool (separate from `generate_video`):
+- Input: YouTube URL (`youtube.com` or `youtu.be`)
+- Output: downloaded media saved to **stash**
+- WebUI: appears as stash-hosted video/audio with preview + download
+- Storage behavior: does **not** use `data/generated_videos/` and does not create Canvas video entries
+
+Example CLI usage:
+```bash
+python3 skills/auto-tools/youtube_video.py '{
+  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "quality": "720p"
+}'
+```
+
+### Proxy Setup (`LOCAL_PROXY`)
+
+The tool automatically reads `LOCAL_PROXY` from your env/config and passes it to `yt-dlp` as `--proxy`.
+
+If you already have `LOCAL_PROXY` in your env files, no extra tool-specific setup is needed.
+
+Example:
+```bash
+# config/cloud.env (or your active env file)
+LOCAL_PROXY="http://127.0.0.1:7890"
+```
+
+### Cookie Setup (for restricted/challenging videos)
+
+`youtube_video` supports two cookie modes:
+
+1. Cookie file path:
+```bash
+YTDLP_COOKIES_FILE="/home/boss/.config/yt-dlp/cookies.txt"
+```
+
+2. Browser extraction:
+```bash
+YTDLP_COOKIES_FROM_BROWSER="chrome"
+# also supports firefox, edge, etc.
+```
+
+If you prefer to keep cookies inside this project, a practical path is:
+```bash
+data/secrets/youtube/cookies.txt
+```
+
+Then set:
+```bash
+YTDLP_COOKIES_FILE="/home/boss/jarvis-voice/data/secrets/youtube/cookies.txt"
+```
+
+Note: `data/secrets/` is not ignored by default in this repo. If you store cookies there, add it to `.gitignore`.
+
 ## Troubleshooting
 
 ### "Client object has no attribute 'video'" (xAI)

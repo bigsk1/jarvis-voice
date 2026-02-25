@@ -2258,6 +2258,34 @@ class ChatUI {
         : 'Generated Video';
     }
     
+    // Method 1.5: Generic stash_ref video for non-generate tools (e.g., youtube_video)
+    const toolsWithOwnVideoDisplay = ['generate_video', 'convert_file'];
+    if (!videoUrl) {
+      const videoExtensions = /\.(mp4|webm|mov|avi|mkv|m4v)$/i;
+      for (const [toolName, toolResult] of Object.entries(toolResultsData)) {
+        if (toolsWithOwnVideoDisplay.includes(toolName)) continue;
+        if (!toolResult || typeof toolResult !== 'object') continue;
+
+        const ref = toolResult.stash_ref || toolResult.ref;
+        if (!ref) continue;
+
+        const fn = toolResult.filename || toolResult.name || '';
+        const mime = (toolResult.mime_type || '').toLowerCase();
+        const isVideo = videoExtensions.test(fn) || mime.startsWith('video/');
+        if (!isVideo) continue;
+
+        const stashMatch = ref.match(/stash:\/\/([^/]+)\/(.+)/);
+        if (!stashMatch) continue;
+
+        videoUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+        videoTitle = toolResult.video_title || toolResult.title || (fn ? `Video: ${fn}` : 'Video');
+        videoDuration = toolResult.duration_seconds || toolResult.duration || '';
+        videoHasAudio = toolResult.has_audio || false;
+        videoProvider = toolResult.provider || '';
+        break;
+      }
+    }
+
     // Method 2: Search in tool results data
     const hasVideoTool = toolsUsed.includes('generate_video') || 
       Object.keys(this.pendingTools).some(k => k.startsWith('generate_video'));

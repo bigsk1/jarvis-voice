@@ -141,6 +141,8 @@ class ToolExecutor:
                 timeout = 180  # 3 minutes - convert files various formats, audio, video, image, ect.
             elif tool_name == "samantha":
                 timeout = 180  # 3 minutes - Samantha is a remote assistant, so we need to increase the timeout
+            elif tool_name == "youtube_video":
+                timeout = 900  # 15 minutes - YouTube video download can be slow if downloading 2hr video
             else:
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
             

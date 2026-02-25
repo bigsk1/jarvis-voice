@@ -1,0 +1,56 @@
+{
+  "enabled": true,
+  "name": "youtube_video",
+  "description": "Download a YouTube video (or audio-only) using yt-dlp with fallback strategies and save it to stash for WebUI preview/download. Use when user says 'download this YouTube video', 'save this YouTube video', or provides a YouTube URL and wants the media file.",
+  "script": "youtube_video.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "YouTube video URL (youtube.com or youtu.be)"
+      },
+      "quality": {
+        "type": "string",
+        "enum": ["best", "1080p", "720p", "480p"],
+        "description": "Target video quality. Default: best"
+      },
+      "format": {
+        "type": "string",
+        "description": "Optional custom yt-dlp format selector (overrides quality)"
+      },
+      "filename": {
+        "type": "string",
+        "description": "Optional output filename (without path)"
+      },
+      "max_filesize_mb": {
+        "type": "integer",
+        "description": "Maximum download size in MB. Default: 250"
+      },
+      "audio_only": {
+        "type": "boolean",
+        "description": "If true, download best audio-only stream instead of video"
+      }
+    },
+    "required": ["url"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "test_input": {
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "quality": "720p"
+  },
+  "expected_output_contains": [
+    "stash",
+    "video",
+    "youtube"
+  ],
+  "auto_generated": true,
+  "created_at": "2026-02-25T00:00:00",
+  "feedback_ids": []
+}

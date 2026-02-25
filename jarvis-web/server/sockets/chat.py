@@ -503,6 +503,7 @@ class ChatHandler:
             'qr_code_generator': ['stash_ref', 'filename'],
             'upload_cloudflare': ['url', 'image_id', 'filename'],
             'youtube_transcript': ['video_title', 'srt_stash_ref', 'md_stash_ref'],
+            'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
             'screenshot_url': ['url', 'screenshot_path'],
             # --- Knowledge/session refs ---
             'canvas': ['page_id', 'title'],
