@@ -113,7 +113,6 @@ PRICING = {
         # Grok 4 (256k context window)
         "grok-4": {"input": 3.00, "output": 15.00},  # 256k context
         
-        # Note: grok-2-image-1212 is $0.07/image (image generation, not text)
     }
 }
 

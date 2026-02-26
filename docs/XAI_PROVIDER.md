@@ -189,8 +189,7 @@ Response uses:
 
 ### 6. **Image Generation**
 
-- `grok-2-image-1212`: $0.07/image (131K context)
-- Not yet integrated into Jarvis, but available
+- see [video/README.md](video/README.md)
 
 ### 7. **Video Generation** ✅ NEW
 
