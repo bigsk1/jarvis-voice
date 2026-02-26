@@ -1,0 +1,70 @@
+{
+  "enabled": true,
+  "name": "git_release_notes",
+  "description": "Analyze a GitHub release URL or repo URL and generate concise release notes with commit/PR/issue breakdown, risk flags, and optional canvas + stash output. Use when user asks 'what changed in this release', 'summarize latest release', or wants upgrade impact from GitHub releases.",
+  "script": "git_release_notes.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "string",
+        "description": "GitHub repo URL, release URL, or owner/repo. Examples: https://github.com/openclaw/openclaw or https://github.com/openclaw/openclaw/releases/tag/v2026.2.25"
+      },
+      "tag": {
+        "type": "string",
+        "description": "Optional release tag override (e.g. v2026.2.25). If omitted, uses tag from release URL or latest release."
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["quick", "deep"],
+        "description": "quick = fast summary, deep = adds PR/issue context and README excerpt."
+      },
+      "include_prs": {
+        "type": "boolean",
+        "description": "Include linked pull request details (default true)."
+      },
+      "include_issues": {
+        "type": "boolean",
+        "description": "Include linked issue details (default true)."
+      },
+      "max_commits": {
+        "type": "integer",
+        "description": "Maximum commits to analyze from compare API (default 25, max 100)."
+      },
+      "max_prs": {
+        "type": "integer",
+        "description": "Maximum PRs to fetch (default 20, max 100)."
+      },
+      "max_issues": {
+        "type": "integer",
+        "description": "Maximum issues to fetch (default 20, max 100)."
+      },
+      "save_to_canvas": {
+        "type": "boolean",
+        "description": "Create a canvas page with the full markdown report (default true)."
+      },
+      "save_to_stash": {
+        "type": "boolean",
+        "description": "Save markdown report to stash for sharing/follow-up (default true)."
+      }
+    },
+    "required": ["target"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "test_input": {
+    "target": "https://github.com/openclaw/openclaw",
+    "mode": "quick",
+    "save_to_canvas": false
+  },
+  "expected_output_contains": [
+    "release",
+    "commits",
+    "PRs"
+  ]
+}
