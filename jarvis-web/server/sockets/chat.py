@@ -505,6 +505,7 @@ class ChatHandler:
             'youtube_transcript': ['video_title', 'srt_stash_ref', 'md_stash_ref'],
             'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
             'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
+            'memory_deduper': ['stash_ref', 'canvas_page_id'],
             'screenshot_url': ['url', 'screenshot_path'],
             # --- Knowledge/session refs ---
             'canvas': ['page_id', 'title'],
