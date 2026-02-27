@@ -1,0 +1,44 @@
+{
+  "id": "memory_scan",
+  "name": "Memory Scan Workflow",
+  "description": "Run memory dedupe analysis and save both stash and canvas reports for review.",
+  "enabled": true,
+  "version": "1.0",
+
+  "triggers": {
+    "explicit": ["/memory_scan", "/memory-scan", "/dedupe-memory"],
+    "patterns": [
+      "scan memory for duplicates",
+      "analyze memory duplicates",
+      "find memory conflicts"
+    ],
+    "keywords": ["memory", "dedupe", "duplicate", "conflict"]
+  },
+
+  "steps": [
+    {
+      "step": 1,
+      "tool": "memory_deduper",
+      "params": {
+        "action": "analyze",
+        "save_to_stash": true,
+        "save_to_canvas": true,
+        "max_output_groups": 30
+      },
+      "output_var": "dedupe_result",
+      "extract": {
+        "scanned_memories": "summary.scanned_memories",
+        "exact_duplicate_groups": "summary.exact_duplicate_groups",
+        "probable_duplicate_groups": "summary.probable_duplicate_groups",
+        "conflict_pairs": "summary.conflict_pairs",
+        "dedupe_stash_ref": "stash_ref",
+        "dedupe_canvas_page_id": "canvas_page_id"
+      },
+      "required": true,
+      "description": "Analyze memory quality and save reports"
+    }
+  ],
+
+  "success_speech": "Memory scan complete. Scanned ${scanned_memories} memories and found ${exact_duplicate_groups} exact duplicates, ${probable_duplicate_groups} probable duplicates, and ${conflict_pairs} conflicts. Report is saved to canvas.",
+  "abort_speech": "Memory scan failed. I could not complete the dedupe analysis."
+}

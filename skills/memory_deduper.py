@@ -425,6 +425,19 @@ def analyze_records(
 
 
 def build_markdown_report(summary: dict[str, Any], analysis: dict[str, Any], max_output_groups: int) -> str:
+    def _memory_line(m: dict[str, Any]) -> str:
+        mem_id = m.get("id")
+        confidence = m.get("confidence")
+        importance = m.get("importance")
+        source = m.get("source") or "unknown"
+        updated = m.get("updated_at") or "unknown"
+        key_text = preview(str(m.get("key") or ""), 90).replace("`", "'")
+        value_text = preview(str(m.get("value_preview") or ""), 220).replace("`", "'")
+        return (
+            f"#{mem_id} conf={confidence} imp={importance} src={source} updated={updated} "
+            f"key=`{key_text}` value=`{value_text}`"
+        )
+
     lines: list[str] = []
     lines.append("# Memory Deduper Report")
     lines.append("")
@@ -435,40 +448,65 @@ def build_markdown_report(summary: dict[str, Any], analysis: dict[str, Any], max
     lines.append(f"- Probable duplicate groups: {summary['probable_duplicate_groups']}")
     lines.append(f"- Conflict pairs: {summary['conflict_pairs']}")
     lines.append(f"- Pair checks run: {summary['pair_checks']}")
+    lines.append("- Confidence score combines recency, source quality, importance, and content quality.")
     lines.append("")
 
     exact = analysis["exact_groups"][:max_output_groups]
     if exact:
         lines.append("## Exact Duplicates")
+        lines.append("These are usually safe cleanup candidates: same normalized key and value.")
+        lines.append("")
         for g in exact:
-            lines.append(f"- `{g['group_id']}` [{g['category']}] ids={g['memory_ids']} -> keep {g['primary_memory']['id']}")
+            lines.append(
+                f"### `{g['group_id']}` [{g['category']}] ids={g['memory_ids']} -> keep {g['primary_memory']['id']}"
+            )
+            lines.append("- Why flagged: normalized key and value are identical.")
+            lines.append(f"- Keep candidate: {_memory_line(g['primary_memory'])}")
+            for m in g["secondary_memories"]:
+                lines.append(f"- Delete candidate: {_memory_line(m)}")
+            lines.append("")
         lines.append("")
 
     probable = analysis["probable_groups"][:max_output_groups]
     if probable:
         lines.append("## Probable Duplicates")
+        lines.append("These need manual review: highly similar key/value but not exact text matches.")
+        lines.append("")
         for g in probable:
             lines.append(
-                f"- `{g['group_id']}` [{g['category']}] ids={g['memory_ids']} "
+                f"### `{g['group_id']}` [{g['category']}] ids={g['memory_ids']} "
                 f"(avg value sim={g.get('avg_value_similarity')})"
             )
+            lines.append("- Why flagged: key and value similarity crossed probable-duplicate thresholds.")
+            lines.append(f"- Suggested primary: {_memory_line(g['primary_memory'])}")
+            for m in g["secondary_memories"]:
+                lines.append(f"- Possible duplicate: {_memory_line(m)}")
+            lines.append("")
         lines.append("")
 
     conflicts = analysis["conflicts"][:max_output_groups]
     if conflicts:
         lines.append("## Potential Conflicts")
+        lines.append("These appear to describe the same thing but with conflicting values.")
+        lines.append("")
         for c in conflicts:
             a = c["memory_a"]
             b = c["memory_b"]
             lines.append(
-                f"- [{c['category']}] #{a['id']} vs #{b['id']} "
+                f"### [{c['category']}] #{a['id']} vs #{b['id']} "
                 f"(key sim={c['key_similarity']}, value sim={c['value_similarity']}, gap={c['confidence_gap']})"
             )
+            lines.append("- Why flagged: key similarity is high while value similarity is low.")
+            lines.append(f"- Entry A: {_memory_line(a)}")
+            lines.append(f"- Entry B: {_memory_line(b)}")
+            lines.append("- Suggested action: manual review; prefer higher confidence only if context matches.")
+            lines.append("")
         lines.append("")
 
     lines.append("## Next Actions")
-    lines.append("- Use action=`apply` with selected `group_ids` for exact dedupe.")
-    lines.append("- Review probable/conflict groups manually before applying merges.")
+    lines.append("- Run action=`apply` with selected exact `group_ids` after review.")
+    lines.append("- Keep probable/conflict groups in analyze mode unless you are confident they are true duplicates.")
+    lines.append("- Re-run with include/exclude categories to focus a specific memory domain.")
     lines.append("")
     return "\n".join(lines)
 

@@ -1,0 +1,123 @@
+{
+  "id": "youtube_ingest",
+  "name": "YouTube Ingest Workflow",
+  "description": "Download YouTube video and transcript, summarize important facts, extract keywords, and create a canvas study brief.",
+  "enabled": true,
+  "version": "1.0",
+
+  "triggers": {
+    "explicit": ["/youtube_ingest", "/yt-ingest", "/ingest-video"],
+    "patterns": [
+      "ingest this youtube video",
+      "save this youtube video to knowledge",
+      "make notes from this youtube video"
+    ],
+    "keywords": ["youtube", "ingest", "video"]
+  },
+
+  "variables": {
+    "url": {"from": "query", "extract": "url"}
+  },
+
+  "steps": [
+    {
+      "step": 1,
+      "tool": "youtube_video",
+      "params": {
+        "url": "${url}",
+        "quality": "best"
+      },
+      "output_var": "video_result",
+      "extract": {
+        "video_stash_ref": "stash_ref",
+        "video_space_id": "space_id",
+        "video_file_id": "file_id",
+        "video_duration_seconds": "duration_seconds"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Download YouTube media to stash"
+    },
+    {
+      "step": 2,
+      "tool": "youtube_transcript",
+      "params": {
+        "url": "${url}"
+      },
+      "output_var": "transcript_result",
+      "extract": {
+        "video_title": "video_title",
+        "transcript_space_id": "space_id",
+        "transcript_md_filename": "md_filename",
+        "transcript_md_stash_ref": "md_stash_ref",
+        "transcript_length": "transcript_length"
+      },
+      "required": true,
+      "description": "Download transcript and save markdown to stash"
+    },
+    {
+      "step": 3,
+      "tool": "stash",
+      "action": "read",
+      "params": {
+        "space_id": "${transcript_space_id}",
+        "file_id": "${transcript_md_filename}"
+      },
+      "output_var": "transcript_file",
+      "extract": {
+        "transcript_content": "content"
+      },
+      "required": true,
+      "description": "Read transcript markdown content"
+    },
+    {
+      "step": 4,
+      "tool": "text_summarizer",
+      "params": {
+        "text": "${transcript_content}",
+        "operation": "summarize",
+        "num_sentences": 10
+      },
+      "output_var": "summary_result",
+      "extract": {
+        "summary": "summary"
+      },
+      "required": true,
+      "description": "Generate transcript summary"
+    },
+    {
+      "step": 5,
+      "tool": "text_summarizer",
+      "params": {
+        "text": "${transcript_content}",
+        "operation": "keywords",
+        "top_n": 20
+      },
+      "output_var": "keywords_result",
+      "extract": {
+        "keywords": "keywords"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Extract keywords and entities"
+    },
+    {
+      "step": 6,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Workflows/YouTube Ingest/${video_title}",
+        "tags": ["youtube", "ingest", "workflow", "study-notes"]
+      },
+      "llm_prompt": "Create a factual YouTube briefing in clean markdown.\n\nVideo Title: ${video_title}\nURL: ${url}\nTranscript stash ref: ${transcript_md_stash_ref}\nTranscript length: ${transcript_length} characters\n\nTranscript summary:\n${summary}\n\nKeywords:\n${keywords}\n\nRequirements:\n1. Executive Summary (2-3 sentences)\n2. Important Facts (bullet list with concrete claims from the transcript)\n3. Key Topics and Terms\n4. Actionable Takeaways\n5. What to verify or follow up on\n6. References section with URL and stash ref\n\nDo not invent facts. Keep it concise and highly scannable.",
+      "extract": {
+        "canvas_page_id": "page_id"
+      },
+      "required": true,
+      "description": "Create canvas page with important facts"
+    }
+  ],
+
+  "success_speech": "YouTube ingest complete. I analyzed ${video_title}, extracted key facts, and created a canvas briefing.",
+  "abort_speech": "YouTube ingest failed. I could not retrieve a usable transcript from that video."
+}

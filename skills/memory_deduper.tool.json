@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "name": "memory_deduper",
   "description": "Memory quality maintenance tool. Detects duplicate/conflicting memories, confidence-scores each fact, and proposes safe cleanup actions. DEFAULT BEHAVIOR: run action='analyze' first. Only use action='apply' when user explicitly asks to apply changes and provides/approves group_ids from analysis. Use for requests like: 'clean up memory', 'find duplicate facts', 'detect contradictions in memory', 'dedupe my memories'.",
   "script": "memory_deduper.py",
