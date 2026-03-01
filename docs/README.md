@@ -350,7 +350,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - $0.10/s (sora-2) or $0.30-0.50/s (sora-2-pro for 1080p)
   - Videos also viewable at platform.openai.com/playground/videos
   - Web UI: Added OpenAI option to video provider dropdowns
-  - See: [`docs/video/README.md`](video/README.md)
+  - See: [`docs/tools/video/README.md`](tools/video/README.md)
 - ✅ **Video Gallery OpenAI Support** - Provider badges now include OpenAI
   - Fixed provider detection to recognize `openai` tags in stash metadata
   - Client-side fallback also checks tags (not just filenames)
@@ -367,7 +367,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - New `reference_image` parameter on `generate_image` tool (stash ref, path, URL, or data URI)
   - `_resolve_image_to_base64()` helper converts any image source to base64 + mime type
   - LLM instructed to keep edit prompts short and direct for best results
-  - See: [`docs/generate-image-tool/README.md`](generate-image-tool/README.md)
+  - See: [`docs/tools/generate-image-tool/README.md`](tools/generate-image-tool/README.md)
 - ✅ **Image Action Modal** - Upload image → choose action (Analyze, Image-to-Image, Image-to-Video)
   - Provider-specific settings (aspect ratio, resolution, duration, model) per action
   - Parameters enforced via `tool_overrides` (bypasses LLM parameter choices)
@@ -474,7 +474,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Configure via `VIDEO_TOOL_PROVIDER=xai` or `VIDEO_TOOL_PROVIDER=gemini`
   - Saves to `data/generated_videos/` + stash + memory
   - Video player in jarvis-web chat UI
-  - See: [`docs/video/README.md`](video/README.md)
+  - See: [`docs/tools/video/README.md`](tools/video/README.md)
 - ✅ **Generated Videos API** - Full management of generated videos
   - `GET /api/generated-videos` - List/search videos with pagination + provider/tags
   - `GET /api/generated-videos/{name}` - Download video file
@@ -592,7 +592,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - **Advanced options** - Resize, quality, bitrate, FPS, threshold, speckle size per format type
   - **Inline results** - Converted media displays with ⬇️ Download button
   - All processing local (no API costs), output saved to stash
-  - See: `docs/convert-file-tool/README.md`, `skills/convert_file.py`
+  - See: `docs/tools/convert-file-tool/README.md`, `skills/convert_file.py`
 - ✅ **Intel API** - Programmatic access to jarvis-intel knowledge files 
   - CRUD operations for intel files (create, read, update, delete)
   - `GET /api/intel/stats` - Folder statistics (total files, facts, size)
@@ -718,7 +718,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Optional AI-generated dashboard image (Gemini)
   - Native grounding search for news when enabled
   - Direct speech mode prevents LLM price mangling
-  - See: `docs/status-tool/README.md`
+  - See: `docs/tools/status-tool/README.md`
 - ✅ **Tool Builder v2.0** - Network/proxy auto-fix ⭐ ENHANCED
   - Auto-detects network errors during tool verification
   - Injects proxy configuration instructions on retry
@@ -730,12 +730,12 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Secure credential management (keys in filesystem, passwords in .env)
   - Multi-command execution, apt management, sudo support
   - Stateless sessions - no orphaned connections
-  - See: `docs/ssh/README.md`
+  - See: `docs/tools/ssh/README.md`
 - ✅ **Docker Control Tool** - Comprehensive Docker management
   - Container lifecycle: list, start, stop, restart, logs, inspect, stats
   - Compose: up, down, restart, pull, build with force-recreate
   - Images, networks, volumes, exec, system prune
-  - See: `docs/docker-tool/README.md`
+  - See: `docs/tools/docker-tool/README.md`
 - ✅ **@ssh prompt** - Web UI prompt for guided remote operations
 - ✅ **YouTube Transcript Tool** - Download video transcripts as .srt/.md files
 
@@ -840,7 +840,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Sync mode (wait for result) or async mode (check later)
   - Auto-save transcripts to Canvas and memory
   - Contact management (save phone numbers by name)
-  - See: `docs/phone/PHONE_CALLS.md`
+  - See: `docs/tools/phone/PHONE_CALLS.md`
 - ✅ **Spotify Integration** - Full music playback control 
   - Play playlists, albums, artists, songs by voice
   - Searches your library first, then public Spotify
@@ -848,7 +848,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Queue management, shuffle, repeat, volume
   - Share what's playing via email with album art
   - OAuth setup: `./bin/spotify-auth`
-  - See: `docs/spotify/SPOTIFY.md`
+  - See: `docs/tools/spotify/SPOTIFY.md`
 
 **2025-12-12:**
 - ✅ **Native Web Search for Cloud Providers** - Built-in real-time search ⭐ MAJOR

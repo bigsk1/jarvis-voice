@@ -232,7 +232,7 @@ Full transcripts are also saved to Canvas in the `Phone Calls/` folder.
 |------|---------|
 | `skills/phone_call.py` | Main tool implementation |
 | `skills/phone_call.tool.json` | Tool definition for LLM |
-| `docs/phone/PHONE_CALLS.md` | This documentation |
+| `docs/tools/phone/PHONE_CALLS.md` | This documentation |
 
 ### API Costs
 

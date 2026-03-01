@@ -60,11 +60,13 @@ class CommandSystem {
         // Match against workflow triggers (e.g., /research, /note)
         const triggers = wf.triggers || [];
         for (const trigger of triggers) {
+          if (!trigger.startsWith('/')) continue;
           const triggerName = trigger.replace('/', '');
           if (triggerName.toLowerCase().startsWith(query) || query === '') {
             suggestions.push({
               type: 'workflow',
               name: triggerName,
+              prefix: '/',
               icon: wf.icon || '🔄',
               description: wf.description || `${wf.name} (${wf.step_count} steps)`,
               workflow_id: id,
@@ -72,6 +74,30 @@ class CommandSystem {
               tools_used: wf.tools_used || []
             });
             break; // Only add once per workflow
+          }
+        }
+      }
+    }
+    
+    // Check for *bookmark search prefix (Firefox-style)
+    if (input.startsWith('*')) {
+      const query = input.slice(1).toLowerCase();
+      for (const [id, wf] of Object.entries(this.workflows || {})) {
+        const triggers = wf.triggers || [];
+        for (const trigger of triggers) {
+          if (trigger === '*' || trigger.startsWith('*')) {
+            const triggerName = trigger.replace('*', '') || 'bookmarks';
+            suggestions.push({
+              type: 'workflow',
+              name: wf.name || 'Search bookmarks',
+              prefix: '*',
+              icon: '🔖',
+              description: wf.description || 'Search your Firefox bookmarks',
+              workflow_id: id,
+              steps: wf.steps || [],
+              tools_used: wf.tools_used || []
+            });
+            break;
           }
         }
       }
@@ -112,6 +138,18 @@ class CommandSystem {
       instruction: null
     };
     
+    // Check for *bookmark search (Firefox-style)
+    if (input.startsWith('*')) {
+      for (const [id, wf] of Object.entries(this.workflows || {})) {
+        const triggers = wf.triggers || [];
+        if (triggers.includes('*')) {
+          result.workflow = id;
+          result.message = input; // Keep full message for orchestrator's workflow detection
+          return result;
+        }
+      }
+    }
+    
     // Check for /workflow
     const cmdMatch = input.match(/^\/(\w+[-\w]*)\s*(.*)/s);
     if (cmdMatch) {
@@ -121,7 +159,7 @@ class CommandSystem {
       for (const [id, wf] of Object.entries(this.workflows || {})) {
         const triggers = wf.triggers || [];
         for (const trigger of triggers) {
-          if (trigger.replace('/', '') === cmdName) {
+          if (trigger.startsWith('/') && trigger.replace('/', '') === cmdName) {
             result.workflow = id;
             result.message = input; // Keep full message for orchestrator's workflow detection
             return result; // Workflows don't combine with @prompts
@@ -152,7 +190,8 @@ class CommandSystem {
     const parts = [];
     if (parsed.workflow) {
       const wf = this.workflows[parsed.workflow];
-      parts.push(`/${parsed.workflow} ${wf?.icon || '🔄'}`);
+      const prefix = (wf?.triggers || []).includes('*') ? '*' : '/';
+      parts.push(`${prefix}${parsed.workflow === 'bookmark_search' ? 'bookmarks' : parsed.workflow} ${wf?.icon || '🔄'}`);
     }
     if (parsed.prompt) {
       parts.push(`@${parsed.prompt} 📝`);
@@ -391,8 +430,8 @@ class ChatUI {
     }
     
     // Don't enhance if already using workflows/prompts
-    if (input.startsWith('/') || input.startsWith('@')) {
-      Utils.toast('Remove the / or @ prefix first to enhance', 'info');
+    if (input.startsWith('/') || input.startsWith('@') || input.startsWith('*')) {
+      Utils.toast('Remove the /, @, or * prefix first to enhance', 'info');
       return;
     }
     
@@ -465,6 +504,15 @@ class ChatUI {
       }
     }
     
+    // Case 3: Start with * and no space yet (bookmark search - Firefox-style)
+    if (input.startsWith('*') && !input.includes(' ')) {
+      const suggestions = window.commandSystem.getSuggestions(input);
+      if (suggestions.length > 0) {
+        this._showAutocomplete(suggestions);
+        return;
+      }
+    }
+    
     this._hideAutocomplete();
   }
   
@@ -509,10 +557,11 @@ class ChatUI {
         `;
       }
       
+      const displayPrefix = s.prefix || (s.type === 'prompt' ? '@' : '/');
       return `
-        <div class="autocomplete-item" data-index="${i}" data-type="${s.type}" data-name="${s.name}">
+        <div class="autocomplete-item" data-index="${i}" data-type="${s.type}" data-name="${s.name}" data-prefix="${displayPrefix}">
           <span class="autocomplete-icon">${s.icon}</span>
-          <span class="autocomplete-name">${s.type === 'prompt' ? '@' : '/'}${s.name}</span>
+          <span class="autocomplete-name">${displayPrefix}${s.name}</span>
           <span class="autocomplete-desc">${Utils.escapeHtml(s.description || '')}</span>
           ${tooltipHtml}
         </div>
@@ -609,10 +658,13 @@ class ChatUI {
     
     const type = item.dataset.type;
     const name = item.dataset.name;
-    const prefix = type === 'prompt' ? '@' : '/';
+    const prefix = item.dataset.prefix || (type === 'prompt' ? '@' : '/');
     
     // Replace entire input with selected workflow/prompt + space
-    this.inputField.value = `${prefix}${name} `;
+    // For * bookmarks: preserve query after * if user already typed it (e.g. *docker -> *docker )
+    const currentVal = this.inputField.value;
+    const afterStar = prefix === '*' && currentVal.startsWith('*') ? currentVal.slice(1).trim() : '';
+    this.inputField.value = prefix === '*' ? `*${afterStar ? ' ' + afterStar : ''} ` : `${prefix}${name} `;
     
     this.inputField.focus();
     this._hideAutocomplete();

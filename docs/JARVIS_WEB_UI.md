@@ -838,7 +838,7 @@ Result displayed inline with download button
 - Uses FFmpeg for video/audio conversions
 - No external APIs - all processing on your server
 
-**Documentation:** See `docs/convert-file-tool/README.md` for full details.
+**Documentation:** See `docs/tools/convert-file-tool/README.md` for full details.
 
 ---
 

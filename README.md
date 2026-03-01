@@ -101,14 +101,14 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - Voicemail detection and handling
   - Auto-save transcripts to Canvas and memory for later recall
   - Contact management: save numbers by name
-  - See [`docs/phone/PHONE_CALLS.md`](docs/phone/PHONE_CALLS.md)
+  - See [`docs/tools/phone/PHONE_CALLS.md`](docs/tools/phone/PHONE_CALLS.md)
 - **Spotify Integration**: Full music control via Spotify API
   - "Play Chill Vibes playlist", "Skip this song", "What's playing?"
   - Search your library first, then public Spotify
   - Multi-device support (Fire TV, Echo, phone, desktop)
   - Queue management, shuffle, repeat, volume control
   - Share what's playing via email with album art
-  - See [`docs/spotify/SPOTIFY.md`](docs/spotify/SPOTIFY.md)
+  - See [`docs/tools/spotify/SPOTIFY.md`](docs/tools/spotify/SPOTIFY.md)
 - **Modular Webhook System**: Named webhook registry for triggering external services
   - `send_email` - Send emails via SMTP with beautiful HTML templates
   - `send_webhook` - Trigger any webhook (Slack, Discord, APIs, custom endpoints)
@@ -1150,8 +1150,8 @@ LIMIT 7;"
 - [`data/workflows/README.md`](data/workflows/README.md) - Workflow recipes reference
 
 **Core System:**
-- [`docs/phone/PHONE_CALLS.md`](docs/phone/PHONE_CALLS.md) - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts)
-- [`docs/spotify/SPOTIFY.md`](docs/spotify/SPOTIFY.md) - **Spotify Integration** (playback control, search, multi-device)
+- [`docs/tools/phone/PHONE_CALLS.md`](docs/tools/phone/PHONE_CALLS.md) - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts)
+- [`docs/tools/spotify/SPOTIFY.md`](docs/tools/spotify/SPOTIFY.md) - **Spotify Integration** (playback control, search, multi-device)
 - [`docs/STASH_SYSTEM.md`](docs/STASH_SYSTEM.md) - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
 - [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md) - **Self-learning system** (Phase 1: positive/negative constraints)
 - [`docs/AUTO_CONTEXT_SYSTEM.md`](docs/AUTO_CONTEXT_SYSTEM.md) - Short-term conversation memory
@@ -1522,7 +1522,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Optional AI-generated dashboard image (Gemini)
   - Native grounding search for news when enabled
   - Direct speech mode prevents LLM price mangling
-  - See: [`docs/status-tool/README.md`](docs/status-tool/README.md)
+  - See: [`docs/tools/status-tool/README.md`](docs/tools/status-tool/README.md)
 - ✅ **Tool Builder v2.0** - Network/proxy auto-fix enhancement
   - Auto-detects network errors during tool verification
   - Injects proxy configuration instructions on retry
@@ -1594,13 +1594,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **Gemini Search Grounding** - Images can include real-time data (weather, prices, news)
   - Auto-saves to stash + memory for cross-session recall
   - Multi-tool workflows: generate → email, generate → print, generate → canvas
-  - See: `skills/generate_image.py`, [`docs/generate-image-tool/README.md`](docs/generate-image-tool/README.md)
+  - See: `skills/generate_image.py`, [`docs/tools/generate-image-tool/README.md`](docs/tools/generate-image-tool/README.md)
 - ✅ **AI Video Generation (xAI Grok + Gemini Veo)** - Dual-provider video generation
   - "Generate a video of a cat playing with a ball" → xAI/Gemini creates video
   - xAI: 1-15s, 7 aspect ratios, video editing | Gemini: 4/6/8s, native audio, 4K
   - Text-to-video, image-to-video, video editing modes
   - Video player in jarvis-web chat, API endpoints for management
-  - See: [`docs/video/README.md`](docs/video/README.md)
+  - See: [`docs/tools/video/README.md`](docs/tools/video/README.md)
 - ✅ **Stash + Memory Architecture** - Unified artifact workflow
   - **Stash** = Workshop (temporary files, 7-day TTL, `stash://` references)
   - **Memory** = Index (permanent entries pointing to stash locations)
@@ -1614,7 +1614,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Sync mode (wait 60s for result) or async mode (check later)
   - Auto-save transcripts to Canvas (`Phone Calls/` folder) and memory
   - Contact book: "Save Andrew's number as +15551234567"
-  - See: [`docs/phone/PHONE_CALLS.md`](docs/phone/PHONE_CALLS.md)
+  - See: [`docs/tools/phone/PHONE_CALLS.md`](docs/tools/phone/PHONE_CALLS.md)
 - ✅ **Spotify Integration** - Full music playback control
   - "Play my Chill Vibes playlist", "Skip", "What's playing?", "Pause"
   - Searches your saved playlists/library first, then public Spotify
@@ -1622,7 +1622,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Queue songs, shuffle, repeat, volume control
   - Share currently playing via email with album art and Spotify link
   - OAuth setup via `./bin/spotify-auth`
-  - See: [`docs/spotify/SPOTIFY.md`](docs/spotify/SPOTIFY.md)
+  - See: [`docs/tools/spotify/SPOTIFY.md`](docs/tools/spotify/SPOTIFY.md)
 - ✅ **Native Web Search** - Built-in real-time search for cloud providers
   - `XAI_SEARCH=true`: Grok live search (web + X posts, auto mode)
   - `ANTHROPIC_SEARCH=true`: Claude's web search tool with citations

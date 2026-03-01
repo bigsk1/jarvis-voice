@@ -1,0 +1,35 @@
+{
+  "id": "bookmark_search",
+  "name": "Bookmark Search",
+  "description": "Search Firefox bookmarks (like * in Firefox address bar)",
+  "version": "1.0",
+  "enabled": true,
+
+  "triggers": {
+    "explicit": ["*"],
+    "patterns": [],
+    "keywords": []
+  },
+
+  "variables": {
+    "query": {"from": "query", "extract": "main_subject", "default": ""}
+  },
+
+  "steps": [
+    {
+      "step": 1,
+      "tool": "bookmark_search",
+      "params": {
+        "action": "search",
+        "query": "${query}",
+        "limit": 20
+      },
+      "output_var": "bookmark_result",
+      "required": true,
+      "description": "Search bookmarks"
+    }
+  ],
+
+  "success_speech": "Here are your bookmark results. Expand details to view more.",
+  "abort_speech": "Couldn't search bookmarks."
+}
