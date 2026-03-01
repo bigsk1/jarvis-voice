@@ -1,0 +1,98 @@
+{
+  "enabled": true,
+  "name": "bookmark_search",
+  "description": "Parse and search Firefox bookmark export files (Netscape HTML format). Supports keyword and quoted phrase search, plus filters by tags, folder path fragments, and domains. Actions: search, list_tags, list_folders, stats.",
+  "script": "bookmark_search.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "list_tags",
+          "list_folders",
+          "stats"
+        ],
+        "description": "Operation to run. Default is 'search'."
+      },
+      "file_path": {
+        "type": "string",
+        "description": "Bookmark HTML file path. Default: data/bookmarks.html"
+      },
+      "query": {
+        "type": "string",
+        "description": "Search query. Supports quoted phrases, e.g. \"food license\" oregon"
+      },
+      "tags": {
+        "type": [
+          "string",
+          "array"
+        ],
+        "description": "Tag filter(s), comma-separated string or array. Matches Firefox TAGS and folder-derived labels."
+      },
+      "folders": {
+        "type": [
+          "string",
+          "array"
+        ],
+        "description": "Folder path fragment filter(s), comma-separated string or array."
+      },
+      "domains": {
+        "type": [
+          "string",
+          "array"
+        ],
+        "description": "Domain filter(s), comma-separated string or array (e.g., github.com, reddit.com)."
+      },
+      "query_mode": {
+        "type": "string",
+        "enum": [
+          "any",
+          "all"
+        ],
+        "description": "How to match terms/filters: any (default) or all."
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "relevance",
+          "recent",
+          "title",
+          "domain"
+        ],
+        "description": "Sort order for search results. Default: relevance."
+      },
+      "include_duplicates": {
+        "type": "boolean",
+        "description": "Include duplicate URLs in results. Default: true."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Max results to return (1-200). Default: 20."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Pagination offset for search. Default: 0."
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "test_input": {
+    "action": "search",
+    "query": "\"food license\" oregon",
+    "limit": 5
+  },
+  "expected_output_contains": [
+    "ok",
+    "results",
+    "matched_count"
+  ]
+}
