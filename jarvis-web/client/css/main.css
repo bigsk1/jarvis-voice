@@ -564,6 +564,17 @@ body {
   margin: 0;
 }
 
+.details-content pre .content-link,
+.tool-card-body .content-link {
+  color: var(--accent-tertiary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.details-content pre .content-link:hover,
+.tool-card-body .content-link:hover {
+  color: var(--accent-secondary);
+}
+
 .message-details.collapsed .details-content {
   display: none;
 }

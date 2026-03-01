@@ -2459,7 +2459,7 @@ class ChatUI {
     const hasDetails = rawResponse && rawResponse !== text && rawResponse.length > text.length;
     
     if (hasDetails) {
-      const detailsContent = Utils.escapeHtml(rawResponse);
+      const detailsContent = Utils.escapeHtmlAndLinkify(rawResponse);
       detailsHtml = `
         <div class="message-details collapsed">
           <button class="details-toggle" title="Show full LLM response">
@@ -2754,9 +2754,8 @@ class ChatUI {
     
     const bodyEl = card.querySelector('.tool-card-body');
     if (bodyEl && result) {
-      bodyEl.textContent = typeof result === 'object' 
-        ? Utils.formatJson(result) 
-        : String(result);
+      const summary = typeof result === 'object' ? Utils.formatJson(result) : String(result);
+      bodyEl.innerHTML = Utils.escapeHtmlAndLinkify(summary);
     }
   }
 
@@ -2784,7 +2783,7 @@ class ChatUI {
           <span class="tool-card-title">${Utils.escapeHtml(toolName)}</span>
           <span class="tool-card-status">${statusText}</span>
         </div>
-        <pre class="tool-card-body">${Utils.escapeHtml(summary)}</pre>
+        <pre class="tool-card-body">${Utils.escapeHtmlAndLinkify(summary)}</pre>
       </div>
     `;
   }

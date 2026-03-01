@@ -20,6 +20,21 @@ const Utils = {
   },
 
   /**
+   * Escape HTML and convert URLs to clickable links (target="_blank")
+   */
+  escapeHtmlAndLinkify(text) {
+    if (text === null || text === undefined) return '';
+    const str = String(text);
+    const escaped = this.escapeHtml(str);
+    // Match http(s) URLs, excluding trailing punctuation
+    const urlRe = /(https?:\/\/[^\s<>"')\]]+)/g;
+    return escaped.replace(urlRe, (url) => {
+      const href = url.replace(/"/g, '&quot;');
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="content-link">${url}</a>`;
+    });
+  },
+
+  /**
    * Format timestamp
    */
   formatTime(date = new Date()) {
