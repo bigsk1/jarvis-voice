@@ -304,6 +304,56 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-03-01:**
+- ✅ **Bookmark Search Shortcut** - `*` prefix in Web UI (Firefox-style)
+  - Type `*` in chat to search Firefox bookmarks; `*docker` searches for "docker"
+  - Autocomplete shows "Search bookmarks" with 🔖 icon
+  - New `bookmark_search` workflow with `*` trigger
+- ✅ **Docs Reorganization** - `docs/tools/` folder for tool-specific docs
+  - Moved phone, spotify, video, status-tool, ssh, docker-tool, generate-image-tool, convert-file-tool, etc.
+  - Updated all references from `docs/X` to `docs/tools/X`
+
+**2026-02-28:**
+- ✅ **Clickable URLs in Tool Cards** - URLs in tool card details and message details now open in browser
+  - `Utils.escapeHtmlAndLinkify()` converts URLs to `<a target="_blank">` links
+  - Styled with accent color and hover state
+- ✅ **bookmark_search Tool** - Search Firefox bookmark export (Netscape HTML)
+  - Keyword/phrase search, filters by tags, folders, domains
+  - Actions: search, list_tags, list_folders, stats
+
+**2026-02-26:**
+- ✅ **New Workflows** - `youtube_ingest` and `memory_scan`
+  - `/youtube_ingest <url>` - Download video + transcript, summarize, create study brief
+  - `/memory_scan` - Run memory dedupe analysis, save reports to stash + canvas
+- ✅ **memory_deduper Tool** - Memory quality maintenance
+  - Detects exact duplicates, probable duplicates, potential conflicts
+  - `action=analyze` (safe): scan and propose; `action=apply` with approval
+  - Supports dry_run, apply_mode (exact_only, exact_and_probable)
+- ✅ **git_release_notes Tool** - Generate release notes from GitHub URLs
+  - Analyzes releases, commit/PR/issue breakdown, risk flags
+  - Optional stash and canvas output
+- ✅ **Gemini Image Model** - `gemini-3.1-flash-image-preview` for image generation
+- ✅ **xAI Image Model** - Removed deprecated model
+
+**2026-02-24:**
+- ✅ **youtube_video Tool** - Download YouTube videos or audio via yt-dlp
+  - Saves to stash for Web UI preview/download
+  - Updated yt-dlp version, uv lock
+
+**2026-02-23:**
+- ✅ **qr_code_generator Tool** - Generate QR codes for URLs, text, WiFi, contacts
+  - Saves PNG to stash for printing, canvas, email
+
+**2026-02-22:**
+- ✅ **API Rate Limiter** - Rate limiting on API query endpoint
+- ✅ **Tool Builder Fixes** - Parsing issues fixed, max tokens support
+- ✅ **API Rate Limiting Docs** - Updated documentation
+
+**2026-02-21:**
+- ✅ **Mobile UI Fixes** - Intelligence and Memory dashboards on small screens
+- ✅ **Anthropic Sonnet 4.6** - Added model option
+- ✅ **Image Upload Fixes** - EXIF orientation, vision follow-up context, Anthropic model selection
+
 **2026-02-15:**
 - ✅ **Auto-Memory Injection** - Relevant memories loaded into LLM context automatically
   - No tool calls needed for recall; "What do you know about Jessi?" works without search_memory
@@ -313,6 +363,11 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Config: `AUTO_MEMORY_INJECTION_ENABLED`, `AUTO_MEMORY_LIMIT`, `AUTO_MEMORY_SIMILARITY_THRESHOLD`, `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT`
   - Works for CLI, WebUI, and wake word
   - See: `docs/AUTO_MEMORY_INJECTION_FEATURE.md`
+- ✅ **Clear Chat & Import Knowledge** - Web UI sidebar footer
+  - Clear Chat: clears messages, keeps conversation; API `POST /api/conversations/<id>/clear`
+  - Import Knowledge: upload .txt/.md to jarvis-intel/, background ingestion; API `POST /api/intel/upload` (max 1MB)
+- ✅ **"No Specific Preference" Filter** - Auto-memory skips these from always-include; router steers "forget" to forget tool
+- ✅ **cleanup-all Updates** - Web uploads (30-day retention), disk usage summary for missing paths
 
 **2026-02-11:**
 - ✅ **Jarvis Intel System** 
