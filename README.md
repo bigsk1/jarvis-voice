@@ -72,7 +72,7 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - Vector-based semantic search for tool discovery
   - "Ghost tools" always available for core functionality
   - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
-- **Advanced Tool Calling**: LLM-powered routing with 32+ skills
+- **Advanced Tool Calling**: LLM-powered routing with 60+ skills
 - **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
 - **Auto-Context System**: Automatic short-term memory of recent conversations
   - Remembers what you just discussed without needing explicit "remember" commands
@@ -378,7 +378,7 @@ jarvis-voice/
 │   ├── tool_schema.py        # Tool discovery & validation
 │   ├── workflow_loader.py    # Workflow JSON loader
 │   └── pipeline_executor.py  # Deterministic pipeline execution
-├── skills/                   # Tool scripts (49+)
+├── skills/                   # Tool scripts (60+)
 │   ├── auto-tools/           # Auto-generated tools
 │   │   ├── docker_control.*  # Docker management
 │   │   ├── network_tools.*   # Network diagnostics
@@ -710,7 +710,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (55+)
+### Available Skills (60+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -719,6 +719,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `semantic_recall` - AI-powered conceptual search (natural language questions)
 - `update_memory` - Modify existing memories
 - `forget` - Delete memories
+- `memory_deduper` - **Memory cleanup**: detect duplicates/conflicts, propose safe deletions (analyze first, apply when approved)
 - `get_recent_conversations` - Access conversation history
 - `search_conversations` - Search past interactions
 
@@ -748,6 +749,8 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
 - `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune
 - `youtube_transcript` - **YouTube transcripts**: Download video transcripts as .srt/.md files
+- `youtube_video` - **YouTube download**: Download videos or audio-only via yt-dlp, save to stash
+- `bookmark_search` - **Firefox bookmarks**: Search bookmark export (HTML) by keyword, tags, folders, domains (`*` in Web UI)
 - `crawl_url` - **Web scraping**: Crawl4AI to extract markdown from any webpage (stealth mode, JS wait)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 
@@ -792,11 +795,13 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `upload_cloudflare` - **CDN upload**: Upload images to Cloudflare for permanent public URLs
   - Supports file, URL, base64, stash references
   - Metadata tracking (prompt, tags, provider)
+- `qr_code_generator` - **QR codes**: Generate QR codes for URLs, text, WiFi, contacts; save PNG to stash
 
 **Development:**
 - `opencode` - Autonomous coding agent (builds apps, games, APIs)
 - `check_opencode_sessions` - Monitor OpenCode progress
 - `ingest_intel` - Bulk import knowledge from markdown files
+- `git_release_notes` - **GitHub release notes**: Analyze releases, generate summaries with commit/PR/issue breakdown, risk flags
 - `check_tool_logs` - View tool execution history
 
 **Proactive System:**

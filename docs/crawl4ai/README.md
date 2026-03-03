@@ -4,11 +4,6 @@
 
 Crawl4AI is a self-hosted web crawler with powerful features for extracting content from any webpage, including JavaScript-heavy and protected sites.
 
-## Quick Links
-
-- **API Docs**: https://docs.crawl4ai.com/api/parameters/
-- **Your Instance**: https://a40k0kw088sw8s84kcw88wk0.bigsk1.com
-- **OpenAPI Spec**: https://a40k0kw088sw8s84kcw88wk0.bigsk1.com/openapi.json
 
 ---
 
@@ -283,7 +278,7 @@ The crawl4ai REST API uses:
              ▼                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Crawl4AI REST API                         │
-│         https://a40k0kw088sw8s84kcw88wk0.bigsk1.com         │
+│                │
 ├─────────────────────────────────────────────────────────────┤
 │  /crawl      │  /screenshot  │  /pdf     │  /execute_js     │
 │  /md         │  /html        │  /llm/job │  /monitor/*      │
