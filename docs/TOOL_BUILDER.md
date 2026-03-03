@@ -404,7 +404,7 @@ TOOL_BUILDER_PROVIDER → FEEDBACK_PROVIDER → LLM_PROVIDER
 | xAI | `grok-4.1-fast-non-reasoning-latest` |
 | Anthropic | `claude-sonnet-4-5-20250929` |
 | OpenAI | `gpt-4o` |
-| Ollama | `qwen3:14b` |
+| Ollama | `qwen3.5:latest` |
 
 ---
 
@@ -545,7 +545,7 @@ Works with Ollama:
 ```bash
 # config/local.env
 LLM_PROVIDER=ollama
-OLLAMA_MODEL=qwen3:14b
+OLLAMA_MODEL=qwen3.5:latest
 
 # Tool builder will use Ollama
 ./bin/build-tool --mode local build "Check CPU temperature"

@@ -30,7 +30,7 @@ Extracted by Promtail from `logs/llm-calls-*.jsonl`:
 
 | Field | Type | Description | Example Values |
 |-------|------|-------------|----------------|
-| `model` | label | LLM model name | `claude-sonnet-4-5-20250929`, `grok-beta`, `qwen3:14b` |
+| `model` | label | LLM model name | `claude-sonnet-4-5-20250929`, `grok-beta`, `qwen3.5:latest` |
 | `provider` | label | LLM provider | `anthropic`, `xai`, `openai`, `ollama` |
 | `mode` | label | Execution mode | `cloud`, `local` |
 | `prompt_type` | label | Type of LLM call | `routing`, `qa`, `condensing`, `thinking` |

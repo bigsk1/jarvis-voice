@@ -89,7 +89,7 @@ scrape_configs:
         labels:
           instance: 'mini-ai-ollama'
           host: 'mini-ai'
-          model: 'qwen3:14b'
+          model: 'qwen3.5:latest'
     metrics_path: '/metrics'
     scrape_interval: 30s
     scrape_timeout: 10s

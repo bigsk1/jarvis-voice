@@ -29,7 +29,7 @@ THINKING_MODELS = {
     ],
     "ollama": [
         "qwen2.5-coder:32b-instruct-q4_K_M",  # Some Qwen models support thinking
-        "qwen3:14b",  # Qwen3 14B reasoning model
+        "qwen3.5:latest",  # Qwen3.5 reasoning model
         "deepseek-r1",  # DeepSeek reasoning model
         "qwq"  # QwQ thinking model
     ]
@@ -144,7 +144,7 @@ def extract_thinking(response: Any, provider: str) -> str | None:
         
         elif provider == "ollama":
             # Ollama has TWO formats for thinking:
-            # 1. Structured field (qwen3:14b, modern models) - preferred
+            # 1. Structured field (qwen3.5:latest, modern models) - preferred
             # 2. Tags in content (deepseek-r1, raw output) - fallback
             
             # Method 1: Check for structured thinking field (Ollama API format)

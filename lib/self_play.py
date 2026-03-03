@@ -604,7 +604,7 @@ Generate {count} queries:"""
         if provider_type == "ollama":
             return create_provider(
                 "ollama",
-                model=get_config_value("OLLAMA_MODEL", "qwen3:14b"),
+                model=get_config_value("OLLAMA_MODEL", "qwen3.5:latest"),
                 base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
             )
         elif provider_type == "xai":

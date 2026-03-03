@@ -973,7 +973,7 @@ Example for FACTUAL (should NOT be stored here):
                 provider = create_provider(
                     "ollama",
                     base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                    model=get_config_value("OLLAMA_MODEL", "qwen3:14b:latest")
+                    model=get_config_value("OLLAMA_MODEL", "qwen3.5:latest")
                 )
             else:
                 logger.error(f"Unknown provider type: {provider_type}")

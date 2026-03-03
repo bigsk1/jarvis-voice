@@ -99,7 +99,7 @@ These docs contain outdated info but are kept for historical context:
 
 ### Removed from Codebase
 - ✅ `mistral-nemo` model → Now using `qwen3` (local mode)
-- ✅ `qwen3-vl` → Now using `qwen3:14b` or `qwen3-coder` (local mode)
+- ✅ `qwen3-vl` → Now using `qwen3.5:latest` or `qwen3-coder` (local mode)
 - ✅ `tool_patterns` table → Removed (never used)
 - ✅ `preferences` table → Removed (never used)
 - ✅ `config.env.template` → Split into `cloud.env.example` & `local.env.example`

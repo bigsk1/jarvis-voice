@@ -18,7 +18,7 @@
 ### Real-World Evidence
 
 From previous testing sessions:
-- **Qwen models** (qwen3:14b, qwen3-coder): Struggled with `brave-search`, worked perfectly with `brave_search`
+- **Qwen models** (qwen3.5:latest, qwen3-coder): Struggled with `brave-search`, worked perfectly with `brave_search`
 - **Mistral models**: Similar behavior - prefer underscores
 - **Claude/GPT**: Handle all formats but snake_case maintains consistency
 

@@ -73,7 +73,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 
 # Local mode
 LLM_PROVIDER="ollama"
-OLLAMA_MODEL="qwen3:14b"
+OLLAMA_MODEL="qwen3.5:latest"
 ```
 
 **OpenCode Agent** (coding tasks):
@@ -84,7 +84,7 @@ OPENCODE_MODEL="claude-sonnet-4-5-20250929"
 
 # Experimental: Local Ollama models (less safe, less reliable)
 OPENCODE_PROVIDER="ollama"
-OPENCODE_MODEL="qwen3:14b"
+OPENCODE_MODEL="qwen3.5:latest"
 ```
 
 ### Response Style
@@ -131,7 +131,7 @@ ollama serve
 ### "Model not found"
 ```bash
 # Install recommended models
-ollama pull qwen3:14b
+ollama pull qwen3.5:latest
 ollama pull nomic-embed-text
 ```
 
@@ -405,7 +405,7 @@ echo $BRAVE_API_KEY  # Should show your API key
 ### Local Mode (Ollama)
 - **Best for Jarvis**: `qwen3` (8B, 256K context, excellent tool calling)
 - **Best for OpenCode**: Use Claude API (more reliable)
-- **Experimental OpenCode**: `qwen3:14b` (13gb of VRAM)
+- **Experimental OpenCode**: `qwen3.5:latest` (13gb of VRAM)
 
 ## Quick Reference
 

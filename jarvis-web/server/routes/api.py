@@ -1801,7 +1801,7 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
         if provider_type == 'ollama':
             provider = create_provider(
                 'ollama',
-                model=get_config_value('OLLAMA_MODEL', 'qwen3:14b'),
+                model=get_config_value('OLLAMA_MODEL', 'qwen3.5:latest'),
                 base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
             )
         elif provider_type == 'xai':

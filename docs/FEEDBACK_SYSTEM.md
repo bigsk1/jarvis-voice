@@ -514,7 +514,7 @@ FEEDBACK_MODEL=qwen3:32b
 - `anthropic` - Claude models (claude-sonnet-4-5-20250929, etc.)
 - `openai` - GPT models (gpt-4o, gpt-4-turbo, etc.)
 - `xai` - Grok models (grok-4-1-fast-non-reasoning-latest, etc.)
-- `ollama` - Local models (qwen3:14b, llama3:70b, etc.)
+- `ollama` - Local models (qwen3.5:latest, llama3:70b, etc.)
 
 ### From Dashboard
 

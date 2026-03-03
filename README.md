@@ -578,7 +578,7 @@ sudo apt install sox ffmpeg jq sqlite3 traceroute inetutils-traceroute curl
 
 # Ollama (for local mode)
 curl https://ollama.ai/install.sh | sh
-ollama pull qwen3:14b
+ollama pull qwen3.5:latest
 ollama pull nomic-embed-text
 
 # OpenCode (optional, for coding tasks)

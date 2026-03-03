@@ -510,7 +510,7 @@ graph LR
 - **Cloud**: OpenAI text-embedding-3-small (1536 dimensions) + FTS5 full-text search
 - **Local**: nomic-embed-text (768 dimensions) + FTS5 full-text search
 - **Search**: Hybrid (FTS5 for keywords, embeddings for concepts)
-- **Models**: xAI Grok-4-fast ⭐, Claude Sonnet 4.5, GPT-4o (cloud) | qwen3:14b, qwen3-coder (local)
+- **Models**: xAI Grok-4-fast ⭐, Claude Sonnet 4.5, GPT-4o (cloud) | qwen3.5:latest, qwen3-coder (local)
 
 ### Key Configuration Variables
 
@@ -519,7 +519,7 @@ graph LR
 | `LLM_PROVIDER` | Which LLM to use | `xai`, `anthropic`, `openai`, `ollama` |
 | `XAI_MODEL` | xAI Grok model (2M context!) | `grok-4-1-fast-non-reasoning` ⭐ RECOMMENDED |
 | `ANTHROPIC_MODEL` | Cloud model selection | `claude-sonnet-4-5-20250929` |
-| `OLLAMA_MODEL` | Local model selection | `qwen3:14b`, `qwen3-vl`, `deepseek-r1` |
+| `OLLAMA_MODEL` | Local model selection | `qwen3.5:latest`, `qwen3-vl`, `deepseek-r1` |
 | `JARVIS_DEBUG_THINKING` | Show LLM reasoning | `true`, `false` |
 | `SEMANTIC_SIMILARITY_THRESHOLD` | Memory search sensitivity | `0.40` (default), `0.30-0.50` range |
 | `JARVIS_RESPONSE_STYLE` | Output formatting | `casual`, `detailed`, `auto` |

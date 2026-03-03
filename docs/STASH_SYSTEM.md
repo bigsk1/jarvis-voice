@@ -1290,7 +1290,7 @@ STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
 # Optional: Override model for summarization (uses provider's default otherwise)
 # STASH_SUMMARIZE_MODEL="gpt-4o-mini"        # OpenAI
 # STASH_SUMMARIZE_MODEL="claude-3-5-haiku-latest"  # Anthropic
-# STASH_SUMMARIZE_MODEL="qwen3:14b"          # Ollama (local)
+# STASH_SUMMARIZE_MODEL="qwen3.5:latest"          # Ollama (local)
 # STASH_SUMMARIZE_MODEL="grok-4-1-fast-non-reasoning-latest"  # xAI
 ```
 
@@ -1310,7 +1310,7 @@ When `stash.remember` is called with `summarize: true`:
 |----------|---------------|--------------|
 | OpenAI | `gpt-4o-mini` | api.openai.com |
 | Anthropic | `claude-3-5-haiku-latest` | api.anthropic.com |
-| Ollama | `qwen3:14b` | localhost:11434 |
+| Ollama | `qwen3.5:latest` | localhost:11434 |
 | xAI | `grok-4-1-fast-non-reasoning-latest` | api.x.ai |
 
 **Note**: Summarization calls are independent of the main conversation context.

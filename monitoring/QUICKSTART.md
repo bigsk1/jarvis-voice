@@ -70,7 +70,7 @@ You should see:
 
 ### LLM calls by model:
 ```
-{job="jarvis", log_type="llm"} | json | model="qwen3:14b"
+{job="jarvis", log_type="llm"} | json | model="qwen3.5:latest"
 ```
 
 

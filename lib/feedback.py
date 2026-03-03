@@ -319,7 +319,7 @@ class FeedbackCollector:
             elif feedback_provider == "ollama":
                 self.provider = create_provider(
                     "ollama",
-                    model=feedback_model or get_config_value("OLLAMA_MODEL", "qwen3:14b"),
+                    model=feedback_model or get_config_value("OLLAMA_MODEL", "qwen3.5:latest"),
                     base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
                 )
             else:
@@ -328,7 +328,7 @@ class FeedbackCollector:
             # Fallback: Use same provider as mode (not ideal but works)
             if mode == 'local':
                 self.provider_name = "ollama"
-                self.model_name = get_config_value("OLLAMA_MODEL", "qwen3:14b")
+                self.model_name = get_config_value("OLLAMA_MODEL", "qwen3.5:latest")
                 self.provider = create_provider(
                     "ollama",
                     model=self.model_name,

@@ -676,7 +676,7 @@ class ToolBuilder:
         elif provider_type == 'ollama':
             self.provider = create_provider(
                 provider_type,
-                model=model or get_config_value('OLLAMA_MODEL', 'qwen3:14b'),
+                model=model or get_config_value('OLLAMA_MODEL', 'qwen3.5:latest'),
                 base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
             )
         else:

@@ -662,7 +662,7 @@ source ~/jarvis-venv/bin/activate
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull models
-ollama pull qwen3:14b
+ollama pull qwen3.5:latest
 ollama pull nomic-embed-text
 
 # Test

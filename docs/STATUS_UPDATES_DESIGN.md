@@ -1157,7 +1157,7 @@ Summary (5-8 words):'''
 |----------|-------|-------------------|-----------------|
 | OpenAI | gpt-4o-mini | $0.15 input, $0.60 output | ~$0.0001 |
 | xAI | grok-4 | $0.20 input, $0.50 output | ~$0.0001 |
-| Ollama | qwen3:14b | Free (local) | $0 |
+| Ollama | qwen3.5:latest | Free (local) | $0 |
 
 With ~500 token input + ~30 token output per summary:
 - **100 status updates = ~$0.01** (OpenAI/xAI)

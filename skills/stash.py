@@ -152,7 +152,7 @@ Do NOT add commentary or opinions - just the facts."""
         
         elif provider == 'ollama':
             base_url = get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
-            model = get_config_value('STASH_SUMMARIZE_MODEL', 'qwen3:14b')
+            model = get_config_value('STASH_SUMMARIZE_MODEL', 'qwen3.5:latest')
             
             response = requests.post(
                 f'{base_url}/api/chat',

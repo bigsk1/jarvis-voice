@@ -833,7 +833,7 @@ class OllamaProvider(LLMProvider):
         Returns:
             Tuple of (text_response, tool_call, usage_info, thinking)
             - usage_info contains token counts (cost is always 0 for local models)
-            - thinking is available for reasoning models (qwen3:14b, etc.)
+            - thinking is available for reasoning models (qwen3.5:latest, etc.)
         """
         import requests
         import os
@@ -905,7 +905,7 @@ class OllamaProvider(LLMProvider):
                     "note": "local model - no cost"
                 }
             
-            # Extract thinking if present (qwen3:14b and other reasoning models)
+            # Extract thinking if present (qwen3.5:latest and other reasoning models)
             thinking = None
             if "thinking" in message:
                 thinking = message["thinking"]
