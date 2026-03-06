@@ -912,6 +912,19 @@ Mode: {self.mode}
             Synthesized speech response that actually answers the user's question
         """
         try:
+            # If we already have clear tool speech, prefer it over re-synthesis.
+            # This avoids hallucinated contradictions when duplicate prevention triggers.
+            if conversation_context:
+                last_ctx = conversation_context[-1]
+                last_result = last_ctx.get("result", {}) if isinstance(last_ctx, dict) else {}
+                last_speech = (
+                    (last_result or {}).get("speech")
+                    or last_ctx.get("speech")
+                    or ""
+                )
+                if isinstance(last_speech, str) and last_speech.strip():
+                    return last_speech.strip()
+
             # Extract useful data from accumulated results
             extracted_data = self._extract_useful_data(accumulated_data)
             
@@ -1335,6 +1348,50 @@ Your BEST EFFORT response:"""
         """
         extracted_parts = []
         
+        def _extract_dict_fields(record: dict, depth: int = 0) -> list[str]:
+            """
+            Extract useful fields from nested tool data structures.
+            Keeps output concise while preserving key entities and counts.
+            """
+            if not isinstance(record, dict) or depth > 2:
+                return []
+
+            info = []
+
+            useful_fields = [
+                'title', 'description', 'url', 'name', 'price',
+                'coin', 'price_usd', 'speech', 'result', 'content',
+                'count', 'status', 'status_filter', 'source', 'severity',
+                'created_at', 'id'
+            ]
+            for field in useful_fields:
+                if field in record and record[field] not in (None, "", [], {}):
+                    info.append(f"{field}: {str(record[field])[:500]}")
+
+            # Capture important nested lists like alerts/reminders/tasks/events.
+            for list_key in ['alerts', 'reminders', 'items', 'results', 'tasks', 'events']:
+                nested_list = record.get(list_key)
+                if isinstance(nested_list, list) and nested_list:
+                    info.append(f"{list_key}_count: {len(nested_list)}")
+                    for nested in nested_list[:3]:
+                        if isinstance(nested, dict):
+                            title = nested.get('title') or nested.get('name') or nested.get('description')
+                            if title:
+                                info.append(f"{list_key}_item: {str(title)[:200]}")
+                            for nested_field in ['status', 'severity', 'source', 'created_at', 'id']:
+                                if nested_field in nested and nested[nested_field] not in (None, ""):
+                                    info.append(f"{list_key}_{nested_field}: {str(nested[nested_field])[:200]}")
+                        else:
+                            info.append(f"{list_key}_item: {str(nested)[:200]}")
+
+            # One-level nested dict extraction for common wrappers like data/report/payload.
+            for nested_key in ['data', 'report', 'payload']:
+                nested_dict = record.get(nested_key)
+                if isinstance(nested_dict, dict):
+                    info.extend(_extract_dict_fields(nested_dict, depth + 1)[:15])
+
+            return info
+
         for tool_name, data in accumulated_data.items():
             # Handle arrays (multiple calls to same tool)
             if isinstance(data, list):
@@ -1352,13 +1409,9 @@ Your BEST EFFORT response:"""
                         if text:
                             # Extract first 2000 chars of each search result
                             tool_info.append(text[:2000])
-                    
-                    # Extract specific data fields
-                    useful_fields = ['title', 'description', 'url', 'name', 'price', 
-                                     'coin', 'price_usd', 'speech', 'result', 'content']
-                    for field in useful_fields:
-                        if field in item and item[field]:
-                            tool_info.append(f"{field}: {str(item[field])[:500]}")
+
+                    # Extract specific and nested fields (alerts/reminders/etc.)
+                    tool_info.extend(_extract_dict_fields(item))
                 else:
                     # Plain string/value
                     tool_info.append(str(item)[:1000])
