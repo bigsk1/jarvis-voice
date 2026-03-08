@@ -8,6 +8,7 @@ import sys
 import json
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Any
 
@@ -264,9 +265,26 @@ class ToolExecutor:
                     "speech": f"MCP server {server_name} not available. Server may have failed to start.",
                     "error": "MCP server not connected"
                 }
-            
-            # Execute tool via MCP
-            result = mcp_client.call_tool(mcp_tool_name, args)
+
+            # Strict outer timeout guard: prevents WebUI "thinking forever"
+            mcp_timeout = int(os.environ.get("MCP_EXECUTOR_TIMEOUT_SECONDS", "45"))
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(mcp_client.call_tool, mcp_tool_name, args)
+                try:
+                    result = future.result(timeout=mcp_timeout)
+                except FuturesTimeoutError:
+                    # Try to force-recover the MCP client for next calls
+                    if hasattr(mcp_client, "_force_restart"):
+                        try:
+                            mcp_client._force_restart(f"executor timeout ({mcp_timeout}s)")
+                        except Exception:
+                            pass
+
+                    result = {
+                        "ok": False,
+                        "speech": f"MCP tool {tool_name} timed out",
+                        "error": f"Executor timeout after {mcp_timeout}s"
+                    }
             
             duration_ms = (time.time() - start_time) * 1000
             

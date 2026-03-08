@@ -912,6 +912,24 @@ Mode: {self.mode}
             Synthesized speech response that actually answers the user's question
         """
         try:
+            def _is_machine_like_speech(text: str) -> bool:
+                """Detect raw JSON or machine-formatted tool payloads."""
+                if not text or not isinstance(text, str):
+                    return True
+                s = text.strip()
+                if not s:
+                    return True
+                if s.startswith("{") or s.startswith("["):
+                    return True
+                if '\\"url\\":' in s or '"url":' in s:
+                    return True
+                if '\\"title\\":' in s or '"title":' in s:
+                    return True
+                # Heuristic for payload-like snippets
+                if s.count("{") >= 2 and s.count(":") >= 3:
+                    return True
+                return False
+
             # If we already have clear tool speech, prefer it over re-synthesis.
             # This avoids hallucinated contradictions when duplicate prevention triggers.
             if conversation_context:
@@ -922,7 +940,11 @@ Mode: {self.mode}
                     or last_ctx.get("speech")
                     or ""
                 )
-                if isinstance(last_speech, str) and last_speech.strip():
+                if (
+                    isinstance(last_speech, str)
+                    and last_speech.strip()
+                    and not _is_machine_like_speech(last_speech)
+                ):
                     return last_speech.strip()
 
             # Extract useful data from accumulated results

@@ -48,6 +48,37 @@ class MCPClient:
         self._restart_count = 0
         self._last_restart_time = 0
         self._in_cooldown = False
+
+    def _force_restart(self, reason: str = "unknown"):
+        """
+        Hard-reset the MCP client process after a wedged/timeout call.
+        This is more aggressive than normal crash recovery and is used
+        when a request appears stuck.
+        """
+        try:
+            print(f"🛠️ Force-restarting MCP {self.name}: {reason}", file=sys.stderr)
+        except Exception:
+            pass
+
+        # Kill current process if present
+        if self.process:
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=3)
+            except Exception:
+                try:
+                    self.process.kill()
+                    self.process.wait(timeout=2)
+                except Exception:
+                    pass
+
+        # Reset in-memory state so future calls can proceed cleanly
+        self.process = None
+        self._tools_cache = None
+        self.request_id = 0
+
+        # Critical: replace lock in case a prior thread is stuck holding it
+        self.lock = Lock()
     
     def _check_health(self) -> bool:
         """
@@ -389,12 +420,40 @@ class MCPClient:
         Returns:
             Tool result
         """
+        timeout_seconds = int(os.environ.get("MCP_TOOL_CALL_TIMEOUT_SECONDS", "35"))
+        response_holder: dict[str, Any] = {}
+
+        def _runner():
+            try:
+                # MCP protocol expects this format
+                response_holder["result"] = self._send_request("tools/call", {
+                    "name": tool_name,
+                    "arguments": arguments
+                })
+            except Exception as e:
+                response_holder["error"] = e
+
+        worker = Thread(target=_runner, daemon=True)
+        worker.start()
+        worker.join(timeout=timeout_seconds)
+
+        if worker.is_alive():
+            self._force_restart(f"tools/call timeout ({timeout_seconds}s)")
+            return {
+                "ok": False,
+                "speech": f"MCP tool {tool_name} timed out",
+                "error": f"MCP tools/call timed out after {timeout_seconds}s; server restarted"
+            }
+
         try:
-            # MCP protocol expects this format
-            result = self._send_request("tools/call", {
-                "name": tool_name,
-                "arguments": arguments
-            })
+            if "error" in response_holder:
+                err = response_holder["error"]
+                err_text = str(err)
+                if "timeout" in err_text.lower():
+                    self._force_restart(f"tools/call error timeout: {err_text[:120]}")
+                raise err
+
+            result = response_holder.get("result")
             
             # Check if result has content
             if not result:
@@ -504,6 +563,24 @@ class MCPRemoteClient:
         self._sse_thread = None
         self._sse_stop_event = Event()
         self._sse_connected = Event()
+
+    def _force_restart(self, reason: str = "unknown"):
+        """
+        Hard-reset remote MCP client state after timeout/wedge.
+        """
+        try:
+            print(f"🛠️ Force-restarting remote MCP {self.name}: {reason}", file=sys.stderr)
+        except Exception:
+            pass
+
+        try:
+            self.stop()
+        except Exception:
+            pass
+
+        # Critical: replace lock in case a prior request thread is wedged
+        self.lock = Lock()
+        self.request_id = 0
     
     def start(self):
         """Start the remote MCP connection."""
@@ -918,11 +995,39 @@ class MCPRemoteClient:
     
     def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Call a tool on the remote MCP server."""
+        timeout_seconds = int(os.environ.get("MCP_TOOL_CALL_TIMEOUT_SECONDS", "35"))
+        response_holder: dict[str, Any] = {}
+
+        def _runner():
+            try:
+                response_holder["result"] = self._send_request("tools/call", {
+                    "name": tool_name,
+                    "arguments": arguments
+                })
+            except Exception as e:
+                response_holder["error"] = e
+
+        worker = Thread(target=_runner, daemon=True)
+        worker.start()
+        worker.join(timeout=timeout_seconds)
+
+        if worker.is_alive():
+            self._force_restart(f"remote tools/call timeout ({timeout_seconds}s)")
+            return {
+                "ok": False,
+                "speech": f"MCP tool {tool_name} timed out",
+                "error": f"Remote MCP tools/call timed out after {timeout_seconds}s; client restarted"
+            }
+
         try:
-            result = self._send_request("tools/call", {
-                "name": tool_name,
-                "arguments": arguments
-            })
+            if "error" in response_holder:
+                err = response_holder["error"]
+                err_text = str(err)
+                if "timeout" in err_text.lower():
+                    self._force_restart(f"remote tools/call error timeout: {err_text[:120]}")
+                raise err
+
+            result = response_holder.get("result")
             
             if not result:
                 return {
