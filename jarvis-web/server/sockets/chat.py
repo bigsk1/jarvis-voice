@@ -986,9 +986,15 @@ class ChatHandler:
                             emit_index += 1
                     else:
                         # Single execution step
+                        step_result_payload = step_data.get('data', {})
+                        if (not step_ok) and not step_result_payload:
+                            # Preserve failure context for optional workflow steps
+                            step_result_payload = {
+                                'error': step_data.get('error') or step_data.get('speech') or 'Step failed'
+                            }
                         self.socketio.emit('tool:complete', {
                             'tool': tool,
-                            'result': step_data.get('data', {}),
+                            'result': step_result_payload,
                             'duration_ms': duration_ms // max(len(step_results), 1),
                             'success': step_ok,
                             'message_id': message_id,
@@ -1038,11 +1044,17 @@ class ChatHandler:
                     step_results = save_data.get('results', [])
                     for step_data in step_results:
                         tool = step_data.get('tool', 'unknown')
+                        step_ok = step_data.get('ok', True)
                         if 'outputs' in step_data:
                             outputs = step_data.get('outputs', [])
                             step_output = outputs[0].get('data', outputs[0]) if outputs and isinstance(outputs[0], dict) else {}
                         else:
                             step_output = step_data.get('data', {})
+
+                        if (not step_ok) and not step_output:
+                            step_output = {
+                                'error': step_data.get('error') or step_data.get('speech') or 'Step failed'
+                            }
                         save_data[tool] = step_output  # last wins for duplicate tools
                 raw_response = result.get('raw_llm_response', '')
                 if raw_response:

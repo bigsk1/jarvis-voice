@@ -274,7 +274,9 @@ class PipelineExecutor:
                     "step": step_num,
                     "tool": tool_name,
                     "ok": step_result.get("ok", False),
-                    "data": step_result.get("data")
+                    "data": step_result.get("data"),
+                    "error": step_result.get("error"),
+                    "speech": step_result.get("speech")
                 })
                 tools_used.append(tool_name)
         
