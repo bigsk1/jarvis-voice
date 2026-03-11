@@ -514,6 +514,32 @@ body {
   border-bottom-left-radius: var(--radius-sm);
 }
 
+/* Restore readable markdown list spacing inside chat bubbles */
+.message-bubble ul,
+.message-bubble ol {
+  margin: var(--space-sm) 0;
+  padding-left: 1.4rem;
+}
+
+.message-bubble li {
+  margin: 0.2rem 0;
+}
+
+/* Make links readable on dark assistant bubbles */
+.message.assistant .message-bubble a {
+  color: var(--text-link-chat);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.message.assistant .message-bubble a:visited {
+  color: #7dd3fc;
+}
+
+.message.assistant .message-bubble a:hover {
+  color: var(--text-link-chat-hover);
+}
+
 /* Expandable details section */
 .message-details {
   margin-top: var(--space-md);

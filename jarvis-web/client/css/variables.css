@@ -33,6 +33,8 @@
   --text-secondary: #94a3b8;
   --text-tertiary: #64748b;
   --text-muted: #475569;
+  --text-link-chat: #67e8f9;
+  --text-link-chat-hover: #a5f3fc;
   
   /* Border colors */
   --border-primary: #2a2a3a;
