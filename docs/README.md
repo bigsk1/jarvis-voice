@@ -32,6 +32,7 @@
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (deterministic pipelines, variable extraction, WebUI integration) ⭐ IMPLEMENTED
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools
 - **[status-tool/README.md](status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
+- **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🛒 **SerpApi Search Tool** (Amazon + engine-based SerpApi queries)
 
 ### Document Processing 
 - **PDF Read Tool** (`skills/pdf_read.py`) - 📄 **PDF reading and manipulation**
@@ -137,6 +138,7 @@
 | **TEST_SCRIPT_TOOL_RAG_FIX.md** | Test script integration fixes  |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
 | **TOOL_MANAGEMENT.md** | Enable/disable tools |
+| **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |
 | **ERROR_RECOVERY.md** | Error handling and retries |
 
@@ -303,6 +305,15 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-03-13:**
+- ✅ **SerpApi Search Tool** - New generic `serpapi_search` tool (Amazon + engine-based search)
+  - Supports `amazon` listings and `amazon_product` ASIN lookups
+  - Uses `SERP_API_KEY` with proxy-aware HTTP requests
+  - Normalized output for cleaner WebUI/CLI synthesis
+- ✅ **SerpApi Tool Documentation** - Added short-link tool guide
+  - New doc: `docs/tools/serp-api-tool/README.md`
+  - Added tool reference in docs index and skills tool list
 
 **2026-03-01:**
 - ✅ **Bookmark Search Shortcut** - `*` prefix in Web UI (Firefox-style)
@@ -1217,6 +1228,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-02-12 (v2.43.0)  
-**Latest:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal  
+**Last Updated:** 2026-03-13  
+**Latest:** SerpApi search tool + tool docs index updates  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

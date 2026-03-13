@@ -150,6 +150,7 @@ JSON object printed to stdout:
 | `weather` | Weather forecasts (OpenWeatherMap) |
 | `crypto_price` | Cryptocurrency prices |
 | `stock_price` | Stock/futures/forex prices |
+| `serpapi_search` | Generic SerpApi search (Amazon + other engines) |
 | `spotify` | Music playback control |
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |

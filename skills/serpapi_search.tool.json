@@ -1,0 +1,65 @@
+{
+  "enabled": true,
+  "name": "serpapi_search",
+  "description": "Run generic SerpApi searches across engines (amazon, amazon_product, google, shopping, news). Use for product lookup, listing search, and result aggregation with structured output.",
+  "script": "serpapi_search.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "engine": {
+        "type": "string",
+        "description": "SerpApi engine. Examples: amazon, amazon_product, google, google_shopping, bing, youtube."
+      },
+      "query": {
+        "type": "string",
+        "description": "Search text. For amazon engine this maps to 'k'; for most others it maps to 'q'."
+      },
+      "asin": {
+        "type": "string",
+        "description": "Amazon ASIN. Best for engine=amazon_product."
+      },
+      "amazon_domain": {
+        "type": "string",
+        "description": "Amazon domain for amazon engines (default: amazon.com). Example: amazon.co.uk"
+      },
+      "language": {
+        "type": "string",
+        "description": "Locale for engines that support it (default: en_US)."
+      },
+      "device": {
+        "type": "string",
+        "description": "desktop, mobile, or tablet. Default: desktop."
+      },
+      "page": {
+        "type": "integer",
+        "description": "Results page number (default: 1)."
+      },
+      "num_results": {
+        "type": "integer",
+        "description": "How many normalized results to return (1-10, default: 5)."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "If true, bypass SerpApi cache for fresh fetch."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Additional engine-specific query parameters passed through to SerpApi."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "If true, include full raw SerpApi payload in data.raw (large)."
+      }
+    },
+    "required": [
+      "engine"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

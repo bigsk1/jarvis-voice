@@ -515,6 +515,7 @@ class ChatHandler:
             'create_reminder': ['reminder_id', 'formatted_time'],
             'send_email': ['to', 'subject', 'status'],
             'api_call': ['url', 'method', 'status_code'],
+            'serpapi_search': ['engine', 'query', 'asin', 'results_count'],
             'spotify': ['name', 'artist'],
             'docker_control': ['container', 'status'],
             'ssh_remote': ['host'],

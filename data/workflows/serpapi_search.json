@@ -1,0 +1,71 @@
+{
+  "id": "serpapi_search",
+  "name": "SerpApi Search Workflow",
+  "description": "Run SerpApi search for a user query, store results to stash as a text artifact, and create a canvas report.",
+  "enabled": true,
+  "version": "1.0",
+
+  "triggers": {
+    "explicit": ["/serpapi"],
+    "patterns": [],
+    "keywords": []
+  },
+
+  "variables": {
+    "task": {"from": "query", "extract": "main_subject"},
+    "engine": "amazon"
+  },
+
+  "steps": [
+    {
+      "step": 1,
+      "tool": "serpapi_search",
+      "params": {
+        "engine": "${engine}",
+        "query": "${task}",
+        "num_results": 10
+      },
+      "output_var": "serp_result",
+      "extract": {
+        "results_count": "results_count",
+        "query_used": "query_effective",
+        "query_original": "query",
+        "top_url": "results[0].url"
+      },
+      "required": true,
+      "description": "Run SerpApi search"
+    },
+    {
+      "step": 2,
+      "tool": "stash",
+      "action": "save",
+      "params": {
+        "kind": "text",
+        "name": "serpapi_${timestamp}.txt",
+        "tags": ["workflow", "serpapi", "search"],
+        "text": "SerpApi Search Export\n\nOriginal Query: ${query_original}\nEffective Query: ${query_used}\nEngine: ${engine}\nResults Count: ${results_count}\nTop URL: ${top_url}\n\nRaw Results:\n${serp_result.results}\n"
+      },
+      "output_var": "stash_result",
+      "extract": {
+        "stash_ref": "ref"
+      },
+      "required": true,
+      "description": "Save search data to stash .txt"
+    },
+    {
+      "step": 3,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Workflows/SerpApi/${task}",
+        "tags": ["workflow", "serpapi", "search", "${engine}"]
+      },
+      "llm_prompt": "Create a concise markdown report for this SerpApi search.\n\nINPUT DATA:\n- User task: ${task}\n- Engine: ${engine}\n- Original query: ${query_original}\n- Effective query: ${query_used}\n- Results count: ${results_count}\n- Stash reference: ${stash_ref}\n- Result rows: ${serp_result.results}\n\nIMPORTANT: Use the actual values from the input data above - do not output placeholder syntax like ${var}.\n\nOutput format:\n1) Title\n2) One-line summary\n3) Top 5 options as bullet points with title, short reason, and markdown link\n4) \"Data\" section with engine, original query, effective query, count\n5) \"References\" section with stash ref and top URL",
+      "required": true,
+      "description": "Create canvas search report"
+    }
+  ],
+
+  "success_speech": "SerpApi workflow complete. I searched for your request, saved a text export to stash, and created a canvas report with the top options.",
+  "abort_speech": "I couldn't complete the SerpApi workflow."
+}

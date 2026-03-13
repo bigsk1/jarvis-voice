@@ -46,6 +46,7 @@ This folder contains JSON workflow definitions that the orchestrator can execute
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
 | `memory_scan.json` | `/memory_scan` | Run memory_deduper analyze mode and save readable dedupe report to stash + canvas |
 | `deep_dive.json` | `/deep-dive <topic or url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons, links |
+| `serpapi_search.json` | `/serpapi <query>` | Run SerpApi search, save `.txt` export to stash, create canvas summary report |
 
 ## Variables
 
