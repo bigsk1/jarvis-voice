@@ -710,7 +710,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (60+)
+### Available Skills (65+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -753,6 +753,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `bookmark_search` - **Firefox bookmarks**: Search bookmark export (HTML) by keyword, tags, folders, domains (`*` in Web UI)
 - `crawl_url` - **Web scraping**: Crawl4AI to extract markdown from any webpage (stealth mode, JS wait)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
+- `serpapi_search` - **SerpApi search**: Engine-based search (Amazon listings, Amazon product ASIN lookup, and other SerpApi engines)
 
 **Artifact & Output Tools:**
 - `convert_file` - **Local media conversion**: ImageMagick, FFmpeg, Potrace
@@ -885,7 +886,7 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 | **LLM Routing** | Any query | LLM analyzes and selects | General questions, flexible tasks |
 | **Workflow Pipelines** | `/command` | Predefined in JSON recipe | Repeatable multi-step tasks |
 
-### Available Workflows (13)
+### Available Workflows (14)
 
 | Command | Description | Tools Used |
 |---------|-------------|------------|
@@ -897,6 +898,7 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 | `/memory_scan` | Run memory dedupe analysis, save reports to stash + canvas | memory_deduper |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, remember, canvas |
+| `/serpapi <query>` | SerpApi workflow: search + stash export + canvas report | serpapi_search, stash, canvas |
 | `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, stock_price, list_alerts, list_reminders, system_monitor, canvas |
 | `/status-visual` | Status briefing + AI-generated dashboard image | get_time, weather, crypto_price, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
 | `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel |
