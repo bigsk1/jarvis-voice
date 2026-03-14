@@ -81,7 +81,7 @@ def _extract_results(payload: dict[str, Any], engine: str, limit: int) -> list[d
                 candidates.append(
                     {
                         "title": item.get("title"),
-                        "url": item.get("link") or item.get("link_clean") or item.get("source"),
+                        "url": item.get("link_clean") or item.get("link") or item.get("source"),
                         "asin": item.get("asin"),
                         "price": item.get("price"),
                         "rating": item.get("rating"),

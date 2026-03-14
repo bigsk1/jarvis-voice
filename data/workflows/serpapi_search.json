@@ -29,8 +29,7 @@
       "extract": {
         "results_count": "results_count",
         "query_used": "query_effective",
-        "query_original": "query",
-        "top_url": "results[0].url"
+        "query_original": "query"
       },
       "required": true,
       "description": "Run SerpApi search"
@@ -43,7 +42,7 @@
         "kind": "text",
         "name": "serpapi_${timestamp}.txt",
         "tags": ["workflow", "serpapi", "search"],
-        "text": "SerpApi Search Export\n\nOriginal Query: ${query_original}\nEffective Query: ${query_used}\nEngine: ${engine}\nResults Count: ${results_count}\nTop URL: ${top_url}\n\nRaw Results:\n${serp_result.results}\n"
+        "text": "SerpApi Search Export\n\nOriginal Query: ${query_original}\nEffective Query: ${query_used}\nEngine: ${engine}\nResults Count: ${results_count}\nTop URL: ${serp_result.results[0].url}\n\nTop 5 Rows:\n${serp_result.results[:5]}\n"
       },
       "output_var": "stash_result",
       "extract": {
@@ -58,9 +57,10 @@
       "action": "create",
       "params": {
         "title": "Workflows/SerpApi/${task}",
-        "tags": ["workflow", "serpapi", "search", "${engine}"]
+        "tags": ["workflow", "serpapi", "search", "${engine}"],
+        "source_query": "${task}"
       },
-      "llm_prompt": "Create a concise markdown report for this SerpApi search.\n\nINPUT DATA:\n- User task: ${task}\n- Engine: ${engine}\n- Original query: ${query_original}\n- Effective query: ${query_used}\n- Results count: ${results_count}\n- Stash reference: ${stash_ref}\n- Result rows: ${serp_result.results}\n\nIMPORTANT: Use the actual values from the input data above - do not output placeholder syntax like ${var}.\n\nOutput format:\n1) Title\n2) One-line summary\n3) Top 5 options as bullet points with title, short reason, and markdown link\n4) \"Data\" section with engine, original query, effective query, count\n5) \"References\" section with stash ref and top URL",
+      "llm_prompt": "Create a concise markdown report for this SerpApi search.\n\nINPUT DATA:\n- User task: ${task}\n- Engine: ${engine}\n- Original query: ${query_original}\n- Effective query: ${query_used}\n- Results count: ${results_count}\n- Stash reference: ${stash_ref}\n- Top URL: ${serp_result.results[0].url}\n- Top 5 rows: ${serp_result.results[:5]}\n\nIMPORTANT: Use the actual values from the input data above - do not output placeholder syntax like ${var}.\n\nOutput format:\n1) Title\n2) One-line summary\n3) Top options section:\n   - If results_count >= 5, list exactly 5 items.\n   - If results_count < 5, list all available items and say why fewer exist.\n   - Each item must include title, one short reason, and markdown link.\n4) \"Data\" section with engine, original query, effective query, count\n5) \"References\" section with stash ref and top URL",
       "required": true,
       "description": "Create canvas search report"
     }
