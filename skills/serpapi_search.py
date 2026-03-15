@@ -41,6 +41,11 @@ AMAZON_QUERY_STOPWORDS = {
     "give", "help", "i", "ideas", "in", "into", "is", "it", "looking", "me",
     "my", "of", "on", "please", "recommend", "search", "show", "suggest",
     "that", "the", "to", "under", "want", "with", "you", "your",
+    "amazon", "product", "products", "listing", "listings", "let", "know",
+    "could", "would", "should", "for", "gift", "gifts", "idea", "ideas",
+    "birthday", "present", "male", "female", "adult", "year", "years", "old",
+    "he", "him", "his", "she", "her", "they", "them", "their",
+    "so", "just", "really", "also", "items", "item", "get", "got",
 }
 
 
@@ -123,17 +128,31 @@ def _normalize_amazon_query(query: str) -> str:
     if not raw:
         return raw
 
-    budget_match = re.search(r"\$\s*\d+(?:\s*-\s*\$\s*\d+)?", raw)
+    lowered = raw.lower()
+    # Common typo/phrase cleanup seen in natural prompts
+    replacements = {
+        "amazong": "amazon",
+        "old scholl": "classic",
+        "old school": "classic",
+        "tech enthusiast": "tech",
+    }
+    for bad, good in replacements.items():
+        lowered = lowered.replace(bad, good)
+
+    budget_match = re.search(r"\$\s*\d+(?:\s*-\s*\$\s*\d+)?", lowered)
     budget_token = budget_match.group(0).replace(" ", "") if budget_match else ""
 
-    cleaned = re.sub(r"[^a-zA-Z0-9$\- ]+", " ", raw.lower())
+    cleaned = re.sub(r"[^a-zA-Z0-9$\- ]+", " ", lowered)
     tokens = [t for t in cleaned.split() if t]
 
     kept: list[str] = []
+    has_budget = bool(budget_token)
     for token in tokens:
         if token in AMAZON_QUERY_STOPWORDS:
             continue
         # Keep numbers, budget tokens, and meaningful words
+        if token.isdigit() and not has_budget:
+            continue
         if len(token) <= 1 and not token.isdigit() and not token.startswith("$"):
             continue
         kept.append(token)
@@ -159,6 +178,26 @@ def _normalize_amazon_query(query: str) -> str:
         normalized = f"{normalized} {budget_token}".strip()
 
     return normalized or raw
+
+
+def _should_optimize_amazon_query(raw_query: str, normalized_query: str) -> bool:
+    """Decide if first-pass Amazon query should be normalized."""
+    if not raw_query:
+        return False
+    if not normalized_query:
+        return False
+    if normalized_query == raw_query:
+        return False
+
+    raw_tokens = re.findall(r"[a-zA-Z0-9$-]+", raw_query.lower())
+    if len(raw_tokens) >= 8:
+        return True
+    if any(ch in raw_query for ch in (".", ",", "?", "!", ":")):
+        return True
+    # If prompt reads like a sentence/request, optimization usually improves relevance.
+    conversational_markers = ("find", "show", "recommend", "looking for", "let me know", "what")
+    lowered = raw_query.lower()
+    return any(marker in lowered for marker in conversational_markers)
 
 
 def _fallback_amazon_query(query: str) -> str:
@@ -224,6 +263,7 @@ def main() -> int:
         page = int(input_data.get("page", 1))
         num_results = int(input_data.get("num_results", 5))
         no_cache = _parse_bool(input_data.get("no_cache", False))
+        optimize_query = _parse_bool(input_data.get("optimize_query", True), default=True)
         include_raw = _parse_bool(input_data.get("include_raw", False))
         extra_params = input_data.get("extra_params", {}) or {}
 
@@ -247,6 +287,14 @@ def main() -> int:
             return_error("SERP_API_KEY appears to be a placeholder or invalid.")
             return 1
 
+        query_effective = query
+        query_was_optimized = False
+        if engine == "amazon" and query and optimize_query:
+            normalized_query = _normalize_amazon_query(query)
+            if _should_optimize_amazon_query(query, normalized_query):
+                query_effective = normalized_query
+                query_was_optimized = True
+
         params: dict[str, Any] = {
             "engine": engine,
             "api_key": api_key,
@@ -256,13 +304,13 @@ def main() -> int:
             "no_cache": "true" if no_cache else "false",
         }
 
-        if query:
+        if query_effective:
             if engine == "amazon":
-                params["k"] = query
+                params["k"] = query_effective
                 params["amazon_domain"] = amazon_domain
                 params["language"] = language
             else:
-                params["q"] = query
+                params["q"] = query_effective
 
         if asin:
             params["asin"] = asin
@@ -304,7 +352,6 @@ def main() -> int:
             return 1
 
         results = _extract_results(payload, engine=engine, limit=num_results)
-        query_effective = query
         retried_with_normalized_query = False
         retry_attempted_queries: list[str] = []
 
@@ -313,11 +360,11 @@ def main() -> int:
         if engine == "amazon" and query and not results:
             retry_candidates = []
             normalized_query = _normalize_amazon_query(query)
-            if normalized_query and normalized_query != query:
+            if normalized_query and normalized_query != query and normalized_query != query_effective:
                 retry_candidates.append(normalized_query)
 
             broad_query = _fallback_amazon_query(query)
-            if broad_query and broad_query not in retry_candidates and broad_query != query:
+            if broad_query and broad_query not in retry_candidates and broad_query != query and broad_query != query_effective:
                 retry_candidates.append(broad_query)
 
             for candidate in retry_candidates[:2]:
@@ -349,9 +396,12 @@ def main() -> int:
             "engine": engine,
             "query": query or None,
             "query_effective": query_effective or None,
+            "query_was_optimized": query_was_optimized,
             "asin": asin or None,
             "results_count": len(results),
             "results": results,
+            "top_results": results[:5],
+            "top_url": (results[0].get("url") if results else None),
             "search_metadata": payload.get("search_metadata", {}),
             "search_information": payload.get("search_information", {}),
             "proxy_enabled": get_proxy_config() is not None,

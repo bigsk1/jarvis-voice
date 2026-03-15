@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_search",
-  "description": "Run generic SerpApi searches across engines (amazon, amazon_product, google, shopping, news). Use for product lookup, listing search, and result aggregation with structured output.",
+  "description": "Run generic SerpApi searches across engines (amazon, amazon_product, google, shopping, news). Use for Amazon product lookup, listing search, and result aggregation with structured output.",
   "script": "serpapi_search.py",
   "parameters": {
     "type": "object",
@@ -41,6 +41,10 @@
       "no_cache": {
         "type": "boolean",
         "description": "If true, bypass SerpApi cache for fresh fetch."
+      },
+      "optimize_query": {
+        "type": "boolean",
+        "description": "For engine=amazon, refine conversational input into a compact search query before first request (default: true)."
       },
       "extra_params": {
         "type": "object",

@@ -574,8 +574,9 @@ function selectPage(id) {
         hljs.highlightElement(block);
     });
 
-    // Setup image click handlers for lightbox
+    // Setup content interaction handlers
     setupImageHandlers();
+    setupLinkHandlers();
 }
 
 function showEmptyState() {
@@ -644,6 +645,14 @@ function setupImageHandlers() {
             e.preventDefault();
             openLightbox(img.src);
         };
+    });
+}
+
+// Keep canvas page open while following content links
+function setupLinkHandlers() {
+    document.querySelectorAll('.page-content a').forEach(link => {
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
     });
 }
 
