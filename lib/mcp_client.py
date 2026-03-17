@@ -322,11 +322,19 @@ class MCPClient:
         Returns:
             Response result
         """
+        # IMPORTANT: Never call start() while holding self.lock.
+        # start() performs MCP initialize -> _send_request(), and taking
+        # the same non-reentrant lock here causes a deadlock on first call.
+        if not self._check_health():
+            raise Exception(f"MCP server {self.name} is in cooldown after repeated crashes")
+        
+        if not self.process:
+            self.start()
+        
         with self.lock:
-            # Health check: restart if crashed (with loop protection)
+            # Process may have changed after startup/restart checks.
             if not self._check_health():
                 raise Exception(f"MCP server {self.name} is in cooldown after repeated crashes")
-            
             if not self.process:
                 self.start()
             
