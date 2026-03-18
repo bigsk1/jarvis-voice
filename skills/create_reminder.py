@@ -123,6 +123,16 @@ def normalize_time_words(text: str) -> str:
     
     return re.sub(pattern, replace_word, text, flags=re.IGNORECASE)
 
+
+def normalize_meridiem(text: str) -> str:
+    """Normalize meridiem variants like 'p.m.' and 'a m' to 'pm'/'am'."""
+    if not text:
+        return text
+    normalized = text.lower()
+    # Handle dotted and spaced forms: p.m., p m, p.m, etc.
+    normalized = re.sub(r'\b([ap])\s*\.?\s*m\.?\b', r'\1m', normalized)
+    return normalized
+
 def parse_multi_day_pattern(when: str):
     """Parse patterns that require multiple individual reminders.
     
@@ -207,7 +217,8 @@ def extract_time_from_expression(when: str, default_hour: int = 10):
     
     Returns: (hour, minute) tuple
     """
-    time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)', when.lower())
+    when = normalize_meridiem(when)
+    time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
     if time_match:
         hour = int(time_match.group(1))
         minute = int(time_match.group(2)) if time_match.group(2) else 0
@@ -249,7 +260,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
     - "tomorrow at 3pm" -> (datetime, None)
     - "next 5 days at 2pm" -> ([datetime1, datetime2, ...], None)  # Multiple!
     """
-    when = when.lower().strip()
+    when = normalize_meridiem(when).strip()
     
     # Normalize word numbers to digits (e.g., "one hour" -> "1 hour")
     when = normalize_time_words(when)
@@ -295,7 +306,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
             trigger_time = now + timedelta(days=days_ahead)
             
             # Extract time from expression if provided, else use default
-            time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)', when)
+            time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
             if time_match:
                 hour = int(time_match.group(1))
                 minute = int(time_match.group(2)) if time_match.group(2) else 0
@@ -335,7 +346,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
                     trigger_time = trigger_time.replace(month=trigger_time.month + 1, day=target_day)
             
             # Extract time if provided
-            time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)', when)
+            time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
             if time_match:
                 hour = int(time_match.group(1))
                 minute = int(time_match.group(2)) if time_match.group(2) else 0
@@ -387,7 +398,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
             return tomorrow.replace(hour=0, minute=0, second=0, microsecond=0), None
         
         # Check for specific time
-        time_match = re.search(r'(\d+)\s*(am|pm)', when)
+        time_match = re.search(r'(\d+)\s*(am|pm)\b', when)
         if time_match:
             hour = int(time_match.group(1))
             meridiem = time_match.group(2)
@@ -403,7 +414,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
             return tomorrow.replace(hour=default_hour, minute=0, second=0, microsecond=0), None
     
     # Pattern: "at 3pm" or "3pm" (one-time)
-    time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)', when)
+    time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
     if time_match:
         hour = int(time_match.group(1))
         minute = int(time_match.group(2)) if time_match.group(2) else 0
