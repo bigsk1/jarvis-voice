@@ -17,7 +17,7 @@
       },
       "content": {
         "type": "string",
-        "description": "Markdown content for the page. REQUIRED for create/update. For update: pass the FULL new content (read existing first, add new sections, then pass combined). Supports headers, lists, tables, code blocks."
+        "description": "Markdown content for the page. REQUIRED for create/update. For update: pass the FULL new content (read existing first, add new sections, then pass combined). Supports headers, lists, tables, code blocks. If you include sources/links, URLs must be complete and resolvable. NEVER use shortened/truncated links like 'https://...'."
       },
       "tags": {
         "type": "array",

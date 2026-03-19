@@ -15,6 +15,7 @@ Output: { "ok": bool, "speech": str, "data": dict }
 import sys
 import os
 import json
+import re
 from typing import Any
 
 # Add lib to path
@@ -26,6 +27,22 @@ CANVAS_URL = "http://localhost:8890"
 CANVAS_API = f"{CANVAS_URL}/api"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANVAS_DIR = os.path.join(PROJECT_ROOT, "data", "canvas")
+
+
+def _find_truncated_urls(content: str) -> list[str]:
+    """Detect clearly truncated URLs like 'https://example.com/...'. """
+    if not content:
+        return []
+    # Match URL-like tokens that contain ellipsis, which are not resolvable links.
+    matches = re.findall(r'(?:https?://|www\.)[^\s)\]]*\.\.\.[^\s)\]]*', content, flags=re.IGNORECASE)
+    # Return unique values preserving order
+    seen = set()
+    bad = []
+    for m in matches:
+        if m not in seen:
+            seen.add(m)
+            bad.append(m)
+    return bad
 
 
 def check_canvas_health() -> bool:
@@ -127,6 +144,14 @@ def create_page(title: str, content: str, tags: list[str] = None,
     if content:
         content = content.replace('\\n', '\n')
     
+    truncated_urls = _find_truncated_urls(content or "")
+    if truncated_urls:
+        return {
+            "ok": False,
+            "error": f"Canvas content contains truncated URLs: {truncated_urls[:3]}",
+            "speech": "I couldn't save that canvas page because one or more source links were truncated. I'll need to regenerate it with full URLs."
+        }
+    
     data = {
         "title": title,
         "content": content,
@@ -174,6 +199,13 @@ def update_page(page_id: str, title: str = None, content: str = None,
     if title is not None:
         data['title'] = title
     if content is not None:
+        truncated_urls = _find_truncated_urls(content)
+        if truncated_urls:
+            return {
+                "ok": False,
+                "error": f"Canvas content contains truncated URLs: {truncated_urls[:3]}",
+                "speech": "I couldn't update that canvas page because one or more source links were truncated. Please regenerate with full URLs."
+            }
         data['content'] = content
     if tags is not None:
         data['tags'] = tags
