@@ -260,9 +260,25 @@ class LogStreamer:
             data = json.loads(line)
             
             tool = data.get('tool', 'unknown')
-            success = data.get('success', True)
+            # Support both legacy and current tool log schema:
+            # - legacy: {args, success, error}
+            # - current: {arguments, result:{ok,error,speech}, duration_ms}
+            args = data.get('args')
+            if args is None:
+                args = data.get('arguments', {})
+            if not isinstance(args, dict):
+                args = {}
+
+            result_obj = data.get('result', {})
+            if not isinstance(result_obj, dict):
+                result_obj = {}
+
+            success = data.get('success')
+            if success is None:
+                success = result_obj.get('ok', True)
+
             duration = data.get('duration_ms', 0)
-            error = data.get('error', '')
+            error = data.get('error', '') or result_obj.get('error', '')
             
             level = 'success' if success else 'error'
             
@@ -284,8 +300,11 @@ class LogStreamer:
                     'tool': tool,
                     'success': success,
                     'duration_ms': duration,
-                    'args': data.get('args', {}),
-                    'result_preview': str(data.get('result', ''))[:300],
+                    # Keep full args object for expandable details view
+                    'args': args,
+                    # Helpful at-a-glance key for tools like canvas/create-update
+                    'action': args.get('action') if isinstance(args, dict) else None,
+                    'result_preview': (result_obj.get('speech') or str(result_obj))[:300],
                     'error': error,
                     'mode': data.get('mode', 'unknown')
                 },
