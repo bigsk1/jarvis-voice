@@ -176,8 +176,17 @@ def sanitize_for_speech(text: str) -> str:
     if not text:
         return ""
     
-    # Remove URLs
-    text = re.sub(r'https?://[^\s]+', '[URL removed]', text)
+    # Convert markdown links to just link text: [label](url) -> label
+    text = re.sub(r'\[([^\]]+)\]\((?:https?://|www\.)[^)]+\)', r'\1', text, flags=re.IGNORECASE)
+
+    # Remove explicit URL schemes and www links
+    text = re.sub(r'(?:https?://|www\.)[^\s]+', '[URL removed]', text, flags=re.IGNORECASE)
+
+    # Remove stash references that should never be spoken
+    text = re.sub(r'stash://[^\s]+', '[stash reference]', text, flags=re.IGNORECASE)
+
+    # Remove bare domains with optional path (e.g., amazon.com/item)
+    text = re.sub(r'\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s]*)?\b', '[URL removed]', text, flags=re.IGNORECASE)
     
     # Remove IP addresses
     text = re.sub(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?', '[IP removed]', text)
@@ -188,6 +197,8 @@ def sanitize_for_speech(text: str) -> str:
     # Remove potential tokens/keys
     text = re.sub(r'[A-Za-z0-9]{32,}', '[token removed]', text)
     
+    # Normalize whitespace after substitutions
+    text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 

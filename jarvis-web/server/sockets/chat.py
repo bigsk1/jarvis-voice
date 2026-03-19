@@ -1099,6 +1099,10 @@ class ChatHandler:
                 if get_web_setting('audio.tts_enabled', False):
                     speech_text = result.get('speech', '')
                     if speech_text:
+                        from security_utils import sanitize_for_speech
+                        speech_text = sanitize_for_speech(speech_text)
+                        if not speech_text:
+                            speech_text = "Done. I shared the details in chat."
                         audio_url = self._generate_tts(speech_text, mode=mode)
             except Exception as tts_err:
                 print(f"[CHAT] TTS generation failed: {tts_err}")

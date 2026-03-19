@@ -14,6 +14,8 @@ from webui_auth import is_auth_enabled
 import sys
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+# Ensure shared lib helpers are importable in this module
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 
 def _get_jarvis_version():
@@ -980,6 +982,11 @@ def text_to_speech():
     
     if not text:
         return jsonify({'ok': False, 'error': 'No text provided'}), 400
+    
+    from security_utils import sanitize_for_speech
+    text = sanitize_for_speech(text)
+    if not text:
+        text = "Done. I shared the details in chat."
     
     try:
         import requests

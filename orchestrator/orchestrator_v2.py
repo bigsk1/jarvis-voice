@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_int, get_float, get_config_value
 from memory_db import get_memory_db
 from status_updater import StatusUpdater
+from security_utils import sanitize_for_speech
 
 from router_v2 import LLMRouter
 from executor import ToolExecutor
@@ -2288,7 +2289,9 @@ Mode: {mode}
             print(f"\n🔊 Speaking result via {say_script.name}...")
         
         try:
-            subprocess.run([str(say_script), result["speech"]], check=False)
+            safe_speech = sanitize_for_speech(result["speech"])
+            if safe_speech:
+                subprocess.run([str(say_script), safe_speech], check=False)
         except Exception as e:
             print(f"⚠️ TTS failed: {e}", file=sys.stderr)
 
