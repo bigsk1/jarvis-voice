@@ -2102,7 +2102,7 @@ def main():
         if mode == "cloud":
             provider = get_config_value("LLM_PROVIDER", "anthropic")
             if provider == "openai":
-                model = get_config_value("OPENAI_MODEL", "gpt-4o")
+                model = get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
             elif provider == "xai":
                 model = get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
             else:

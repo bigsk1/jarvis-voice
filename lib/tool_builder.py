@@ -665,7 +665,7 @@ class ToolBuilder:
             self.provider = create_provider(
                 provider_type,
                 api_key=get_config_value('OPENAI_API_KEY'),
-                model=model or get_config_value('OPENAI_MODEL', 'gpt-4o')
+                model=model or get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
             )
         elif provider_type == 'xai':
             self.provider = create_provider(

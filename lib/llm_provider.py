@@ -1118,7 +1118,7 @@ def create_provider(provider_type: str, **config) -> LLMProvider:
     if provider_type == "openai":
         return OpenAIProvider(
             api_key=config["api_key"],
-            model=config.get("model", "gpt-4o-mini")
+            model=config.get("model", "gpt-5.4-nano")
         )
     elif provider_type == "anthropic":
         return AnthropicProvider(

@@ -1827,7 +1827,7 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
             provider = create_provider(
                 'openai',
                 api_key=get_config_value('OPENAI_API_KEY'),
-                model=get_config_value('OPENAI_MODEL', 'gpt-4o')
+                model=get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
             )
         
         # Call LLM to enhance

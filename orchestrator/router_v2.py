@@ -549,7 +549,7 @@ When this appears to be the start of a fresh conversation (no prior assistant me
         provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "openai" if self.mode == "cloud" else "ollama")
         
         if provider_type == "openai":
-            model = self._model_override or get_config_value("OPENAI_MODEL", "gpt-5-mini-2025-08-07")
+            model = self._model_override or get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),

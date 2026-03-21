@@ -38,7 +38,7 @@ if provider == 'xai':
 elif provider == 'anthropic':
     model = get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
 elif provider == 'openai':
-    model = get_config_value('OPENAI_MODEL', 'gpt-4o')
+    model = get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
 else:
     model = 'unknown'
 print(f"🤖 Jarvis v{_jarvis_version}")

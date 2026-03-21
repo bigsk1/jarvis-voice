@@ -955,7 +955,7 @@ Example for FACTUAL (should NOT be stored here):
                 provider = create_provider(
                     "openai",
                     api_key=get_config_value("OPENAI_API_KEY"),
-                    model=get_config_value("OPENAI_MODEL", "gpt-5.1")
+                    model=get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
                 )
             elif provider_type == "anthropic":
                 provider = create_provider(

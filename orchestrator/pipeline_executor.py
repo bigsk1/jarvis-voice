@@ -119,7 +119,7 @@ class PipelineExecutor:
             config = {}
             if provider_type == "openai":
                 config["api_key"] = get_config_value("OPENAI_API_KEY")
-                config["model"] = get_config_value("OPENAI_MODEL", "gpt-5.1-chat-latest")
+                config["model"] = get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
             elif provider_type == "anthropic":
                 config["api_key"] = get_config_value("ANTHROPIC_API_KEY")
                 config["model"] = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")

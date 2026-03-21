@@ -491,7 +491,7 @@ def _vision_openai(image_base64: str, question: str, model: str = None) -> str |
             _debug("[ANALYZE_IMAGE] OPENAI_API_KEY not configured")
             return None
         
-        model = model or get_config_value('OPENAI_MODEL', 'gpt-4o')
+        model = model or get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
         
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",

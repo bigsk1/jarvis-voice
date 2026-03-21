@@ -623,7 +623,7 @@ Generate {count} queries:"""
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),
-                model=get_config_value("OPENAI_MODEL", "gpt-4o"),
+                model=get_config_value("OPENAI_MODEL", "gpt-5.4-nano"),
             )
     
     def _log_result(self, session_id: str, result: dict[str, Any]):
