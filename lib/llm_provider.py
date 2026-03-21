@@ -257,13 +257,13 @@ class AnthropicProvider(LLMProvider):
             if self.enable_search:
                 # Add web search as first tool (server-side, special type)
                 web_search_tool = {
-                    "type": "web_search_20250305",
+                    "type": "web_search_20260209",
                     "name": "web_search",
                     "max_uses": 5  # Limit searches per request
                 }
                 tools_with_cache.insert(0, web_search_tool)
                 # Required beta header for web search
-                extra_headers["anthropic-beta"] = "web-search-2025-03-05"
+                # extra_headers["anthropic-beta"] = "web-search-2025-03-05"
                 
                 if os.environ.get('JARVIS_DEBUG'):
                     print(f"DEBUG: Added Anthropic web search tool", file=sys.stderr)
@@ -281,7 +281,7 @@ class AnthropicProvider(LLMProvider):
                 "tools": tools_with_cache
             }
             
-            # Add extra headers if any (e.g., web search beta)
+            # Add extra headers if any (reserved for future provider requirements)
             if extra_headers:
                 api_params["extra_headers"] = extra_headers
             
