@@ -2,6 +2,10 @@
 """
 Measure baseline token usage for Jarvis.
 Shows how many tokens are consumed BEFORE user query processing.
+
+Counts the full system prompt plus every registered tool at full schema size.
+At runtime, tool RAG and cloud/local limits usually send only a subset of tools
+(and sometimes shorter descriptions), so real requests often use fewer tokens.
 """
 import sys
 import os
@@ -69,7 +73,7 @@ def measure_baseline(mode='cloud'):
     tool_json = json.dumps(anthropic_tools, indent=2)
     tool_tokens = count_tokens_approximate(tool_json)
     
-    print(f"🔧 TOOL DEFINITIONS")
+    print(f"🔧 TOOL DEFINITIONS (full registry — not RAG-filtered)")
     print(f"   Total tools: {len(registry.tools)}")
     print(f"   Tool JSON length: {len(tool_json):,} characters")
     print(f"   Tokens: ~{tool_tokens:,} tokens\n")
@@ -108,7 +112,11 @@ def measure_baseline(mode='cloud'):
     print(f"   Tool Definitions:  {tool_tokens:,} tokens")
     print(f"{'─'*80}")
     print(f"   TOTAL BASELINE:    {baseline_tokens:,} tokens")
-    print(f"{'─'*80}\n")
+    print(f"{'─'*80}")
+    print(f"ℹ️  Upper bound: this sums system prompt + all tools at full description size.")
+    print(f"   Live routing uses tool RAG, so only tools that match the query are injected;")
+    print(f"   cloud vs local also cap how many tools and how much description detail appear.")
+    print(f"   Expect typical turns to sit noticeably below TOTAL BASELINE above.\n")
     
     # 4. Context Window Analysis
     provider = get_config_value("LLM_PROVIDER", "unknown")
@@ -122,11 +130,21 @@ def measure_baseline(mode='cloud'):
             print(f"   Context window: {context_window:,} tokens")
         elif provider == "openai":
             model = get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
-            # gpt-5.1-chat-latest has 400k context
-            if "5.1-chat-latest" in model.lower():
-                context_window = 400000
+            mlow = model.lower()
+            # Approximate published limits (script display only)
+            if "gpt-5.4" in mlow and "nano" not in mlow:
+                context_window = 1_050_000
+            elif "5.4" in mlow and "nano" in mlow:
+                context_window = 400_000
+            elif (
+                "gpt-4o" in mlow
+                or "gpt-4-turbo" in mlow
+                or "gpt-3.5" in mlow
+                or (mlow.startswith("gpt-4") and "gpt-5" not in mlow)
+            ):
+                context_window = 128_000  # GPT-4 / 4o / 3.5 class
             else:
-                context_window = 128000  # GPT-4o
+                context_window = 400_000  # GPT-5.x, o-series, chat-latest, etc.
             print(f"🧠 MODEL CAPACITY (OpenAI)")
             print(f"   Model: {model}")
             print(f"   Context window: {context_window:,} tokens")
@@ -242,7 +260,8 @@ def main():
         print(f"TOTAL BASELINE:     {cloud_data['total_baseline_tokens']:6,} tokens   {local_data['total_baseline_tokens']:6,} tokens")
         print(f"Context Window:     {cloud_data['context_window']:6,} tokens   {local_data['context_window']:6,} tokens")
         print(f"Baseline %:         {cloud_data['baseline_percent']:6.1f}%       {local_data['baseline_percent']:6.1f}%")
-        print(f"{'─'*80}\n")
+        print(f"{'─'*80}")
+        print(f"ℹ️  Both columns are worst-case (full tool list). Real usage is usually lower (RAG + mode limits).\n")
         
         return
     

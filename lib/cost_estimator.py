@@ -12,6 +12,10 @@ PRICING = {
         "gpt-5.2": {"input": 1.75, "output": 14.00, "cached": 0.17},
         "gpt-5.2-2025-12-11": {"input": 1.75, "output": 14.00, "cached": 0.17},
         "gpt-5.2-chat-latest": {"input": 1.75, "output": 14.00, "cached": 0.17},
+        # GPT-5.4: 1,050,000 context, 128,000 max output; $/1M tokens
+        "gpt-5.4": {"input": 2.50, "output": 15.00, "cached": 0.25},
+        # GPT-5.4-nano: 400,000 context, 128,000 max output; $/1M tokens
+        "gpt-5.4-nano": {"input": 0.20, "output": 1.25, "cached": 0.02},
         "gpt-5.1": {"input": 1.25, "output": 10.00, "cached": 0.125},
         "gpt-5.1-2025-11-13": {"input": 1.25, "output": 10.00, "cached": 0.125},
         "gpt-5.1-chat-latest": {"input": 1.25, "output": 10.00, "cached": 0.125},
