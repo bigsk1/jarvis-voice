@@ -306,6 +306,25 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-03-21:**
+- ✅ **SerpApi query optimization** - Conversational prompts can be compacted to keyword-style queries before search
+  - Tool output includes `query_was_optimized`; `query` (original) and `query_effective` (optimized) for transparency
+  - `optimize_query` in `serpapi_search.tool.json` (default on) to disable when needed
+- ✅ **Canvas & workflows** - Workflows pass `source_query` into canvas create (fixes `source_query: null`)
+  - Trimmed payloads sent to the canvas LLM so long Amazon-style results do not truncate mid-list
+- ✅ **Canvas URLs** - Rejects truncated URL patterns (`https://...`, tokens with `...`); tool guidance requires full resolvable links
+- ✅ **Web UI: canvas links** - Canvas page links open in a new window/tab
+- ✅ **Chat bubble markdown** - Lists, bullets, and URL styling in message bubbles
+- ✅ **Speech sanitization** - `lib/security_utils.sanitize_for_speech()` strips markdown links, http(s)/www URLs, bare domains, `stash://` refs, IPs, and noisy paths/tokens
+  - Applied before auto WebUI TTS, `/api/tts`, and orchestrator `--speak`
+- ✅ **MCP client deadlock fix** - Non-reentrant lock in `lib/mcp_client.py` caused hangs (e.g. Brave Search); `_send_request` no longer deadlocks during `start()` / `_initialize()`
+- ✅ **Orchestrator duplicate-tool handling** - Prefers the last real tool speech when deduplicating; `_extract_useful_data` pulls nested lists/fields for synthesis
+  - Reuses last speech only if it looks human-readable; otherwise falls back to synthesis instead of JSON-like text
+- ✅ **Pipeline & tool cards** - `pipeline_executor` always includes `error` and `speech` in step results; failed workflow steps with no data send `{ "error": "..." }` to tool cards and persist it in saved conversations
+- ✅ **create_reminder** - Normalizes `a.m.` / `p.m.` (and spaced variants) before time parsing
+- ✅ **Log streamer (Web UI)** - Reads `args` or `arguments`; success from `success` or `result.ok`; error from `error` or `result.error`; quick actions in details for canvas debugging; full args in expandable details
+- ✅ **Dependencies & models** - yt-dlp update; Qwen model config refresh; Anthropic web search integration version bump
+
 **2026-03-13:**
 - ✅ **SerpApi Search Tool** - New generic `serpapi_search` tool (Amazon + engine-based search)
   - Supports `amazon` listings and `amazon_product` ASIN lookups
@@ -1228,6 +1247,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-03-13  
-**Latest:** SerpApi search tool + tool docs index updates  
+**Last Updated:** 2026-03-21  
+**Latest:** SerpApi query optimization, canvas/workflow fixes, speech sanitization, MCP deadlock fix, orchestrator duplicate handling, chat UI polish  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
