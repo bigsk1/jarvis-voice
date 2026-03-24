@@ -198,6 +198,7 @@ class PipelineExecutor:
             tool_name = step["tool"]
             action = step.get("action")
             description = step.get("description", f"{tool_name}")
+            step_start_time = time.time()
             
             if status_callback:
                 status_callback(f"Step {step_num}: {description}")
@@ -219,6 +220,7 @@ class PipelineExecutor:
                     step, tool_name, action, tool_defaults, 
                     variables, validation_policy, total_retries, max_total_retries
                 )
+                step_duration_ms = int((time.time() - step_start_time) * 1000)
                 
                 if step_result.get("abort"):
                     # Workflow abort requested
@@ -237,7 +239,8 @@ class PipelineExecutor:
                     "tool": tool_name,
                     "items_processed": step_result.get("items_processed", 0),
                     "items_succeeded": step_result.get("items_succeeded", 0),
-                    "outputs": step_result.get("outputs", [])
+                    "outputs": step_result.get("outputs", []),
+                    "duration_ms": step_duration_ms
                 })
                 tools_used.append(tool_name)
             else:
@@ -246,6 +249,7 @@ class PipelineExecutor:
                     step, tool_name, action, tool_defaults,
                     variables, validation_policy
                 )
+                step_duration_ms = int((time.time() - step_start_time) * 1000)
                 
                 if not step_result.get("ok") and step.get("required", True):
                     # Required step failed - abort by default unless explicitly told to continue
@@ -256,7 +260,8 @@ class PipelineExecutor:
                             "tool": tool_name,
                             "ok": False,
                             "data": step_result.get("data"),
-                            "error": step_result.get("error") or step_result.get("speech")
+                            "error": step_result.get("error") or step_result.get("speech"),
+                            "duration_ms": step_duration_ms
                         })
                         return self._build_abort_response(workflow, step, results, variables,
                                                           start_time=start_time, query=query,
@@ -276,7 +281,8 @@ class PipelineExecutor:
                     "ok": step_result.get("ok", False),
                     "data": step_result.get("data"),
                     "error": step_result.get("error"),
-                    "speech": step_result.get("speech")
+                    "speech": step_result.get("speech"),
+                    "duration_ms": step_duration_ms
                 })
                 tools_used.append(tool_name)
         
@@ -388,7 +394,11 @@ class PipelineExecutor:
                     params.update(item)
             
             # Execute tool
+            item_start_time = time.time()
             result = self.executor.execute(tool_name, params)
+            item_duration_ms = int((time.time() - item_start_time) * 1000)
+            if isinstance(result, dict):
+                result["duration_ms"] = item_duration_ms
             
             # Validate result
             if result.get("ok") and step.get("validation"):

@@ -153,6 +153,85 @@ def setup_proxy():
     return False
 
 
+def clear_proxy():
+    """Remove proxy environment variables for direct network access."""
+    for key in ('http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY'):
+        os.environ.pop(key, None)
+
+
+def is_proxy_tunnel_error(error_text: str) -> bool:
+    """Detect proxy-related curl_cffi/yfinance failures worth a direct retry."""
+    error_lower = error_text.lower()
+    return (
+        'connect tunnel failed' in error_lower
+        or 'curl: (56)' in error_lower
+        or 'curl: (7)' in error_lower
+        or 'curl: (5)' in error_lower
+        or 'response 503' in error_lower
+        or 'could not connect to server' in error_lower
+        or 'could not resolve proxy' in error_lower
+        or 'failed to perform, curl:' in error_lower
+    )
+
+
+def fetch_stock_snapshot(ticker: str, symbol: str) -> dict:
+    """Fetch and normalize stock/futures data from Yahoo Finance."""
+    stock = yf.Ticker(ticker)
+
+    # Get info first (works better for futures outside market hours)
+    info = stock.info
+
+    # Try history first for most accurate current data
+    hist = stock.history(period='1d')
+
+    if not hist.empty:
+        # Use history data (most accurate during market hours)
+        current_price = hist['Close'].iloc[-1]
+        open_price = hist['Open'].iloc[0]
+        day_change = current_price - open_price
+        day_change_pct = (day_change / open_price) * 100 if open_price else 0
+    else:
+        # Fall back to info data (works for futures/commodities outside hours)
+        current_price = info.get('regularMarketPrice') or info.get('currentPrice') or info.get('previousClose')
+        prev_close = info.get('regularMarketPreviousClose') or info.get('previousClose')
+
+        if not current_price:
+            raise ValueError(f"No data found for '{symbol}'. Check if the ticker symbol is correct.")
+
+        if prev_close:
+            day_change = current_price - prev_close
+            day_change_pct = (day_change / prev_close) * 100
+        else:
+            day_change = 0
+            day_change_pct = 0
+
+    # Additional data from info
+    company_name = info.get('shortName', info.get('longName', ticker))
+    market_cap = info.get('marketCap')
+    # Get volume from info first, fall back to history if available
+    volume = info.get('volume') or info.get('regularMarketVolume')
+    if not volume and not hist.empty and 'Volume' in hist.columns:
+        volume = hist['Volume'].iloc[-1]
+    pe_ratio = info.get('trailingPE')
+    fifty_two_week_high = info.get('fiftyTwoWeekHigh')
+    fifty_two_week_low = info.get('fiftyTwoWeekLow')
+    sector = info.get('sector')
+
+    return {
+        "symbol": ticker,
+        "company": company_name,
+        "price_usd": current_price,
+        "change_today_usd": day_change,
+        "change_today_percent": day_change_pct,
+        "volume": volume,
+        "market_cap_usd": market_cap,
+        "pe_ratio": pe_ratio,
+        "52_week_high": fifty_two_week_high,
+        "52_week_low": fifty_two_week_low,
+        "sector": sector,
+    }
+
+
 def main():
     """Get stock price from Yahoo Finance."""
     try:
@@ -181,56 +260,41 @@ def main():
         ticker = STOCK_MAP.get(symbol_lower, symbol.upper())
         
         # Fetch stock data
+        used_proxy_fallback = False
         try:
-            stock = yf.Ticker(ticker)
-            
-            # Get info first (works better for futures outside market hours)
-            info = stock.info
-            
-            # Try history first for most accurate current data
-            hist = stock.history(period='1d')
-            
-            if not hist.empty:
-                # Use history data (most accurate during market hours)
-                current_price = hist['Close'].iloc[-1]
-                open_price = hist['Open'].iloc[0]
-                day_change = current_price - open_price
-                day_change_pct = (day_change / open_price) * 100 if open_price else 0
-            else:
-                # Fall back to info data (works for futures/commodities outside hours)
-                current_price = info.get('regularMarketPrice') or info.get('currentPrice') or info.get('previousClose')
-                prev_close = info.get('regularMarketPreviousClose') or info.get('previousClose')
-                
-                if not current_price:
-                    return_error(f"No data found for '{symbol}'. Check if the ticker symbol is correct.")
-                    return 1
-                
-                if prev_close:
-                    day_change = current_price - prev_close
-                    day_change_pct = (day_change / prev_close) * 100
-                else:
-                    day_change = 0
-                    day_change_pct = 0
-            
-            # Additional data from info
-            company_name = info.get('shortName', info.get('longName', ticker))
-            market_cap = info.get('marketCap')
-            # Get volume from info first, fall back to history if available
-            volume = info.get('volume') or info.get('regularMarketVolume')
-            if not volume and not hist.empty and 'Volume' in hist.columns:
-                volume = hist['Volume'].iloc[-1]
-            pe_ratio = info.get('trailingPE')
-            fifty_two_week_high = info.get('fiftyTwoWeekHigh')
-            fifty_two_week_low = info.get('fiftyTwoWeekLow')
-            sector = info.get('sector')
-            
+            stock_data = fetch_stock_snapshot(ticker, symbol)
         except Exception as e:
             error_str = str(e)
-            if 'No data found' in error_str or 'delisted' in error_str.lower():
+            if proxy_enabled and is_proxy_tunnel_error(error_str):
+                try:
+                    # Proxy occasionally returns transient CONNECT 503; retry direct once.
+                    clear_proxy()
+                    stock_data = fetch_stock_snapshot(ticker, symbol)
+                    proxy_enabled = False
+                    used_proxy_fallback = True
+                except Exception as retry_error:
+                    retry_error_str = str(retry_error)
+                    if 'No data found' in retry_error_str or 'delisted' in retry_error_str.lower():
+                        return_error(f"Stock '{symbol}' not found or may be delisted.")
+                    else:
+                        return_error(f"Failed to fetch stock data: {retry_error_str}")
+                    return 1
+            elif 'No data found' in error_str or 'delisted' in error_str.lower():
                 return_error(f"Stock '{symbol}' not found or may be delisted.")
             else:
                 return_error(f"Failed to fetch stock data: {error_str}")
             return 1
+
+        current_price = stock_data["price_usd"]
+        day_change = stock_data["change_today_usd"]
+        day_change_pct = stock_data["change_today_percent"]
+        company_name = stock_data["company"]
+        market_cap = stock_data["market_cap_usd"]
+        volume = stock_data["volume"]
+        pe_ratio = stock_data["pe_ratio"]
+        fifty_two_week_high = stock_data["52_week_high"]
+        fifty_two_week_low = stock_data["52_week_low"]
+        sector = stock_data["sector"]
         
         # Format price string
         if current_price >= 1000:
@@ -281,7 +345,8 @@ def main():
                 "52_week_low": fifty_two_week_low,
                 "sector": sector,
                 "source": "Yahoo Finance",
-                "proxy_enabled": proxy_enabled
+                "proxy_enabled": proxy_enabled,
+                "proxy_retry_without_proxy": used_proxy_fallback
             }
         )
         return 0

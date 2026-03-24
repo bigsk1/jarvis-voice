@@ -64,7 +64,7 @@ dependencies = [
     "fpdf2>=2.8.0",
     "pymupdf>=1.26.0",
     "spotipy>=2.25.0",
-    "yt-dlp>=2026.3.3",
+    "yt-dlp>=2026.3.17",
     "qrcode==8.2",
     "paramiko>=3.0.0",
     "yfinance>=1.1.0",

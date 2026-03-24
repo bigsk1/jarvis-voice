@@ -976,10 +976,13 @@ class ChatHandler:
                         for idx, output in enumerate(outputs):
                             output_ok = output.get('ok', True) if isinstance(output, dict) else True
                             output_data = output.get('data', output) if isinstance(output, dict) else output
+                            output_duration = output.get('duration_ms') if isinstance(output, dict) else None
+                            step_duration = step_data.get('duration_ms')
+                            event_duration = output_duration if output_duration is not None else (step_duration or 0)
                             self.socketio.emit('tool:complete', {
                                 'tool': tool,
                                 'result': output_data,
-                                'duration_ms': duration_ms // max(len(step_results), 1),
+                                'duration_ms': event_duration,
                                 'success': output_ok,
                                 'message_id': message_id,
                                 'workflow_step': f"{step_num}_{idx}"  # Unique per iteration
@@ -993,10 +996,11 @@ class ChatHandler:
                             step_result_payload = {
                                 'error': step_data.get('error') or step_data.get('speech') or 'Step failed'
                             }
+                        step_duration = step_data.get('duration_ms') or 0
                         self.socketio.emit('tool:complete', {
                             'tool': tool,
                             'result': step_result_payload,
-                            'duration_ms': duration_ms // max(len(step_results), 1),
+                            'duration_ms': step_duration,
                             'success': step_ok,
                             'message_id': message_id,
                             'workflow_step': step_num
