@@ -13,7 +13,7 @@ Output: { "ok": bool, "speech": str, "data": dict }
 import sys
 import os
 import json
-from datetime import datetime
+from datetime import datetime, date
 from typing import Any
 
 # Add lib to path for config_loader and http_client
@@ -242,6 +242,166 @@ def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> tuple[d
     return data, speech
 
 
+def geocode_open_meteo(location: str) -> tuple[float, float, str] | None:
+    """
+    Geocode location via Open-Meteo geocoding API.
+
+    Returns: (lat, lon, display_name) or None
+    """
+    parts = [p.strip() for p in location.split(',')]
+    query = parts[0] if parts else location
+
+    geo_url = "https://geocoding-api.open-meteo.com/v1/search"
+    params = {
+        "name": query,
+        "count": 5,
+        "language": "en",
+        "format": "json"
+    }
+
+    response = http_request(
+        'GET',
+        geo_url,
+        params=params,
+        timeout=10,
+        use_proxy=True,
+        fallback_on_proxy_fail=True
+    )
+    response.raise_for_status()
+    data = response.json()
+    results = data.get("results", [])
+    if not results:
+        return None
+
+    target_state = parts[1].upper() if len(parts) >= 2 else None
+    best = None
+    for item in results:
+        country_code = (item.get("country_code") or "").upper()
+        admin1 = (item.get("admin1") or "")
+        # Prefer US state match when user provided one like "Hillsboro, OR"
+        if target_state and country_code == "US":
+            if target_state in US_STATE_CODES and admin1.upper() == target_state:
+                best = item
+                break
+            # Second best: match expanded state name
+            if target_state in US_STATE_CODES and admin1.lower().startswith(target_state.lower()):
+                best = item
+                break
+        # Fallback to first US hit for US-like queries
+        if target_state and target_state in US_STATE_CODES and country_code == "US" and best is None:
+            best = item
+    if best is None:
+        best = results[0]
+
+    city = best.get("name", query)
+    admin1 = best.get("admin1")
+    country = best.get("country")
+    if admin1 and country:
+        display_name = f"{city}, {admin1}, {country}"
+    elif country:
+        display_name = f"{city}, {country}"
+    else:
+        display_name = city
+
+    return (best["latitude"], best["longitude"], display_name)
+
+
+def fetch_open_meteo_daily_forecast(location: str, days: int) -> list[dict[str, Any]] | None:
+    """
+    Fetch daily weather forecast from Open-Meteo (no API key required).
+
+    Returns list of daily forecasts with high/low/precip data.
+    """
+    geo = geocode_open_meteo(location)
+    if not geo:
+        return None
+
+    lat, lon, _ = geo
+    forecast_url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "timezone": "auto",
+        "forecast_days": max(1, min(days, 10)),
+        "temperature_unit": "fahrenheit",
+        "wind_speed_unit": "mph",
+        "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode"
+    }
+
+    response = http_request(
+        'GET',
+        forecast_url,
+        params=params,
+        timeout=15,
+        use_proxy=True,
+        fallback_on_proxy_fail=True
+    )
+    response.raise_for_status()
+    data = response.json()
+    daily = data.get("daily", {})
+
+    times = daily.get("time", [])
+    highs = daily.get("temperature_2m_max", [])
+    lows = daily.get("temperature_2m_min", [])
+    precip_probs = daily.get("precipitation_probability_max", [])
+    weather_codes = daily.get("weathercode", [])
+
+    if not times:
+        return None
+
+    code_map = {
+        0: "clear sky",
+        1: "mainly clear",
+        2: "partly cloudy",
+        3: "overcast",
+        45: "fog",
+        48: "rime fog",
+        51: "light drizzle",
+        53: "drizzle",
+        55: "dense drizzle",
+        56: "freezing drizzle",
+        57: "freezing drizzle",
+        61: "light rain",
+        63: "rain",
+        65: "heavy rain",
+        66: "freezing rain",
+        67: "freezing rain",
+        71: "light snow",
+        73: "snow",
+        75: "heavy snow",
+        77: "snow grains",
+        80: "rain showers",
+        81: "rain showers",
+        82: "heavy rain showers",
+        85: "snow showers",
+        86: "heavy snow showers",
+        95: "thunderstorm",
+        96: "thunderstorm with hail",
+        99: "thunderstorm with hail",
+    }
+
+    daily_forecast = []
+    for i, iso_day in enumerate(times):
+        try:
+            day_obj = date.fromisoformat(iso_day)
+            day_name = day_obj.strftime("%a")
+        except Exception:
+            day_name = iso_day
+
+        code = weather_codes[i] if i < len(weather_codes) else None
+        daily_forecast.append({
+            "date": iso_day,
+            "day": day_name,
+            "high": round(highs[i]) if i < len(highs) and highs[i] is not None else None,
+            "low": round(lows[i]) if i < len(lows) and lows[i] is not None else None,
+            "condition": code_map.get(code, "unknown"),
+            "precip_probability": precip_probs[i] if i < len(precip_probs) else None,
+            "weather_code": code
+        })
+
+    return daily_forecast
+
+
 def fetch_wttr(location: str, forecast: bool) -> tuple[dict[str, Any], str]:
     """
     Fetch weather from wttr.in (no API key required).
@@ -337,6 +497,15 @@ def main():
         # Extract parameters
         location = input_data.get("location", "").strip()
         forecast = input_data.get("forecast", False)
+        days_raw = input_data.get("days")
+        if days_raw is None:
+            days = 7 if forecast else 1
+        else:
+            try:
+                days = int(days_raw)
+            except (ValueError, TypeError):
+                days = 7 if forecast else 1
+        days = max(1, min(days, 10))
         
         if not location:
             return_error("Location is required. Example: 'Seattle' or 'London, UK'")
@@ -375,6 +544,31 @@ def main():
         # Check if proxy was used
         proxy_enabled = get_proxy_config() is not None
         data["proxy_enabled"] = proxy_enabled
+
+        # Add true multi-day forecast when requested.
+        # OpenWeatherMap free endpoint is limited; Open-Meteo provides daily forecasts.
+        if forecast and days > 1:
+            try:
+                daily_forecast = fetch_open_meteo_daily_forecast(location, days)
+                if daily_forecast:
+                    data["daily_forecast"] = daily_forecast
+                    data["forecast_days"] = min(days, len(daily_forecast))
+                    data["daily_forecast_provider"] = "Open-Meteo"
+
+                    preview = daily_forecast[:3]
+                    preview_parts = []
+                    for day in preview:
+                        day_label = day.get("day", "")
+                        high = day.get("high")
+                        low = day.get("low")
+                        condition = day.get("condition", "unknown")
+                        if high is not None and low is not None:
+                            preview_parts.append(f"{day_label} {high}/{low} {condition}")
+                    if preview_parts:
+                        speech += " Next days: " + "; ".join(preview_parts) + "."
+            except Exception as daily_err:
+                # Keep current weather result but report capability limit honestly.
+                speech += f" I couldn't fetch a full {days}-day forecast right now: {daily_err}"
         
         return_success(speech=speech, data=data)
         return 0

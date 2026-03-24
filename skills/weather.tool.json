@@ -12,7 +12,11 @@
       },
       "forecast": {
         "type": "boolean",
-        "description": "If true, include today's high/low forecast. Default: false (current weather only)"
+        "description": "If true, include forecast data. Default: false (current weather only)."
+      },
+      "days": {
+        "type": "integer",
+        "description": "Forecast horizon in days when forecast=true. Range 1-10. Use 7 for week outlook."
       }
     },
     "required": ["location"]
