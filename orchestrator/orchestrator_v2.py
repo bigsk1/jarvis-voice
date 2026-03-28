@@ -7,9 +7,11 @@ import os
 import sys
 import json
 import time
+import re
 from pathlib import Path
 from typing import Any
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -140,9 +142,9 @@ class Orchestrator:
         self.workflow_loader = WorkflowLoader(explicit_only=True)
         self.pipeline_executor = PipelineExecutor(mode, self.executor)
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # Unique session ID
+        self.timezone = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
         
         # Auto-context configuration
-        from config_loader import get_config_value, get_int
         self.auto_context_enabled = get_config_value('AUTO_CONTEXT_ENABLED', 'true').lower() == 'true'
         self.auto_context_window = get_int('AUTO_CONTEXT_WINDOW', 3)
         self.auto_context_minutes = get_int('AUTO_CONTEXT_MINUTES', 10)
@@ -204,6 +206,108 @@ class Orchestrator:
             except Exception as e:
                 if sys.stdout.isatty():
                     print(f"⚠️ Progress callback error: {e}")
+
+    def _tool_freshness_ttl_seconds(self, tool_name: str) -> int | None:
+        """
+        TTL hint for how long a tool result should be considered authoritative.
+        """
+        ttl_map = {
+            "crypto_price": 60,
+            "stock_price": 60,
+            "weather": 600,
+            "get_time": 30,
+        }
+        return ttl_map.get(tool_name)
+
+    def _safe_iso_to_local_datetime(self, iso_text: str):
+        """Parse ISO timestamp string and normalize to local timezone."""
+        if not iso_text:
+            return None
+        try:
+            dt = datetime.fromisoformat(str(iso_text).replace("Z", "+00:00"))
+            if getattr(dt, "tzinfo", None) is None:
+                return dt.replace(tzinfo=self.timezone)
+            return dt.astimezone(self.timezone)
+        except Exception:
+            return None
+
+    def _format_age_seconds(self, seconds: float | int | None) -> str:
+        """Human-friendly age text."""
+        if seconds is None:
+            return "unknown"
+        try:
+            s = int(max(0, seconds))
+            if s < 60:
+                return f"{s}s"
+            m, rem = divmod(s, 60)
+            if m < 60:
+                return f"{m}m {rem}s"
+            h, m = divmod(m, 60)
+            return f"{h}h {m}m"
+        except Exception:
+            return "unknown"
+
+    def _extract_primary_lookup_key(self, tool_name: str, arguments: dict | None) -> str | None:
+        """Extract primary lookup key from common live-data tools."""
+        if not isinstance(arguments, dict):
+            return None
+        if tool_name == "crypto_price":
+            v = arguments.get("coin")
+            return str(v).strip().lower() if v is not None else None
+        if tool_name == "stock_price":
+            v = arguments.get("symbol")
+            return str(v).strip().upper() if v is not None else None
+        if tool_name == "weather":
+            v = arguments.get("location")
+            return str(v).strip().lower() if v is not None else None
+        return None
+
+    def _query_explicitly_requests_refresh(self, transcript: str) -> bool:
+        """Detect explicit user intent to refresh/recheck live data."""
+        text = (transcript or "").lower()
+        refresh_terms = [
+            "refresh", "recheck", "check again", "update", "updated",
+            "latest again", "run again", "try again", "re-run", "rerun"
+        ]
+        return any(term in text for term in refresh_terms)
+
+    def _is_fresh_same_target_recall(
+        self,
+        transcript: str,
+        tool_name: str,
+        arguments: dict,
+        conversation_context: list
+    ) -> bool:
+        """
+        True when same live-data tool+target was already called recently and is still fresh.
+        """
+        ttl = self._tool_freshness_ttl_seconds(tool_name)
+        if ttl is None:
+            return False
+        if self._query_explicitly_requests_refresh(transcript):
+            return False
+
+        current_key = self._extract_primary_lookup_key(tool_name, arguments)
+        now = datetime.now(self.timezone)
+        for ctx in reversed(conversation_context):
+            if ctx.get("tool") != tool_name:
+                continue
+            prev_result = ctx.get("result", {})
+            if not prev_result.get("ok", False):
+                continue
+            prev_args = ctx.get("arguments", {})
+            prev_key = self._extract_primary_lookup_key(tool_name, prev_args)
+            # Different lookup target (e.g., BTC then ETH) should be allowed.
+            if current_key and prev_key and current_key != prev_key:
+                continue
+            meta = ctx.get("meta", {}) if isinstance(ctx, dict) else {}
+            dt_local = self._safe_iso_to_local_datetime(meta.get("executed_at_iso"))
+            if dt_local is None:
+                # If no timestamp metadata, err on allowing.
+                return False
+            age_seconds = int(max(0, (now - dt_local).total_seconds()))
+            return age_seconds <= ttl
+        return False
     
     def _maybe_collect_feedback(self, result: dict[str, Any], transcript: str) -> dict[str, Any]:
         """
@@ -538,6 +642,9 @@ Mode: {self.mode}
                 # Detect duplicate tool calls (same tool, similar/empty args)
                 current_call = (tool_name, json.dumps(arguments, sort_keys=True))
                 is_exact_duplicate = last_tool_call and last_tool_call == current_call
+                is_fresh_same_target_recall = self._is_fresh_same_target_recall(
+                    transcript, tool_name, arguments, conversation_context
+                )
                 
                 # @TOOL_CONFIG: single-call cap — expensive tools limited to 1 successful call per request
                 # These are slow (30-120s), costly, and the LLM tends to loop when
@@ -552,8 +659,13 @@ Mode: {self.mode}
                     and tool_call_counts.get(tool_name, 0) >= 1
                 )
                 
-                if is_exact_duplicate or is_over_cap:
-                    reason = "exact duplicate" if is_exact_duplicate else f"{tool_name} already called (max 1)"
+                if is_exact_duplicate or is_over_cap or is_fresh_same_target_recall:
+                    if is_exact_duplicate:
+                        reason = "exact duplicate"
+                    elif is_over_cap:
+                        reason = f"{tool_name} already called (max 1)"
+                    else:
+                        reason = f"{tool_name} already has fresh result for same target"
                     if sys.stdout.isatty():
                         print(f"⚠️  Duplicate/capped tool call detected: {tool_name} ({reason})")
                         print(f"   Forcing Q&A mode to synthesize results")
@@ -676,11 +788,30 @@ Mode: {self.mode}
                     
                     # Add to conversation context for next turn
                     # Store full result (including speech and data) so LLM can see all information
+                    result_data = result.get("data", {}) if isinstance(result, dict) else {}
+                    source_hint = "tool"
+                    if isinstance(result_data, dict):
+                        source_hint = (
+                            result_data.get("source")
+                            or result_data.get("provider")
+                            or result_data.get("daily_forecast_provider")
+                            or "tool"
+                        )
+                    executed_at = datetime.now(self.timezone)
+                    ttl_seconds = self._tool_freshness_ttl_seconds(tool_name)
                     conversation_context.append({
                         "tool": tool_name,
                         "arguments": arguments,
                         "result": result,  # Store full result, not just data
-                        "speech": result.get("speech", "")
+                        "speech": result.get("speech", ""),
+                        "meta": {
+                            "executed_at_iso": executed_at.isoformat(),
+                            "executed_at_local": executed_at.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                            "freshness": "live_tool_call",
+                            "ttl_seconds": ttl_seconds,
+                            "source": source_hint,
+                            "authoritative_live": ttl_seconds is not None
+                        }
                     })
                     
                     # Continue to next turn (LLM will decide if more tools needed)
@@ -1701,10 +1832,24 @@ Your BEST EFFORT response:"""
         """
         context_parts = [f"Original user request: {original_query}\n"]
         context_parts.append("Tools executed so far:")
+        now = datetime.now(self.timezone)
         
         for i, ctx in enumerate(conversation_context, 1):
             tool_name = ctx["tool"]
             result = ctx["result"]
+            meta = ctx.get("meta", {}) if isinstance(ctx, dict) else {}
+            executed_at_iso = meta.get("executed_at_iso")
+            executed_at_local = meta.get("executed_at_local")
+            ttl_seconds = meta.get("ttl_seconds")
+            source = meta.get("source", "tool")
+            authoritative = bool(meta.get("authoritative_live", False))
+            age_seconds = None
+            expires_in = None
+            dt_local = self._safe_iso_to_local_datetime(executed_at_iso)
+            if dt_local:
+                age_seconds = max(0, int((now - dt_local).total_seconds()))
+            if ttl_seconds is not None and age_seconds is not None:
+                expires_in = ttl_seconds - age_seconds
             
             # Smart summarization: prioritize error details
             if not result.get("ok", True):
@@ -1736,6 +1881,15 @@ Your BEST EFFORT response:"""
                 result_summary = json.dumps(result, indent=2)[:max_chars]
             
             context_parts.append(f"\n{i}. {tool_name}")
+            context_parts.append(
+                "   Freshness: "
+                f"executed_at={executed_at_local or executed_at_iso or 'unknown'}, "
+                f"age={self._format_age_seconds(age_seconds)}, "
+                f"ttl={str(ttl_seconds) + 's' if ttl_seconds is not None else 'none'}, "
+                f"expires_in={self._format_age_seconds(expires_in) if expires_in is not None else 'n/a'}, "
+                f"source={source}, "
+                f"authoritative_live={authoritative}"
+            )
             context_parts.append(f"   Result: {result_summary}")
         
         # Check if any tool requested news - prompt LLM to use native search
@@ -1751,6 +1905,12 @@ Your BEST EFFORT response:"""
         context_parts.append("\n\nBased on the above results, determine if you need to:")
         context_parts.append("1. Call another tool to complete the user's request")
         context_parts.append("2. Respond directly to the user (task complete)")
+        context_parts.append("")
+        context_parts.append("FRESHNESS RULES (highest priority):")
+        context_parts.append("- Prefer the most recent authoritative_live tool result for live-data queries.")
+        context_parts.append("- If the latest live result is still within ttl/expires_in, DO NOT re-call the same tool unless user explicitly asked to refresh/recheck/update.")
+        context_parts.append("- Treat stored memory/intel for price-like data as historical context, not live truth.")
+        context_parts.append("- For crypto/stock, ignore stale memories older than 60 minutes when a newer live tool result exists.")
         
         if news_requested:
             context_parts.append("\n⚠️ NEWS REQUESTED: The user asked for news. Use your NATIVE SEARCH capability to get current news headlines. DO NOT call external search tools - use your built-in web search to find 3-5 relevant news headlines and include them in your response.")
@@ -1858,22 +2018,56 @@ Your BEST EFFORT response:"""
                 return ""
             
             memory_lines = []
+            transcript_lower = transcript.lower()
+            price_like_query = any(
+                token in transcript_lower
+                for token in ["price", "btc", "bitcoin", "eth", "ethereum", "crypto", "stock", "ticker", "quote", "gold", "tsla", "aapl"]
+            )
+
+            def _is_price_like_memory(key: str, value: str) -> bool:
+                text = f"{key} {value}".lower()
+                keywords = ["price", "btc", "bitcoin", "crypto", "stock", "ticker", "quote", "coin", "market cap", "gold", "tsla", "aapl"]
+                return any(k in text for k in keywords)
+
             for _, _, m, source in top:
                 key = m.get('key', '')
                 value = m.get('value', '')
                 if _is_no_preference(value):
                     continue  # User said forget/no preference - don't show
                 cat = m.get('category', '')
+                updated = m.get('updated_at') or m.get('created_at')
+                saved_at_local = "unknown"
+                age_minutes = None
+                if updated:
+                    try:
+                        dt = self._safe_iso_to_local_datetime(str(updated))
+                        if dt:
+                            saved_at_local = dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+                            age_minutes = int((datetime.now(self.timezone) - dt).total_seconds() // 60)
+                    except Exception:
+                        pass
                 if source == 'always':
                     label = "user preference (always included)"
                 else:
                     label = f"relevance: {m.get('similarity', 0) * 100:.0f}%"
-                memory_lines.append(f"- {key}: {value} (category: {cat}, {label})")
+                staleness_hint = ""
+                if price_like_query and _is_price_like_memory(key, value):
+                    if age_minutes is not None and age_minutes > 60:
+                        staleness_hint = "STALE_FOR_LIVE_PRICE_QUERIES"
+                    else:
+                        staleness_hint = "recent_price_context"
+                age_text = f"{age_minutes}m" if age_minutes is not None else "unknown"
+                memory_lines.append(
+                    f"- {key}: {value} "
+                    f"(category: {cat}, {label}, saved_at: {saved_at_local}, age: {age_text}"
+                    f"{', staleness: ' + staleness_hint if staleness_hint else ''})"
+                )
             if not memory_lines:
                 return ""
             lines = [
                 "=== RELEVANT STORED KNOWLEDGE (use this without calling search tools) ===",
                 "When these conflict with your defaults, prefer these (user explicitly told you):",
+                "Freshness note: For live market/weather questions, newer live tool calls outrank older stored memory.",
                 ""
             ] + memory_lines + ["==="]
             return "\n".join(lines) + "\n\n"
