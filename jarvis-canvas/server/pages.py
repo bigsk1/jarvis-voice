@@ -3,7 +3,6 @@ Jarvis Canvas - Page storage functions
 """
 import json
 import sys
-from pathlib import Path
 
 from config import CANVAS_DIR
 

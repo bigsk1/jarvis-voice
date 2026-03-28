@@ -2,7 +2,6 @@
 Jarvis Intelligence Dashboard - Main Application
 Flask server for viewing/managing Jarvis intelligence layer
 """
-import os
 import sys
 from pathlib import Path
 from flask import Flask, send_from_directory, jsonify, request, redirect

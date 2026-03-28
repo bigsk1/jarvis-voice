@@ -18,7 +18,7 @@ import sqlite3
 import subprocess
 import requests
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 # Add lib to path

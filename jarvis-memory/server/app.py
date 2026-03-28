@@ -2,7 +2,6 @@
 Jarvis Memory Browser - Main Application
 Flask server for viewing/managing Jarvis memory database
 """
-import os
 import sys
 from pathlib import Path
 from flask import Flask, send_from_directory, jsonify, request, redirect

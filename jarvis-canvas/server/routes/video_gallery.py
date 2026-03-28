@@ -15,7 +15,7 @@ import json
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from flask import Blueprint, jsonify, request, send_file, abort, render_template
+from flask import Blueprint, jsonify, send_file, abort, render_template
 
 from config import GENERATED_VIDEOS_DIR, STASH_DIR
 

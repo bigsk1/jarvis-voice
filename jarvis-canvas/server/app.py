@@ -6,7 +6,7 @@ from pathlib import Path
 from flask import Flask, request, redirect, render_template
 from flask_cors import CORS
 
-from config import STATIC_DIR, GENERATED_IMAGES_DIR, GENERATED_VIDEOS_DIR
+from config import GENERATED_IMAGES_DIR, GENERATED_VIDEOS_DIR
 from server.pages import load_pages
 
 # Add lib to path for auth

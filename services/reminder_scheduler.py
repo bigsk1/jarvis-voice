@@ -7,7 +7,6 @@ Checks every 60 seconds for reminders with trigger_time <= now.
 """
 
 import sys
-import os
 import time
 import sqlite3
 import subprocess

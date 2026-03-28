@@ -7,7 +7,6 @@ import os
 import sys
 import json
 import time
-import re
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -1931,8 +1930,6 @@ Your BEST EFFORT response:"""
         if get_config_value('AUTO_MEMORY_INJECTION_ENABLED', 'true').lower() != 'true':
             return ""
         try:
-            from datetime import timedelta
-            
             db = get_memory_db()
             limit = get_int('AUTO_MEMORY_LIMIT', 8)
             threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.38)

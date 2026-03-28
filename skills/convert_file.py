@@ -23,8 +23,8 @@ from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
-from stash_helper import open_space, StashFile, resolve_file_path, parse_stash_ref, get_space
+from config_loader import load_config
+from stash_helper import open_space, StashFile, parse_stash_ref, get_space
 
 # Format categories
 IMAGE_FORMATS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'tiff', 'tif', 'bmp', 'ico'}

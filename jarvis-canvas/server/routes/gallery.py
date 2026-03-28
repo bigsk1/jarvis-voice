@@ -2,7 +2,6 @@
 Jarvis Canvas - Image Gallery routes
 """
 import json
-import mimetypes
 from datetime import datetime
 from flask import Blueprint, jsonify, request, send_file, abort, render_template
 
