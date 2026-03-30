@@ -1026,8 +1026,11 @@ class ChatUI {
       }
       
       // Show discrete toast for server-side tools (xAI/Anthropic native search)
-      if (data.server_side_tools && Object.keys(data.server_side_tools).length > 0) {
-        const tools = Object.entries(data.server_side_tools)
+      // Accept either the dedicated top-level field or the nested usage fallback.
+      const serverSideTools = data.server_side_tools || data.usage?.server_side_tools || {};
+      if (serverSideTools && typeof serverSideTools === 'object' && Object.keys(serverSideTools).length > 0) {
+        const tools = Object.entries(serverSideTools)
+          .filter(([, count]) => Number(count) > 0)
           .map(([name, count]) => {
             // Clean up tool name: SERVER_SIDE_TOOL_X_SEARCH -> X Search
             const cleanName = name.replace('SERVER_SIDE_TOOL_', '')
@@ -1037,7 +1040,9 @@ class ChatUI {
             return `${cleanName}${count > 1 ? ` (${count}x)` : ''}`;
           })
           .join(', ');
-        Utils.toast(`🔍 Server-side: ${tools}`, 'info', 4000);
+        if (tools) {
+          Utils.toast(`🔍 Server-side: ${tools}`, 'info', 4000);
+        }
       }
     });
     
@@ -3183,4 +3188,3 @@ class ChatUI {
 
 // Create global instance
 window.chatUI = new ChatUI();
-

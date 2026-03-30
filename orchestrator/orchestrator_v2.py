@@ -947,16 +947,16 @@ Mode: {self.mode}
                 # Add token info to response if available (cloud only)
                 if token_info:
                     response["usage"] = token_info
-                    
-                    # Log xAI native search summary if used and add to response
-                    if total_usage.get("server_side_tools"):
-                        server_tools = total_usage["server_side_tools"]
-                        total_searches = sum(server_tools.values())
-                        tool_summary = ", ".join(f"{k.replace('SERVER_SIDE_TOOL_', '').lower()}={v}" for k, v in server_tools.items())
-                        if sys.stdout.isatty():
-                            print(f"🔍 xAI native search: {total_searches} call(s) [{tool_summary}]")
-                        # Include in response for WebUI notification
-                        response["server_side_tools"] = server_tools
+
+                # Include native provider tool usage even if token info is omitted.
+                # The Web UI uses this for the server-side tool toast.
+                if total_usage.get("server_side_tools"):
+                    server_tools = total_usage["server_side_tools"]
+                    total_searches = sum(server_tools.values())
+                    tool_summary = ", ".join(f"{k.replace('SERVER_SIDE_TOOL_', '').lower()}={v}" for k, v in server_tools.items())
+                    if sys.stdout.isatty():
+                        print(f"🔍 xAI native search: {total_searches} call(s) [{tool_summary}]")
+                    response["server_side_tools"] = server_tools
                 
                 # Add thinking to response if available
                 if first_thinking:
