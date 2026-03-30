@@ -26,6 +26,7 @@ import sys
 import json
 import time
 import logging
+import socket
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import Request, urlopen
@@ -39,6 +40,8 @@ WEBHOOK_PORT = int(os.environ.get('WEBHOOK_PORT', '5050'))
 ALERT_START_HOUR = int(os.environ.get('ALERT_START_HOUR', '0'))
 ALERT_END_HOUR = int(os.environ.get('ALERT_END_HOUR', '24'))
 DEFAULT_COOLDOWN = int(os.environ.get('COOLDOWN_SECONDS', '60'))
+CREATE_ALERT_TIMEOUT = int(os.environ.get('CREATE_ALERT_TIMEOUT_SECONDS', '10'))
+ACK_ALERT_TIMEOUT = int(os.environ.get('ACK_ALERT_TIMEOUT_SECONDS', '5'))
 
 # =============================================================================
 # ALERT RULES CONFIGURATION
@@ -251,6 +254,69 @@ def _get_auth_headers() -> dict:
     return headers
 
 
+def _find_matching_pending_alert_id(alert_data: dict) -> Optional[int]:
+    """
+    Best-effort recovery helper.
+
+    If create-alert request times out, the API may still have created the row.
+    Query recent pending alerts and match by source/title/severity + metadata.
+    """
+    try:
+        # Reuse same base URL and auth
+        list_url = f"{JARVIS_ALERTS_URL}?status=pending&source=unifi-protect&limit=25"
+        req = Request(list_url, headers=_get_auth_headers(), method='GET')
+        with urlopen(req, timeout=CREATE_ALERT_TIMEOUT) as resp:
+            if resp.status != 200:
+                return None
+            payload = json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        log.warning(f"  Recovery lookup failed: {e}")
+        return None
+
+    alerts = payload.get('alerts') if isinstance(payload, dict) else None
+    if not isinstance(alerts, list):
+        return None
+
+    target_meta = alert_data.get('metadata') or {}
+    target_event_id = target_meta.get('event_id')
+    target_device = target_meta.get('device_mac')
+    target_event_type = target_meta.get('event_type')
+
+    for item in alerts:
+        if not isinstance(item, dict):
+            continue
+
+        if item.get('source') != alert_data.get('source'):
+            continue
+        if item.get('title') != alert_data.get('title'):
+            continue
+        if item.get('severity') != alert_data.get('severity'):
+            continue
+
+        raw_meta = item.get('metadata')
+        if isinstance(raw_meta, str):
+            try:
+                raw_meta = json.loads(raw_meta)
+            except Exception:
+                raw_meta = {}
+        if not isinstance(raw_meta, dict):
+            raw_meta = {}
+
+        # Prefer exact event id when available (best uniqueness signal)
+        if target_event_id and raw_meta.get('event_id') == target_event_id:
+            return item.get('id')
+
+        # Fallback match for payloads missing event_id
+        if (
+            not target_event_id
+            and raw_meta.get('device_mac') == target_device
+            and raw_meta.get('event_type') == target_event_type
+        ):
+            return item.get('id')
+
+    return None
+
+
 def send_to_jarvis(alert_data: dict, auto_ack: bool = False) -> bool:
     """Send alert to Jarvis API, optionally auto-acknowledge."""
     try:
@@ -260,7 +326,7 @@ def send_to_jarvis(alert_data: dict, auto_ack: bool = False) -> bool:
             headers=_get_auth_headers(),
             method='POST'
         )
-        with urlopen(req, timeout=10) as resp:
+        with urlopen(req, timeout=CREATE_ALERT_TIMEOUT) as resp:
             if resp.status != 200:
                 return False
             
@@ -271,12 +337,21 @@ def send_to_jarvis(alert_data: dict, auto_ack: bool = False) -> bool:
                 _acknowledge_alert(alert_id)
             
             return True
-    except URLError as e:
+    except (URLError, TimeoutError, socket.timeout) as e:
         log.error(f"Failed to send alert to Jarvis: {e}")
+        # Timeout/transport failure can occur AFTER API created the alert.
+        # For auto-ack camera events, recover by finding the pending alert and acking it.
+        if auto_ack:
+            recovered_id = _find_matching_pending_alert_id(alert_data)
+            if recovered_id:
+                if _acknowledge_alert(recovered_id):
+                    log.info(f"  Recovered timed-out auto-ack by acknowledging alert {recovered_id}")
+                    return True
+                log.warning(f"  Found pending alert {recovered_id} but failed to auto-ack")
         return False
 
 
-def _acknowledge_alert(alert_id: int):
+def _acknowledge_alert(alert_id: int) -> bool:
     """Acknowledge alert to prevent follow-up reminders."""
     try:
         ack_url = f"{JARVIS_ALERTS_URL}/{alert_id}/acknowledge"
@@ -284,11 +359,13 @@ def _acknowledge_alert(alert_id: int):
         if JARVIS_API_KEY:
             headers['Authorization'] = f'Bearer {JARVIS_API_KEY}'
         req = Request(ack_url, headers=headers, method='PUT')
-        with urlopen(req, timeout=5) as resp:
+        with urlopen(req, timeout=ACK_ALERT_TIMEOUT) as resp:
             if resp.status == 200:
                 log.info(f"  Auto-acknowledged alert {alert_id} (no follow-ups)")
-    except URLError as e:
+                return True
+    except (URLError, TimeoutError, socket.timeout) as e:
         log.warning(f"  Could not auto-acknowledge alert {alert_id}: {e}")
+    return False
 
 
 def process_unifi_event(data: dict) -> dict:
