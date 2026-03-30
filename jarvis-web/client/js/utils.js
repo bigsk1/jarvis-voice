@@ -3,6 +3,8 @@
  */
 
 const Utils = {
+  _markedConfigured: false,
+
   /**
    * Generate a unique ID
    */
@@ -83,6 +85,33 @@ const Utils = {
     }
     
     if (typeof marked !== 'undefined') {
+      if (!this._markedConfigured) {
+        const renderer = new marked.Renderer();
+        renderer.link = (hrefOrToken, title, text) => {
+          // Support both Marked renderer signatures:
+          //   link(href, title, text)
+          //   link({ href, title, tokens, text })
+          let href = hrefOrToken;
+          let label = text;
+          let linkTitle = title;
+
+          if (hrefOrToken && typeof hrefOrToken === 'object') {
+            href = hrefOrToken.href || '';
+            linkTitle = hrefOrToken.title || '';
+            label = hrefOrToken.text
+              || (hrefOrToken.tokens || []).map(token => token.text || token.raw || '').join('')
+              || href;
+          }
+
+          const safeHref = href ? String(href).replace(/"/g, '&quot;') : '';
+          const safeTitle = linkTitle ? ` title="${this.escapeHtml(linkTitle)}"` : '';
+          const safeLabel = this.escapeHtml(label || href || '');
+
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="content-link"${safeTitle}>${safeLabel}</a>`;
+        };
+        marked.use({ renderer });
+        this._markedConfigured = true;
+      }
       return marked.parse(text);
     }
     // Fallback: basic formatting
@@ -265,4 +294,3 @@ document.addEventListener('keydown', (e) => {
     window.closeLightbox();
   }
 });
-
