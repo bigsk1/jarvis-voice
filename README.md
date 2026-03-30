@@ -1774,6 +1774,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.44.0 (February 2026)  
+**Current Version:** v2.44.1 (February 2026)  
 **Status:** Production Ready ✅  
 **Latest Features:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal

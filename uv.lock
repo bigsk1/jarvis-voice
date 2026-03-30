@@ -1154,7 +1154,7 @@ wheels = [
 
 [[package]]
 name = "jarvis-voice"
-version = "2.44.0"
+version = "2.44.1"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1280,7 +1280,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.23.0" },
     { name = "xai-sdk", specifier = ">=1.6.1" },
     { name = "yfinance", specifier = ">=1.1.0" },
-    { name = "yt-dlp", specifier = ">=2026.3.3" },
+    { name = "yt-dlp", specifier = ">=2026.3.17" },
 ]
 
 [[package]]

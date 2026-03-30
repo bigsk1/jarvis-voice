@@ -102,6 +102,7 @@ cursor_*.md
 *.cursor.*
 .cursor/
 .agents
+.codex
 
 # OpenCode sessions and logs
 logs/opencode/

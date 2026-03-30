@@ -197,6 +197,9 @@ def get_system_config():
             # Image
             'IMAGE_TOOL_PROVIDER': get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),
             'VIDEO_TOOL_PROVIDER': get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai'),
+            'JARVIS_RESPONSE_STYLE': get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto'),
+            'JARVIS_QA_WORD_LIMIT': get_jarvis_setting('JARVIS_QA_WORD_LIMIT', '75'),
+            'JARVIS_MULTI_TURN_WORD_LIMIT': get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', '50'),
             
             # Feedback/Evolution System
             'FEEDBACK_RANDOM_ENABLED': get_jarvis_setting('FEEDBACK_RANDOM_ENABLED', 'false'),
@@ -220,7 +223,11 @@ def update_web_settings():
         return jsonify({'ok': False, 'error': 'No data provided'}), 400
     
     # Use new override system if structured data provided
-    if any(k in data for k in ['llm_provider', 'llm_model', 'image_provider', 'video_provider', 'tool_similarity', 'memory_similarity', 'tts_enabled']):
+    if any(k in data for k in [
+        'llm_provider', 'llm_model', 'image_provider', 'video_provider',
+        'response_style', 'qa_word_limit', 'multi_turn_word_limit',
+        'tool_similarity', 'memory_similarity', 'tts_enabled'
+    ]):
         success = settings.save_web_overrides(data)
         # Force reload config cache so changes take effect immediately
         reload_web_config()

@@ -640,6 +640,9 @@ class ChatHandler:
             # get_config_value() checks JARVIS_OVERRIDE_{key} before os.environ[key]
             image_provider_override = mode_overrides.get('image_provider')
             video_provider_override = mode_overrides.get('video_provider')
+            response_style_override = mode_overrides.get('response_style')
+            qa_word_limit_override = mode_overrides.get('qa_word_limit')
+            multi_turn_word_limit_override = mode_overrides.get('multi_turn_word_limit')
             
             # Set or clear override env vars (cleared = fall back to cloud.env default)
             if image_provider_override:
@@ -651,8 +654,30 @@ class ChatHandler:
                 os.environ['JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER'] = video_provider_override
             else:
                 os.environ.pop('JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER', None)
-            
-            print(f"[CHAT] Provider overrides - image: {image_provider_override or '(env default)'}, video: {video_provider_override or '(env default)'}")
+
+            if response_style_override:
+                os.environ['JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE'] = str(response_style_override)
+            else:
+                os.environ.pop('JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE', None)
+
+            if qa_word_limit_override is not None:
+                os.environ['JARVIS_OVERRIDE_JARVIS_QA_WORD_LIMIT'] = str(qa_word_limit_override)
+            else:
+                os.environ.pop('JARVIS_OVERRIDE_JARVIS_QA_WORD_LIMIT', None)
+
+            if multi_turn_word_limit_override is not None:
+                os.environ['JARVIS_OVERRIDE_JARVIS_MULTI_TURN_WORD_LIMIT'] = str(multi_turn_word_limit_override)
+            else:
+                os.environ.pop('JARVIS_OVERRIDE_JARVIS_MULTI_TURN_WORD_LIMIT', None)
+
+            print(
+                "[CHAT] Provider overrides - "
+                f"image: {image_provider_override or '(env default)'}, "
+                f"video: {video_provider_override or '(env default)'}, "
+                f"response_style: {response_style_override or '(env default)'}, "
+                f"qa_limit: {qa_word_limit_override if qa_word_limit_override is not None else '(env default)'}, "
+                f"multi_turn_limit: {multi_turn_word_limit_override if multi_turn_word_limit_override is not None else '(env default)'}"
+            )
             
             # Image action modal can override providers further (takes priority over AI config)
             if image_data and image_data.get('action') == 'video':
@@ -1245,9 +1270,11 @@ class ChatHandler:
             
             # Build config context
             response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
+            qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
+            multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
             style_explanations = {
-                'casual': 'Short voice-friendly output. URLs are REMOVED, search results summarized to ~50 words.',
-                'auto': 'Smart mode. Search tools get condensed (no URLs), complex tools keep full details.',
+                'casual': f'Short voice-friendly output. Tool confirmations stay at 35 words max, Q&A is capped at {qa_word_limit}, multi-turn summaries at {multi_turn_word_limit}.',
+                'auto': f'Smart mode. Search tools get condensed (no URLs), complex tools keep full details. Q&A cap is {qa_word_limit}, multi-turn cap is {multi_turn_word_limit}.',
                 'detailed': 'FULL LLM response preserved. URLs ARE INCLUDED. Verbose output is EXPECTED and CORRECT.'
             }
             style_explanation = style_explanations.get(response_style, 'Unknown style')

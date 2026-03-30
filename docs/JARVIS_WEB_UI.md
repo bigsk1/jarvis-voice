@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.3)  
-> **Last Updated**: February 6, 2026
+> **Status**: MVP Complete (v2.5)  
+> **Last Updated**: March 29, 2026
 
 ---
 
@@ -77,6 +77,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Reset to defaults | ✅ | Button to clear web overrides for current mode |
 | Dynamic LLM switching | ✅ | Change provider/model on-the-fly, takes effect immediately |
 | Dynamic image/video provider | ✅ | Switch image (xAI/Gemini/OpenAI) and video (xAI/Gemini) providers on-the-fly |
+| Response style overrides | ✅ | Per-mode overrides for response style, Q&A word limit, and multi-turn word limit |
 | MCP tool discovery | ✅ | Reads from memory_db, shows in Tools tab |
 | System config view | ✅ | Mode-specific .env values in Settings → System |
 | Per-mode settings | ✅ | `cloud`/`local` sections in web_config.json |
@@ -1383,96 +1384,6 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 
 ---
 
-## 🧪 Testing Checklist
-
-### Basic Functionality
-- [ ] Send message, receive response
-- [ ] Tool execution shows card with args/result
-- [ ] Multi-tool response chains correctly
-- [ ] Q&A responses (no tool call) work
-- [ ] Long responses render with markdown
-
-### Mode Switching
-- [ ] Start in cloud mode, switch to local
-- [ ] Start in local mode, switch to cloud
-- [ ] TTS uses correct provider per mode
-- [ ] Settings → System shows correct .env values
-- [ ] No embedding dimension errors in console
-
-### TTS (Audio Output)
-- [ ] Enable TTS, send message, hear response
-- [ ] Disable TTS, no audio plays
-- [ ] Status updates play TTS (when enabled)
-- [ ] Cloud mode: ElevenLabs voice
-- [ ] Local mode: Kokoro voice
-
-### STT (Voice Input)
-- [ ] Click mic, see blue "preparing" state
-- [ ] Grant permission, see green "recording" state
-- [ ] Speak, click mic again, see yellow "processing"
-- [ ] Transcript appears in input and auto-sends
-- [ ] Cloud mode: OpenAI Whisper (check server logs)
-- [ ] Local mode: faster-whisper (check server logs)
-- [ ] Press Esc to cancel recording
-
-### Images (Generated)
-- [ ] `generate_image` shows thumbnail inline
-- [ ] Click thumbnail opens lightbox
-- [ ] Download button works
-- [ ] Image in tool card expandable section
-
-### Images (Uploaded)
-- [ ] Click 🖼️ button opens file picker
-- [ ] Drag-drop image onto chat area works
-- [ ] Paste image (Ctrl+V) works
-- [ ] Preview appears before sending
-- [ ] "What is this?" uses vision model, no tools
-- [ ] "Save to canvas" uses vision + canvas tool
-- [ ] Cloud mode: Grok/Claude vision works
-- [ ] Local mode: llava vision works
-- [ ] Large images auto-resize to 1024px
-- [ ] Uploaded images persist in conversation history
-
-### Conversations
-- [ ] New chat clears messages
-- [ ] Send message creates conversation in sidebar
-- [ ] Click conversation loads it
-- [ ] Delete conversation removes it
-- [ ] Conversation context sent to LLM (check server logs)
-
-### Settings
-- [ ] Change LLM provider, new message uses it
-- [ ] Change LLM model, new message uses it
-- [ ] Change image provider (xAI/Gemini/OpenAI), generate image uses new provider
-- [ ] Change video provider (xAI/Gemini/OpenAI), generate video uses new provider
-- [ ] Reset to defaults clears all overrides (LLM, image, video)
-- [ ] Block a tool, verify it's not called
-- [ ] Unblock a tool, verify it works again
-- [ ] Verify `web_config.json` updates correctly on save
-
-### Expand Details
-- [ ] Tool-using response shows "▶ Show details" button
-- [ ] Click expands to show full LLM response
-- [ ] Click again collapses
-- [ ] Simple Q&A (no tools) may not show button (response = speech)
-- [ ] Vision analysis shows full description in details
-- [ ] Details persist when reloading conversation
-
-### Tools Tab
-- [ ] Shows all local tools
-- [ ] Shows MCP tools (if any registered)
-- [ ] Shows blocked tools with indicator
-- [ ] Refresh button reloads list
-
-### Terminal Regression (Non-Web)
-- [ ] `./jarvis` voice loop works normally
-- [ ] `./orchestrator/orchestrator_v2.py cloud "test"` works
-- [ ] Status updates play on LOCAL speaker (not browser)
-- [ ] All tools available (web-blocked tools work)
-- [ ] Memory search/recall works
-
----
-
 ## 🔮 Future Feature Ideas
 
 ### Voice (Phase 3 completion)
@@ -1502,8 +1413,8 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 
 ### UX Improvements
 - **Keyboard shortcuts**: Ctrl+Enter send, Ctrl+N new chat, etc.
-- **Drag-drop files**: Upload images/files directly
-- **Paste images**: Paste from clipboard
+- ✅ **Drag-drop files**: Upload images/files directly (DONE)
+- ✅ **Paste images**: Paste from clipboard (DONE)
 - **Message reactions**: Thumbs up/down for feedback
 - **Message editing**: Edit sent messages
 
@@ -1553,5 +1464,6 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*  
 *v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*  
 *v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*  
-*v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*
-*v2.4: OpenAI Sora - Third video provider with native audio, image-to-video, remix support - February 9, 2026*
+*v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*  
+*v2.4: OpenAI Sora - Third video provider with native audio, image-to-video, remix support - February 9, 2026*  
+*v2.5: AI Config response-style overrides - Per-mode `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` with live prompt/runtime alignment - March 29, 2026*

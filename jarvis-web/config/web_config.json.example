@@ -23,13 +23,19 @@
     "llm_provider": null,
     "llm_model": null,
     "image_provider": null,
-    "video_provider": null
+    "video_provider": null,
+    "response_style": null,
+    "qa_word_limit": null,
+    "multi_turn_word_limit": null
   },
   "local": {
     "llm_provider": null,
     "llm_model": null,
     "image_provider": null,
-    "video_provider": null
+    "video_provider": null,
+    "response_style": null,
+    "qa_word_limit": null,
+    "multi_turn_word_limit": null
   },
   "conversation": {
     "history_limit": 20,

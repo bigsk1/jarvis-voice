@@ -218,7 +218,7 @@ When you respond with Q&A intent (NOT calling a tool), your response will be SPO
 
 MANDATORY FORMAT:
 - Tool confirmations: MAX 35 WORDS (action completed, result)
-- Q&A/informational responses: MAX 100 WORDS (allow enough detail to be useful)
+- Q&A/informational responses: follow the CURRENT configured Q&A word limit from the runtime config
 - NO emojis, NO markdown (**, ##, bullets)
 - NO greeting fluff ("Great!", "Perfect!", "I've successfully...")
 - Get straight to the answer
@@ -458,6 +458,9 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         
         # Get response style - this affects output formatting rules
         response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
+        qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
+        multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+        tool_confirmation_limit = 35
         
         # Build style-aware prefix
         if response_style == 'detailed':
@@ -473,9 +476,10 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
         else:
             style_note = f"""
 RESPONSE STYLE: {response_style.upper()}
-- Keep voice output concise (35-100 words depending on complexity)
-- Tool confirmations: brief (35 words max)
-- Q&A/informational: more room (100 words max)
+- Keep voice output concise using the CURRENT configured runtime limits
+- Tool confirmations: brief ({tool_confirmation_limit} words max)
+- Q&A/informational: up to {qa_word_limit} words max
+- Multi-turn summaries: up to {multi_turn_word_limit} words max
 - No URLs for speech unless critical
 
 """
@@ -890,4 +894,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

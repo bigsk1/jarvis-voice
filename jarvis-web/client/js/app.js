@@ -1030,6 +1030,38 @@ class JarvisApp {
         if (s.video?.provider?.is_override) {
           videoDefault.textContent = `⚡ override: ${s.video.provider.value}`;
         }
+
+        // Populate Response Style
+        const responseStyleSelect = document.getElementById('setting-response-style');
+        responseStyleSelect.value = s.response?.style?.is_override ? s.response.style.value : '';
+        const responseStyleDefault = document.getElementById('response-style-default');
+        responseStyleDefault.textContent = `(${envFile}: ${s.response?.style?.default || 'auto'})`;
+        responseStyleDefault.className = s.response?.style?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.response?.style?.is_override) {
+          responseStyleDefault.textContent = `⚡ override: ${s.response.style.value}`;
+        }
+
+        // Populate QA Word Limit
+        const qaWordLimitInput = document.getElementById('setting-qa-word-limit');
+        qaWordLimitInput.value = s.response?.qa_word_limit?.is_override ? s.response.qa_word_limit.value : '';
+        qaWordLimitInput.placeholder = `${s.response?.qa_word_limit?.default || 75}`;
+        const qaWordLimitDefault = document.getElementById('qa-word-limit-default');
+        qaWordLimitDefault.textContent = `(${envFile}: ${s.response?.qa_word_limit?.default || 75})`;
+        qaWordLimitDefault.className = s.response?.qa_word_limit?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.response?.qa_word_limit?.is_override) {
+          qaWordLimitDefault.textContent = `⚡ override: ${s.response.qa_word_limit.value}`;
+        }
+
+        // Populate Multi-Turn Word Limit
+        const multiTurnWordLimitInput = document.getElementById('setting-multi-turn-word-limit');
+        multiTurnWordLimitInput.value = s.response?.multi_turn_word_limit?.is_override ? s.response.multi_turn_word_limit.value : '';
+        multiTurnWordLimitInput.placeholder = `${s.response?.multi_turn_word_limit?.default || 50}`;
+        const multiTurnWordLimitDefault = document.getElementById('multi-turn-word-limit-default');
+        multiTurnWordLimitDefault.textContent = `(${envFile}: ${s.response?.multi_turn_word_limit?.default || 50})`;
+        multiTurnWordLimitDefault.className = s.response?.multi_turn_word_limit?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.response?.multi_turn_word_limit?.is_override) {
+          multiTurnWordLimitDefault.textContent = `⚡ override: ${s.response.multi_turn_word_limit.value}`;
+        }
         
         // Populate Conversation History Limit
         const historyLimit = s.conversation?.history_limit || 20;
@@ -1751,6 +1783,9 @@ class JarvisApp {
    */
   async _saveSettings() {
     try {
+      const qaWordLimitRaw = document.getElementById('setting-qa-word-limit').value.trim();
+      const multiTurnWordLimitRaw = document.getElementById('setting-multi-turn-word-limit').value.trim();
+
       // Collect all settings
       const settings = {
         tts_enabled: document.getElementById('setting-tts').checked,
@@ -1759,8 +1794,21 @@ class JarvisApp {
         llm_model: document.getElementById('setting-llm-model').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
         video_provider: document.getElementById('setting-video-provider').value || null,
+        response_style: document.getElementById('setting-response-style').value || null,
+        qa_word_limit: qaWordLimitRaw === '' ? null : parseInt(qaWordLimitRaw, 10),
+        multi_turn_word_limit: multiTurnWordLimitRaw === '' ? null : parseInt(multiTurnWordLimitRaw, 10),
         history_limit: parseInt(document.getElementById('setting-history-limit').value) || 20
       };
+
+      if (settings.qa_word_limit !== null && (Number.isNaN(settings.qa_word_limit) || settings.qa_word_limit < 25 || settings.qa_word_limit > 300)) {
+        Utils.toast('Q&A word limit must be between 25 and 300', 'warning');
+        return;
+      }
+
+      if (settings.multi_turn_word_limit !== null && (Number.isNaN(settings.multi_turn_word_limit) || settings.multi_turn_word_limit < 25 || settings.multi_turn_word_limit > 300)) {
+        Utils.toast('Multi-turn word limit must be between 25 and 300', 'warning');
+        return;
+      }
       
       // Save to server
       const response = await fetch('/api/settings/web', {
@@ -1806,10 +1854,10 @@ class JarvisApp {
   }
   
   /**
-   * Reset settings to cloud.env defaults
+   * Reset settings to env defaults for the active mode
    */
   async _resetToDefaults() {
-    if (!confirm('Reset all web overrides to cloud.env defaults?')) return;
+    if (!confirm('Reset all web overrides to the current mode env defaults?')) return;
     
     try {
       const response = await fetch('/api/settings/reset', { method: 'POST' });
@@ -1938,4 +1986,3 @@ class JarvisApp {
 document.addEventListener('DOMContentLoaded', () => {
   window.jarvisApp = new JarvisApp();
 });
-

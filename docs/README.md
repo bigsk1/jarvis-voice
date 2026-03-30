@@ -306,6 +306,15 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-03-29:**
+- ✅ **Web UI AI Config: response style overrides** - Added per-mode overrides for voice formatting behavior
+  - `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` can now be overridden from `jarvis-web` Settings → AI Config
+  - Overrides are saved per mode in `jarvis-web/config/web_config.json`
+  - Reset button now clearly resets to the active mode's env defaults
+- ✅ **Runtime prompt alignment** - Router/system prompt now reflects live response formatting limits
+  - When asked directly, the LLM sees the active response style plus current Q&A and multi-turn word caps instead of stale generic defaults
+  - Final orchestrator formatting also reads these values through `get_config_value()` so Web UI overrides and actual speech formatting stay in sync
+
 **2026-03-21:**
 - ✅ **SerpApi query optimization** - Conversational prompts can be compacted to keyword-style queries before search
   - Tool output includes `query_was_optimized`; `query` (original) and `query_effective` (optimized) for transparency

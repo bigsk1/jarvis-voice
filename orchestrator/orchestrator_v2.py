@@ -370,9 +370,11 @@ class Orchestrator:
             
             # Build config context
             response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
+            qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
+            multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
             style_explanations = {
-                'casual': 'Short voice-friendly output. URLs are REMOVED, search results summarized to ~50 words.',
-                'auto': 'Smart mode. Search tools get condensed (no URLs), complex tools keep full details.',
+                'casual': f'Short voice-friendly output. Tool confirmations stay at 35 words max, Q&A is capped at {qa_word_limit}, multi-turn summaries at {multi_turn_word_limit}.',
+                'auto': f'Smart mode. Search tools get condensed (no URLs), complex tools keep full details. Q&A cap is {qa_word_limit}, multi-turn cap is {multi_turn_word_limit}.',
                 'detailed': 'FULL LLM response preserved. URLs ARE INCLUDED. Verbose output is EXPECTED and CORRECT.'
             }
             style_explanation = style_explanations.get(response_style, 'Unknown style')
@@ -904,7 +906,7 @@ Mode: {self.mode}
                 
                 # Apply response style formatting (for ALL responses, not just multi-turn)
                 # UNLESS we're using direct speech from a tool (to avoid LLM mangling numbers)
-                response_style = os.environ.get('JARVIS_RESPONSE_STYLE', 'casual').lower()
+                response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
                 
                 if use_direct_speech:
                     # Direct speech tools: use their speech verbatim, no LLM reformatting
@@ -992,7 +994,7 @@ Mode: {self.mode}
         
         # Safety: Max turns reached (after loop completes)
         # Generate intelligent summary of what was accomplished
-        response_style = os.environ.get('JARVIS_RESPONSE_STYLE', 'casual').lower()
+        response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
         
         if response_style == 'casual' or response_style == 'auto':
             # Casual and auto both format max turns summary
@@ -1312,9 +1314,9 @@ Your response:"""
         Returns:
             Voice-friendly version (condensed, no stash refs/long URLs)
         """
+        qa_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
         try:
             # Get configurable word limit for Q&A (default 75)
-            qa_limit = int(os.environ.get('JARVIS_QA_WORD_LIMIT', '75'))
             
             # If already within limit, return as-is
             word_count = len(raw_response.split())
@@ -1356,8 +1358,8 @@ Your condensed response:"""
             if sys.stdout.isatty():
                 print(f"⚠️ Failed to condense response: {e}", file=sys.stderr)
             words = raw_response.split()
-            if len(words) > 75:
-                return ' '.join(words[:75]) + '...'
+            if len(words) > qa_limit:
+                return ' '.join(words[:qa_limit]) + '...'
             return raw_response
     
     def _format_multi_turn_summary(self, user_query: str, tools_used: list, accumulated_data: dict, llm_response: str) -> str:
@@ -1384,9 +1386,9 @@ Your condensed response:"""
         Returns:
             Concise voice-friendly summary (50 words max by default)
         """
+        multi_turn_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
         try:
             # Get configurable word limit for multi-turn (default 50)
-            multi_turn_limit = int(os.environ.get('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
             
             # Use LLM to create a concise voice summary
             # Calculate dynamic truncation - more data for repeated tools (arrays)
@@ -2355,11 +2357,13 @@ def main():
         
         # Build config context with EXPLANATIONS for style modes
         response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
+        qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
+        multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
         
         # Explain what the style means so feedback LLM doesn't penalize correct behavior
         style_explanations = {
-            'casual': 'Short voice-friendly output. URLs are REMOVED, search results summarized to ~50 words.',
-            'auto': 'Smart mode. Search tools get condensed (no URLs), complex tools keep full details.',
+            'casual': f'Short voice-friendly output. Tool confirmations stay at 35 words max, Q&A is capped at {qa_word_limit}, multi-turn summaries at {multi_turn_word_limit}.',
+            'auto': f'Smart mode. Search tools get condensed (no URLs), complex tools keep full details. Q&A cap is {qa_word_limit}, multi-turn cap is {multi_turn_word_limit}.',
             'detailed': 'FULL LLM response preserved. URLs ARE INCLUDED. Verbose output is EXPECTED and CORRECT.'
         }
         style_explanation = style_explanations.get(response_style, 'Unknown style')
@@ -2489,4 +2493,3 @@ Mode: {mode}
 
 if __name__ == "__main__":
     main()
-

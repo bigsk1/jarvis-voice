@@ -428,6 +428,35 @@
             </div>
             <div class="setting-group" style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary);">
               <label class="setting-label">
+                Response Style
+                <span class="setting-default" id="response-style-default"></span>
+              </label>
+              <select class="setting-input" id="setting-response-style">
+                <option value="">Use env default</option>
+                <option value="casual">Casual</option>
+                <option value="auto">Auto</option>
+                <option value="detailed">Detailed</option>
+              </select>
+              <span class="setting-desc">Controls how Jarvis formats spoken tool and answer output.</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Q&A Word Limit
+                <span class="setting-default" id="qa-word-limit-default"></span>
+              </label>
+              <input type="number" class="setting-input" id="setting-qa-word-limit" min="25" max="300" step="1" placeholder="Use env default" style="width: 110px;">
+              <span class="setting-desc">Word cap for single-turn voice responses in casual/auto formatting.</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Multi-Turn Word Limit
+                <span class="setting-default" id="multi-turn-word-limit-default"></span>
+              </label>
+              <input type="number" class="setting-input" id="setting-multi-turn-word-limit" min="25" max="300" step="1" placeholder="Use env default" style="width: 110px;">
+              <span class="setting-desc">Word cap for multi-turn summaries in casual/auto formatting.</span>
+            </div>
+            <div class="setting-group" style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary);">
+              <label class="setting-label">
                 Conversation History Limit
                 <span class="setting-desc">(messages to include as LLM context)</span>
               </label>
@@ -435,7 +464,7 @@
             </div>
             
             <button class="btn-secondary" id="resetDefaultsBtn" style="margin-top: var(--space-lg);">
-              ↺ Reset to cloud.env Defaults
+              ↺ Reset to Env Defaults
             </button>
           </div>
           
@@ -876,4 +905,3 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
-

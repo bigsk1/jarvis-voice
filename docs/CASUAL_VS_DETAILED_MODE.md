@@ -13,8 +13,8 @@ Jarvis has three response style modes that control how tool results and Q&A resp
 
 | Mode | Best For | Word Limits | Technical Details |
 |------|----------|-------------|-------------------|
-| `casual` | Voice/TTS | Q&A: 75, Multi-turn: 50, Tool: 35 | Stripped |
-| `auto` | Voice (smart) | Same as casual | Stripped (mostly) |
+| `casual` | Voice/TTS | Q&A: `JARVIS_QA_WORD_LIMIT`, Multi-turn: `JARVIS_MULTI_TURN_WORD_LIMIT`, Tool: 35 | Stripped |
+| `auto` | Voice (smart) | Same configured limits as casual | Stripped (mostly) |
 | `detailed` | CLI/debugging | No limit | Preserved |
 
 ---
@@ -26,8 +26,8 @@ Jarvis has three response style modes that control how tool results and Q&A resp
 **Best for:** Voice mode, speakers, TTS
 
 **Behavior:**
-- Q&A responses: Up to `JARVIS_QA_WORD_LIMIT` (default: 75 words)
-- Multi-turn summaries: Up to `JARVIS_MULTI_TURN_WORD_LIMIT` (default: 50 words)
+- Q&A responses: Up to `JARVIS_QA_WORD_LIMIT` (current cloud example: 100 words)
+- Multi-turn summaries: Up to `JARVIS_MULTI_TURN_WORD_LIMIT` (current cloud example: 75 words)
 - Tool confirmations: 35 words max (hardcoded)
 - **Strips from speech:** stash:// refs, long URLs, file paths (added 2026-02-02)
 
@@ -99,13 +99,28 @@ The server is now accessible at http://localhost:5000"
 JARVIS_RESPONSE_STYLE="auto"
 
 # Word limit for Q&A/single-turn (used by _format_single_turn_casual)
-# Default: 75 words
-JARVIS_QA_WORD_LIMIT=75
+# Example current cloud value: 100 words
+JARVIS_QA_WORD_LIMIT=100
 
 # Word limit for multi-turn/multi-tool summaries (used by _format_multi_turn_summary)
-# Default: 50 words
-JARVIS_MULTI_TURN_WORD_LIMIT=50
+# Example current cloud value: 75 words
+JARVIS_MULTI_TURN_WORD_LIMIT=75
 ```
+
+### Web UI Overrides
+
+`jarvis-web` can now override these values per mode from **Settings → AI Config**:
+
+- `JARVIS_RESPONSE_STYLE`
+- `JARVIS_QA_WORD_LIMIT`
+- `JARVIS_MULTI_TURN_WORD_LIMIT`
+
+Behavior:
+
+- `cloud` and `local` overrides are stored separately in `jarvis-web/config/web_config.json`
+- Blank value in the UI means "use env default"
+- The router system prompt now reflects the live effective values, not stale generic defaults
+- Final speech formatting also reads the live effective values through `get_config_value()`
 
 ### One-off Testing
 
@@ -148,8 +163,8 @@ speech (final TTS output)
 
 | Function | Called By | Word Limit | Strips Refs |
 |----------|-----------|------------|-------------|
-| `_format_single_turn_casual()` | casual, auto | 75 | ✅ Yes |
-| `_format_multi_turn_summary()` | casual, auto | 50 | ✅ Yes |
+| `_format_single_turn_casual()` | casual, auto | `JARVIS_QA_WORD_LIMIT` | ✅ Yes |
+| `_format_multi_turn_summary()` | casual, auto | `JARVIS_MULTI_TURN_WORD_LIMIT` | ✅ Yes |
 | `_format_auto_mode()` | auto only | varies | ✅ Mostly |
 | `_format_tool_speech()` | tool confirmations | 35 | ❌ No |
 
@@ -184,5 +199,5 @@ The `raw_llm_response` is preserved in the response for "expand details" in the 
 
 ---
 
-*Last updated: 2026-02-02*  
+*Last updated: 2026-03-29*  
 *See also: `config/cloud.env` for full configuration options*

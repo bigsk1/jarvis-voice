@@ -86,6 +86,12 @@ VIDEO_PROVIDERS = {
     'gemini': {'name': 'Google Gemini Veo', 'model': 'veo-3.1'}
 }
 
+RESPONSE_STYLE_OPTIONS = {
+    'casual': {'name': 'Casual', 'description': 'Short voice-friendly output'},
+    'auto': {'name': 'Auto', 'description': 'Adaptive formatting based on tool/result type'},
+    'detailed': {'name': 'Detailed', 'description': 'Keep full verbose responses'}
+}
+
 
 class SettingsManager:
     """Manages settings for the web UI with override support"""
@@ -131,6 +137,9 @@ class SettingsManager:
             'LLM_MODEL': ('llm', 'model'),
             'IMAGE_TOOL_PROVIDER': ('image', 'provider'),
             'VIDEO_TOOL_PROVIDER': ('video', 'provider'),
+            'JARVIS_RESPONSE_STYLE': ('response', 'style'),
+            'JARVIS_QA_WORD_LIMIT': ('response', 'qa_word_limit'),
+            'JARVIS_MULTI_TURN_WORD_LIMIT': ('response', 'multi_turn_word_limit'),
             'TOOL_SIMILARITY_THRESHOLD': ('thresholds', 'tool_similarity'),
             'SEMANTIC_SIMILARITY_THRESHOLD': ('thresholds', 'memory_similarity'),
         }
@@ -154,6 +163,9 @@ class SettingsManager:
         env_provider = get_jarvis_setting('LLM_PROVIDER', 'xai' if self.mode == 'cloud' else 'ollama')
         env_image_provider = get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
         env_video_provider = get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai')
+        env_response_style = get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto')
+        env_qa_word_limit = int(get_jarvis_setting('JARVIS_QA_WORD_LIMIT', '75'))
+        env_multi_turn_word_limit = int(get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
         
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
@@ -161,12 +173,20 @@ class SettingsManager:
         web_model = mode_overrides.get('llm_model')
         web_image = mode_overrides.get('image_provider')
         web_video = mode_overrides.get('video_provider')
+        web_response_style = mode_overrides.get('response_style')
+        web_qa_word_limit = mode_overrides.get('qa_word_limit')
+        web_multi_turn_word_limit = mode_overrides.get('multi_turn_word_limit')
         
         # Calculate effective values
         effective_provider = web_provider or env_provider
         effective_model = web_model or self._get_default_model(effective_provider)
         effective_image = web_image or env_image_provider
         effective_video = web_video or env_video_provider
+        effective_response_style = web_response_style or env_response_style
+        effective_qa_word_limit = web_qa_word_limit if web_qa_word_limit is not None else env_qa_word_limit
+        effective_multi_turn_word_limit = (
+            web_multi_turn_word_limit if web_multi_turn_word_limit is not None else env_multi_turn_word_limit
+        )
         
         return {
             'mode': self.mode,
@@ -206,6 +226,26 @@ class SettingsManager:
                     'options': list(VIDEO_PROVIDERS.keys())
                 }
             },
+
+            # Response formatting settings
+            'response': {
+                'style': {
+                    'value': effective_response_style,
+                    'default': env_response_style,
+                    'is_override': web_response_style is not None,
+                    'options': list(RESPONSE_STYLE_OPTIONS.keys())
+                },
+                'qa_word_limit': {
+                    'value': effective_qa_word_limit,
+                    'default': env_qa_word_limit,
+                    'is_override': web_qa_word_limit is not None
+                },
+                'multi_turn_word_limit': {
+                    'value': effective_multi_turn_word_limit,
+                    'default': env_multi_turn_word_limit,
+                    'is_override': web_multi_turn_word_limit is not None
+                }
+            },
             
             # Thresholds (read-only from env)
             'thresholds': {
@@ -237,6 +277,7 @@ class SettingsManager:
             'provider_models': self._get_provider_models(),
             'image_providers': IMAGE_PROVIDERS,
             'video_providers': VIDEO_PROVIDERS,
+            'response_style_options': RESPONSE_STYLE_OPTIONS,
             
             # Blocked tools
             'blocked_tools': web_config.get('tools', {}).get('blocked', [])
@@ -333,6 +374,17 @@ class SettingsManager:
         # Handle video overrides (per-mode)
         if 'video_provider' in overrides:
             mode_config['video_provider'] = overrides['video_provider'] or None
+
+        if 'response_style' in overrides:
+            mode_config['response_style'] = overrides['response_style'] or None
+
+        if 'qa_word_limit' in overrides:
+            value = overrides['qa_word_limit']
+            mode_config['qa_word_limit'] = int(value) if value not in (None, '') else None
+
+        if 'multi_turn_word_limit' in overrides:
+            value = overrides['multi_turn_word_limit']
+            mode_config['multi_turn_word_limit'] = int(value) if value not in (None, '') else None
         
         # Handle audio overrides (global, not per-mode)
         if 'tts_enabled' in overrides:
@@ -377,7 +429,10 @@ class SettingsManager:
             'llm_provider': None,
             'llm_model': None,
             'image_provider': None,
-            'video_provider': None
+            'video_provider': None,
+            'response_style': None,
+            'qa_word_limit': None,
+            'multi_turn_word_limit': None
         }
         return save_web_config(config)
     
