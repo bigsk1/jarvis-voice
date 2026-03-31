@@ -167,7 +167,7 @@ check_services_pids() {
     local running=0
     local piddir="$PROJECT_ROOT/logs"
     
-    for pidfile in follow_up_daemon.pid self_healing_daemon.pid reminder_scheduler.pid; do
+    for pidfile in follow_up_daemon.pid self_healing_daemon.pid reminder_scheduler.pid scheduled_task_runner.pid; do
         if [ -f "$piddir/$pidfile" ]; then
             local pid=$(cat "$piddir/$pidfile")
             if kill -0 "$pid" 2>/dev/null; then
@@ -195,12 +195,12 @@ list_sessions() {
         # Special handling for services - check PID files, not tmux session
         if [ "$name" == "services" ]; then
             local running_daemons=$(check_services_pids)
-            if [ "$running_daemons" -eq 3 ]; then
+            if [ "$running_daemons" -eq 4 ]; then
                 status="${GREEN}RUNNING${NC}"
-                health="${GREEN}✓ 3/3 daemons${NC}"
+                health="${GREEN}✓ 4/4 daemons${NC}"
             elif [ "$running_daemons" -gt 0 ]; then
                 status="${YELLOW}PARTIAL${NC}"
-                health="${YELLOW}$running_daemons/3 daemons${NC}"
+                health="${YELLOW}$running_daemons/4 daemons${NC}"
             else
                 status="${RED}STOPPED${NC}"
                 health=""
@@ -371,4 +371,3 @@ case "${1:-}" in
         exit 1
         ;;
 esac
-

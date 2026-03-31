@@ -35,6 +35,7 @@
           <button class="nav-tab active" data-tab="memories">📚 Memories</button>
           <button class="nav-tab" data-tab="intel">📁 Intel</button>
           <button class="nav-tab" data-tab="conversations">💬 Conversations</button>
+          <button class="nav-tab" data-tab="scheduled">⏱️ Scheduled</button>
           <button class="nav-tab" data-tab="stats">📊 Stats</button>
         </nav>
         
@@ -61,6 +62,7 @@
         <button class="nav-tab active" data-tab="memories">📚 Memories</button>
         <button class="nav-tab" data-tab="intel">📁 Intel</button>
         <button class="nav-tab" data-tab="conversations">💬 Conversations</button>
+        <button class="nav-tab" data-tab="scheduled">⏱️ Scheduled</button>
         <button class="nav-tab" data-tab="stats">📊 Stats</button>
       </nav>
     </header>
@@ -94,6 +96,7 @@
             <button class="btn btn-icon" id="refreshBtn" title="Refresh">🔄</button>
             <button class="btn btn-primary" id="addMemoryBtn">+ Add Memory</button>
             <button class="btn btn-primary" id="addIntelBtn" style="display: none;">+ Create File</button>
+            <button class="btn btn-primary" id="addScheduledTaskBtn" style="display: none;">+ Add Task</button>
             <button class="btn btn-secondary" id="uploadIntelBtn" style="display: none;">📤 Upload</button>
             <button class="btn btn-secondary" id="ingestIntelBtn" style="display: none;">⚡ Ingest All</button>
             <input type="file" id="intelFileInput" accept=".md,.txt" style="display: none;" multiple>
@@ -117,6 +120,38 @@
         <!-- Conversations Panel -->
         <div class="tab-panel" id="conversationsPanel">
           <div class="memory-list" id="conversationList">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+
+        <!-- Scheduled Tasks Panel -->
+        <div class="tab-panel" id="scheduledPanel">
+          <div class="panel-controls">
+            <div class="panel-controls-group">
+              <label class="panel-controls-label" for="scheduledStatusFilter">Status</label>
+              <select class="form-input panel-select" id="scheduledStatusFilter">
+                <option value="all">All</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+                <option value="never_run">Never Run</option>
+                <option value="running">Running</option>
+                <option value="success">Success</option>
+                <option value="failure">Failure</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div class="panel-controls-group">
+              <label class="panel-controls-label" for="scheduledSortBy">Sort</label>
+              <select class="form-input panel-select" id="scheduledSortBy">
+                <option value="next_run_asc">Next run soonest</option>
+                <option value="next_run_desc">Next run latest</option>
+                <option value="updated_desc">Recently updated</option>
+                <option value="name_asc">Name A-Z</option>
+                <option value="status_asc">Status</option>
+              </select>
+            </div>
+          </div>
+          <div class="memory-list" id="scheduledTaskList">
             <div class="loading"><div class="spinner"></div></div>
           </div>
         </div>
@@ -186,6 +221,80 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary modal-close">Cancel</button>
             <button type="submit" class="btn btn-primary">Save File</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Scheduled Task Modal -->
+    <div class="modal-overlay" id="scheduledTaskModal">
+      <div class="modal" style="max-width: 820px;">
+        <div class="modal-header">
+          <h2 class="modal-title" id="scheduledTaskModalTitle">Add Scheduled Task</h2>
+          <button class="modal-close">&times;</button>
+        </div>
+        <form id="scheduledTaskForm">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label" for="scheduledTaskName">Task Name *</label>
+              <input type="text" class="form-input" id="scheduledTaskName" placeholder="e.g., Daily status at 10" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scheduledTaskType">Task Type *</label>
+              <select class="form-input" id="scheduledTaskType" required>
+                <option value="query">Query</option>
+                <option value="workflow">Workflow</option>
+              </select>
+            </div>
+            <div class="form-group" id="scheduledTaskQueryGroup">
+              <label class="form-label" for="scheduledTaskQuery">Query *</label>
+              <textarea class="form-input" id="scheduledTaskQuery" rows="4" placeholder="e.g., get bitcoin and solana price and email boss"></textarea>
+            </div>
+            <div class="form-group" id="scheduledTaskWorkflowGroup" style="display: none;">
+              <label class="form-label" for="scheduledTaskWorkflowId">Workflow ID *</label>
+              <input type="text" class="form-input" id="scheduledTaskWorkflowId" placeholder="e.g., daily_status">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scheduledTaskWhen">Schedule *</label>
+              <input type="text" class="form-input" id="scheduledTaskWhen" placeholder="e.g., tomorrow at 1pm, every weekday at 9am, every 6 hours" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="scheduledTaskTimezone">Timezone</label>
+                <input type="text" class="form-input" id="scheduledTaskTimezone" placeholder="America/Los_Angeles">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="scheduledTaskExecutionMode">Execution Mode</label>
+                <select class="form-input" id="scheduledTaskExecutionMode">
+                  <option value="cloud">Cloud</option>
+                  <option value="local">Local</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="scheduledTaskMaxRetries">Max Retries</label>
+                <input type="number" class="form-input" id="scheduledTaskMaxRetries" value="1" min="0" max="10">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="scheduledTaskTimeout">Timeout Seconds</label>
+                <input type="number" class="form-input" id="scheduledTaskTimeout" value="300" min="30" max="3600">
+              </div>
+            </div>
+            <div class="form-check-row">
+              <label class="form-check">
+                <input type="checkbox" id="scheduledTaskEnabled" checked>
+                <span>Enabled</span>
+              </label>
+              <label class="form-check">
+                <input type="checkbox" id="scheduledTaskAllowOverlap">
+                <span>Allow overlap</span>
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Task</button>
           </div>
         </form>
       </div>

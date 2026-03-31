@@ -25,6 +25,7 @@
 - **[api/IMAGES.md](api/IMAGES.md)** - 🖼️ **Cloudflare CDN Upload** (permanent image hosting, multi-agent sharing, metadata tracking)  
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) 
 - **[COMPLETION_GUARD.md](COMPLETION_GUARD.md)** - 🛡️ **Completion Guard** (same-runtime repair loop, completion check, escalation tickets) 🆕
+- **[tools/scheduled-tasks/scheduled-tasks.md](tools/scheduled-tasks/scheduled-tasks.md)** - ⏱️ **Scheduled Tasks** (implemented foundation for recurring queries, workflows, parser, API, and runner) 🆕
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
 - **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - Modular webhook system (email, n8n, external APIs with auth)
@@ -307,6 +308,18 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-03-31:**
+- ✅ **Scheduled Tasks: foundation implemented**
+  - Added `schedule_task` with `create`, `list`, `update`, `cancel`, `delete`, `run_now`, and `list_runs`
+  - Added durable `scheduled_tasks` and `scheduled_task_runs` tables plus cloud/local sync support
+  - Added FastAPI endpoints for CRUD, queue-now, and run history
+  - Added `services/scheduled_task_runner.py` and wired it into `bin/jarvis-services`, `bin/start`, `bin/restart-services`, and `services/self_healing_daemon.py`
+  - Added Jarvis Memory UI `Scheduled` tab with create/edit modal, run controls, status badges, filters, sorting, inline run history, due-soon highlighting, and local-time display
+- ✅ **Shared schedule/time parsing cleanup**
+  - Added `lib/time_utils.py` and `lib/schedule_parser.py` as the shared scheduling foundation
+  - Reminder creation/listing/scheduler were updated to use cleaner timezone-aware parsing before Scheduled Tasks was built on top
+  - Parser now supports absolute dates like `April 4th at 4pm`, `4/4 at 4pm`, and `04/04/2026 at 4pm` with human-friendly summaries
 
 **2026-03-30:**
 - ✅ **Completion Guard: auto mode + learning bridge**
@@ -1292,6 +1305,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-03-30  
-**Latest:** Completion Guard feedback gating, settled-result grading, and feedback-to-experience updates in Jarvis Web  
+**Last Updated:** 2026-03-31  
+**Latest:** Scheduled Tasks foundation, shared schedule parser, scheduler service wiring, and Memory UI management tab  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

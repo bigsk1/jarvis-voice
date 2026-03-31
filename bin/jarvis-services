@@ -1,6 +1,6 @@
 #!/bin/bash
 # Start Jarvis Background Services
-# Runs follow-up, self-healing, and reminder scheduler daemons
+# Runs follow-up, self-healing, reminder, and scheduled-task daemons
 #
 # Usage:
 #   ./bin/jarvis-services         # Cloud mode (default)
@@ -40,11 +40,13 @@ mkdir -p "$PIDDIR"
 FOLLOW_UP_PID="$PIDDIR/follow_up_daemon.pid"
 SELF_HEALING_PID="$PIDDIR/self_healing_daemon.pid"
 REMINDER_PID="$PIDDIR/reminder_scheduler.pid"
+SCHEDULED_TASK_PID="$PIDDIR/scheduled_task_runner.pid"
 
 # Service scripts
 FOLLOW_UP_SCRIPT="$PROJECT_ROOT/services/follow_up_daemon.py"
 SELF_HEALING_SCRIPT="$PROJECT_ROOT/services/self_healing_daemon.py"
 REMINDER_SCRIPT="$PROJECT_ROOT/services/reminder_scheduler.py"
+SCHEDULED_TASK_SCRIPT="$PROJECT_ROOT/services/scheduled_task_runner.py"
 
 # Stop services function
 stop_services() {
@@ -83,6 +85,17 @@ stop_services() {
             stopped_count=$((stopped_count + 1))
         fi
         rm -f "$REMINDER_PID"
+    fi
+
+    # Stop scheduled task runner
+    if [ -f "$SCHEDULED_TASK_PID" ]; then
+        PID=$(cat "$SCHEDULED_TASK_PID")
+        if kill -0 "$PID" 2>/dev/null; then
+            kill "$PID" 2>/dev/null
+            echo -e "${GREEN}✅ Stopped scheduled task runner (PID $PID)${NC}"
+            stopped_count=$((stopped_count + 1))
+        fi
+        rm -f "$SCHEDULED_TASK_PID"
     fi
     
     if [ $stopped_count -eq 0 ]; then
@@ -146,12 +159,25 @@ show_status() {
     else
         echo -e "  reminder scheduler   ${RED}STOPPED${NC}"
     fi
+
+    # Check scheduled task runner
+    if [ -f "$SCHEDULED_TASK_PID" ]; then
+        PID=$(cat "$SCHEDULED_TASK_PID")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo -e "  scheduled task run. ${GREEN}RUNNING${NC}  (PID $PID)"
+            running_count=$((running_count + 1))
+        else
+            echo -e "  scheduled task run. ${RED}STOPPED${NC}  (stale PID file)"
+        fi
+    else
+        echo -e "  scheduled task run. ${RED}STOPPED${NC}"
+    fi
     
     echo ""
-    if [ $running_count -eq 3 ]; then
-        echo -e "${GREEN}All 3 services running${NC}"
+    if [ $running_count -eq 4 ]; then
+        echo -e "${GREEN}All 4 services running${NC}"
     elif [ $running_count -gt 0 ]; then
-        echo -e "${YELLOW}$running_count of 3 services running${NC}"
+        echo -e "${YELLOW}$running_count of 4 services running${NC}"
     else
         echo -e "${RED}No services running${NC}"
     fi
@@ -194,6 +220,14 @@ if [ -f "$REMINDER_PID" ]; then
     PID=$(cat "$REMINDER_PID")
     if kill -0 "$PID" 2>/dev/null; then
         echo -e "${YELLOW}⚠️  Reminder scheduler already running (PID $PID)${NC}"
+        already_running=true
+    fi
+fi
+
+if [ -f "$SCHEDULED_TASK_PID" ]; then
+    PID=$(cat "$SCHEDULED_TASK_PID")
+    if kill -0 "$PID" 2>/dev/null; then
+        echo -e "${YELLOW}⚠️  Scheduled task runner already running (PID $PID)${NC}"
         already_running=true
     fi
 fi
@@ -299,38 +333,48 @@ echo -e "${GREEN}  ✅ Follow-up daemon started (PID $(cat $FOLLOW_UP_PID))${NC}
 # Wait a second between starts
 sleep 1
 
-# Start self-healing daemon (with unbuffered output for real-time logging)
-echo -e "${BLUE}▶ Starting self-healing daemon...${NC}"
-nohup python3 -u "$SELF_HEALING_SCRIPT" >> "$PROJECT_ROOT/logs/self_healing_daemon.log" 2>&1 &
-echo $! > "$SELF_HEALING_PID"
-echo -e "${GREEN}  ✅ Self-healing daemon started (PID $(cat $SELF_HEALING_PID))${NC}"
-
-# Wait a second between starts
-sleep 1
-
 # Start reminder scheduler (with unbuffered output for real-time logging)
 echo -e "${BLUE}▶ Starting reminder scheduler...${NC}"
 nohup python3 -u "$REMINDER_SCRIPT" >> "$PROJECT_ROOT/logs/reminder_scheduler.log" 2>&1 &
 echo $! > "$REMINDER_PID"
 echo -e "${GREEN}  ✅ Reminder scheduler started (PID $(cat $REMINDER_PID))${NC}"
 
+# Wait a second between starts
+sleep 1
+
+# Start scheduled task runner (with unbuffered output for real-time logging)
+echo -e "${BLUE}▶ Starting scheduled task runner...${NC}"
+nohup python3 -u "$SCHEDULED_TASK_SCRIPT" >> "$PROJECT_ROOT/logs/scheduled_task_runner.log" 2>&1 &
+echo $! > "$SCHEDULED_TASK_PID"
+echo -e "${GREEN}  ✅ Scheduled task runner started (PID $(cat $SCHEDULED_TASK_PID))${NC}"
+
+# Wait a second between starts
+sleep 1
+
+# Start self-healing daemon last so sibling monitoring starts after other daemons exist
+echo -e "${BLUE}▶ Starting self-healing daemon...${NC}"
+nohup python3 -u "$SELF_HEALING_SCRIPT" >> "$PROJECT_ROOT/logs/self_healing_daemon.log" 2>&1 &
+echo $! > "$SELF_HEALING_PID"
+echo -e "${GREEN}  ✅ Self-healing daemon started (PID $(cat $SELF_HEALING_PID))${NC}"
+
 echo ""
 echo -e "${GREEN}✅ All services started successfully!${NC}"
 echo ""
 echo -e "${BLUE}Services:${NC}"
 echo -e "  • Follow-up daemon: Re-alerts for pending alerts (15-60 min intervals)"
-echo -e "  • Self-healing daemon: Auto-resolves alerts by checking URLs"
 echo -e "  • Reminder scheduler: Triggers time-based reminders"
+echo -e "  • Scheduled task runner: Executes due queries and workflows"
+echo -e "  • Self-healing daemon: Auto-resolves alerts and restarts sibling daemons"
 echo ""
 echo -e "${BLUE}Logs:${NC}"
 echo -e "  tail -f $PROJECT_ROOT/logs/follow_up_daemon.log"
 echo -e "  tail -f $PROJECT_ROOT/logs/self_healing_daemon.log"
 echo -e "  tail -f $PROJECT_ROOT/logs/reminder_scheduler.log"
+echo -e "  tail -f $PROJECT_ROOT/logs/scheduled_task_runner.log"
 echo ""
 echo -e "${BLUE}Management:${NC}"
 echo -e "  Stop all: ${YELLOW}./bin/jarvis-services --stop${NC}"
-echo -e "  Status: ${YELLOW}ps aux | grep -E 'follow_up|self_healing|reminder'${NC}"
+echo -e "  Status: ${YELLOW}./bin/jarvis-services --status${NC}"
 echo ""
 echo -e "${GREEN}Running in background. Services will continue even if you close this terminal.${NC}"
 echo ""
-

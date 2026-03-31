@@ -10,6 +10,7 @@ echo "Stopping services..."
 pkill -f "self_healing_daemon" && echo "  ✓ Stopped self_healing_daemon"
 pkill -f "follow_up_daemon" && echo "  ✓ Stopped follow_up_daemon"
 pkill -f "reminder_scheduler" && echo "  ✓ Stopped reminder_scheduler"
+pkill -f "scheduled_task_runner" && echo "  ✓ Stopped scheduled_task_runner"
 
 sleep 10
 
@@ -25,4 +26,4 @@ echo "Check logs:"
 echo "  tail -f logs/services/self_healing_daemon-\$(date +%Y-%m-%d).log"
 echo "  tail -f logs/services/follow_up_daemon-\$(date +%Y-%m-%d).log"
 echo "  tail -f logs/services/reminder_scheduler-\$(date +%Y-%m-%d).log"
-
+echo "  tail -f logs/services/scheduled_task_runner-\$(date +%Y-%m-%d).log"

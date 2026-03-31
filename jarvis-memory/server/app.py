@@ -40,6 +40,7 @@ from .routes.intel import intel_bp
 from .routes.conversations import conversations_bp
 from .routes.stats import stats_bp
 from .routes.auth import auth_bp
+from .routes.scheduled_tasks import scheduled_tasks_bp
 
 # Create Flask app
 app = Flask(__name__,
@@ -55,6 +56,7 @@ app.register_blueprint(intel_bp)
 app.register_blueprint(conversations_bp)
 app.register_blueprint(stats_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(scheduled_tasks_bp)
 
 # Error logging → logs/memory-ui/errors-YYYY-MM-DD.jsonl
 setup_error_logging(app, 'memory-ui')
@@ -171,4 +173,3 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     run_server(host=args.host, port=args.port, debug=args.debug)
-

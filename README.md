@@ -89,7 +89,13 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - Localhost whitelisted, public paths always accessible
   - See [`docs/SECURITY_HARDENING.md`](docs/SECURITY_HARDENING.md)
 - **Auto-Resolve**: URL-based and agent-based automatic issue resolution
-- **Background Services**: 24/7 daemons for follow-ups, healing, and reminders
+- **Background Services**: 24/7 daemons for follow-ups, healing, reminders, and scheduled task execution
+- **Scheduled Tasks**: Native scheduler for one-time or recurring Jarvis queries and workflows
+  - Natural schedule parsing like `tomorrow at 1pm`, `April 4th at 4pm`, `4/4 at 4pm`, and `every weekday at 9am`
+  - Durable task registry with run history, `run_now`, cancel/delete, and cloud/local DB sync
+  - Managed by `scheduled_task_runner` alongside the other background services
+  - Full task management in the Memory Browser UI Scheduled tab
+  - See [`docs/tools/scheduled-tasks/scheduled-tasks.md`](docs/tools/scheduled-tasks/scheduled-tasks.md)
 - **Smart Reminders**: Time-based reminders with natural language parsing and recurring support
 - **Remote Monitoring**: Deploy [Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor) (Docker) anywhere to send health checks and alerts
 - **Voice Notifications**: Jarvis speaks alerts and reminders via TTS
@@ -225,6 +231,7 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - View, search, add, edit, delete memories from `knowledge_base`
   - Intel file manager (create, upload, edit, ingest `.md`/`.txt` files)
   - Conversation browser with full detail popup
+  - Scheduled Tasks tab for creating, editing, running, cancelling, deleting, filtering, and inspecting scheduled jobs
   - FTS5 search, dual database (cloud/local), re-embed after edits
   - Mobile responsive: hamburger menu at ≤730px
   - Launch: `./bin/jarvis-memory`
@@ -742,6 +749,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `stock_price` - **Stock/futures prices**: stocks (TSLA, AAPL), futures (GC=F gold, SI=F silver), forex (EURUSD=X)
 - `price_alert` - **Price alerts**: Create crypto/stock alerts monitored by n8n (above/below thresholds)
 - `status_recap` - **Daily status**: aggregates weather, crypto, stocks, alerts, reminders, system health → Canvas + Stash
+- `schedule_task` - **Scheduled tasks**: create/list/update/cancel/delete future query or workflow runs, inspect run history, and queue `run_now`
 - `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration
 - `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
 - `samantha` - **Multi-agent**: Chat with Samantha (moltbot) AI, delegate tasks, fire-and-forget webhooks
@@ -1152,6 +1160,7 @@ LIMIT 7;"
 - [`docs/api/IMAGES.md`](docs/api/IMAGES.md) - **Images API** (Cloudflare CDN upload, multi-agent image sharing) 
 - [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (list, execute, history) 
 - [`docs/service/`](docs/service/) - **Background Services** documentation (daemons, auto-resolve)
+- [`docs/tools/scheduled-tasks/scheduled-tasks.md`](docs/tools/scheduled-tasks/scheduled-tasks.md) - **Scheduled Tasks** (scheduler, parser, API, runner, Memory UI)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
 
 **Workflow Orchestration:** 
@@ -1775,6 +1784,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.45.0 (February 2026)  
+**Current Version:** v2.46.0 (February 2026)  
 **Status:** Production Ready ✅  
 **Latest Features:** Completion Guard auto repair + corrected-path learning + OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal

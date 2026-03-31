@@ -1,0 +1,87 @@
+{
+  "enabled": true,
+  "name": "schedule_task",
+  "description": "Create, list, update, or cancel scheduled Jarvis tasks. Use when the user wants Jarvis to run a future one-time or recurring query or workflow like daily status reports, periodic checks, or scheduled emails. Supports natural schedule phrases like 'tomorrow at 1pm', 'April 4th at 4pm', '4/4 at 4pm', '04/04/2026 at 4pm', 'every day at 10am', 'every weekday at 9am', and 'every 6 hours'.",
+  "script": "schedule_task.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["create", "list", "update", "cancel", "delete", "run_now", "list_runs"],
+        "description": "What to do: create, list, update, cancel, permanently delete, queue an immediate run, or inspect recent run history."
+      },
+      "task_id": {
+        "type": "integer",
+        "description": "Required for update, cancel, delete, run_now, and list_runs."
+      },
+      "name": {
+        "type": "string",
+        "description": "Human-friendly task name."
+      },
+      "task_type": {
+        "type": "string",
+        "enum": ["query", "workflow"],
+        "description": "Task type for create. Use query for natural language tasks or workflow for deterministic workflows."
+      },
+      "query": {
+        "type": "string",
+        "description": "Natural language Jarvis query to run later. Required when task_type=query."
+      },
+      "workflow_id": {
+        "type": "string",
+        "description": "Workflow ID to run. Required when task_type=workflow."
+      },
+      "when": {
+        "type": "string",
+        "description": "Natural schedule expression like 'tomorrow at 1pm', 'April 4th at 4pm', '4/4 at 4pm', '04/04/2026 at 4pm', 'every day at 10am', 'every weekday at 9am', 'every Wednesday at 2pm', or 'every 6 hours'."
+      },
+      "timezone": {
+        "type": "string",
+        "description": "Optional IANA timezone like 'America/Los_Angeles'. Defaults to JARVIS_TIMEZONE."
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["cloud", "local"],
+        "description": "Execution mode for the future task. Defaults to cloud."
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Enable or disable the task."
+      },
+      "allow_overlap": {
+        "type": "boolean",
+        "description": "If true, the task may start even if a previous run is still active."
+      },
+      "max_retries": {
+        "type": "integer",
+        "description": "Maximum retry attempts if a run fails."
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "description": "Maximum run time before timeout."
+      },
+      "status": {
+        "type": "string",
+        "enum": ["all", "enabled", "disabled"],
+        "description": "For list action: filter by enabled state."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "For list and list_runs: maximum number of items to return."
+      },
+      "metadata": {
+        "type": "object",
+        "description": "Optional task metadata."
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

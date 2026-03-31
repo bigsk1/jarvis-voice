@@ -250,6 +250,7 @@ COMMANDS: List[Command] = [
     Command("OpenCode Logs", "cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -20 | jq -c '{event,session_id}' || echo 'No OpenCode logs today'", "OpenCode session logs", "📋 Logs"),
     Command("Follow-up Daemon Log", "tail -40 logs/services/follow_up_daemon-$(date +%Y-%m-%d).log 2>/dev/null || ls -t logs/services/follow_up_daemon-*.log 2>/dev/null | head -1 | xargs tail -40", "Follow-up daemon activity", "📋 Logs"),
     Command("Reminder Scheduler Log", "tail -40 logs/services/reminder_scheduler-$(date +%Y-%m-%d).log 2>/dev/null || ls -t logs/services/reminder_scheduler-*.log 2>/dev/null | head -1 | xargs tail -40", "Reminder scheduler activity", "📋 Logs"),
+    Command("Scheduled Task Log", "tail -40 logs/services/scheduled_task_runner-$(date +%Y-%m-%d).log 2>/dev/null || ls -t logs/services/scheduled_task_runner-*.log 2>/dev/null | head -1 | xargs tail -40", "Scheduled task runner activity", "📋 Logs"),
     Command("Self-Healing Daemon Log", "tail -40 logs/services/self_healing_daemon-$(date +%Y-%m-%d).log 2>/dev/null || ls -t logs/services/self_healing_daemon-*.log 2>/dev/null | head -1 | xargs tail -40", "Self-healing daemon activity", "📋 Logs"),
     Command("Service JSONL (Today)", "tail -20 logs/services/*-$(date +%Y-%m-%d).jsonl 2>/dev/null | jq -c '{daemon:.daemon,event:.event,ts:.timestamp}' 2>/dev/null || echo 'No JSONL logs today'", "Today's structured service logs", "📋 Logs"),
     

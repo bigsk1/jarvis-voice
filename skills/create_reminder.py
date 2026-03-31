@@ -31,6 +31,17 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
+from time_utils import (
+    add_days_local,
+    add_months_local,
+    ensure_local,
+    format_utc_db,
+    format_utc_z,
+    get_app_timezone,
+    now_local,
+    now_utc,
+    replace_day_safe,
+)
 
 
 def sync_to_google_calendar(reminder_id: int, title: str, description: str, 
@@ -56,7 +67,7 @@ def sync_to_google_calendar(reminder_id: int, title: str, description: str,
     try:
         # Format time as ISO 8601 with Z suffix to indicate UTC
         # This ensures n8n/Google Calendar interprets the time correctly
-        trigger_time_iso = trigger_time_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        trigger_time_iso = format_utc_z(trigger_time_utc)
         
         payload = {
             "action": "create",
@@ -264,7 +275,8 @@ def parse_time_expression(when: str, default_hour: int = 10):
     
     # Normalize word numbers to digits (e.g., "one hour" -> "1 hour")
     when = normalize_time_words(when)
-    now = datetime.now()
+    tz = get_app_timezone()
+    now = now_local()
     
     # Check for multi-day patterns FIRST (creates multiple reminders)
     num_days, _ = parse_multi_day_pattern(when)
@@ -274,7 +286,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
         # Create list of datetimes for each day
         datetimes = []
         for day_offset in range(1, num_days + 1):  # Start from tomorrow
-            target = now + timedelta(days=day_offset)
+            target = add_days_local(now, day_offset)
             target = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
             datetimes.append(target)
         
@@ -292,7 +304,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
             hour, minute = extract_time_from_expression(when, default_hour)
             
             # First trigger is tomorrow at the specified time
-            trigger_time = now + timedelta(days=1)
+            trigger_time = add_days_local(now, 1)
             trigger_time = trigger_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
             
             return trigger_time, rule
@@ -303,7 +315,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
             if days_ahead == 0:
                 days_ahead = 7  # Next week if today
             
-            trigger_time = now + timedelta(days=days_ahead)
+            trigger_time = add_days_local(now, days_ahead)
             
             # Extract time from expression if provided, else use default
             time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
@@ -330,20 +342,10 @@ def parse_time_expression(when: str, default_hour: int = 10):
             trigger_time = now.replace(day=1, hour=default_hour, minute=0, second=0, microsecond=0)
             
             # Try this month
-            try:
-                trigger_time = trigger_time.replace(day=target_day)
-                if trigger_time <= now:
-                    # Next month
-                    if trigger_time.month == 12:
-                        trigger_time = trigger_time.replace(year=trigger_time.year + 1, month=1, day=target_day)
-                    else:
-                        trigger_time = trigger_time.replace(month=trigger_time.month + 1, day=target_day)
-            except ValueError:
-                # Day doesn't exist in this month, try next month
-                if trigger_time.month == 12:
-                    trigger_time = trigger_time.replace(year=trigger_time.year + 1, month=1, day=target_day)
-                else:
-                    trigger_time = trigger_time.replace(month=trigger_time.month + 1, day=target_day)
+            trigger_time = replace_day_safe(trigger_time, target_day)
+            if trigger_time <= now:
+                # Next month, preserving the intended wall-clock time.
+                trigger_time = replace_day_safe(add_months_local(trigger_time, 1), target_day)
             
             # Extract time if provided
             time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)
@@ -387,7 +389,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
     
     # Pattern: "tomorrow at 3pm" (one-time)
     if "tomorrow" in when:
-        tomorrow = now + timedelta(days=1)
+        tomorrow = add_days_local(now, 1)
         
         # Check for "noon" or "midday"
         if "noon" in when or "midday" in when:
@@ -429,7 +431,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
         
         # If time has passed today, schedule for tomorrow
         if target <= now:
-            target += timedelta(days=1)
+            target = add_days_local(target, 1)
         
         return target, None
     
@@ -454,7 +456,7 @@ def parse_time_expression(when: str, default_hour: int = 10):
 
 def format_local_time(dt: datetime) -> str:
     """Format datetime in human-readable local time."""
-    return dt.strftime("%A, %B %d at %I:%M %p")
+    return dt.strftime("%A, %B %d at %I:%M %p %Z")
 
 
 def create_single_reminder(title: str, description: str, trigger_time_local: datetime, 
@@ -465,9 +467,9 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
     """
     import sqlite3
     
-    # Convert to UTC for storage
-    utc_offset = datetime.now() - datetime.now(timezone.utc).replace(tzinfo=None)
-    trigger_time_utc = trigger_time_local - utc_offset
+    # Convert to UTC for storage using the configured local timezone.
+    trigger_time_local = ensure_local(trigger_time_local, get_app_timezone())
+    trigger_time_utc = trigger_time_local.astimezone(timezone.utc)
     
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -482,8 +484,8 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
     """, (
         title,
         description,
-        trigger_time_utc.isoformat(),
-        datetime.now(timezone.utc).isoformat(),
+        format_utc_db(trigger_time_utc),
+        now_utc().isoformat(),
         recurrence_rule
     ))
     
@@ -512,7 +514,7 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
             metadata = json.dumps({
                 "gcal_event_id": gcal_event_id,
                 "gcal_synced": True,
-                "gcal_synced_at": datetime.now(timezone.utc).isoformat()
+                "gcal_synced_at": now_utc().isoformat()
             })
             cursor.execute("UPDATE reminders SET metadata = ? WHERE id = ?", (metadata, reminder_id))
             conn.commit()
@@ -520,7 +522,7 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
     
     return {
         "reminder_id": reminder_id,
-        "trigger_time": trigger_time_utc.isoformat(),
+        "trigger_time": format_utc_db(trigger_time_utc),
         "trigger_time_local": trigger_time_local.isoformat(),
         "formatted_time": format_local_time(trigger_time_local),
         "recurring": recurrence_rule is not None,
@@ -635,4 +637,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

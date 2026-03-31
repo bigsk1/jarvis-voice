@@ -171,8 +171,59 @@ class MemoryAPI {
       method: 'POST'
     });
   }
+
+  // =========================================================================
+  // Scheduled Tasks
+  // =========================================================================
+
+  async listScheduledTasks(options = {}) {
+    const params = new URLSearchParams();
+    if (options.status) params.set('status', options.status);
+    if (options.limit) params.set('limit', options.limit);
+    const query = params.toString();
+    return this.fetch(`/api/scheduled-tasks${query ? '?' + query : ''}`);
+  }
+
+  async getScheduledTask(id) {
+    return this.fetch(`/api/scheduled-tasks/${id}`);
+  }
+
+  async createScheduledTask(data) {
+    return this.fetch('/api/scheduled-tasks', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateScheduledTask(id, data) {
+    return this.fetch(`/api/scheduled-tasks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async cancelScheduledTask(id) {
+    return this.fetch(`/api/scheduled-tasks/${id}`, {
+      method: 'DELETE'
+    });
+  }
+
+  async deleteScheduledTask(id) {
+    return this.fetch(`/api/scheduled-tasks/${id}?permanent=true`, {
+      method: 'DELETE'
+    });
+  }
+
+  async runScheduledTaskNow(id) {
+    return this.fetch(`/api/scheduled-tasks/${id}/run`, {
+      method: 'POST'
+    });
+  }
+
+  async listScheduledTaskRuns(id, limit = 20) {
+    return this.fetch(`/api/scheduled-tasks/${id}/runs?limit=${limit}`);
+  }
 }
 
 // Global API instance
 const api = new MemoryAPI();
-

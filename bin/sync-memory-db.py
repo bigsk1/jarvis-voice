@@ -284,6 +284,99 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
     except Exception:
         # reminders table doesn't exist yet
         pass
+
+    # Sync scheduled tasks (if table exists)
+    try:
+        target_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                enabled BOOLEAN DEFAULT 1,
+                task_type TEXT NOT NULL,
+                task_target TEXT,
+                task_payload TEXT,
+                schedule_type TEXT NOT NULL,
+                schedule_expr TEXT NOT NULL,
+                timezone TEXT DEFAULT 'America/Los_Angeles',
+                mode TEXT DEFAULT 'cloud',
+                allow_overlap BOOLEAN DEFAULT 0,
+                max_retries INTEGER DEFAULT 1,
+                timeout_seconds INTEGER DEFAULT 300,
+                last_run_at TEXT,
+                next_run_at TEXT,
+                last_status TEXT,
+                last_error TEXT,
+                last_duration_ms REAL,
+                last_result_summary TEXT,
+                lock_owner TEXT,
+                lock_acquired_at TEXT,
+                metadata TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        tasks = source_cursor.execute("SELECT * FROM scheduled_tasks ORDER BY created_at DESC LIMIT 200").fetchall()
+        if verbose and len(tasks) > 0:
+            print()
+            print(f"Syncing {len(tasks)} scheduled tasks...")
+
+        for task in tasks:
+            existing = target_cursor.execute("SELECT id FROM scheduled_tasks WHERE id = ?", (task['id'],)).fetchone()
+            if not existing:
+                target_cursor.execute("""
+                    INSERT INTO scheduled_tasks (
+                        id, name, enabled, task_type, task_target, task_payload,
+                        schedule_type, schedule_expr, timezone, mode,
+                        allow_overlap, max_retries, timeout_seconds,
+                        last_run_at, next_run_at, last_status, last_error,
+                        last_duration_ms, last_result_summary,
+                        lock_owner, lock_acquired_at, metadata, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, tuple(task))
+    except Exception:
+        pass
+
+    # Sync scheduled task runs (if table exists)
+    try:
+        target_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS scheduled_task_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                status TEXT NOT NULL,
+                mode TEXT,
+                provider TEXT,
+                model TEXT,
+                workflow_id TEXT,
+                tools_used TEXT,
+                speech TEXT,
+                raw_llm_response TEXT,
+                result_data TEXT,
+                error TEXT,
+                duration_ms REAL,
+                completion_guard_applied BOOLEAN DEFAULT 0,
+                feedback_collected BOOLEAN DEFAULT 0,
+                metadata TEXT
+            )
+        """)
+        runs = source_cursor.execute("SELECT * FROM scheduled_task_runs ORDER BY started_at DESC LIMIT 500").fetchall()
+        if verbose and len(runs) > 0:
+            print(f"Syncing {len(runs)} scheduled task runs...")
+
+        for run in runs:
+            existing = target_cursor.execute("SELECT id FROM scheduled_task_runs WHERE id = ?", (run['id'],)).fetchone()
+            if not existing:
+                target_cursor.execute("""
+                    INSERT INTO scheduled_task_runs (
+                        id, task_id, started_at, finished_at, status,
+                        mode, provider, model, workflow_id, tools_used,
+                        speech, raw_llm_response, result_data, error,
+                        duration_ms, completion_guard_applied, feedback_collected, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, tuple(run))
+    except Exception:
+        pass
     
     target_conn.commit()
     

@@ -22,23 +22,18 @@ import os
 import json
 import sqlite3
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
+from time_utils import get_app_timezone, parse_utc_timestamp, to_local_from_utc_string
 
 def format_time_relative(trigger_time_str: str) -> str:
     """Format trigger time as relative time (e.g., 'in 2 hours', '5 minutes ago')."""
     try:
-        trigger_time = datetime.fromisoformat(trigger_time_str.replace('Z', '+00:00'))
-        
-        # Convert to naive UTC for comparison
-        if trigger_time.tzinfo:
-            trigger_time = trigger_time.replace(tzinfo=None)
-        
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        trigger_time = parse_utc_timestamp(trigger_time_str)
+        now = datetime.now(timezone.utc)
         delta = trigger_time - now
         
         if delta.total_seconds() < 0:
@@ -73,13 +68,10 @@ def format_time_relative(trigger_time_str: str) -> str:
         return trigger_time_str
 
 
-def format_trigger_time_local(trigger_time_str: str, tz: ZoneInfo) -> str:
+def format_trigger_time_local(trigger_time_str: str, tz) -> str:
     """Convert UTC trigger_time to a human-readable local time string."""
     try:
-        trigger_time = datetime.fromisoformat(trigger_time_str.replace('Z', '+00:00'))
-        if trigger_time.tzinfo is None:
-            trigger_time = trigger_time.replace(tzinfo=timezone.utc)
-        local_time = trigger_time.astimezone(tz)
+        local_time = to_local_from_utc_string(trigger_time_str, tz)
         return local_time.strftime('%A, %B %d, %Y at %I:%M %p %Z')
     except:
         return trigger_time_str
@@ -132,7 +124,7 @@ def main():
         conn.close()
         
         # Get local timezone for display
-        local_tz = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
+        local_tz = get_app_timezone(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
         
         # Format reminders
         reminders = []
@@ -141,6 +133,8 @@ def main():
             reminder['relative_time'] = format_time_relative(reminder['trigger_time'])
             reminder['trigger_time_local'] = format_trigger_time_local(reminder['trigger_time'], local_tz)
             reminders.append(reminder)
+        
+        reminders.sort(key=lambda r: parse_utc_timestamp(r['trigger_time']))
         
         # Generate speech
         if not reminders:
@@ -212,4 +206,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -16,7 +16,7 @@ from datetime import datetime
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router, stash_router, canvas_router, prices_router, config_router, workflows_router, intel_router, images_router, generated_images_router, generated_videos_router, docs_router
+from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router, stash_router, canvas_router, prices_router, config_router, workflows_router, intel_router, images_router, generated_images_router, generated_videos_router, docs_router, scheduled_tasks_router
 from api.routes.intelligence import router as intelligence_router
 
 
@@ -408,6 +408,7 @@ app.include_router(images_router)
 app.include_router(generated_images_router)
 app.include_router(generated_videos_router)
 app.include_router(docs_router)
+app.include_router(scheduled_tasks_router)
 
 # Add /metrics endpoint LAST
 if PROMETHEUS_AVAILABLE:
@@ -515,4 +516,3 @@ if __name__ == "__main__":
         port=8880,
         log_level="info"
     )
-

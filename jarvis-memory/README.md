@@ -13,6 +13,7 @@ A web-based interface for viewing, searching, and managing Jarvis's memory datab
   - Upload `.md` and `.txt` files with validation
   - Ingest all files to knowledge base
 - **Conversation Viewer**: Browse conversation history with full detail popup
+- **Scheduled Tasks Manager**: Create, inspect, update, run-now, cancel, delete, and review recent scheduled task runs
 - **Statistics Dashboard**: Database stats, category breakdown, embedding health
 - **Dual Database Support**: Switch between cloud and local modes
 - **Memory Health Indicators**: Size badges (S/M/L/XL), missing embedding warnings ⚠️
@@ -51,7 +52,7 @@ Use the mode selector in the header to switch databases.
 - **Actions**: Edit ✏️, Delete 🗑️, Re-embed 🔄 (for memories without embeddings)
 
 ### Search
-- **Dynamic Placeholder**: Changes based on active tab (memories, intel, conversations)
+- **Dynamic Placeholder**: Changes based on active tab (memories, intel, conversations, scheduled)
 - **FTS5 Powered**: Fast keyword search without LLM calls
 - **Real-time**: Results update as you type
 
@@ -91,6 +92,16 @@ Use the mode selector in the header to switch databases.
 - `GET /api/conversations` - List conversations
 - `GET /api/conversations/<id>` - Get conversation detail
 - `GET /api/conversations/search?q=<query>` - Search
+
+### Scheduled Tasks
+- `GET /api/scheduled-tasks` - List scheduled tasks
+- `GET /api/scheduled-tasks/<id>` - Get one scheduled task
+- `POST /api/scheduled-tasks` - Create task
+- `PUT /api/scheduled-tasks/<id>` - Update task
+- `DELETE /api/scheduled-tasks/<id>` - Cancel task
+- `DELETE /api/scheduled-tasks/<id>?permanent=true` - Permanently delete task and run history
+- `POST /api/scheduled-tasks/<id>/run` - Queue task to run now
+- `GET /api/scheduled-tasks/<id>/runs` - List recent run history
 
 ### Stats
 - `GET /api/stats` - Full statistics
@@ -133,6 +144,7 @@ jarvis-memory/
 │   │   ├── memories.py
 │   │   ├── intel.py
 │   │   ├── conversations.py
+│   │   ├── scheduled_tasks.py
 │   │   └── stats.py
 │   └── services/
 │       └── memory_service.py  # Database operations

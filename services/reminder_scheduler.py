@@ -19,6 +19,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
+from time_utils import (
+    add_days_local,
+    add_months_local,
+    format_utc_db,
+    get_app_timezone,
+    now_utc,
+    parse_utc_timestamp,
+    replace_day_safe,
+)
 
 
 def retry_on_db_lock(func, max_retries=5, base_delay=1.0):
@@ -49,24 +58,24 @@ def retry_on_db_lock(func, max_retries=5, base_delay=1.0):
 
 
 def get_due_reminders(db_path: str) -> List[Dict[str, Any]]:
-    """Get reminders that are due (trigger_time <= now)."""
+    """Get reminders that are due (trigger_time <= now UTC)."""
     def _query():
         conn = sqlite3.connect(db_path, timeout=30)  # 30 second timeout
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        # Use UTC time to match the database (trigger_time is stored in UTC)
-        now = datetime.now(timezone.utc).isoformat()
-        
+
         reminders = cursor.execute("""
             SELECT * FROM reminders 
             WHERE status = 'scheduled'
-            AND trigger_time <= ?
             ORDER BY trigger_time ASC
-        """, (now,)).fetchall()
+        """).fetchall()
         
         conn.close()
-        return [dict(row) for row in reminders]
+
+        now = now_utc()
+        due = [dict(row) for row in reminders if parse_utc_timestamp(row['trigger_time']) <= now]
+        due.sort(key=lambda r: parse_utc_timestamp(r['trigger_time']))
+        return due
     
     return retry_on_db_lock(_query)
 
@@ -121,38 +130,19 @@ def calculate_next_occurrence(current_trigger: str, recurrence_rule: str) -> str
     Returns:
         Next trigger time (ISO format UTC)
     """
-    from datetime import datetime, timedelta
-    
-    current = datetime.fromisoformat(current_trigger.replace('Z', '+00:00'))
-    if current.tzinfo:
-        current = current.replace(tzinfo=None)
+    local_tz = get_app_timezone()
+    current = parse_utc_timestamp(current_trigger).astimezone(local_tz)
     
     if recurrence_rule.startswith("WEEKLY:"):
-        # Add 7 days for weekly recurrence
-        next_trigger = current + timedelta(days=7)
-        return next_trigger.isoformat()
+        # Add 7 days in local time to preserve wall-clock scheduling across DST.
+        next_trigger = add_days_local(current, 7)
+        return format_utc_db(next_trigger)
     
     elif recurrence_rule.startswith("MONTHLY:"):
         # Add 1 month for monthly recurrence
         target_day = int(recurrence_rule.split(':')[1])
-        
-        # Move to next month
-        if current.month == 12:
-            next_trigger = current.replace(year=current.year + 1, month=1)
-        else:
-            next_trigger = current.replace(month=current.month + 1)
-        
-        # Try to set to target day
-        try:
-            next_trigger = next_trigger.replace(day=target_day)
-        except ValueError:
-            # Day doesn't exist in this month (e.g., Feb 30), skip to next month
-            if next_trigger.month == 12:
-                next_trigger = next_trigger.replace(year=next_trigger.year + 1, month=1, day=target_day)
-            else:
-                next_trigger = next_trigger.replace(month=next_trigger.month + 1, day=target_day)
-        
-        return next_trigger.isoformat()
+        next_trigger = replace_day_safe(add_months_local(current, 1), target_day)
+        return format_utc_db(next_trigger)
     
     return None
 
@@ -164,7 +154,7 @@ def mark_reminder_triggered(db_path: str, reminder_id: int, recurrence_rule: str
         cursor = conn.cursor()
         
         # Use UTC time for consistency
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_utc().isoformat()
         
         if recurrence_rule:
             # Recurring reminder - calculate next occurrence and reschedule
@@ -345,4 +335,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

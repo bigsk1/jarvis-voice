@@ -1,6 +1,6 @@
 # Jarvis Background Services - Documentation
 
-Proactive assistant services that run 24/7 to manage alerts, auto-resolve issues, monitor systemd services, and send reminders.
+Background services that run 24/7 to manage alerts, auto-resolve issues, monitor sibling processes, send reminders, and execute scheduled Jarvis tasks.
 
 ---
 
@@ -14,6 +14,7 @@ Proactive assistant services that run 24/7 to manage alerts, auto-resolve issues
 ### Service Details
 - **[Service Logging](SERVICE_LOGGING.md)** - Structured logging system
 - **[Fixes](FIXES.md)** - Service-related fixes
+- **[../tools/scheduled-tasks/scheduled-tasks.md](../tools/scheduled-tasks/scheduled-tasks.md)** - Scheduled Tasks architecture, API, runner, and UI
 
 ---
 
@@ -59,11 +60,23 @@ Triggers time-based reminders
 - TTS notification when triggered
 - Webhook callback support
 
+### 4. Scheduled Task Runner
+Executes scheduled Jarvis queries and workflows
+
+**Features:**
+- Checks every 60 seconds for due jobs
+- Supports one-time and recurring schedules through `lib/schedule_parser.py`
+- Runs `query` tasks through normal Jarvis orchestration
+- Runs `workflow` tasks through the workflow executor
+- Records durable run history in `scheduled_task_runs`
+- Updates per-task state like `next_run_at`, `last_run_at`, `last_status`, `last_result_summary`, and `last_error`
+- Writes structured logs to `logs/services/scheduled_task_runner-*.jsonl`
+
 ---
 
 ## Resilience Features
 
-All three daemons include database resilience (added January 2026):
+All four daemons include database resilience (added January 2026):
 
 | Feature | Description |
 |---------|-------------|
@@ -107,6 +120,7 @@ before restarting, so it works for both cloud and local deployments.
 **Supervision chain:**
 ```
 cron (5 min) → watchdog → self_healing_daemon → reminder_scheduler
+                                               → scheduled_task_runner
                                                → follow_up_daemon
                                                → jarvis_api (notify only)
 ```
@@ -130,6 +144,7 @@ cron (5 min) → watchdog → self_healing_daemon → reminder_scheduler
 tail -f logs/services/self_healing_daemon-$(date +%Y-%m-%d).log
 tail -f logs/services/follow_up_daemon-$(date +%Y-%m-%d).log
 tail -f logs/services/reminder_scheduler-$(date +%Y-%m-%d).log
+tail -f logs/services/scheduled_task_runner-$(date +%Y-%m-%d).log
 ```
 
 ### Query Service Status
@@ -173,6 +188,11 @@ MONITORED_DAEMONS = {
     "follow_up_daemon": {
         "pid_file": "logs/follow_up_daemon.pid",
         "script": "follow_up_daemon.py",
+        "restart": True,
+    },
+    "scheduled_task_runner": {
+        "pid_file": "logs/scheduled_task_runner.pid",
+        "script": "scheduled_task_runner.py",
         "restart": True,
     },
     "jarvis_api": {
@@ -230,7 +250,7 @@ All logs are stored in `logs/` with date-based filenames. **Default retention is
 |-----------|----------|------------|
 | `logs/` | LLM calls, workflows, baseline data | ~3MB/day (heavy use) |
 | `logs/api/` | API request logs (external only) | ~50KB/day |
-| `logs/services/` | Daemon logs (reminder, follow-up, self-healing) | ~500KB/day |
+| `logs/services/` | Daemon logs (reminder, scheduled task runner, follow-up, self-healing) | ~500KB/day+ |
 | `logs/intelligence/` | Intelligence engine logs | Varies |
 | `logs/tools/` | Tool execution logs | Varies |
 | `logs/opencode/` | OpenCode session logs | Varies |
@@ -351,5 +371,4 @@ See [API Logging Documentation](../api/LOGGING.md) for detailed API request logg
 
 ---
 
-*Last Updated: January 2026*
-
+*Last Updated: March 2026*

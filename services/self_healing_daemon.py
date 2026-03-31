@@ -54,6 +54,11 @@ MONITORED_DAEMONS = {
         "script": "follow_up_daemon.py",
         "restart": True,
     },
+    "scheduled_task_runner": {
+        "pid_file": "logs/scheduled_task_runner.pid",
+        "script": "scheduled_task_runner.py",
+        "restart": True,
+    },
     "jarvis_api": {
         "pid_file": "logs/jarvis-api.pid",
         "script": "server.py",  # API runs as python3 server.py
@@ -193,6 +198,7 @@ def speak_daemon_down(daemon_name: str, project_root: Path, mode: str, will_rest
     friendly_names = {
         "reminder_scheduler": "the reminder scheduler",
         "follow_up_daemon": "the follow-up daemon",
+        "scheduled_task_runner": "the scheduled task runner",
         "jarvis_api": "the Jarvis API",
     }
     
@@ -227,6 +233,7 @@ def speak_daemon_recovered(daemon_name: str, project_root: Path, mode: str):
     friendly_names = {
         "reminder_scheduler": "The reminder scheduler",
         "follow_up_daemon": "The follow-up daemon",
+        "scheduled_task_runner": "The scheduled task runner",
         "jarvis_api": "The Jarvis API",
     }
     
@@ -890,4 +897,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
