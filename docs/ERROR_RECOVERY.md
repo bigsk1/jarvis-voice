@@ -4,6 +4,17 @@
 
 Jarvis now has the ability to self-diagnose errors, check logs, and retry failed operations with corrected parameters ( depending on the tool ). This makes the system more robust and able to recover from common failures automatically.
 
+## Relationship to Completion Guard
+
+These mechanisms solve **different layers** of failure and do **not** replace each other:
+
+| Mechanism | When it runs | What it fixes |
+|-----------|----------------|----------------|
+| **Tool / routing error recovery** (this doc) | During the orchestrator turn, after a tool fails | Bad parameters, transient tool errors, “try again with fixes” inside the same run |
+| **[Completion Guard](./COMPLETION_GUARD.md)** | After the assistant has produced an answer | “Sounds done but isn’t”: missed tools, weak answers, user-driven or auto repair, tickets |
+
+So: a tool can succeed and still leave the task incomplete—that is where Completion Guard helps. Conversely, Completion Guard does not remove the need for **in-turn retries** when the tool returns a hard error.
+
 ## How It Works
 
 ### 1. Automatic Retry on Failure
@@ -333,5 +344,5 @@ cat logs/tools/tool-calls-2025-11-11.jsonl | jq 'select(.result.ok == false)'
 
 ---
 
-**The system is now self-healing and learns from mistakes!** 🧠✨
+For post-answer quality control and bounded repair, see [Completion Guard](./COMPLETION_GUARD.md).
 

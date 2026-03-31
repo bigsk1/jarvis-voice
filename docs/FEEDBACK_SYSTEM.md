@@ -82,6 +82,14 @@ This creates a feedback loop for continuous improvement without manual debugging
 4. **Separate Provider**: Can use a DIFFERENT LLM for feedback (avoid self-grading bias)
 5. **Logs stored separately**: In `logs/feedback/`, not mixed with other logs
 
+### Completion Guard (Web UI, 2026)
+
+When Completion Guard is enabled in Jarvis Web, **async feedback waits until the turn is settled** (user accepted the answer, auto-evaluation passed, repair finished, or a ticket was created). The feedback LLM then grades the **final** response and tool picture—not a mid-repair snapshot.
+
+- **Prompt**: `lib/feedback.py` injects a `=== COMPLETION GUARD ===` block (`completion_guard_context`). Instructions tell the grader to treat it as recovery context, not as an automatic penalty.
+- **Logs**: Each feedback JSONL record includes top-level `completion_guard` (or `{"status": "none"}`).
+- **Reference**: [Completion Guard](./COMPLETION_GUARD.md).
+
 ---
 
 ## Usage Methods
@@ -123,7 +131,7 @@ Toast notification (6 seconds)
 
 **Click to expand/collapse** - Cards start expanded, click header to toggle.
 
-**Always logged** - Manual feedback is ALWAYS saved to `logs/feedback/`, unlike random feedback which only logs issues.
+**Logged** - Each completed feedback run appends one line to `logs/feedback/` (all ratings). Toggle vs `--feedback` only control *whether* feedback runs, not whether a successful run is written.
 
 ### Method 2: `--feedback` Flag (CLI)
 
@@ -252,6 +260,7 @@ During feedback collection, the LLM receives **FULL CONTEXT** to enable specific
 | **Tool Descriptions** | Registry | For tools used + likely relevant tools |
 | **Intelligence Insights** | Context | Learned strategies, known failures |
 | **Config Context** | Config | Auto-context, response style, mode |
+| **Completion Guard** | Web UI / collector | Settled-outcome status, repair notes, evaluator hints |
 
 ### Why Full Context Matters
 
@@ -329,7 +338,12 @@ Rate your experience (1-5)...
     "tools_used": ["get_time"],
     "mode": "cloud",
     "feedback_provider": "anthropic",
-    "feedback_model": "claude-sonnet-4-5-20250929"
+    "feedback_model": "claude-sonnet-4-5-20250929",
+    "completion_guard": {
+      "status": "accepted",
+      "mode": "manual",
+      "note": ""
+    }
 }
 ```
 
@@ -421,8 +435,8 @@ One JSON object per line (JSONL):
 
 ### When Logs Are Written
 
-- **Default**: Only when rating < 5 (has issues)
-- **Always log**: Set `JARVIS_FEEDBACK_ALWAYS_LOG=1` environment variable
+- **Current behavior**: Each successful feedback collection appends **one JSON line** to the day’s file (`feedback-YYYY-MM-DD.jsonl`), regardless of rating. Failed collections still write an error-shaped entry.
+- **`JARVIS_FEEDBACK_ALWAYS_LOG`**: Legacy hook set temporarily in the Web UI feedback path; `FeedbackCollector` always appends a line and does not gate on this variable.
 
 ---
 
@@ -483,9 +497,9 @@ Ask meta-questions:
 FEEDBACK_PROVIDER=anthropic
 FEEDBACK_MODEL=claude-sonnet-4-5-20250929
 
-# Or use GPT-4o to grade anyone's work
+# Or use OpenAI to grade anyone's work
 FEEDBACK_PROVIDER=openai
-FEEDBACK_MODEL=gpt-4o
+FEEDBACK_MODEL=gpt-5.4-nano
 
 # Or use a larger Ollama model to grade a smaller one
 FEEDBACK_PROVIDER=ollama
@@ -507,12 +521,11 @@ FEEDBACK_MODEL=qwen3:32b
 |----------|-------------|---------|
 | `FEEDBACK_PROVIDER` | LLM provider for feedback | Same as task |
 | `FEEDBACK_MODEL` | Model for feedback | Provider's default |
-| `JARVIS_FEEDBACK_ALWAYS_LOG` | Log even if rating = 5 | Not set (false) |
 
 ### Supported Providers
 
 - `anthropic` - Claude models (claude-sonnet-4-5-20250929, etc.)
-- `openai` - GPT models (gpt-4o, gpt-4-turbo, etc.)
+- `openai` - GPT models (e.g. `gpt-5.4-nano` as default when `FEEDBACK_PROVIDER=openai` and model unset—see `lib/feedback.py`)
 - `xai` - Grok models (grok-4-1-fast-non-reasoning-latest, etc.)
 - `ollama` - Local models (qwen3.5:latest, llama3:70b, etc.)
 
@@ -715,12 +728,14 @@ WHERE id = 338;
 1. **Aggregate analysis** - Pattern detection across many feedback entries
 2. **Auto-fix suggestions** - Generate patches for tool descriptions
 3. ~~**Integration with intelligence layer**~~ ✅ DONE - Feedback now corrects experiences
-4. **Slack/Discord alerts** - Notify on low ratings
+4. ~~**Completion Guard alignment**~~ ✅ DONE - Web feedback passes guard context; experiences also updated from guard outcomes (see [INTELLIGENCE_LAYER.md](./INTELLIGENCE_LAYER.md))
+5. **Slack/Discord alerts** - Notify on low ratings
 
 ---
 
 ## Related Documentation
 
+- [Completion Guard](./COMPLETION_GUARD.md) - Post-answer completion loop, repair, tickets
 - [Intelligence Layer](./INTELLIGENCE_LAYER.md) - Learning from success/failure patterns
 - [Tool Calling System](./TOOL_CALLING_SYSTEM.md) - How tools work
 - [Memory System](./MEMORY_SYSTEM.md) - Memory-first rules

@@ -1,6 +1,8 @@
 # Jarvis Metadata System
 
-**Status:** Implemented 2025-11-14  
+**Status:** Active (evolving)  
+**Implemented:** 2025-11-14  
+**Updated:** 2026-03-30 (conversation linking, Completion Guard exports)  
 **Purpose:** Track model usage, performance, and costs across conversations and memories
 
 ---
@@ -29,7 +31,8 @@ Every conversation logged to the database now includes metadata:
   "input_tokens": 1250,
   "output_tokens": 423,
   "total_tokens": 1673,
-  "cost_usd": 0.0101
+  "cost_usd": 0.0101,
+  "web_conversation_id": "abc123..."
 }
 ```
 
@@ -39,13 +42,16 @@ Every conversation logged to the database now includes metadata:
 |-------|------|-------------|------------|
 | `mode` | string | "cloud" or "local" | No |
 | `provider` | string | "openai", "anthropic", or "ollama" | No |
-| `model` | string | Model name (e.g., "qwen3-vl", "gpt-4o") | No |
+| `model` | string | Model name (e.g., "qwen3-vl", "gpt-5.4-nano") | No |
 | `execution_time_ms` | float | Total conversation time | No |
 | `tool_count` | int | Number of tools executed | No |
 | `input_tokens` | int | Input token count | Yes |
 | `output_tokens` | int | Output token count | Yes |
 | `total_tokens` | int | Total tokens used | Yes |
 | `cost_usd` | float | Estimated cost in USD | Yes |
+| `web_conversation_id` | string | Stable ID for the Jarvis Web chat session (when the request comes from the Web UI); omitted for CLI/voice | No |
+
+**Web UI conversation exports** may also embed a `_completion_guard` block on the saved message when Completion Guard ran; that lives in export JSON, not necessarily in the `conversations.metadata` column. See [Completion Guard](./COMPLETION_GUARD.md).
 
 ### Usage
 
@@ -63,7 +69,7 @@ db.log_conversation(
     metadata={
         "mode": "cloud",
         "provider": "openai",
-        "model": "gpt-4o-mini",
+        "model": "gpt-5.4-nano",
         "execution_time_ms": 1234.5,
         "tool_count": 1,
         "input_tokens": 150,
@@ -144,7 +150,7 @@ db.remember(
 
 | Provider | Models Tracked | Notes |
 |----------|---------------|-------|
-| OpenAI | gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo | Current pricing as of Nov 2024 |
+| OpenAI | GPT-5.x / 4.1 family and others in `lib/cost_estimator.py` | Pricing maintained in code; defaults drift over time |
 | Anthropic | claude-sonnet-4, claude-3-5-sonnet, claude-3-opus | Current pricing as of Nov 2024 |
 | Ollama | *None* | Local models have no API costs |
 
@@ -408,6 +414,6 @@ LIMIT 1;
 
 ---
 
-*Last Updated: 2025-11-14*  
-*Related Docs: DATABASE_DEEP_DIVE.md, MEMORY_SYSTEM.md*
+*Last Updated: 2026-03-30*  
+*Related Docs: COMPLETION_GUARD.md, DATABASE_DEEP_DIVE.md, MEMORY_SYSTEM.md*
 

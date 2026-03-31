@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete  
 **Created**: 2025-11-27  
-**Updated**: 2025-12-11 (Tool Blocklist, Insight Filtering for Unavailable Tools)  
+**Updated**: 2026-03-30 (Completion Guard → experience updates; feedback alignment)  
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
 
 ## Overview
@@ -123,6 +123,16 @@ Rating Logic:
 - The task wasn't actually completed
 
 Now the feedback system (the nuanced judge with full context) makes the final call on success/failure.
+
+### 6. Completion Guard → Intelligence Bridge (2026)
+
+When Jarvis Web runs [Completion Guard](./COMPLETION_GUARD.md), outcomes are written back onto the **same** experience row (no duplicate “repair-only” experiences). `lib/intelligence_hooks.py` provides `update_experience_from_completion_guard()`:
+
+- **`accepted` / `auto_accepted`**: treat the user as satisfied with the settled answer.
+- **`repaired`**: count as eventual success with `had_to_retry` and fold corrected speech, tools, and tool results into `raw_data` for reflection (compare first pass vs fix); bumps reflection queue priority (0.85).
+- **`unresolved` / `ticket_created` / `error`**: mark failure for learning; higher reflection priority (0.95). **`cancelled`** uses a medium bump (0.7).
+
+Feedback collection in Web UI is **gated** until guard settlement so grades align with this record. See also [FEEDBACK_SYSTEM.md](./FEEDBACK_SYSTEM.md).
 
 ---
 
@@ -1793,4 +1803,5 @@ This is the difference between a tool and a true assistant.
 - [MEMORY_SYSTEM.md](MEMORY_SYSTEM.md) - Main memory system
 - [MEMORY_SYSTEM_TUNING.md](MEMORY_SYSTEM_TUNING.md) - Memory optimization
 - [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) - Feedback system
+- [COMPLETION_GUARD.md](COMPLETION_GUARD.md) - Post-answer completion loop and repair
 - [ADVANCED_AI_TECHNIQUES.md](ADVANCED_AI_TECHNIQUES.md) - Advanced AI techniques

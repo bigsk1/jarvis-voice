@@ -818,7 +818,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 **System:**
 - MCP servers (DuckDuckGo search, web fetch, etc.)
 
-### How Tool Calling Works
+### How Tool Calling Works - Basic Flow
 
 ```
 User: "Build a Flask API and test it"
