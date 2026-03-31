@@ -106,6 +106,33 @@ This is especially important when:
 - the user says "no, that's not what I meant"
 - the answer omitted a key requirement even though the data already existed
 
+## Evaluate The Full Answer, Not Speech Text
+
+Completion Guard should evaluate the full response before voice condensation.
+
+Do not judge completion from:
+
+- `speech`
+- condensed casual-mode output
+- multi-turn summary text
+
+Instead prefer:
+
+- `raw_llm_response`
+- structured tool outputs in `data`
+- tool result objects
+- error context
+- available follow-up refs like `stash_ref`, `canvas_page_id`, filenames, URLs, IDs
+
+Why:
+
+- speech output is intentionally shortened by `JARVIS_QA_WORD_LIMIT`
+- multi-turn summaries are intentionally shortened by `JARVIS_MULTI_TURN_WORD_LIMIT`
+- important caveats, evidence, and failure signals may exist only in the raw response
+- the repair loop needs the detailed answer, not the spoken rewrite
+
+The speech layer is for delivery. Completion Guard is about factual and operational correctness.
+
 ## Existing Systems To Reuse
 
 Jarvis already has building blocks for this:
@@ -164,6 +191,137 @@ Use multiple signals:
 
 LLM self-eval should be one signal among many, not the sole authority.
 
+## Why Repair Can Work Without Starting Over
+
+A fair concern is:
+
+`If the same LLM sees the same info, won't it just give the same wrong answer again?`
+
+Sometimes yes. That is why the repair pass must be materially different from the first pass.
+
+Repair should change at least one of these:
+
+- the objective
+- the constraints
+- the evidence requirements
+- the tool-selection policy
+- the failure context injected into the prompt
+
+### First Pass Objective
+
+Usually:
+
+- answer the user
+- choose tools if needed
+- be concise enough for Jarvis output rules
+
+### Repair Pass Objective
+
+Instead:
+
+- identify what was wrong or missing
+- verify concrete claims before repeating them
+- prefer evidence over fluency
+- call one missing validation step if needed
+- fix or retract unsupported claims
+
+### What Makes The Repair Pass Different
+
+The repair pass should receive:
+
+- the original query
+- the full raw answer
+- the user's rejection note
+- explicit evaluator findings
+- prior tool outputs
+- explicit instruction to avoid repeating unsupported claims
+
+This creates a different task:
+
+`Do not answer from scratch. Audit the prior answer, identify unsupported claims, verify if possible, then correct it.`
+
+That is a very different prompt than the normal routing pass.
+
+### Verification Rules For Repair
+
+Repair should follow stricter rules than the main answer:
+
+- If a claim is time-sensitive, verify it
+- If a claim says something is unavailable, deprecated, removed, or shut down, verify it
+- If a claim says an artifact was created, confirm the artifact exists
+- If a claim updates external state, confirm the state change actually happened
+- If a research answer sounds definitive, ensure evidence actually supports it
+
+### Why Same Runtime Helps Repair
+
+Because the repair loop can use:
+
+- exact failed claim text
+- exact tools already used
+- exact data already gathered
+- exact missing artifact or missing evidence
+
+This often lets Jarvis repair by:
+
+1. correcting the wording using existing facts
+2. running one small validation step
+3. updating the final answer or canvas output
+
+instead of restarting the entire workflow.
+
+## Example Failure: Sora API "Shutdown" Claim
+
+Real-world style example from web conversation `ea584146`:
+
+### User Request
+
+The user asked about the Sora API.
+
+### Bad First Result
+
+Jarvis responded that Sora API was shut down, gave a date, and created a canvas page reflecting that conclusion.
+
+### What Was Actually Wrong
+
+- the answer overstated the situation
+- it treated an announcement as if there were a confirmed hard cutoff
+- it created a downstream artifact based on an unverified claim
+- it did not run a direct validation step even though tools were available
+
+### User Correction
+
+The user proved the claim was wrong by successfully generating a Sora video, then had to ask again to get the canvas fixed.
+
+### What Completion Guard Should Have Done
+
+When the answer included a strong time-sensitive shutdown claim, Completion Guard should have flagged this as high risk:
+
+- "service is shut down"
+- "API no longer works"
+- "cutoff already happened"
+
+The repair pass should then have done one of the following:
+
+1. Re-check the exact claim against the source wording
+2. Use a validation step such as a lightweight API probe or authenticated check if available
+3. Fall back to softer, evidence-supported wording:
+   - "there was an announcement"
+   - "I do not yet have proof of an enforced cutoff"
+   - "service availability should be validated before stating it is shut down"
+
+### Better Repair Result
+
+Instead of repeating the incorrect claim, the repaired result should say something like:
+
+- there was an announcement affecting Sora/API access
+- the prior answer overstated that as a confirmed shutdown
+- I do not have evidence of a hard cutoff from the steps taken so far
+- if needed, I can verify live status with a direct check before updating the canvas
+
+### Important Lesson
+
+This example shows why Completion Guard must inspect the full raw answer and claims, not just the short spoken summary. The short voice-safe answer may hide exactly the details that need auditing.
+
 ## Modes
 
 ### Off
@@ -207,6 +365,52 @@ JARVIS_COMPLETION_GUARD_EVAL_MODEL=
 
 Web UI should support per-mode override like other AI Config settings.
 
+### Web Config Schema
+
+Recommended `web_config.json` shape:
+
+```json
+{
+  "cloud": {
+    "completion_guard_enabled": true,
+    "completion_guard_mode": "manual",
+    "completion_guard_max_repairs": 1,
+    "completion_guard_auto_threshold": 0.7,
+    "completion_guard_require_user_confirm": true,
+    "completion_guard_ticket_on_fail": true,
+    "completion_guard_show_ui_prompt": true,
+    "completion_guard_include_qa": true,
+    "completion_guard_include_tool_tasks": true,
+    "completion_guard_eval_provider": "",
+    "completion_guard_eval_model": ""
+  },
+  "local": {
+    "completion_guard_enabled": false,
+    "completion_guard_mode": "manual"
+  }
+}
+```
+
+Recommended UI location:
+
+- Jarvis Web
+- Settings
+- AI Config tab
+
+Recommended controls:
+
+- Enable Completion Guard
+- Mode: Off / Manual / Auto
+- Max Repairs
+- Auto Threshold
+- Require User Confirm
+- Create Ticket On Failure
+- Show UI Prompt
+- Include QA Responses
+- Include Tool Tasks
+- Eval Provider override
+- Eval Model override
+
 ## UI Concept
 
 Use a small inline card under the assistant response, not only a toast.
@@ -233,6 +437,16 @@ Optional note examples:
 - "This did not answer the second part of my question"
 - "You had search tools but gave up too early"
 
+### Suggested Card States
+
+- `idle`
+- `awaiting_user`
+- `repairing`
+- `repaired`
+- `accepted`
+- `ticket_created`
+- `error`
+
 ## Repair Pass Design
 
 ### Constraints
@@ -255,6 +469,8 @@ Optional note examples:
 - evaluator reasons
 - user-provided rejection note
 
+The raw answer is more important than the `speech` field.
+
 ### Repair Prompt Goal
 
 The repair model should answer:
@@ -263,6 +479,17 @@ The repair model should answer:
 2. Can this be repaired using existing context and tool outputs?
 3. If more work is needed, which tool or step should happen next?
 4. Produce a corrected final result, or produce a clear unresolved failure reason
+
+### Suggested Repair Prompt Rules
+
+- Do not answer from scratch
+- Audit the prior answer first
+- Identify unsupported or overstated claims
+- Prefer correcting the smallest broken step
+- Only call another tool if verification or a missing step is clearly required
+- If you cannot verify a strong claim, soften or retract it
+- If a prior artifact such as canvas content is now known to be wrong, propose the exact correction
+- Never repeat a strong factual claim unless the available evidence supports it
 
 ### Repair Strategy
 
@@ -337,6 +564,7 @@ Owns:
 - current repair count
 - same-runtime repair loop
 - final decision to repair or ticket
+- choosing whether to inspect `raw_llm_response` vs `speech`
 
 ### Web Socket Server
 
@@ -364,6 +592,71 @@ Owns:
 - connecting low-confidence repairs to experiences
 - later clustering of recurring issues
 
+## Socket Event Flow
+
+Recommended websocket events:
+
+- `completion_guard:prompt`
+- `completion_guard:respond`
+- `completion_guard:repair_start`
+- `completion_guard:repair_complete`
+- `completion_guard:ticket_created`
+- `completion_guard:error`
+
+### Event Payload Sketch
+
+`completion_guard:prompt`
+
+```json
+{
+  "message_id": "msg_123",
+  "conversation_id": "ea584146",
+  "mode": "manual",
+  "expires_in_ms": 5000,
+  "can_add_note": true
+}
+```
+
+`completion_guard:respond`
+
+```json
+{
+  "message_id": "msg_123",
+  "conversation_id": "ea584146",
+  "accepted": false,
+  "note": "The shutdown claim looks wrong. Verify live API status first."
+}
+```
+
+`completion_guard:repair_start`
+
+```json
+{
+  "message_id": "msg_123",
+  "repair_attempt": 1
+}
+```
+
+`completion_guard:repair_complete`
+
+```json
+{
+  "message_id": "msg_123",
+  "repair_attempt": 1,
+  "success": true,
+  "summary": "Corrected unsupported shutdown claim and updated final answer."
+}
+```
+
+`completion_guard:ticket_created`
+
+```json
+{
+  "message_id": "msg_123",
+  "ticket_path": "logs/completion-guard/2026-03-30-001-completion-guard.md"
+}
+```
+
 ## Same-Runtime Implementation Strategy
 
 This part is the most important design choice.
@@ -387,6 +680,73 @@ This is much better than:
 - hoping the model infers what happened previously
 
 If true same-runtime resume is too hard initially, a fallback can rebuild from saved conversation data, but that should be considered phase 1.5, not the ideal end state.
+
+### Task State Object
+
+Recommended per-message state to preserve:
+
+- message id
+- conversation id
+- original transcript
+- enhanced transcript after auto-context
+- `raw_llm_response`
+- `speech`
+- tools used
+- accumulated tool data
+- available tools
+- retry count
+- repair count
+- provider/model/mode
+- progress events emitted
+- stash/canvas refs
+- evaluator result
+- user completion response
+
+That state object is what allows same-runtime continuation instead of a synthetic restart.
+
+## Implementation Checklist
+
+### Phase 1: UX + Ticketing
+
+- Add env config keys
+- Add Web UI AI Config overrides
+- Add completion card component in chat UI
+- Add websocket events for prompt and response
+- Add markdown ticket writer
+- Log completion-guard outcomes
+
+No repair yet.
+
+### Phase 2: Same-Runtime Repair
+
+- Add in-memory task state store keyed by message id
+- Pause at completion checkpoint after normal answer
+- Capture `raw_llm_response` for evaluation
+- Accept user `Yes/No` and optional note
+- Resume same task state for one repair attempt
+- Emit repair progress and final repaired result
+- If still unresolved, emit ticket-created event
+
+### Phase 3: Evaluator
+
+- Add completion evaluator prompt
+- Score risk of incomplete/incorrect result
+- Trigger prompt or repair only above threshold
+- Add categories for recurring failures
+- Feed tickets and outcomes into intelligence analysis
+
+## Repair Evaluation Heuristics
+
+Useful high-risk heuristics:
+
+- strong time-sensitive claims: "shut down", "removed", "deprecated", "no longer works"
+- claims of external side effects: "created", "updated", "sent", "saved"
+- claims of absence: "couldn't find", "no results", "nothing available"
+- answers with zero evidence on research-heavy questions
+- mismatch between tool outputs and final answer
+- canvas/stash artifact created from an unsupported conclusion
+
+These heuristics should be enough for an MVP before building a sophisticated evaluator.
 
 ## Recommended Rollout
 
@@ -442,8 +802,9 @@ Best first real implementation:
 
 1. Add `Completion Guard` config to env + Web UI
 2. Show inline `Completed correctly? Yes / No` card
-3. If `No`, run one same-context repair pass
-4. If still unresolved, write ticket markdown
-5. Log outcome for later intelligence analysis
+3. Preserve `raw_llm_response` and task state for same-runtime continuation
+4. If `No`, run one same-context repair pass
+5. If still unresolved, write ticket markdown
+6. Log outcome for later intelligence analysis
 
 That gives immediate user value and strong debugging leverage without overcomplicating the first version.

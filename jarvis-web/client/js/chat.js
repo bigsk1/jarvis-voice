@@ -1063,6 +1063,26 @@ class ChatUI {
       this.pendingFeedback = null;
       this._updateFeedbackCard(data);
     });
+
+    socket.on('completionGuardUpdated', (data) => {
+      this._updateCompletionGuardCard(data);
+    });
+
+    socket.on('completionGuardTicketCreated', (data) => {
+      this._updateCompletionGuardCard({
+        ...data,
+        status: 'ticket_created'
+      });
+      Utils.toast('Completion issue logged for follow-up', 'warning', 4000);
+    });
+
+    socket.on('completionGuardError', (data) => {
+      this._updateCompletionGuardCard({
+        ...data,
+        status: 'error'
+      });
+      Utils.toast(data.error || 'Completion Guard failed', 'error', 4000);
+    });
   }
 
   /**
@@ -2078,6 +2098,14 @@ class ChatUI {
     
     const messageEl = document.createElement('div');
     messageEl.className = 'message assistant new-message';
+    const liveMessageId = data.message_id || data._web_message_id || data.data?._web_message_id || '';
+    const conversationId = data.conversation_id || data.data?.conversation_id || window.jarvisSocket?.conversationId || '';
+    if (liveMessageId) {
+      messageEl.dataset.messageId = liveMessageId;
+    }
+    if (conversationId) {
+      messageEl.dataset.conversationId = conversationId;
+    }
     
     // Remove new-message class after animation completes (2.5s)
     setTimeout(() => {
@@ -2563,12 +2591,186 @@ class ChatUI {
         header.parentElement.classList.toggle('expanded');
       });
     });
+
+    this._attachCompletionGuardCard(messageEl, data, toolsUsed);
     
     this.messagesContainer.appendChild(messageEl);
     Utils.scrollToBottom(this.messagesContainer);
     
     // Clear pending tools
     this.pendingTools = {};
+  }
+
+  _getCompletionGuardState(data, toolsUsed = []) {
+    const innerData = data.data || data || {};
+    const persisted = innerData._completion_guard || data._completion_guard || null;
+    const live = data.completion_guard || innerData.completion_guard || null;
+    const messageId = data.message_id || innerData._web_message_id || '';
+    const conversationId = data.conversation_id || innerData.conversation_id || window.jarvisSocket?.conversationId || '';
+
+    return {
+      live,
+      persisted,
+      messageId,
+      conversationId,
+      toolsUsed
+    };
+  }
+
+  _attachCompletionGuardCard(messageEl, data, toolsUsed = []) {
+    const state = this._getCompletionGuardState(data, toolsUsed);
+    const shouldPrompt = state.live?.prompt_user === true;
+    const hasTicket = state.persisted?.status === 'ticket_created';
+
+    if (!shouldPrompt && !hasTicket) {
+      return;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'completion-guard-card';
+    card.dataset.messageId = state.messageId || messageEl.dataset.messageId || '';
+    card.dataset.conversationId = state.conversationId || messageEl.dataset.conversationId || '';
+
+    if (hasTicket) {
+      const ticketPath = state.persisted.ticket_path || '';
+      const note = state.persisted.note || '';
+      card.classList.add('resolved');
+      card.innerHTML = `
+        <div class="completion-guard-header">
+          <span class="completion-guard-title">🛡️ Completion Guard</span>
+          <span class="completion-guard-status">Ticket created</span>
+        </div>
+        <div class="completion-guard-body">
+          <div class="completion-guard-summary">This response was marked incomplete and logged for follow-up.</div>
+          ${note ? `<div class="completion-guard-note">Note: ${Utils.escapeHtml(note)}</div>` : ''}
+          ${ticketPath ? `<div class="completion-guard-ticket">Ticket: <code>${Utils.escapeHtml(ticketPath)}</code></div>` : ''}
+        </div>
+      `;
+      messageEl.appendChild(card);
+      return;
+    }
+
+    card.innerHTML = `
+      <div class="completion-guard-header">
+        <span class="completion-guard-title">🛡️ Completion Guard</span>
+        <span class="completion-guard-status">Completed correctly?</span>
+      </div>
+      <div class="completion-guard-body">
+        <input
+          type="text"
+          class="completion-guard-note-input"
+          placeholder="Optional note if something was wrong or missing"
+        >
+        <div class="completion-guard-actions">
+          <button type="button" class="completion-guard-btn completion-guard-yes">Yes</button>
+          <button type="button" class="completion-guard-btn completion-guard-no">No</button>
+        </div>
+        <div class="completion-guard-summary">Marking "No" logs a follow-up ticket in Phase 1.</div>
+      </div>
+    `;
+
+    const yesBtn = card.querySelector('.completion-guard-yes');
+    const noBtn = card.querySelector('.completion-guard-no');
+    const noteInput = card.querySelector('.completion-guard-note-input');
+    const statusEl = card.querySelector('.completion-guard-status');
+    const summaryEl = card.querySelector('.completion-guard-summary');
+
+    yesBtn?.addEventListener('click', () => {
+      card.classList.add('resolved');
+      statusEl.textContent = 'Accepted';
+      summaryEl.textContent = 'Marked as completed correctly.';
+      yesBtn.disabled = true;
+      if (noBtn) noBtn.disabled = true;
+      if (noteInput) noteInput.disabled = true;
+    });
+
+    noBtn?.addEventListener('click', () => {
+      const messageId = card.dataset.messageId;
+      if (!messageId) {
+        Utils.toast('Missing message id for Completion Guard', 'error');
+        return;
+      }
+
+      card.classList.add('submitting');
+      statusEl.textContent = 'Logging issue...';
+      summaryEl.textContent = 'Creating a follow-up ticket for this response.';
+      yesBtn.disabled = true;
+      noBtn.disabled = true;
+      if (noteInput) noteInput.disabled = true;
+
+      window.jarvisSocket.emit('completion_guard:submit', {
+        message_id: messageId,
+        conversation_id: card.dataset.conversationId || window.jarvisSocket?.conversationId || '',
+        accepted: false,
+        note: noteInput?.value || ''
+      });
+    });
+
+    messageEl.appendChild(card);
+  }
+
+  _updateCompletionGuardCard(data) {
+    const messageId = data?.message_id;
+    if (!messageId) return;
+
+    const card = this.messagesContainer.querySelector(`.completion-guard-card[data-message-id="${messageId}"]`);
+    if (!card) return;
+
+    const statusEl = card.querySelector('.completion-guard-status');
+    const summaryEl = card.querySelector('.completion-guard-summary');
+    const noteEl = card.querySelector('.completion-guard-note');
+    const yesBtn = card.querySelector('.completion-guard-yes');
+    const noBtn = card.querySelector('.completion-guard-no');
+    const noteInput = card.querySelector('.completion-guard-note-input');
+
+    if (data.status === 'ticket_created') {
+      card.classList.remove('submitting');
+      card.classList.add('resolved');
+      if (statusEl) statusEl.textContent = 'Ticket created';
+      if (summaryEl) summaryEl.textContent = 'Marked incomplete and logged for follow-up.';
+      if (yesBtn) yesBtn.disabled = true;
+      if (noBtn) noBtn.disabled = true;
+      if (noteInput) {
+        noteInput.disabled = true;
+      }
+
+      if (!card.querySelector('.completion-guard-ticket') && data.ticket_path) {
+        const ticketEl = document.createElement('div');
+        ticketEl.className = 'completion-guard-ticket';
+        ticketEl.innerHTML = `Ticket: <code>${Utils.escapeHtml(data.ticket_path)}</code>`;
+        card.querySelector('.completion-guard-body')?.appendChild(ticketEl);
+      }
+
+      const note = data.note || noteInput?.value || '';
+      if (note) {
+        if (noteEl) {
+          noteEl.textContent = `Note: ${note}`;
+        } else {
+          const newNoteEl = document.createElement('div');
+          newNoteEl.className = 'completion-guard-note';
+          newNoteEl.textContent = `Note: ${note}`;
+          card.querySelector('.completion-guard-body')?.appendChild(newNoteEl);
+        }
+      }
+      return;
+    }
+
+    if (data.status === 'noted') {
+      card.classList.remove('submitting');
+      card.classList.add('resolved');
+      if (statusEl) statusEl.textContent = 'Noted';
+      if (summaryEl) summaryEl.textContent = 'Saved your completion note.';
+      return;
+    }
+
+    if (data.status === 'error') {
+      card.classList.remove('submitting');
+      if (statusEl) statusEl.textContent = 'Error';
+      if (summaryEl) summaryEl.textContent = data.error || 'Completion Guard failed.';
+      if (yesBtn) yesBtn.disabled = false;
+      if (noBtn) noBtn.disabled = false;
+      if (noteInput) noteInput.disabled = false;
+    }
   }
 
   /**

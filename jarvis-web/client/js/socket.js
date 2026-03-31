@@ -109,6 +109,18 @@ class JarvisSocket {
       this._emit('feedbackComplete', data);
     });
 
+    this.socket.on('completion_guard:updated', (data) => {
+      this._emit('completionGuardUpdated', data);
+    });
+
+    this.socket.on('completion_guard:ticket_created', (data) => {
+      this._emit('completionGuardTicketCreated', data);
+    });
+
+    this.socket.on('completion_guard:error', (data) => {
+      this._emit('completionGuardError', data);
+    });
+
     this.socket.on('mode:changed', (data) => {
       this.mode = data.mode;
       Utils.storage.set('mode', data.mode);
@@ -265,4 +277,3 @@ class JarvisSocket {
 
 // Create global instance
 window.jarvisSocket = new JarvisSocket();
-

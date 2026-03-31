@@ -226,6 +226,9 @@ def update_web_settings():
     if any(k in data for k in [
         'llm_provider', 'llm_model', 'image_provider', 'video_provider',
         'response_style', 'qa_word_limit', 'multi_turn_word_limit',
+        'completion_guard_enabled', 'completion_guard_mode',
+        'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',
+        'completion_guard_include_qa', 'completion_guard_include_tool_tasks',
         'tool_similarity', 'memory_similarity', 'tts_enabled'
     ]):
         success = settings.save_web_overrides(data)

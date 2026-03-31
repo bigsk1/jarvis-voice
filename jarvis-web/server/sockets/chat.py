@@ -7,6 +7,8 @@ import sys
 import uuid
 import time
 import traceback
+import json
+from datetime import datetime
 from pathlib import Path
 from flask_socketio import emit, join_room, leave_room
 from flask import request
@@ -25,6 +27,140 @@ class ChatHandler:
         self.sessions = {}  # session_id -> {mode, conversation_id, ...}
         self.pending_cancellations = {}  # message_id -> True (to signal orchestrator to stop)
         self._register_handlers()
+
+    @staticmethod
+    def _parse_bool(value, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    def _get_completion_guard_config(self, mode: str) -> dict:
+        """Get effective Completion Guard settings for the current mode."""
+        from ..config import load_web_config, load_jarvis_config
+        from config_loader import get_config_value
+
+        load_jarvis_config(mode)
+        web_config = load_web_config()
+        mode_overrides = web_config.get(mode, {})
+
+        enabled = mode_overrides.get('completion_guard_enabled')
+        mode_setting = mode_overrides.get('completion_guard_mode')
+        ticket_on_fail = mode_overrides.get('completion_guard_ticket_on_fail')
+        show_ui_prompt = mode_overrides.get('completion_guard_show_ui_prompt')
+        include_qa = mode_overrides.get('completion_guard_include_qa')
+        include_tool_tasks = mode_overrides.get('completion_guard_include_tool_tasks')
+
+        return {
+            'enabled': enabled if enabled is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_ENABLED', 'false')),
+            'mode': mode_setting or get_config_value('JARVIS_COMPLETION_GUARD_MODE', 'manual'),
+            'ticket_on_fail': ticket_on_fail if ticket_on_fail is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_TICKET_ON_FAIL', 'true'), True),
+            'show_ui_prompt': show_ui_prompt if show_ui_prompt is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT', 'true'), True),
+            'include_qa': include_qa if include_qa is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_INCLUDE_QA', 'true'), True),
+            'include_tool_tasks': include_tool_tasks if include_tool_tasks is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS', 'true'), True),
+        }
+
+    def _should_prompt_completion_guard(self, config: dict, tools_used: list[str]) -> bool:
+        """Decide whether to show the completion prompt for this response."""
+        if not config.get('enabled'):
+            return False
+        if config.get('mode') != 'manual':
+            return False
+        if not config.get('show_ui_prompt'):
+            return False
+
+        has_tools = bool(tools_used)
+        if has_tools:
+            return config.get('include_tool_tasks', True)
+        return config.get('include_qa', True)
+
+    def _remember_completion_guard_record(self, session_id: str, message_id: str, record: dict):
+        """Keep a small per-session record so a later 'No' can create a useful ticket."""
+        session = self.sessions.setdefault(session_id, {})
+        records = session.setdefault('completion_guard_records', {})
+        records[message_id] = record
+
+        # Keep recent records bounded per session.
+        if len(records) > 50:
+            oldest = sorted(records.items(), key=lambda item: item[1].get('timestamp', 0))[:10]
+            for old_id, _ in oldest:
+                records.pop(old_id, None)
+
+    def _write_completion_guard_ticket(self, record: dict, note: str = '') -> Path:
+        """Write a markdown ticket describing the completion failure."""
+        tickets_dir = JARVIS_ROOT / 'logs' / 'completion-guard'
+        tickets_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now()
+        safe_conv = record.get('conversation_id', 'unknown')
+        safe_msg = record.get('message_id', 'unknown')[:8]
+        filename = f"{timestamp.strftime('%Y-%m-%d-%H%M%S')}-{safe_conv}-{safe_msg}-completion-guard.md"
+        ticket_path = tickets_dir / filename
+
+        def dump_json(value):
+            try:
+                return json.dumps(value, indent=2, ensure_ascii=False)
+            except Exception:
+                return str(value)
+
+        content = f"""# Completion Guard Ticket
+
+- Timestamp: {timestamp.isoformat()}
+- Conversation ID: {record.get('conversation_id', 'unknown')}
+- Web Message ID: {record.get('message_id', 'unknown')}
+- Mode: {record.get('mode', 'unknown')}
+- Provider: {record.get('provider', 'unknown')}
+- Model: {record.get('model', 'unknown')}
+- Ticket Reason: User marked response as not completed correctly
+
+## User Query
+
+{record.get('query', '').strip() or '(empty)'}
+
+## User Note
+
+{note.strip() or '(none)'}
+
+## Spoken Response
+
+{record.get('speech', '').strip() or '(empty)'}
+
+## Raw LLM Response
+
+{record.get('raw_llm_response', '').strip() or '(empty)'}
+
+## Tools Used
+
+{', '.join(record.get('tools_used', [])) or '(none)'}
+
+## Server-Side Tools
+
+```json
+{dump_json(record.get('server_side_tools', {}))}
+```
+
+## Usage
+
+```json
+{dump_json(record.get('usage', {}))}
+```
+
+## Tool / Result Data
+
+```json
+{dump_json(record.get('data', {}))}
+```
+
+## Completion Guard Config
+
+```json
+{dump_json(record.get('completion_guard', {}))}
+```
+"""
+
+        ticket_path.write_text(content, encoding='utf-8')
+        return ticket_path
     
     def _register_handlers(self):
         """Register all socket event handlers"""
@@ -40,7 +176,8 @@ class ChatHandler:
             self.sessions[session_id] = {
                 'mode': default_mode,
                 'conversation_id': None,
-                'connected_at': time.time()
+                'connected_at': time.time(),
+                'completion_guard_records': {}
             }
             
             # Join personal room
@@ -173,6 +310,86 @@ class ChatHandler:
                 request_feedback,
                 file_context
             )
+
+        @self.socketio.on('completion_guard:submit')
+        def handle_completion_guard_submit(data):
+            """Handle a user marking an answer as incomplete/incorrect."""
+            session_id = request.sid
+            message_id = data.get('message_id')
+            conversation_id = data.get('conversation_id')
+            accepted = data.get('accepted')
+            note = (data.get('note') or '').strip()
+
+            session = self.sessions.get(session_id, {})
+            records = session.get('completion_guard_records', {})
+            record = records.get(message_id)
+
+            if accepted is not False:
+                emit('completion_guard:error', {
+                    'message_id': message_id,
+                    'error': 'Only rejection handling is implemented in Phase 1.'
+                })
+                return
+
+            if not message_id or not record:
+                emit('completion_guard:error', {
+                    'message_id': message_id,
+                    'error': 'Completion Guard context expired or was not found.'
+                })
+                return
+
+            config = record.get('completion_guard', {})
+            if not config.get('ticket_on_fail', True):
+                emit('completion_guard:updated', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id or record.get('conversation_id'),
+                    'status': 'noted',
+                    'note': note
+                })
+                return
+
+            self.socketio.emit('chat:status', {
+                'message_id': message_id,
+                'conversation_id': conversation_id or record.get('conversation_id'),
+                'status': 'Logging completion issue for follow-up...',
+                'timestamp': time.time()
+            }, room=session_id)
+
+            try:
+                ticket_path = self._write_completion_guard_ticket(record, note)
+                rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
+
+                record['ticket_path'] = rel_path
+                record['user_note'] = note
+                record['status'] = 'ticket_created'
+
+                from ..services.conversation_store import get_conversation_store
+                store = get_conversation_store()
+                store.update_message_data_by_web_message_id(
+                    record.get('conversation_id'),
+                    message_id,
+                    {
+                        '_completion_guard': {
+                            'status': 'ticket_created',
+                            'ticket_path': rel_path,
+                            'note': note,
+                            'created_at': datetime.now().isoformat()
+                        }
+                    }
+                )
+
+                self.socketio.emit('completion_guard:ticket_created', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id or record.get('conversation_id'),
+                    'ticket_path': rel_path,
+                    'note': note
+                }, room=session_id)
+            except Exception as e:
+                print(f"[COMPLETION_GUARD] Failed to create ticket: {e}")
+                emit('completion_guard:error', {
+                    'message_id': message_id,
+                    'error': f'Failed to create ticket: {e}'
+                })
         
         @self.socketio.on('conversation:load')
         def handle_load_conversation(data):
@@ -611,6 +828,7 @@ class ChatHandler:
                          file_context: dict = None):
         """Process a chat message through the orchestrator (with optional vision, text file, prompt metadata, and feedback)"""
         start_time = time.time()
+        original_user_message = message
         prompt_meta = prompt_meta or {}
         prompt_info = f", prompt={prompt_meta.get('prompt_name')}" if prompt_meta.get('prompt_name') else ""
         feedback_info = f", request_feedback={request_feedback}" if request_feedback else ""
@@ -859,6 +1077,8 @@ class ChatHandler:
                 provider_override=provider_override,
                 model_override=model_override
             )
+            effective_provider = getattr(orchestrator.router, 'provider_type', provider_override or '')
+            effective_model = getattr(orchestrator.router, 'model_name', model_override or '')
             
             # Set up status callback to emit via WebSocket instead of local TTS
             def status_callback(status_message: str):
@@ -1094,6 +1314,7 @@ class ChatHandler:
                     save_data['vision_analysis'] = vision_result
                 if stash_info:
                     save_data['stash'] = stash_info
+                save_data['_web_message_id'] = message_id
                 # Include token usage for tracking
                 if result.get('usage'):
                     save_data['usage'] = result['usage']
@@ -1147,6 +1368,26 @@ class ChatHandler:
                 response_data['vision_analysis'] = vision_result
             if stash_info:
                 response_data['stash'] = stash_info
+
+            completion_guard_config = self._get_completion_guard_config(mode)
+            completion_guard_prompt = self._should_prompt_completion_guard(completion_guard_config, tools_used)
+            self._remember_completion_guard_record(session_id, message_id, {
+                'timestamp': time.time(),
+                'conversation_id': conversation_id,
+                'message_id': message_id,
+                'mode': mode,
+                'provider': effective_provider,
+                'model': effective_model,
+                'query': original_user_message,
+                'processed_query': message,
+                'speech': result.get('speech', ''),
+                'raw_llm_response': raw_response,
+                'tools_used': tools_used,
+                'data': response_data,
+                'usage': result.get('usage', {}),
+                'server_side_tools': result.get('server_side_tools', {}),
+                'completion_guard': completion_guard_config
+            })
             
             self.socketio.emit('chat:response', {
                 'message_id': message_id,
@@ -1160,7 +1401,13 @@ class ChatHandler:
                 'duration_ms': duration_ms,
                 'usage': result.get('usage', {}),
                 'audio_url': audio_url,
-                'server_side_tools': result.get('server_side_tools', {})  # xAI/Anthropic native tools
+                'server_side_tools': result.get('server_side_tools', {}),  # xAI/Anthropic native tools
+                'completion_guard': {
+                    'enabled': completion_guard_config.get('enabled', False),
+                    'mode': completion_guard_config.get('mode', 'off'),
+                    'ticket_on_fail': completion_guard_config.get('ticket_on_fail', True),
+                    'prompt_user': completion_guard_prompt
+                }
             }, room=session_id)
             
             # Collect feedback if requested (runs async after main response)

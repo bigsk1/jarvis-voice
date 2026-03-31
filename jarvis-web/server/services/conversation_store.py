@@ -172,6 +172,34 @@ class ConversationStore:
             return True
         return False
 
+    def update_message_data_by_web_message_id(self, conv_id: str, web_message_id: str, patch: dict) -> bool:
+        """Merge message data into an assistant message identified by its live web message id."""
+        conversation = self.get_conversation(conv_id)
+        if not conversation:
+            return False
+
+        for message in conversation.get('messages', []):
+            message_data = message.get('data') or {}
+            if message_data.get('_web_message_id') != web_message_id:
+                continue
+
+            message_data.update(patch or {})
+            message['data'] = message_data
+            conversation['updated_at'] = datetime.now().isoformat()
+
+            conv_file = self.conversations_dir / f'{conv_id}.json'
+            with open(conv_file, 'w') as f:
+                json.dump(conversation, f, indent=2)
+
+            for idx_conv in self._index['conversations']:
+                if idx_conv['id'] == conv_id:
+                    idx_conv['updated_at'] = conversation['updated_at']
+                    break
+            self._save_index()
+            return True
+
+        return False
+
 
 # Singleton instance
 _store: ConversationStore | None = None
@@ -183,4 +211,3 @@ def get_conversation_store() -> ConversationStore:
     if _store is None:
         _store = ConversationStore()
     return _store
-

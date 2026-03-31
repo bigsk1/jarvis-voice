@@ -969,6 +969,108 @@ body {
   transform: rotate(-90deg);
 }
 
+/* Completion Guard card */
+.completion-guard-card {
+  margin-top: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-left: 3px solid rgba(245, 158, 11, 0.7);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(245, 158, 11, 0.06) 100%);
+  overflow: hidden;
+}
+
+.completion-guard-card.resolved {
+  border-left-color: rgba(34, 197, 94, 0.7);
+}
+
+.completion-guard-card.submitting {
+  border-left-color: rgba(59, 130, 246, 0.7);
+}
+
+.completion-guard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.completion-guard-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.completion-guard-status {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.completion-guard-body {
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+}
+
+.completion-guard-note-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.completion-guard-note-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.completion-guard-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.completion-guard-btn {
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.completion-guard-btn:hover:not(:disabled) {
+  border-color: var(--border-secondary);
+  background: var(--bg-hover);
+}
+
+.completion-guard-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.completion-guard-yes {
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.completion-guard-no {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.completion-guard-summary,
+.completion-guard-note,
+.completion-guard-ticket {
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
 /* ⏹ Stop button (cancel processing) */
 .stop-btn {
   background: var(--error) !important;

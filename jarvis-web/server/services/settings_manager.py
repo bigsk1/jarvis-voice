@@ -92,6 +92,11 @@ RESPONSE_STYLE_OPTIONS = {
     'detailed': {'name': 'Detailed', 'description': 'Keep full verbose responses'}
 }
 
+COMPLETION_GUARD_MODE_OPTIONS = {
+    'off': {'name': 'Off', 'description': 'Disable completion prompts'},
+    'manual': {'name': 'Manual', 'description': 'Ask whether the response completed correctly'}
+}
+
 
 class SettingsManager:
     """Manages settings for the web UI with override support"""
@@ -166,6 +171,12 @@ class SettingsManager:
         env_response_style = get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto')
         env_qa_word_limit = int(get_jarvis_setting('JARVIS_QA_WORD_LIMIT', '75'))
         env_multi_turn_word_limit = int(get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+        env_completion_guard_enabled = get_jarvis_setting('JARVIS_COMPLETION_GUARD_ENABLED', 'false').lower() == 'true'
+        env_completion_guard_mode = get_jarvis_setting('JARVIS_COMPLETION_GUARD_MODE', 'manual')
+        env_completion_guard_ticket_on_fail = get_jarvis_setting('JARVIS_COMPLETION_GUARD_TICKET_ON_FAIL', 'true').lower() == 'true'
+        env_completion_guard_show_ui_prompt = get_jarvis_setting('JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT', 'true').lower() == 'true'
+        env_completion_guard_include_qa = get_jarvis_setting('JARVIS_COMPLETION_GUARD_INCLUDE_QA', 'true').lower() == 'true'
+        env_completion_guard_include_tool_tasks = get_jarvis_setting('JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS', 'true').lower() == 'true'
         
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
@@ -176,6 +187,12 @@ class SettingsManager:
         web_response_style = mode_overrides.get('response_style')
         web_qa_word_limit = mode_overrides.get('qa_word_limit')
         web_multi_turn_word_limit = mode_overrides.get('multi_turn_word_limit')
+        web_completion_guard_enabled = mode_overrides.get('completion_guard_enabled')
+        web_completion_guard_mode = mode_overrides.get('completion_guard_mode')
+        web_completion_guard_ticket_on_fail = mode_overrides.get('completion_guard_ticket_on_fail')
+        web_completion_guard_show_ui_prompt = mode_overrides.get('completion_guard_show_ui_prompt')
+        web_completion_guard_include_qa = mode_overrides.get('completion_guard_include_qa')
+        web_completion_guard_include_tool_tasks = mode_overrides.get('completion_guard_include_tool_tasks')
         
         # Calculate effective values
         effective_provider = web_provider or env_provider
@@ -186,6 +203,32 @@ class SettingsManager:
         effective_qa_word_limit = web_qa_word_limit if web_qa_word_limit is not None else env_qa_word_limit
         effective_multi_turn_word_limit = (
             web_multi_turn_word_limit if web_multi_turn_word_limit is not None else env_multi_turn_word_limit
+        )
+        effective_completion_guard_enabled = (
+            web_completion_guard_enabled
+            if web_completion_guard_enabled is not None
+            else env_completion_guard_enabled
+        )
+        effective_completion_guard_mode = web_completion_guard_mode or env_completion_guard_mode
+        effective_completion_guard_ticket_on_fail = (
+            web_completion_guard_ticket_on_fail
+            if web_completion_guard_ticket_on_fail is not None
+            else env_completion_guard_ticket_on_fail
+        )
+        effective_completion_guard_show_ui_prompt = (
+            web_completion_guard_show_ui_prompt
+            if web_completion_guard_show_ui_prompt is not None
+            else env_completion_guard_show_ui_prompt
+        )
+        effective_completion_guard_include_qa = (
+            web_completion_guard_include_qa
+            if web_completion_guard_include_qa is not None
+            else env_completion_guard_include_qa
+        )
+        effective_completion_guard_include_tool_tasks = (
+            web_completion_guard_include_tool_tasks
+            if web_completion_guard_include_tool_tasks is not None
+            else env_completion_guard_include_tool_tasks
         )
         
         return {
@@ -244,6 +287,40 @@ class SettingsManager:
                     'value': effective_multi_turn_word_limit,
                     'default': env_multi_turn_word_limit,
                     'is_override': web_multi_turn_word_limit is not None
+                }
+            },
+
+            'completion_guard': {
+                'enabled': {
+                    'value': effective_completion_guard_enabled,
+                    'default': env_completion_guard_enabled,
+                    'is_override': web_completion_guard_enabled is not None
+                },
+                'mode': {
+                    'value': effective_completion_guard_mode,
+                    'default': env_completion_guard_mode,
+                    'is_override': web_completion_guard_mode is not None,
+                    'options': list(COMPLETION_GUARD_MODE_OPTIONS.keys())
+                },
+                'ticket_on_fail': {
+                    'value': effective_completion_guard_ticket_on_fail,
+                    'default': env_completion_guard_ticket_on_fail,
+                    'is_override': web_completion_guard_ticket_on_fail is not None
+                },
+                'show_ui_prompt': {
+                    'value': effective_completion_guard_show_ui_prompt,
+                    'default': env_completion_guard_show_ui_prompt,
+                    'is_override': web_completion_guard_show_ui_prompt is not None
+                },
+                'include_qa': {
+                    'value': effective_completion_guard_include_qa,
+                    'default': env_completion_guard_include_qa,
+                    'is_override': web_completion_guard_include_qa is not None
+                },
+                'include_tool_tasks': {
+                    'value': effective_completion_guard_include_tool_tasks,
+                    'default': env_completion_guard_include_tool_tasks,
+                    'is_override': web_completion_guard_include_tool_tasks is not None
                 }
             },
             
@@ -385,6 +462,29 @@ class SettingsManager:
         if 'multi_turn_word_limit' in overrides:
             value = overrides['multi_turn_word_limit']
             mode_config['multi_turn_word_limit'] = int(value) if value not in (None, '') else None
+
+        if 'completion_guard_enabled' in overrides:
+            value = overrides['completion_guard_enabled']
+            mode_config['completion_guard_enabled'] = bool(value) if value is not None else None
+
+        if 'completion_guard_mode' in overrides:
+            mode_config['completion_guard_mode'] = overrides['completion_guard_mode'] or None
+
+        if 'completion_guard_ticket_on_fail' in overrides:
+            value = overrides['completion_guard_ticket_on_fail']
+            mode_config['completion_guard_ticket_on_fail'] = bool(value) if value is not None else None
+
+        if 'completion_guard_show_ui_prompt' in overrides:
+            value = overrides['completion_guard_show_ui_prompt']
+            mode_config['completion_guard_show_ui_prompt'] = bool(value) if value is not None else None
+
+        if 'completion_guard_include_qa' in overrides:
+            value = overrides['completion_guard_include_qa']
+            mode_config['completion_guard_include_qa'] = bool(value) if value is not None else None
+
+        if 'completion_guard_include_tool_tasks' in overrides:
+            value = overrides['completion_guard_include_tool_tasks']
+            mode_config['completion_guard_include_tool_tasks'] = bool(value) if value is not None else None
         
         # Handle audio overrides (global, not per-mode)
         if 'tts_enabled' in overrides:
@@ -432,7 +532,13 @@ class SettingsManager:
             'video_provider': None,
             'response_style': None,
             'qa_word_limit': None,
-            'multi_turn_word_limit': None
+            'multi_turn_word_limit': None,
+            'completion_guard_enabled': None,
+            'completion_guard_mode': None,
+            'completion_guard_ticket_on_fail': None,
+            'completion_guard_show_ui_prompt': None,
+            'completion_guard_include_qa': None,
+            'completion_guard_include_tool_tasks': None
         }
         return save_web_config(config)
     

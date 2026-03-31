@@ -1062,6 +1062,71 @@ class JarvisApp {
         if (s.response?.multi_turn_word_limit?.is_override) {
           multiTurnWordLimitDefault.textContent = `⚡ override: ${s.response.multi_turn_word_limit.value}`;
         }
+
+        // Populate Completion Guard settings
+        const completionGuardEnabledInput = document.getElementById('setting-completion-guard-enabled');
+        completionGuardEnabledInput.value = s.completion_guard?.enabled?.is_override
+          ? String(!!s.completion_guard.enabled.value)
+          : '';
+        const completionGuardEnabledDefault = document.getElementById('completion-guard-enabled-default');
+        completionGuardEnabledDefault.textContent = `(${envFile}: ${s.completion_guard?.enabled?.default ? 'on' : 'off'})`;
+        completionGuardEnabledDefault.className = s.completion_guard?.enabled?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.enabled?.is_override) {
+          completionGuardEnabledDefault.textContent = `⚡ override: ${s.completion_guard.enabled.value ? 'on' : 'off'}`;
+        }
+
+        const completionGuardModeInput = document.getElementById('setting-completion-guard-mode');
+        completionGuardModeInput.value = s.completion_guard?.mode?.is_override ? s.completion_guard.mode.value : '';
+        const completionGuardModeDefault = document.getElementById('completion-guard-mode-default');
+        completionGuardModeDefault.textContent = `(${envFile}: ${s.completion_guard?.mode?.default || 'manual'})`;
+        completionGuardModeDefault.className = s.completion_guard?.mode?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.mode?.is_override) {
+          completionGuardModeDefault.textContent = `⚡ override: ${s.completion_guard.mode.value}`;
+        }
+
+        const completionGuardTicketInput = document.getElementById('setting-completion-guard-ticket-on-fail');
+        completionGuardTicketInput.value = s.completion_guard?.ticket_on_fail?.is_override
+          ? String(!!s.completion_guard.ticket_on_fail.value)
+          : '';
+        const completionGuardTicketDefault = document.getElementById('completion-guard-ticket-default');
+        completionGuardTicketDefault.textContent = `(${envFile}: ${s.completion_guard?.ticket_on_fail?.default ? 'on' : 'off'})`;
+        completionGuardTicketDefault.className = s.completion_guard?.ticket_on_fail?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.ticket_on_fail?.is_override) {
+          completionGuardTicketDefault.textContent = `⚡ override: ${s.completion_guard.ticket_on_fail.value ? 'on' : 'off'}`;
+        }
+
+        const completionGuardPromptInput = document.getElementById('setting-completion-guard-show-ui-prompt');
+        completionGuardPromptInput.value = s.completion_guard?.show_ui_prompt?.is_override
+          ? String(!!s.completion_guard.show_ui_prompt.value)
+          : '';
+        const completionGuardPromptDefault = document.getElementById('completion-guard-prompt-default');
+        completionGuardPromptDefault.textContent = `(${envFile}: ${s.completion_guard?.show_ui_prompt?.default ? 'on' : 'off'})`;
+        completionGuardPromptDefault.className = s.completion_guard?.show_ui_prompt?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.show_ui_prompt?.is_override) {
+          completionGuardPromptDefault.textContent = `⚡ override: ${s.completion_guard.show_ui_prompt.value ? 'on' : 'off'}`;
+        }
+
+        const completionGuardQaInput = document.getElementById('setting-completion-guard-include-qa');
+        completionGuardQaInput.value = s.completion_guard?.include_qa?.is_override
+          ? String(!!s.completion_guard.include_qa.value)
+          : '';
+        const completionGuardQaDefault = document.getElementById('completion-guard-qa-default');
+        completionGuardQaDefault.textContent = `(${envFile}: ${s.completion_guard?.include_qa?.default ? 'on' : 'off'})`;
+        completionGuardQaDefault.className = s.completion_guard?.include_qa?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.include_qa?.is_override) {
+          completionGuardQaDefault.textContent = `⚡ override: ${s.completion_guard.include_qa.value ? 'on' : 'off'}`;
+        }
+
+        const completionGuardToolsInput = document.getElementById('setting-completion-guard-include-tool-tasks');
+        completionGuardToolsInput.value = s.completion_guard?.include_tool_tasks?.is_override
+          ? String(!!s.completion_guard.include_tool_tasks.value)
+          : '';
+        const completionGuardToolsDefault = document.getElementById('completion-guard-tools-default');
+        completionGuardToolsDefault.textContent = `(${envFile}: ${s.completion_guard?.include_tool_tasks?.default ? 'on' : 'off'})`;
+        completionGuardToolsDefault.className = s.completion_guard?.include_tool_tasks?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.include_tool_tasks?.is_override) {
+          completionGuardToolsDefault.textContent = `⚡ override: ${s.completion_guard.include_tool_tasks.value ? 'on' : 'off'}`;
+        }
         
         // Populate Conversation History Limit
         const historyLimit = s.conversation?.history_limit || 20;
@@ -1785,6 +1850,10 @@ class JarvisApp {
     try {
       const qaWordLimitRaw = document.getElementById('setting-qa-word-limit').value.trim();
       const multiTurnWordLimitRaw = document.getElementById('setting-multi-turn-word-limit').value.trim();
+      const parseNullableBool = (value) => {
+        if (value === '') return null;
+        return value === 'true';
+      };
 
       // Collect all settings
       const settings = {
@@ -1797,6 +1866,12 @@ class JarvisApp {
         response_style: document.getElementById('setting-response-style').value || null,
         qa_word_limit: qaWordLimitRaw === '' ? null : parseInt(qaWordLimitRaw, 10),
         multi_turn_word_limit: multiTurnWordLimitRaw === '' ? null : parseInt(multiTurnWordLimitRaw, 10),
+        completion_guard_enabled: parseNullableBool(document.getElementById('setting-completion-guard-enabled').value),
+        completion_guard_mode: document.getElementById('setting-completion-guard-mode').value || null,
+        completion_guard_ticket_on_fail: parseNullableBool(document.getElementById('setting-completion-guard-ticket-on-fail').value),
+        completion_guard_show_ui_prompt: parseNullableBool(document.getElementById('setting-completion-guard-show-ui-prompt').value),
+        completion_guard_include_qa: parseNullableBool(document.getElementById('setting-completion-guard-include-qa').value),
+        completion_guard_include_tool_tasks: parseNullableBool(document.getElementById('setting-completion-guard-include-tool-tasks').value),
         history_limit: parseInt(document.getElementById('setting-history-limit').value) || 20
       };
 

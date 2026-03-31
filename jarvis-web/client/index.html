@@ -457,6 +457,74 @@
             </div>
             <div class="setting-group" style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary);">
               <label class="setting-label">
+                Completion Guard Enabled
+                <span class="setting-default" id="completion-guard-enabled-default"></span>
+              </label>
+              <select class="setting-input" id="setting-completion-guard-enabled">
+                <option value="">Use env default</option>
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+              <span class="setting-desc">Phase 1: lets you mark a response as incomplete or wrong and create a follow-up ticket.</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Completion Guard Mode
+                <span class="setting-default" id="completion-guard-mode-default"></span>
+              </label>
+              <select class="setting-input" id="setting-completion-guard-mode">
+                <option value="">Use env default</option>
+                <option value="off">Off</option>
+                <option value="manual">Manual</option>
+              </select>
+              <span class="setting-desc">Phase 1 supports manual confirmation after responses.</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Completion Ticket On Fail
+                <span class="setting-default" id="completion-guard-ticket-default"></span>
+              </label>
+              <select class="setting-input" id="setting-completion-guard-ticket-on-fail">
+                <option value="">Use env default</option>
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Show UI Prompt
+                <span class="setting-default" id="completion-guard-prompt-default"></span>
+              </label>
+              <select class="setting-input" id="setting-completion-guard-show-ui-prompt">
+                <option value="">Use env default</option>
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Include Q&A Responses
+                <span class="setting-default" id="completion-guard-qa-default"></span>
+              </label>
+              <select class="setting-input" id="setting-completion-guard-include-qa">
+                <option value="">Use env default</option>
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Include Tool Tasks
+                <span class="setting-default" id="completion-guard-tools-default"></span>
+              </label>
+              <select class="setting-input" id="setting-completion-guard-include-tool-tasks">
+                <option value="">Use env default</option>
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div class="setting-group" style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary);">
+              <label class="setting-label">
                 Conversation History Limit
                 <span class="setting-desc">(messages to include as LLM context)</span>
               </label>
