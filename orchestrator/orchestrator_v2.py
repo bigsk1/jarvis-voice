@@ -158,6 +158,8 @@ class Orchestrator:
         self.cancel_check = None
         # Web conversation ID for tracking web UI chat sessions (stored in metadata)
         self.web_conversation_id = None
+        # Internal repair/meta passes can disable learning to avoid polluting experiences.
+        self.learning_enabled = True
     
     def set_status_callback(self, callback):
         """Set callback for status updates (for web UI to emit via WebSocket)."""
@@ -188,6 +190,10 @@ class Orchestrator:
         Checked between turns and before tool execution.
         """
         self.cancel_check = callback
+
+    def set_learning_enabled(self, enabled: bool):
+        """Enable or disable intelligence experience recording for this orchestrator run."""
+        self.learning_enabled = bool(enabled)
     
     def _is_cancelled(self) -> bool:
         """Check if processing has been cancelled."""
@@ -560,11 +566,11 @@ Mode: {self.mode}
                 self._emit_progress('routing', message='Processing cancelled')
                 return {
                     "ok": True,
-                    "response": f"Processing stopped after {turn_num} turn(s). Results so far:\n\n" + 
+                    "speech": f"Processing stopped after {turn_num} turn(s). Results so far:\n\n" + 
                                (conversation_context[-1].get('summary', 'No results yet.') if conversation_context else 'No results yet.'),
                     "tools_used": tools_used,
                     "data": accumulated_data,
-                    "usage_info": total_usage if any(total_usage.values()) else None,
+                    "usage": total_usage if any(total_usage.values()) else None,
                     "thinking": first_thinking,
                     "cancelled": True
                 }
@@ -729,11 +735,11 @@ Mode: {self.mode}
                     self._emit_progress('routing', message='Processing cancelled')
                     return {
                         "ok": True,
-                        "response": f"Stopped before {tool_name}. Results so far:\n\n" + 
+                        "speech": f"Stopped before {tool_name}. Results so far:\n\n" + 
                                    (conversation_context[-1].get('summary', 'No results yet.') if conversation_context else 'No results yet.'),
                         "tools_used": tools_used,
                         "data": accumulated_data,
-                        "usage_info": total_usage if any(total_usage.values()) else None,
+                        "usage": total_usage if any(total_usage.values()) else None,
                         "thinking": first_thinking,
                         "cancelled": True
                     }
@@ -2134,6 +2140,9 @@ Your BEST EFFORT response:"""
         Returns:
             Experience ID if recorded, -1 otherwise
         """
+        if not self.learning_enabled:
+            return -1
+
         try:
             from intelligence_hooks import record_interaction, track_insight_outcomes
             

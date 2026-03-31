@@ -975,6 +975,8 @@ class ChatUI {
     
     socket.on('thinking', (data) => {
       this.currentMessageId = data.message_id;
+      this.isProcessing = true;
+      this.updateSendButton();
       this.showThinking();
     });
     
@@ -1017,6 +1019,7 @@ class ChatUI {
       this.hideThinking();
       this.clearStatus();  // Clear any status messages
       this.addAssistantMessage(data.text, data.tools_used, data);
+      this.currentMessageId = null;
       this.isProcessing = false;
       this.updateSendButton();
       
@@ -1048,15 +1051,30 @@ class ChatUI {
     
     socket.on('error', (data) => {
       this.hideThinking();
+      this.clearStatus();
       this.addErrorMessage(data.error);
+      this.currentMessageId = null;
       this.isProcessing = false;
       this.updateSendButton();
+    });
+
+    socket.on('cancelled', (data) => {
+      this.hideThinking();
+      this.clearStatus();
+      this.isProcessing = false;
+      this.updateSendButton();
+
+      if (data?.message_id && this.currentMessageId === data.message_id) {
+        this.currentMessageId = null;
+      }
+
+      Utils.toast('Stopped current task', 'info', 2500);
     });
     
     // Feedback events (async analysis after response)
     socket.on('feedbackStart', (data) => {
       this.pendingFeedback = { message_id: data.message_id, status: 'analyzing' };
-      this._showFeedbackCard('analyzing');
+      this._showFeedbackCard('analyzing', data.message_id);
     });
     
     socket.on('feedbackComplete', (data) => {
@@ -2621,7 +2639,8 @@ class ChatUI {
     const state = this._getCompletionGuardState(data, toolsUsed);
     const shouldPrompt = state.live?.prompt_user === true;
     const persistedStatus = state.persisted?.status || '';
-    const hasPersistedState = Boolean(persistedStatus) && persistedStatus !== 'repair_response';
+    const hasPersistedState = Boolean(persistedStatus)
+      && !['repair_response', 'auto_accepted'].includes(persistedStatus);
 
     if (!shouldPrompt && !hasPersistedState) {
       return;
@@ -2643,6 +2662,10 @@ class ChatUI {
         statusText = 'Ticket created';
         summaryText = 'This response was marked incomplete and logged for follow-up.';
         extraClass = ' resolved';
+      } else if (persistedStatus === 'accepted') {
+        statusText = 'Accepted';
+        summaryText = 'Marked as completed correctly.';
+        extraClass = ' resolved';
       } else if (persistedStatus === 'repaired') {
         statusText = 'Repaired';
         summaryText = 'A repair pass found a better answer and added it below.';
@@ -2651,6 +2674,9 @@ class ChatUI {
         statusText = 'Repairing...';
         summaryText = 'Trying one follow-up pass using the existing task context.';
         extraClass = ' submitting';
+      } else if (persistedStatus === 'cancelled') {
+        statusText = 'Cancelled';
+        summaryText = 'Repair was stopped before it finished. You can leave it as-is or try again.';
       } else if (persistedStatus === 'unresolved') {
         statusText = 'Unresolved';
         summaryText = ticketPath
@@ -2704,12 +2730,16 @@ class ChatUI {
     const summaryEl = card.querySelector('.completion-guard-summary');
 
     yesBtn?.addEventListener('click', () => {
-      card.classList.add('resolved');
-      statusEl.textContent = 'Accepted';
-      summaryEl.textContent = 'Marked as completed correctly.';
       yesBtn.disabled = true;
       if (noBtn) noBtn.disabled = true;
       if (noteInput) noteInput.disabled = true;
+
+      window.jarvisSocket.emit('completion_guard:submit', {
+        message_id: card.dataset.messageId,
+        conversation_id: card.dataset.conversationId || window.jarvisSocket?.conversationId || '',
+        accepted: true,
+        note: noteInput?.value || ''
+      });
     });
 
     noBtn?.addEventListener('click', () => {
@@ -2737,11 +2767,38 @@ class ChatUI {
     messageEl.appendChild(card);
   }
 
+  _ensureCompletionGuardCard(messageId, conversationId = '') {
+    if (!messageId) return null;
+
+    let card = this.messagesContainer.querySelector(`.completion-guard-card[data-message-id="${messageId}"]`);
+    if (card) return card;
+
+    const messageEl = this.messagesContainer.querySelector(`.message.assistant[data-message-id="${messageId}"]`);
+    if (!messageEl) return null;
+
+    card = document.createElement('div');
+    card.className = 'completion-guard-card';
+    card.dataset.messageId = messageId;
+    card.dataset.conversationId = conversationId || messageEl.dataset.conversationId || window.jarvisSocket?.conversationId || '';
+    card.innerHTML = `
+      <div class="completion-guard-header">
+        <span class="completion-guard-title">🛡️ Completion Guard</span>
+        <span class="completion-guard-status">Checking...</span>
+      </div>
+      <div class="completion-guard-body">
+        <div class="completion-guard-summary">Reviewing whether this response needs a repair pass.</div>
+      </div>
+    `;
+    messageEl.appendChild(card);
+    return card;
+  }
+
   _updateCompletionGuardCard(data) {
     const messageId = data?.message_id;
     if (!messageId) return;
 
-    const card = this.messagesContainer.querySelector(`.completion-guard-card[data-message-id="${messageId}"]`);
+    const card = this.messagesContainer.querySelector(`.completion-guard-card[data-message-id="${messageId}"]`)
+      || this._ensureCompletionGuardCard(messageId, data?.conversation_id);
     if (!card) return;
 
     const ensureBody = () => {
@@ -2777,11 +2834,26 @@ class ChatUI {
       `;
     };
 
+    if (data.status === 'accepted') {
+      card.classList.remove('submitting');
+      card.classList.add('resolved');
+      if (statusEl) statusEl.textContent = 'Accepted';
+      renderResolvedBody(
+        'Marked as completed correctly.',
+        data.note || noteInput?.value || ''
+      );
+      return;
+    }
+
     if (data.status === 'repairing') {
       card.classList.add('submitting');
       card.classList.remove('resolved');
       if (statusEl) statusEl.textContent = 'Repairing...';
-      if (summaryEl) summaryEl.textContent = 'Trying one follow-up pass using the existing task context.';
+      if (summaryEl) {
+        summaryEl.textContent = data.auto_triggered
+          ? 'Auto-check found a likely issue. Trying one follow-up pass using the existing task context.'
+          : 'Trying one follow-up pass using the existing task context.';
+      }
       if (yesBtn) yesBtn.disabled = true;
       if (noBtn) noBtn.disabled = true;
       if (noteInput) noteInput.disabled = true;
@@ -2799,6 +2871,20 @@ class ChatUI {
       if (yesBtn) yesBtn.disabled = true;
       if (noBtn) noBtn.disabled = true;
       if (noteInput) noteInput.disabled = true;
+      return;
+    }
+
+    if (data.status === 'cancelled') {
+      card.classList.remove('submitting');
+      card.classList.remove('resolved');
+      if (statusEl) statusEl.textContent = 'Cancelled';
+      renderResolvedBody(
+        'Repair was stopped before it finished. You can leave this response as-is or trigger another repair later.',
+        data.note || noteInput?.value || ''
+      );
+      if (yesBtn) yesBtn.disabled = false;
+      if (noBtn) noBtn.disabled = false;
+      if (noteInput) noteInput.disabled = false;
       return;
     }
 
@@ -3133,22 +3219,30 @@ class ChatUI {
   /**
    * Show feedback card in analyzing state
    */
-  _showFeedbackCard(status = 'analyzing') {
-    // Remove existing feedback card if any
-    const existingCard = document.getElementById('feedback-card');
+  _showFeedbackCard(status = 'analyzing', messageId = null) {
+    const existingCard = this.messagesContainer.querySelector(
+      messageId
+        ? `.tool-card.feedback[data-message-id="${messageId}"]`
+        : '#feedback-card'
+    );
     if (existingCard) {
       existingCard.remove();
     }
-    
-    // Find the last assistant message to append feedback to
-    const messages = this.messagesContainer.querySelectorAll('.message.assistant:not(.thinking-message)');
-    const lastMessage = messages[messages.length - 1];
-    
+
+    let lastMessage = null;
+    if (messageId) {
+      lastMessage = this.messagesContainer.querySelector(`.message.assistant[data-message-id="${messageId}"]`);
+    }
+    if (!lastMessage) {
+      const messages = this.messagesContainer.querySelectorAll('.message.assistant:not(.thinking-message)');
+      lastMessage = messages[messages.length - 1];
+    }
+
     if (!lastMessage) {
       return;
     }
     
-    const cardHtml = `<div id="feedback-card" class="tool-card feedback pending expanded" style="margin-top: 12px;">
+    const cardHtml = `<div id="feedback-card" data-message-id="${Utils.escapeHtml(messageId || '')}" class="tool-card feedback pending expanded" style="margin-top: 12px;">
         <div class="tool-card-header" style="cursor: pointer;">
           <span class="expand-indicator" style="margin-right: 6px; transition: transform 0.2s;">▼</span>
           <span class="tool-card-title">📊 Feedback Analysis</span>
@@ -3188,10 +3282,14 @@ class ChatUI {
    * Update feedback card with results
    */
   _updateFeedbackCard(data) {
-    const card = document.getElementById('feedback-card');
+    let card = this.messagesContainer.querySelector(
+      data?.message_id
+        ? `.tool-card.feedback[data-message-id="${data.message_id}"]`
+        : '#feedback-card'
+    );
     if (!card) {
       // Card doesn't exist, create it and retry
-      this._showFeedbackCard();
+      this._showFeedbackCard('analyzing', data?.message_id);
       setTimeout(() => this._updateFeedbackCard(data), 100);
       return;
     }
@@ -3318,7 +3416,7 @@ class ChatUI {
    * Cancel current processing
    */
   cancelProcessing() {
-    if (!this.isProcessing) return;
+    if (!this.isProcessing && !this.currentMessageId) return;
     
     console.log('[ChatUI] Canceling processing...');
     

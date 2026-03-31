@@ -36,7 +36,7 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export
-  - **Completion Guard**: Inline `Completed correctly?` card with one bounded repair pass, follow-up tickets, workflow/fire-and-forget exclusions, and exported completion metadata
+  - **Completion Guard**: Manual `Completed correctly?` card plus auto-evaluator mode, one bounded repair pass, stop/cancel support for repair runs, follow-up tickets, workflow/fire-and-forget exclusions, exported metadata, and intelligence-layer corrected-path learning
   - **Image upload**: Drag-drop/paste/click with vision analysis
   - **Mode-aware TTS/STT**: Cloud vs Local providers
   - Dynamic LLM/model switching on-the-fly
@@ -1777,4 +1777,4 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.44.1 (February 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal
+**Latest Features:** Completion Guard auto repair + corrected-path learning + OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal

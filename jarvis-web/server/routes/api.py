@@ -229,6 +229,7 @@ def update_web_settings():
         'completion_guard_enabled', 'completion_guard_mode',
         'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',
         'completion_guard_include_qa', 'completion_guard_include_tool_tasks',
+        'completion_guard_auto_threshold',
         'tool_similarity', 'memory_similarity', 'tts_enabled'
     ]):
         success = settings.save_web_overrides(data)

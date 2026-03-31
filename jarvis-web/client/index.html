@@ -476,8 +476,17 @@
                 <option value="">Use env default</option>
                 <option value="off">Off</option>
                 <option value="manual">Manual</option>
+                <option value="auto">Auto</option>
               </select>
-              <span class="setting-desc">Phase 1 supports manual confirmation after responses.</span>
+              <span class="setting-desc">Manual asks you to confirm. Auto evaluates the raw result in the background and only intervenes when it sees a likely miss.</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Auto Repair Threshold
+                <span class="setting-default" id="completion-guard-auto-threshold-default"></span>
+              </label>
+              <input type="number" class="setting-input" id="setting-completion-guard-auto-threshold" min="0.50" max="0.99" step="0.01" placeholder="Use env default" style="width: 110px;">
+              <span class="setting-desc">Minimum audit score required before auto mode starts a repair pass.</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">

@@ -94,7 +94,8 @@ RESPONSE_STYLE_OPTIONS = {
 
 COMPLETION_GUARD_MODE_OPTIONS = {
     'off': {'name': 'Off', 'description': 'Disable completion prompts'},
-    'manual': {'name': 'Manual', 'description': 'Ask whether the response completed correctly'}
+    'manual': {'name': 'Manual', 'description': 'Ask whether the response completed correctly'},
+    'auto': {'name': 'Auto', 'description': 'Evaluate the final raw answer and auto-repair when confidence is low'}
 }
 
 
@@ -177,6 +178,7 @@ class SettingsManager:
         env_completion_guard_show_ui_prompt = get_jarvis_setting('JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT', 'true').lower() == 'true'
         env_completion_guard_include_qa = get_jarvis_setting('JARVIS_COMPLETION_GUARD_INCLUDE_QA', 'true').lower() == 'true'
         env_completion_guard_include_tool_tasks = get_jarvis_setting('JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS', 'true').lower() == 'true'
+        env_completion_guard_auto_threshold = float(get_jarvis_setting('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70'))
         
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
@@ -193,6 +195,7 @@ class SettingsManager:
         web_completion_guard_show_ui_prompt = mode_overrides.get('completion_guard_show_ui_prompt')
         web_completion_guard_include_qa = mode_overrides.get('completion_guard_include_qa')
         web_completion_guard_include_tool_tasks = mode_overrides.get('completion_guard_include_tool_tasks')
+        web_completion_guard_auto_threshold = mode_overrides.get('completion_guard_auto_threshold')
         
         # Calculate effective values
         effective_provider = web_provider or env_provider
@@ -229,6 +232,11 @@ class SettingsManager:
             web_completion_guard_include_tool_tasks
             if web_completion_guard_include_tool_tasks is not None
             else env_completion_guard_include_tool_tasks
+        )
+        effective_completion_guard_auto_threshold = (
+            web_completion_guard_auto_threshold
+            if web_completion_guard_auto_threshold is not None
+            else env_completion_guard_auto_threshold
         )
         
         return {
@@ -321,6 +329,11 @@ class SettingsManager:
                     'value': effective_completion_guard_include_tool_tasks,
                     'default': env_completion_guard_include_tool_tasks,
                     'is_override': web_completion_guard_include_tool_tasks is not None
+                },
+                'auto_threshold': {
+                    'value': effective_completion_guard_auto_threshold,
+                    'default': env_completion_guard_auto_threshold,
+                    'is_override': web_completion_guard_auto_threshold is not None
                 }
             },
             
@@ -485,6 +498,10 @@ class SettingsManager:
         if 'completion_guard_include_tool_tasks' in overrides:
             value = overrides['completion_guard_include_tool_tasks']
             mode_config['completion_guard_include_tool_tasks'] = bool(value) if value is not None else None
+
+        if 'completion_guard_auto_threshold' in overrides:
+            value = overrides['completion_guard_auto_threshold']
+            mode_config['completion_guard_auto_threshold'] = float(value) if value not in (None, '') else None
         
         # Handle audio overrides (global, not per-mode)
         if 'tts_enabled' in overrides:

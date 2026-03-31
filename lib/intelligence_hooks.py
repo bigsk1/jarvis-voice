@@ -127,9 +127,10 @@ def record_interaction(
         # This enables reflection to evaluate CONTENT quality
         # ============================================
         
-        # LLM's final response to user (the speech output)
-        llm_response = result.get('speech', '')
-        
+        # Keep both the raw answer and the shorter spoken/display form.
+        raw_llm_response = result.get('raw_llm_response', '') or result.get('speech', '')
+        final_speech = result.get('speech', '')
+
         # Actual tool results (data returned by tools)
         tool_results = result.get('data', {})
         
@@ -138,8 +139,10 @@ def record_interaction(
         available_tools = result.get('available_tools', [])
         
         # Truncate to prevent DB bloat but keep enough for evaluation
-        if len(llm_response) > 2000:
-            llm_response = llm_response[:2000] + "... [truncated]"
+        if len(raw_llm_response) > 2500:
+            raw_llm_response = raw_llm_response[:2500] + "... [truncated]"
+        if len(final_speech) > 1200:
+            final_speech = final_speech[:1200] + "... [truncated]"
         
         # Serialize tool results, truncate if too large
         tool_results_str = json.dumps(tool_results, default=str)
@@ -151,11 +154,14 @@ def record_interaction(
             'tools_available': len(tools_used) > 0,
             'multi_turn': len(tools_used) > 1,
             'timestamp': datetime.now().isoformat(),
-            # NEW: Include response content for reflection
-            'llm_response': llm_response,
+            # Include both the raw answer and the final spoken/display form.
+            'llm_response': raw_llm_response,  # backward-compatible key used by reflection prompt
+            'raw_llm_response': raw_llm_response,
+            'final_speech': final_speech,
             'tool_results': tool_results_str,
             # CRITICAL: What tools the LLM could have chosen from
-            'available_tools': available_tools
+            'available_tools': available_tools,
+            'experience_id': result.get('experience_id')
         }
         
         # Run async in sync context (handles FastAPI and standalone)
@@ -238,6 +244,156 @@ def update_experience_from_feedback(
         
     except Exception as e:
         logger.warning(f"Failed to update experience {experience_id}: {e}")
+        return False
+
+
+def update_experience_from_completion_guard(
+    experience_id: int,
+    status: str,
+    note: str = None,
+    metadata: dict[str, Any] | None = None
+) -> bool:
+    """
+    Update an experience using Completion Guard outcomes.
+
+    This is the COMPLETION_GUARD → INTELLIGENCE bridge:
+    - accepted / auto_accepted confirm the result
+    - repaired marks the experience as eventually successful but suboptimal
+    - unresolved / ticket_created mark it as a failure worth reflecting on
+    """
+    if experience_id < 0:
+        return False
+
+    intel = _get_intel()
+    if not intel:
+        return False
+
+    status = (status or '').strip().lower()
+    metadata = metadata or {}
+
+    try:
+        cursor = intel.conn.cursor()
+        cursor.execute("""
+            SELECT outcome_success, user_satisfied, had_to_retry, raw_data
+            FROM experiences
+            WHERE id = ?
+        """, (experience_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        raw_data = {}
+        if row['raw_data']:
+            try:
+                raw_data = json.loads(row['raw_data'])
+            except Exception:
+                raw_data = {}
+
+        completion_guard = raw_data.get('completion_guard', {})
+        completion_guard.update({
+            'status': status,
+            'note': note or completion_guard.get('note', ''),
+            'metadata': metadata,
+            'updated_at': datetime.now().isoformat()
+        })
+        raw_data['completion_guard'] = completion_guard
+
+        # Fold the corrected solution back into the ORIGINAL experience so
+        # reflection can compare "what failed first" vs "what actually fixed it".
+        context = raw_data.setdefault('context', {})
+        repair_result = metadata.get('repair_result') or {}
+        repair_data = metadata.get('repair_data') or {}
+        if repair_result:
+            corrected_response = (
+                repair_result.get('raw_llm_response')
+                or repair_result.get('speech')
+                or ''
+            )
+            if corrected_response:
+                context['corrected_llm_response'] = corrected_response[:2500]
+            corrected_tools = repair_result.get('tools_used') or []
+            if corrected_tools:
+                context['corrected_tools_used'] = corrected_tools
+            strategy_family = repair_result.get('strategy_family')
+            if strategy_family:
+                context['repair_strategy_family'] = strategy_family
+        if repair_data:
+            repair_data_str = json.dumps(repair_data, default=str)
+            if len(repair_data_str) > 5000:
+                repair_data_str = repair_data_str[:5000] + "... [truncated]"
+            context['corrected_tool_results'] = repair_data_str
+
+        outcome_success = int(row['outcome_success']) if row['outcome_success'] is not None else 1
+        user_satisfied = int(row['user_satisfied']) if row['user_satisfied'] is not None else 0
+        had_to_retry = int(row['had_to_retry']) if row['had_to_retry'] is not None else 0
+
+        if status in ('accepted', 'auto_accepted'):
+            user_satisfied = 1
+        elif status == 'repaired':
+            outcome_success = 1
+            user_satisfied = 0
+            had_to_retry = 1
+        elif status == 'cancelled':
+            user_satisfied = 0
+            had_to_retry = 1
+        elif status in ('repairing', 'unresolved', 'ticket_created', 'error'):
+            user_satisfied = 0
+            had_to_retry = 1
+            if status in ('unresolved', 'ticket_created', 'error'):
+                outcome_success = 0
+
+        cursor.execute("""
+            UPDATE experiences
+            SET outcome_success = ?,
+                user_satisfied = ?,
+                had_to_retry = ?,
+                raw_data = ?
+            WHERE id = ?
+        """, (
+            outcome_success,
+            user_satisfied,
+            had_to_retry,
+            json.dumps(raw_data),
+            experience_id
+        ))
+
+        if status == 'repaired':
+            cursor.execute("""
+                UPDATE reflection_queue
+                SET priority = MAX(priority, 0.85)
+                WHERE experience_id = ?
+            """, (experience_id,))
+        elif status == 'cancelled':
+            cursor.execute("""
+                UPDATE reflection_queue
+                SET priority = MAX(priority, 0.7)
+                WHERE experience_id = ?
+            """, (experience_id,))
+        elif status in ('unresolved', 'ticket_created', 'error'):
+            cursor.execute("""
+                UPDATE reflection_queue
+                SET priority = MAX(priority, 0.95)
+                WHERE experience_id = ?
+            """, (experience_id,))
+
+        intel.conn.commit()
+        logger.info(f"Experience {experience_id}: updated from Completion Guard status={status}")
+
+        try:
+            from intelligence import get_intel_logger
+            get_intel_logger().log("completion_guard_outcome", {
+                "experience_id": experience_id,
+                "status": status,
+                "note": (note or "")[:300],
+                "metadata": metadata
+            })
+        except Exception:
+            pass
+
+        return True
+
+    except Exception as e:
+        logger.warning(f"Failed to update experience {experience_id} from Completion Guard: {e}")
         return False
 
 
@@ -776,4 +932,3 @@ if __name__ == "__main__":
     print("\n6. Learning evaluation:")
     evaluation = evaluate_learning()
     print(f"   {json.dumps(evaluation, indent=4)}")
-

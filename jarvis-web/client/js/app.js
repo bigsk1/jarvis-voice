@@ -1084,6 +1084,18 @@ class JarvisApp {
           completionGuardModeDefault.textContent = `⚡ override: ${s.completion_guard.mode.value}`;
         }
 
+        const completionGuardAutoThresholdInput = document.getElementById('setting-completion-guard-auto-threshold');
+        completionGuardAutoThresholdInput.value = s.completion_guard?.auto_threshold?.is_override
+          ? s.completion_guard.auto_threshold.value
+          : '';
+        completionGuardAutoThresholdInput.placeholder = `${s.completion_guard?.auto_threshold?.default ?? 0.7}`;
+        const completionGuardAutoThresholdDefault = document.getElementById('completion-guard-auto-threshold-default');
+        completionGuardAutoThresholdDefault.textContent = `(${envFile}: ${s.completion_guard?.auto_threshold?.default ?? 0.7})`;
+        completionGuardAutoThresholdDefault.className = s.completion_guard?.auto_threshold?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.auto_threshold?.is_override) {
+          completionGuardAutoThresholdDefault.textContent = `⚡ override: ${s.completion_guard.auto_threshold.value}`;
+        }
+
         const completionGuardTicketInput = document.getElementById('setting-completion-guard-ticket-on-fail');
         completionGuardTicketInput.value = s.completion_guard?.ticket_on_fail?.is_override
           ? String(!!s.completion_guard.ticket_on_fail.value)
@@ -1850,6 +1862,7 @@ class JarvisApp {
     try {
       const qaWordLimitRaw = document.getElementById('setting-qa-word-limit').value.trim();
       const multiTurnWordLimitRaw = document.getElementById('setting-multi-turn-word-limit').value.trim();
+      const completionGuardAutoThresholdRaw = document.getElementById('setting-completion-guard-auto-threshold').value.trim();
       const parseNullableBool = (value) => {
         if (value === '') return null;
         return value === 'true';
@@ -1872,6 +1885,7 @@ class JarvisApp {
         completion_guard_show_ui_prompt: parseNullableBool(document.getElementById('setting-completion-guard-show-ui-prompt').value),
         completion_guard_include_qa: parseNullableBool(document.getElementById('setting-completion-guard-include-qa').value),
         completion_guard_include_tool_tasks: parseNullableBool(document.getElementById('setting-completion-guard-include-tool-tasks').value),
+        completion_guard_auto_threshold: completionGuardAutoThresholdRaw === '' ? null : parseFloat(completionGuardAutoThresholdRaw),
         history_limit: parseInt(document.getElementById('setting-history-limit').value) || 20
       };
 
@@ -1882,6 +1896,15 @@ class JarvisApp {
 
       if (settings.multi_turn_word_limit !== null && (Number.isNaN(settings.multi_turn_word_limit) || settings.multi_turn_word_limit < 25 || settings.multi_turn_word_limit > 300)) {
         Utils.toast('Multi-turn word limit must be between 25 and 300', 'warning');
+        return;
+      }
+
+      if (settings.completion_guard_auto_threshold !== null && (
+        Number.isNaN(settings.completion_guard_auto_threshold)
+        || settings.completion_guard_auto_threshold < 0.5
+        || settings.completion_guard_auto_threshold > 0.99
+      )) {
+        Utils.toast('Completion Guard auto threshold must be between 0.50 and 0.99', 'warning');
         return;
       }
       

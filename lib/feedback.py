@@ -155,7 +155,17 @@ Tools Used: {tools_used}
 === CONFIGURATION ===
 {config_context}
 
+=== COMPLETION GUARD ===
+{completion_guard_context}
+
 === PROVIDE SPECIFIC FEEDBACK ===
+
+7. **COMPLETION GUARD CONTEXT**:
+   - If Completion Guard status is `none`, do NOT penalize the system for not using it.
+   - If Completion Guard status is `accepted` or `auto_accepted`, grade the final settled answer normally.
+   - If Completion Guard status is `repaired`, grade the repaired final answer as the settled result, while noting that first-pass recovery was needed.
+   - If Completion Guard status is `ticket_created`, `unresolved`, or `cancelled`, this means the system detected incompleteness or could not fully recover. Grade the final settled outcome accordingly, but do not treat the existence of Completion Guard itself as a flaw.
+   - When Completion Guard metadata is present, use it as recovery context, not as a reason to lower the score by itself.
 
 Rate the interaction (1-5) using this STRICT rubric:
 
@@ -375,7 +385,8 @@ class FeedbackCollector:
         tool_descriptions: dict[str, str] = None,
         intelligence_insights: str = None,
         config_context: str = None,
-        session_id: str = None
+        session_id: str = None,
+        completion_guard_context: dict | None = None
     ) -> dict[str, Any]:
         """
         Collect feedback from LLM about the completed task.
@@ -453,6 +464,7 @@ If real-time data was needed and no tools were used, rate poorly."""
             tool_descriptions=tool_desc_text,
             intelligence_insights=intelligence_insights or "No intelligence insights provided.",
             config_context=config_context or "No configuration context provided.",
+            completion_guard_context=json.dumps(completion_guard_context or {"status": "none"}, ensure_ascii=False, indent=2),
             native_search_status=native_search_status,
             native_search_instructions=native_search_instructions
         )
@@ -498,6 +510,7 @@ If real-time data was needed and no tools were used, rate poorly."""
             feedback["final_speech"] = final_speech  # Formatted for voice
             feedback["tools_used"] = tools_used or []
             feedback["mode"] = self.mode
+            feedback["completion_guard"] = completion_guard_context or {"status": "none"}
             # Track which LLM did the grading (important for bias analysis)
             feedback["feedback_provider"] = self.provider_name
             feedback["feedback_model"] = self.model_name
@@ -751,4 +764,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

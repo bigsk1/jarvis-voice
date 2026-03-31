@@ -59,6 +59,7 @@ class ChatHandler:
         show_ui_prompt = mode_overrides.get('completion_guard_show_ui_prompt')
         include_qa = mode_overrides.get('completion_guard_include_qa')
         include_tool_tasks = mode_overrides.get('completion_guard_include_tool_tasks')
+        auto_threshold = mode_overrides.get('completion_guard_auto_threshold')
         excluded_tools_raw = (
             get_config_value('COMPLETION_GUARD_EXCLUDED_TOOLS')
             or get_config_value('JARVIS_COMPLETION_GUARD_EXCLUDED_TOOLS')
@@ -78,16 +79,13 @@ class ChatHandler:
             'show_ui_prompt': show_ui_prompt if show_ui_prompt is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT', 'true'), True),
             'include_qa': include_qa if include_qa is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_INCLUDE_QA', 'true'), True),
             'include_tool_tasks': include_tool_tasks if include_tool_tasks is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS', 'true'), True),
+            'auto_threshold': float(auto_threshold if auto_threshold is not None else get_config_value('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70')),
             'excluded_tools': sorted(excluded_tools),
         }
 
-    def _should_prompt_completion_guard(self, config: dict, tools_used: list[str]) -> bool:
-        """Decide whether to show the completion prompt for this response."""
+    def _completion_guard_applies(self, config: dict, tools_used: list[str]) -> bool:
+        """Check whether Completion Guard applies to this response at all."""
         if not config.get('enabled'):
-            return False
-        if config.get('mode') != 'manual':
-            return False
-        if not config.get('show_ui_prompt'):
             return False
         excluded = set(config.get('excluded_tools', self.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS))
         if any(tool in excluded for tool in (tools_used or [])):
@@ -97,6 +95,20 @@ class ChatHandler:
         if has_tools:
             return config.get('include_tool_tasks', True)
         return config.get('include_qa', True)
+
+    def _should_prompt_completion_guard(self, config: dict, tools_used: list[str]) -> bool:
+        """Decide whether to show the completion prompt for this response."""
+        if config.get('mode') != 'manual':
+            return False
+        if not config.get('show_ui_prompt'):
+            return False
+        return self._completion_guard_applies(config, tools_used)
+
+    def _should_auto_evaluate_completion_guard(self, config: dict, tools_used: list[str]) -> bool:
+        """Decide whether auto mode should evaluate a response in the background."""
+        if config.get('mode') != 'auto':
+            return False
+        return self._completion_guard_applies(config, tools_used)
 
     def _remember_completion_guard_record(self, session_id: str, message_id: str, record: dict):
         """Keep a small per-session record so a later 'No' can create a useful ticket."""
@@ -111,6 +123,89 @@ class ChatHandler:
             oldest = sorted(records.items(), key=lambda item: item[1].get('timestamp', 0))[:10]
             for old_id, _ in oldest:
                 records.pop(old_id, None)
+
+    def _get_completion_guard_record(self, session_id: str, message_id: str) -> dict | None:
+        """Fetch a stored Completion Guard record for this web session."""
+        return self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id)
+
+    @staticmethod
+    def _build_feedback_result_from_record(record: dict) -> dict:
+        """Build a result-like payload for feedback from the stored original response."""
+        return {
+            'ok': True,
+            'speech': record.get('speech', ''),
+            'raw_llm_response': record.get('raw_llm_response', ''),
+            'data': record.get('data', {}),
+            'usage': record.get('usage', {}),
+            'server_side_tools': record.get('server_side_tools', {}),
+            'experience_id': record.get('experience_id'),
+            'intelligence_context': record.get('intelligence_context', '')
+        }
+
+    @staticmethod
+    def _combine_feedback_tools(original_tools: list[str] | None, settled_tools: list[str] | None = None) -> list[str]:
+        """Preserve the full task tool path for feedback, original first then settled-phase tools."""
+        combined = []
+        for tool in list(original_tools or []) + list(settled_tools or []):
+            if tool:
+                combined.append(tool)
+        return combined
+
+    @staticmethod
+    def _build_completion_guard_feedback_context(record: dict, status: str) -> dict:
+        """Summarize Completion Guard state so feedback can grade the settled outcome."""
+        original_tools = list(record.get('tools_used', []) or [])
+        repair_tools = list((record.get('repair_result') or {}).get('tools_used', []) or [])
+        return {
+            'status': status,
+            'note': record.get('user_note', ''),
+            'auto_triggered': bool(record.get('auto_evaluation')),
+            'auto_evaluation': record.get('auto_evaluation'),
+            'repair_strategy': record.get('repair_strategy'),
+            'repair_result': record.get('repair_result'),
+            'ticket_path': record.get('ticket_path', ''),
+            'combined_tools_used': ChatHandler._combine_feedback_tools(original_tools, repair_tools),
+            'original_response': {
+                'speech': record.get('speech', ''),
+                'raw_llm_response': record.get('raw_llm_response', ''),
+                'tools_used': original_tools
+            },
+            'repair_tools_used': repair_tools
+        }
+
+    def _start_feedback_async(
+        self,
+        session_id: str,
+        parent_message_id: str,
+        display_message_id: str,
+        record: dict,
+        result_payload: dict,
+        tools_used: list[str],
+        completion_guard_status: str
+    ) -> None:
+        """Start deferred feedback once Completion Guard has reached a settled state."""
+        if not record or not record.get('feedback_requested'):
+            return
+        if record.get('feedback_state') in ('running', 'complete'):
+            return
+
+        record['feedback_state'] = 'running'
+        record['feedback_display_message_id'] = display_message_id
+
+        self.socketio.start_background_task(
+            self._collect_feedback_async,
+            session_id,
+            parent_message_id,
+            record.get('query', '') or record.get('processed_query', ''),
+            record.get('mode', 'cloud'),
+            display_message_id,
+            record.get('conversation_id', ''),
+            result_payload,
+            tools_used,
+            record.get('provider'),
+            record.get('model'),
+            self._build_completion_guard_feedback_context(record, completion_guard_status)
+        )
 
     @staticmethod
     def _extract_repair_status(text: str) -> tuple[str | None, str]:
@@ -165,6 +260,297 @@ class ChatHandler:
         if len(text) <= max_chars:
             return text
         return text[:max_chars] + "\n... [truncated]"
+
+    def _create_completion_guard_eval_provider(
+        self,
+        mode: str,
+        fallback_provider: str | None = None,
+        fallback_model: str | None = None
+    ):
+        """Create the provider used for Completion Guard auto-evaluation."""
+        from config_loader import load_config, get_config_value
+        from llm_provider import create_provider
+
+        load_config(mode)
+
+        provider_name = (
+            get_config_value('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', '')
+            or get_config_value('FEEDBACK_PROVIDER', '')
+            or fallback_provider
+            or ('ollama' if mode == 'local' else get_config_value('LLM_PROVIDER', 'anthropic'))
+        ).strip().lower()
+
+        model_name = (
+            get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', '')
+            or get_config_value('FEEDBACK_MODEL', '')
+            or fallback_model
+            or ''
+        ).strip()
+
+        if provider_name == 'anthropic':
+            return provider_name, (
+                model_name or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+            ), create_provider(
+                'anthropic',
+                api_key=get_config_value('ANTHROPIC_API_KEY'),
+                model=model_name or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+            )
+        if provider_name == 'openai':
+            return provider_name, (
+                model_name or get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
+            ), create_provider(
+                'openai',
+                api_key=get_config_value('OPENAI_API_KEY'),
+                model=model_name or get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
+            )
+        if provider_name == 'xai':
+            return provider_name, (
+                model_name or get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
+            ), create_provider(
+                'xai',
+                api_key=get_config_value('XAI_API_KEY'),
+                model=model_name or get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
+            )
+
+        return provider_name, (
+            model_name or get_config_value('OLLAMA_MODEL', 'qwen3.5:latest')
+        ), create_provider(
+            'ollama',
+            model=model_name or get_config_value('OLLAMA_MODEL', 'qwen3.5:latest'),
+            base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
+        )
+
+    @staticmethod
+    def _parse_completion_guard_auto_eval(raw_text: str) -> dict:
+        """Parse the auto-evaluator JSON response."""
+        if not raw_text:
+            return {}
+
+        text = raw_text.strip()
+        if text.startswith('```'):
+            text = re.sub(r'^```(?:json)?\s*', '', text)
+            text = re.sub(r'\s*```$', '', text)
+
+        try:
+            data = json.loads(text)
+        except Exception:
+            match = re.search(r'\{.*\}', text, flags=re.DOTALL)
+            if not match:
+                return {}
+            try:
+                data = json.loads(match.group(0))
+            except Exception:
+                return {}
+
+        if not isinstance(data, dict):
+            return {}
+
+        def normalize_list(value):
+            if value is None:
+                return []
+            if isinstance(value, list):
+                return [str(item).strip() for item in value if str(item).strip()]
+            if isinstance(value, str):
+                value = value.strip()
+                return [value] if value else []
+            return [str(value).strip()]
+
+        task_status = str(data.get('task_status', '')).strip().lower()
+        risk_level = str(data.get('risk_level', '')).strip().lower()
+        if task_status not in {'complete', 'partial', 'unsupported', 'failed'}:
+            task_status = 'partial' if data else ''
+        if risk_level not in {'low', 'medium', 'high', 'critical'}:
+            risk_level = 'medium' if data else ''
+
+        repair_worthwhile = data.get('repair_worthwhile')
+        if isinstance(repair_worthwhile, str):
+            repair_worthwhile = repair_worthwhile.strip().lower() in ('true', '1', 'yes', 'on')
+        else:
+            repair_worthwhile = bool(repair_worthwhile)
+
+        return {
+            'task_status': task_status,
+            'risk_level': risk_level,
+            'repair_worthwhile': repair_worthwhile,
+            'failure_types': normalize_list(data.get('failure_types')),
+            'missing_requirements': normalize_list(data.get('missing_requirements')),
+            'unsupported_claims': normalize_list(data.get('unsupported_claims')),
+            'contradictions': normalize_list(data.get('contradictions')),
+            'evidence_gaps': normalize_list(data.get('evidence_gaps')),
+            'reason': str(data.get('reason', '')).strip(),
+            'suggested_note': str(data.get('suggested_note', '')).strip(),
+        }
+
+    @staticmethod
+    def _score_completion_guard_auto_eval(evaluation: dict) -> tuple[float, list[str]]:
+        """Convert structured audit output into a deterministic repair score."""
+        task_status = evaluation.get('task_status', '')
+        risk_level = evaluation.get('risk_level', '')
+        failure_types = evaluation.get('failure_types', []) or []
+        missing_requirements = evaluation.get('missing_requirements', []) or []
+        unsupported_claims = evaluation.get('unsupported_claims', []) or []
+        contradictions = evaluation.get('contradictions', []) or []
+        evidence_gaps = evaluation.get('evidence_gaps', []) or []
+        repair_worthwhile = bool(evaluation.get('repair_worthwhile'))
+
+        score = 0.0
+        reasons = []
+
+        status_weights = {
+            'complete': 0.05,
+            'partial': 0.35,
+            'unsupported': 0.58,
+            'failed': 0.72,
+        }
+        risk_weights = {
+            'low': 0.0,
+            'medium': 0.08,
+            'high': 0.18,
+            'critical': 0.28,
+        }
+        score += status_weights.get(task_status, 0.20)
+        score += risk_weights.get(risk_level, 0.0)
+
+        if repair_worthwhile:
+            score += 0.10
+            reasons.append('repair_worthwhile')
+        if task_status in ('partial', 'unsupported', 'failed'):
+            reasons.append(f'task_status:{task_status}')
+        if risk_level in ('high', 'critical'):
+            reasons.append(f'risk_level:{risk_level}')
+
+        score += min(0.24, 0.08 * len(failure_types))
+        score += min(0.18, 0.06 * len(missing_requirements))
+        score += min(0.24, 0.12 * len(unsupported_claims))
+        score += min(0.24, 0.12 * len(contradictions))
+        score += min(0.18, 0.06 * len(evidence_gaps))
+
+        if failure_types:
+            reasons.extend(f'failure_type:{item}' for item in failure_types[:4])
+        if unsupported_claims:
+            reasons.append('unsupported_claims')
+        if contradictions:
+            reasons.append('contradictions')
+        if missing_requirements:
+            reasons.append('missing_requirements')
+        if evidence_gaps:
+            reasons.append('evidence_gaps')
+
+        # Strong signals should almost always trigger repair.
+        if task_status == 'failed':
+            score = max(score, 0.92)
+        elif contradictions:
+            score = max(score, 0.88)
+        elif unsupported_claims and risk_level in ('high', 'critical'):
+            score = max(score, 0.85)
+        elif (
+            task_status in ('partial', 'unsupported')
+            and failure_types
+            and (missing_requirements or evidence_gaps)
+        ):
+            score = max(score, 0.74)
+
+        return min(1.0, score), reasons
+
+    def _evaluate_completion_guard_auto(self, record: dict) -> dict:
+        """Evaluate whether the finished answer should auto-trigger a repair pass."""
+        mode = record.get('mode', 'cloud')
+        provider_name, model_name, provider = self._create_completion_guard_eval_provider(
+            mode=mode,
+            fallback_provider=record.get('provider'),
+            fallback_model=record.get('model')
+        )
+
+        prompt = f"""Audit whether this completed Jarvis answer is actually supported and complete.
+
+Return JSON only:
+{{
+  "task_status": "complete" | "partial" | "unsupported" | "failed",
+  "risk_level": "low" | "medium" | "high" | "critical",
+  "repair_worthwhile": true,
+  "failure_types": ["unsupported_claim", "premature_not_found"],
+  "missing_requirements": ["did not answer what to call the user"],
+  "unsupported_claims": ["claimed no memory exists without enough support"],
+  "contradictions": ["tool data contained evidence the answer missed"],
+  "evidence_gaps": ["available tools or returned data were not used well enough"],
+  "reason": "short explanation",
+  "suggested_note": "short note for a repair pass or empty string"
+}}
+
+Audit rules:
+- Evaluate the RAW LLM RESPONSE, not just the shorter spoken output
+- Do not penalize voice-style brevity by itself
+- Focus on support, completeness, contradictions, and missing required outputs
+- If the answer missed evidence already present in tool data, call that out
+- If the answer made strong claims without enough support, call that out
+- If the answer only partially addressed the request, call that out
+- Be conservative but honest: if the answer is incomplete or weakly supported, mark it
+
+General failure type vocabulary:
+- unsupported_claim
+- incomplete_task
+- missing_required_output
+- contradiction_with_tool_data
+- premature_not_found
+- weak_evidence
+- wrong_output_format
+- hidden_tool_error
+- missed_direct_source
+
+User request:
+{record.get('query', '')}
+
+Raw LLM response:
+{record.get('raw_llm_response', '')}
+
+Final spoken response:
+{record.get('speech', '')}
+
+Tools used:
+{', '.join(record.get('tools_used', [])) or '(none)'}
+
+Available tools:
+{', '.join(record.get('available_tools', [])) or '(not captured)'}
+
+Structured result data:
+```json
+{self._truncate_for_prompt(record.get('data', {}), max_chars=7000)}
+```
+"""
+
+        system_prompt = (
+            "You are Completion Guard, a strict but practical QA evaluator. "
+            "Judge whether a follow-up repair pass is warranted. "
+            "Return valid JSON only."
+        )
+        response = provider.chat(prompt, system_prompt=system_prompt, max_tokens=300)
+        parsed = self._parse_completion_guard_auto_eval(response)
+        if parsed:
+            repair_score, trigger_reasons = self._score_completion_guard_auto_eval(parsed)
+            parsed['provider'] = provider_name
+            parsed['model'] = model_name
+            parsed['raw_response'] = response
+            parsed['repair_score'] = repair_score
+            parsed['trigger_reasons'] = trigger_reasons
+        return parsed
+
+    def _update_completion_guard_experience(self, record: dict, status: str, note: str = '', extra: dict | None = None) -> bool:
+        """Feed Completion Guard outcomes back into the intelligence/experience record."""
+        experience_id = record.get('experience_id')
+        if not experience_id:
+            return False
+
+        try:
+            from intelligence_hooks import update_experience_from_completion_guard
+            return update_experience_from_completion_guard(
+                experience_id=int(experience_id),
+                status=status,
+                note=note,
+                metadata=extra or {}
+            )
+        except Exception as e:
+            print(f"[COMPLETION_GUARD] Failed to update intelligence experience {experience_id}: {e}")
+            return False
 
     def _classify_completion_guard_strategy(self, record: dict, note: str = '') -> dict:
         """Choose a repair strategy family and tool-family hints for the next pass."""
@@ -411,6 +797,17 @@ Returned tool data:
 ```
 """
 
+        auto_evaluation = record.get('auto_evaluation')
+        if auto_evaluation:
+            content += f"""
+
+## Auto Evaluation
+
+```json
+{dump_json(auto_evaluation)}
+```
+"""
+
         repair_result = record.get('repair_result')
         if repair_result:
             content += f"""
@@ -432,6 +829,103 @@ Returned tool data:
         ticket_path.write_text(content, encoding='utf-8')
         return ticket_path
 
+    def _run_completion_guard_auto_eval(self, session_id: str, record: dict):
+        """Evaluate a completed response and auto-trigger repair when the audit score is high enough."""
+        message_id = record.get('message_id')
+        conversation_id = record.get('conversation_id')
+        config = record.get('completion_guard', {})
+        threshold = float(config.get('auto_threshold', 0.70) or 0.70)
+
+        if record.get('status') not in (None, 'pending'):
+            return
+
+        try:
+            evaluation = self._evaluate_completion_guard_auto(record)
+            if not evaluation:
+                self._start_feedback_async(
+                    session_id,
+                    message_id,
+                    message_id,
+                    record,
+                    self._build_feedback_result_from_record(record),
+                    record.get('tools_used', []),
+                    'none'
+                )
+                return
+
+            record['auto_evaluation'] = evaluation
+            repair_score = float(evaluation.get('repair_score', 0.0) or 0.0)
+            needs_repair = repair_score >= threshold
+            note = evaluation.get('suggested_note') or evaluation.get('reason', '')
+
+            from ..services.conversation_store import get_conversation_store
+            store = get_conversation_store()
+
+            if not needs_repair:
+                record['status'] = 'auto_accepted'
+                store.update_message_data_by_web_message_id(
+                    conversation_id,
+                    message_id,
+                    {
+                        '_completion_guard': {
+                            'status': 'auto_accepted',
+                            'auto_evaluation': evaluation,
+                            'evaluated_at': datetime.now().isoformat()
+                        }
+                    }
+                )
+                self._update_completion_guard_experience(
+                    record,
+                    'auto_accepted',
+                    note='',
+                    extra={'auto_evaluation': evaluation}
+                )
+                self._start_feedback_async(
+                    session_id,
+                    message_id,
+                    message_id,
+                    record,
+                    self._build_feedback_result_from_record(record),
+                    record.get('tools_used', []),
+                    'auto_accepted'
+                )
+                return
+
+            attempts = int(record.get('repair_attempts', 0) or 0)
+            if attempts >= 1:
+                return
+
+            record['status'] = 'repairing'
+            record['user_note'] = note
+            record['repair_attempts'] = attempts + 1
+            store.update_message_data_by_web_message_id(
+                conversation_id,
+                message_id,
+                {
+                    '_completion_guard': {
+                        'status': 'repairing',
+                        'note': note,
+                        'auto_triggered': True,
+                        'auto_evaluation': evaluation,
+                        'started_at': datetime.now().isoformat()
+                    }
+                }
+            )
+
+            self._run_completion_guard_repair(session_id, record, note)
+
+        except Exception as e:
+            print(f"[COMPLETION_GUARD] Auto evaluation failed: {e}")
+            self._start_feedback_async(
+                session_id,
+                message_id,
+                message_id,
+                record,
+                self._build_feedback_result_from_record(record),
+                record.get('tools_used', []),
+                'none'
+            )
+
     def _run_completion_guard_repair(self, session_id: str, record: dict, note: str = ''):
         """Run one bounded repair attempt before falling back to ticketing."""
         conversation_id = record.get('conversation_id')
@@ -443,7 +937,8 @@ Returned tool data:
         self.socketio.emit('completion_guard:updated', {
             'message_id': parent_message_id,
             'conversation_id': conversation_id,
-            'status': 'repairing'
+            'status': 'repairing',
+            'auto_triggered': bool(record.get('auto_evaluation'))
         }, room=session_id)
 
         self.socketio.emit('chat:thinking', {
@@ -469,6 +964,10 @@ Returned tool data:
                 model_override=model_override
             )
             orchestrator.set_web_conversation_id(conversation_id)
+            orchestrator.set_learning_enabled(False)
+            orchestrator.set_cancel_check(
+                lambda: self.pending_cancellations.get(repair_message_id, False)
+            )
 
             def status_callback(status_message: str):
                 self.socketio.emit('chat:status', {
@@ -574,9 +1073,63 @@ Previous structured data:
 """
 
             result = orchestrator.process(repair_prompt)
+            if repair_message_id in self.pending_cancellations:
+                del self.pending_cancellations[repair_message_id]
             raw_response = result.get('raw_llm_response', '') or result.get('speech', '')
             repair_status, cleaned_raw = self._extract_repair_status(raw_response)
             _, cleaned_speech = self._extract_repair_status(result.get('speech', '') or '')
+
+            if result.get('cancelled'):
+                record['status'] = 'cancelled'
+                record['user_note'] = note
+                from ..services.conversation_store import get_conversation_store
+                store = get_conversation_store()
+                store.update_message_data_by_web_message_id(
+                    conversation_id,
+                    parent_message_id,
+                    {
+                        '_completion_guard': {
+                            'status': 'cancelled',
+                            'note': note,
+                            'cancelled_at': datetime.now().isoformat(),
+                            'auto_evaluation': record.get('auto_evaluation')
+                        }
+                    }
+                )
+                self._update_completion_guard_experience(
+                    record,
+                    'cancelled',
+                    note=note,
+                    extra={
+                        'auto_evaluation': record.get('auto_evaluation'),
+                        'repair_result': {
+                            'status': 'cancelled',
+                            'speech': result.get('speech', ''),
+                            'raw_llm_response': result.get('raw_llm_response', ''),
+                            'tools_used': result.get('tools_used', [])
+                        }
+                    }
+                )
+                self.socketio.emit('completion_guard:updated', {
+                    'message_id': parent_message_id,
+                    'conversation_id': conversation_id,
+                    'status': 'cancelled',
+                    'note': note
+                }, room=session_id)
+                self.socketio.emit('chat:cancelled', {
+                    'conversation_id': conversation_id,
+                    'message_id': repair_message_id
+                }, room=session_id)
+                self._start_feedback_async(
+                    session_id,
+                    parent_message_id,
+                    parent_message_id,
+                    record,
+                    self._build_feedback_result_from_record(record),
+                    record.get('tools_used', []),
+                    'cancelled'
+                )
+                return
 
             if cleaned_raw:
                 result['raw_llm_response'] = cleaned_raw
@@ -647,8 +1200,21 @@ Previous structured data:
                         'status': 'repaired' if repaired else 'unresolved',
                         'note': note,
                         'repaired_at': datetime.now().isoformat(),
-                        'repair_message_id': repair_message_id
+                        'repair_message_id': repair_message_id,
+                        'auto_evaluation': record.get('auto_evaluation')
                     }
+                }
+            )
+
+            self._update_completion_guard_experience(
+                record,
+                'repaired' if repaired else 'unresolved',
+                note=note,
+                extra={
+                    'repair_result': record.get('repair_result', {}),
+                    'repair_data': save_data,
+                    'repair_strategy': repair_strategy,
+                    'auto_evaluation': record.get('auto_evaluation')
                 }
             )
 
@@ -694,6 +1260,21 @@ Previous structured data:
                 }
             }, room=session_id)
 
+            feedback_result_payload = {
+                'ok': result.get('ok', True),
+                'speech': result.get('speech', result.get('raw_llm_response', '')),
+                'raw_llm_response': result.get('raw_llm_response', ''),
+                'data': save_data,
+                'usage': result.get('usage', {}),
+                'server_side_tools': result.get('server_side_tools', {}),
+                'experience_id': record.get('experience_id'),
+                'intelligence_context': record.get('intelligence_context', '')
+            }
+            feedback_tools_used = self._combine_feedback_tools(
+                record.get('tools_used', []),
+                result.get('tools_used', [])
+            )
+
             if not repaired and record.get('completion_guard', {}).get('ticket_on_fail', True):
                 ticket_path = self._write_completion_guard_ticket(record, note)
                 rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
@@ -708,8 +1289,21 @@ Previous structured data:
                             'ticket_path': rel_path,
                             'note': note,
                             'created_at': datetime.now().isoformat(),
-                            'repair_message_id': repair_message_id
+                            'repair_message_id': repair_message_id,
+                            'auto_evaluation': record.get('auto_evaluation')
                         }
+                    }
+                )
+                self._update_completion_guard_experience(
+                    record,
+                    'ticket_created',
+                    note=note,
+                    extra={
+                        'ticket_path': rel_path,
+                        'repair_result': record.get('repair_result', {}),
+                        'repair_data': save_data,
+                        'repair_strategy': repair_strategy,
+                        'auto_evaluation': record.get('auto_evaluation')
                     }
                 )
                 self.socketio.emit('completion_guard:ticket_created', {
@@ -718,9 +1312,30 @@ Previous structured data:
                     'ticket_path': rel_path,
                     'note': note
                 }, room=session_id)
+                self._start_feedback_async(
+                    session_id,
+                    parent_message_id,
+                    repair_message_id,
+                    record,
+                    feedback_result_payload,
+                    feedback_tools_used,
+                    'ticket_created'
+                )
+            else:
+                self._start_feedback_async(
+                    session_id,
+                    parent_message_id,
+                    repair_message_id,
+                    record,
+                    feedback_result_payload,
+                    feedback_tools_used,
+                    'repaired' if repaired else 'unresolved'
+                )
 
         except Exception as e:
             print(f"[COMPLETION_GUARD] Repair failed: {e}")
+            if repair_message_id in self.pending_cancellations:
+                del self.pending_cancellations[repair_message_id]
             record['status'] = 'error'
             record['user_note'] = note
             record['repair_result'] = {
@@ -745,8 +1360,21 @@ Previous structured data:
                                 'status': 'ticket_created',
                                 'ticket_path': rel_path,
                                 'note': note,
-                                'created_at': datetime.now().isoformat()
+                                'created_at': datetime.now().isoformat(),
+                                'auto_evaluation': record.get('auto_evaluation')
                             }
+                        }
+                    )
+                    self._update_completion_guard_experience(
+                        record,
+                        'ticket_created',
+                        note=note,
+                        extra={
+                            'ticket_path': rel_path,
+                            'repair_result': record.get('repair_result', {}),
+                            'repair_data': {},
+                            'repair_strategy': record.get('repair_strategy', {}),
+                            'auto_evaluation': record.get('auto_evaluation')
                         }
                     )
                     self.socketio.emit('completion_guard:ticket_created', {
@@ -755,6 +1383,15 @@ Previous structured data:
                         'ticket_path': rel_path,
                         'note': note
                     }, room=session_id)
+                    self._start_feedback_async(
+                        session_id,
+                        parent_message_id,
+                        parent_message_id,
+                        record,
+                        self._build_feedback_result_from_record(record),
+                        record.get('tools_used', []),
+                        'ticket_created'
+                    )
                 except Exception as ticket_err:
                     self.socketio.emit('completion_guard:error', {
                         'message_id': parent_message_id,
@@ -765,6 +1402,15 @@ Previous structured data:
                     'message_id': parent_message_id,
                     'error': f'Completion Guard repair failed: {e}'
                 }, room=session_id)
+                self._start_feedback_async(
+                    session_id,
+                    parent_message_id,
+                    parent_message_id,
+                    record,
+                    self._build_feedback_result_from_record(record),
+                    record.get('tools_used', []),
+                    'error'
+                )
     
     def _register_handlers(self):
         """Register all socket event handlers"""
@@ -917,7 +1563,7 @@ Previous structured data:
 
         @self.socketio.on('completion_guard:submit')
         def handle_completion_guard_submit(data):
-            """Handle a user marking an answer as incomplete/incorrect."""
+            """Handle a user marking an answer as complete or requesting repair."""
             session_id = request.sid
             message_id = data.get('message_id')
             conversation_id = data.get('conversation_id')
@@ -928,17 +1574,59 @@ Previous structured data:
             records = session.get('completion_guard_records', {})
             record = records.get(message_id)
 
-            if accepted is not False:
-                emit('completion_guard:error', {
-                    'message_id': message_id,
-                    'error': 'Completion Guard currently handles follow-up repair from the "No" action.'
-                })
-                return
-
             if not message_id or not record:
                 emit('completion_guard:error', {
                     'message_id': message_id,
                     'error': 'Completion Guard context expired or was not found.'
+                })
+                return
+
+            if accepted is True:
+                record['status'] = 'accepted'
+                record['user_note'] = note
+                try:
+                    from ..services.conversation_store import get_conversation_store
+                    store = get_conversation_store()
+                    store.update_message_data_by_web_message_id(
+                        record.get('conversation_id'),
+                        message_id,
+                        {
+                            '_completion_guard': {
+                                'status': 'accepted',
+                                'note': note,
+                                'accepted_at': datetime.now().isoformat()
+                            }
+                        }
+                    )
+                    self._update_completion_guard_experience(
+                        record,
+                        'accepted',
+                        note=note
+                    )
+                except Exception as e:
+                    print(f"[COMPLETION_GUARD] Failed to persist accepted state: {e}")
+
+                emit('completion_guard:updated', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id or record.get('conversation_id'),
+                    'status': 'accepted',
+                    'note': note
+                })
+                self._start_feedback_async(
+                    session_id,
+                    message_id,
+                    message_id,
+                    record,
+                    self._build_feedback_result_from_record(record),
+                    record.get('tools_used', []),
+                    'accepted'
+                )
+                return
+
+            if accepted is not False:
+                emit('completion_guard:error', {
+                    'message_id': message_id,
+                    'error': 'Completion Guard action was not understood.'
                 })
                 return
 
@@ -984,6 +1672,15 @@ Previous structured data:
                         'status': 'unresolved',
                         'note': record.get('user_note', '')
                     })
+                    self._start_feedback_async(
+                        session_id,
+                        message_id,
+                        message_id,
+                        record,
+                        self._build_feedback_result_from_record(record),
+                        record.get('tools_used', []),
+                        'unresolved'
+                    )
                     return
 
                 try:
@@ -1003,8 +1700,20 @@ Previous structured data:
                                 'status': 'ticket_created',
                                 'ticket_path': rel_path,
                                 'note': record.get('user_note', ''),
-                                'created_at': datetime.now().isoformat()
+                                'created_at': datetime.now().isoformat(),
+                                'auto_evaluation': record.get('auto_evaluation')
                             }
+                        }
+                    )
+                    self._update_completion_guard_experience(
+                        record,
+                        'ticket_created',
+                        note=record.get('user_note', ''),
+                        extra={
+                            'ticket_path': rel_path,
+                            'repair_result': record.get('repair_result', {}),
+                            'repair_strategy': record.get('repair_strategy', {}),
+                            'auto_evaluation': record.get('auto_evaluation')
                         }
                     )
 
@@ -1014,6 +1723,15 @@ Previous structured data:
                         'ticket_path': rel_path,
                         'note': record.get('user_note', '')
                     }, room=session_id)
+                    self._start_feedback_async(
+                        session_id,
+                        message_id,
+                        message_id,
+                        record,
+                        self._build_feedback_result_from_record(record),
+                        record.get('tools_used', []),
+                        'ticket_created'
+                    )
                 except Exception as e:
                     print(f"[COMPLETION_GUARD] Failed to create ticket after repair: {e}")
                     emit('completion_guard:error', {
@@ -1081,10 +1799,22 @@ Previous structured data:
         
         @self.socketio.on('chat:cancel')
         def handle_chat_cancel(data):
-            """Cancel current processing (placeholder)"""
+            """Backward-compatible cancel alias for older clients."""
+            session_id = request.sid
+            message_id = data.get('message_id')
+
+            if message_id:
+                self.pending_cancellations[message_id] = True
+                print(f"[WS] Cancel requested via chat:cancel for message {message_id}")
+                emit('cancel:ack', {
+                    'message_id': message_id,
+                    'status': 'stopping'
+                }, room=session_id)
+                return
+
             emit('chat:cancelled', {
                 'conversation_id': data.get('conversation_id')
-            })
+            }, room=session_id)
         
         @self.socketio.on('mode:set')
         def handle_mode_set(data):
@@ -1498,6 +2228,11 @@ Previous structured data:
         print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{prompt_info}{feedback_info})")
         
         try:
+            completion_guard_config = self._get_completion_guard_config(mode)
+            prev_feedback_random_override = os.environ.get('JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED')
+            if completion_guard_config.get('enabled'):
+                os.environ['JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED'] = 'false'
+
             # Debug image data
             if image_data:
                 print(f"[CHAT] Image data keys: {image_data.keys() if isinstance(image_data, dict) else 'not a dict'}")
@@ -1845,12 +2580,18 @@ Previous structured data:
             # Process the query with conversation context, excluded tools, and forced overrides
             override_info = f", tool_overrides={list(tool_overrides.keys())}" if tool_overrides else ""
             print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools{override_info}...")
-            result = orchestrator.process(
-                enhanced_message,
-                conversation_history=conversation_history,
-                excluded_tools=blocked_tools,
-                tool_overrides=tool_overrides if tool_overrides else None
-            )
+            try:
+                result = orchestrator.process(
+                    enhanced_message,
+                    conversation_history=conversation_history,
+                    excluded_tools=blocked_tools,
+                    tool_overrides=tool_overrides if tool_overrides else None
+                )
+            finally:
+                if prev_feedback_random_override is None:
+                    os.environ.pop('JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED', None)
+                else:
+                    os.environ['JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED'] = prev_feedback_random_override
             
             # Clean up cancellation flag
             if message_id in self.pending_cancellations:
@@ -1978,6 +2719,8 @@ Previous structured data:
                 if stash_info:
                     save_data['stash'] = stash_info
                 save_data['_web_message_id'] = message_id
+                if result.get('experience_id'):
+                    save_data['experience_id'] = result['experience_id']
                 # Include token usage for tracking
                 if result.get('usage'):
                     save_data['usage'] = result['usage']
@@ -2031,9 +2774,20 @@ Previous structured data:
                 response_data['vision_analysis'] = vision_result
             if stash_info:
                 response_data['stash'] = stash_info
+            if result.get('experience_id'):
+                response_data['experience_id'] = result['experience_id']
 
-            completion_guard_config = self._get_completion_guard_config(mode)
             completion_guard_prompt = (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
+            completion_guard_auto_eval = (
+                (not is_workflow)
+                and result.get('ok', True)
+                and self._should_auto_evaluate_completion_guard(completion_guard_config, tools_used)
+            )
+            defer_feedback_until_completion_guard = (
+                request_feedback
+                and result.get('ok', True)
+                and (completion_guard_prompt or completion_guard_auto_eval)
+            )
             self._remember_completion_guard_record(session_id, message_id, {
                 'timestamp': time.time(),
                 'conversation_id': conversation_id,
@@ -2050,7 +2804,12 @@ Previous structured data:
                 'usage': result.get('usage', {}),
                 'server_side_tools': result.get('server_side_tools', {}),
                 'completion_guard': completion_guard_config,
-                'is_workflow': bool(is_workflow)
+                'is_workflow': bool(is_workflow),
+                'experience_id': result.get('experience_id'),
+                'available_tools': result.get('available_tools', []),
+                'intelligence_context': result.get('intelligence_context', ''),
+                'feedback_requested': bool(request_feedback and result.get('ok', True)),
+                'feedback_state': 'pending' if defer_feedback_until_completion_guard else 'idle'
             })
             
             self.socketio.emit('chat:response', {
@@ -2073,24 +2832,38 @@ Previous structured data:
                     'prompt_user': completion_guard_prompt
                 }
             }, room=session_id)
-            
+
+            if completion_guard_auto_eval:
+                self.socketio.start_background_task(
+                    self._run_completion_guard_auto_eval,
+                    session_id,
+                    self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id, {})
+                )
+
             # Collect feedback if requested (runs async after main response)
-            # Skip if orchestrator already collected feedback (random 10% case)
+            # Skip if Completion Guard has to settle first.
+            # Also skip if orchestrator already collected feedback (random trigger), though
+            # random feedback is disabled above while Completion Guard is enabled.
             already_has_feedback = result.get('feedback') is not None
             print(f"[CHAT] Feedback check: request_feedback={request_feedback}, ok={result.get('ok', True)}, already_has_feedback={already_has_feedback}")
-            
-            if request_feedback and result.get('ok', True) and not already_has_feedback:
+
+            if defer_feedback_until_completion_guard:
+                print(f"[CHAT] Deferring feedback until Completion Guard settles for message {message_id[:8]}...")
+            elif request_feedback and result.get('ok', True) and not already_has_feedback:
                 print(f"[CHAT] Starting async feedback collection for message {message_id[:8]}...")
                 self.socketio.start_background_task(
                     self._collect_feedback_async,
                     session_id,
+                    message_id,
                     message,
                     mode,
                     message_id,
                     conversation_id,
                     result,
                     tools_used,
-                    orchestrator
+                    effective_provider,
+                    effective_model,
+                    None
                 )
             elif already_has_feedback and request_feedback:
                 # Orchestrator already collected feedback (random trigger), emit that result
@@ -2123,12 +2896,16 @@ Previous structured data:
                 'traceback': traceback.format_exc()
             }, room=session_id)
     
-    def _collect_feedback_async(self, session_id: str, query: str, mode: str,
-                                 message_id: str, conversation_id: str, 
-                                 result: dict, tools_used: list, orchestrator):
+    def _collect_feedback_async(self, session_id: str, source_message_id: str, query: str, mode: str,
+                                 message_id: str, conversation_id: str,
+                                 result: dict, tools_used: list,
+                                 provider_override: str | None = None,
+                                 model_override: str | None = None,
+                                 completion_guard_context: dict | None = None):
         """Collect feedback asynchronously after main response is sent"""
         import time as time_module
         start_time = time_module.time()
+        completion_guard_context = completion_guard_context or {'status': 'none'}
         
         try:
             # Emit feedback:start event so UI can show the card
@@ -2143,11 +2920,18 @@ Previous structured data:
         try:
             from feedback import FeedbackCollector
             from config_loader import get_config_value, load_config
+            from orchestrator_v2 import Orchestrator
             
             # Ensure config is loaded for the right mode
             load_config(mode)
             
             collector = FeedbackCollector(mode)
+
+            orchestrator = Orchestrator(
+                mode=mode,
+                provider_override=provider_override,
+                model_override=model_override
+            )
             
             # Get tools used
             if isinstance(tools_used, str):
@@ -2214,7 +2998,8 @@ Mode: {mode}
                 tool_descriptions=tool_descriptions,
                 intelligence_insights=result.get("intelligence_context", ""),
                 config_context=config_context,
-                session_id=orchestrator.session_id
+                session_id=orchestrator.session_id,
+                completion_guard_context=completion_guard_context
             )
             
             # Clean up env var
@@ -2230,8 +3015,31 @@ Mode: {mode}
             suggestions = feedback.get('suggestions', issues)  # Fallback to issues
             tool_ratings = feedback.get('tool_ratings', {})
             analysis = feedback.get('analysis', '')
+
+            source_record = self._get_completion_guard_record(session_id, source_message_id or message_id or '')
+            experience_id = result.get('experience_id') or (source_record.get('experience_id') if source_record else None)
+            if rating is not None and experience_id:
+                try:
+                    from intelligence_hooks import update_experience_from_feedback
+                    update_experience_from_feedback(
+                        experience_id=int(experience_id),
+                        feedback_rating=rating,
+                        feedback_summary=summary
+                    )
+                except Exception as bridge_err:
+                    print(f"[FEEDBACK] Failed to update intelligence from feedback: {bridge_err}")
             
             print(f"[FEEDBACK] Completed: rating={rating}/5, issues={len(issues)}, duration={duration_ms}ms")
+
+            if source_record is not None:
+                source_record['feedback_state'] = 'complete'
+                source_record['feedback_result'] = {
+                    'rating': rating,
+                    'summary': summary,
+                    'issues': issues,
+                    'tool_ratings': tool_ratings,
+                    'completion_guard_status': completion_guard_context.get('status', 'none')
+                }
             
             # Emit feedback:complete event with all fields
             try:
@@ -2254,6 +3062,9 @@ Mode: {mode}
         except Exception as e:
             duration_ms = int((time_module.time() - start_time) * 1000)
             print(f"[FEEDBACK] ERROR: {e}")
+            source_record = self._get_completion_guard_record(session_id, source_message_id or message_id or '')
+            if source_record is not None:
+                source_record['feedback_state'] = 'error'
             
             # Emit error state
             try:

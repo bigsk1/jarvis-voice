@@ -12,7 +12,7 @@
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
-- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.0** (workflow tooltips, prompt tooltips, server logs) ⭐ ENHANCED
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.8** (Completion Guard auto mode, repair cancel support, corrected-path learning, workflow tooltips, prompt tooltips, server logs) ⭐ ENHANCED
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) 
 - **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice) ⭐ ENHANCED
 - **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support) 
@@ -309,6 +309,12 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-03-30:**
+- ✅ **Completion Guard: auto mode + learning bridge**
+  - Added real `auto` mode that audits the raw final answer in the background and only auto-repairs when a deterministic repair score crosses a configurable threshold
+  - Added `JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD` plus Web UI override support for the threshold
+  - Manual `Yes` is now persisted instead of being client-only, so accepted outcomes survive reload/export
+  - Completion Guard outcomes now update the recorded intelligence experience (`accepted`, `auto_accepted`, `repaired`, `ticket_created`)
+  - Reflection prompts now see Completion Guard notes/metadata so future insights can learn from repaired and ticketed runs
 - ✅ **Completion Guard: manual repair loop** - Phase 2 manual repair flow now works in Jarvis Web
   - Inline `Completed correctly?` card runs one bounded repair pass on `No`
   - Repair uses the original query, raw LLM response, tool outputs, and user note
@@ -322,6 +328,17 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Excluded tools can now be extended from `.env` via `COMPLETION_GUARD_EXCLUDED_TOOLS`
   - Markdown conversation export now includes Completion Guard status, note, ticket path, and repair message ID when available
 - ✅ **Completion Guard: Web UI polish**
+  - Stop button now cleanly cancels in-flight repair orchestrators
+  - Repair responses no longer create duplicate Completion Guard cards in chat
+  - Completion Guard card now renders persisted `accepted`, `repaired`, `cancelled`, and `ticket_created` states correctly
+- ✅ **Completion Guard: final learning model**
+  - Internal repair prompts no longer create standalone learning experiences
+  - Successful repairs fold corrected answer, corrected tools, and corrected tool results back into the original experience
+  - Reflections now compare the original failed path against the repaired path to learn a better first-pass strategy
+- ✅ **Completion Guard + Feedback coordination**
+  - In Jarvis Web, feedback is now deferred until Completion Guard reaches a settled state
+  - Feedback grades the settled outcome instead of a temporary pre-repair answer
+  - Feedback prompts now receive Completion Guard metadata and update the linked experience record
   - Original message card updates to `Repaired` / `Unresolved` / `Ticket created`
   - Internal repair-response messages no longer render their own empty Completion Guard card
 
@@ -1276,5 +1293,5 @@ tail -f logs/tools/tool-calls-*.jsonl
 ---
 
 **Last Updated:** 2026-03-30  
-**Latest:** Completion Guard manual repair loop, repair-strategy classifier, tool-aware exclusions, markdown export metadata, Web UI card fixes  
+**Latest:** Completion Guard feedback gating, settled-result grading, and feedback-to-experience updates in Jarvis Web  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

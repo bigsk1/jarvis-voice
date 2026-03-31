@@ -32,7 +32,8 @@
     "completion_guard_ticket_on_fail": null,
     "completion_guard_show_ui_prompt": null,
     "completion_guard_include_qa": null,
-    "completion_guard_include_tool_tasks": null
+    "completion_guard_include_tool_tasks": null,
+    "completion_guard_auto_threshold": null
   },
   "local": {
     "llm_provider": null,
@@ -47,7 +48,8 @@
     "completion_guard_ticket_on_fail": null,
     "completion_guard_show_ui_prompt": null,
     "completion_guard_include_qa": null,
-    "completion_guard_include_tool_tasks": null
+    "completion_guard_include_tool_tasks": null,
+    "completion_guard_auto_threshold": null
   },
   "conversation": {
     "history_limit": 20,

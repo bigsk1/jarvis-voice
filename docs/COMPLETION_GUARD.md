@@ -93,6 +93,9 @@ Implemented now:
 
 - AI Config settings for enabling/disabling Completion Guard in the Web UI
 - Manual mode with inline `Completed correctly? Yes / No` card
+- Auto mode with a background evaluator that scores the raw final answer
+- Configurable auto-repair threshold (`JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD`) with Web UI override support
+- Auto mode now uses a structured audit plus deterministic repair scoring instead of trusting a bare self-reported confidence value
 - One bounded repair pass when the user clicks `No`
 - Repair pass uses:
   - original query
@@ -101,16 +104,22 @@ Implemented now:
   - user completion note
 - Repair-strategy classifier to bias tool selection during repair
 - Synthesis fallback that can answer from existing tool results without another tool call
+- Repair cancellation support in the Web UI stop flow
 - Markdown ticket creation for unresolved failures
 - Tool-aware exclusions for workflows and fire-and-forget/sensitive tools
 - Completion Guard metadata included in conversation exports when available
+- Accepted states are now persisted instead of being client-only
+- Accepted/repaired/ticketed/cancelled outcomes are fed back into the recorded intelligence experience and reflection prompt
+- Successful repairs now fold the corrected answer, corrected tools, and corrected tool results back into the original experience record
+- Internal repair runs no longer create separate first-class learning experiences
+- In Jarvis Web, manual/auto feedback is now gated behind Completion Guard settlement so feedback grades the settled result instead of a mid-repair snapshot
+- Feedback prompts now receive Completion Guard metadata and the async web feedback path updates the linked experience record
 
 Not implemented yet:
 
-- real auto mode evaluator
 - true same-in-flight orchestrator continuation
 - persistence of unanswered manual cards across refresh
-- intelligence-layer ingestion of accepted/repaired/ticketed outcomes
+- dashboard/reporting for Completion Guard outcomes
 
 ## Why Same Runtime Matters
 
@@ -173,6 +182,36 @@ Jarvis already has building blocks for this:
 
 This feature should reuse those systems instead of creating a totally separate stack.
 
+## Current Learning Model
+
+Completion Guard learning should happen on the original user task, not on the internal repair prompt.
+
+That means the intelligence layer now treats a repaired turn like this:
+
+- original user query
+- original answer
+- original tool path
+- Completion Guard status and note
+- repaired answer if one was found
+- repaired tool path and repaired tool results
+
+The repair attempt itself is operational, not a separate user interaction.
+
+Why this matters:
+
+- reflections can compare what the first pass did versus what the repaired pass did differently
+- insights can recommend a better first-pass tool choice next time
+- the system avoids learning from internal meta-prompts as if they were real user requests
+
+This is the intended progression:
+
+1. first pass fails or is incomplete
+2. Completion Guard repairs or escalates
+3. original experience is updated with the corrected path
+4. reflections learn from the delta between original and corrected behavior
+
+That is how Completion Guard becomes a real self-improving loop instead of only a ticketing mechanism.
+
 ## Completion Guard vs Feedback System
 
 These are related but not the same thing.
@@ -198,6 +237,29 @@ Feedback asks:
 Completion Guard asks:
 
 `Is this actually done, and if not, should we repair it right now?`
+
+### Current Interaction With Feedback
+
+In Jarvis Web, feedback should not race Completion Guard.
+
+Current behavior:
+
+- if Completion Guard is not active for the response, feedback can run immediately
+- if Completion Guard is active, feedback is deferred until the response settles as:
+  - `accepted`
+  - `auto_accepted`
+  - `repaired`
+  - `unresolved`
+  - `ticket_created`
+  - `cancelled`
+
+This prevents feedback from grading a temporary first-pass answer that is about to be repaired.
+
+When feedback finally runs, it receives Completion Guard context so it can:
+
+- avoid penalizing the system just because Completion Guard exists
+- grade the repaired answer as the settled result when repair succeeds
+- understand that `ticket_created` means the system recognized a failure but could not fully recover
 
 ## Signals For "Not Complete"
 
@@ -473,6 +535,7 @@ Optional note examples:
 - `repairing`
 - `repaired`
 - `accepted`
+- `cancelled`
 - `ticket_created`
 - `error`
 
@@ -758,10 +821,10 @@ That state object is what allows same-runtime continuation instead of a syntheti
 
 ### Phase 3: Remaining Work
 
-- [ ] Add real auto mode evaluator
-- [ ] Score risk of incomplete/incorrect result before finalizing
-- [ ] Trigger repair automatically above a threshold
-- [ ] Feed accepted/repaired/ticketed outcomes into intelligence analysis
+- [x] Add real auto mode evaluator
+- [x] Score risk of incomplete/incorrect result before finalizing
+- [x] Trigger repair automatically above a threshold
+- [x] Feed accepted/repaired/ticketed outcomes into intelligence analysis
 - [ ] Persist unanswered manual Completion Guard prompts across refresh
 - [ ] Add issue clustering and recurring-failure reporting
 
@@ -797,7 +860,9 @@ These heuristics should be enough for an MVP before building a sophisticated eva
 
 ### Phase 3
 
-- optional evaluator-based auto triggering
+- evaluator-based auto triggering
+- auto-threshold override in AI Config
+- intelligence/reflection outcome bridge
 - issue clustering from tickets
 - dashboard or log view for recurring completion failures
 
@@ -829,9 +894,9 @@ This feature should not:
 
 Best current next implementation:
 
-1. Add real auto mode evaluator
-2. Persist unanswered manual cards across refresh
-3. Feed accepted/repaired/ticketed outcomes into the intelligence layer
-4. Add clustering/reporting for recurring completion failures
+1. Persist unanswered manual cards across refresh
+2. Add clustering/reporting for recurring completion failures
+3. Add a small Completion Guard dashboard or log view
+4. Move from same-conversation replay toward true in-flight continuation
 
 That would move Completion Guard from a useful manual recovery loop into a broader self-improving system.

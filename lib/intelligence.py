@@ -691,8 +691,17 @@ class IntelligenceLayer:
         context_data = raw_data.get('context', {})
         
         # Extract LLM response and tool results for content evaluation
-        llm_response = context_data.get('llm_response', '[Not captured]')
+        llm_response = (
+            context_data.get('raw_llm_response')
+            or context_data.get('llm_response')
+            or '[Not captured]'
+        )
+        final_speech = context_data.get('final_speech', '[Not captured]')
+        corrected_response = context_data.get('corrected_llm_response', '[Not captured]')
+        corrected_tools_used = context_data.get('corrected_tools_used', [])
+        corrected_tool_results = context_data.get('corrected_tool_results', '[Not captured]')
         tool_results = context_data.get('tool_results', '[Not captured]')
+        completion_guard = raw_data.get('completion_guard', {})
         
         # CRITICAL: What tools were AVAILABLE to the LLM (from Tool RAG + ghost tools)
         available_tools = context_data.get('available_tools', [])
@@ -737,11 +746,30 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 **LLM Response** (what was said to the user):
 {llm_response[:1000] if llm_response != '[Not captured]' else '[Not available]'}
 
+**Final Spoken/Display Response**:
+{final_speech[:600] if final_speech != '[Not captured]' else '[Not available]'}
+
+**Corrected/Repaired Response** (if Completion Guard found one):
+{corrected_response[:1000] if corrected_response != '[Not captured]' else '[Not available]'}
+
+**Corrected Tools Used**:
+{', '.join(corrected_tools_used) if corrected_tools_used else '(none captured)'}
+
+**Corrected Tool Results**:
+{corrected_tool_results[:1200] if corrected_tool_results != '[Not captured]' else '[Not available]'}
+
+**Completion Guard Outcome**:
+- Status: {completion_guard.get('status', 'none')}
+- Note: {completion_guard.get('note', '') or '(none)'}
+- Metadata: {json.dumps(completion_guard.get('metadata', {}))[:800] if completion_guard else '(none)'}
+
 CRITICAL EVALUATION:
 1. Did the tool(s) return relevant data for the query? (tool_results vs query)
 2. Did the LLM response accurately reflect the tool data? (llm_response vs tool_results)
 3. Did the LLM response actually answer what the user asked? (llm_response vs query)
 4. Was the FIRST tool the optimal choice, or should a different tool have been used initially?
+5. If Completion Guard marked this as repaired, unresolved, or ticket_created, treat that as strong evidence the ORIGINAL answer path was insufficient even if a later repair improved it.
+6. If a corrected/repaired response exists, compare the original path with the repaired path and learn from what changed.
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
@@ -2023,4 +2051,3 @@ if __name__ == "__main__":
         intel.close()
     
     asyncio.run(main())
-
