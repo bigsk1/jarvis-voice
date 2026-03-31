@@ -1396,6 +1396,30 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
+**Completed (March 2026):**
+- ✅ **Completion Guard** — Post-answer “was this actually done?” control loop (Jarvis Web) ⭐ MAJOR
+  - Manual (Yes/No card) and auto modes with structured scoring + threshold (`JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD`, AI Config overrides)
+  - One bounded repair pass in the same session; optional markdown tickets under `logs/completion-guard/`
+  - **Feedback + Intelligence**: async Web feedback waits for guard settlement; outcomes update the same experience via `update_experience_from_completion_guard` (repair folds corrected answer/tools into learning)
+  - See: [`docs/COMPLETION_GUARD.md`](docs/COMPLETION_GUARD.md), [`docs/FEEDBACK_SYSTEM.md`](docs/FEEDBACK_SYSTEM.md), [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
+- ✅ **Web UI polish & controls**
+  - Per-session overrides for Q&A word limit, multi-turn limit, response style (with changelog/version bumps on release)
+  - Markdown-rendered source links open in a new tab; workflow step errors surface on tool cards when a step fails
+  - Fix: final response shape / `server_side_tools` reliably surfaced to the client in edge cases
+- ✅ **Routing & live data**
+  - Tool-result freshness hints (`executed_at`, TTL, `authoritative_live`) and guard against redundant live tool calls when data is still fresh
+  - Post-process strip of unsolicited “check canvas” claims when canvas was not used; router prompt rules for honesty and flexibility (refresh vs history)
+- ✅ **Weather** — True multi-day outlook: daily forecast via Open-Meteo when `forecast` is true and `days` > 1 (`skills/weather.py`, `weather.tool.json`)
+- ✅ **Stock price** — If proxy tunnel errors (e.g. curl 56/7/5), retry once without proxy (`skills/stock_price.py`)
+- ✅ **Workflow UX** — Per-step and per-`for_each` item `duration_ms`; WebSocket tool cards show real timings for `/status-visual` and similar runs
+- ✅ **OpenAI defaults & cost** — Default chat model moved toward `gpt-5.4-nano`; cost estimator updates for newer OpenAI SKUs (`docs` / `lib/cost_estimator.py` aligned in-repo)
+- ✅ **Safety & tool quality** — Stronger speech sanitization for TTS (links, stash refs, noise); canvas rejects truncated/unresolvable URLs in sources
+- ✅ **Reliability** — MCP client deadlock fix (Brave Search container no longer hung on nested lock); reminder time parsing normalizes `a.m.` / `p.m.` variants
+- ✅ **Search & workflows** — SerpAPI can optimize conversational queries (`query_effective`); workflow/canvas improvements so `source_query` and payload size don’t truncate ranked lists
+- ✅ **Integrations** — UniFi Protect webhook: recover auto-ack when Jarvis alerts POST times out (find pending alert + acknowledge)
+- ✅ **Scheduled tasks** — Runner service + `schedule_task` tooling; logs under `logs/services/` (see [`docs/service/README.md`](docs/service/README.md)); Memory Browser / management UI improvements where applicable
+- 🧹 **Housekeeping** — Ruff Pass 1 unused-import cleanup on runtime paths; continued doc sync (metadata, error recovery vs completion guard)
+
 **Completed (February 2026):**
 - ✅ **ElevenLabs v3 TTS** - Upgraded to latest TTS model 
   - 68% error reduction for numbers, scores, times, symbols
@@ -1784,6 +1808,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.46.0 (February 2026)  
+**Current Version:** v2.46.0 (March 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Completion Guard auto repair + corrected-path learning + OpenAI Sora Video + Image-to-Image Editing (all 3 providers) + Image Action Modal
+**Latest Features:** Completion Guard ↔ feedback ↔ intelligence bridge + scheduled task runner + routing freshness & duplicate suppression + weather 7-day + workflow true timings + stock_price proxy fallback + Web UI limits/style overrides & completion-guard settings
