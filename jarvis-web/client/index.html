@@ -455,7 +455,10 @@
               <input type="number" class="setting-input" id="setting-multi-turn-word-limit" min="25" max="300" step="1" placeholder="Use env default" style="width: 110px;">
               <span class="setting-desc">Word cap for multi-turn summaries in casual/auto formatting.</span>
             </div>
-            <div class="setting-group" style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary);">
+            <div style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary);">
+              Completion Guard
+            </div>
+            <div class="setting-group" style="margin-top: var(--space-md);">
               <label class="setting-label">
                 Completion Guard Enabled
                 <span class="setting-default" id="completion-guard-enabled-default"></span>
@@ -469,7 +472,7 @@
             </div>
             <div class="setting-group">
               <label class="setting-label">
-                Completion Guard Mode
+                Completion Guard: Mode
                 <span class="setting-default" id="completion-guard-mode-default"></span>
               </label>
               <select class="setting-input" id="setting-completion-guard-mode">
@@ -482,7 +485,7 @@
             </div>
             <div class="setting-group">
               <label class="setting-label">
-                Auto Repair Threshold
+                Completion Guard: Auto Repair Threshold
                 <span class="setting-default" id="completion-guard-auto-threshold-default"></span>
               </label>
               <input type="number" class="setting-input" id="setting-completion-guard-auto-threshold" min="0.50" max="0.99" step="0.01" placeholder="Use env default" style="width: 110px;">
@@ -490,7 +493,7 @@
             </div>
             <div class="setting-group">
               <label class="setting-label">
-                Completion Ticket On Fail
+                Completion Guard: Ticket On Fail
                 <span class="setting-default" id="completion-guard-ticket-default"></span>
               </label>
               <select class="setting-input" id="setting-completion-guard-ticket-on-fail">
@@ -501,7 +504,7 @@
             </div>
             <div class="setting-group">
               <label class="setting-label">
-                Show UI Prompt
+                Completion Guard: Show UI Prompt
                 <span class="setting-default" id="completion-guard-prompt-default"></span>
               </label>
               <select class="setting-input" id="setting-completion-guard-show-ui-prompt">
@@ -512,7 +515,7 @@
             </div>
             <div class="setting-group">
               <label class="setting-label">
-                Include Q&A Responses
+                Completion Guard: Include Q&A Responses
                 <span class="setting-default" id="completion-guard-qa-default"></span>
               </label>
               <select class="setting-input" id="setting-completion-guard-include-qa">
@@ -523,7 +526,7 @@
             </div>
             <div class="setting-group">
               <label class="setting-label">
-                Include Tool Tasks
+                Completion Guard: Include Tool Tasks
                 <span class="setting-default" id="completion-guard-tools-default"></span>
               </label>
               <select class="setting-input" id="setting-completion-guard-include-tool-tasks">
