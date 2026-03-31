@@ -36,6 +36,7 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export
+  - **Completion Guard**: Inline `Completed correctly?` card with one bounded repair pass, follow-up tickets, workflow/fire-and-forget exclusions, and exported completion metadata
   - **Image upload**: Drag-drop/paste/click with vision analysis
   - **Mode-aware TTS/STT**: Cloud vs Local providers
   - Dynamic LLM/model switching on-the-fly

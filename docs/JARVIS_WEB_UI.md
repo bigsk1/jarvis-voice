@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.5)  
-> **Last Updated**: March 29, 2026
+> **Status**: MVP Complete (v2.6)  
+> **Last Updated**: March 30, 2026
 
 ---
 
@@ -138,6 +138,18 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Toast notification** | ✅ | 6-second toast with rating summary |
 | **Always logged** | ✅ | Manual feedback always saved to logs |
 
+### Phase 9: Completion Guard - COMPLETE ✅
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Completion Guard card** | ✅ | Inline `Completed correctly?` card on assistant responses |
+| **Manual repair pass** | ✅ | Clicking `No` runs one bounded repair pass |
+| **Repair status updates** | ✅ | Repair emits normal Jarvis thinking/status/tool events |
+| **Repair tickets** | ✅ | Unresolved failures write markdown tickets to `logs/completion-guard/` |
+| **Tool-aware exclusions** | ✅ | Skips workflows and fire-and-forget/sensitive tools |
+| **Conversation export metadata** | ✅ | Markdown export includes Completion Guard status/note/ticket data when present |
+| **Prompt/runtime repair context** | ✅ | Repair uses original query, raw LLM response, tool outputs, and user note |
+
 ---
 
 ## 🏗️ Architecture
@@ -238,7 +250,7 @@ jarvis-web/
 | GET | `/api/prompts/<name>` | Get specific prompt |
 | POST | `/api/enhance-prompt` | ✨ AI-powered prompt enhancement |
 | GET | `/api/conversations/search?q=` | Search message content across all conversations |
-| GET | `/api/conversations/<id>/export?format=` | Export conversation (json/markdown) |
+| GET | `/api/conversations/<id>/export?format=` | Export conversation (json/markdown, includes Completion Guard metadata when available) |
 | POST | `/api/conversations/import` | Import conversation from JSON file |
 | POST | `/api/stash/upload` | Upload file to stash (for conversion) |
 | GET | `/api/stash/<space_id>/<file_id>` | Serve file from stash |
@@ -1466,4 +1478,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*  
 *v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*  
 *v2.4: OpenAI Sora - Third video provider with native audio, image-to-video, remix support - February 9, 2026*  
-*v2.5: AI Config response-style overrides - Per-mode `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` with live prompt/runtime alignment - March 29, 2026*
+*v2.5: AI Config response-style overrides - Per-mode `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` with live prompt/runtime alignment - March 29, 2026*  
+*v2.6: Completion Guard - inline completion card, one-pass manual repair loop, tool-aware exclusions, repair tickets, and export metadata - March 30, 2026*

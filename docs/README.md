@@ -308,6 +308,23 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-03-30:**
+- ✅ **Completion Guard: manual repair loop** - Phase 2 manual repair flow now works in Jarvis Web
+  - Inline `Completed correctly?` card runs one bounded repair pass on `No`
+  - Repair uses the original query, raw LLM response, tool outputs, and user note
+  - Tickets now include repair strategy and repair attempt details when unresolved
+- ✅ **Completion Guard: smarter repair routing**
+  - Added repair-strategy classifier (`intel_file_lookup`, `verification_repair`, `artifact_update`, `memory_lookup`, `generic_repair`)
+  - Repair prompt now injects preferred/avoid tool-family hints instead of retrying blindly
+  - Added synthesis fallback so existing tool data can be turned into a final answer without more tool calls
+- ✅ **Completion Guard: exclusions + exports**
+  - Workflows and fire-and-forget/sensitive tools are skipped
+  - Excluded tools can now be extended from `.env` via `COMPLETION_GUARD_EXCLUDED_TOOLS`
+  - Markdown conversation export now includes Completion Guard status, note, ticket path, and repair message ID when available
+- ✅ **Completion Guard: Web UI polish**
+  - Original message card updates to `Repaired` / `Unresolved` / `Ticket created`
+  - Internal repair-response messages no longer render their own empty Completion Guard card
+
 **2026-03-29:**
 - ✅ **Web UI AI Config: response style overrides** - Added per-mode overrides for voice formatting behavior
   - `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` can now be overridden from `jarvis-web` Settings → AI Config
@@ -1258,6 +1275,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-03-21  
-**Latest:** SerpApi query optimization, canvas/workflow fixes, speech sanitization, MCP deadlock fix, orchestrator duplicate handling, chat UI polish  
+**Last Updated:** 2026-03-30  
+**Latest:** Completion Guard manual repair loop, repair-strategy classifier, tool-aware exclusions, markdown export metadata, Web UI card fixes  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

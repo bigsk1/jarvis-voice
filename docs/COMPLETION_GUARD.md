@@ -85,6 +85,33 @@ This is a better fit than "self-repair tool" because it is not just a tool call.
    - auto-run one repair pass if configured
 6. If still unresolved, create a ticket
 
+## Current Status
+
+As of March 30, 2026, Completion Guard is partially implemented and usable in Jarvis Web.
+
+Implemented now:
+
+- AI Config settings for enabling/disabling Completion Guard in the Web UI
+- Manual mode with inline `Completed correctly? Yes / No` card
+- One bounded repair pass when the user clicks `No`
+- Repair pass uses:
+  - original query
+  - raw LLM response
+  - prior tool outputs
+  - user completion note
+- Repair-strategy classifier to bias tool selection during repair
+- Synthesis fallback that can answer from existing tool results without another tool call
+- Markdown ticket creation for unresolved failures
+- Tool-aware exclusions for workflows and fire-and-forget/sensitive tools
+- Completion Guard metadata included in conversation exports when available
+
+Not implemented yet:
+
+- real auto mode evaluator
+- true same-in-flight orchestrator continuation
+- persistence of unanswered manual cards across refresh
+- intelligence-layer ingestion of accepted/repaired/ticketed outcomes
+
 ## Why Same Runtime Matters
 
 The repair pass should see all of this without reconstructing it from scratch:
@@ -359,6 +386,7 @@ JARVIS_COMPLETION_GUARD_TICKET_DIR=logs/completion-guard
 JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT=true
 JARVIS_COMPLETION_GUARD_INCLUDE_QA=true
 JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS=true
+COMPLETION_GUARD_EXCLUDED_TOOLS=phone_call,send_email,create_reminder,create_alert
 JARVIS_COMPLETION_GUARD_EVAL_PROVIDER=
 JARVIS_COMPLETION_GUARD_EVAL_MODEL=
 ```
@@ -408,6 +436,7 @@ Recommended controls:
 - Show UI Prompt
 - Include QA Responses
 - Include Tool Tasks
+- Excluded Tools (optional env-driven list)
 - Eval Provider override
 - Eval Model override
 
@@ -708,32 +737,33 @@ That state object is what allows same-runtime continuation instead of a syntheti
 
 ### Phase 1: UX + Ticketing
 
-- Add env config keys
-- Add Web UI AI Config overrides
-- Add completion card component in chat UI
-- Add websocket events for prompt and response
-- Add markdown ticket writer
-- Log completion-guard outcomes
+- [x] Add env config keys
+- [x] Add Web UI AI Config overrides
+- [x] Add completion card component in chat UI
+- [x] Add websocket events for prompt and response
+- [x] Add markdown ticket writer
+- [x] Log completion-guard outcomes
 
-No repair yet.
+### Phase 2: Manual Repair
 
-### Phase 2: Same-Runtime Repair
+- [x] Accept user `Yes/No` and optional note
+- [x] Run one bounded repair pass
+- [x] Feed `raw_llm_response` into repair instead of condensed speech
+- [x] Emit repair progress and final repaired result
+- [x] Write ticket on unresolved repair
+- [x] Add repair-strategy classifier
+- [x] Add tool-family hints to repair prompt
+- [x] Add synthesize-from-existing-tool-result fallback
+- [x] Skip workflows and fire-and-forget/sensitive tools
 
-- Add in-memory task state store keyed by message id
-- Pause at completion checkpoint after normal answer
-- Capture `raw_llm_response` for evaluation
-- Accept user `Yes/No` and optional note
-- Resume same task state for one repair attempt
-- Emit repair progress and final repaired result
-- If still unresolved, emit ticket-created event
+### Phase 3: Remaining Work
 
-### Phase 3: Evaluator
-
-- Add completion evaluator prompt
-- Score risk of incomplete/incorrect result
-- Trigger prompt or repair only above threshold
-- Add categories for recurring failures
-- Feed tickets and outcomes into intelligence analysis
+- [ ] Add real auto mode evaluator
+- [ ] Score risk of incomplete/incorrect result before finalizing
+- [ ] Trigger repair automatically above a threshold
+- [ ] Feed accepted/repaired/ticketed outcomes into intelligence analysis
+- [ ] Persist unanswered manual Completion Guard prompts across refresh
+- [ ] Add issue clustering and recurring-failure reporting
 
 ## Repair Evaluation Heuristics
 
@@ -758,13 +788,12 @@ These heuristics should be enough for an MVP before building a sophisticated eva
 - manual completion prompt card
 - ticket generation only
 
-No auto repair yet.
-
 ### Phase 2
 
-- same-runtime repair pass
+- bounded manual repair pass
 - one retry max
 - user rejection note fed into repair prompt
+- repair strategy hints and synthesis fallback
 
 ### Phase 3
 
@@ -798,13 +827,11 @@ This feature should not:
 
 ## MVP Recommendation
 
-Best first real implementation:
+Best current next implementation:
 
-1. Add `Completion Guard` config to env + Web UI
-2. Show inline `Completed correctly? Yes / No` card
-3. Preserve `raw_llm_response` and task state for same-runtime continuation
-4. If `No`, run one same-context repair pass
-5. If still unresolved, write ticket markdown
-6. Log outcome for later intelligence analysis
+1. Add real auto mode evaluator
+2. Persist unanswered manual cards across refresh
+3. Feed accepted/repaired/ticketed outcomes into the intelligence layer
+4. Add clustering/reporting for recurring completion failures
 
-That gives immediate user value and strong debugging leverage without overcomplicating the first version.
+That would move Completion Guard from a useful manual recovery loop into a broader self-improving system.
