@@ -2620,9 +2620,10 @@ class ChatUI {
   _attachCompletionGuardCard(messageEl, data, toolsUsed = []) {
     const state = this._getCompletionGuardState(data, toolsUsed);
     const shouldPrompt = state.live?.prompt_user === true;
-    const hasTicket = state.persisted?.status === 'ticket_created';
+    const persistedStatus = state.persisted?.status || '';
+    const hasPersistedState = Boolean(persistedStatus) && persistedStatus !== 'repair_response';
 
-    if (!shouldPrompt && !hasTicket) {
+    if (!shouldPrompt && !hasPersistedState) {
       return;
     }
 
@@ -2631,17 +2632,44 @@ class ChatUI {
     card.dataset.messageId = state.messageId || messageEl.dataset.messageId || '';
     card.dataset.conversationId = state.conversationId || messageEl.dataset.conversationId || '';
 
-    if (hasTicket) {
-      const ticketPath = state.persisted.ticket_path || '';
+    if (hasPersistedState && !shouldPrompt) {
       const note = state.persisted.note || '';
-      card.classList.add('resolved');
+      const ticketPath = state.persisted.ticket_path || '';
+      let statusText = 'Completed correctly?';
+      let summaryText = '';
+      let extraClass = '';
+
+      if (persistedStatus === 'ticket_created') {
+        statusText = 'Ticket created';
+        summaryText = 'This response was marked incomplete and logged for follow-up.';
+        extraClass = ' resolved';
+      } else if (persistedStatus === 'repaired') {
+        statusText = 'Repaired';
+        summaryText = 'A repair pass found a better answer and added it below.';
+        extraClass = ' resolved';
+      } else if (persistedStatus === 'repairing') {
+        statusText = 'Repairing...';
+        summaryText = 'Trying one follow-up pass using the existing task context.';
+        extraClass = ' submitting';
+      } else if (persistedStatus === 'unresolved') {
+        statusText = 'Unresolved';
+        summaryText = ticketPath
+          ? 'One repair pass could not fully resolve this, so it was logged for follow-up.'
+          : 'One repair pass could not fully resolve this response.';
+      } else if (persistedStatus === 'noted') {
+        statusText = 'Noted';
+        summaryText = 'Saved your completion note.';
+        extraClass = ' resolved';
+      }
+
+      card.className += extraClass;
       card.innerHTML = `
         <div class="completion-guard-header">
           <span class="completion-guard-title">🛡️ Completion Guard</span>
-          <span class="completion-guard-status">Ticket created</span>
+          <span class="completion-guard-status">${Utils.escapeHtml(statusText)}</span>
         </div>
         <div class="completion-guard-body">
-          <div class="completion-guard-summary">This response was marked incomplete and logged for follow-up.</div>
+          <div class="completion-guard-summary">${Utils.escapeHtml(summaryText)}</div>
           ${note ? `<div class="completion-guard-note">Note: ${Utils.escapeHtml(note)}</div>` : ''}
           ${ticketPath ? `<div class="completion-guard-ticket">Ticket: <code>${Utils.escapeHtml(ticketPath)}</code></div>` : ''}
         </div>
@@ -2665,7 +2693,7 @@ class ChatUI {
           <button type="button" class="completion-guard-btn completion-guard-yes">Yes</button>
           <button type="button" class="completion-guard-btn completion-guard-no">No</button>
         </div>
-        <div class="completion-guard-summary">Marking "No" logs a follow-up ticket in Phase 1.</div>
+        <div class="completion-guard-summary">Marking "No" runs one repair attempt before logging a follow-up ticket.</div>
       </div>
     `;
 
@@ -2692,8 +2720,8 @@ class ChatUI {
       }
 
       card.classList.add('submitting');
-      statusEl.textContent = 'Logging issue...';
-      summaryEl.textContent = 'Creating a follow-up ticket for this response.';
+      statusEl.textContent = 'Repairing...';
+      summaryEl.textContent = 'Trying one follow-up pass before logging a ticket.';
       yesBtn.disabled = true;
       noBtn.disabled = true;
       if (noteInput) noteInput.disabled = true;
@@ -2716,41 +2744,93 @@ class ChatUI {
     const card = this.messagesContainer.querySelector(`.completion-guard-card[data-message-id="${messageId}"]`);
     if (!card) return;
 
+    const ensureBody = () => {
+      let body = card.querySelector('.completion-guard-body');
+      if (!body) {
+        body = document.createElement('div');
+        body.className = 'completion-guard-body';
+        card.appendChild(body);
+      }
+
+      let summary = body.querySelector('.completion-guard-summary');
+      if (!summary) {
+        summary = document.createElement('div');
+        summary.className = 'completion-guard-summary';
+        body.appendChild(summary);
+      }
+
+      return { body, summary };
+    };
+
+    const { body, summary } = ensureBody();
     const statusEl = card.querySelector('.completion-guard-status');
-    const summaryEl = card.querySelector('.completion-guard-summary');
-    const noteEl = card.querySelector('.completion-guard-note');
+    const summaryEl = summary;
+    const noteEl = body.querySelector('.completion-guard-note');
     const yesBtn = card.querySelector('.completion-guard-yes');
     const noBtn = card.querySelector('.completion-guard-no');
     const noteInput = card.querySelector('.completion-guard-note-input');
+    const renderResolvedBody = (summaryText, noteText = '', ticketPath = '') => {
+      body.innerHTML = `
+        <div class="completion-guard-summary">${Utils.escapeHtml(summaryText || '')}</div>
+        ${noteText ? `<div class="completion-guard-note">Note: ${Utils.escapeHtml(noteText)}</div>` : ''}
+        ${ticketPath ? `<div class="completion-guard-ticket">Ticket: <code>${Utils.escapeHtml(ticketPath)}</code></div>` : ''}
+      `;
+    };
+
+    if (data.status === 'repairing') {
+      card.classList.add('submitting');
+      card.classList.remove('resolved');
+      if (statusEl) statusEl.textContent = 'Repairing...';
+      if (summaryEl) summaryEl.textContent = 'Trying one follow-up pass using the existing task context.';
+      if (yesBtn) yesBtn.disabled = true;
+      if (noBtn) noBtn.disabled = true;
+      if (noteInput) noteInput.disabled = true;
+      return;
+    }
+
+    if (data.status === 'repaired') {
+      card.classList.remove('submitting');
+      card.classList.add('resolved');
+      if (statusEl) statusEl.textContent = 'Repaired';
+      renderResolvedBody(
+        'A repair pass found a better answer and added it below.',
+        data.note || noteInput?.value || ''
+      );
+      if (yesBtn) yesBtn.disabled = true;
+      if (noBtn) noBtn.disabled = true;
+      if (noteInput) noteInput.disabled = true;
+      return;
+    }
+
+    if (data.status === 'unresolved') {
+      card.classList.remove('submitting');
+      if (statusEl) statusEl.textContent = 'Unresolved';
+      renderResolvedBody(
+        data.ticket_path
+          ? 'One repair pass could not fully resolve this, so it was logged for follow-up.'
+          : 'One repair pass could not fully resolve this response.',
+        data.note || noteInput?.value || '',
+        data.ticket_path || ''
+      );
+      if (yesBtn) yesBtn.disabled = true;
+      if (noBtn) noBtn.disabled = true;
+      if (noteInput) noteInput.disabled = true;
+      return;
+    }
 
     if (data.status === 'ticket_created') {
       card.classList.remove('submitting');
       card.classList.add('resolved');
       if (statusEl) statusEl.textContent = 'Ticket created';
-      if (summaryEl) summaryEl.textContent = 'Marked incomplete and logged for follow-up.';
+      renderResolvedBody(
+        'Marked incomplete and logged for follow-up.',
+        data.note || noteInput?.value || '',
+        data.ticket_path || ''
+      );
       if (yesBtn) yesBtn.disabled = true;
       if (noBtn) noBtn.disabled = true;
       if (noteInput) {
         noteInput.disabled = true;
-      }
-
-      if (!card.querySelector('.completion-guard-ticket') && data.ticket_path) {
-        const ticketEl = document.createElement('div');
-        ticketEl.className = 'completion-guard-ticket';
-        ticketEl.innerHTML = `Ticket: <code>${Utils.escapeHtml(data.ticket_path)}</code>`;
-        card.querySelector('.completion-guard-body')?.appendChild(ticketEl);
-      }
-
-      const note = data.note || noteInput?.value || '';
-      if (note) {
-        if (noteEl) {
-          noteEl.textContent = `Note: ${note}`;
-        } else {
-          const newNoteEl = document.createElement('div');
-          newNoteEl.className = 'completion-guard-note';
-          newNoteEl.textContent = `Note: ${note}`;
-          card.querySelector('.completion-guard-body')?.appendChild(newNoteEl);
-        }
       }
       return;
     }
@@ -2759,7 +2839,10 @@ class ChatUI {
       card.classList.remove('submitting');
       card.classList.add('resolved');
       if (statusEl) statusEl.textContent = 'Noted';
-      if (summaryEl) summaryEl.textContent = 'Saved your completion note.';
+      renderResolvedBody(
+        'Saved your completion note.',
+        data.note || noteInput?.value || ''
+      );
       return;
     }
 

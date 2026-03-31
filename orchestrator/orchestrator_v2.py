@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import time
+import re
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -1057,6 +1058,12 @@ Mode: {self.mode}
                 if '\\"url\\":' in s or '"url":' in s:
                     return True
                 if '\\"title\\":' in s or '"title":' in s:
+                    return True
+                if re.match(r"^(Read|Listed|Found)\s+\d+(\.\d+)?\s+\w+", s):
+                    return True
+                if re.match(r"^Read\s+\d+\s+bytes\s+from\s+.+", s):
+                    return True
+                if re.match(r"^Listed\s+\d+\s+(files|items|results)", s):
                     return True
                 # Heuristic for payload-like snippets
                 if s.count("{") >= 2 and s.count(":") >= 3:

@@ -641,6 +641,19 @@ def export_conversation(conv_id):
             if tools:
                 lines.append(f"*Tools used: {', '.join(tools)}*")
                 lines.append("")
+
+            completion_guard = (msg.get('data') or {}).get('_completion_guard')
+            if isinstance(completion_guard, dict) and completion_guard:
+                lines.append("**Completion Guard**")
+                lines.append("")
+                lines.append(f"- Status: {completion_guard.get('status', 'unknown')}")
+                if completion_guard.get('note'):
+                    lines.append(f"- Note: {completion_guard['note']}")
+                if completion_guard.get('ticket_path'):
+                    lines.append(f"- Ticket: `{completion_guard['ticket_path']}`")
+                if completion_guard.get('repair_message_id'):
+                    lines.append(f"- Repair Message ID: `{completion_guard['repair_message_id']}`")
+                lines.append("")
             
             lines.append("---")
             lines.append("")

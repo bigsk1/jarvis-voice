@@ -8,6 +8,7 @@ import uuid
 import time
 import traceback
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from flask_socketio import emit, join_room, leave_room
@@ -21,6 +22,13 @@ sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 
 class ChatHandler:
     """Handles WebSocket chat events"""
+
+    DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS = {
+        'phone_call',
+        'send_email',
+        'create_reminder',
+        'create_alert',
+    }
     
     def __init__(self, socketio):
         self.socketio = socketio
@@ -51,6 +59,17 @@ class ChatHandler:
         show_ui_prompt = mode_overrides.get('completion_guard_show_ui_prompt')
         include_qa = mode_overrides.get('completion_guard_include_qa')
         include_tool_tasks = mode_overrides.get('completion_guard_include_tool_tasks')
+        excluded_tools_raw = (
+            get_config_value('COMPLETION_GUARD_EXCLUDED_TOOLS')
+            or get_config_value('JARVIS_COMPLETION_GUARD_EXCLUDED_TOOLS')
+            or ''
+        )
+        excluded_tools = set(self.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS)
+        if excluded_tools_raw:
+            excluded_tools.update(
+                item.strip() for item in str(excluded_tools_raw).split(',')
+                if item and item.strip()
+            )
 
         return {
             'enabled': enabled if enabled is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_ENABLED', 'false')),
@@ -59,6 +78,7 @@ class ChatHandler:
             'show_ui_prompt': show_ui_prompt if show_ui_prompt is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT', 'true'), True),
             'include_qa': include_qa if include_qa is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_INCLUDE_QA', 'true'), True),
             'include_tool_tasks': include_tool_tasks if include_tool_tasks is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS', 'true'), True),
+            'excluded_tools': sorted(excluded_tools),
         }
 
     def _should_prompt_completion_guard(self, config: dict, tools_used: list[str]) -> bool:
@@ -68,6 +88,9 @@ class ChatHandler:
         if config.get('mode') != 'manual':
             return False
         if not config.get('show_ui_prompt'):
+            return False
+        excluded = set(config.get('excluded_tools', self.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS))
+        if any(tool in excluded for tool in (tools_used or [])):
             return False
 
         has_tools = bool(tools_used)
@@ -79,6 +102,8 @@ class ChatHandler:
         """Keep a small per-session record so a later 'No' can create a useful ticket."""
         session = self.sessions.setdefault(session_id, {})
         records = session.setdefault('completion_guard_records', {})
+        record.setdefault('status', 'pending')
+        record.setdefault('repair_attempts', 0)
         records[message_id] = record
 
         # Keep recent records bounded per session.
@@ -86,6 +111,222 @@ class ChatHandler:
             oldest = sorted(records.items(), key=lambda item: item[1].get('timestamp', 0))[:10]
             for old_id, _ in oldest:
                 records.pop(old_id, None)
+
+    @staticmethod
+    def _extract_repair_status(text: str) -> tuple[str | None, str]:
+        """Extract REPAIR_STATUS marker from an LLM response and remove it."""
+        if not text:
+            return None, ''
+
+        lines = text.splitlines()
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        if not lines:
+            return None, text
+
+        first = lines[0].strip()
+        if first.startswith('REPAIR_STATUS:'):
+            status = first.split(':', 1)[1].strip().lower()
+            remainder = '\n'.join(lines[1:]).strip()
+            return status, remainder
+        return None, text
+
+    @staticmethod
+    def _is_machine_like_completion_text(text: str) -> bool:
+        """Detect tool-ish or payload-ish text that should not be treated as a final answer."""
+        if not text or not isinstance(text, str):
+            return True
+
+        s = text.strip()
+        if not s:
+            return True
+        if s.startswith('{') or s.startswith('['):
+            return True
+        if '\\"url\\":' in s or '"url":' in s or '\\"title\\":' in s or '"title":' in s:
+            return True
+        if re.match(r"^(Read|Listed|Found)\s+\d+(\.\d+)?\s+\w+", s):
+            return True
+        if re.match(r"^Read\s+\d+\s+bytes\s+from\s+.+", s):
+            return True
+        if re.match(r"^Listed\s+\d+\s+(files|items|results)", s):
+            return True
+        if s.count("{") >= 2 and s.count(":") >= 3:
+            return True
+        return False
+
+    @staticmethod
+    def _truncate_for_prompt(value, max_chars: int = 6000) -> str:
+        """Serialize and truncate large values before feeding them back to the model."""
+        try:
+            text = json.dumps(value, indent=2, ensure_ascii=False)
+        except Exception:
+            text = str(value)
+
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars] + "\n... [truncated]"
+
+    def _classify_completion_guard_strategy(self, record: dict, note: str = '') -> dict:
+        """Choose a repair strategy family and tool-family hints for the next pass."""
+        query = (record.get('query') or '').lower()
+        note_lower = (note or '').lower()
+        raw = (record.get('raw_llm_response') or '').lower()
+        combined = ' '.join(part for part in [query, note_lower, raw] if part)
+
+        strategy = {
+            'family': 'generic_repair',
+            'reason': 'General repair pass using the previous answer and tool outputs.',
+            'preferred_tools': [],
+            'avoid_tools': [],
+            'completion_hint': 'If a tool result already contains the answer, stop and answer directly from that result.'
+        }
+
+        if any(token in combined for token in ['jarvis-intel', 'user_profile', 'user profile', '.md', 'profile']):
+            strategy.update({
+                'family': 'intel_file_lookup',
+                'reason': 'The user referenced a specific intel/profile file, so direct file inspection should come before semantic recall.',
+                'preferred_tools': ['manage_intel'],
+                'avoid_tools': ['semantic_recall', 'search_memory', 'deep_memory_search'],
+                'completion_hint': 'If manage_intel returns file content with the answer, answer from that content directly instead of calling another memory tool.'
+            })
+            return strategy
+
+        strong_claim_terms = ['shutdown', 'shut down', 'deprecated', 'removed', 'disabled', 'not available', 'sent', 'updated', 'created', 'saved']
+        if any(term in combined for term in strong_claim_terms):
+            strategy.update({
+                'family': 'verification_repair',
+                'reason': 'The prior answer made or challenged a strong factual claim that should be verified before repeating.',
+                'preferred_tools': ['brave_search', 'fetch_url', 'bash'],
+                'avoid_tools': ['semantic_recall', 'search_memory'],
+                'completion_hint': 'Do not repeat strong claims unless the repair pass verifies them with a relevant live or direct inspection tool.'
+            })
+            return strategy
+
+        if any(token in combined for token in ['canvas', 'canva', 'page', 'slides', 'doc', 'update the page', 'update canvas']):
+            strategy.update({
+                'family': 'artifact_update',
+                'reason': 'The failure likely involves an artifact that may need to be checked or updated instead of just re-explained.',
+                'preferred_tools': ['canvas'],
+                'avoid_tools': ['semantic_recall'],
+                'completion_hint': 'If the artifact is wrong and you have enough context, update it and then clearly summarize the correction.'
+            })
+            return strategy
+
+        if any(token in combined for token in ['memory', 'remember', 'asked me before', 'call me', 'what is my name']):
+            strategy.update({
+                'family': 'memory_lookup',
+                'reason': 'The question asks about prior user information, so recall-style tools are appropriate unless a direct file lead exists.',
+                'preferred_tools': ['deep_memory_search', 'semantic_recall', 'search_memory'],
+                'avoid_tools': [],
+                'completion_hint': 'If memory tools remain weak and the user supplied a concrete source, switch to that source instead of repeating recall.'
+            })
+            return strategy
+
+        return strategy
+
+    @staticmethod
+    def _format_completion_guard_strategy(strategy: dict) -> str:
+        """Render repair strategy hints into prompt-ready text."""
+        preferred = ', '.join(strategy.get('preferred_tools', [])) or '(none)'
+        avoid = ', '.join(strategy.get('avoid_tools', [])) or '(none)'
+        return (
+            f"- Strategy family: {strategy.get('family', 'generic_repair')}\n"
+            f"- Why: {strategy.get('reason', '')}\n"
+            f"- Prefer these tools or tool families first: {preferred}\n"
+            f"- Avoid starting with: {avoid}\n"
+            f"- Completion hint: {strategy.get('completion_hint', '')}"
+        )
+
+    def _extract_direct_answer_from_tool_data(self, record: dict, result: dict) -> str | None:
+        """Use simple deterministic extraction when tool data obviously contains the answer."""
+        query = (record.get('query') or '').lower()
+        result_data = result.get('data') or {}
+        tools_used = result.get('tools_used') or []
+
+        if 'manage_intel' in tools_used:
+            payloads = result_data.get('manage_intel')
+            if not isinstance(payloads, list):
+                payloads = [payloads] if payloads else []
+
+            for payload in payloads:
+                if not isinstance(payload, dict):
+                    continue
+                content = payload.get('content') or ''
+                if not content:
+                    continue
+
+                name_match = re.search(r"\*\*Name\*\*:\s*([^\n]+)", content)
+                if name_match and any(token in query for token in ['my name', 'call me', 'asked you to call']):
+                    name = name_match.group(1).strip().strip('*').strip()
+                    if 'call me' in query or 'asked you to call' in query:
+                        return (
+                            f"Your user profile in jarvis-intel says your name is {name}. "
+                            f"I don't see a separate nickname in that file, so the clearest supported answer is {name}."
+                        )
+                    return f"Your user profile in jarvis-intel says your name is {name}."
+
+        return None
+
+    def _synthesize_from_existing_tool_result(
+        self,
+        orchestrator,
+        record: dict,
+        note: str,
+        result: dict,
+        strategy: dict
+    ) -> str | None:
+        """Build a final answer from returned tool data without calling more tools."""
+        direct_answer = self._extract_direct_answer_from_tool_data(record, result)
+        if direct_answer:
+            return direct_answer
+
+        result_data = result.get('data') or {}
+        if not result_data:
+            return None
+
+        synthesis_prompt = f"""You are synthesizing a repaired final answer from existing tool output only.
+
+Do not call any tools.
+Do not mention byte counts, file read boilerplate, or internal tool mechanics.
+If the tool output already contains the answer, answer directly from it.
+If the tool output is still insufficient, reply with exactly: UNRESOLVED
+
+Original user request:
+{record.get('query', '')}
+
+User completion note:
+{note or '(none)'}
+
+Repair strategy:
+{self._format_completion_guard_strategy(strategy)}
+
+Returned tool data:
+```json
+{self._truncate_for_prompt(result_data, max_chars=8000)}
+```
+"""
+
+        try:
+            response = orchestrator.router.provider.chat(
+                synthesis_prompt,
+                system_prompt=(
+                    "You synthesize final user-facing answers from existing tool results only. "
+                    "Do not invent facts. Max 120 words."
+                )
+            )
+        except Exception as synth_err:
+            print(f"[COMPLETION_GUARD] Synthesis fallback failed: {synth_err}")
+            return None
+
+        if not response or not isinstance(response, str):
+            return None
+
+        cleaned = response.strip()
+        if not cleaned or cleaned.upper().startswith('UNRESOLVED'):
+            return None
+        if self._is_machine_like_completion_text(cleaned):
+            return None
+        return cleaned
 
     def _write_completion_guard_ticket(self, record: dict, note: str = '') -> Path:
         """Write a markdown ticket describing the completion failure."""
@@ -159,8 +400,371 @@ class ChatHandler:
 ```
 """
 
+        repair_strategy = record.get('repair_strategy')
+        if repair_strategy:
+            content += f"""
+
+## Repair Strategy
+
+```json
+{dump_json(repair_strategy)}
+```
+"""
+
+        repair_result = record.get('repair_result')
+        if repair_result:
+            content += f"""
+
+## Repair Attempt
+
+- Status: {repair_result.get('status', 'unknown')}
+- Tools Used: {', '.join(repair_result.get('tools_used', [])) or '(none)'}
+
+### Repair Response
+
+{repair_result.get('speech', '').strip() or '(empty)'}
+
+### Repair Raw Response
+
+{repair_result.get('raw_llm_response', '').strip() or '(empty)'}
+"""
+
         ticket_path.write_text(content, encoding='utf-8')
         return ticket_path
+
+    def _run_completion_guard_repair(self, session_id: str, record: dict, note: str = ''):
+        """Run one bounded repair attempt before falling back to ticketing."""
+        conversation_id = record.get('conversation_id')
+        parent_message_id = record.get('message_id')
+        mode = record.get('mode', 'cloud')
+        repair_message_id = str(uuid.uuid4())
+        start_time = time.time()
+
+        self.socketio.emit('completion_guard:updated', {
+            'message_id': parent_message_id,
+            'conversation_id': conversation_id,
+            'status': 'repairing'
+        }, room=session_id)
+
+        self.socketio.emit('chat:thinking', {
+            'message_id': repair_message_id,
+            'conversation_id': conversation_id
+        }, room=session_id)
+
+        self.socketio.emit('chat:status', {
+            'message_id': repair_message_id,
+            'conversation_id': conversation_id,
+            'status': "Let's see if we can find a better solution.",
+            'timestamp': time.time()
+        }, room=session_id)
+
+        try:
+            from orchestrator_v2 import Orchestrator
+
+            provider_override = record.get('provider') or None
+            model_override = record.get('model') or None
+            orchestrator = Orchestrator(
+                mode=mode,
+                provider_override=provider_override,
+                model_override=model_override
+            )
+            orchestrator.set_web_conversation_id(conversation_id)
+
+            def status_callback(status_message: str):
+                self.socketio.emit('chat:status', {
+                    'message_id': repair_message_id,
+                    'conversation_id': conversation_id,
+                    'status': status_message,
+                    'timestamp': time.time()
+                }, room=session_id)
+
+            def progress_callback(event_type: str, **kwargs):
+                if event_type == 'tool_start':
+                    tool_name = kwargs.get('tool')
+                    call_index = kwargs.get('call_index', 0)
+                    self.socketio.emit('tool:start', {
+                        'message_id': repair_message_id,
+                        'tool': tool_name,
+                        'call_index': call_index,
+                        'args': kwargs.get('args', {}),
+                        'turn': kwargs.get('turn'),
+                        'max_turns': kwargs.get('max_turns'),
+                        'timestamp': time.time()
+                    }, room=session_id)
+                elif event_type == 'tool_complete':
+                    tool_name = kwargs.get('tool')
+                    call_index = kwargs.get('call_index', 0)
+                    duration_ms = kwargs.get('duration_ms')
+                    success = kwargs.get('success')
+                    event_name = 'tool:complete' if success else 'tool:error'
+                    payload = {
+                        'message_id': repair_message_id,
+                        'tool': tool_name,
+                        'call_index': call_index,
+                        'duration_ms': duration_ms,
+                        'timestamp': time.time()
+                    }
+                    if success:
+                        payload['result'] = {}
+                        payload['success'] = True
+                    else:
+                        payload['error'] = kwargs.get('error', 'Unknown error')
+                    self.socketio.emit(event_name, payload, room=session_id)
+                elif event_type == 'routing':
+                    self.socketio.emit('tool:progress', {
+                        'message_id': repair_message_id,
+                        'status': kwargs.get('message'),
+                        'timestamp': time.time()
+                    }, room=session_id)
+
+            orchestrator.set_status_callback(status_callback)
+            orchestrator.set_progress_callback(progress_callback)
+            repair_strategy = self._classify_completion_guard_strategy(record, note)
+            record['repair_strategy'] = repair_strategy
+
+            repair_prompt = f"""[COMPLETION GUARD REPAIR - CONTINUE THE SAME TASK, DO NOT START OVER]
+
+You are repairing a previous Jarvis answer that the user marked as incomplete or incorrect.
+
+Return your response in this exact format:
+REPAIR_STATUS: repaired
+or
+REPAIR_STATUS: unresolved
+
+Then provide the corrected user-facing answer.
+
+Rules:
+- Do not answer from scratch
+- Audit the prior raw answer first
+- Use the full raw answer, not the shortened speech text, as the main thing to critique
+- Do not repeat unsupported claims
+- If the previous answer made a strong claim like shut down, deprecated, removed, saved, created, updated, or sent, verify it before repeating it
+- Prefer fixing the smallest missing step
+- You may use tools if needed, but only when they clearly help verify or correct the issue
+- Do not just repeat the same failed retrieval path if it came back empty or weak
+- If one memory/search tool did not find enough, consider a different tool path that can inspect the source more directly
+- If the user references a specific file, folder, path, or source, treat that as a concrete lead and inspect it instead of only doing semantic recall
+- For intel or profile questions, prefer direct intel/file inspection when the user points to a known intel file or path
+- If a tool in this repair pass already returns the answer in its data, stop and answer from that data directly
+- If a prior artifact such as a canvas page is now known to be wrong and you have enough context, update it
+- If you still cannot resolve the issue after one attempt, use REPAIR_STATUS: unresolved and explain exactly what remains uncertain
+
+Repair strategy hints:
+{self._format_completion_guard_strategy(repair_strategy)}
+
+Original user request:
+{record.get('query', '')}
+
+User completion note:
+{note or '(none)'}
+
+Prior spoken response:
+{record.get('speech', '')}
+
+Prior raw LLM response:
+{record.get('raw_llm_response', '')}
+
+Tools used previously:
+{', '.join(record.get('tools_used', [])) or '(none)'}
+
+Previous structured data:
+```json
+{self._truncate_for_prompt(record.get('data', {}), max_chars=8000)}
+```
+"""
+
+            result = orchestrator.process(repair_prompt)
+            raw_response = result.get('raw_llm_response', '') or result.get('speech', '')
+            repair_status, cleaned_raw = self._extract_repair_status(raw_response)
+            _, cleaned_speech = self._extract_repair_status(result.get('speech', '') or '')
+
+            if cleaned_raw:
+                result['raw_llm_response'] = cleaned_raw
+            if cleaned_speech:
+                result['speech'] = cleaned_speech
+            elif cleaned_raw and result.get('speech'):
+                result['speech'] = cleaned_raw
+
+            if result.get('data') and (
+                repair_status != 'repaired'
+                or self._is_machine_like_completion_text(result.get('speech', ''))
+                or self._is_machine_like_completion_text(result.get('raw_llm_response', ''))
+            ):
+                synthesized_answer = self._synthesize_from_existing_tool_result(
+                    orchestrator,
+                    record,
+                    note,
+                    result,
+                    repair_strategy
+                )
+                if synthesized_answer:
+                    result['speech'] = synthesized_answer
+                    result['raw_llm_response'] = synthesized_answer
+                    repair_status = 'repaired'
+
+            # Require an explicit repaired marker. Missing markers should not be treated as success.
+            repaired = result.get('ok', True) and repair_status == 'repaired'
+            record['status'] = 'repaired' if repaired else 'unresolved'
+            record['user_note'] = note
+            record['repair_message_id'] = repair_message_id
+            record['repair_result'] = {
+                'status': repair_status or ('repaired' if repaired else 'unresolved'),
+                'speech': result.get('speech', ''),
+                'raw_llm_response': result.get('raw_llm_response', ''),
+                'tools_used': result.get('tools_used', []),
+                'strategy_family': repair_strategy.get('family')
+            }
+
+            from ..services.conversation_store import get_conversation_store
+            store = get_conversation_store()
+
+            response_text = result.get('speech', result.get('raw_llm_response', ''))
+            save_data = (result.get('data') or {}).copy() if isinstance(result.get('data'), dict) else {'result': result.get('data')}
+            if result.get('raw_llm_response'):
+                save_data['raw_llm_response'] = result['raw_llm_response']
+            if result.get('usage'):
+                save_data['usage'] = result['usage']
+            save_data['_web_message_id'] = repair_message_id
+            save_data['_completion_guard'] = {
+                'status': 'repair_response',
+                'repaired_from_message_id': parent_message_id,
+                'created_at': datetime.now().isoformat()
+            }
+
+            store.add_message(
+                conversation_id,
+                'assistant',
+                response_text,
+                data=save_data,
+                tools_used=result.get('tools_used', [])
+            )
+
+            store.update_message_data_by_web_message_id(
+                conversation_id,
+                parent_message_id,
+                {
+                    '_completion_guard': {
+                        'status': 'repaired' if repaired else 'unresolved',
+                        'note': note,
+                        'repaired_at': datetime.now().isoformat(),
+                        'repair_message_id': repair_message_id
+                    }
+                }
+            )
+
+            audio_url = None
+            try:
+                from ..config import get_web_setting
+                if get_web_setting('audio.tts_enabled', False):
+                    speech_text = result.get('speech', '')
+                    if speech_text:
+                        from security_utils import sanitize_for_speech
+                        speech_text = sanitize_for_speech(speech_text)
+                        if not speech_text:
+                            speech_text = "I found a better answer and shared it in chat."
+                        audio_url = self._generate_tts(speech_text, mode=mode)
+            except Exception as tts_err:
+                print(f"[COMPLETION_GUARD] TTS generation failed: {tts_err}")
+
+            self.socketio.emit('completion_guard:updated', {
+                'message_id': parent_message_id,
+                'conversation_id': conversation_id,
+                'status': 'repaired' if repaired else 'unresolved',
+                'note': note
+            }, room=session_id)
+
+            self.socketio.emit('chat:response', {
+                'message_id': repair_message_id,
+                'conversation_id': conversation_id,
+                'text': result.get('speech', result.get('raw_llm_response', '')),
+                'speech': result.get('speech', ''),
+                'data': save_data,
+                'tools_used': result.get('tools_used', []),
+                'ok': result.get('ok', True),
+                'cancelled': False,
+                'duration_ms': int((time.time() - start_time) * 1000),
+                'usage': result.get('usage', {}),
+                'audio_url': audio_url,
+                'server_side_tools': result.get('server_side_tools', {}),
+                'completion_guard': {
+                    'enabled': False,
+                    'mode': 'off',
+                    'ticket_on_fail': record.get('completion_guard', {}).get('ticket_on_fail', True),
+                    'prompt_user': False
+                }
+            }, room=session_id)
+
+            if not repaired and record.get('completion_guard', {}).get('ticket_on_fail', True):
+                ticket_path = self._write_completion_guard_ticket(record, note)
+                rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
+                record['status'] = 'ticket_created'
+                record['ticket_path'] = rel_path
+                store.update_message_data_by_web_message_id(
+                    conversation_id,
+                    parent_message_id,
+                    {
+                        '_completion_guard': {
+                            'status': 'ticket_created',
+                            'ticket_path': rel_path,
+                            'note': note,
+                            'created_at': datetime.now().isoformat(),
+                            'repair_message_id': repair_message_id
+                        }
+                    }
+                )
+                self.socketio.emit('completion_guard:ticket_created', {
+                    'message_id': parent_message_id,
+                    'conversation_id': conversation_id,
+                    'ticket_path': rel_path,
+                    'note': note
+                }, room=session_id)
+
+        except Exception as e:
+            print(f"[COMPLETION_GUARD] Repair failed: {e}")
+            record['status'] = 'error'
+            record['user_note'] = note
+            record['repair_result'] = {
+                'status': 'error',
+                'speech': '',
+                'raw_llm_response': str(e),
+                'tools_used': []
+            }
+            if record.get('completion_guard', {}).get('ticket_on_fail', True):
+                try:
+                    ticket_path = self._write_completion_guard_ticket(record, note)
+                    rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
+                    record['status'] = 'ticket_created'
+                    record['ticket_path'] = rel_path
+                    from ..services.conversation_store import get_conversation_store
+                    store = get_conversation_store()
+                    store.update_message_data_by_web_message_id(
+                        conversation_id,
+                        parent_message_id,
+                        {
+                            '_completion_guard': {
+                                'status': 'ticket_created',
+                                'ticket_path': rel_path,
+                                'note': note,
+                                'created_at': datetime.now().isoformat()
+                            }
+                        }
+                    )
+                    self.socketio.emit('completion_guard:ticket_created', {
+                        'message_id': parent_message_id,
+                        'conversation_id': conversation_id,
+                        'ticket_path': rel_path,
+                        'note': note
+                    }, room=session_id)
+                except Exception as ticket_err:
+                    self.socketio.emit('completion_guard:error', {
+                        'message_id': parent_message_id,
+                        'error': f'Completion Guard repair and ticketing failed: {ticket_err}'
+                    }, room=session_id)
+            else:
+                self.socketio.emit('completion_guard:error', {
+                    'message_id': parent_message_id,
+                    'error': f'Completion Guard repair failed: {e}'
+                }, room=session_id)
     
     def _register_handlers(self):
         """Register all socket event handlers"""
@@ -327,7 +931,7 @@ class ChatHandler:
             if accepted is not False:
                 emit('completion_guard:error', {
                     'message_id': message_id,
-                    'error': 'Only rejection handling is implemented in Phase 1.'
+                    'error': 'Completion Guard currently handles follow-up repair from the "No" action.'
                 })
                 return
 
@@ -339,30 +943,90 @@ class ChatHandler:
                 return
 
             config = record.get('completion_guard', {})
-            if not config.get('ticket_on_fail', True):
+            excluded_tools = set(config.get('excluded_tools', self.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS))
+            if record.get('is_workflow') or any(
+                tool in excluded_tools for tool in record.get('tools_used', [])
+            ):
+                emit('completion_guard:error', {
+                    'message_id': message_id,
+                    'error': 'Completion Guard repair is skipped for workflows and fire-and-forget tools.'
+                })
+                return
+
+            existing_status = record.get('status')
+            if existing_status == 'repairing':
                 emit('completion_guard:updated', {
                     'message_id': message_id,
                     'conversation_id': conversation_id or record.get('conversation_id'),
-                    'status': 'noted',
+                    'status': 'repairing',
                     'note': note
                 })
                 return
 
-            self.socketio.emit('chat:status', {
-                'message_id': message_id,
-                'conversation_id': conversation_id or record.get('conversation_id'),
-                'status': 'Logging completion issue for follow-up...',
-                'timestamp': time.time()
-            }, room=session_id)
+            if existing_status in ('repaired', 'unresolved', 'ticket_created'):
+                emit('completion_guard:updated', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id or record.get('conversation_id'),
+                    'status': existing_status,
+                    'note': note or record.get('user_note', ''),
+                    'ticket_path': record.get('ticket_path', '')
+                })
+                return
+
+            attempts = int(record.get('repair_attempts', 0) or 0)
+            if attempts >= 1:
+                if not config.get('ticket_on_fail', True):
+                    record['status'] = 'unresolved'
+                    record['user_note'] = note or record.get('user_note', '')
+                    emit('completion_guard:updated', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id or record.get('conversation_id'),
+                        'status': 'unresolved',
+                        'note': record.get('user_note', '')
+                    })
+                    return
+
+                try:
+                    ticket_path = self._write_completion_guard_ticket(record, note or record.get('user_note', ''))
+                    rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
+                    record['ticket_path'] = rel_path
+                    record['user_note'] = note or record.get('user_note', '')
+                    record['status'] = 'ticket_created'
+
+                    from ..services.conversation_store import get_conversation_store
+                    store = get_conversation_store()
+                    store.update_message_data_by_web_message_id(
+                        record.get('conversation_id'),
+                        message_id,
+                        {
+                            '_completion_guard': {
+                                'status': 'ticket_created',
+                                'ticket_path': rel_path,
+                                'note': record.get('user_note', ''),
+                                'created_at': datetime.now().isoformat()
+                            }
+                        }
+                    )
+
+                    self.socketio.emit('completion_guard:ticket_created', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id or record.get('conversation_id'),
+                        'ticket_path': rel_path,
+                        'note': record.get('user_note', '')
+                    }, room=session_id)
+                except Exception as e:
+                    print(f"[COMPLETION_GUARD] Failed to create ticket after repair: {e}")
+                    emit('completion_guard:error', {
+                        'message_id': message_id,
+                        'error': f'Failed to create ticket: {e}'
+                    })
+                return
+
+            record['status'] = 'repairing'
+            record['user_note'] = note
+            record['repair_attempts'] = attempts + 1
 
             try:
-                ticket_path = self._write_completion_guard_ticket(record, note)
-                rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
-
-                record['ticket_path'] = rel_path
-                record['user_note'] = note
-                record['status'] = 'ticket_created'
-
                 from ..services.conversation_store import get_conversation_store
                 store = get_conversation_store()
                 store.update_message_data_by_web_message_id(
@@ -370,25 +1034,24 @@ class ChatHandler:
                     message_id,
                     {
                         '_completion_guard': {
-                            'status': 'ticket_created',
-                            'ticket_path': rel_path,
+                            'status': 'repairing',
                             'note': note,
-                            'created_at': datetime.now().isoformat()
+                            'started_at': datetime.now().isoformat()
                         }
                     }
                 )
 
-                self.socketio.emit('completion_guard:ticket_created', {
-                    'message_id': message_id,
-                    'conversation_id': conversation_id or record.get('conversation_id'),
-                    'ticket_path': rel_path,
-                    'note': note
-                }, room=session_id)
+                self.socketio.start_background_task(
+                    self._run_completion_guard_repair,
+                    session_id,
+                    record,
+                    note
+                )
             except Exception as e:
-                print(f"[COMPLETION_GUARD] Failed to create ticket: {e}")
+                print(f"[COMPLETION_GUARD] Failed to start repair: {e}")
                 emit('completion_guard:error', {
                     'message_id': message_id,
-                    'error': f'Failed to create ticket: {e}'
+                    'error': f'Failed to start repair: {e}'
                 })
         
         @self.socketio.on('conversation:load')
@@ -1370,7 +2033,7 @@ class ChatHandler:
                 response_data['stash'] = stash_info
 
             completion_guard_config = self._get_completion_guard_config(mode)
-            completion_guard_prompt = self._should_prompt_completion_guard(completion_guard_config, tools_used)
+            completion_guard_prompt = (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
             self._remember_completion_guard_record(session_id, message_id, {
                 'timestamp': time.time(),
                 'conversation_id': conversation_id,
@@ -1386,7 +2049,8 @@ class ChatHandler:
                 'data': response_data,
                 'usage': result.get('usage', {}),
                 'server_side_tools': result.get('server_side_tools', {}),
-                'completion_guard': completion_guard_config
+                'completion_guard': completion_guard_config,
+                'is_workflow': bool(is_workflow)
             })
             
             self.socketio.emit('chat:response', {
