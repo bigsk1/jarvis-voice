@@ -473,6 +473,7 @@ body {
   flex-direction: column;
   gap: var(--space-sm);
   max-width: 85%;
+  min-width: 0; /* Allow flex item to shrink so long URLs wrap instead of widening past viewport */
   animation: fadeIn 0.2s ease;
 }
 
@@ -500,6 +501,9 @@ body {
   padding: var(--space-md);
   border-radius: var(--radius-lg);
   line-height: 1.5;
+  max-width: 100%;
+  overflow-wrap: anywhere; /* Break long URLs / unbroken strings on narrow screens */
+  word-break: break-word;
 }
 
 .message.user .message-bubble {
@@ -523,6 +527,12 @@ body {
 
 .message-bubble li {
   margin: 0.2rem 0;
+}
+
+/* Links: wrap on mobile (source URLs often have no spaces) */
+.message-bubble a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Make links readable on dark assistant bubbles */
@@ -575,6 +585,9 @@ body {
   margin-top: var(--space-sm);
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .details-content pre {
@@ -656,8 +669,10 @@ body {
   display: none;
   max-height: 400px;  /* Taller for better scrolling */
   overflow-y: auto;
+  overflow-x: hidden;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .tool-card.expanded .tool-card-body {
