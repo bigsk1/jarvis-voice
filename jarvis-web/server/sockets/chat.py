@@ -129,6 +129,41 @@ class ChatHandler:
         return self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id)
 
     @staticmethod
+    def _response_has_visual_sources(text: str) -> bool:
+        """Detect responses where URLs/source blocks are useful in chat but bad for TTS."""
+        if not text or not isinstance(text, str):
+            return False
+        if 'Sources:' in text or 'Source:' in text:
+            return True
+        if re.search(r'(?i)\b(?:Post|Tweet|Thread|Status|Message)\s+ID:\s*[A-Za-z0-9_-]{6,}', text):
+            return True
+        return bool(re.search(r'(?:https?://|www\.)\S+', text, flags=re.IGNORECASE))
+
+    def _prepare_web_response_text(self, result: dict, tts_fallback: str) -> tuple[str, str]:
+        """
+        Split a result into:
+        - display_text: what should stay visible in chat history/UI
+        - speech_text: what should be safe to send to TTS
+        """
+        from security_utils import sanitize_for_speech
+
+        raw_response = result.get('raw_llm_response', '') or ''
+        primary_speech = result.get('speech')
+        display_text = primary_speech if primary_speech not in (None, '') else raw_response
+
+        speech_source = primary_speech if primary_speech not in (None, '') else raw_response
+        speech_text = sanitize_for_speech(speech_source) if speech_source else ''
+        if speech_source and not speech_text:
+            speech_text = tts_fallback
+
+        # If the raw answer includes visual source links, preserve it in chat even when
+        # speech is condensed/sanitized for TTS.
+        if raw_response and self._response_has_visual_sources(raw_response):
+            display_text = raw_response
+
+        return display_text or '', speech_text or ''
+
+    @staticmethod
     def _build_feedback_result_from_record(record: dict) -> dict:
         """Build a result-like payload for feedback from the stored original response."""
         return {
@@ -1171,12 +1206,17 @@ Previous structured data:
             from ..services.conversation_store import get_conversation_store
             store = get_conversation_store()
 
-            response_text = result.get('speech', result.get('raw_llm_response', ''))
+            response_text, prepared_speech = self._prepare_web_response_text(
+                result,
+                "I found a better answer and shared it in chat."
+            )
             save_data = (result.get('data') or {}).copy() if isinstance(result.get('data'), dict) else {'result': result.get('data')}
             if result.get('raw_llm_response'):
                 save_data['raw_llm_response'] = result['raw_llm_response']
             if result.get('usage'):
                 save_data['usage'] = result['usage']
+            if prepared_speech:
+                save_data['speech'] = prepared_speech
             save_data['_web_message_id'] = repair_message_id
             save_data['_completion_guard'] = {
                 'status': 'repair_response',
@@ -1222,12 +1262,8 @@ Previous structured data:
             try:
                 from ..config import get_web_setting
                 if get_web_setting('audio.tts_enabled', False):
-                    speech_text = result.get('speech', '')
+                    speech_text = prepared_speech
                     if speech_text:
-                        from security_utils import sanitize_for_speech
-                        speech_text = sanitize_for_speech(speech_text)
-                        if not speech_text:
-                            speech_text = "I found a better answer and shared it in chat."
                         audio_url = self._generate_tts(speech_text, mode=mode)
             except Exception as tts_err:
                 print(f"[COMPLETION_GUARD] TTS generation failed: {tts_err}")
@@ -1242,8 +1278,8 @@ Previous structured data:
             self.socketio.emit('chat:response', {
                 'message_id': repair_message_id,
                 'conversation_id': conversation_id,
-                'text': result.get('speech', result.get('raw_llm_response', '')),
-                'speech': result.get('speech', ''),
+                'text': response_text,
+                'speech': prepared_speech,
                 'data': save_data,
                 'tools_used': result.get('tools_used', []),
                 'ok': result.get('ok', True),
@@ -1262,7 +1298,7 @@ Previous structured data:
 
             feedback_result_payload = {
                 'ok': result.get('ok', True),
-                'speech': result.get('speech', result.get('raw_llm_response', '')),
+                'speech': prepared_speech,
                 'raw_llm_response': result.get('raw_llm_response', ''),
                 'data': save_data,
                 'usage': result.get('usage', {}),
@@ -2689,7 +2725,10 @@ Previous structured data:
             try:
                 from ..services.conversation_store import get_conversation_store
                 store = get_conversation_store()
-                response_text = result.get('speech', result.get('raw_llm_response', ''))
+                response_text, prepared_speech = self._prepare_web_response_text(
+                    result,
+                    "Done. I shared the details in chat."
+                )
                 # Include raw_llm_response and vision_analysis in saved data for "expand details"
                 save_data = data.copy() if data else {}
                 # Workflow results store tool output in data.results (array); client expects
@@ -2713,6 +2752,8 @@ Previous structured data:
                 raw_response = result.get('raw_llm_response', '')
                 if raw_response:
                     save_data['raw_llm_response'] = raw_response
+                if prepared_speech:
+                    save_data['speech'] = prepared_speech
                 # Include vision analysis if we processed an image
                 if vision_result:
                     save_data['vision_analysis'] = vision_result
@@ -2753,12 +2794,8 @@ Previous structured data:
             try:
                 from ..config import get_web_setting
                 if get_web_setting('audio.tts_enabled', False):
-                    speech_text = result.get('speech', '')
+                    speech_text = prepared_speech
                     if speech_text:
-                        from security_utils import sanitize_for_speech
-                        speech_text = sanitize_for_speech(speech_text)
-                        if not speech_text:
-                            speech_text = "Done. I shared the details in chat."
                         audio_url = self._generate_tts(speech_text, mode=mode)
             except Exception as tts_err:
                 print(f"[CHAT] TTS generation failed: {tts_err}")
@@ -2815,8 +2852,8 @@ Previous structured data:
             self.socketio.emit('chat:response', {
                 'message_id': message_id,
                 'conversation_id': conversation_id,
-                'text': result.get('speech', raw_response),  # Show speech (shorter) as main text
-                'speech': result.get('speech', ''),
+                'text': response_text,
+                'speech': prepared_speech,
                 'data': response_data,
                 'tools_used': tools_used,
                 'ok': result.get('ok', True),
