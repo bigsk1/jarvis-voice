@@ -13,6 +13,7 @@ A web-based interface for viewing, searching, and managing Jarvis's memory datab
   - Upload `.md` and `.txt` files with validation
   - Ingest all files to knowledge base
 - **Conversation Viewer**: Browse conversation history with full detail popup
+- **Reminders Manager**: View pending/triggered/acknowledged reminders with local-time display, filters, sorting, acknowledge, cancel, edit, delete, and friendly daily/weekly/monthly recurrence controls
 - **Scheduled Tasks Manager**: Create, inspect, update, run-now, cancel, delete, and review recent scheduled task runs
 - **Statistics Dashboard**: Database stats, category breakdown, embedding health
 - **Dual Database Support**: Switch between cloud and local modes
@@ -52,7 +53,7 @@ Use the mode selector in the header to switch databases.
 - **Actions**: Edit ✏️, Delete 🗑️, Re-embed 🔄 (for memories without embeddings)
 
 ### Search
-- **Dynamic Placeholder**: Changes based on active tab (memories, intel, conversations, scheduled)
+- **Dynamic Placeholder**: Changes based on active tab (memories, intel, conversations, reminders, scheduled)
 - **FTS5 Powered**: Fast keyword search without LLM calls
 - **Real-time**: Results update as you type
 
@@ -92,6 +93,16 @@ Use the mode selector in the header to switch databases.
 - `GET /api/conversations` - List conversations
 - `GET /api/conversations/<id>` - Get conversation detail
 - `GET /api/conversations/search?q=<query>` - Search
+
+### Reminders
+- `GET /api/reminders` - List reminders
+- `GET /api/reminders/<id>` - Get one reminder
+- `POST /api/reminders` - Create reminder
+- `PUT /api/reminders/<id>` - Update reminder
+- `DELETE /api/reminders/<id>` - Cancel reminder
+- `DELETE /api/reminders/<id>?permanent=true` - Permanently delete reminder
+- `POST /api/reminders/<id>/acknowledge` - Acknowledge one triggered reminder
+- `POST /api/reminders/acknowledge-all?status=triggered` - Acknowledge all matching reminders
 
 ### Scheduled Tasks
 - `GET /api/scheduled-tasks` - List scheduled tasks
@@ -144,6 +155,7 @@ jarvis-memory/
 │   │   ├── memories.py
 │   │   ├── intel.py
 │   │   ├── conversations.py
+│   │   ├── reminders.py
 │   │   ├── scheduled_tasks.py
 │   │   └── stats.py
 │   └── services/

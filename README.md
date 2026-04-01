@@ -1419,6 +1419,12 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Integrations** — UniFi Protect webhook: recover auto-ack when Jarvis alerts POST times out (find pending alert + acknowledge)
 - ✅ **Scheduled tasks** — Runner service + `schedule_task` tooling; logs under `logs/services/` (see [`docs/service/README.md`](docs/service/README.md)); Memory Browser / management UI improvements where applicable
 - 🧹 **Housekeeping** — Ruff Pass 1 unused-import cleanup on runtime paths; continued doc sync (metadata, error recovery vs completion guard)
+- ✅ **Reminders: full Memory UI management tab**
+  - Added a dedicated Jarvis Memory `Reminders` tab with local-time display, status filters, sorting, detail modal, and CRUD-style management
+  - Added acknowledge-one and acknowledge-all-triggered flows directly in the UI
+  - Added permanent delete support for reminders in the manager and API paths, in addition to cancel
+  - Replaced the raw recurrence-rule text box with a friendly recurrence picker for `Once`, `Daily`, `Weekly`, and `Monthly`
+  - Added proper `DAILY` rescheduling support in `services/reminder_scheduler.py` so daily reminders now repeat correctly
 
 **Completed (February 2026):**
 - ✅ **ElevenLabs v3 TTS** - Upgraded to latest TTS model 

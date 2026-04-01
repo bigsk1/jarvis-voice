@@ -320,6 +320,12 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Added `lib/time_utils.py` and `lib/schedule_parser.py` as the shared scheduling foundation
   - Reminder creation/listing/scheduler were updated to use cleaner timezone-aware parsing before Scheduled Tasks was built on top
   - Parser now supports absolute dates like `April 4th at 4pm`, `4/4 at 4pm`, and `04/04/2026 at 4pm` with human-friendly summaries
+- ✅ **Reminders: full Memory UI management tab**
+  - Added a dedicated Jarvis Memory `Reminders` tab with local-time display, status filters, sorting, detail modal, and CRUD-style management
+  - Added acknowledge-one and acknowledge-all-triggered flows directly in the UI
+  - Added permanent delete support for reminders in the manager and API paths, in addition to cancel
+  - Replaced the raw recurrence-rule text box with a friendly recurrence picker for `Once`, `Daily`, `Weekly`, and `Monthly`
+  - Added proper `DAILY` rescheduling support in `services/reminder_scheduler.py` so daily reminders now repeat correctly
 
 **2026-03-30:**
 - ✅ **Completion Guard: auto mode + learning bridge**
@@ -1306,5 +1312,5 @@ tail -f logs/tools/tool-calls-*.jsonl
 ---
 
 **Last Updated:** 2026-03-31  
-**Latest:** Scheduled Tasks foundation, shared schedule parser, scheduler service wiring, and Memory UI management tab  
+**Latest:** Scheduled Tasks foundation plus full Reminders management in Jarvis Memory UI, including recurrence picker and daily recurrence support  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

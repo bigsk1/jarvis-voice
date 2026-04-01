@@ -173,6 +173,60 @@ class MemoryAPI {
   }
 
   // =========================================================================
+  // Reminders
+  // =========================================================================
+
+  async listReminders(options = {}) {
+    const params = new URLSearchParams();
+    if (options.status) params.set('status', options.status);
+    if (options.limit) params.set('limit', options.limit);
+    const query = params.toString();
+    return this.fetch(`/api/reminders${query ? '?' + query : ''}`);
+  }
+
+  async getReminder(id) {
+    return this.fetch(`/api/reminders/${id}`);
+  }
+
+  async createReminder(data) {
+    return this.fetch('/api/reminders', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async updateReminder(id, data) {
+    return this.fetch(`/api/reminders/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
+  async cancelReminder(id) {
+    return this.fetch(`/api/reminders/${id}`, {
+      method: 'DELETE'
+    });
+  }
+
+  async deleteReminder(id) {
+    return this.fetch(`/api/reminders/${id}?permanent=true`, {
+      method: 'DELETE'
+    });
+  }
+
+  async acknowledgeReminder(id) {
+    return this.fetch(`/api/reminders/${id}/acknowledge`, {
+      method: 'POST'
+    });
+  }
+
+  async acknowledgeAllReminders(status = 'triggered') {
+    return this.fetch(`/api/reminders/acknowledge-all?status=${encodeURIComponent(status)}`, {
+      method: 'POST'
+    });
+  }
+
+  // =========================================================================
   // Scheduled Tasks
   // =========================================================================
 

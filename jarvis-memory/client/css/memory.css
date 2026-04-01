@@ -498,17 +498,21 @@ body {
   opacity: 1;
 }
 
-.scheduled-task-card .memory-key {
+.scheduled-task-card .memory-key,
+.reminder-card .memory-key {
   margin-bottom: 4px;
 }
 
-.scheduled-task-card.due-soon {
+.scheduled-task-card.due-soon,
+.reminder-card.due-soon {
   border-color: var(--warning);
   box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.18);
 }
 
 .scheduled-task-card.due-urgent,
-.scheduled-task-card.due-overdue {
+.scheduled-task-card.due-overdue,
+.reminder-card.due-urgent,
+.reminder-card.due-overdue {
   border-color: var(--error);
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18);
 }

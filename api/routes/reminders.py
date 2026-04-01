@@ -74,16 +74,16 @@ async def get_reminder(reminder_id: int):
     )
 
 @router.delete("/{reminder_id}", response_model=ReminderResponse)
-async def cancel_reminder(reminder_id: int):
-    """Cancel a reminder"""
-    success = reminder_manager.cancel_reminder(reminder_id)
+async def cancel_reminder(reminder_id: int, permanent: bool = Query(False, description="Permanently delete instead of cancel")):
+    """Cancel a reminder or permanently delete it."""
+    success = reminder_manager.delete_reminder(reminder_id) if permanent else reminder_manager.cancel_reminder(reminder_id)
     
     if not success:
         raise HTTPException(status_code=404, detail=f"Reminder {reminder_id} not found")
     
     return ReminderResponse(
         ok=True,
-        message=f"Reminder {reminder_id} canceled"
+        message=f"Reminder {reminder_id} {'deleted' if permanent else 'canceled'}"
     )
 
 @router.post("/{reminder_id}/acknowledge", response_model=ReminderResponse)

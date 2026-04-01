@@ -9,12 +9,16 @@ let memories = [];
 let categories = [];
 let conversations = [];
 let intelFiles = [];
+let reminders = [];
 let scheduledTasks = [];
 let searchQuery = '';
 let editingMemory = null;
 let editingFile = null;
+let editingReminder = null;
 let editingScheduledTask = null;
 const DEFAULT_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles';
+let reminderStatusFilter = 'all';
+let reminderSortBy = 'trigger_time_asc';
 let scheduledStatusFilter = 'all';
 let scheduledSortBy = 'next_run_asc';
 let scheduledTaskRuns = {};
@@ -26,6 +30,7 @@ const SEARCH_PLACEHOLDERS = {
   memories: 'Search memories (FTS5)...',
   intel: 'Search intel files...',
   conversations: 'Search conversations...',
+  reminders: 'Search reminders...',
   scheduled: 'Search scheduled tasks...',
   stats: 'Search...'
 };
@@ -82,6 +87,7 @@ function setupEventListeners() {
   
   // Add memory button
   document.getElementById('addMemoryBtn').addEventListener('click', () => openMemoryModal());
+  document.getElementById('addReminderBtn')?.addEventListener('click', () => openReminderModal());
   document.getElementById('addScheduledTaskBtn')?.addEventListener('click', () => openScheduledTaskModal());
   
   // Modal close buttons
@@ -98,6 +104,9 @@ function setupEventListeners() {
   
   // Memory form
   document.getElementById('memoryForm').addEventListener('submit', handleMemorySubmit);
+  document.getElementById('reminderForm').addEventListener('submit', handleReminderSubmit);
+  document.getElementById('reminderRecurrenceType')?.addEventListener('change', handleReminderRecurrenceChange);
+  document.getElementById('reminderTriggerTime')?.addEventListener('change', syncReminderRecurrenceDefaultsFromTrigger);
   
   // Intel file form
   document.getElementById('intelForm').addEventListener('submit', handleIntelSubmit);
@@ -111,6 +120,15 @@ function setupEventListeners() {
     scheduledSortBy = e.target.value;
     renderScheduledTasks();
   });
+  document.getElementById('reminderStatusFilter')?.addEventListener('change', (e) => {
+    reminderStatusFilter = e.target.value;
+    renderReminders();
+  });
+  document.getElementById('reminderSortBy')?.addEventListener('change', (e) => {
+    reminderSortBy = e.target.value;
+    renderReminders();
+  });
+  document.getElementById('ackTriggeredRemindersBtn')?.addEventListener('click', acknowledgeTriggeredReminders);
   
   // Refresh buttons
   document.getElementById('refreshBtn').addEventListener('click', loadData);
@@ -145,6 +163,8 @@ async function loadData() {
       await loadConversations();
     } else if (currentTab === 'intel') {
       await loadIntelFiles();
+    } else if (currentTab === 'reminders') {
+      await loadReminders();
     } else if (currentTab === 'scheduled') {
       await loadScheduledTasks();
     } else if (currentTab === 'stats') {
@@ -211,6 +231,18 @@ async function loadIntelFiles() {
     console.error('Error loading intel files:', error);
     intelFiles = [];
     renderIntelFiles();
+  }
+}
+
+async function loadReminders() {
+  try {
+    const result = await api.listReminders({ status: 'all', limit: 300 });
+    reminders = result.reminders || [];
+    renderReminders();
+  } catch (error) {
+    console.error('Error loading reminders:', error);
+    reminders = [];
+    renderReminders();
   }
 }
 
@@ -490,6 +522,73 @@ function renderStats(data) {
   `;
 }
 
+function renderReminders() {
+  const container = document.getElementById('reminderList');
+  const filteredReminders = getVisibleReminders();
+
+  if (filteredReminders.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">⏰</div>
+        <div class="empty-state-title">${searchQuery ? 'No reminders found' : 'No reminders yet'}</div>
+        <div class="empty-state-desc">${searchQuery || reminderStatusFilter !== 'all' ? 'Try a different search term or filter' : 'Create a reminder to track what is pending, triggered, or acknowledged'}</div>
+        ${!searchQuery ? '<button class="btn btn-primary" onclick="openReminderModal()">+ Add Reminder</button>' : ''}
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="memory-grid">
+      ${filteredReminders.map(reminder => renderReminderCard(reminder)).join('')}
+    </div>
+  `;
+}
+
+function renderReminderCard(reminder) {
+  const status = String(reminder.status || 'scheduled').toLowerCase();
+  const triggerLocal = formatReminderTriggerLocal(reminder.trigger_time);
+  const relative = formatReminderRelativeTime(reminder.trigger_time);
+  const dueClass = getReminderDueClass(reminder);
+  const preview = getReminderPreview(reminder);
+  const metadata = parseJsonSafe(reminder.metadata) || {};
+
+  return `
+    <div class="memory-card reminder-card ${dueClass}" onclick="viewReminder(${reminder.id})">
+      <div class="memory-card-header">
+        <div>
+          <div class="memory-key">${escapeHtml(reminder.title || `Reminder ${reminder.id}`)}</div>
+          <div class="scheduled-task-subtitle">${escapeHtml(triggerLocal)}</div>
+        </div>
+        <div class="scheduled-task-badges">
+          <span class="status-badge run-status ${getReminderStatusClass(status)}">${escapeHtml(formatReminderStatus(status))}</span>
+          ${reminder.spoken ? '<span class="status-badge enabled">Spoken</span>' : ''}
+        </div>
+      </div>
+      <div class="memory-value">${escapeHtml(truncate(preview, 180))}</div>
+      <div class="scheduled-next-run">
+        <span class="scheduled-next-run-label">Trigger time</span>
+        <span class="scheduled-next-run-value">${escapeHtml(triggerLocal)}</span>
+        ${relative ? `<span class="scheduled-next-run-relative">${escapeHtml(relative)}</span>` : ''}
+      </div>
+      <div class="memory-card-footer">
+        <div class="memory-meta">
+          <span title="Status">📌 ${escapeHtml(formatReminderStatus(status))}</span>
+          ${reminder.created_at ? `<span title="Created">🕘 ${escapeHtml(formatDate(reminder.created_at))}</span>` : ''}
+          ${metadata?.gcal_event_id ? '<span title="Google Calendar synced">📅 GCal</span>' : ''}
+          ${reminder.callback_url ? '<span title="Has callback URL">🔗 Webhook</span>' : ''}
+        </div>
+        <div class="memory-actions">
+          ${status === 'triggered' ? `<button class="btn btn-icon" onclick="event.stopPropagation(); acknowledgeReminder(${reminder.id})" title="Acknowledge">✅</button>` : ''}
+          <button class="btn btn-icon" onclick="event.stopPropagation(); editReminder(${reminder.id})" title="Edit">✏️</button>
+          ${status === 'scheduled' ? `<button class="btn btn-icon" onclick="event.stopPropagation(); cancelReminder(${reminder.id})" title="Cancel">⏸️</button>` : ''}
+          <button class="btn btn-icon" onclick="event.stopPropagation(); confirmDeleteReminder(${reminder.id})" title="Delete">🗑️</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderScheduledTasks() {
   const container = document.getElementById('scheduledTaskList');
   const filteredTasks = getVisibleScheduledTasks();
@@ -664,6 +763,7 @@ function switchTab(tab) {
   // Update toolbar buttons
   document.getElementById('addMemoryBtn').style.display = tab === 'memories' ? 'flex' : 'none';
   document.getElementById('addIntelBtn').style.display = tab === 'intel' ? 'flex' : 'none';
+  document.getElementById('addReminderBtn').style.display = tab === 'reminders' ? 'flex' : 'none';
   document.getElementById('addScheduledTaskBtn').style.display = tab === 'scheduled' ? 'flex' : 'none';
   document.getElementById('uploadIntelBtn').style.display = tab === 'intel' ? 'flex' : 'none';
   document.getElementById('ingestIntelBtn').style.display = tab === 'intel' ? 'flex' : 'none';
@@ -690,6 +790,44 @@ function filterByCategory(category) {
 function handleSearch() {
   searchQuery = document.getElementById('searchInput').value.trim();
   loadData();
+}
+
+function getVisibleReminders() {
+  let items = [...reminders];
+
+  if (searchQuery) {
+    items = items.filter(reminder => reminderMatchesQuery(reminder, searchQuery));
+  }
+
+  items = items.filter(reminder => matchesReminderStatusFilter(reminder, reminderStatusFilter));
+  items.sort((a, b) => compareReminders(a, b, reminderSortBy));
+  return items;
+}
+
+function matchesReminderStatusFilter(reminder, filter) {
+  if (filter === 'all') return true;
+  return String(reminder.status || '').toLowerCase() === filter;
+}
+
+function compareReminders(a, b, sortBy) {
+  const aTrigger = getReminderTriggerTimestamp(a.trigger_time);
+  const bTrigger = getReminderTriggerTimestamp(b.trigger_time);
+  const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
+  const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
+
+  switch (sortBy) {
+    case 'trigger_time_desc':
+      return bTrigger - aTrigger;
+    case 'created_desc':
+      return bCreated - aCreated;
+    case 'title_asc':
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    case 'status_asc':
+      return formatReminderStatus(a.status).localeCompare(formatReminderStatus(b.status));
+    case 'trigger_time_asc':
+    default:
+      return aTrigger - bTrigger;
+  }
 }
 
 function matchesScheduledStatusFilter(task, filter) {
@@ -899,6 +1037,207 @@ function openIntelModal(file = null) {
   document.getElementById('intelContent').value = file?.content || '';
   
   modal.classList.add('active');
+}
+
+function openReminderModal(reminder = null) {
+  editingReminder = reminder;
+
+  const modal = document.getElementById('reminderModal');
+  const title = document.getElementById('reminderModalTitle');
+  const recurrence = parseReminderRecurrenceRule(reminder?.recurrence_rule, reminder?.trigger_time);
+
+  title.textContent = reminder ? 'Edit Reminder' : 'Add Reminder';
+
+  document.getElementById('reminderTitle').value = reminder?.title || '';
+  document.getElementById('reminderDescription').value = reminder?.description || '';
+  document.getElementById('reminderTriggerTime').value = reminder?.trigger_time ? formatReminderForDateTimeInput(reminder.trigger_time) : '';
+  document.getElementById('reminderRecurrenceType').value = recurrence.type;
+  document.getElementById('reminderWeeklyDay').value = String(recurrence.weekday ?? 0);
+  document.getElementById('reminderMonthlyDay').value = String(recurrence.day ?? 1);
+  document.getElementById('reminderIntelFile').value = reminder?.related_intel_file || '';
+  document.getElementById('reminderCallbackUrl').value = reminder?.callback_url || '';
+
+  handleReminderRecurrenceChange();
+  if (!reminder) {
+    syncReminderRecurrenceDefaultsFromTrigger();
+  }
+  modal.classList.add('active');
+}
+
+function handleReminderRecurrenceChange() {
+  const type = document.getElementById('reminderRecurrenceType').value;
+  document.getElementById('reminderWeeklyRow').style.display = type === 'weekly' ? 'grid' : 'none';
+  document.getElementById('reminderMonthlyRow').style.display = type === 'monthly' ? 'grid' : 'none';
+}
+
+function syncReminderRecurrenceDefaultsFromTrigger() {
+  const triggerValue = document.getElementById('reminderTriggerTime').value;
+  if (!triggerValue) return;
+  const local = new Date(triggerValue);
+  if (Number.isNaN(local.getTime())) return;
+  const jsDay = local.getDay(); // 0=Sun..6=Sat
+  const weeklyDay = (jsDay + 6) % 7; // 0=Mon..6=Sun
+  document.getElementById('reminderWeeklyDay').value = String(weeklyDay);
+  document.getElementById('reminderMonthlyDay').value = String(local.getDate());
+}
+
+async function handleReminderSubmit(e) {
+  e.preventDefault();
+
+  const triggerValue = document.getElementById('reminderTriggerTime').value;
+  const triggerTimeUtc = localDateTimeInputToUtcDb(triggerValue);
+  if (!triggerTimeUtc) {
+    showToast('Trigger time is required', 'error');
+    return;
+  }
+
+  const data = {
+    title: document.getElementById('reminderTitle').value.trim(),
+    description: document.getElementById('reminderDescription').value.trim() || null,
+    trigger_time: triggerTimeUtc,
+    recurrence_rule: buildReminderRecurrenceRule(),
+    related_intel_file: document.getElementById('reminderIntelFile').value.trim() || null,
+    callback_url: document.getElementById('reminderCallbackUrl').value.trim() || null
+  };
+
+  if (!data.title) {
+    showToast('Reminder title is required', 'error');
+    return;
+  }
+
+  try {
+    if (editingReminder) {
+      await api.updateReminder(editingReminder.id, data);
+      showToast('Reminder updated', 'success');
+    } else {
+      await api.createReminder(data);
+      showToast('Reminder created', 'success');
+    }
+    closeAllModals();
+    await loadReminders();
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function viewReminder(id) {
+  try {
+    const result = await api.getReminder(id);
+    const reminder = result.reminder;
+    const metadata = parseJsonSafe(reminder.metadata) || reminder.metadata;
+    const modal = document.getElementById('reminderDetailModal');
+    const content = document.getElementById('reminderDetailContent');
+    const status = String(reminder.status || 'scheduled').toLowerCase();
+
+    content.innerHTML = `
+      <div class="form-group">
+        <label class="form-label">Title</label>
+        <div class="code-block">${escapeHtml(reminder.title || '')}</div>
+      </div>
+      ${reminder.description ? `
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <div class="code-block" style="white-space: pre-wrap;">${escapeHtml(reminder.description)}</div>
+      </div>
+      ` : ''}
+      <div class="form-group">
+        <label class="form-label">Timing</label>
+        <div><strong>Trigger time:</strong> ${escapeHtml(formatReminderTriggerLocal(reminder.trigger_time))}</div>
+        <div><strong>Relative:</strong> ${escapeHtml(formatReminderRelativeTime(reminder.trigger_time) || 'n/a')}</div>
+        <div><strong>Status:</strong> ${escapeHtml(formatReminderStatus(status))}</div>
+        ${reminder.recurrence_rule ? `<div><strong>Recurrence:</strong> ${escapeHtml(formatReminderRecurrence(reminder.recurrence_rule, reminder.trigger_time))} <span style="color: var(--text-muted);">(${escapeHtml(reminder.recurrence_rule)})</span></div>` : ''}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Lifecycle</label>
+        <div><strong>Created:</strong> ${escapeHtml(formatDate(reminder.created_at))}</div>
+        ${reminder.triggered_at ? `<div><strong>Triggered:</strong> ${escapeHtml(formatDate(reminder.triggered_at))}</div>` : ''}
+        ${reminder.acknowledged_at ? `<div><strong>Acknowledged:</strong> ${escapeHtml(formatDate(reminder.acknowledged_at))}</div>` : ''}
+        ${reminder.spoken_at ? `<div><strong>Spoken at:</strong> ${escapeHtml(formatDate(reminder.spoken_at))}</div>` : ''}
+        <div><strong>Spoken:</strong> ${reminder.spoken ? '✅ Yes' : '❌ No'}</div>
+      </div>
+      ${reminder.related_intel_file || reminder.callback_url ? `
+      <div class="form-group">
+        <label class="form-label">Links</label>
+        ${reminder.related_intel_file ? `<div><strong>Intel file:</strong> ${escapeHtml(reminder.related_intel_file)}</div>` : ''}
+        ${reminder.callback_url ? `<div><strong>Callback URL:</strong> ${escapeHtml(reminder.callback_url)}</div>` : ''}
+      </div>
+      ` : ''}
+      ${metadata ? `
+      <div class="form-group">
+        <label class="form-label">Metadata</label>
+        <div class="code-block" style="white-space: pre-wrap;">${escapeHtml(typeof metadata === 'string' ? metadata : JSON.stringify(metadata, null, 2))}</div>
+      </div>
+      ` : ''}
+      <div class="form-group" style="margin-top: var(--space-lg); display: flex; flex-wrap: wrap; gap: var(--space-sm);">
+        ${status === 'triggered' ? `<button class="btn btn-primary" onclick="acknowledgeReminder(${reminder.id}); closeAllModals();">✅ Acknowledge</button>` : ''}
+        <button class="btn btn-primary" onclick="editReminder(${reminder.id}); closeAllModals();">✏️ Edit</button>
+        ${status === 'scheduled' ? `<button class="btn btn-secondary" onclick="cancelReminder(${reminder.id}); closeAllModals();">⏸️ Cancel</button>` : ''}
+        <button class="btn btn-danger" onclick="confirmDeleteReminder(${reminder.id}); closeAllModals();">🗑️ Delete</button>
+      </div>
+    `;
+
+    modal.classList.add('active');
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function editReminder(id) {
+  try {
+    const result = await api.getReminder(id);
+    openReminderModal(result.reminder);
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function acknowledgeReminder(id) {
+  try {
+    await api.acknowledgeReminder(id);
+    showToast('Reminder acknowledged', 'success');
+    await loadReminders();
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function acknowledgeTriggeredReminders() {
+  if (!confirm('Acknowledge all currently triggered reminders?')) {
+    return;
+  }
+  try {
+    const result = await api.acknowledgeAllReminders('triggered');
+    showToast(result.message || 'Triggered reminders acknowledged', 'success');
+    await loadReminders();
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function cancelReminder(id) {
+  if (!confirm('Cancel this reminder?')) {
+    return;
+  }
+  try {
+    await api.cancelReminder(id);
+    showToast('Reminder canceled', 'success');
+    await loadReminders();
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function confirmDeleteReminder(id) {
+  if (!confirm('Permanently delete this reminder?')) {
+    return;
+  }
+  try {
+    await api.deleteReminder(id);
+    showToast('Reminder deleted', 'success');
+    await loadReminders();
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
 }
 
 function openScheduledTaskModal(task = null) {
@@ -1383,6 +1722,7 @@ function closeAllModals() {
   document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
   editingMemory = null;
   editingFile = null;
+  editingReminder = null;
   editingScheduledTask = null;
 }
 
@@ -1465,6 +1805,167 @@ function parseJsonSafe(value) {
   } catch {
     return null;
   }
+}
+
+function reminderMatchesQuery(reminder, query) {
+  const q = query.toLowerCase();
+  const metadata = parseJsonSafe(reminder.metadata) || {};
+  return [
+    reminder.title,
+    reminder.description,
+    reminder.status,
+    reminder.trigger_time,
+    reminder.recurrence_rule,
+    reminder.related_intel_file,
+    reminder.callback_url,
+    metadata?.gcal_event_id
+  ].filter(Boolean).some(value => String(value).toLowerCase().includes(q));
+}
+
+function formatReminderStatus(status) {
+  const normalized = String(status || '').toLowerCase();
+  const labels = {
+    scheduled: 'Scheduled',
+    triggered: 'Triggered',
+    acknowledged: 'Acknowledged',
+    canceled: 'Canceled',
+    expired: 'Expired'
+  };
+  return labels[normalized] || (normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : 'Unknown');
+}
+
+function getReminderStatusClass(status) {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'scheduled') return 'scheduled';
+  if (normalized === 'triggered') return 'running';
+  if (normalized === 'acknowledged') return 'success';
+  if (normalized === 'canceled') return 'cancelled';
+  if (normalized === 'expired') return 'failure';
+  return 'neutral';
+}
+
+function getReminderTriggerTimestamp(triggerTime) {
+  if (!triggerTime) return Number.NaN;
+  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(String(triggerTime)) ? String(triggerTime) : `${triggerTime}Z`;
+  return new Date(normalized).getTime();
+}
+
+function formatReminderTriggerLocal(triggerTime) {
+  const ts = getReminderTriggerTimestamp(triggerTime);
+  if (Number.isNaN(ts)) return String(triggerTime || 'Unknown');
+  return new Date(ts).toLocaleString();
+}
+
+function formatReminderRelativeTime(triggerTime) {
+  const ts = getReminderTriggerTimestamp(triggerTime);
+  if (Number.isNaN(ts)) return '';
+
+  const diffMs = ts - Date.now();
+  const absMs = Math.abs(diffMs);
+  const absMinutes = Math.round(absMs / 60000);
+  const absHours = Math.round(absMs / 3600000);
+  const absDays = Math.round(absMs / 86400000);
+
+  let unit;
+  let value;
+  if (absMinutes < 60) {
+    unit = 'minute';
+    value = Math.max(absMinutes, 1);
+  } else if (absHours < 48) {
+    unit = 'hour';
+    value = Math.max(absHours, 1);
+  } else {
+    unit = 'day';
+    value = Math.max(absDays, 1);
+  }
+
+  const plural = value === 1 ? unit : `${unit}s`;
+  return diffMs >= 0 ? `in ${value} ${plural}` : `${value} ${plural} ago`;
+}
+
+function getReminderDueClass(reminder) {
+  const status = String(reminder.status || '').toLowerCase();
+  if (status !== 'scheduled' && status !== 'triggered') return '';
+
+  const ts = getReminderTriggerTimestamp(reminder.trigger_time);
+  if (Number.isNaN(ts)) return '';
+
+  const diffMs = ts - Date.now();
+  if (status === 'triggered' || diffMs < 0) return 'due-overdue';
+  if (diffMs <= 15 * 60 * 1000) return 'due-urgent';
+  if (diffMs <= 60 * 60 * 1000) return 'due-soon';
+  return '';
+}
+
+function getReminderPreview(reminder) {
+  if (reminder.description) return reminder.description;
+  if (reminder.related_intel_file) return `Intel file: ${reminder.related_intel_file}`;
+  if (reminder.callback_url) return `Callback: ${reminder.callback_url}`;
+  if (reminder.recurrence_rule) return `Recurs: ${formatReminderRecurrence(reminder.recurrence_rule, reminder.trigger_time)}`;
+  return `Reminder set for ${formatReminderTriggerLocal(reminder.trigger_time)}`;
+}
+
+function parseReminderRecurrenceRule(rule, triggerTime = null) {
+  const fallbackDate = triggerTime ? new Date(getReminderTriggerTimestamp(triggerTime)) : null;
+  const fallbackJsDay = fallbackDate && !Number.isNaN(fallbackDate.getTime()) ? fallbackDate.getDay() : 1;
+  const fallbackWeekday = (fallbackJsDay + 6) % 7;
+  const fallbackDay = fallbackDate && !Number.isNaN(fallbackDate.getTime()) ? fallbackDate.getDate() : 1;
+  const normalized = String(rule || '').trim().toUpperCase();
+
+  if (!normalized) {
+    return { type: 'once', weekday: fallbackWeekday, day: fallbackDay };
+  }
+  if (normalized === 'DAILY') {
+    return { type: 'daily', weekday: fallbackWeekday, day: fallbackDay };
+  }
+  if (normalized.startsWith('WEEKLY:')) {
+    const weekday = Number.parseInt(normalized.split(':')[1], 10);
+    return { type: 'weekly', weekday: Number.isNaN(weekday) ? fallbackWeekday : weekday, day: fallbackDay };
+  }
+  if (normalized.startsWith('MONTHLY:')) {
+    const day = Number.parseInt(normalized.split(':')[1], 10);
+    return { type: 'monthly', weekday: fallbackWeekday, day: Number.isNaN(day) ? fallbackDay : day };
+  }
+  return { type: 'once', weekday: fallbackWeekday, day: fallbackDay };
+}
+
+function buildReminderRecurrenceRule() {
+  const type = document.getElementById('reminderRecurrenceType').value;
+  if (type === 'once') return null;
+  if (type === 'daily') return 'DAILY';
+  if (type === 'weekly') {
+    const weekday = Number.parseInt(document.getElementById('reminderWeeklyDay').value, 10);
+    return `WEEKLY:${Number.isNaN(weekday) ? 0 : weekday}`;
+  }
+  if (type === 'monthly') {
+    const day = Number.parseInt(document.getElementById('reminderMonthlyDay').value, 10);
+    return `MONTHLY:${Math.min(Math.max(Number.isNaN(day) ? 1 : day, 1), 31)}`;
+  }
+  return null;
+}
+
+function formatReminderRecurrence(rule, triggerTime = null) {
+  const parsed = parseReminderRecurrenceRule(rule, triggerTime);
+  const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  if (parsed.type === 'daily') return 'Every day';
+  if (parsed.type === 'weekly') return `Every ${weekdayNames[parsed.weekday] || 'week'}`;
+  if (parsed.type === 'monthly') return `Every month on day ${parsed.day}`;
+  return 'Once';
+}
+
+function localDateTimeInputToUtcDb(value) {
+  if (!value) return null;
+  const local = new Date(value);
+  if (Number.isNaN(local.getTime())) return null;
+  return local.toISOString().replace('Z', '').slice(0, 19);
+}
+
+function formatReminderForDateTimeInput(triggerTime) {
+  const ts = getReminderTriggerTimestamp(triggerTime);
+  if (Number.isNaN(ts)) return '';
+  const local = new Date(ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}T${pad(local.getHours())}:${pad(local.getMinutes())}`;
 }
 
 function scheduledTaskMatchesQuery(task, query) {

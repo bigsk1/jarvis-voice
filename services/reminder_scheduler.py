@@ -93,7 +93,9 @@ def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path):
     
     # Add recurring info if applicable
     if recurrence_rule:
-        if recurrence_rule.startswith("WEEKLY:"):
+        if recurrence_rule == "DAILY":
+            message += ". This is a daily reminder, rescheduled for tomorrow."
+        elif recurrence_rule.startswith("WEEKLY:"):
             days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
             day_num = int(recurrence_rule.split(':')[1])
             message += f". This is a weekly reminder, rescheduled for next {days[day_num]}."
@@ -125,7 +127,7 @@ def calculate_next_occurrence(current_trigger: str, recurrence_rule: str) -> str
     
     Args:
         current_trigger: Current trigger time (ISO format UTC)
-        recurrence_rule: "WEEKLY:X" or "MONTHLY:X"
+        recurrence_rule: "DAILY", "WEEKLY:X", or "MONTHLY:X"
     
     Returns:
         Next trigger time (ISO format UTC)
@@ -133,6 +135,10 @@ def calculate_next_occurrence(current_trigger: str, recurrence_rule: str) -> str
     local_tz = get_app_timezone()
     current = parse_utc_timestamp(current_trigger).astimezone(local_tz)
     
+    if recurrence_rule == "DAILY":
+        next_trigger = add_days_local(current, 1)
+        return format_utc_db(next_trigger)
+
     if recurrence_rule.startswith("WEEKLY:"):
         # Add 7 days in local time to preserve wall-clock scheduling across DST.
         next_trigger = add_days_local(current, 7)

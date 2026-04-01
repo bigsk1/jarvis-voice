@@ -59,7 +59,7 @@ class ReminderManager:
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
         
-        metadata_json = json.dumps(metadata) if metadata else None
+        metadata_json = metadata if isinstance(metadata, str) else (json.dumps(metadata) if metadata else None)
         
         cursor.execute("""
             INSERT INTO reminders (
@@ -133,6 +133,19 @@ class ReminderManager:
         conn.commit()
         conn.close()
         
+        return success
+
+    def delete_reminder(self, reminder_id: int) -> bool:
+        """Permanently delete a reminder."""
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+
+        success = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+
         return success
     
     def acknowledge_reminder(self, reminder_id: int) -> bool:
@@ -209,7 +222,7 @@ class ReminderManager:
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
         
-        metadata_json = json.dumps(metadata) if metadata else None
+        metadata_json = metadata if isinstance(metadata, str) else (json.dumps(metadata) if metadata else None)
         
         cursor.execute("""
             UPDATE reminders SET
@@ -259,4 +272,3 @@ class ReminderManager:
         if result:
             return dict(result)
         return None
-
