@@ -139,6 +139,46 @@ class ChatHandler:
             return True
         return bool(re.search(r'(?:https?://|www\.)\S+', text, flags=re.IGNORECASE))
 
+    @staticmethod
+    def _normalize_display_text(text: str) -> str:
+        """Loosely normalize text so we can compare speech vs raw response shape."""
+        if not text:
+            return ''
+        text = re.sub(r'[*_`#>]+', '', text)
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
+
+    def _should_prefer_raw_for_display(self, raw_response: str, speech_text: str) -> bool:
+        """
+        Prefer raw response in chat when it is the same answer with better visual structure.
+        This keeps TTS concise while avoiding one-paragraph blobs in the UI.
+        """
+        if not raw_response:
+            return False
+        if not speech_text:
+            return True
+
+        raw_has_structure = ('\n' in raw_response) or bool(re.search(r'(?m)^\s*[-*]\s+', raw_response))
+        speech_has_structure = ('\n' in speech_text) or bool(re.search(r'(?m)^\s*[-*]\s+', speech_text))
+        if raw_has_structure and not speech_has_structure:
+            return True
+        if not raw_has_structure or speech_has_structure:
+            return False
+
+        normalized_raw = self._normalize_display_text(raw_response)
+        normalized_speech = self._normalize_display_text(speech_text)
+        if not normalized_raw or not normalized_speech:
+            return False
+
+        common_prefix = os.path.commonprefix([normalized_raw, normalized_speech])
+        if len(common_prefix) >= 40:
+            return True
+        if normalized_speech[:120] and normalized_speech[:120] in normalized_raw:
+            return True
+        if normalized_raw[:120] and normalized_raw[:120] in normalized_speech:
+            return True
+        return False
+
     def _prepare_web_response_text(self, result: dict, tts_fallback: str) -> tuple[str, str]:
         """
         Split a result into:
@@ -159,6 +199,8 @@ class ChatHandler:
         # If the raw answer includes visual source links, preserve it in chat even when
         # speech is condensed/sanitized for TTS.
         if raw_response and self._response_has_visual_sources(raw_response):
+            display_text = raw_response
+        elif raw_response and self._should_prefer_raw_for_display(raw_response, primary_speech or ''):
             display_text = raw_response
 
         return display_text or '', speech_text or ''

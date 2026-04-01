@@ -206,7 +206,7 @@ def sanitize_for_speech(text: str) -> str:
     # Remove bare domains with optional path (e.g., amazon.com/item)
     text = re.sub(r'\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s]*)?\b', '', text, flags=re.IGNORECASE)
 
-    # Remove IP addresses
+    # Remove IP addresses - Is possible to remove this if you want to allow IP addresses in speech
     text = re.sub(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?', '', text)
 
     # Remove file paths

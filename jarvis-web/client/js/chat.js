@@ -2552,13 +2552,21 @@ class ChatUI {
       }
     }
     
+    // raw_llm_response is inside data.data (nested), also check top level for loaded conversations
+    const innerData = data.data || data || {};
+    const rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
+    const storedSpeech = innerData.speech || data.speech || '';
+
+    // Prefer the richer raw response for chat display when it is the same answer with
+    // better visual structure. This keeps TTS concise while avoiding paragraph blobs.
+    if (this._shouldPreferRawForDisplay(rawResponse, storedSpeech, text)) {
+      text = rawResponse;
+    }
+
     const parsedText = Utils.parseMarkdown(text);
     
     // Build expandable details section
-    // raw_llm_response is inside data.data (nested), also check top level for loaded conversations
     let detailsHtml = '';
-    const innerData = data.data || data || {};
-    const rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
     const hasDetails = rawResponse && rawResponse !== text && rawResponse.length > text.length;
     
     if (hasDetails) {
@@ -2617,6 +2625,46 @@ class ChatUI {
     
     // Clear pending tools
     this.pendingTools = {};
+  }
+
+  _normalizeDisplayText(text) {
+    if (!text) return '';
+    return String(text)
+      .replace(/[*_`#>]+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  _shouldPreferRawForDisplay(rawResponse, storedSpeech = '', fallbackText = '') {
+    if (!rawResponse) return false;
+
+    const effectiveSpeech = (storedSpeech || fallbackText || '').trim();
+    if (!effectiveSpeech) return true;
+
+    const rawHasStructure = rawResponse.includes('\n') || /(^|\n)\s*[-*]\s+/.test(rawResponse);
+    const speechHasStructure = effectiveSpeech.includes('\n') || /(^|\n)\s*[-*]\s+/.test(effectiveSpeech);
+    if (rawHasStructure && !speechHasStructure) return true;
+    if (!rawHasStructure || speechHasStructure) return false;
+
+    const normalizedRaw = this._normalizeDisplayText(rawResponse);
+    const normalizedSpeech = this._normalizeDisplayText(effectiveSpeech);
+    if (!normalizedRaw || !normalizedSpeech) return false;
+
+    let prefixLen = 0;
+    while (
+      prefixLen < normalizedRaw.length &&
+      prefixLen < normalizedSpeech.length &&
+      normalizedRaw[prefixLen] === normalizedSpeech[prefixLen]
+    ) {
+      prefixLen += 1;
+    }
+    if (prefixLen >= 40) return true;
+
+    const speechHead = normalizedSpeech.slice(0, 120);
+    const rawHead = normalizedRaw.slice(0, 120);
+    if (speechHead && normalizedRaw.includes(speechHead)) return true;
+    if (rawHead && normalizedSpeech.includes(rawHead)) return true;
+    return false;
   }
 
   _getCompletionGuardState(data, toolsUsed = []) {
