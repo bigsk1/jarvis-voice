@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "name": "samantha",
   "description": "Contact Samantha, a separate AI assistant on remote cloud VPS. ONLY use when user EXPLICITLY asks to 'ask Samantha', 'have Samantha do', 'tell Samantha', or 'check with Samantha'. She is like a remote colleague - has her own tools (Discord/Telegram posting, browser automation, cron scheduling, web search) but NO access to Jarvis's local network, home systems, prices, weather, or memory. Never auto-delegate your tasks to her - user must specifically request Samantha by name.",
   "script": "samantha.py",

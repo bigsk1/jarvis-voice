@@ -526,6 +526,7 @@ For current info, news, prices, events - use external search tools from your ava
 - crawl_url (if available) for extracting content from URLs
 """
         
+        # TODO: Time prefix will mess up provider token caching need better strategy for this
         now_utc = datetime.now(ZoneInfo("UTC"))
         time_prefix = f"""CURRENT DATE AND TIME:
 Local: {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p %Z')}
@@ -555,7 +556,7 @@ Time and timezone use JARVIS_TIMEZONE - this is separate."""
             greeting_hint = f"""
 
 PERSONAL TOUCH (new conversations only):
-When this appears to be the start of a fresh conversation (no prior assistant messages in context), you may add a brief time-aware greeting before the main response. Current time: {time_context}. Use your own phrasing—e.g. working late, early bird—one short natural phrase. Skip if continuing an existing conversation."""
+When this appears to be the start of a fresh conversation, you may add a brief time-aware greeting before the main response. Current time: {time_context}. Use your own phrasing—e.g. working late, early bird—one short natural phrase. Skip if continuing an existing conversation."""
         return time_prefix + location_block + greeting_hint + self._system_prompt_base
     
     def _create_provider(self):
@@ -661,7 +662,7 @@ When this appears to be the start of a fresh conversation (no prior assistant me
         
         # Separate ghost tools from retrieved tools for visibility
         from config_loader import get_config_value
-        ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time')
+        ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations')
         ghost_list = [t.strip() for t in ghost_tools_str.split(',')]
         
         tool_names = [t.name for t in relevant_tools]

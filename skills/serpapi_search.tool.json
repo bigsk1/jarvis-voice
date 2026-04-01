@@ -8,7 +8,7 @@
     "properties": {
       "engine": {
         "type": "string",
-        "description": "SerpApi engine. Examples: amazon, amazon_product, google, google_shopping, bing, youtube."
+        "description": "SerpApi engine. Examples: amazon search, amazon_product, google, google_shopping, bing, youtube search."
       },
       "query": {
         "type": "string",
