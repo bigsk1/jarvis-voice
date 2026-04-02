@@ -1451,7 +1451,8 @@ Your response:"""
         """
         Create intelligent summary when max turns is reached.
         BEST EFFORT MODE: Extract and present whatever useful data was gathered.
-        
+        Uses JARVIS_MULTI_TURN_WORD_LIMIT (same as _format_multi_turn_summary).
+
         Args:
             user_query: Original user request
             tools_used: List of tool names executed
@@ -1462,6 +1463,9 @@ Your response:"""
             Voice-friendly explanation of progress and next steps
         """
         try:
+            # Align with JARVIS_MULTI_TURN_WORD_LIMIT (same as multi-turn summary condensation)
+            multi_turn_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+
             # Extract useful data from accumulated results (especially for search arrays)
             extracted_data = self._extract_useful_data(accumulated_data)
             
@@ -1477,7 +1481,7 @@ IMPORTANT: The task hit a complexity limit after {max_turns} tool calls.
 You MUST provide a BEST EFFORT answer using the data above.
 
 CRITICAL RULES:
-1. MAX 50 WORDS - but ACTUALLY ANSWER the question!
+1. MAX {multi_turn_limit} WORDS - but ACTUALLY ANSWER the question!
 2. If you found ANY relevant info (movie titles, prices, names, etc.) - INCLUDE IT
 3. Don't apologize or say "couldn't find" - give the best answer you can
 4. If data is incomplete, answer what you CAN and note what's missing briefly
@@ -1495,7 +1499,13 @@ BAD EXAMPLES (never do this):
 
 Your BEST EFFORT response:"""
             
-            response = self.router.provider.chat(context, system_prompt="You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. MAX 50 words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc.")
+            response = self.router.provider.chat(
+                context,
+                system_prompt=(
+                    f"You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. "
+                    f"MAX {multi_turn_limit} words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc."
+                ),
+            )
             return response.strip()
         except Exception as e:
             # Fallback to simple message
