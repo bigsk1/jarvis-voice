@@ -1319,9 +1319,7 @@ def select_mode(self, query, command_match, workflow_match):
 orchestrator/
 ├── orchestrator_v2.py   # Main Orchestrator class, process() entry point
 ├── router_v2.py         # LLMRouter - decides which tool (freeform mode)
-├── executor.py          # ToolExecutor - executes individual tools
-├── orchestrator.py      # Legacy v1 (deprecated)
-└── router.py            # Legacy v1 (deprecated)
+└── executor.py          # ToolExecutor - executes individual tools
 ```
 
 ### Proposed New Files

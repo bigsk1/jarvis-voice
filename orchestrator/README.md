@@ -90,10 +90,6 @@ Loads and validates workflow JSON definitions:
 - Validates required fields (id, trigger, steps)
 - Provides workflow metadata for API/UI
 
-### Legacy Files
-- `orchestrator.py` - Original orchestrator (deprecated, kept for reference)
-- `router.py` - Original rule-based router (deprecated, kept for reference)
-
 ---
 
 ## Two Execution Paths
