@@ -1960,6 +1960,25 @@ Your BEST EFFORT response:"""
             threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.38)
             recency_enabled = get_config_value('AUTO_MEMORY_RECENCY_ENABLED', 'true').lower() == 'true'
             addressing_limit = get_int('AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT', 2)
+            transcript_lower = transcript.lower()
+
+            def _is_intel_source(source: str) -> bool:
+                return bool(source and str(source).startswith('intel/'))
+
+            def _is_curated_intel(source: str) -> bool:
+                return source in {
+                    'intel/jarvis-tool-knowledge.md',
+                    'intel/jarvis-learned-lessons.md',
+                }
+
+            def _is_tooling_query(text: str) -> bool:
+                tooling_terms = [
+                    'tool', 'tools', 'provider', 'model', 'workflow', 'scheduler',
+                    'memory', 'intel', 'prompt', 'cache', 'retry', 'error', 'errors',
+                    'failed', 'failure', 'bug', 'issue', 'issues', 'quirk', 'limitation',
+                    'limitations', 'parameter', 'params', 'api', 'orchestrator', 'routing',
+                ]
+                return any(term in text for term in tooling_terms)
             
             # Always-include ONLY addressing/response-style (call me sir, tone, language)
             # Topic-specific prefs (dog, Spotify) go through semantic search only
@@ -1987,6 +2006,23 @@ Your BEST EFFORT response:"""
                     if key and key not in seen_keys and not _is_no_preference(value):
                         seen_keys.add(key)
                         merged.append((1.1, m.get('importance', 5), m, 'always'))
+
+            # Curated intel should have a better chance to surface for technical/tooling queries,
+            # especially when exact tool names or provider quirks are involved.
+            if _is_tooling_query(transcript_lower):
+                intel_keyword_matches = [
+                    m for m in db.fts_search(transcript, limit=max(limit, 6))
+                    if _is_intel_source(m.get('source', ''))
+                ]
+                for m in intel_keyword_matches:
+                    key = m.get('key', '')
+                    if key and key in seen_keys:
+                        continue
+                    if key:
+                        seen_keys.add(key)
+                    source_name = m.get('source', '')
+                    score = 1.08 if _is_curated_intel(source_name) else 0.96
+                    merged.append((score, m.get('importance', 5), m, 'intel'))
             
             # Semantic search for query-relevant memories
             candidate_limit = min(limit * 2, 20)
@@ -2008,6 +2044,7 @@ Your BEST EFFORT response:"""
                 sim = m.get('similarity', 0)
                 importance = m.get('importance', 5)
                 recency_factor = 1.0
+                source_name = m.get('source', '')
                 if recency_enabled:
                     updated = m.get('updated_at') or m.get('created_at')
                     if updated:
@@ -2029,8 +2066,12 @@ Your BEST EFFORT response:"""
                         except (ValueError, TypeError, AttributeError):
                             pass
                 adjusted = sim * recency_factor
+                if _is_intel_source(source_name):
+                    adjusted += 0.05
+                    if _is_curated_intel(source_name):
+                        adjusted += 0.07
                 if adjusted >= threshold:
-                    merged.append((adjusted, importance, m, 'semantic'))
+                    merged.append((adjusted, importance, m, 'intel' if _is_intel_source(source_name) else 'semantic'))
             
             # Sort by score desc, then importance desc; take top N
             merged.sort(key=lambda x: (x[0], x[1]), reverse=True)
@@ -2040,7 +2081,6 @@ Your BEST EFFORT response:"""
                 return ""
             
             memory_lines = []
-            transcript_lower = transcript.lower()
             price_like_query = any(
                 token in transcript_lower
                 for token in ["price", "btc", "bitcoin", "eth", "ethereum", "crypto", "stock", "ticker", "quote", "gold", "tsla", "aapl"]
@@ -2057,6 +2097,7 @@ Your BEST EFFORT response:"""
                 if _is_no_preference(value):
                     continue  # User said forget/no preference - don't show
                 cat = m.get('category', '')
+                source_name = m.get('source', '')
                 updated = m.get('updated_at') or m.get('created_at')
                 saved_at_local = "unknown"
                 age_minutes = None
@@ -2070,6 +2111,8 @@ Your BEST EFFORT response:"""
                         pass
                 if source == 'always':
                     label = "user preference (always included)"
+                elif source == 'intel':
+                    label = "curated intel knowledge" if _is_curated_intel(source_name) else "intel knowledge"
                 else:
                     label = f"relevance: {m.get('similarity', 0) * 100:.0f}%"
                 staleness_hint = ""
@@ -2082,6 +2125,7 @@ Your BEST EFFORT response:"""
                 memory_lines.append(
                     f"- {key}: {value} "
                     f"(category: {cat}, {label}, saved_at: {saved_at_local}, age: {age_text}"
+                    f"{', source: ' + source_name if source_name else ''}"
                     f"{', staleness: ' + staleness_hint if staleness_hint else ''})"
                 )
             if not memory_lines:

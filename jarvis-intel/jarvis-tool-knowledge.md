@@ -107,7 +107,6 @@ This file contains knowledge about Jarvis tools, provider limitations, common fa
 
 - Never say "I have completed the task using X tools." Always summarize what was actually found or done.
 - Never start with "Great!" or "Perfect!" or "I have successfully..." - get straight to the answer.
-- For voice output keep confirmations under 35 words and informational answers under 100 words.
 - If a tool partially succeeded (got some data but not all), report what you found rather than saying it failed.
 - File names from stash are auto-generated and long. Say "saved to stash" instead of reading the full filename.
 - Phrases to avoid in spoken responses: "I have successfully", "Let me", "Sure thing", "Absolutely", "Great question", "Here is what I found for you".
