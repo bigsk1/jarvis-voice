@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'orchestrator'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
 from schedule_parser import calculate_next_run, parse_schedule_expression
 from time_utils import format_utc_db, now_utc
+from workflow_loader import WorkflowLoader
 
 
 class ScheduledTaskManager:
@@ -93,6 +95,25 @@ class ScheduledTaskManager:
         conn.commit()
         conn.close()
 
+    @staticmethod
+    def _resolve_workflow_id(workflow_id: str) -> str:
+        """Resolve a workflow by exact ID or explicit trigger alias like /crypto."""
+        if not workflow_id:
+            raise ValueError("workflow_id is required for workflow scheduled tasks")
+
+        loader = WorkflowLoader(explicit_only=True)
+        workflow = loader.get_workflow(workflow_id)
+        if workflow:
+            return workflow["id"]
+
+        normalized = workflow_id if workflow_id.startswith("/") else f"/{workflow_id}"
+        for candidate in loader.workflows.values():
+            explicit = candidate.get("triggers", {}).get("explicit", [])
+            if workflow_id in explicit or normalized in explicit:
+                return candidate["id"]
+
+        raise ValueError(f"Workflow '{workflow_id}' not found")
+
     def create_task(self, *, name: str, task_type: str, query: str | None = None,
                     workflow_id: str | None = None, when: str, timezone_name: str | None = None,
                     mode: str = 'cloud', enabled: bool = True, allow_overlap: bool = False,
@@ -105,6 +126,8 @@ class ScheduledTaskManager:
             raise ValueError("query is required for query scheduled tasks")
         if task_type == 'workflow' and not workflow_id:
             raise ValueError("workflow_id is required for workflow scheduled tasks")
+        if task_type == 'workflow':
+            workflow_id = self._resolve_workflow_id(workflow_id)
 
         payload = {"query": query} if task_type == 'query' else {"workflow_id": workflow_id}
         payload["when_original"] = when
@@ -194,8 +217,9 @@ class ScheduledTaskManager:
         if existing['task_type'] == 'query' and updates.get('query') is not None:
             task_payload['query'] = updates['query']
         if existing['task_type'] == 'workflow' and updates.get('workflow_id') is not None:
-            fields['task_target'] = updates['workflow_id']
-            task_payload['workflow_id'] = updates['workflow_id']
+            resolved_workflow_id = self._resolve_workflow_id(updates['workflow_id'])
+            fields['task_target'] = resolved_workflow_id
+            task_payload['workflow_id'] = resolved_workflow_id
 
         if updates.get('metadata') is not None:
             fields['metadata'] = json.dumps(updates['metadata'])

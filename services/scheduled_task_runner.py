@@ -40,16 +40,27 @@ def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) ->
     if mode == 'local':
         os.environ['LLM_PROVIDER'] = 'ollama'
 
+    from executor import ToolExecutor
     from workflow_loader import WorkflowLoader
     from pipeline_executor import PipelineExecutor
 
     loader = WorkflowLoader(explicit_only=True)
     workflow = loader.get_workflow(workflow_id)
     if not workflow:
+        normalized = workflow_id if workflow_id.startswith('/') else f"/{workflow_id}"
+        for candidate in loader.workflows.values():
+            explicit = candidate.get("triggers", {}).get("explicit", [])
+            if workflow_id in explicit or normalized in explicit:
+                workflow = candidate
+                break
+    if not workflow:
         raise ValueError(f"Workflow '{workflow_id}' not found")
 
-    executor = PipelineExecutor(mode=mode)
-    return executor.execute(workflow, query or workflow_id)
+    tool_executor = ToolExecutor(mode=mode)
+    executor = PipelineExecutor(mode, tool_executor)
+
+    transcript = query or workflow.get("triggers", {}).get("explicit", [f"/{workflow['id']}"])[0]
+    return executor.execute(workflow, transcript)
 
 
 def main():
