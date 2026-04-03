@@ -2718,6 +2718,10 @@ class ChatUI {
         statusText = 'Repaired';
         summaryText = 'A repair pass found a better answer and added it below.';
         extraClass = ' resolved';
+      } else if (persistedStatus === 'tighten_only') {
+        statusText = 'Tightened only';
+        summaryText = 'Completion Guard reviewed this response, but did not find a material evidence or tool-path change worth surfacing as a repair.';
+        extraClass = ' resolved';
       } else if (persistedStatus === 'repairing') {
         statusText = 'Repairing...';
         summaryText = 'Trying one follow-up pass using the existing task context.';
@@ -2919,6 +2923,20 @@ class ChatUI {
       if (yesBtn) yesBtn.disabled = true;
       if (noBtn) noBtn.disabled = true;
       if (noteInput) noteInput.disabled = true;
+      return;
+    }
+
+    if (data.status === 'tighten_only') {
+      card.classList.remove('submitting');
+      card.classList.add('resolved');
+      if (statusEl) statusEl.textContent = 'Tightened only';
+      renderResolvedBody(
+        'Completion Guard reviewed this response, but only found wording-level cleanup. No material evidence or tool-path improvement was surfaced as a separate repair.',
+        data.note || noteInput?.value || ''
+      );
+      if (yesBtn) yesBtn.disabled = false;
+      if (noBtn) noBtn.disabled = false;
+      if (noteInput) noteInput.disabled = false;
       return;
     }
 

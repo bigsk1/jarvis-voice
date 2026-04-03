@@ -87,7 +87,12 @@ This is a better fit than "self-repair tool" because it is not just a tool call.
 
 ## Current Status
 
-As of March 30, 2026, Completion Guard is partially implemented and usable in Jarvis Web.
+As of April 2, 2026, Completion Guard is implemented and actively in use in Jarvis Web, with a clearer distinction between:
+
+- accepted answers
+- wording-only tightening
+- true repaired outcomes
+- unresolved/ticketed failures
 
 Implemented now:
 
@@ -96,6 +101,9 @@ Implemented now:
 - Auto mode with a background evaluator that scores the raw final answer
 - Configurable auto-repair threshold (`JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD`) with Web UI override support
 - Auto mode now uses a structured audit plus deterministic repair scoring instead of trusting a bare self-reported confidence value
+- Auto mode now supports `tighten_only` for answers that are basically correct but only need wording/scope cleanup
+- Visible repaired answers now require a real evidence delta or tool-path delta, not just a rewrite
+- No-tool rewrite repairs now default to `tighten_only` unless the repaired answer clearly cites a direct source or verified action
 - One bounded repair pass when the user clicks `No`
 - Repair pass uses:
   - original query
@@ -114,6 +122,8 @@ Implemented now:
 - Internal repair runs no longer create separate first-class learning experiences
 - In Jarvis Web, manual/auto feedback is now gated behind Completion Guard settlement so feedback grades the settled result instead of a mid-repair snapshot
 - Feedback prompts now receive Completion Guard metadata and the async web feedback path updates the linked experience record
+- Rewrite-only tighten passes do not fold a corrected path back into the original experience as if they were a true operational fix
+- The auto evaluator can use a different provider/model than the main chat model; by default it follows `JARVIS_COMPLETION_GUARD_EVAL_PROVIDER` then `FEEDBACK_PROVIDER`
 
 Not implemented yet:
 
@@ -248,6 +258,7 @@ Current behavior:
 - if Completion Guard is active, feedback is deferred until the response settles as:
   - `accepted`
   - `auto_accepted`
+  - `tighten_only`
   - `repaired`
   - `unresolved`
   - `ticket_created`
@@ -258,8 +269,46 @@ This prevents feedback from grading a temporary first-pass answer that is about 
 When feedback finally runs, it receives Completion Guard context so it can:
 
 - avoid penalizing the system just because Completion Guard exists
+- treat `tighten_only` like a basically accepted answer with minor wording cleanup
 - grade the repaired answer as the settled result when repair succeeds
 - understand that `ticket_created` means the system recognized a failure but could not fully recover
+
+## Outcome Meanings
+
+### `accepted`
+
+- Manual user confirmation that the original answer was good
+- No repair required
+
+### `auto_accepted`
+
+- Auto evaluator reviewed the answer and found no meaningful issue
+- No repair required
+
+### `tighten_only`
+
+- The answer is basically correct
+- Completion Guard saw minor scope, hedging, or wording cleanup opportunities
+- No visible repaired answer should be surfaced just for that
+- This should not be treated as a new operational lesson by itself
+
+### `repaired`
+
+- A repair pass found a materially better answer
+- The repaired result used new evidence, a meaningfully different tool path, or a verified action/artifact update
+- This is the case reflections should learn from as a first-pass correction opportunity
+
+### `unresolved`
+
+- A repair pass ran but could not reliably finish the task
+
+### `ticket_created`
+
+- Unresolved after repair, so Jarvis logged a follow-up ticket
+
+### `cancelled`
+
+- Repair was started but stopped before settlement
 
 ## Signals For "Not Complete"
 

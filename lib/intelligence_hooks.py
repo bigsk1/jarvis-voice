@@ -258,6 +258,7 @@ def update_experience_from_completion_guard(
 
     This is the COMPLETION_GUARD → INTELLIGENCE bridge:
     - accepted / auto_accepted confirm the result
+    - tighten_only means Completion Guard only found wording cleanup, not a true operational fix
     - repaired marks the experience as eventually successful but suboptimal
     - unresolved / ticket_created mark it as a failure worth reflecting on
     """
@@ -303,7 +304,9 @@ def update_experience_from_completion_guard(
         context = raw_data.setdefault('context', {})
         repair_result = metadata.get('repair_result') or {}
         repair_data = metadata.get('repair_data') or {}
-        if repair_result:
+        operational_correction = bool(metadata.get('operational_correction'))
+
+        if repair_result and operational_correction:
             corrected_response = (
                 repair_result.get('raw_llm_response')
                 or repair_result.get('speech')
@@ -317,7 +320,7 @@ def update_experience_from_completion_guard(
             strategy_family = repair_result.get('strategy_family')
             if strategy_family:
                 context['repair_strategy_family'] = strategy_family
-        if repair_data:
+        if repair_data and operational_correction:
             repair_data_str = json.dumps(repair_data, default=str)
             if len(repair_data_str) > 5000:
                 repair_data_str = repair_data_str[:5000] + "... [truncated]"
@@ -327,7 +330,7 @@ def update_experience_from_completion_guard(
         user_satisfied = int(row['user_satisfied']) if row['user_satisfied'] is not None else 0
         had_to_retry = int(row['had_to_retry']) if row['had_to_retry'] is not None else 0
 
-        if status in ('accepted', 'auto_accepted'):
+        if status in ('accepted', 'auto_accepted', 'tighten_only'):
             user_satisfied = 1
         elif status == 'repaired':
             outcome_success = 1

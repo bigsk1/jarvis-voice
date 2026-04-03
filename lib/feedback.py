@@ -163,6 +163,7 @@ Tools Used: {tools_used}
 7. **COMPLETION GUARD CONTEXT**:
    - If Completion Guard status is `none`, do NOT penalize the system for not using it.
    - If Completion Guard status is `accepted` or `auto_accepted`, grade the final settled answer normally.
+   - If Completion Guard status is `tighten_only`, treat it like an accepted answer with minor wording cleanup, not a failed repair.
    - If Completion Guard status is `repaired`, grade the repaired final answer as the settled result, while noting that first-pass recovery was needed.
    - If Completion Guard status is `ticket_created`, `unresolved`, or `cancelled`, this means the system detected incompleteness or could not fully recover. Grade the final settled outcome accordingly, but do not treat the existence of Completion Guard itself as a flaw.
    - When Completion Guard metadata is present, use it as recovery context, not as a reason to lower the score by itself.

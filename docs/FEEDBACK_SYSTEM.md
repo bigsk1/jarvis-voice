@@ -84,9 +84,10 @@ This creates a feedback loop for continuous improvement without manual debugging
 
 ### Completion Guard (Web UI, 2026)
 
-When Completion Guard is enabled in Jarvis Web, **async feedback waits until the turn is settled** (user accepted the answer, auto-evaluation passed, repair finished, or a ticket was created). The feedback LLM then grades the **final** response and tool picture—not a mid-repair snapshot.
+When Completion Guard is enabled in Jarvis Web, **async feedback waits until the turn is settled** (user accepted the answer, auto-evaluation passed, `tighten_only` settled, repair finished, or a ticket was created). The feedback LLM then grades the **final** response and tool picture—not a mid-repair snapshot.
 
 - **Prompt**: `lib/feedback.py` injects a `=== COMPLETION GUARD ===` block (`completion_guard_context`). Instructions tell the grader to treat it as recovery context, not as an automatic penalty.
+- **Settled states**: `tighten_only` is treated like a basically accepted answer with minor wording cleanup, not a failed repair.
 - **Logs**: Each feedback JSONL record includes top-level `completion_guard` (or `{"status": "none"}`).
 - **Reference**: [Completion Guard](./COMPLETION_GUARD.md).
 
@@ -739,4 +740,3 @@ WHERE id = 338;
 - [Intelligence Layer](./INTELLIGENCE_LAYER.md) - Learning from success/failure patterns
 - [Tool Calling System](./TOOL_CALLING_SYSTEM.md) - How tools work
 - [Memory System](./MEMORY_SYSTEM.md) - Memory-first rules
-

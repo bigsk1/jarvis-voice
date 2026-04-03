@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.8)  
-> **Last Updated**: March 30, 2026
+> **Status**: MVP Complete (v2.9)  
+> **Last Updated**: April 2, 2026
 
 ---
 
@@ -151,12 +151,15 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Conversation export metadata** | ✅ | Markdown export includes Completion Guard status/note/ticket data when present |
 | **Prompt/runtime repair context** | ✅ | Repair uses original query, raw LLM response, tool outputs, and user note |
 | **Auto mode evaluator** | ✅ | Background evaluator can auto-trigger repair using the raw final answer |
+| **`tighten_only` outcome** | ✅ | Auto mode can settle wording-only cleanup without surfacing a visible repaired answer |
+| **Visible repair delta-gating** | ✅ | Separate repaired answers now require a real evidence or tool-path delta |
 | **Repair cancel support** | ✅ | Stop button now cleanly cancels an in-flight repair pass |
 | **Auto threshold override** | ✅ | AI Config exposes per-mode threshold override for auto mode |
 | **Accepted state persistence** | ✅ | Clicking `Yes` now persists to conversation history and exports |
 | **Intelligence bridge** | ✅ | Accepted/repaired/ticketed/cancelled outcomes feed back into reflection data |
 | **Corrected-path learning** | ✅ | Repaired answers, tools, and tool results are folded back into the original experience for reflections |
 | **Feedback-aware settlement** | ✅ | Final web feedback runs on the settled Completion Guard outcome and includes CG metadata in grading |
+| **Provider-split auto evaluator** | ✅ | Auto eval can run on a different provider/model than the main chat response |
 
 ---
 
@@ -1489,4 +1492,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.5: AI Config response-style overrides - Per-mode `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` with live prompt/runtime alignment - March 29, 2026*  
 *v2.6: Completion Guard - inline completion card, one-pass manual repair loop, tool-aware exclusions, repair tickets, and export metadata - March 30, 2026*  
 *v2.7: Completion Guard auto mode - background evaluator, threshold override, persisted accept state, and intelligence-layer outcome tracking - March 30, 2026*  
-*v2.8: Completion Guard learning model - repair cancel support, structured learning on the original experience, and corrected-path reflection context - March 30, 2026*
+*v2.8: Completion Guard learning model - repair cancel support, structured learning on the original experience, and corrected-path reflection context - March 30, 2026*  
+*v2.9: Completion Guard tighten-only path, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback - April 2, 2026*

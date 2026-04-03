@@ -1139,6 +1139,11 @@ Your synthesized response:"""
                 context, 
                 system_prompt="Synthesize research results into a helpful answer. MAX 100 words. Answer the user's actual question using the data provided."
             )
+            if not response or self._looks_like_provider_error_text(response):
+                if "canvas" in [t.lower() for t in tools_used]:
+                    return "Research complete and saved to Canvas. Check the Canvas page for full details on your request."
+                tools_summary = ', '.join(set(tools_used))
+                return f"Task completed using {tools_summary}. Please check the results above."
             return response.strip()
             
         except Exception as e:
@@ -1209,7 +1214,7 @@ Your response:"""
                 system_prompt="You are a voice assistant. Output a concise response, MAX 35 words. No greetings, no explanations."
             )
             
-            if text_response:
+            if text_response and not self._looks_like_provider_error_text(text_response):
                 return text_response
             else:
                 return tool_result.get("speech", "Done")
@@ -1219,6 +1224,22 @@ Your response:"""
             if sys.stdout.isatty():
                 print(f"⚠️ Failed to format natural response: {e}", file=sys.stderr)
             return tool_result.get("speech", "Completed")
+
+    @staticmethod
+    def _looks_like_provider_error_text(text: str) -> bool:
+        """Detect provider error strings accidentally returned as normal formatter output."""
+        if not text or not isinstance(text, str):
+            return False
+        value = text.strip()
+        if not value:
+            return False
+        return (
+            value.startswith("Error:")
+            or "_InactiveRpcError" in value
+            or "StatusCode.PERMISSION_DENIED" in value
+            or "Content violates usage guidelines" in value
+            or "grpc_status:7" in value
+        )
     
     def _format_auto_mode(self, user_query: str, tools_used: list, accumulated_data: dict, raw_response: str, turn_num: int) -> str:
         """
@@ -1365,6 +1386,8 @@ GOOD (preserves entities): "Top restaurants nearby: Olive Garden for Italian, Th
 Your condensed response:"""
             
             response = self.router.provider.chat(context, system_prompt=f"Condense for voice output. MAX {qa_limit} words. Keep key info. No greetings/emojis.")
+            if not response or self._looks_like_provider_error_text(response):
+                return raw_response
             return response.strip()
         except Exception as e:
             # Fallback: truncate at limit
@@ -1440,6 +1463,8 @@ BAD: "[Names from results]" or "Found 3 options" ← Never use placeholders!
 Your response:"""
             
             response = self.router.provider.chat(context, system_prompt=f"Condense to MAX {multi_turn_limit} words. Preserve names, titles, and numbers exactly. No placeholders.")
+            if not response or self._looks_like_provider_error_text(response):
+                return llm_response
             return response.strip()
         except Exception as e:
             # Fallback to LLM's original response
@@ -1506,6 +1531,11 @@ Your BEST EFFORT response:"""
                     f"MAX {multi_turn_limit} words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc."
                 ),
             )
+            if not response or self._looks_like_provider_error_text(response):
+                extracted_preview = extracted_data.strip()
+                if extracted_preview:
+                    return extracted_preview[:400]
+                return f"Completed {len(tools_used)} actions. Please review the gathered results."
             return response.strip()
         except Exception as e:
             # Fallback to simple message

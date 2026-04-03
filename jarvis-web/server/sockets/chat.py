@@ -9,6 +9,7 @@ import time
 import traceback
 import json
 import re
+from difflib import SequenceMatcher
 from datetime import datetime
 from pathlib import Path
 from flask_socketio import emit, join_room, leave_room
@@ -304,6 +305,120 @@ class ChatHandler:
         return None, text
 
     @staticmethod
+    def _normalize_comparison_text(text: str) -> str:
+        """Normalize text before comparing answer similarity."""
+        if not text:
+            return ''
+        text = str(text)
+        text = re.sub(r'[*_`#>]+', '', text)
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip().lower()
+
+    @classmethod
+    def _text_similarity(cls, left: str, right: str) -> float:
+        """Return a coarse similarity score between two strings."""
+        a = cls._normalize_comparison_text(left)
+        b = cls._normalize_comparison_text(right)
+        if not a or not b:
+            return 0.0
+        return SequenceMatcher(None, a, b).ratio()
+
+    @staticmethod
+    def _prepare_repair_data_for_delta(data) -> str:
+        """Normalize result payloads before comparing evidence changes."""
+        if data is None:
+            return ''
+        try:
+            if isinstance(data, dict):
+                cleaned = {
+                    key: value for key, value in data.items()
+                    if key not in {'speech', 'raw_llm_response', 'usage', '_web_message_id', '_completion_guard'}
+                }
+            else:
+                cleaned = data
+            text = json.dumps(cleaned, sort_keys=True, ensure_ascii=False, default=str)
+        except Exception:
+            text = str(data)
+        return re.sub(r'\s+', ' ', text).strip()
+
+    def _analyze_completion_guard_delta(self, record: dict, result: dict) -> dict:
+        """
+        Determine whether a repair materially improved the task with new evidence
+        or a different tool path, rather than only rewording the answer.
+        """
+        original_tools = [str(item).strip() for item in (record.get('tools_used') or []) if str(item).strip()]
+        repair_tools = [str(item).strip() for item in (result.get('tools_used') or []) if str(item).strip()]
+
+        original_tool_set = set(original_tools)
+        repair_tool_set = set(repair_tools)
+        tool_path_delta = (
+            original_tools != repair_tools
+            and (
+                bool(repair_tool_set - original_tool_set)
+                or len(repair_tools) != len(original_tools)
+                or not original_tools
+            )
+        )
+
+        original_data = self._prepare_repair_data_for_delta(record.get('data'))
+        repair_data = self._prepare_repair_data_for_delta(result.get('data'))
+        data_similarity = self._text_similarity(original_data, repair_data) if original_data and repair_data else 0.0
+        evidence_delta = bool(repair_data) and (
+            not original_data
+            or data_similarity < 0.94
+            or len(repair_data) > len(original_data) + 120
+        )
+
+        original_answer = record.get('raw_llm_response') or record.get('speech') or ''
+        repaired_answer = result.get('raw_llm_response') or result.get('speech') or ''
+        answer_similarity = self._text_similarity(original_answer, repaired_answer)
+
+        return {
+            'operational_correction': bool(tool_path_delta or evidence_delta),
+            'tool_path_delta': bool(tool_path_delta),
+            'evidence_delta': bool(evidence_delta),
+            'answer_similarity': round(answer_similarity, 4),
+            'data_similarity': round(data_similarity, 4) if original_data and repair_data else None,
+            'original_tools': original_tools,
+            'repair_tools': repair_tools,
+        }
+
+    @staticmethod
+    def _repair_has_explicit_source_or_verified_action(result: dict) -> bool:
+        """
+        Allow a no-tool repair to count as substantive only when it clearly cites a
+        direct source already available in context or references a verified action.
+        """
+        text = ' '.join([
+            str(result.get('raw_llm_response') or ''),
+            str(result.get('speech') or ''),
+        ]).strip()
+        if not text:
+            return False
+
+        lowered = text.lower()
+
+        source_patterns = [
+            r'\baccording to\b',
+            r'\bbased on\b',
+            r'\bsource:\b',
+            r'\bfrom\s+(?:docs?|documentation|manual|schema|api|readme)\b',
+            r'\bdocs?/[a-z0-9._/\-]+\b',
+            r'\buser_profile\.md\b',
+            r'\bjarvis-intel/[a-z0-9._/\-]+\b',
+        ]
+        action_patterns = [
+            r'\bverified\b',
+            r'\bconfirmed\b',
+            r'\bupdated\b.+\b(canvas|page|doc|document|presentation)\b',
+            r'\bcreated\b.+\b(canvas|page|doc|document|presentation)\b',
+            r'\bsaved\b.+\b(canvas|page|doc|document|presentation|stash)\b',
+            r'\bsent\b.+\b(email|message|webhook)\b',
+        ]
+
+        return any(re.search(pattern, lowered) for pattern in source_patterns + action_patterns)
+
+    @staticmethod
     def _is_machine_like_completion_text(text: str) -> bool:
         """Detect tool-ish or payload-ish text that should not be treated as a final answer."""
         if not text or not isinstance(text, str):
@@ -351,26 +466,26 @@ class ChatHandler:
         load_config(mode)
 
         provider_name = (
-            get_config_value('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', '')
-            or get_config_value('FEEDBACK_PROVIDER', '')
+            get_config_value('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'openai')
+            or get_config_value('FEEDBACK_PROVIDER', 'openai')
             or fallback_provider
             or ('ollama' if mode == 'local' else get_config_value('LLM_PROVIDER', 'anthropic'))
         ).strip().lower()
 
         model_name = (
-            get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', '')
-            or get_config_value('FEEDBACK_MODEL', '')
+            get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', 'gpt-5.4-nano')
+            or get_config_value('FEEDBACK_MODEL', 'gpt-5.4-nano')
             or fallback_model
             or ''
         ).strip()
 
         if provider_name == 'anthropic':
             return provider_name, (
-                model_name or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+                model_name or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-6')
             ), create_provider(
                 'anthropic',
                 api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=model_name or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+                model=model_name or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-6')
             )
         if provider_name == 'openai':
             return provider_name, (
@@ -434,10 +549,13 @@ class ChatHandler:
 
         task_status = str(data.get('task_status', '')).strip().lower()
         risk_level = str(data.get('risk_level', '')).strip().lower()
+        recommended_action = str(data.get('recommended_action', '')).strip().lower()
         if task_status not in {'complete', 'partial', 'unsupported', 'failed'}:
             task_status = 'partial' if data else ''
         if risk_level not in {'low', 'medium', 'high', 'critical'}:
             risk_level = 'medium' if data else ''
+        if recommended_action not in {'accept', 'tighten_only', 'repair_required'}:
+            recommended_action = 'repair_required' if task_status in {'partial', 'unsupported', 'failed'} else 'accept'
 
         repair_worthwhile = data.get('repair_worthwhile')
         if isinstance(repair_worthwhile, str):
@@ -446,6 +564,7 @@ class ChatHandler:
             repair_worthwhile = bool(repair_worthwhile)
 
         return {
+            'recommended_action': recommended_action,
             'task_status': task_status,
             'risk_level': risk_level,
             'repair_worthwhile': repair_worthwhile,
@@ -461,6 +580,7 @@ class ChatHandler:
     @staticmethod
     def _score_completion_guard_auto_eval(evaluation: dict) -> tuple[float, list[str]]:
         """Convert structured audit output into a deterministic repair score."""
+        recommended_action = evaluation.get('recommended_action', '')
         task_status = evaluation.get('task_status', '')
         risk_level = evaluation.get('risk_level', '')
         failure_types = evaluation.get('failure_types', []) or []
@@ -487,6 +607,13 @@ class ChatHandler:
         }
         score += status_weights.get(task_status, 0.20)
         score += risk_weights.get(risk_level, 0.0)
+
+        if recommended_action == 'tighten_only':
+            score = min(score, 0.62)
+            reasons.append('recommended_action:tighten_only')
+        elif recommended_action == 'repair_required':
+            score += 0.10
+            reasons.append('recommended_action:repair_required')
 
         if repair_worthwhile:
             score += 0.10
@@ -542,6 +669,7 @@ class ChatHandler:
 
 Return JSON only:
 {{
+  "recommended_action": "accept" | "tighten_only" | "repair_required",
   "task_status": "complete" | "partial" | "unsupported" | "failed",
   "risk_level": "low" | "medium" | "high" | "critical",
   "repair_worthwhile": true,
@@ -558,6 +686,9 @@ Audit rules:
 - Evaluate the RAW LLM RESPONSE, not just the shorter spoken output
 - Do not penalize voice-style brevity by itself
 - Focus on support, completeness, contradictions, and missing required outputs
+- Use recommended_action=tighten_only when the answer mostly works and only needs softer wording, tighter scope, or minor hedging
+- Use recommended_action=repair_required only when a follow-up pass should materially improve the evidence or tool path
+- Do not request a repair only because the answer could be phrased more cleanly
 - If the answer missed evidence already present in tool data, call that out
 - If the answer made strong claims without enough support, call that out
 - If the answer only partially addressed the request, call that out
@@ -932,11 +1063,45 @@ Returned tool data:
 
             record['auto_evaluation'] = evaluation
             repair_score = float(evaluation.get('repair_score', 0.0) or 0.0)
+            recommended_action = evaluation.get('recommended_action', 'accept')
             needs_repair = repair_score >= threshold
             note = evaluation.get('suggested_note') or evaluation.get('reason', '')
 
             from ..services.conversation_store import get_conversation_store
             store = get_conversation_store()
+
+            if recommended_action == 'tighten_only':
+                record['status'] = 'tighten_only'
+                store.update_message_data_by_web_message_id(
+                    conversation_id,
+                    message_id,
+                    {
+                        '_completion_guard': {
+                            'status': 'tighten_only',
+                            'auto_evaluation': evaluation,
+                            'evaluated_at': datetime.now().isoformat()
+                        }
+                    }
+                )
+                self._update_completion_guard_experience(
+                    record,
+                    'tighten_only',
+                    note=note,
+                    extra={
+                        'auto_evaluation': evaluation,
+                        'operational_correction': False
+                    }
+                )
+                self._start_feedback_async(
+                    session_id,
+                    message_id,
+                    message_id,
+                    record,
+                    self._build_feedback_result_from_record(record),
+                    record.get('tools_used', []),
+                    'tighten_only'
+                )
+                return
 
             if not needs_repair:
                 record['status'] = 'auto_accepted'
@@ -1117,6 +1282,7 @@ Rules:
 - If the previous answer made a strong claim like shut down, deprecated, removed, saved, created, updated, or sent, verify it before repeating it
 - Prefer fixing the smallest missing step
 - You may use tools if needed, but only when they clearly help verify or correct the issue
+- Do not spend a repair pass on wording-only cleanup unless you find new evidence or a materially better tool path
 - Do not just repeat the same failed retrieval path if it came back empty or weak
 - If one memory/search tool did not find enough, consider a different tool path that can inspect the source more directly
 - If the user references a specific file, folder, path, or source, treat that as a concrete lead and inspect it instead of only doing semantic recall
@@ -1124,6 +1290,7 @@ Rules:
 - If a tool in this repair pass already returns the answer in its data, stop and answer from that data directly
 - If a prior artifact such as a canvas page is now known to be wrong and you have enough context, update it
 - If you still cannot resolve the issue after one attempt, use REPAIR_STATUS: unresolved and explain exactly what remains uncertain
+- Do not write to jarvis-learned-lessons.md unless this repair uncovers a real reusable operational lesson, provider quirk, or tool limitation. Rewording alone is not lesson-worthy.
 
 Repair strategy hints:
 {self._format_completion_guard_strategy(repair_strategy)}
@@ -1232,33 +1399,48 @@ Previous structured data:
                     result['raw_llm_response'] = synthesized_answer
                     repair_status = 'repaired'
 
+            delta = self._analyze_completion_guard_delta(record, result)
+            operational_correction = bool(delta.get('operational_correction'))
+
+            original_tools = delta.get('original_tools', []) or []
+            repair_tools = delta.get('repair_tools', []) or []
+            if (
+                not original_tools
+                and not repair_tools
+                and not self._repair_has_explicit_source_or_verified_action(result)
+            ):
+                operational_correction = False
+                delta['operational_correction'] = False
+                delta['no_tool_rewrite_defaulted'] = True
+
             # Require an explicit repaired marker. Missing markers should not be treated as success.
             repaired = result.get('ok', True) and repair_status == 'repaired'
-            record['status'] = 'repaired' if repaired else 'unresolved'
+            tighten_only = repaired and not operational_correction
+            if tighten_only:
+                repaired = False
+
+            record['status'] = 'tighten_only' if tighten_only else ('repaired' if repaired else 'unresolved')
             record['user_note'] = note
             record['repair_message_id'] = repair_message_id
             record['repair_result'] = {
-                'status': repair_status or ('repaired' if repaired else 'unresolved'),
+                'status': 'tighten_only' if tighten_only else (repair_status or ('repaired' if repaired else 'unresolved')),
                 'speech': result.get('speech', ''),
                 'raw_llm_response': result.get('raw_llm_response', ''),
                 'tools_used': result.get('tools_used', []),
-                'strategy_family': repair_strategy.get('family')
+                'strategy_family': repair_strategy.get('family'),
+                'delta': delta
             }
 
             from ..services.conversation_store import get_conversation_store
             store = get_conversation_store()
 
-            response_text, prepared_speech = self._prepare_web_response_text(
-                result,
-                "I found a better answer and shared it in chat."
-            )
+            response_text = ''
+            prepared_speech = ''
             save_data = (result.get('data') or {}).copy() if isinstance(result.get('data'), dict) else {'result': result.get('data')}
             if result.get('raw_llm_response'):
                 save_data['raw_llm_response'] = result['raw_llm_response']
             if result.get('usage'):
                 save_data['usage'] = result['usage']
-            if prepared_speech:
-                save_data['speech'] = prepared_speech
             save_data['_web_message_id'] = repair_message_id
             save_data['_completion_guard'] = {
                 'status': 'repair_response',
@@ -1266,77 +1448,89 @@ Previous structured data:
                 'created_at': datetime.now().isoformat()
             }
 
-            store.add_message(
-                conversation_id,
-                'assistant',
-                response_text,
-                data=save_data,
-                tools_used=result.get('tools_used', [])
-            )
+            if not tighten_only:
+                response_text, prepared_speech = self._prepare_web_response_text(
+                    result,
+                    "I found a better answer and shared it in chat."
+                )
+                if prepared_speech:
+                    save_data['speech'] = prepared_speech
+                store.add_message(
+                    conversation_id,
+                    'assistant',
+                    response_text,
+                    data=save_data,
+                    tools_used=result.get('tools_used', [])
+                )
 
             store.update_message_data_by_web_message_id(
                 conversation_id,
                 parent_message_id,
                 {
                     '_completion_guard': {
-                        'status': 'repaired' if repaired else 'unresolved',
+                        'status': 'tighten_only' if tighten_only else ('repaired' if repaired else 'unresolved'),
                         'note': note,
                         'repaired_at': datetime.now().isoformat(),
                         'repair_message_id': repair_message_id,
-                        'auto_evaluation': record.get('auto_evaluation')
+                        'auto_evaluation': record.get('auto_evaluation'),
+                        'delta': delta
                     }
                 }
             )
 
             self._update_completion_guard_experience(
                 record,
-                'repaired' if repaired else 'unresolved',
+                'tighten_only' if tighten_only else ('repaired' if repaired else 'unresolved'),
                 note=note,
                 extra={
                     'repair_result': record.get('repair_result', {}),
                     'repair_data': save_data,
                     'repair_strategy': repair_strategy,
-                    'auto_evaluation': record.get('auto_evaluation')
+                    'auto_evaluation': record.get('auto_evaluation'),
+                    'operational_correction': operational_correction
                 }
             )
 
             audio_url = None
-            try:
-                from ..config import get_web_setting
-                if get_web_setting('audio.tts_enabled', False):
-                    speech_text = prepared_speech
-                    if speech_text:
-                        audio_url = self._generate_tts(speech_text, mode=mode)
-            except Exception as tts_err:
-                print(f"[COMPLETION_GUARD] TTS generation failed: {tts_err}")
+            if not tighten_only:
+                try:
+                    from ..config import get_web_setting
+                    if get_web_setting('audio.tts_enabled', False):
+                        speech_text = prepared_speech
+                        if speech_text:
+                            audio_url = self._generate_tts(speech_text, mode=mode)
+                except Exception as tts_err:
+                    print(f"[COMPLETION_GUARD] TTS generation failed: {tts_err}")
 
             self.socketio.emit('completion_guard:updated', {
                 'message_id': parent_message_id,
                 'conversation_id': conversation_id,
-                'status': 'repaired' if repaired else 'unresolved',
-                'note': note
+                'status': 'tighten_only' if tighten_only else ('repaired' if repaired else 'unresolved'),
+                'note': note,
+                'delta': delta
             }, room=session_id)
 
-            self.socketio.emit('chat:response', {
-                'message_id': repair_message_id,
-                'conversation_id': conversation_id,
-                'text': response_text,
-                'speech': prepared_speech,
-                'data': save_data,
-                'tools_used': result.get('tools_used', []),
-                'ok': result.get('ok', True),
-                'cancelled': False,
-                'duration_ms': int((time.time() - start_time) * 1000),
-                'usage': result.get('usage', {}),
-                'audio_url': audio_url,
-                'server_side_tools': result.get('server_side_tools', {}),
-                'completion_guard': {
-                    'enabled': False,
-                    'mode': 'off',
-                    'ticket_on_fail': record.get('completion_guard', {}).get('ticket_on_fail', True),
-                    'prompt_user': False
-                }
-            }, room=session_id)
+            if not tighten_only:
+                self.socketio.emit('chat:response', {
+                    'message_id': repair_message_id,
+                    'conversation_id': conversation_id,
+                    'text': response_text,
+                    'speech': prepared_speech,
+                    'data': save_data,
+                    'tools_used': result.get('tools_used', []),
+                    'ok': result.get('ok', True),
+                    'cancelled': False,
+                    'duration_ms': int((time.time() - start_time) * 1000),
+                    'usage': result.get('usage', {}),
+                    'audio_url': audio_url,
+                    'server_side_tools': result.get('server_side_tools', {}),
+                    'completion_guard': {
+                        'enabled': False,
+                        'mode': 'off',
+                        'ticket_on_fail': record.get('completion_guard', {}).get('ticket_on_fail', True),
+                        'prompt_user': False
+                    }
+                }, room=session_id)
 
             feedback_result_payload = {
                 'ok': result.get('ok', True),
@@ -1353,7 +1547,7 @@ Previous structured data:
                 result.get('tools_used', [])
             )
 
-            if not repaired and record.get('completion_guard', {}).get('ticket_on_fail', True):
+            if (not repaired and not tighten_only) and record.get('completion_guard', {}).get('ticket_on_fail', True):
                 ticket_path = self._write_completion_guard_ticket(record, note)
                 rel_path = str(ticket_path.relative_to(JARVIS_ROOT))
                 record['status'] = 'ticket_created'
@@ -1403,11 +1597,11 @@ Previous structured data:
                 self._start_feedback_async(
                     session_id,
                     parent_message_id,
-                    repair_message_id,
+                    repair_message_id if not tighten_only else parent_message_id,
                     record,
-                    feedback_result_payload,
-                    feedback_tools_used,
-                    'repaired' if repaired else 'unresolved'
+                    feedback_result_payload if not tighten_only else self._build_feedback_result_from_record(record),
+                    feedback_tools_used if not tighten_only else record.get('tools_used', []),
+                    'tighten_only' if tighten_only else ('repaired' if repaired else 'unresolved')
                 )
 
         except Exception as e:

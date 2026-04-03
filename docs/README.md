@@ -309,6 +309,17 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-02:**
+- ✅ **Completion Guard: tighten-only settlement**
+  - Added `tighten_only` as a real auto-mode outcome for answers that are basically correct but only need wording, scope, or hedging cleanup
+  - Auto mode now avoids surfacing a visible repaired answer unless the repair introduced a real evidence delta or tool-path delta
+  - No-tool rewrite repairs now default to `tighten_only` unless the repaired answer explicitly cites a direct source or verified action
+- ✅ **Completion Guard: evaluator/provider split**
+  - Auto evaluation now clearly follows its own provider/model path: `JARVIS_COMPLETION_GUARD_EVAL_PROVIDER` → `FEEDBACK_PROVIDER` → main provider
+  - This allows a separate audit model from the main chat model, while still supporting fully local overrides when configured
+- ✅ **Provider-error formatter fallback**
+  - Added protection so provider-side formatter/condense errors do not leak raw gRPC or safety error strings into the final visible answer
+
 **2026-03-31:**
 - ✅ **Scheduled Tasks: foundation implemented**
   - Added `schedule_task` with `create`, `list`, `update`, `cancel`, `delete`, `run_now`, and `list_runs`
@@ -1311,6 +1322,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-03-31  
-**Latest:** Scheduled Tasks foundation plus full Reminders management in Jarvis Memory UI, including recurrence picker and daily recurrence support  
+**Last Updated:** 2026-04-02  
+**Latest:** Completion Guard tighten-only settlement, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
