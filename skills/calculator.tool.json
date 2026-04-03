@@ -1,19 +1,19 @@
 {
   "enabled": true,
   "name": "calculator",
-  "description": "Advanced calculator for math, statistics, and unit conversions. Use for: arithmetic (2+2, 5^3, sqrt(144)), percentages (15% of 200, what percent is 30 of 200), statistics (mean of 1,2,3,4,5, stdev, median, mode, variance), unit conversions (5 miles to km, 100 fahrenheit to celsius, 2 cups to ml, 500 gb to tb), trigonometry (sin, cos, tan - use sind/cosd/tand for degrees), logarithms (log, log10, ln), and special functions (factorial, gcd, lcm). Constants available: pi, e, tau. Example: 'sqrt(144) + 5^2' returns 37.",
+  "description": "Advanced calculator for math, statistics, unit conversions, and peptide reconstitution/dosage math. Use for: arithmetic (2+2, 5^3, sqrt(144)), percentages (15% of 200, what percent is 30 of 200), statistics (mean of 1,2,3,4,5, stdev, median, mode, variance), unit conversions (5 miles to km, 100 fahrenheit to celsius, 2 cups to ml, 500 gb to tb), and peptide mixing questions like '10mg peptide mixed with 2ml bac water, 2 IU is how many mcg?', '5mg in 2ml, how many IU for 250mcg?', 'I want 300mcg per shot at 15 IU, how much bac water should I add?', 'how many doses is 10mg at 300mcg each?', or 'what concentration is 10mg in 2ml?'. For dosage math, IU is treated as U-100 insulin syringe units unless the user says otherwise: 100 IU = 1 mL. If a dosage question is missing one required number, the tool should explain what measurement is still needed. Constants available: pi, e, tau. Example: 'sqrt(144) + 5^2' returns 37.",
   "script": "calculator.py",
   "parameters": {
     "type": "object",
     "properties": {
       "expression": {
         "type": "string",
-        "description": "The calculation to perform. Can be: math expression (2+2, 5^3, sqrt(144)), percentage (15% of 200), unit conversion (5 miles to km), or statistics (mean of 1,2,3,4,5)"
+        "description": "The calculation to perform. Can be: math expression (2+2, 5^3, sqrt(144)), percentage (15% of 200), unit conversion (5 miles to km), statistics (mean of 1,2,3,4,5), or peptide reconstitution/dosage math like dose from IU, IU from target mcg, concentration, number of doses, or bac water volume to add."
       },
       "type": {
         "type": "string",
-        "enum": ["auto", "expression", "percentage", "conversion", "statistics"],
-        "description": "Type hint for parsing. Usually 'auto' works best."
+        "enum": ["auto", "expression", "percentage", "conversion", "statistics", "dosage"],
+        "description": "Type hint for parsing. Usually 'auto' works best. Use 'dosage' for peptide reconstitution and syringe-unit calculations."
       }
     },
     "required": ["expression"]
@@ -26,4 +26,3 @@
     "auto_approve": true
   }
 }
-

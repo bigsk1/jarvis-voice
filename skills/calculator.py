@@ -103,6 +103,8 @@ UNIT_CONVERSIONS = {
     },
     # Weight (base: grams)
     'weight': {
+        'mcg': 0.000001, 'microgram': 0.000001, 'micrograms': 0.000001,
+        'ug': 0.000001, 'μg': 0.000001,
         'g': 1, 'gram': 1, 'grams': 1,
         'kg': 1000, 'kilogram': 1000, 'kilograms': 1000,
         'mg': 0.001, 'milligram': 0.001, 'milligrams': 0.001,
@@ -116,6 +118,7 @@ UNIT_CONVERSIONS = {
     'volume': {
         'l': 1, 'liter': 1, 'liters': 1, 'litre': 1, 'litres': 1,
         'ml': 0.001, 'milliliter': 0.001, 'milliliters': 0.001,
+        'cc': 0.001,
         'gal': 3.78541, 'gallon': 3.78541, 'gallons': 3.78541,
         'qt': 0.946353, 'quart': 0.946353, 'quarts': 0.946353,
         'pt': 0.473176, 'pint': 0.473176, 'pints': 0.473176,
@@ -265,6 +268,374 @@ def parse_statistics(expr: str) -> tuple[str, list] | None:
         return (func_name, numbers)
     
     return None
+
+
+def normalize_medical_expression(expr: str) -> str:
+    """Normalize common dosage notation for parsing."""
+    normalized = expr.lower()
+    normalized = normalized.replace('μ', 'u').replace('µ', 'u')
+    normalized = normalized.replace("iu's", 'iu').replace("ius", 'iu')
+    normalized = normalized.replace('milliliters', 'ml').replace('millilitres', 'ml')
+    normalized = normalized.replace('milliliter', 'ml').replace('millilitre', 'ml')
+    normalized = normalized.replace('bacteriostatic water', 'bac water')
+    normalized = normalized.replace('bacteriostatic', 'bac')
+    normalized = normalized.replace('micrograms', 'mcg').replace('microgram', 'mcg')
+    normalized = normalized.replace('milligrams', 'mg').replace('milligram', 'mg')
+    normalized = normalized.replace('units', 'iu').replace('unit', 'iu')
+    return normalized
+
+
+def mass_to_mcg(value: float, unit: str) -> float:
+    """Convert supported mass units to micrograms."""
+    unit = unit.lower()
+    factors = {
+        'mcg': 1,
+        'ug': 1,
+        'g': 1_000_000,
+        'mg': 1_000,
+    }
+    if unit not in factors:
+        raise ValueError(f"Unsupported mass unit: {unit}")
+    return value * factors[unit]
+
+
+def volume_to_ml(value: float, unit: str) -> float:
+    """Convert supported volume units to mL."""
+    unit = unit.lower()
+    factors = {
+        'ml': 1,
+        'cc': 1,
+        'l': 1000,
+    }
+    if unit not in factors:
+        raise ValueError(f"Unsupported volume unit: {unit}")
+    return value * factors[unit]
+
+
+def format_measurement(value: float, unit: str) -> str:
+    """Format numeric output with a sensible number of decimals."""
+    if value == int(value):
+        return f"{int(value):,} {unit}"
+    return f"{value:,.4f}".rstrip('0').rstrip('.') + f" {unit}"
+
+
+def measurement_match_dict(match: re.Match[str], unit_group: int = 2, default_unit: str | None = None) -> dict[str, Any]:
+    """Convert a regex match to a structured measurement record."""
+    unit = default_unit if default_unit is not None else match.group(unit_group).lower()
+    return {
+        'value': float(match.group(1)),
+        'unit': unit,
+        'start': match.start(),
+        'end': match.end(),
+    }
+
+
+def measurement_context(text: str, measurement: dict[str, Any], radius: int = 28) -> str:
+    """Get nearby text around a parsed measurement."""
+    start = max(0, measurement['start'] - radius)
+    end = min(len(text), measurement['end'] + radius)
+    return text[start:end]
+
+
+def measurement_has_keywords(
+    text: str,
+    measurement: dict[str, Any],
+    keywords: tuple[str, ...],
+) -> bool:
+    """Check whether a parsed measurement appears near cue words."""
+    context = measurement_context(text, measurement)
+    return any(keyword in context for keyword in keywords)
+
+
+def extract_measurements(normalized: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Extract mass, volume, and IU measurements from text."""
+    mass_matches = [
+        measurement_match_dict(match)
+        for match in re.finditer(r'(\d+(?:\.\d+)?)\s*(mg|mcg|ug|g)\b', normalized)
+    ]
+    volume_matches = [
+        measurement_match_dict(match)
+        for match in re.finditer(r'(\d+(?:\.\d+)?)\s*(ml|cc|l)\b', normalized)
+    ]
+    iu_matches = [
+        measurement_match_dict(match, default_unit='iu')
+        for match in re.finditer(r'(\d+(?:\.\d+)?)\s*iu\b', normalized)
+    ]
+    return mass_matches, volume_matches, iu_matches
+
+
+def build_missing_input_result(
+    total_mass_mcg: float,
+    target_dose_mcg: float | None,
+    missing: list[str],
+) -> dict[str, Any]:
+    """Return a structured response for under-specified dosage questions."""
+    result: dict[str, Any] = {
+        'type': 'dosage',
+        'operation': 'missing_input',
+        'total_peptide_mcg': total_mass_mcg,
+        'missing': missing,
+        'assumptions': [
+            "IU means U-100 insulin syringe units",
+            "100 IU = 1 mL",
+        ],
+    }
+    if target_dose_mcg is not None:
+        result['target_dose_mcg'] = target_dose_mcg
+    return result
+
+
+def parse_peptide_reconstitution(expr: str) -> dict[str, Any] | None:
+    """
+    Parse common peptide reconstitution questions.
+
+    Examples:
+    - "10mg peptide + 2ml bac water, 2iu is how many mcg"
+    - "If I mix 5mg with 2ml, how many IU for 250mcg?"
+    - "Concentration of 10mg in 2ml"
+    """
+    normalized = normalize_medical_expression(expr)
+
+    if not any(term in normalized for term in ('peptide', 'bac water', 'bacteriostatic', 'reconstit', 'syringe', 'mcg', 'mg', 'iu')):
+        return None
+
+    mass_matches, volume_matches, iu_matches = extract_measurements(normalized)
+
+    wants_bac_water = any(phrase in normalized for phrase in (
+        'how much bac water',
+        'how much water',
+        'how much diluent',
+        'how much liquid',
+        'how much should i add',
+        'what volume should i add',
+        'how much to add',
+        'how many ml should i add',
+        'reconstit with',
+    ))
+    wants_dose_count = any(phrase in normalized for phrase in (
+        'how many doses',
+        'how many shots',
+        'how many injections',
+        'how many servings',
+    ))
+    wants_concentration = any(phrase in normalized for phrase in (
+        'what concentration',
+        'concentration',
+        'mg/ml',
+        'mcg/ml',
+        'mcg per ml',
+        'mg per ml',
+    ))
+    wants_iu = any(phrase in normalized for phrase in (
+        'how many iu',
+        'what iu',
+        'what units',
+        'how many units',
+        'what line',
+        'what mark',
+        'how much should i pull',
+        'how much do i pull',
+        'how much should i draw',
+        'how much do i draw',
+        'pull for',
+        'draw for',
+    ))
+    wants_mcg = any(phrase in normalized for phrase in (
+        'how much mcg',
+        'how many mcg',
+        'what dose',
+        'per dose',
+        'per shot',
+        'per injection',
+    ))
+
+    if not mass_matches:
+        missing = ['total peptide amount (for example 10 mg)']
+        if wants_bac_water and not iu_matches and not volume_matches:
+            missing.append('desired shot size in IU or mL')
+        return build_missing_input_result(0, None, missing)
+
+    if len(mass_matches) == 1:
+        only_mass = mass_matches[0]
+        looks_like_target_dose = measurement_has_keywords(
+            normalized,
+            only_mass,
+            ('dose', 'shot', 'each', 'target', 'want', 'per'),
+        )
+        looks_like_total_amount = measurement_has_keywords(
+            normalized,
+            only_mass,
+            ('have', 'contains', 'vial', 'peptide', 'bottle'),
+        )
+        if looks_like_target_dose and not looks_like_total_amount:
+            missing = ['total peptide amount (for example 10 mg)']
+            if wants_bac_water and not iu_matches and not volume_matches:
+                missing.append('desired shot size in IU or mL')
+            return build_missing_input_result(
+                0,
+                mass_to_mcg(only_mass['value'], only_mass['unit']),
+                missing,
+            )
+
+    total_mass = mass_to_mcg(mass_matches[0]['value'], mass_matches[0]['unit'])
+    target_dose_mcg = None
+    if len(mass_matches) >= 2:
+        target_candidate = mass_matches[-1]
+        target_dose_mcg = mass_to_mcg(target_candidate['value'], target_candidate['unit'])
+
+    total_volume_ml = None
+    if volume_matches:
+        total_volume_ml = volume_to_ml(volume_matches[0]['value'], volume_matches[0]['unit'])
+
+    pulled_iu = None
+    if iu_matches:
+        pulled_iu = iu_matches[-1]['value']
+
+    pulled_volume_ml = None
+    if len(volume_matches) >= 2:
+        draw_volume_matches = [
+            volume for volume in volume_matches[1:]
+            if measurement_has_keywords(
+                normalized,
+                volume,
+                ('pull', 'draw', 'dose', 'shot', 'each', 'per'),
+            )
+        ]
+        selected_volume = draw_volume_matches[0] if draw_volume_matches else volume_matches[-1]
+        pulled_volume_ml = volume_to_ml(selected_volume['value'], selected_volume['unit'])
+
+    result: dict[str, Any] = {
+        'type': 'dosage',
+        'total_peptide_mcg': total_mass,
+        'assumptions': [
+            "IU means U-100 insulin syringe units",
+            "100 IU = 1 mL",
+        ],
+    }
+    if target_dose_mcg is not None:
+        result['target_dose_mcg'] = target_dose_mcg
+    if total_volume_ml is not None:
+        result['total_volume_ml'] = total_volume_ml
+    if pulled_iu is not None:
+        result['pulled_iu'] = pulled_iu
+    if pulled_volume_ml is not None:
+        result['dose_volume_ml'] = pulled_volume_ml
+
+    if wants_bac_water:
+        if target_dose_mcg is None:
+            return build_missing_input_result(
+                total_mass,
+                None,
+                ['desired dose amount (for example 300 mcg per shot)'],
+            )
+
+        desired_dose_volume_ml = None
+        if pulled_iu is not None:
+            desired_dose_volume_ml = pulled_iu / 100
+        elif pulled_volume_ml is not None:
+            desired_dose_volume_ml = pulled_volume_ml
+
+        if desired_dose_volume_ml is None:
+            return build_missing_input_result(
+                total_mass,
+                target_dose_mcg,
+                ['desired shot size in IU or mL'],
+            )
+
+        if desired_dose_volume_ml == 0:
+            raise ValueError("Shot size cannot be zero")
+
+        desired_concentration_mcg_per_ml = target_dose_mcg / desired_dose_volume_ml
+        required_total_volume_ml = total_mass / desired_concentration_mcg_per_ml
+        result.update({
+            'operation': 'diluent_volume_for_target_dose',
+            'dose_volume_ml': desired_dose_volume_ml,
+            'concentration_mcg_per_ml': desired_concentration_mcg_per_ml,
+            'required_total_volume_ml': required_total_volume_ml,
+        })
+        if pulled_iu is None:
+            result['required_iu'] = desired_dose_volume_ml * 100
+        return result
+
+    if wants_dose_count and target_dose_mcg is not None:
+        if target_dose_mcg == 0:
+            raise ValueError("Target dose cannot be zero")
+        result.update({
+            'operation': 'dose_count',
+            'dose_count': total_mass / target_dose_mcg,
+        })
+        return result
+
+    if total_volume_ml is None and (wants_iu or wants_mcg or wants_concentration):
+        return build_missing_input_result(
+            total_mass,
+            target_dose_mcg,
+            ['total mixed volume in mL (for example 2 mL of bac water)'],
+        )
+
+    concentration_mcg_per_ml = None
+    if total_volume_ml is not None:
+        if total_volume_ml == 0:
+            raise ValueError("Diluent volume cannot be zero")
+        concentration_mcg_per_ml = total_mass / total_volume_ml
+        result['concentration_mcg_per_ml'] = concentration_mcg_per_ml
+
+    # Direct dose question: "2 IU is how many mcg?"
+    if concentration_mcg_per_ml is not None and pulled_iu is not None and wants_mcg:
+        dose_volume_ml = pulled_iu / 100
+        dose_mcg = concentration_mcg_per_ml * dose_volume_ml
+
+        result.update({
+            'operation': 'dose_from_iu',
+            'dose_volume_ml': dose_volume_ml,
+            'dose_mcg': dose_mcg,
+        })
+        return result
+
+    if concentration_mcg_per_ml is not None and pulled_volume_ml is not None and wants_mcg:
+        dose_mcg = concentration_mcg_per_ml * pulled_volume_ml
+        result.update({
+            'operation': 'dose_from_volume',
+            'required_iu': pulled_volume_ml * 100,
+            'dose_mcg': dose_mcg,
+        })
+        return result
+
+    # Inverse question: "how many IU for 250 mcg?" / "how much do I draw for 250 mcg?"
+    if concentration_mcg_per_ml is not None and target_dose_mcg is not None and wants_iu:
+        dose_volume_ml = target_dose_mcg / concentration_mcg_per_ml
+        required_iu = dose_volume_ml * 100
+
+        result.update({
+            'operation': 'iu_from_target_dose',
+            'dose_volume_ml': dose_volume_ml,
+            'required_iu': required_iu,
+        })
+        return result
+
+    if concentration_mcg_per_ml is not None and target_dose_mcg is not None and 'how much ml' in normalized:
+        dose_volume_ml = target_dose_mcg / concentration_mcg_per_ml
+        result.update({
+            'operation': 'volume_from_target_dose',
+            'dose_volume_ml': dose_volume_ml,
+            'required_iu': dose_volume_ml * 100,
+        })
+        return result
+
+    if concentration_mcg_per_ml is not None and target_dose_mcg is not None and any(
+        phrase in normalized for phrase in ('what dose is', 'is how much mcg', 'equals how much mcg')
+    ) and pulled_iu is not None:
+        dose_volume_ml = pulled_iu / 100
+        result.update({
+            'operation': 'dose_from_iu',
+            'dose_volume_ml': dose_volume_ml,
+            'dose_mcg': concentration_mcg_per_ml * dose_volume_ml,
+        })
+        return result
+
+    # Fallback: just return concentration math.
+    result['operation'] = 'concentration'
+    return result
 
 
 class _SafeExprEvaluator(ast.NodeVisitor):
@@ -440,6 +811,84 @@ def calculate(expression: str, calc_type: str = 'auto') -> dict[str, Any]:
         'type': calc_type,
     }
     
+    # Try peptide/dosage math first so natural-language medical mixing questions
+    # don't fall through to generic expression parsing.
+    if calc_type in ('auto', 'dosage'):
+        dosage_result = parse_peptide_reconstitution(expr)
+        if dosage_result:
+            result_data.update(dosage_result)
+
+            operation = dosage_result['operation']
+            concentration_mcg_per_ml = dosage_result.get('concentration_mcg_per_ml')
+            concentration_mg_per_ml = None
+            if concentration_mcg_per_ml is not None:
+                concentration_mg_per_ml = concentration_mcg_per_ml / 1000
+
+            if operation == 'missing_input':
+                missing_fields = ', '.join(dosage_result['missing'])
+                speech = (
+                    f"I need one more detail to solve that: {missing_fields}. "
+                    f"For bac water math, I need the total peptide amount plus your target dose and how many IU or mL you want each shot to be."
+                )
+            elif operation == 'dose_from_iu':
+                speech = (
+                    f"Assuming a U-100 insulin syringe, "
+                    f"{format_measurement(dosage_result['pulled_iu'], 'IU')} from "
+                    f"{format_measurement(dosage_result['total_peptide_mcg'] / 1000, 'mg')} mixed with "
+                    f"{format_measurement(dosage_result['total_volume_ml'], 'mL')} is "
+                    f"{format_measurement(dosage_result['dose_mcg'], 'mcg')} per dose."
+                )
+            elif operation == 'dose_from_volume':
+                speech = (
+                    f"{format_measurement(dosage_result['dose_volume_ml'], 'mL')} from "
+                    f"{format_measurement(dosage_result['total_peptide_mcg'] / 1000, 'mg')} mixed with "
+                    f"{format_measurement(dosage_result['total_volume_ml'], 'mL')} is "
+                    f"{format_measurement(dosage_result['dose_mcg'], 'mcg')} per dose, "
+                    f"which is {format_measurement(dosage_result['required_iu'], 'IU')} on a U-100 insulin syringe."
+                )
+            elif operation == 'iu_from_target_dose':
+                speech = (
+                    f"Assuming a U-100 insulin syringe, "
+                    f"{format_measurement(dosage_result['target_dose_mcg'], 'mcg')} from "
+                    f"{format_measurement(dosage_result['total_peptide_mcg'] / 1000, 'mg')} mixed with "
+                    f"{format_measurement(dosage_result['total_volume_ml'], 'mL')} is "
+                    f"{format_measurement(dosage_result['required_iu'], 'IU')} "
+                    f"which is {format_measurement(dosage_result['dose_volume_ml'], 'mL')}."
+                )
+            elif operation == 'volume_from_target_dose':
+                speech = (
+                    f"{format_measurement(dosage_result['target_dose_mcg'], 'mcg')} from "
+                    f"{format_measurement(dosage_result['total_peptide_mcg'] / 1000, 'mg')} mixed with "
+                    f"{format_measurement(dosage_result['total_volume_ml'], 'mL')} is "
+                    f"{format_measurement(dosage_result['dose_volume_ml'], 'mL')} "
+                    f"or {format_measurement(dosage_result['required_iu'], 'IU')} on a U-100 insulin syringe."
+                )
+            elif operation == 'diluent_volume_for_target_dose':
+                shot_size_text = format_measurement(dosage_result['dose_volume_ml'], 'mL')
+                if dosage_result.get('pulled_iu') is not None:
+                    shot_size_text += f" ({format_measurement(dosage_result['pulled_iu'], 'IU')})"
+                elif dosage_result.get('required_iu') is not None:
+                    shot_size_text += f" ({format_measurement(dosage_result['required_iu'], 'IU')})"
+
+                speech = (
+                    f"To make each shot {format_measurement(dosage_result['target_dose_mcg'], 'mcg')} at "
+                    f"{shot_size_text}, add {format_measurement(dosage_result['required_total_volume_ml'], 'mL')} "
+                    f"of bac water to {format_measurement(dosage_result['total_peptide_mcg'] / 1000, 'mg')}."
+                )
+            elif operation == 'dose_count':
+                speech = (
+                    f"{format_measurement(dosage_result['total_peptide_mcg'] / 1000, 'mg')} contains "
+                    f"{dosage_result['dose_count']:,.2f} doses of "
+                    f"{format_measurement(dosage_result['target_dose_mcg'], 'mcg')}."
+                )
+            else:
+                speech = (
+                    f"That mix is {format_measurement(concentration_mg_per_ml, 'mg/mL')} "
+                    f"which is {format_measurement(concentration_mcg_per_ml, 'mcg/mL')}."
+                )
+
+            return {'ok': True, 'speech': speech, 'data': result_data}
+
     # Try percentage parsing
     if calc_type in ('auto', 'percentage'):
         pct_result = parse_percentage(expr)
@@ -537,4 +986,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
