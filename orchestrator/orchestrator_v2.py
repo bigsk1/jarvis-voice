@@ -2405,9 +2405,15 @@ def main():
         print(f"🤖 Model: {model}")
         
         print("=" * 60)
+
+    # Optional tool exclusions for unattended harnesses like self-play.
+    excluded_tools = []
+    excluded_tools_env = os.environ.get("JARVIS_SELF_PLAY_EXCLUDED_TOOLS") or os.environ.get("JARVIS_EXCLUDED_TOOLS", "")
+    if excluded_tools_env:
+        excluded_tools = [tool.strip() for tool in excluded_tools_env.split(",") if tool.strip()]
     
     orch = Orchestrator(mode)
-    result = orch.process(transcript)
+    result = orch.process(transcript, excluded_tools=excluded_tools)
     
     # Collect feedback if requested
     if collect_feedback:

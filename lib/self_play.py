@@ -24,18 +24,68 @@ sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_config_value
 from llm_provider import create_provider
 
+# Tools that are too side-effectful or operationally powerful for unattended self-play.
+DEFAULT_EXCLUDED_TOOLS = [
+    "opencode",
+    "phone_call",
+    "send_email",
+    "send_webhook",
+    "create_reminder",
+    "schedule_task",
+    "canvas",
+    "printer",
+    "pdf_create",
+    "generate_image",
+    "generate_video",
+    "generate_music",
+    "manage_intel",
+    "spotify",
+]
+
+# Queries should stay read-mostly even if the app supports rich actions.
+UNSAFE_QUERY_PREFIXES = (
+    "play ",
+    "send ",
+    "email ",
+    "call ",
+    "text ",
+    "create ",
+    "make ",
+    "build ",
+    "write ",
+    "schedule ",
+    "set ",
+    "save ",
+    "remember ",
+    "print ",
+    "generate ",
+    "open ",
+    "launch ",
+)
+
 # Query categories with examples for LLM to generate variations
 QUERY_CATEGORIES = {
     "information": {
         "examples": [
+            "What's the population of France?",
+            "How far is Mars from Earth?",
+            "How many calories are in an avocado?",
+            "What's the capital of New Zealand?",
+            "How many kilometers are in 25 miles?",
+        ],
+        "weight": 0.15,
+        "description": "Objective factual questions, definitions, and calculations",
+    },
+    "live_data": {
+        "examples": [
             "What's the weather forecast for today?",
             "Current Bitcoin price",
             "What time is it in Tokyo?",
-            "What's the population of France?",
-            "How far is Mars from Earth?",
+            "What's the current unemployment rate in the US?",
+            "How is Tesla stock doing today?",
         ],
         "weight": 0.20,
-        "description": "Factual questions requiring lookup or calculation",
+        "description": "Time-sensitive public data that should use live search or live-data tools",
     },
     "research": {
         "examples": [
@@ -45,8 +95,8 @@ QUERY_CATEGORIES = {
             "Best practices for API design",
             "Differences between REST and GraphQL",
         ],
-        "weight": 0.25,
-        "description": "Research and comparison questions",
+        "weight": 0.20,
+        "description": "Research, comparisons, and explanatory questions",
     },
     "coding": {
         "examples": [
@@ -61,25 +111,15 @@ QUERY_CATEGORIES = {
     },
     "productivity": {
         "examples": [
-            "What's on my calendar today?",
-            "Do I have any meetings this week?",
+            "Do I have any pending reminders?",
+            "Are there any active alerts right now?",
             "What did I ask you about yesterday?",
             "What do you know about my projects?",
             "Search my memories for API",
+            "What recent conversations have I had about Spotify?",
         ],
         "weight": 0.15,
         "description": "Personal productivity and memory SEARCH queries (read-only)",
-    },
-    "home_automation": {
-        "examples": [
-            "What's the temperature inside?",
-            "Are any lights on?",
-            "Check the status of my servers",
-            "Is the garage door open?",
-            "What devices are connected?",
-        ],
-        "weight": 0.10,
-        "description": "Smart home and IoT queries",
     },
     "general": {
         "examples": [
@@ -89,19 +129,30 @@ QUERY_CATEGORIES = {
             "Who invented the telephone?",
             "What's a good book recommendation?",
         ],
-        "weight": 0.10,
+        "weight": 0.05,
         "description": "General knowledge and trivia",
     },
     "media": {
         "examples": [
-            "Play some jazz music",
-            "What's trending on Netflix?",
-            "Play upbeat pop songs from the 2010s",
-            "What's a good mystery movie to watch?",
-            "Recommend a podcast about technology",
+            "What's new on Netflix this weekend?",
+            "What's coming to Hulu this month?",
+            "What sci-fi shows are trending on Apple TV Plus right now?",
+            "What new documentaries are on Max this week?",
+            "What are the biggest streaming releases this weekend?",
         ],
-        "weight": 0.15,  # Increased - good for testing Spotify
-        "description": "Media playback and recommendations (Spotify, Netflix, etc.)",
+        "weight": 0.10,
+        "description": "Streaming-release and entertainment lookup questions (no playback or creation actions)",
+    },
+    "system_status": {
+        "examples": [
+            "How much RAM is the machine using right now?",
+            "What's the CPU usage at the moment?",
+            "Any disk space issues I should know about?",
+            "How long has this system been up?",
+            "Show me the busiest processes right now.",
+        ],
+        "weight": 0.10,
+        "description": "Read-only local system status and health checks",
     },
 }
 
@@ -116,7 +167,6 @@ EXCLUDED_CATEGORIES = [
 # Categories to SKIP during self-play
 # Edit this list based on your setup
 DISABLED_CATEGORIES = [
-    "home_automation",  # No smart home devices
     "coding",           # Risk of triggering opencode builds - use --categories to re-enable
     # "productivity",   # Uncomment if no calendar integration
     # "media",          # Uncomment if no media tools  
@@ -133,6 +183,7 @@ class QueryResult:
     duration_ms: float
     ok: bool
     error: str | None = None
+    feedback: dict[str, Any] | None = None
 
 
 @dataclass
@@ -177,6 +228,62 @@ class SelfPlayEngine:
         self.project_root = Path(__file__).parent.parent
         self.logs_dir = self.project_root / "logs" / "self-play"
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+        self.excluded_tools = self._get_excluded_tools()
+
+    def _get_excluded_tools(self) -> list[str]:
+        """Get the default self-play tool denylist plus any dangerous tools."""
+        excluded = set(DEFAULT_EXCLUDED_TOOLS)
+
+        extra_excluded = get_config_value("SELF_PLAY_EXCLUDED_TOOLS", "")
+        if extra_excluded:
+            excluded.update(t.strip() for t in extra_excluded.split(",") if t.strip())
+
+        try:
+            from tool_schema import ToolRegistry
+
+            mcp_config = str(self.project_root / "config" / "mcp-servers.json")
+            registry = ToolRegistry(str(self.project_root / "skills"), mcp_config)
+            for tool_name in registry.list_tools():
+                tool = registry.get_tool(tool_name)
+                if tool and tool.permissions.get("dangerous", False):
+                    excluded.add(tool_name)
+        except Exception:
+            # Best effort only - self-play should still run even if registry init fails here.
+            pass
+
+        return sorted(excluded)
+
+    def _is_safe_query(self, query: str) -> bool:
+        """Heuristic filter to keep self-play read-mostly and avoid real actions."""
+        q = (query or "").strip().lower()
+        if not q:
+            return False
+
+        if q.startswith(UNSAFE_QUERY_PREFIXES):
+            return False
+
+        blocked_fragments = [
+            " on spotify",
+            "send an email",
+            "send me an email",
+            "call my",
+            "call ",
+            "text ",
+            "create a reminder",
+            "set a reminder",
+            "schedule a task",
+            "save this",
+            "remember this",
+            "open canvas",
+            "make a canvas",
+            "print this",
+            "generate an image",
+            "generate a video",
+            "generate music",
+            "build an app",
+            "write code",
+        ]
+        return not any(fragment in q for fragment in blocked_fragments)
         
     def generate_queries(self, num_queries: int, categories: list[str] | None = None) -> list[dict[str, str]]:
         """
@@ -243,8 +350,12 @@ Rules:
    - NO printing or PDF generation
    - NO saving or remembering things
 4. ONLY include READ-ONLY queries: searching, asking questions, playing media, lookups
+4. ONLY include READ-ONLY queries: searching, asking questions, recommendations, comparisons, lookups
+   - Do NOT ask Jarvis to actually play, call, send, schedule, print, save, generate, or create anything
 5. Keep them reasonable - things a real person would ask
-6. Output ONLY the queries, one per line, no numbering or bullets
+6. Prefer objective, verifiable questions over subjective taste-based prompts
+7. For media, prefer release/date/trending lookups over "recommend something like X"
+8. Output ONLY the queries, one per line, no numbering or bullets
 
 Generate {count} queries:"""
 
@@ -265,7 +376,7 @@ Generate {count} queries:"""
                         line = line[1:].strip()
                     if line and line[0].isdigit() and "." in line[:3]:
                         line = line.split(".", 1)[1].strip()
-                    if line:
+                    if line and self._is_safe_query(line):
                         all_queries.append({
                             "query": line,
                             "category": category,
@@ -275,17 +386,35 @@ Generate {count} queries:"""
                 # Fallback to examples if LLM fails
                 print(f"Warning: LLM query generation failed for {category}: {e}", file=sys.stderr)
                 for i in range(min(count, len(examples))):
-                    all_queries.append({
-                        "query": examples[i],
-                        "category": category,
-                    })
+                    if self._is_safe_query(examples[i]):
+                        all_queries.append({
+                            "query": examples[i],
+                            "category": category,
+                        })
         
+        # Backfill if filtering removed unsafe queries.
+        if len(all_queries) < num_queries:
+            safe_examples = []
+            for category, cat_info in QUERY_CATEGORIES.items():
+                if category in categories:
+                    safe_examples.extend(
+                        {"query": ex, "category": category}
+                        for ex in cat_info["examples"]
+                        if self._is_safe_query(ex)
+                    )
+            random.shuffle(safe_examples)
+            for item in safe_examples:
+                if len(all_queries) >= num_queries:
+                    break
+                if item not in all_queries:
+                    all_queries.append(item)
+
         # Shuffle to mix categories
         random.shuffle(all_queries)
         
         return all_queries[:num_queries]
     
-    def execute_query(self, query: str, category: str, silent: bool = True) -> QueryResult:
+    def execute_query(self, query: str, category: str, silent: bool = True, collect_feedback: bool = True) -> QueryResult:
         """
         Execute a single query through the orchestrator.
         
@@ -305,11 +434,16 @@ Generate {count} queries:"""
             # Run orchestrator with --json flag
             env = os.environ.copy()
             env["JARVIS_SELF_PLAY"] = "true"  # Flag for tracking
+            env["JARVIS_SELF_PLAY_EXCLUDED_TOOLS"] = ",".join(self.excluded_tools)
             if silent:
                 env["JARVIS_TTS_DISABLED"] = "true"
             
+            cmd = [sys.executable, str(orchestrator_path), self.mode, query, "--json"]
+            if collect_feedback:
+                cmd.append("--feedback")
+
             result = subprocess.run(
-                [sys.executable, str(orchestrator_path), self.mode, query, "--json"],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=180,  # 3 minute timeout
@@ -329,6 +463,7 @@ Generate {count} queries:"""
                     duration_ms=duration_ms,
                     ok=response_data.get("ok", False),
                     error=response_data.get("error"),
+                    feedback=response_data.get("feedback"),
                 )
             except json.JSONDecodeError:
                 return QueryResult(
@@ -339,6 +474,7 @@ Generate {count} queries:"""
                     duration_ms=duration_ms,
                     ok=False,
                     error=f"JSON parse error: {result.stderr[:200] if result.stderr else 'no stderr'}",
+                    feedback=None,
                 )
                 
         except subprocess.TimeoutExpired:
@@ -351,6 +487,7 @@ Generate {count} queries:"""
                 duration_ms=duration_ms,
                 ok=False,
                 error="Timeout after 180 seconds",
+                feedback=None,
             )
         except Exception as e:
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
@@ -362,110 +499,8 @@ Generate {count} queries:"""
                 duration_ms=duration_ms,
                 ok=False,
                 error=str(e),
+                feedback=None,
             )
-    
-    def collect_feedback(self, query_result: QueryResult) -> FeedbackResult | None:
-        """
-        Collect feedback on a query result using the feedback system.
-        
-        Args:
-            query_result: The result to grade
-            
-        Returns:
-            FeedbackResult or None if feedback collection fails
-        """
-        try:
-            from feedback import FeedbackCollector
-            
-            collector = FeedbackCollector(mode=self.mode)
-            
-            # Prepare the result dict for feedback
-            result_dict = {
-                "ok": query_result.ok,
-                "speech": query_result.response,
-                "tools_used": query_result.tools_used,
-            }
-            
-            # Get response style for context
-            response_style = get_config_value("JARVIS_RESPONSE_STYLE", "casual")
-            
-            # Check for native search capabilities
-            xai_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
-            anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
-            llm_provider = get_config_value("LLM_PROVIDER", "anthropic")
-            
-            native_search_info = ""
-            if llm_provider == "xai" and xai_search:
-                native_search_info = "\nNative Search: ENABLED (xAI Grok live search - can answer with real-time data without tools)"
-            elif llm_provider == "anthropic" and anthropic_search:
-                native_search_info = "\nNative Search: ENABLED (Anthropic web search - can answer with real-time data without tools)"
-            else:
-                native_search_info = "\nNative Search: DISABLED (needs tools for real-time data)"
-            
-            # Build config context to help feedback understand the style
-            config_context = f"""Response Style: {response_style}
-- casual: Brief voice output (~50 words), no URLs for speech
-- auto: Adapts based on query complexity
-- detailed: Full output for display/reading, markdown and URLs allowed{native_search_info}"""
-            
-            # Get tool descriptions for feedback context
-            tool_descriptions = {}
-            try:
-                # Get ALL available tools for context
-                from tool_schema import ToolRegistry
-                registry = ToolRegistry(mode=self.mode)
-                all_tools = registry.get_all_tools()
-                
-                # Include tools used AND relevant tools based on query keywords
-                relevant_tools = set(query_result.tools_used or [])
-                query_lower = query_result.query.lower()
-                
-                # Add keyword-based relevant tools
-                keyword_map = {
-                    ("time",): ["get_time"],
-                    ("weather",): ["weather"],
-                    ("bitcoin", "crypto", "price"): ["crypto_price"],
-                    ("search", "web", "google", "look up"): ["mcp_brave_search_brave_web_search"],
-                    ("music", "play", "spotify", "song"): ["spotify"],
-                    ("email", "send", "message"): ["send_email"],
-                    ("memory", "remember", "recall"): ["search_memory", "semantic_recall", "remember"],
-                }
-                
-                for keywords, tools in keyword_map.items():
-                    if any(k in query_lower for k in keywords):
-                        relevant_tools.update(tools)
-                
-                # Get descriptions for relevant tools
-                for tool in all_tools:
-                    if tool.name in relevant_tools:
-                        tool_descriptions[tool.name] = tool.description
-                        
-            except Exception:
-                # Fallback - still collect feedback without tool descriptions
-                pass
-            
-            # Run feedback collection with proper parameters
-            feedback_data = collector.collect(
-                query=query_result.query,
-                result=result_dict,
-                tools_used=query_result.tools_used,
-                tool_descriptions=tool_descriptions,
-                config_context=config_context,
-                session_id=f"self_play_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            )
-            
-            if feedback_data:
-                return FeedbackResult(
-                    rating=feedback_data.get("rating", 0),
-                    summary=feedback_data.get("summary", ""),
-                    tool_ratings=feedback_data.get("tool_ratings", {}),
-                    issues=feedback_data.get("issues", []),
-                )
-            return None
-            
-        except Exception as e:
-            print(f"Warning: Feedback collection failed: {e}", file=sys.stderr)
-            return None
     
     def analyze_tool_gaps(self, results: list[dict[str, Any]]) -> list[ToolGap]:
         """
@@ -538,7 +573,12 @@ Generate {count} queries:"""
                 progress_callback(i + 1, len(queries), q["query"])
             
             # Execute
-            query_result = self.execute_query(q["query"], q["category"], silent=silent)
+            query_result = self.execute_query(
+                q["query"],
+                q["category"],
+                silent=silent,
+                collect_feedback=collect_feedback,
+            )
             
             result_data = {
                 "query": q["query"],
@@ -550,17 +590,12 @@ Generate {count} queries:"""
                 "error": query_result.error,
             }
             
-            # Collect feedback if enabled
-            if collect_feedback and query_result.ok:
-                feedback = self.collect_feedback(query_result)
-                if feedback:
-                    result_data["feedback"] = {
-                        "rating": feedback.rating,
-                        "summary": feedback.summary,
-                        "tool_ratings": feedback.tool_ratings,
-                        "issues": feedback.issues,
-                    }
-                    ratings.append(feedback.rating)
+            # Orchestrator-native feedback (keeps self-play aligned with current CLI behavior)
+            if collect_feedback and query_result.ok and query_result.feedback:
+                result_data["feedback"] = query_result.feedback
+                rating = query_result.feedback.get("rating")
+                if rating is not None:
+                    ratings.append(rating)
             
             results.append(result_data)
             
@@ -617,7 +652,7 @@ Generate {count} queries:"""
             return create_provider(
                 "anthropic",
                 api_key=get_config_value("ANTHROPIC_API_KEY"),
-                model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929"),
+                model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
             )
         else:
             return create_provider(
