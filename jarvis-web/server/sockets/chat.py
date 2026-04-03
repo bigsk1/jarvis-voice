@@ -2476,6 +2476,8 @@ Previous structured data:
             'send_email': ['to', 'subject', 'status'],
             'api_call': ['url', 'method', 'status_code'],
             'serpapi_search': ['engine', 'query', 'asin', 'results_count'],
+            'serpapi_maps_search': ['engine', 'query', 'results_count'],
+            'serpapi_hotel_search': ['engine', 'query', 'destination', 'check_in_date', 'check_out_date', 'results_count'],
             'spotify': ['name', 'artist'],
             'docker_control': ['container', 'status'],
             'ssh_remote': ['host'],

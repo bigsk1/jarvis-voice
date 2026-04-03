@@ -763,6 +763,8 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `crawl_url` - **Web scraping**: Crawl4AI to extract markdown from any webpage (stealth mode, JS wait)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 - `serpapi_search` - **SerpApi search**: Engine-based search (Amazon listings, Amazon product ASIN lookup, and other SerpApi engines)
+- `serpapi_maps_search` - **SerpApi Maps**: Google Maps place and local business search with normalized address/rating/contact fields
+- `serpapi_hotel_search` - **SerpApi Hotels**: Google Hotels search with check-in/out, guest, price, and rating filters
 
 **Artifact & Output Tools:**
 - `convert_file` - **Local media conversion**: ImageMagick, FFmpeg, Potrace

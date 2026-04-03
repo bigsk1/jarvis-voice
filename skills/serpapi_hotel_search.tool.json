@@ -1,0 +1,130 @@
+{
+  "enabled": true,
+  "name": "serpapi_hotel_search",
+  "description": "Search hotel options through SerpApi Google Hotels with normalized hotel fields like nightly price, total price, rating, class, and amenities.",
+  "script": "serpapi_hotel_search.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "destination": {
+        "type": "string",
+        "description": "Destination or city name. Used when query is omitted."
+      },
+      "query": {
+        "type": "string",
+        "description": "Full Google Hotels query. If omitted, destination is used."
+      },
+      "check_in_date": {
+        "type": "string",
+        "description": "Required check-in date in YYYY-MM-DD format."
+      },
+      "check_out_date": {
+        "type": "string",
+        "description": "Required check-out date in YYYY-MM-DD format."
+      },
+      "adults": {
+        "type": "integer",
+        "description": "Number of adults (default: 2)."
+      },
+      "children": {
+        "type": "integer",
+        "description": "Number of children (default: 0)."
+      },
+      "children_ages": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "description": "Optional child ages. Count should match children."
+      },
+      "currency": {
+        "type": "string",
+        "description": "Currency code for price fields (default: USD)."
+      },
+      "hl": {
+        "type": "string",
+        "description": "Language code for Google Hotels results (default: en)."
+      },
+      "gl": {
+        "type": "string",
+        "description": "Country code for Google Hotels results (default: us)."
+      },
+      "sort_by": {
+        "type": "integer",
+        "description": "Optional sort mode. Examples: 3 lowest price, 8 highest rating, 13 most reviewed."
+      },
+      "min_price": {
+        "type": "integer",
+        "description": "Optional minimum price filter."
+      },
+      "max_price": {
+        "type": "integer",
+        "description": "Optional maximum price filter."
+      },
+      "rating": {
+        "type": "integer",
+        "description": "Optional Google Hotels rating filter. Examples: 7 for 3.5+, 8 for 4.0+, 9 for 4.5+."
+      },
+      "hotel_class": {
+        "type": "string",
+        "description": "Optional hotel class filter. Single value or comma-separated values like 3 or 3,4,5."
+      },
+      "property_types": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "description": "Optional property type IDs."
+      },
+      "amenities": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "description": "Optional amenity IDs."
+      },
+      "brands": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "description": "Optional hotel brand IDs."
+      },
+      "free_cancellation": {
+        "type": "boolean",
+        "description": "If true, filter to properties with free cancellation."
+      },
+      "device": {
+        "type": "string",
+        "description": "desktop, mobile, or tablet. Default: desktop."
+      },
+      "num_results": {
+        "type": "integer",
+        "description": "How many normalized hotel results to return (1-10, default: 5)."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "If true, bypass SerpApi cache for fresh fetch."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Additional engine-specific query parameters passed through to SerpApi."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "If true, include full raw SerpApi payload in data.raw."
+      }
+    },
+    "required": [
+      "check_in_date",
+      "check_out_date"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

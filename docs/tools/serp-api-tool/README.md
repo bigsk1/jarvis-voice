@@ -1,13 +1,23 @@
 # SerpApi Search Tool
 
-Use `serpapi_search` to run web and marketplace lookups through SerpApi from Jarvis.
+Use the SerpApi tools to run web, marketplace, maps, and travel lookups through SerpApi from Jarvis.
 
-This tool is generic by design. You can use it for Amazon (`amazon`, `amazon_product`) and other SerpApi engines later.
+The base tool is generic by design, and Jarvis now also includes thin SerpApi wrappers for common domains:
+
+- `serpapi_search` for generic engine-based search
+- `serpapi_maps_search` for Google Maps place and local business lookups
+- `serpapi_hotel_search` for Google Hotels searches
 
 ## Files
 
-- Tool script: `skills/serpapi_search.py`
-- Tool definition: `skills/serpapi_search.tool.json`
+- Shared client: `lib/serpapi_client.py`
+- Generic tool: `skills/serpapi_search.py`
+- Maps wrapper: `skills/serpapi_maps_search.py`
+- Hotels wrapper: `skills/serpapi_hotel_search.py`
+- Tool definitions:
+  - `skills/serpapi_search.tool.json`
+  - `skills/serpapi_maps_search.tool.json`
+  - `skills/serpapi_hotel_search.tool.json`
 
 ## Setup
 
@@ -90,6 +100,30 @@ Standard tool contract:
 {
   "engine": "google",
   "query": "best usb c hub 2026",
+  "num_results": 5
+}
+```
+
+### Maps place search
+
+```json
+{
+  "query": "coffee shops in Austin",
+  "hl": "en",
+  "num_results": 5
+}
+```
+
+### Hotel search
+
+```json
+{
+  "destination": "San Diego",
+  "check_in_date": "2026-05-10",
+  "check_out_date": "2026-05-12",
+  "adults": 2,
+  "max_price": 300,
+  "rating": 8,
   "num_results": 5
 }
 ```
