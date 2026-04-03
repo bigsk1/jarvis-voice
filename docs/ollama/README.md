@@ -344,6 +344,203 @@ OLLAMA_MODEL=qwen3.5:latest                 # local model
 # OLLAMA_CLOUD_MODEL not needed in local mode
 ```
 
+### Phase 6: Scripts, tests, and CLI tools
+
+Many `bin/` scripts and `tests/` files use `--local`/`--cloud` flags and
+hardcode `LLM_PROVIDER='ollama'` to mean local mode.  These need updating so
+that Ollama-in-cloud-mode doesn't trip the wrong code path.
+
+**Category A — Scripts that hardcode `LLM_PROVIDER='ollama'` for local mode:**
+
+These set the env var directly.  After the refactor, they should set
+`JARVIS_MODE=local` instead (or in addition), and let `resolve_mode()` handle
+provider selection.
+
+```
+bin/jarvis-api              # export LLM_PROVIDER="ollama" when --local
+bin/jarvis-services         # export LLM_PROVIDER="ollama" when --local
+bin/sync-memory-db.py       # os.environ['LLM_PROVIDER'] = 'ollama'
+bin/sync-intelligence-db.py # os.environ['LLM_PROVIDER'] = 'ollama'
+bin/setup-prompt-versions.py # mode = 'local' if LLM_PROVIDER == 'ollama'
+tests/test-db-schema.sh     # os.environ['LLM_PROVIDER'] = 'ollama'
+tests/test-db-schema-simple.py # os.environ['LLM_PROVIDER'] = 'ollama'
+```
+
+**Pattern:**
+```bash
+# Before (bin/jarvis-api)
+export LLM_PROVIDER="ollama"
+
+# After
+export JARVIS_MODE="local"
+export LLM_PROVIDER="ollama"  # keep for backward compat
+```
+
+```python
+# Before (bin/sync-memory-db.py)
+os.environ['LLM_PROVIDER'] = 'ollama'
+
+# After
+os.environ['JARVIS_MODE'] = 'local'
+os.environ['LLM_PROVIDER'] = 'ollama'
+```
+
+**Category B — Scripts that derive mode from `--local`/`--cloud` flags:**
+
+These already have the right mode concept; they just need to also set
+`JARVIS_MODE` so downstream code uses `resolve_mode()` correctly.
+
+```
+bin/jarvis-self-play        # --mode cloud|local
+bin/measure-baseline-tokens # mode arg
+bin/validate-system-prompt  # --mode cloud|local
+bin/evolve-prompts          # --mode cloud|local
+bin/run-intelligence-maintenance.py  # --mode cloud|local
+bin/check-embeddings-health.py       # mode arg
+bin/debug_tool_rag.py       # mode arg
+tests/comprehensive_test.py # cloud|local|both
+tests/test_tool_similarity.py # --mode cloud|local
+```
+
+**Pattern:**
+```python
+# Add near the top of main() after parsing args
+os.environ['JARVIS_MODE'] = args.mode  # propagate to resolve_mode()
+```
+
+**Category C — Bash scripts that read mode from flags (no Python):**
+
+```
+bin/jarvis-api              # --local flag
+bin/jarvis-services         # --local flag
+bin/watchdog-services.sh    # reads logs/services_mode
+bin/question-local.sh       # hardcoded local-only
+bin/setup-opencode-config.sh # hardcoded local-only
+```
+
+These only need `JARVIS_MODE` exported alongside the existing `MODE` variable.
+`question-local.sh` and `setup-opencode-config.sh` are inherently local-only
+and don't need changes.
+
+**Category D — Test scripts:**
+
+```
+tests/integration/compare-models.sh    # edits cloud.env directly (sed)
+tests/integration/test-all-tools-local.sh # local-only
+tests/integration/test-cloud-comprehensive.sh # cloud-only
+tests/test-api-endpoints.sh            # assumes cloud
+tests/test-mode.sh                     # documents --local flag
+tests/README.md                        # documentation only
+```
+
+`compare-models.sh` edits `cloud.env` with `sed` to swap providers — this
+is the most fragile and would need to understand `OLLAMA_CLOUD_MODEL` if
+comparing cloud ollama models.  Low priority.
+
+**Category E — Dashboard commands (bin/jarvis-dashboard):**
+
+The dashboard has hardcoded command strings like
+`./bin/jarvis-self-play --queries 5 --mode cloud`.  These don't need code
+changes — `--mode` already works.  But after Phase 4, we might want to add
+dashboard commands for cloud-ollama testing.
+
+**Estimated scope:** ~12 files need a one-liner `os.environ['JARVIS_MODE']`
+addition.  ~5 bash scripts need `export JARVIS_MODE="$MODE"`.  All are
+backward-compatible additions.
+
+### Phase 7: FastAPI service and Web UIs
+
+The FastAPI service (`api/`) and all three web UIs (`jarvis-web`,
+`jarvis-memory`, `jarvis-intelligence`) accept `mode` as a parameter on
+nearly every endpoint.  They mostly pass mode through correctly already,
+but several spots hardcode `LLM_PROVIDER='ollama'` when `mode == 'local'`.
+
+**FastAPI (`api/`) — mode derivation (ollama -> local):**
+
+These derive mode from `LLM_PROVIDER` or hardcode `ollama` for local.
+After the refactor, they should use `resolve_mode()` or read `JARVIS_MODE`.
+
+```
+api/server.py:422                 mode = 'local' if LLM_PROVIDER == 'ollama'
+api/managers/alert_manager.py:38  mode = 'local' if provider == 'ollama'
+api/managers/scheduled_task_manager.py:33  mode = 'local' if provider == 'ollama'
+api/routes/query.py:66            os.environ['LLM_PROVIDER'] = 'ollama' (for local)
+api/routes/workflows.py:272       os.environ['LLM_PROVIDER'] = 'ollama' (for local)
+api/routes/voice.py:135           mode = 'local' if LLM_PROVIDER == 'ollama'
+```
+
+**FastAPI — provider creation with ollama defaults:**
+
+```
+api/routes/api.py:162      LLM_PROVIDER default: 'ollama' if local
+api/routes/api.py:206-207  CG eval provider/model defaults: 'ollama' if local
+api/routes/api.py:277-282  fetch_ollama_models with localhost default
+api/routes/api.py:1847-1851  create_provider('ollama') with OLLAMA_MODEL
+```
+
+These need the `OLLAMA_CLOUD_MODEL` awareness from Phase 4 — when
+`resolve_mode() == 'cloud'` and the provider is ollama, read
+`OLLAMA_CLOUD_MODEL` instead of `OLLAMA_MODEL`.
+
+**Jarvis Web UI (`jarvis-web/server/`):**
+
+The main web UI is the most complex.  Key areas:
+
+```
+sockets/chat.py:87          CG eval provider default: 'ollama' if local
+sockets/chat.py:479         eval fallback: 'ollama' if local
+sockets/chat.py:516-520     OllamaProvider with OLLAMA_MODEL / localhost
+sockets/chat.py:1826        mode from session, default 'cloud'
+sockets/chat.py:3802-3803   vision routing: local -> _vision_ollama()
+sockets/chat.py:3818-3819   OLLAMA_BASE_URL / OLLAMA_VISION_MODEL
+services/settings_manager.py:184   env_provider default: 'ollama' if local
+services/settings_manager.py:366   eval options: ['ollama'] only in local
+services/settings_manager.py:552   rejects non-ollama in local mode
+```
+
+The settings manager is the biggest gate — it actively prevents selecting
+ollama in cloud mode (line 366) and rejects non-ollama providers in local
+mode (line 552).  These are the Phase 3 changes.
+
+The vision routing (`chat.py:3802`) is fine as-is — cloud Ollama models
+with vision support would still go through `_vision_ollama()` since it's
+the same API.  Just needs the right `OLLAMA_BASE_URL`.
+
+**Jarvis Memory UI (`jarvis-memory/`):**
+
+Passes mode through from query params.  One hardcoded spot:
+
+```
+jarvis-memory/server/routes/intel.py:235  env['LLM_PROVIDER'] = 'ollama' (for local)
+```
+
+The rest uses `get_mode()` helpers that return `request.args.get('mode', 'cloud')`
+and pass it to `MemoryService(mode)` which selects the right database path.
+These are clean and don't need changes.
+
+**Jarvis Intelligence UI (`jarvis-intelligence/`):**
+
+Same pattern as Memory UI — mode comes from query params, passed to
+`IntelligenceService(mode)`.  No ollama-specific logic.  No changes needed.
+
+**Jarvis Canvas (`jarvis-canvas/`):**
+
+Minimal — `create_app(mode)` and `run_server(mode)`.  No ollama references.
+No changes needed.
+
+**FastAPI models (`api/models/`):**
+
+Request/response models have `mode: str = Field("cloud")` defaults.
+These are fine — they accept mode as a parameter, don't derive it from
+provider names.  No changes needed.
+
+**Estimated scope for Phase 7:**
+- 6 files in `api/` need `resolve_mode()` replacement
+- 4 files in `api/` need `OLLAMA_CLOUD_MODEL` awareness
+- 3 files in `jarvis-web/server/` need Phase 3-4 changes (already listed)
+- 1 file in `jarvis-memory/` needs `resolve_mode()`
+- 0 files in `jarvis-intelligence/`, `jarvis-canvas/`
+
 ## Risk Assessment
 
 | Phase | Risk | Mitigation |
@@ -353,6 +550,8 @@ OLLAMA_MODEL=qwen3.5:latest                 # local model
 | 3 | Medium | UI changes; test both modes in web UI after |
 | 4 | Medium | Multiple create_provider callsites; grep to verify all caught |
 | 5 | Low | Context/limit tuning, easy to test |
+| 6 | Low | Additive `JARVIS_MODE` export alongside existing vars; backward compat |
+| 7 | Medium | FastAPI + Web UIs; test all services in both modes after |
 
 ## What NOT to Do
 
@@ -383,10 +582,36 @@ After each phase, confirm:
 # Web UI: Completion Guard eval fires and parses (check server logs)
 ```
 
-After Phase 4, also test:
+After Phase 7, also test:
+
+```bash
+# FastAPI service (both modes)
+curl -s http://localhost:8000/api/v1/query -d '{"query":"ping","mode":"cloud"}' | jq .ok
+curl -s http://localhost:8000/api/v1/query -d '{"query":"ping","mode":"local"}' | jq .ok
+
+# Memory UI
+curl -s http://localhost:5002/api/stats?mode=cloud | jq .stats
+curl -s http://localhost:5002/api/stats?mode=local | jq .stats
+
+# Web UI mode switch (in browser, switch cloud <-> local, verify settings reload)
+# Jarvis Dashboard: run a few commands from each category
+```
+
+After Phase 4+6+7, also test:
 
 ```bash
 # Cloud mode with ollama as primary LLM
 # (set LLM_PROVIDER=ollama, OLLAMA_CLOUD_MODEL=minimax-m2.5:cloud in cloud.env)
 ./orchestrator/orchestrator_v2.py cloud "What is 2 plus 2?" --json
+
+# Scripts still work in both modes
+./bin/jarvis-api --local     # should load local.env, use local ollama
+./bin/jarvis-api             # should load cloud.env, use cloud provider
+./bin/jarvis-self-play --queries 3 --mode cloud
+./bin/jarvis-self-play --queries 3 --mode local
+
+# Sync scripts
+./bin/sync-memory-db.py --from cloud --to local
+./bin/check-embeddings-health.py cloud
+./bin/check-embeddings-health.py local
 ```
