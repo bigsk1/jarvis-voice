@@ -200,6 +200,11 @@ def get_system_config():
             'JARVIS_RESPONSE_STYLE': get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto'),
             'JARVIS_QA_WORD_LIMIT': get_jarvis_setting('JARVIS_QA_WORD_LIMIT', '75'),
             'JARVIS_MULTI_TURN_WORD_LIMIT': get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', '50'),
+            'JARVIS_COMPLETION_GUARD_ENABLED': get_jarvis_setting('JARVIS_COMPLETION_GUARD_ENABLED', 'false'),
+            'JARVIS_COMPLETION_GUARD_MODE': get_jarvis_setting('JARVIS_COMPLETION_GUARD_MODE', 'manual'),
+            'JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD': get_jarvis_setting('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70'),
+            'JARVIS_COMPLETION_GUARD_EVAL_PROVIDER': get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'ollama' if mode == 'local' else 'openai'),
+            'JARVIS_COMPLETION_GUARD_EVAL_MODEL': get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_MODEL', get_jarvis_setting('OLLAMA_MODEL', 'qwen3.5:latest') if mode == 'local' else 'gpt-5.4-nano'),
             
             # Feedback/Evolution System
             'FEEDBACK_RANDOM_ENABLED': get_jarvis_setting('FEEDBACK_RANDOM_ENABLED', 'false'),
@@ -229,7 +234,7 @@ def update_web_settings():
         'completion_guard_enabled', 'completion_guard_mode',
         'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',
         'completion_guard_include_qa', 'completion_guard_include_tool_tasks',
-        'completion_guard_auto_threshold',
+        'completion_guard_auto_threshold', 'completion_guard_eval_provider', 'completion_guard_eval_model',
         'tool_similarity', 'memory_similarity', 'tts_enabled'
     ]):
         success = settings.save_web_overrides(data)
@@ -267,9 +272,19 @@ def reset_settings():
 @api_bp.route('/settings/models/<provider>', methods=['GET'])
 def get_provider_models(provider):
     """Get available models for a provider"""
-    from ..services.settings_manager import PROVIDER_MODELS
-    
-    models = PROVIDER_MODELS.get(provider, [])
+    mode = request.args.get('mode') or get_web_setting('defaults.mode', 'cloud')
+
+    if provider == 'ollama':
+        from ..services.settings_manager import fetch_ollama_models
+        from ..config import load_jarvis_config, get_jarvis_setting
+        load_jarvis_config(mode)
+        models = fetch_ollama_models(
+            get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434'),
+            mode=mode
+        )
+    else:
+        from ..services.settings_manager import PROVIDER_MODELS
+        models = PROVIDER_MODELS.get(provider, [])
     return jsonify({
         'ok': True,
         'provider': provider,

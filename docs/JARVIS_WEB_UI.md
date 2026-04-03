@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.9)  
-> **Last Updated**: April 2, 2026
+> **Status**: MVP Complete (v2.10)  
+> **Last Updated**: April 3, 2026
 
 ---
 
@@ -160,6 +160,8 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Corrected-path learning** | ✅ | Repaired answers, tools, and tool results are folded back into the original experience for reflections |
 | **Feedback-aware settlement** | ✅ | Final web feedback runs on the settled Completion Guard outcome and includes CG metadata in grading |
 | **Provider-split auto evaluator** | ✅ | Auto eval can run on a different provider/model than the main chat response |
+| **Eval provider/model overrides** | ✅ | AI Config exposes per-mode Completion Guard eval provider/model controls |
+| **Ollama cloud judge support** | ✅ | Cloud Ollama eval uses cloud-only model lists and defensive JSON parsing/budgeting for auto eval |
 
 ---
 
@@ -1493,4 +1495,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.6: Completion Guard - inline completion card, one-pass manual repair loop, tool-aware exclusions, repair tickets, and export metadata - March 30, 2026*  
 *v2.7: Completion Guard auto mode - background evaluator, threshold override, persisted accept state, and intelligence-layer outcome tracking - March 30, 2026*  
 *v2.8: Completion Guard learning model - repair cancel support, structured learning on the original experience, and corrected-path reflection context - March 30, 2026*  
-*v2.9: Completion Guard tighten-only path, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback - April 2, 2026*
+*v2.9: Completion Guard tighten-only path, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback - April 2, 2026*  
+*v2.10: Completion Guard eval provider/model overrides, cloud/local Ollama model separation in AI Config, and Ollama cloud auto-eval JSON compatibility fixes - April 3, 2026*

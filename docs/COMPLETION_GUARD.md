@@ -87,7 +87,7 @@ This is a better fit than "self-repair tool" because it is not just a tool call.
 
 ## Current Status
 
-As of April 2, 2026, Completion Guard is implemented and actively in use in Jarvis Web, with a clearer distinction between:
+As of April 3, 2026, Completion Guard is implemented and actively in use in Jarvis Web, with a clearer distinction between:
 
 - accepted answers
 - wording-only tightening
@@ -124,6 +124,11 @@ Implemented now:
 - Feedback prompts now receive Completion Guard metadata and the async web feedback path updates the linked experience record
 - Rewrite-only tighten passes do not fold a corrected path back into the original experience as if they were a true operational fix
 - The auto evaluator can use a different provider/model than the main chat model; by default it follows `JARVIS_COMPLETION_GUARD_EVAL_PROVIDER` then `FEEDBACK_PROVIDER`
+- Jarvis Web AI Config now exposes per-mode Completion Guard eval provider/model overrides
+- Ollama cloud judge models are now handled more defensively for auto eval:
+  - cloud models use plain JSON mode instead of full schema mode
+  - cloud JSON eval calls get a larger `num_predict` budget so internal reasoning does not consume the whole response budget
+  - if a cloud model still returns empty `message.content`, the provider can fall back to `message.thinking` as a compatibility safety net
 
 Not implemented yet:
 
@@ -291,6 +296,36 @@ When feedback finally runs, it receives Completion Guard context so it can:
 - Completion Guard saw minor scope, hedging, or wording cleanup opportunities
 - No visible repaired answer should be surfaced just for that
 - This should not be treated as a new operational lesson by itself
+- In auto mode this still means the evaluator ran, but it does not cross into a user-visible repair flow
+
+## Evaluator Provider Notes
+
+Completion Guard auto evaluation can run on a different provider/model than the main response model.
+
+Current precedence:
+
+1. `JARVIS_COMPLETION_GUARD_EVAL_PROVIDER` / `JARVIS_COMPLETION_GUARD_EVAL_MODEL`
+2. Web UI per-mode AI Config overrides
+3. `FEEDBACK_PROVIDER`
+4. the main chat provider/model
+
+This lets Jarvis do things like:
+
+- main chat on xAI
+- Completion Guard eval on OpenAI or Ollama
+- feedback grading on a separate provider
+
+### Ollama Cloud Notes
+
+Some Ollama cloud models expose internal reasoning in `message.thinking` and may spend a large portion of the output budget there before producing final content.
+
+What Jarvis does now for Completion Guard eval:
+
+- uses JSON mode for cloud Ollama judge calls
+- increases the output budget so the model still has room to return final JSON
+- keeps `message.thinking` fallback only as a defensive compatibility path, not as the primary design target
+
+The main fix is the larger token budget. The `message.thinking` fallback is there for edge cases and debugging if a cloud model still returns empty `message.content`.
 
 ### `repaired`
 

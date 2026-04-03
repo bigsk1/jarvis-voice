@@ -33,7 +33,9 @@
     "completion_guard_show_ui_prompt": null,
     "completion_guard_include_qa": null,
     "completion_guard_include_tool_tasks": null,
-    "completion_guard_auto_threshold": null
+    "completion_guard_auto_threshold": null,
+    "completion_guard_eval_provider": null,
+    "completion_guard_eval_model": null
   },
   "local": {
     "llm_provider": null,
@@ -49,7 +51,9 @@
     "completion_guard_show_ui_prompt": null,
     "completion_guard_include_qa": null,
     "completion_guard_include_tool_tasks": null,
-    "completion_guard_auto_threshold": null
+    "completion_guard_auto_threshold": null,
+    "completion_guard_eval_provider": null,
+    "completion_guard_eval_model": null
   },
   "conversation": {
     "history_limit": 20,

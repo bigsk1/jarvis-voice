@@ -493,6 +493,29 @@
             </div>
             <div class="setting-group">
               <label class="setting-label">
+                Completion Guard: Eval Provider
+                <span class="setting-default" id="completion-guard-eval-provider-default"></span>
+              </label>
+              <select class="setting-input" id="setting-completion-guard-eval-provider">
+                <option value="">Use env default</option>
+                <option value="xai">xAI (Grok)</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI (GPT)</option>
+                <option value="ollama">Ollama (Local)</option>
+              </select>
+              <span class="setting-desc">LLM used only for Completion Guard auto evaluation. In local mode this stays on Ollama and you can just swap the model.</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Completion Guard: Eval Model
+                <span class="setting-default" id="completion-guard-eval-model-default"></span>
+              </label>
+              <select class="setting-input" id="setting-completion-guard-eval-model">
+                <option value="">Use default for provider</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
                 Completion Guard: Ticket On Fail
                 <span class="setting-default" id="completion-guard-ticket-default"></span>
               </label>
@@ -581,7 +604,7 @@
           <!-- System Config (Read-Only) -->
           <div class="settings-panel" id="settings-system">
             <p class="setting-note">
-              📋 <strong>Read-only</strong> values from <code>cloud.env</code>. Edit the file and restart to change.
+              📋 <strong>Read-only</strong> view of the current mode's env plus the effective runtime values after Web UI overrides are applied.
             </p>
             <div class="config-grid" id="system-config">
               <!-- Populated by JS -->

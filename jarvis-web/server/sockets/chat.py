@@ -8,6 +8,7 @@ import uuid
 import time
 import traceback
 import json
+import ast
 import re
 from difflib import SequenceMatcher
 from datetime import datetime
@@ -61,6 +62,8 @@ class ChatHandler:
         include_qa = mode_overrides.get('completion_guard_include_qa')
         include_tool_tasks = mode_overrides.get('completion_guard_include_tool_tasks')
         auto_threshold = mode_overrides.get('completion_guard_auto_threshold')
+        eval_provider = mode_overrides.get('completion_guard_eval_provider')
+        eval_model = mode_overrides.get('completion_guard_eval_model')
         excluded_tools_raw = (
             get_config_value('COMPLETION_GUARD_EXCLUDED_TOOLS')
             or get_config_value('JARVIS_COMPLETION_GUARD_EXCLUDED_TOOLS')
@@ -81,6 +84,8 @@ class ChatHandler:
             'include_qa': include_qa if include_qa is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_INCLUDE_QA', 'true'), True),
             'include_tool_tasks': include_tool_tasks if include_tool_tasks is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS', 'true'), True),
             'auto_threshold': float(auto_threshold if auto_threshold is not None else get_config_value('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70')),
+            'eval_provider': eval_provider or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'ollama' if mode == 'local' else 'openai'),
+            'eval_model': eval_model or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', ''),
             'excluded_tools': sorted(excluded_tools),
         }
 
@@ -456,6 +461,7 @@ class ChatHandler:
     def _create_completion_guard_eval_provider(
         self,
         mode: str,
+        completion_guard_config: dict | None = None,
         fallback_provider: str | None = None,
         fallback_model: str | None = None
     ):
@@ -466,14 +472,16 @@ class ChatHandler:
         load_config(mode)
 
         provider_name = (
-            get_config_value('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'openai')
+            (completion_guard_config or {}).get('eval_provider')
+            or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'openai')
             or get_config_value('FEEDBACK_PROVIDER', 'openai')
             or fallback_provider
             or ('ollama' if mode == 'local' else get_config_value('LLM_PROVIDER', 'anthropic'))
         ).strip().lower()
 
         model_name = (
-            get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', 'gpt-5.4-nano')
+            (completion_guard_config or {}).get('eval_model')
+            or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', 'gpt-5.4-nano')
             or get_config_value('FEEDBACK_MODEL', 'gpt-5.4-nano')
             or fallback_model
             or ''
@@ -523,16 +531,68 @@ class ChatHandler:
             text = re.sub(r'^```(?:json)?\s*', '', text)
             text = re.sub(r'\s*```$', '', text)
 
+        # Strip reasoning/thinking wrappers that cloud Ollama models may
+        # include even when think=false is requested.
+        text = re.sub(r'<think>.*?</think>\s*', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'<reasoning>.*?</reasoning>\s*', '', text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'<think>[^{]*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'<reasoning>[^{]*', '', text, flags=re.IGNORECASE)
+        text = text.strip()
+
         try:
             data = json.loads(text)
         except Exception:
             match = re.search(r'\{.*\}', text, flags=re.DOTALL)
             if not match:
-                return {}
+                # Fallback for models that answer in prose instead of JSON.
+                text_lower = text.lower()
+                recommended_action = ''
+                if 'tighten_only' in text_lower or 'tighten only' in text_lower:
+                    recommended_action = 'tighten_only'
+                elif 'repair_required' in text_lower or 'repair required' in text_lower:
+                    recommended_action = 'repair_required'
+                elif ('recommended_action' in text_lower or 'recommended action' in text_lower) and 'accept' in text_lower:
+                    recommended_action = 'accept'
+
+                if not recommended_action:
+                    return {}
+
+                task_status = ''
+                for candidate in ('complete', 'partial', 'unsupported', 'failed'):
+                    if candidate in text_lower:
+                        task_status = candidate
+                        break
+
+                risk_level = ''
+                for candidate in ('low', 'medium', 'high', 'critical'):
+                    if candidate in text_lower:
+                        risk_level = candidate
+                        break
+
+                return {
+                    'recommended_action': recommended_action or 'accept',
+                    'task_status': task_status or ('complete' if recommended_action != 'repair_required' else 'partial'),
+                    'risk_level': risk_level or ('medium' if recommended_action == 'repair_required' else 'low'),
+                    'repair_worthwhile': recommended_action == 'repair_required',
+                    'failure_types': [],
+                    'missing_requirements': [],
+                    'unsupported_claims': [],
+                    'contradictions': [],
+                    'evidence_gaps': [],
+                    'reason': text.strip()[:500],
+                    'suggested_note': ''
+                }
             try:
                 data = json.loads(match.group(0))
             except Exception:
-                return {}
+                try:
+                    candidate = match.group(0)
+                    candidate = re.sub(r'\btrue\b', 'True', candidate)
+                    candidate = re.sub(r'\bfalse\b', 'False', candidate)
+                    candidate = re.sub(r'\bnull\b', 'None', candidate)
+                    data = ast.literal_eval(candidate)
+                except Exception:
+                    return {}
 
         if not isinstance(data, dict):
             return {}
@@ -661,6 +721,7 @@ class ChatHandler:
         mode = record.get('mode', 'cloud')
         provider_name, model_name, provider = self._create_completion_guard_eval_provider(
             mode=mode,
+            completion_guard_config=record.get('completion_guard'),
             fallback_provider=record.get('provider'),
             fallback_model=record.get('model')
         )
@@ -740,6 +801,12 @@ Structured result data:
             parsed['raw_response'] = response
             parsed['repair_score'] = repair_score
             parsed['trigger_reasons'] = trigger_reasons
+        else:
+            preview = (response or '')[:1200].replace('\n', '\\n')
+            print(
+                "[COMPLETION_GUARD] Unparseable auto-eval raw response "
+                f"(provider={provider_name}, model={model_name}): {preview}"
+            )
         return parsed
 
     def _update_completion_guard_experience(self, record: dict, status: str, note: str = '', extra: dict | None = None) -> bool:
@@ -1050,6 +1117,17 @@ Returned tool data:
         try:
             evaluation = self._evaluate_completion_guard_auto(record)
             if not evaluation:
+                raw_auto = (record.get('auto_evaluation') or {}).get('raw_response')
+                if raw_auto:
+                    preview = raw_auto[:1200].replace('\n', '\\n')
+                    print(
+                        "[COMPLETION_GUARD] Unparseable auto-eval raw response "
+                        f"(provider={config.get('eval_provider')}, model={config.get('eval_model')}): {preview}"
+                    )
+                print(
+                    "[COMPLETION_GUARD] Auto evaluation returned no parseable result "
+                    f"(provider={config.get('eval_provider')}, model={config.get('eval_model')})"
+                )
                 self._start_feedback_async(
                     session_id,
                     message_id,

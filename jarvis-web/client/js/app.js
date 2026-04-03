@@ -276,10 +276,18 @@ class JarvisApp {
     
     
     // LLM Provider change → update model dropdown
-    document.getElementById('setting-llm-provider')?.addEventListener('change', (e) => {
+    document.getElementById('setting-llm-provider')?.addEventListener('change', async (e) => {
       const provider = e.target.value || this._settingsData?.llm?.provider?.default || 'xai';
+      await this._ensureProviderModelsLoaded(provider);
       this._populateModelDropdown(provider);
       document.getElementById('setting-llm-model').value = '';  // Reset model selection
+    });
+
+    document.getElementById('setting-completion-guard-eval-provider')?.addEventListener('change', async (e) => {
+      const provider = this._getCompletionGuardEvalProviderSelection(e.target.value);
+      await this._ensureProviderModelsLoaded(provider);
+      this._populateCompletionGuardEvalModelDropdown(provider);
+      document.getElementById('setting-completion-guard-eval-model').value = '';
     });
     
     // Reset to defaults button
@@ -977,6 +985,7 @@ class JarvisApp {
       if (data.ok && data.settings) {
         const s = data.settings;
         this._settingsData = s;  // Cache for later use
+        this._configureProviderSelectLabels();
         
         // Populate General settings
         document.getElementById('setting-mode').value = s.mode || 'cloud';
@@ -1001,6 +1010,7 @@ class JarvisApp {
         }
         
         // Populate LLM Model dropdown based on provider
+        await this._ensureProviderModelsLoaded(s.llm?.provider?.value || s.llm?.provider?.default || 'xai');
         this._populateModelDropdown(s.llm?.provider?.value || s.llm?.provider?.default || 'xai');
         const modelSelect = document.getElementById('setting-llm-model');
         modelSelect.value = s.llm?.model?.is_override ? s.llm.model.value : '';
@@ -1096,6 +1106,36 @@ class JarvisApp {
           completionGuardAutoThresholdDefault.textContent = `⚡ override: ${s.completion_guard.auto_threshold.value}`;
         }
 
+        this._configureCompletionGuardEvalProviderSelect();
+        const completionGuardEvalProviderInput = document.getElementById('setting-completion-guard-eval-provider');
+        completionGuardEvalProviderInput.value = s.completion_guard?.eval_provider?.is_override
+          ? s.completion_guard.eval_provider.value
+          : '';
+        const completionGuardEvalProviderDefault = document.getElementById('completion-guard-eval-provider-default');
+        completionGuardEvalProviderDefault.textContent = `(${envFile}: ${s.completion_guard?.eval_provider?.default || (s.mode === 'local' ? 'ollama' : 'openai')})`;
+        completionGuardEvalProviderDefault.className = s.completion_guard?.eval_provider?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.eval_provider?.is_override) {
+          completionGuardEvalProviderDefault.textContent = `⚡ override: ${s.completion_guard.eval_provider.value}`;
+        }
+
+        const completionGuardEvalProvider = this._getCompletionGuardEvalProviderSelection(
+          s.completion_guard?.eval_provider?.value
+            || s.completion_guard?.eval_provider?.default
+            || (s.mode === 'local' ? 'ollama' : 'openai')
+        );
+        await this._ensureProviderModelsLoaded(completionGuardEvalProvider);
+        this._populateCompletionGuardEvalModelDropdown(completionGuardEvalProvider);
+        const completionGuardEvalModelInput = document.getElementById('setting-completion-guard-eval-model');
+        completionGuardEvalModelInput.value = s.completion_guard?.eval_model?.is_override
+          ? s.completion_guard.eval_model.value
+          : '';
+        const completionGuardEvalModelDefault = document.getElementById('completion-guard-eval-model-default');
+        completionGuardEvalModelDefault.textContent = `(${envFile}: ${s.completion_guard?.eval_model?.default || 'provider default'})`;
+        completionGuardEvalModelDefault.className = s.completion_guard?.eval_model?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.completion_guard?.eval_model?.is_override) {
+          completionGuardEvalModelDefault.textContent = `⚡ override: ${s.completion_guard.eval_model.value}`;
+        }
+
         const completionGuardTicketInput = document.getElementById('setting-completion-guard-ticket-on-fail');
         completionGuardTicketInput.value = s.completion_guard?.ticket_on_fail?.is_override
           ? String(!!s.completion_guard.ticket_on_fail.value)
@@ -1165,7 +1205,7 @@ class JarvisApp {
         this._updateProfileSection(s);
       }
       
-      // Load system config (read-only values from cloud.env)
+      // Load system config / effective runtime values
       await this._loadSystemConfig();
       
     } catch (err) {
@@ -1186,6 +1226,17 @@ class JarvisApp {
         const container = document.getElementById('system-config');
         const c = data.config;
         const isLocal = data.mode === 'local';
+        const s = this._settingsData || {};
+        const effectiveProvider = s.llm?.provider?.value || c.LLM_PROVIDER;
+        const effectiveModel = s.llm?.model?.value || c[`${String(effectiveProvider).toUpperCase()}_MODEL`] || c.OLLAMA_MODEL || '(provider default)';
+        const effectiveCgEvalProvider = s.completion_guard?.eval_provider?.value || c.JARVIS_COMPLETION_GUARD_EVAL_PROVIDER;
+        const effectiveCgEvalModel = s.completion_guard?.eval_model?.value || c.JARVIS_COMPLETION_GUARD_EVAL_MODEL || '(provider default)';
+        const effectiveResponseStyle = s.response?.style?.value || c.JARVIS_RESPONSE_STYLE;
+        const effectiveQaLimit = s.response?.qa_word_limit?.value ?? c.JARVIS_QA_WORD_LIMIT;
+        const effectiveMultiTurnLimit = s.response?.multi_turn_word_limit?.value ?? c.JARVIS_MULTI_TURN_WORD_LIMIT;
+        const effectiveCgEnabled = s.completion_guard?.enabled?.value ?? (c.JARVIS_COMPLETION_GUARD_ENABLED === 'true');
+        const effectiveCgMode = s.completion_guard?.mode?.value || c.JARVIS_COMPLETION_GUARD_MODE;
+        const effectiveCgThreshold = s.completion_guard?.auto_threshold?.value ?? c.JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD;
         
         // Mode-specific model display
         const modelHtml = isLocal ? `
@@ -1213,6 +1264,30 @@ class JarvisApp {
         `;
         
         container.innerHTML = `
+          <div class="config-section">
+            <div class="config-section-title">🎛️ Current Runtime (${isLocal ? 'local mode' : 'cloud mode'})</div>
+            <div class="config-item">
+              <span class="config-label">LLM</span>
+              <span class="config-value">${effectiveProvider} / ${effectiveModel}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">Completion Guard</span>
+              <span class="config-value ${effectiveCgEnabled ? 'enabled' : 'disabled'}">${effectiveCgEnabled ? effectiveCgMode : 'off'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">CG Eval</span>
+              <span class="config-value">${effectiveCgEvalProvider} / ${effectiveCgEvalModel}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">Response Formatting</span>
+              <span class="config-value">${effectiveResponseStyle} · QA ${effectiveQaLimit} · Multi-turn ${effectiveMultiTurnLimit}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">CG Auto Threshold</span>
+              <span class="config-value">${effectiveCgThreshold}</span>
+            </div>
+          </div>
+
           <div class="config-section-title">🧠 LLM Settings (${isLocal ? 'local.env' : 'cloud.env'})</div>
           <div class="config-item">
             <span class="config-label">LLM_PROVIDER</span>
@@ -1277,8 +1352,36 @@ class JarvisApp {
               <span class="config-label">IMAGE_TOOL_PROVIDER</span>
               <span class="config-value">${c.IMAGE_TOOL_PROVIDER}</span>
             </div>
+            <div class="config-item">
+              <span class="config-label">VIDEO_TOOL_PROVIDER</span>
+              <span class="config-value">${c.VIDEO_TOOL_PROVIDER}</span>
+            </div>
           </div>
           
+          <div class="config-section">
+            <div class="config-section-title">🛡️ Completion Guard</div>
+            <div class="config-item">
+              <span class="config-label">JARVIS_COMPLETION_GUARD_ENABLED</span>
+              <span class="config-value ${c.JARVIS_COMPLETION_GUARD_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.JARVIS_COMPLETION_GUARD_ENABLED}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">JARVIS_COMPLETION_GUARD_MODE</span>
+              <span class="config-value">${c.JARVIS_COMPLETION_GUARD_MODE}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD</span>
+              <span class="config-value">${c.JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">JARVIS_COMPLETION_GUARD_EVAL_PROVIDER</span>
+              <span class="config-value">${c.JARVIS_COMPLETION_GUARD_EVAL_PROVIDER}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">JARVIS_COMPLETION_GUARD_EVAL_MODEL</span>
+              <span class="config-value">${c.JARVIS_COMPLETION_GUARD_EVAL_MODEL}</span>
+            </div>
+          </div>
+
           <div class="config-section">
             <div class="config-section-title">🔄 Feedback/Evolution</div>
             <div class="config-item">
@@ -1408,7 +1511,16 @@ class JarvisApp {
    * Populate model dropdown based on selected provider
    */
   _populateModelDropdown(provider) {
-    const modelSelect = document.getElementById('setting-llm-model');
+    this._populateProviderModelDropdown('setting-llm-model', provider);
+  }
+
+  _populateCompletionGuardEvalModelDropdown(provider) {
+    this._populateProviderModelDropdown('setting-completion-guard-eval-model', provider);
+  }
+
+  _populateProviderModelDropdown(selectId, provider) {
+    const modelSelect = document.getElementById(selectId);
+    if (!modelSelect) return;
     const models = this._settingsData?.provider_models?.[provider] || [];
     
     let html = '<option value="">Use default for provider</option>';
@@ -1416,6 +1528,61 @@ class JarvisApp {
       html += `<option value="${model.id}">${model.name} (${model.context})</option>`;
     }
     modelSelect.innerHTML = html;
+  }
+
+  async _ensureProviderModelsLoaded(provider) {
+    if (!provider || provider !== 'ollama') return;
+    try {
+      const response = await fetch(`/api/settings/models/${provider}?mode=${this.socket.mode}`);
+      const data = await response.json();
+      if (data.ok && Array.isArray(data.models)) {
+        this._settingsData = this._settingsData || {};
+        this._settingsData.provider_models = this._settingsData.provider_models || {};
+        this._settingsData.provider_models[provider] = data.models;
+      }
+    } catch (err) {
+      console.error('[App] Failed to refresh provider models:', err);
+    }
+  }
+
+  _getCompletionGuardEvalProviderSelection(overrideValue = null) {
+    if (this.socket.mode === 'local') return 'ollama';
+    return overrideValue
+      || document.getElementById('setting-completion-guard-eval-provider')?.value
+      || this._settingsData?.completion_guard?.eval_provider?.default
+      || 'openai';
+  }
+
+  _configureCompletionGuardEvalProviderSelect() {
+    const select = document.getElementById('setting-completion-guard-eval-provider');
+    if (!select) return;
+    const isLocal = this.socket.mode === 'local';
+    const ollamaOption = select.querySelector('option[value="ollama"]');
+    if (ollamaOption) {
+      ollamaOption.textContent = isLocal ? 'Ollama (Local)' : 'Ollama (Cloud)';
+    }
+    Array.from(select.options).forEach((option) => {
+      if (!option.value) return;
+      option.hidden = isLocal && option.value !== 'ollama';
+      option.disabled = isLocal && option.value !== 'ollama';
+    });
+    if (isLocal && !select.value) {
+      select.value = '';
+    }
+  }
+
+  _configureProviderSelectLabels() {
+    const isLocal = this.socket.mode === 'local';
+    const llmSelect = document.getElementById('setting-llm-provider');
+    const cgEvalSelect = document.getElementById('setting-completion-guard-eval-provider');
+    const llmOllamaOption = llmSelect?.querySelector('option[value="ollama"]');
+    const cgOllamaOption = cgEvalSelect?.querySelector('option[value="ollama"]');
+    if (llmOllamaOption) {
+      llmOllamaOption.textContent = isLocal ? 'Ollama (Local)' : 'Ollama (Cloud)';
+    }
+    if (cgOllamaOption) {
+      cgOllamaOption.textContent = isLocal ? 'Ollama (Local)' : 'Ollama (Cloud)';
+    }
   }
   
   /**
@@ -1886,6 +2053,10 @@ class JarvisApp {
         completion_guard_include_qa: parseNullableBool(document.getElementById('setting-completion-guard-include-qa').value),
         completion_guard_include_tool_tasks: parseNullableBool(document.getElementById('setting-completion-guard-include-tool-tasks').value),
         completion_guard_auto_threshold: completionGuardAutoThresholdRaw === '' ? null : parseFloat(completionGuardAutoThresholdRaw),
+        completion_guard_eval_provider: this.socket.mode === 'local'
+          ? (document.getElementById('setting-completion-guard-eval-provider').value ? 'ollama' : null)
+          : (document.getElementById('setting-completion-guard-eval-provider').value || null),
+        completion_guard_eval_model: document.getElementById('setting-completion-guard-eval-model').value || null,
         history_limit: parseInt(document.getElementById('setting-history-limit').value) || 20
       };
 

@@ -29,6 +29,8 @@ PROVIDER_MODELS = {
     ],
     'openai': [
         {'id': 'gpt-5.1', 'name': 'GPT-5.1', 'context': '128K'},
+        {'id': 'gpt-5.4', 'name': 'GPT-5.4', 'context': '400K'},
+        {'id': 'gpt-5.4-nano', 'name': 'GPT-5.4 Nano', 'context': '400K'},
         {'id': 'gpt-4o', 'name': 'GPT-4o', 'context': '128K'},
         {'id': 'gpt-4.1', 'name': 'GPT-4.1', 'context': '128K'},
         {'id': 'gpt-5.1-codex-mini', 'name': 'GPT-5.1 Codex Mini', 'context': '128K'},
@@ -45,8 +47,8 @@ PROVIDER_MODELS = {
 }
 
 
-def fetch_ollama_models(base_url: str = None) -> list:
-    """Fetch available models from Ollama server"""
+def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
+    """Fetch available models from Ollama server, filtered by mode when useful."""
     import requests
     
     if not base_url:
@@ -59,21 +61,32 @@ def fetch_ollama_models(base_url: str = None) -> list:
             models = []
             for model in data.get('models', []):
                 name = model.get('name', '')
+                is_cloud_model = ':cloud' in name.lower()
                 # Get size info if available
                 size_gb = model.get('size', 0) / (1024**3)
                 size_str = f"{size_gb:.1f}GB" if size_gb > 0 else ''
                 models.append({
                     'id': name,
                     'name': name,
-                    'context': size_str or 'local'
+                    'context': ('cloud' if is_cloud_model else (size_str or 'local')),
+                    '_is_cloud': is_cloud_model,
                 })
+
+            if mode == 'cloud':
+                models = [m for m in models if m.get('_is_cloud')]
+            elif mode == 'local':
+                models = [m for m in models if not m.get('_is_cloud')]
+
+            for model in models:
+                model.pop('_is_cloud', None)
             return models
     except Exception as e:
         print(f"[Settings] Failed to fetch Ollama models: {e}")
     
     # Fallback to default from config
     default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
-    return [{'id': default_model, 'name': f'{default_model} (default)', 'context': 'local'}]
+    fallback_context = 'cloud' if mode == 'cloud' and ':cloud' in default_model.lower() else 'local'
+    return [{'id': default_model, 'name': f'{default_model} (default)', 'context': fallback_context}]
 
 IMAGE_PROVIDERS = {
     'xai': {'name': 'xAI Grok', 'model': 'grok-imagine-image'},
@@ -146,6 +159,8 @@ class SettingsManager:
             'JARVIS_RESPONSE_STYLE': ('response', 'style'),
             'JARVIS_QA_WORD_LIMIT': ('response', 'qa_word_limit'),
             'JARVIS_MULTI_TURN_WORD_LIMIT': ('response', 'multi_turn_word_limit'),
+            'JARVIS_COMPLETION_GUARD_EVAL_PROVIDER': ('completion_guard', 'eval_provider'),
+            'JARVIS_COMPLETION_GUARD_EVAL_MODEL': ('completion_guard', 'eval_model'),
             'TOOL_SIMILARITY_THRESHOLD': ('thresholds', 'tool_similarity'),
             'SEMANTIC_SIMILARITY_THRESHOLD': ('thresholds', 'memory_similarity'),
         }
@@ -179,6 +194,11 @@ class SettingsManager:
         env_completion_guard_include_qa = get_jarvis_setting('JARVIS_COMPLETION_GUARD_INCLUDE_QA', 'true').lower() == 'true'
         env_completion_guard_include_tool_tasks = get_jarvis_setting('JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS', 'true').lower() == 'true'
         env_completion_guard_auto_threshold = float(get_jarvis_setting('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70'))
+        env_completion_guard_eval_provider = get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'ollama' if self.mode == 'local' else 'openai')
+        env_completion_guard_eval_model = get_jarvis_setting(
+            'JARVIS_COMPLETION_GUARD_EVAL_MODEL',
+            get_jarvis_setting('OLLAMA_MODEL', 'qwen3.5:latest') if env_completion_guard_eval_provider == 'ollama' else ''
+        )
         
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
@@ -196,6 +216,8 @@ class SettingsManager:
         web_completion_guard_include_qa = mode_overrides.get('completion_guard_include_qa')
         web_completion_guard_include_tool_tasks = mode_overrides.get('completion_guard_include_tool_tasks')
         web_completion_guard_auto_threshold = mode_overrides.get('completion_guard_auto_threshold')
+        web_completion_guard_eval_provider = mode_overrides.get('completion_guard_eval_provider')
+        web_completion_guard_eval_model = mode_overrides.get('completion_guard_eval_model')
         
         # Calculate effective values
         effective_provider = web_provider or env_provider
@@ -238,6 +260,8 @@ class SettingsManager:
             if web_completion_guard_auto_threshold is not None
             else env_completion_guard_auto_threshold
         )
+        effective_completion_guard_eval_provider = web_completion_guard_eval_provider or env_completion_guard_eval_provider
+        effective_completion_guard_eval_model = web_completion_guard_eval_model or env_completion_guard_eval_model or self._get_default_model(effective_completion_guard_eval_provider)
         
         return {
             'mode': self.mode,
@@ -334,6 +358,18 @@ class SettingsManager:
                     'value': effective_completion_guard_auto_threshold,
                     'default': env_completion_guard_auto_threshold,
                     'is_override': web_completion_guard_auto_threshold is not None
+                },
+                'eval_provider': {
+                    'value': effective_completion_guard_eval_provider,
+                    'default': env_completion_guard_eval_provider,
+                    'is_override': web_completion_guard_eval_provider is not None,
+                    'options': ['ollama'] if self.mode == 'local' else list(PROVIDER_MODELS.keys())
+                },
+                'eval_model': {
+                    'value': effective_completion_guard_eval_model,
+                    'default': env_completion_guard_eval_model or self._get_default_model(env_completion_guard_eval_provider),
+                    'is_override': web_completion_guard_eval_model is not None,
+                    'options': PROVIDER_MODELS.get(effective_completion_guard_eval_provider, [])
                 }
             },
             
@@ -378,9 +414,17 @@ class SettingsManager:
         models = PROVIDER_MODELS.copy()
         
         # Dynamically fetch Ollama models if in local mode or Ollama selected
-        if self.mode == 'local' or get_web_setting('llm.provider') == 'ollama':
+        web_config = load_web_config()
+        mode_overrides = web_config.get(self.mode, {}) if isinstance(web_config, dict) else {}
+        ollama_needed = (
+            self.mode == 'local'
+            or mode_overrides.get('llm_provider') == 'ollama'
+            or mode_overrides.get('completion_guard_eval_provider') == 'ollama'
+            or get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'openai') == 'ollama'
+        )
+        if ollama_needed:
             ollama_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
-            models['ollama'] = fetch_ollama_models(ollama_url)
+            models['ollama'] = fetch_ollama_models(ollama_url, mode=self.mode)
         else:
             # Fallback for cloud mode
             default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
@@ -502,6 +546,16 @@ class SettingsManager:
         if 'completion_guard_auto_threshold' in overrides:
             value = overrides['completion_guard_auto_threshold']
             mode_config['completion_guard_auto_threshold'] = float(value) if value not in (None, '') else None
+
+        if 'completion_guard_eval_provider' in overrides:
+            value = overrides['completion_guard_eval_provider'] or None
+            if self.mode == 'local' and value not in (None, 'ollama'):
+                value = 'ollama'
+            mode_config['completion_guard_eval_provider'] = value
+
+        if 'completion_guard_eval_model' in overrides:
+            value = overrides['completion_guard_eval_model']
+            mode_config['completion_guard_eval_model'] = value or None
         
         # Handle audio overrides (global, not per-mode)
         if 'tts_enabled' in overrides:

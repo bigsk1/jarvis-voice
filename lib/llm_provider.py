@@ -736,10 +736,41 @@ class OllamaProvider(LLMProvider):
         """Initialize Ollama provider."""
         self.base_url = base_url.rstrip('/')
         self.model = model
+
+    @staticmethod
+    def _strip_reasoning_content(text: str) -> str:
+        """Remove inline reasoning wrappers from providers that mix them into content."""
+        import re
+
+        if not text:
+            return text
+
+        cleaned = text
+
+        # Closed XML-style think / reasoning tags.
+        cleaned = re.sub(r'<think>.*?</think>\s*', '', cleaned, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = re.sub(r'<reasoning>.*?</reasoning>\s*', '', cleaned, flags=re.IGNORECASE | re.DOTALL)
+
+        # Unclosed <think>/<reasoning> — cloud models sometimes omit the
+        # closing tag.  Strip from the opening tag up to (not including) the
+        # first '{' so any trailing JSON is preserved.
+        cleaned = re.sub(r'<think>[^{]*', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'<reasoning>[^{]*', '', cleaned, flags=re.IGNORECASE)
+
+        # Ollama CLI-style wrappers occasionally leak into content on some hosted models.
+        cleaned = re.sub(
+            r'^\s*Thinking\.\.\..*?\.\.\.done thinking\.\s*',
+            '',
+            cleaned,
+            flags=re.IGNORECASE | re.DOTALL
+        )
+
+        return cleaned.strip()
     
     def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
         import requests
+        import sys
         
         messages = []
         if system_prompt:
@@ -752,13 +783,75 @@ class OllamaProvider(LLMProvider):
                 "messages": messages,
                 "stream": False
             }
+
+            # Some evaluator-style prompts require strict JSON. Ollama models are
+            # more reliable when we explicitly request JSON mode at the API layer.
+            prompt_text = f"{system_prompt or ''}\n{message}".lower()
+            json_mode = (
+                'return json only' in prompt_text
+                or 'return valid json only' in prompt_text
+                or '"recommended_action"' in prompt_text
+            )
+            # Cloud-tagged models (e.g. minimax-m2.5:cloud) proxy to a remote
+            # backend that doesn't support Ollama's grammar-level structured
+            # format schema.  Use simple "json" format instead.
+            is_cloud = ':cloud' in self.model.lower()
+
+            if json_mode:
+                request_data["think"] = False
+                if '"recommended_action"' in prompt_text and not is_cloud:
+                    request_data["format"] = {
+                        "type": "object",
+                        "properties": {
+                            "recommended_action": {
+                                "type": "string",
+                                "enum": ["accept", "tighten_only", "repair_required"]
+                            },
+                            "task_status": {
+                                "type": "string",
+                                "enum": ["complete", "partial", "unsupported", "failed"]
+                            },
+                            "risk_level": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "critical"]
+                            },
+                            "repair_worthwhile": {"type": "boolean"},
+                            "failure_types": {"type": "array", "items": {"type": "string"}},
+                            "missing_requirements": {"type": "array", "items": {"type": "string"}},
+                            "unsupported_claims": {"type": "array", "items": {"type": "string"}},
+                            "contradictions": {"type": "array", "items": {"type": "string"}},
+                            "evidence_gaps": {"type": "array", "items": {"type": "string"}},
+                            "reason": {"type": "string"},
+                            "suggested_note": {"type": "string"}
+                        },
+                        "required": [
+                            "recommended_action",
+                            "task_status",
+                            "risk_level",
+                            "repair_worthwhile",
+                            "failure_types",
+                            "missing_requirements",
+                            "unsupported_claims",
+                            "contradictions",
+                            "evidence_gaps",
+                            "reason",
+                            "suggested_note"
+                        ]
+                    }
+                else:
+                    request_data["format"] = "json"
             
             # Extended context for capable models
             options = self._get_context_options()
+            if json_mode:
+                options["temperature"] = 0
             
-            # Allow longer output for code generation
             if max_tokens:
-                options["num_predict"] = max_tokens
+                # Cloud-tagged models count thinking tokens against
+                # num_predict (think:false is ignored by remote backends).
+                # Multiply budget so the model has room for both reasoning
+                # and the actual JSON content.
+                options["num_predict"] = max_tokens * 4 if is_cloud else max_tokens
             
             if options:
                 request_data["options"] = options
@@ -771,7 +864,29 @@ class OllamaProvider(LLMProvider):
             response.raise_for_status()
             
             result = response.json()
-            return result["message"]["content"]
+            msg = result.get("message", {})
+            content = msg.get("content", "")
+
+            # Cloud models may exhaust the token budget on internal
+            # reasoning, leaving content empty.  Fall back to the
+            # separate thinking field which may contain extractable data.
+            if json_mode and not (content or '').strip():
+                thinking_fallback = msg.get("thinking", "") or result.get("thinking", "")
+                if thinking_fallback:
+                    content = thinking_fallback
+                    if os.environ.get('JARVIS_DEBUG'):
+                        print(
+                            f"DEBUG: Ollama cloud empty content, using thinking fallback "
+                            f"({len(thinking_fallback)} chars) - model={self.model}",
+                            file=sys.stderr
+                        )
+                else:
+                    preview = json.dumps(result, default=str)[:1200]
+                    print(
+                        f"DEBUG: Ollama JSON-mode empty content - model={self.model}, result={preview}",
+                        file=sys.stderr
+                    )
+            return self._strip_reasoning_content(content) if json_mode else content
         except Exception as e:
             print(f"Ollama API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
@@ -1020,6 +1135,7 @@ CRITICAL RULES:
             
             result = response.json()
             content = result.get("message", {}).get("content", "")
+            parse_content = self._strip_reasoning_content(content)
             
             # Extract token counts
             usage_info = None
@@ -1043,7 +1159,7 @@ CRITICAL RULES:
             
             # Try to parse as tool call (handle markdown-wrapped JSON)
             try:
-                stripped = content.strip()
+                stripped = parse_content.strip()
                 
                 # Remove markdown code blocks if present
                 if stripped.startswith("```json"):
@@ -1137,4 +1253,3 @@ def create_provider(provider_type: str, **config) -> LLMProvider:
         )
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")
-

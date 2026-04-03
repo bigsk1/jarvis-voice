@@ -12,7 +12,7 @@
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
-- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.8** (Completion Guard auto mode, repair cancel support, corrected-path learning, workflow tooltips, prompt tooltips, server logs) ⭐ ENHANCED
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.10** (Completion Guard eval overrides, Ollama cloud judge fixes, tightened auto-repair behavior, server logs) ⭐ ENHANCED
 - **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) 
 - **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice) ⭐ ENHANCED
 - **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support) 
@@ -308,6 +308,15 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-04-03:**
+- ✅ **Completion Guard: AI Config evaluator overrides**
+  - Added per-mode Web UI overrides for `Completion Guard: Eval Provider` and `Completion Guard: Eval Model`
+  - System tab now shows the effective Completion Guard eval provider/model alongside other current runtime values
+- ✅ **Ollama cloud judge compatibility**
+  - AI Config now separates `Ollama (Cloud)` and `Ollama (Local)` model lists by mode
+  - Completion Guard Ollama cloud evals now use cloud-friendly JSON mode and a larger output budget so reasoning-heavy models still return final JSON
+  - Added defensive fallback/logging for cloud models that return empty `message.content` with reasoning in `message.thinking`
 
 **2026-04-02:**
 - ✅ **Completion Guard: tighten-only settlement**
@@ -1322,6 +1331,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-04-02  
-**Latest:** Completion Guard tighten-only settlement, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback  
+**Last Updated:** 2026-04-03  
+**Latest:** Completion Guard eval overrides, Ollama cloud judge compatibility fixes, and AI Config cloud/local Ollama model separation  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

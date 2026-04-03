@@ -1814,6 +1814,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.46.0 (March 2026)  
+**Current Version:** v2.46.1 (March 2026)  
 **Status:** Production Ready ✅  
 **Latest Features:** Completion Guard ↔ feedback ↔ intelligence bridge + scheduled task runner + routing freshness & duplicate suppression + weather 7-day + workflow true timings + stock_price proxy fallback + Web UI limits/style overrides & completion-guard settings
