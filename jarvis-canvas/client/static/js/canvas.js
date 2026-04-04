@@ -54,11 +54,20 @@ function resolveStashUrls(content) {
 }
 
 /**
+ * Preserve literal approximation tildes like "~80C" while keeping markdown
+ * strikethrough support for intentional "~~text~~" sequences.
+ */
+function preserveSingleTildes(content) {
+    if (!content) return content;
+    return content.replace(/(^|[^~])~(?=[^~])/g, '$1&#126;');
+}
+
+/**
  * Render markdown with stash URL resolution
  */
 function renderMarkdown(content) {
     // First resolve stash URLs, then parse markdown
-    const resolved = resolveStashUrls(content);
+    const resolved = preserveSingleTildes(resolveStashUrls(content));
     return DOMPurify.sanitize(marked.parse(resolved));
 }
 
