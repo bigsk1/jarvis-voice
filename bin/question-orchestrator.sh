@@ -12,6 +12,7 @@ load_config "cloud"
 
 # Script paths
 SAY_SCRIPT="$PROJECT_ROOT/bin/say.sh"
+TTS_NORMALIZE="$PROJECT_ROOT/bin/tts-normalize.py"
 ORCHESTRATOR="$PROJECT_ROOT/orchestrator/orchestrator_v2.py"
 
 # Audio paths
@@ -83,7 +84,11 @@ echo "🤖 Response: $SPEECH"
 
 # Speak the response
 echo "🗣️ Speaking the answer..."
-"$SAY_SCRIPT" "$SPEECH"
+NORMALIZED_SPEECH=$(python3 "$TTS_NORMALIZE" "$SPEECH")
+if [ -z "$NORMALIZED_SPEECH" ]; then
+    NORMALIZED_SPEECH="Done. I shared the details in chat."
+fi
+"$SAY_SCRIPT" "$NORMALIZED_SPEECH"
 
 echo "✅ Saved:"
 echo "   Your question text : $TRANSCRIPT_FILE"
@@ -95,4 +100,3 @@ if [ "$OK" == "true" ]; then
 else
     exit 1
 fi
-

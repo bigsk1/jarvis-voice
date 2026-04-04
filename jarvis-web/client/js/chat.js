@@ -1059,16 +1059,22 @@ class ChatUI {
     });
 
     socket.on('cancelled', (data) => {
-      this.hideThinking();
-      this.clearStatus();
-      this.isProcessing = false;
-      this.updateSendButton();
+      this._resetProcessingUi();
 
       if (data?.message_id && this.currentMessageId === data.message_id) {
         this.currentMessageId = null;
       }
 
       Utils.toast('Stopped current task', 'info', 2500);
+    });
+
+    socket.on('cancelAck', (data) => {
+      if (!data?.message_id || !this.currentMessageId || this.currentMessageId === data.message_id) {
+        this._resetProcessingUi();
+        this.currentMessageId = null;
+      }
+
+      Utils.toast('Stopping current task...', 'info', 1500);
     });
     
     // Feedback events (async analysis after response)
@@ -1083,10 +1089,15 @@ class ChatUI {
     });
 
     socket.on('completionGuardUpdated', (data) => {
+      this._handleCompletionGuardTerminalUi(data);
       this._updateCompletionGuardCard(data);
     });
 
     socket.on('completionGuardTicketCreated', (data) => {
+      this._handleCompletionGuardTerminalUi({
+        ...data,
+        status: 'ticket_created'
+      });
       this._updateCompletionGuardCard({
         ...data,
         status: 'ticket_created'
@@ -1095,6 +1106,10 @@ class ChatUI {
     });
 
     socket.on('completionGuardError', (data) => {
+      this._handleCompletionGuardTerminalUi({
+        ...data,
+        status: 'error'
+      });
       this._updateCompletionGuardCard({
         ...data,
         status: 'error'
@@ -3070,6 +3085,23 @@ class ChatUI {
       this.stopBtn.style.opacity = '1';
     }
   }
+
+  _resetProcessingUi() {
+    this.hideThinking();
+    this.clearStatus();
+    this.isProcessing = false;
+    this.updateSendButton();
+  }
+
+  _handleCompletionGuardTerminalUi(data) {
+    const terminalStatuses = new Set(['tighten_only', 'cancelled', 'ticket_created', 'error']);
+    if (!terminalStatuses.has(data?.status)) {
+      return;
+    }
+
+    this._resetProcessingUi();
+    this.currentMessageId = null;
+  }
   
   /**
    * Show an ephemeral status message (progress update)
@@ -3624,6 +3656,10 @@ class ChatUI {
    * Clear chat history
    */
   clearChat() {
+    this._resetProcessingUi();
+    this.currentMessageId = null;
+    this.pendingTools = {};
+
     // Keep only the welcome message
     const messages = this.messagesContainer.querySelectorAll('.message');
     messages.forEach((msg, index) => {

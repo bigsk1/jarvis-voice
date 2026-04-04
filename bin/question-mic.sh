@@ -6,6 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/config_loader.sh"
 load_config "cloud"
+TTS_NORMALIZE="$SCRIPT_DIR/tts-normalize.py"
 
 OUTDIR="${AUDIO_DIR}/mic"
 mkdir -p "$OUTDIR" "${AUDIO_DIR}/recordings" "${AUDIO_DIR}/logs"
@@ -70,6 +71,11 @@ if [ -z "$ANSWER" ]; then
   exit 1
 fi
 
+ANSWER=$(python3 "$TTS_NORMALIZE" "$ANSWER")
+if [ -z "$ANSWER" ]; then
+  ANSWER="Done. I shared the details in chat."
+fi
+
 echo "🗣️ Speaking the answer (and saving files)…"
 
 # Build TTS JSON
@@ -108,4 +114,3 @@ echo "✅ Saved:"
 echo "   Your question text : $TXT_FILE"
 echo "   Your question audio: $RAW_WAV"
 echo "   Answer audio       : $ANS_WAV"
-

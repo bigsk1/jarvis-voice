@@ -6,6 +6,10 @@ from typing import Optional
 import subprocess
 import os
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
+from tts_normalizer import normalize_tts_text, validate_tts_profile
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
@@ -17,6 +21,7 @@ class SpeakRequest(BaseModel):
     mode: str = "cloud"  # cloud or local
     tts_provider: Optional[str] = None  # Override: openai, elevenlabs, qwen3-tts, kokoro
     voice: Optional[str] = None  # Override voice for the provider
+    profile: Optional[str] = None  # Optional named TTS normalization profile
 
 @router.post("/speak")
 async def speak(request: SpeakRequest):
@@ -40,6 +45,14 @@ async def speak(request: SpeakRequest):
     ```
     """
     try:
+        try:
+            validated_profile = validate_tts_profile(request.profile)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        spoken_message = normalize_tts_text(request.message, profile=validated_profile)
+        if not spoken_message:
+            raise HTTPException(status_code=400, detail="Message was empty after TTS normalization")
+
         # Select appropriate TTS script
         if request.mode == "local":
             say_script = project_root / 'bin' / 'say-local.sh'
@@ -77,7 +90,7 @@ async def speak(request: SpeakRequest):
         
         # Execute TTS with (possibly overridden) environment
         result = subprocess.run(
-            [str(say_script), request.message],
+            [str(say_script), spoken_message],
             capture_output=True,
             text=True,
             timeout=30,
@@ -94,9 +107,10 @@ async def speak(request: SpeakRequest):
         return {
             "ok": True,
             "message": "Spoken successfully",
-            "text": request.message,
+            "text": spoken_message,
             "provider": provider_used,
-            "voice": voice_used
+            "voice": voice_used,
+            "profile": validated_profile,
         }
         
     except subprocess.TimeoutExpired:
@@ -137,4 +151,3 @@ async def announce(request: AnnounceRequest):
     # Use existing speak() function
     speak_req = SpeakRequest(message=request.message, mode=mode)
     return await speak(speak_req)
-

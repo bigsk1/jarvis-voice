@@ -3,6 +3,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/config_loader.sh"
 load_config "local"
+TTS_NORMALIZE="$SCRIPT_DIR/tts-normalize.py"
 
 # Ask locally via Ollama; sanitize; TTS via Kokoro; save artifacts
 set -euo pipefail
@@ -78,6 +79,11 @@ SANITIZED=$(printf "%s" "$ANSWER" \
 # Force ASCII only if Kokoro chokes on Unicode:
 # SANITIZED=$(printf "%s" "$SANITIZED" | iconv -c -f utf-8 -t ascii//TRANSLIT)
 
+SANITIZED=$(python3 "$TTS_NORMALIZE" "$SANITIZED")
+if [ -z "$SANITIZED" ]; then
+  SANITIZED="Done. I shared the details in chat."
+fi
+
 # --- If still too long, summarize locally to keep TTS snappy
 MAX_CHARS=400
 if [ "${#SANITIZED}" -gt "$MAX_CHARS" ]; then
@@ -94,6 +100,7 @@ $SANITIZED
     SANITIZED=$(printf "%s" "$SHORT" \
       | tr -d '\000' | tr '\r' '\n' | sed 's/[[:cntrl:]]//g' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//;s/ *$//')
     # SANITIZED=$(printf "%s" "$SANITIZED" | iconv -c -f utf-8 -t ascii//TRANSLIT)
+    SANITIZED=$(python3 "$TTS_NORMALIZE" "$SANITIZED")
   fi
 fi
 

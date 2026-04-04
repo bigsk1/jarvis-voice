@@ -6,7 +6,7 @@
   "version": "1.0",
 
   "triggers": {
-    "explicit": ["/memory_scan", "/memory-scan", "/dedupe-memory"],
+    "explicit": ["/memory_scan", "/dedupe_memory"],
     "patterns": [
       "scan memory for duplicates",
       "analyze memory duplicates",

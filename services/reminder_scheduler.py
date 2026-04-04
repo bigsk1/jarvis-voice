@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
+from tts_normalizer import normalize_tts_text
 from time_utils import (
     add_days_local,
     add_months_local,
@@ -111,8 +112,11 @@ def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path):
     
     if say_script.exists():
         try:
+            spoken_message = normalize_tts_text(message)
+            if not spoken_message:
+                return
             subprocess.run(
-                [str(say_script), message],
+                [str(say_script), spoken_message],
                 check=False,
                 capture_output=True,
                 text=True,

@@ -39,14 +39,14 @@ This folder contains JSON workflow definitions that the orchestrator can execute
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
 | `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, system health dashboard |
-| `daily_status_visual.json` | `/status-visual` | Same as /status but with AI-generated dashboard image |
-| `weather_watch.json` | `/weather-watch` | Default-location weather watch with canvas report and condition-specific alerts |
+| `daily_status_visual.json` | `/status_visual` | Same as /status but with AI-generated dashboard image |
+| `weather_watch.json` | `/weather_watch` | Default-location weather watch with canvas report and condition-specific alerts |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, keywords, canvas study notes |
 | `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
 | `memory_scan.json` | `/memory_scan` | Run memory_deduper analyze mode and save readable dedupe report to stash + canvas |
-| `deep_dive.json` | `/deep-dive <topic or url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons, links |
+| `deep_dive.json` | `/deep_dive <topic or url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons, links |
 | `serpapi_search.json` | `/serpapi <query>` | Run SerpApi search, save `.txt` export to stash, create canvas summary report |
 
 ## Variables

@@ -12,6 +12,7 @@ SCRIPT_DIR = os.path.dirname(SCRIPT_PATH)
 # Add lib to path
 sys.path.insert(0, os.path.join(SCRIPT_DIR, '..', 'lib'))
 from config_loader import load_config, get_config_value, get_int, get_float
+from tts_normalizer import normalize_tts_text
 
 import warnings
 warnings.filterwarnings(
@@ -220,8 +221,9 @@ def handle_trigger():
         # Get random greeting from WAKE_GREETINGS (pipe-separated)
         greetings = get_config_value("WAKE_GREETINGS", "Hello").split('|')
         import random
-        greeting = random.choice(greetings).strip()
-        subprocess.run([SAY, greeting], check=False)
+        greeting = normalize_tts_text(random.choice(greetings).strip())
+        if greeting:
+            subprocess.run([SAY, greeting], check=False)
     except Exception as e:
         print(f"say.sh failed: {e}", file=sys.stderr)
 
@@ -255,4 +257,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

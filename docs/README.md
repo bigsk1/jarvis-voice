@@ -309,6 +309,31 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-04:**
+- ✅ **Alerts: first-class tool + Memory UI tab**
+  - Added `create_alert` as a real Jarvis tool on top of the existing FastAPI alert manager path
+  - Added a dedicated `Alerts` tab in Jarvis Memory UI for browsing and managing proactive alerts alongside reminders and scheduled tasks
+  - Alert dedupe now supports generic `metadata.dedupe_key` suppression so workflows and tools can prevent same-condition duplicates cleanly
+- ✅ **Weather watch workflow** - Added `/weather-watch` as a reusable default-location workflow
+  - Uses `JARVIS_DEFAULT_LOCATION` for location-aware daily weather reporting
+  - Builds a Canvas report with forecast highs, lows, wind, conditions, and alert outcomes
+  - Can raise condition-specific alerts for cold, wind, heat, and severe weather using `create_alert`
+  - Workflow executor gained deterministic condition evaluation and safer placeholder handling for indexed forecast values
+- ✅ **Shared TTS normalizer** - Added `lib/tts_normalizer.py` as the single speech cleanup layer
+  - `sanitize_for_speech()` now delegates to the shared normalizer for backward compatibility
+  - API voice routes, alerts, reminders, follow-up alerts, self-healing notices, wake greetings, Web UI TTS, and shell question flows now use the same normalization rules
+  - Added `bin/tts-normalize.py` so shell-based callers can reuse the same logic
+  - New regression coverage in `tests/test_tts_normalizer.py`
+- ✅ **Named TTS profiles** - Added context-aware speech profiles for awkward domains
+  - `weather_watch` strips forecast ISO dates that sound robotic in speech
+  - `camera_alert` smooths UniFi-style phrasing like `Person: Front Door` and `Camera Offline: Driveway`
+  - `price_quote` makes market speech more natural, such as `$80.54` → `80 dollars and 54 cents`
+  - `timestamped` converts ISO dates and datetimes into natural spoken timestamps
+- ✅ **Voice API profile support** - `/api/voice/speak` now accepts an optional `profile` parameter
+  - Profiles are validated against an explicit allowlist before use
+  - External callers can opt into the same normalization behavior used internally by alerts and workflows
+  - Adding a new profile now requires updating the shared allowlist in `lib/tts_normalizer.py`
+  
 **2026-04-03:**
 - ✅ **Completion Guard: AI Config evaluator overrides**
   - Added per-mode Web UI overrides for `Completion Guard: Eval Provider` and `Completion Guard: Eval Model`

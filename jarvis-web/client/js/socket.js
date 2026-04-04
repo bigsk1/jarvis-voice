@@ -96,6 +96,10 @@ class JarvisSocket {
       this._emit('cancelled', data);
     });
 
+    this.socket.on('cancel:ack', (data) => {
+      this._emit('cancelAck', data);
+    });
+
     this.socket.on('chat:status', (data) => {
       this._emit('status', data);
     });

@@ -2,6 +2,20 @@
 
 The Voice API enables text-to-speech playback through Jarvis's local speakers. Supports multiple TTS providers with per-request overrides for multi-agent voice identity.
 
+## TTS Normalization
+
+Before playback, Jarvis runs outgoing speech through the shared normalizer in `lib/tts_normalizer.py`.
+
+This keeps voice output safer and more natural by:
+- removing URLs, markdown links, bare domains, and `stash://` references
+- stripping visual-only source blocks that are useful in chat but noisy in speech
+- converting symbols like `34°F` to `34 degrees`, `10°C` to `10 degrees Celsius`, and `25%` to `25 percent`
+- applying context-specific cleanup where needed, such as weather-watch ISO date stripping
+
+Named profiles currently include `weather_watch`, `camera_alert`, `price_quote`, and `timestamped`.
+
+The Voice API, Web UI TTS, orchestrator `--speak`, alerts, reminders, and daemon speech all use this shared normalization layer.
+
 ## Endpoints
 
 ### POST /api/voice/speak
@@ -14,7 +28,8 @@ Speak a message through local speakers with optional TTS provider/voice override
   "message": "Hello! This is a test message.",
   "mode": "cloud",
   "tts_provider": "elevenlabs",
-  "voice": "pgCnBQgKPGkIP8fJuita"
+  "voice": "pgCnBQgKPGkIP8fJuita",
+  "profile": "weather_watch"
 }
 ```
 
@@ -26,6 +41,7 @@ Speak a message through local speakers with optional TTS provider/voice override
 | `mode` | string | No | `cloud` | `cloud` or `local` (selects say.sh or say-local.sh) |
 | `tts_provider` | string | No | From env | Override TTS provider: `elevenlabs`, `qwen3-tts`, `openai`, `kokoro` |
 | `voice` | string | No | From env | Override voice (provider-specific) |
+| `profile` | string | No | none | Optional TTS normalization profile: `weather_watch`, `camera_alert`, `price_quote`, `timestamped` |
 
 **Response:**
 ```json
@@ -34,7 +50,8 @@ Speak a message through local speakers with optional TTS provider/voice override
   "message": "Spoken successfully",
   "text": "Hello! This is a test message.",
   "provider": "elevenlabs",
-  "voice": "pgCnBQgKPGkIP8fJuita"
+  "voice": "pgCnBQgKPGkIP8fJuita",
+  "profile": "weather_watch"
 }
 ```
 
@@ -128,6 +145,18 @@ curl -X POST http://localhost:8880/api/voice/speak \
   }'
 ```
 
+### Use a TTS Normalization Profile
+```bash
+curl -X POST http://localhost:8880/api/voice/speak \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Forecast low 34°F tonight. Fri 2026-04-04 high 61°F.",
+    "profile": "weather_watch"
+  }'
+```
+
+This lets external callers opt into the same context-aware speech cleanup used internally by alerts and workflows.
+
 ### Simple Announce (Auto Mode)
 ```bash
 curl -X POST http://localhost:8880/api/voice/announce \
@@ -157,6 +186,8 @@ The override mechanism uses special environment variables that take precedence A
 - `KOKORO_TTS_VOICE_OVERRIDE` → overrides `KOKORO_TTS_VOICE`
 
 This ensures API call parameters always win over config file settings.
+
+`profile` is validated against an allowlist in `api/routes/voice.py`. When you add a new profile to `lib/tts_normalizer.py`, also add it to that allowlist so external callers can use it.
 
 ---
 

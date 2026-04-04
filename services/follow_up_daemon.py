@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
+from tts_normalizer import normalize_tts_text
 
 
 def retry_on_db_lock(func, max_retries=5, base_delay=1.0):
@@ -136,6 +137,12 @@ def speak_follow_up(alert: Dict[str, Any], mode: str, project_root: Path):
         message = f"Boss, {prefix} {title} is still pending."
     else:
         message = f"{prefix} {title}"
+
+    profile = None
+    if alert.get('source') == 'unifi-protect':
+        profile = 'camera_alert'
+    elif alert.get('source') == 'price_monitor':
+        profile = 'price_quote'
     
     # Use say-status.sh which has caching for repeated phrases
     if mode == 'local':
@@ -152,8 +159,11 @@ def speak_follow_up(alert: Dict[str, Any], mode: str, project_root: Path):
     
     if say_script.exists():
         try:
+            spoken_message = normalize_tts_text(message, profile=profile)
+            if not spoken_message:
+                return
             subprocess.run(
-                [str(say_script), message],
+                [str(say_script), spoken_message],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -294,4 +304,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
+from tts_normalizer import normalize_tts_text
 
 
 # Maximum tool calls per check (safety limit)
@@ -39,6 +40,30 @@ MONITORED_SYSTEMD_SERVICES = {
     "unifi-protect-webhook": {"required": False, "restart": False}, # Optional - may not be installed - this is already running as a systemd service with its own restart logic
     "opencode-jarvis": {"required": False, "restart": False},  # Optional - may not be installed - this is already running as a systemd service with its own restart logic
 }
+
+
+def _speak_message(message: str, project_root: Path, mode: str, timeout: int = 15):
+    """Speak a normalized status message through the configured TTS script."""
+    spoken_message = normalize_tts_text(message)
+    if not spoken_message:
+        return
+
+    if mode == 'local':
+        say_script = project_root / 'bin' / 'say-local.sh'
+    else:
+        say_script = project_root / 'bin' / 'say.sh'
+
+    if say_script.exists():
+        try:
+            subprocess.run(
+                [str(say_script), spoken_message],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+        except Exception as e:
+            print(f"    ⚠️  TTS failed: {e}", file=sys.stderr)
 
 # Sibling daemon monitoring (via PID files)
 # These run alongside self_healing_daemon via bin/jarvis-services
@@ -210,22 +235,7 @@ def speak_daemon_down(daemon_name: str, project_root: Path, mode: str, will_rest
         # For notify-only services like the API
         message = f"Hey Boss, {friendly} appears to be down. You may need to restart it manually."
     
-    if mode == 'local':
-        say_script = project_root / 'bin' / 'say-local.sh'
-    else:
-        say_script = project_root / 'bin' / 'say.sh'
-    
-    if say_script.exists():
-        try:
-            subprocess.run(
-                [str(say_script), message],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=15
-            )
-        except Exception as e:
-            print(f"    ⚠️  TTS failed: {e}", file=sys.stderr)
+    _speak_message(message, project_root, mode)
 
 
 def speak_daemon_recovered(daemon_name: str, project_root: Path, mode: str):
@@ -240,22 +250,7 @@ def speak_daemon_recovered(daemon_name: str, project_root: Path, mode: str):
     friendly = friendly_names.get(daemon_name, daemon_name)
     message = f"{friendly} is back up and running."
     
-    if mode == 'local':
-        say_script = project_root / 'bin' / 'say-local.sh'
-    else:
-        say_script = project_root / 'bin' / 'say.sh'
-    
-    if say_script.exists():
-        try:
-            subprocess.run(
-                [str(say_script), message],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=15
-            )
-        except Exception as e:
-            print(f"    ⚠️  TTS failed: {e}", file=sys.stderr)
+    _speak_message(message, project_root, mode)
 
 
 # ============================================================================
@@ -354,22 +349,7 @@ def speak_service_down(service_name: str, project_root: Path, mode: str):
     friendly = friendly_names.get(service_name, service_name)
     message = f"Hey Boss, heads up. {friendly} has stopped. I'm attempting to restart it."
     
-    if mode == 'local':
-        say_script = project_root / 'bin' / 'say-local.sh'
-    else:
-        say_script = project_root / 'bin' / 'say.sh'
-    
-    if say_script.exists():
-        try:
-            subprocess.run(
-                [str(say_script), message],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=15
-            )
-        except Exception as e:
-            print(f"    ⚠️  TTS failed: {e}", file=sys.stderr)
+    _speak_message(message, project_root, mode)
 
 
 def speak_service_recovered(service_name: str, project_root: Path, mode: str):
@@ -383,22 +363,7 @@ def speak_service_recovered(service_name: str, project_root: Path, mode: str):
     friendly = friendly_names.get(service_name, service_name)
     message = f"Boss, good news. {friendly} is back up and running."
     
-    if mode == 'local':
-        say_script = project_root / 'bin' / 'say-local.sh'
-    else:
-        say_script = project_root / 'bin' / 'say.sh'
-    
-    if say_script.exists():
-        try:
-            subprocess.run(
-                [str(say_script), message],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=15
-            )
-        except Exception as e:
-            print(f"    ⚠️  TTS failed: {e}", file=sys.stderr)
+    _speak_message(message, project_root, mode)
 
 
 def get_alerts_to_check(db_path: str) -> List[Dict[str, Any]]:
@@ -499,23 +464,7 @@ def auto_resolve_alert(db_path: str, alert_id: int, alert_title: str, alert_sour
         # Generic message with source
         message = f"Boss, good news! {alert_source} is back up and running. Alert resolved."
     
-    # Use appropriate TTS script
-    if mode == 'local':
-        say_script = project_root / 'bin' / 'say-local.sh'
-    else:
-        say_script = project_root / 'bin' / 'say.sh'
-    
-    if say_script.exists():
-        try:
-            subprocess.run(
-                [str(say_script), message],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-        except Exception as e:
-            print(f"Warning: TTS failed for alert {alert_id}: {e}", file=sys.stderr)
+    _speak_message(message, project_root, mode, timeout=10)
 
 
 def update_last_check(db_path: str, alert_id: int):

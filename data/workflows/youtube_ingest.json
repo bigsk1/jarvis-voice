@@ -6,7 +6,7 @@
   "version": "1.0",
 
   "triggers": {
-    "explicit": ["/youtube_ingest", "/yt-ingest", "/ingest-video"],
+    "explicit": ["/youtube_ingest", "/yt_ingest", "/ingest_video"],
     "patterns": [
       "ingest this youtube video",
       "save this youtube video to knowledge",

@@ -2,7 +2,6 @@
 
 import sqlite3
 import json
-import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +12,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from memory_db import MemoryDB
+from tts_normalizer import normalize_tts_text
 
 class AlertManager:
     """Manages alerts: creation, status updates, notifications, self-healing"""
@@ -42,16 +42,18 @@ class AlertManager:
         self.project_root = Path(__file__).parent.parent.parent
 
     def _sanitize_weather_watch_speech(self, text: str) -> str:
-        """Remove overly verbose machine-formatted date strings from spoken weather alerts."""
-        if not text:
-            return text
+        """Backward-compatible wrapper for the shared weather TTS profile."""
+        return normalize_tts_text(text, profile="weather_watch")
 
-        sanitized = re.sub(r'\b\d{4}-\d{2}-\d{2}\b', '', text)
-        sanitized = re.sub(r'(\d+)\s*°\s*F\b', r'\1 degrees', sanitized, flags=re.IGNORECASE)
-        sanitized = re.sub(r'(\d+)\s*°\s*C\b', r'\1 degrees Celsius', sanitized, flags=re.IGNORECASE)
-        sanitized = re.sub(r'\s+([.,])', r'\1', sanitized)
-        sanitized = re.sub(r'\s{2,}', ' ', sanitized)
-        return sanitized.strip()
+    def _speech_profile_for_source(self, source: str | None) -> str | None:
+        """Map alert sources to the best-fit shared TTS profile."""
+        if source == "weather_watch":
+            return "weather_watch"
+        if source == "unifi-protect":
+            return "camera_alert"
+        if source == "price_monitor":
+            return "price_quote"
+        return None
 
     def _find_existing_alert_by_metadata_key(
         self,
@@ -385,8 +387,9 @@ class AlertManager:
             if len(detail) > 220:
                 detail = detail[:217].rstrip() + "..."
             message = f"{message}. {detail}"
-        
-        self._speak(message, priority=severity)
+
+        speech_profile = self._speech_profile_for_source(source)
+        self._speak(message, priority=severity, profile=speech_profile)
         
         # Mark as spoken
         conn = sqlite3.connect(self.db.db_path)
@@ -399,9 +402,13 @@ class AlertManager:
         conn.commit()
         conn.close()
     
-    def _speak(self, message: str, priority: str = "medium"):
+    def _speak(self, message: str, priority: str = "medium", profile: str | None = None):
         """Trigger TTS using say-status.sh without blocking workflow execution."""
         try:
+            spoken_message = normalize_tts_text(message, profile=profile)
+            if not spoken_message:
+                return
+
             # Use say-status.sh which has caching for repeated phrases
             # This is ideal for alerts like "Person: Front Door" spoken many times
             if self.mode == 'local':
@@ -418,7 +425,7 @@ class AlertManager:
             
             if say_script.exists():
                 subprocess.Popen(
-                    [str(say_script), message, "false"],
+                    [str(say_script), spoken_message, "false"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )

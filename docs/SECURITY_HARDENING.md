@@ -1,6 +1,6 @@
 # Security Hardening Guide
 
-**Last Updated:** February 15, 2026  
+**Last Updated:** April 4, 2026  
 **Status:** In Progress
 
 ## Overview
@@ -23,6 +23,7 @@ This document tracks security vulnerabilities and hardening efforts for Jarvis V
 | 8 | `analyze_image.py` | 🟡 MEDIUM | File path mode can read arbitrary local images | ✅ DONE |
 | 9 | `pdf_read.py` | 🟡 MEDIUM | File path can read arbitrary PDFs | ✅ DONE |
 | 10 | Vision prompts | 🟡 MEDIUM | `question` params passed unsanitized to LLM | ✅ DONE |
+| 11 | TTS output paths | 🟡 MEDIUM | Speech cleanup logic was fragmented across callers | ✅ DONE |
 
 ---
 
@@ -255,6 +256,58 @@ try:
 except SecurityError as e:
     return_error(f"URL blocked for security: {e}")
 ```
+
+---
+
+### Fix 11: Shared TTS Normalization Layer ✅ IMPLEMENTED
+
+**Files:** `lib/tts_normalizer.py`, `lib/security_utils.py`, `api/routes/voice.py`, `api/managers/alert_manager.py`, `services/reminder_scheduler.py`, `services/follow_up_daemon.py`, `services/self_healing_daemon.py`, `bin/question-orchestrator.sh`, `bin/question-orchestrator-local.sh`, `bin/question-mic.sh`, `bin/question-local.sh`, `bin/wake_jarvis.py`, `bin/wake_jarvis_local.py`, `bin/tts-normalize.py`
+
+**Problem:**
+- Speech cleanup rules had started to drift across multiple runtime paths
+- Some callers removed URLs, some removed dates, some normalized units, and some spoke raw text
+- Shell entry points and follow-up alerts were bypassing the newer shared logic
+
+**Change:**
+- Added a single shared normalizer: `lib/tts_normalizer.py`
+- Kept `sanitize_for_speech()` as a compatibility wrapper so existing imports still work
+- Added a small CLI wrapper `bin/tts-normalize.py` so shell-based TTS flows use the same logic as Python callers
+
+**What the normalizer handles today:**
+- Removes spoken URLs, bare domains, markdown links, `stash://` refs, file paths, and long token-like strings
+- Converts common symbols into speech-friendly text
+- `34°F` → `34 degrees`
+- `10°C` → `10 degrees Celsius`
+- `25%` → `25 percent`
+- Supports profile-specific cleanup such as weather-watch ISO date stripping
+
+**Named profiles currently in use or available:**
+- `weather_watch` - strips forecast-style ISO dates for spoken weather alerts
+- `camera_alert` - smooths UniFi-style phrasing like `Person: Front Door` → `Person at Front Door`
+- `price_quote` - makes market language more natural, e.g. `$80.54` → `80 dollars and 54 cents`
+- `timestamped` - converts ISO-style dates and datetimes into natural spoken timestamps
+
+**Covered runtime paths:**
+- Web UI chat TTS via `jarvis-web/server/sockets/chat.py`
+- Web UI `/tts` route via `jarvis-web/server/routes/api.py`
+- API voice endpoints via `api/routes/voice.py`
+- Orchestrator terminal `--speak` via `orchestrator/orchestrator_v2.py`
+- Alert speech via `api/managers/alert_manager.py`
+- Reminder speech via `services/reminder_scheduler.py`
+- Follow-up alert speech via `services/follow_up_daemon.py`
+- Self-healing daemon speech via `services/self_healing_daemon.py`
+- Wake-word greeting speech via `bin/wake_jarvis.py` and `bin/wake_jarvis_local.py`
+- Shell question flows via `bin/question-orchestrator.sh`, `bin/question-orchestrator-local.sh`, `bin/question-mic.sh`, and `bin/question-local.sh`
+
+**Important boundary:**
+- Normalization is applied by callers before invoking `say.sh` / `say-local.sh` / `say-status.sh`
+- The shell TTS scripts themselves are intentionally transport/provider layers, not policy layers
+- This keeps normalization testable in Python and avoids duplicating regex rules in shell
+- External callers can opt into a named profile through `/api/voice/speak`, but profile names are allowlisted in `api/routes/voice.py`
+
+**Regression coverage:**
+- `tests/test_tts_normalizer.py`
+- `tests/test_alert_manager.py`
 
 ---
 

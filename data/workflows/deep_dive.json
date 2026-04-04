@@ -13,7 +13,7 @@
       "comprehensive look at"
     ],
     "keywords": ["deep dive", "analyze", "review"],
-    "explicit": ["/deep-dive", "/dive"]
+    "explicit": ["/deep_dive", "/dive"]
   },
   
   "variables": {

@@ -6,7 +6,7 @@
   "enabled": true,
   
   "triggers": {
-    "explicit": ["/status-visual", "/status-image", "/daily-visual"],
+    "explicit": ["/status_visual", "/status_image", "/daily_visual"],
     "patterns": [],
     "keywords": []
   },

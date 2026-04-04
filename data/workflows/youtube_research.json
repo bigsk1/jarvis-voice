@@ -6,7 +6,7 @@
   "version": "1.0",
   
   "triggers": {
-    "explicit": ["/youtube_research", "/yt-research", "/study-video"],
+    "explicit": ["/youtube_research", "/yt_research", "/study_video"],
     "patterns": [
       "research this youtube video",
       "study this video",
