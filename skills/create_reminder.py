@@ -145,37 +145,47 @@ def normalize_meridiem(text: str) -> str:
     return normalized
 
 def parse_multi_day_pattern(when: str):
-    """Parse patterns that require multiple individual reminders.
+    """Parse bounded daily patterns that create multiple individual reminders.
     
-    Patterns:
+    Supported examples:
     - "next 5 days at 2pm"
     - "for the next 5 days at 2pm"
     - "5 days in a row at 2pm"
     - "every day for 5 days at 2pm"
+    - "every day the next 2 weeks at 5pm"
+    - "every day for the next 2 weeks at 5pm"
     
-    Returns: (num_days, time_match) or (None, None) if not a multi-day pattern
+    Returns:
+        dict with:
+          - count: number of reminders to create
+          - include_today: whether today's occurrence should be included when still upcoming
+        or None if not a bounded daily pattern.
     """
-    when_lower = when.lower()
+    when_lower = when.lower().replace("everyday", "every day")
     
-    # Pattern: "next N days" or "for the next N days"
-    next_days_match = re.search(r'(?:for\s+)?(?:the\s+)?next\s+(\d+)\s+days?', when_lower)
-    if next_days_match:
-        num_days = int(next_days_match.group(1))
-        return num_days, when_lower
+    patterns = [
+        # Explicit bounded daily spans should include today when the target time hasn't passed yet.
+        (r'every\s+day\s+(?:for\s+)?(?:the\s+)?next\s+(\d+)\s+weeks?', 7, True),
+        (r'every\s+day\s+(?:for\s+)?(?:the\s+)?next\s+(\d+)\s+days?', 1, True),
+        (r'every\s+day\s+for\s+(\d+)\s+weeks?', 7, True),
+        (r'every\s+day\s+for\s+(\d+)\s+days?', 1, True),
+        # Legacy multi-day phrases keep the original "start tomorrow" behavior.
+        (r'(?:for\s+)?(?:the\s+)?next\s+(\d+)\s+days?', 1, False),
+        (r'(\d+)\s+days?\s+in\s+a\s+row', 1, False),
+    ]
     
-    # Pattern: "N days in a row"
-    in_a_row_match = re.search(r'(\d+)\s+days?\s+in\s+a\s+row', when_lower)
-    if in_a_row_match:
-        num_days = int(in_a_row_match.group(1))
-        return num_days, when_lower
+    for pattern, multiplier, include_today in patterns:
+        match = re.search(pattern, when_lower)
+        if not match:
+            continue
+        count = int(match.group(1)) * multiplier
+        if count > 0:
+            return {
+                "count": count,
+                "include_today": include_today,
+            }
     
-    # Pattern: "every day for N days" or "every day for the next N days"
-    every_day_match = re.search(r'every\s+day\s+(?:for\s+)?(?:the\s+)?(?:next\s+)?(\d+)\s+days?', when_lower)
-    if every_day_match:
-        num_days = int(every_day_match.group(1))
-        return num_days, when_lower
-    
-    return None, None
+    return None
 
 
 def parse_recurrence(when: str):
@@ -278,14 +288,18 @@ def parse_time_expression(when: str, default_hour: int = 10):
     tz = get_app_timezone()
     now = now_local()
     
-    # Check for multi-day patterns FIRST (creates multiple reminders)
-    num_days, _ = parse_multi_day_pattern(when)
-    if num_days and num_days > 0:
+    # Check for bounded daily patterns FIRST (creates multiple reminders)
+    multi_day = parse_multi_day_pattern(when)
+    if multi_day:
         hour, minute = extract_time_from_expression(when, default_hour)
+        include_today = multi_day.get("include_today", False)
+        count = multi_day["count"]
+        today_target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        start_offset = 0 if include_today and today_target > now else 1
         
         # Create list of datetimes for each day
         datetimes = []
-        for day_offset in range(1, num_days + 1):  # Start from tomorrow
+        for day_offset in range(start_offset, start_offset + count):
             target = add_days_local(now, day_offset)
             target = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
             datetimes.append(target)
@@ -459,6 +473,60 @@ def format_local_time(dt: datetime) -> str:
     return dt.strftime("%A, %B %d at %I:%M %p %Z")
 
 
+def _parse_db_timestamp(value: str | None) -> datetime | None:
+    """Parse timestamp values stored in SQLite."""
+    if not value:
+        return None
+    normalized = value.strip().replace('Z', '+00:00')
+    try:
+        dt = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def find_existing_reminder(cursor, title: str, trigger_time_utc: datetime, recurrence_rule: str = None):
+    """Return an active matching reminder to suppress accidental duplicates."""
+    normalized_title = title.strip().lower()
+    trigger_time_db = format_utc_db(trigger_time_utc)
+    cursor.execute("""
+        SELECT id, title, description, trigger_time, status, recurrence_rule, created_at, metadata
+        FROM reminders
+        WHERE lower(trim(title)) = ?
+          AND trigger_time = ?
+          AND COALESCE(recurrence_rule, '') = COALESCE(?, '')
+          AND status IN ('scheduled', 'triggered')
+        ORDER BY id DESC
+        LIMIT 1
+    """, (
+        normalized_title,
+        trigger_time_db,
+        recurrence_rule
+    ))
+    row = cursor.fetchone()
+    if not row:
+        return None
+
+    created_at = _parse_db_timestamp(row[6])
+    duplicate_recent = False
+    if created_at is not None:
+        duplicate_recent = (now_utc() - created_at.astimezone(timezone.utc)) <= timedelta(minutes=10)
+
+    return {
+        "reminder_id": row[0],
+        "title": row[1],
+        "description": row[2] or "",
+        "trigger_time": row[3],
+        "status": row[4],
+        "recurrence_rule": row[5],
+        "created_at": row[6],
+        "metadata": row[7],
+        "duplicate_recent": duplicate_recent,
+    }
+
+
 def create_single_reminder(title: str, description: str, trigger_time_local: datetime, 
                            recurrence_rule: str = None, db_path: str = None):
     """Create a single reminder in the database and sync to Google Calendar.
@@ -473,6 +541,26 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
     
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+    
+    existing = find_existing_reminder(
+        cursor=cursor,
+        title=title,
+        trigger_time_utc=trigger_time_utc,
+        recurrence_rule=recurrence_rule
+    )
+    if existing:
+        conn.close()
+        return {
+            "reminder_id": existing["reminder_id"],
+            "trigger_time": existing["trigger_time"],
+            "trigger_time_local": trigger_time_local.isoformat(),
+            "formatted_time": format_local_time(trigger_time_local),
+            "recurring": recurrence_rule is not None,
+            "recurrence_rule": recurrence_rule,
+            "gcal_synced": False,
+            "duplicate_suppressed": True,
+            "duplicate_recent": existing["duplicate_recent"],
+        }
     
     cursor.execute("""
         INSERT INTO reminders (
@@ -528,6 +616,7 @@ def create_single_reminder(title: str, description: str, trigger_time_local: dat
         "recurring": recurrence_rule is not None,
         "recurrence_rule": recurrence_rule,
         "gcal_synced": gcal_synced,
+        "duplicate_suppressed": False,
         # Note: gcal_event_id intentionally excluded from response to prevent
         # LLM from speaking the long ID. It's stored in the database for sync purposes.
     }
@@ -612,7 +701,9 @@ def main():
             )
             
             # Format response
-            if recurrence_rule:
+            if result.get('duplicate_suppressed'):
+                speech = f"Active reminder already exists for {result['formatted_time']}: {title}"
+            elif recurrence_rule:
                 speech = f"Recurring reminder set: {title}. First trigger {result['formatted_time']}"
             else:
                 speech = f"Reminder set for {result['formatted_time']}: {title}"

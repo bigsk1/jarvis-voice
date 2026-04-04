@@ -535,7 +535,7 @@ Mode: {self.mode}
         conversation_context = []
         tools_used = []
         accumulated_data = {}
-        last_tool_call = None  # Track last tool to detect duplicates
+        seen_successful_tool_calls = set()  # Track exact tool calls that already succeeded in this request
         tool_call_counts = {}  # Track how many times each tool has been called (for progress events)
         
         # If retrying, augment transcript with error context
@@ -649,7 +649,7 @@ Mode: {self.mode}
                 
                 # Detect duplicate tool calls (same tool, similar/empty args)
                 current_call = (tool_name, json.dumps(arguments, sort_keys=True))
-                is_exact_duplicate = last_tool_call and last_tool_call == current_call
+                is_exact_duplicate = current_call in seen_successful_tool_calls
                 is_fresh_same_target_recall = self._is_fresh_same_target_recall(
                     transcript, tool_name, arguments, conversation_context
                 )
@@ -696,8 +696,6 @@ Mode: {self.mode}
                         "data": accumulated_data,
                         "duplicate_prevented": True
                     }
-                
-                last_tool_call = current_call
                 
                 # Only print if in interactive mode
                 if sys.stdout.isatty():
@@ -782,6 +780,7 @@ Mode: {self.mode}
                     
                     # Track tool execution
                     tools_used.append(tool_name)
+                    seen_successful_tool_calls.add(current_call)
                     
                     # Aggregate data - handle multiple calls to same tool
                     tool_data = result.get("data", {})

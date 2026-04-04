@@ -149,6 +149,8 @@ CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - "Cancel/delete my X reminder" → acknowledge_reminders with title_search="X" (it does fuzzy matching)
 - "Clear all alerts" → acknowledge_alerts with clear_all=true
 - "Did I miss any reminders?" → list_reminders (even if you just created one!)
+- New reminder creation → prefer ONE create_reminder call using the user's natural phrasing
+  - For bounded daily spans like "every day for 5 days" or "every day the next 2 weeks", do NOT split into separate one-time and recurring reminders unless the user explicitly asks for separate reminders.
 
 **Workflows:**
 - **List reminders/alerts** → MUST follow with Q&A summarizing results
