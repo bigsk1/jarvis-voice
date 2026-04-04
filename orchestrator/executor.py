@@ -47,10 +47,17 @@ class ToolExecutor:
         # Initialize logger
         self.logger = get_logger(mode)
         self.cancel_check = None
+        self.jarvis_session_id = None
+        self.web_conversation_id = None
 
     def set_cancel_check(self, callback):
         """Set callback to check if the current tool execution should be cancelled."""
         self.cancel_check = callback
+
+    def set_session_context(self, jarvis_session_id: str | None = None, web_conversation_id: str | None = None):
+        """Set session metadata that should be propagated to tool subprocesses."""
+        self.jarvis_session_id = jarvis_session_id
+        self.web_conversation_id = web_conversation_id
     
     def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False) -> dict[str, Any]:
         """
@@ -154,6 +161,10 @@ class ToolExecutor:
             
             # Pass current environment to subprocess so tools inherit LLM_PROVIDER
             tool_env = os.environ.copy()
+            if self.jarvis_session_id:
+                tool_env['JARVIS_SESSION_ID'] = str(self.jarvis_session_id)
+            if self.web_conversation_id:
+                tool_env['JARVIS_WEB_CONVERSATION_ID'] = str(self.web_conversation_id)
             
             process = subprocess.Popen(
                 cmd,

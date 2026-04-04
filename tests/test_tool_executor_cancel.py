@@ -60,6 +60,33 @@ class ToolExecutorCancelTests(unittest.TestCase):
         self.assertTrue(result["cancelled"])
         self.assertLess(elapsed, 3.0)
 
+    def test_session_context_is_passed_to_tool_environment(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script_path = Path(tmpdir) / "fake_long_tool.py"
+            script_path.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os\n"
+                "print(json.dumps({\n"
+                "  'ok': True,\n"
+                "  'speech': 'done',\n"
+                "  'data': {\n"
+                "    'jarvis_session': os.environ.get('JARVIS_SESSION_ID'),\n"
+                "    'web_conversation_id': os.environ.get('JARVIS_WEB_CONVERSATION_ID')\n"
+                "  }\n"
+                "} ))\n"
+            )
+
+            executor = ToolExecutor(mode="cloud", registry=FakeRegistry(str(script_path)))
+            executor.set_session_context(
+                jarvis_session_id="20260404_123456",
+                web_conversation_id="6dbf22ca"
+            )
+            result = executor.execute("fake_long_tool", {})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["jarvis_session"], "20260404_123456")
+        self.assertEqual(result["data"]["web_conversation_id"], "6dbf22ca")
+
 
 if __name__ == "__main__":
     unittest.main()

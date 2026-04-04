@@ -120,6 +120,21 @@ class OpenCodeToolTests(unittest.TestCase):
         self.assertIn("Created /home/boss/jarvis-workspace/projects/calculator/calculator.py", speech)
         self.assertIn("Run with python calculator.py", speech)
 
+    def test_extract_opencode_response_text_returns_full_parts_text(self):
+        result = {
+            "parts": [
+                {"type": "text", "text": "Implemented in `/home/boss/jarvis-workspace/projects/calculator-app`."},
+                {"type": "text", "text": "Created `/home/boss/jarvis-workspace/projects/calculator-app/index.html`."},
+                {"type": "text", "text": "OpenCode can also add keyboard support."},
+            ]
+        }
+
+        raw = opencode.extract_opencode_response_text(result)
+
+        self.assertIn("Implemented in `/home/boss/jarvis-workspace/projects/calculator-app`.", raw)
+        self.assertIn("Created `/home/boss/jarvis-workspace/projects/calculator-app/index.html`.", raw)
+        self.assertIn("OpenCode can also add keyboard support.", raw)
+
 
 if __name__ == "__main__":
     unittest.main()

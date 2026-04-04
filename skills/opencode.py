@@ -122,6 +122,7 @@ def main():
         # Extract result data
         opencode_result = result.get("result", {})
         session_id = result.get("session_id")
+        raw_llm_response = extract_opencode_response_text(opencode_result, max_chars=12000)
 
         # Build speech response (condensed for voice)
         speech = condense_for_voice(opencode_result, task)
@@ -129,6 +130,7 @@ def main():
         # Return success
         return_success(
             speech=speech,
+            raw_llm_response=raw_llm_response,
             data={
                 "session_id": session_id,
                 "task_type": task_type,
@@ -198,43 +200,58 @@ def get_memory_context(task: str, provider: str) -> dict:
         }
 
 
+def _extract_text(payload):
+    if isinstance(payload, str):
+        return payload.strip()
+    if isinstance(payload, list):
+        parts = []
+        for item in payload:
+            text = _extract_text(item)
+            if text:
+                parts.append(text)
+        return "\n".join(parts).strip()
+    if isinstance(payload, dict):
+        if isinstance(payload.get("text"), str):
+            return payload["text"].strip()
+        if isinstance(payload.get("content"), str):
+            return payload["content"].strip()
+        if "content" in payload:
+            text = _extract_text(payload.get("content"))
+            if text:
+                return text
+        if "parts" in payload:
+            text = _extract_text(payload.get("parts"))
+            if text:
+                return text
+    return ""
+
+
+def extract_opencode_response_text(result: dict, max_chars: int | None = None) -> str:
+    """Extract the full textual OpenCode response for Web UI details/history."""
+    if not isinstance(result, dict):
+        return ""
+
+    content = _extract_text(result.get("parts") or result.get("content") or result)
+    if not content:
+        return ""
+    if max_chars and len(content) > max_chars:
+        return content[:max_chars].rstrip() + "\n... [truncated]"
+    return content
+
+
 def condense_for_voice(result: dict, task: str) -> str:
     """
     Condense OpenCode result for voice output.
 
     OpenCode returns technical details, we need natural speech.
     """
-    def _extract_text(payload):
-        if isinstance(payload, str):
-            return payload.strip()
-        if isinstance(payload, list):
-            parts = []
-            for item in payload:
-                text = _extract_text(item)
-                if text:
-                    parts.append(text)
-            return "\n".join(parts).strip()
-        if isinstance(payload, dict):
-            if isinstance(payload.get("text"), str):
-                return payload["text"].strip()
-            if isinstance(payload.get("content"), str):
-                return payload["content"].strip()
-            if "content" in payload:
-                text = _extract_text(payload.get("content"))
-                if text:
-                    return text
-            if "parts" in payload:
-                text = _extract_text(payload.get("parts"))
-                if text:
-                    return text
-        return ""
 
     def _clean_line(line: str) -> str:
         value = re.sub(r"`([^`]+)`", r"\1", line).strip(" -\t")
         return re.sub(r"\s+", " ", value).strip()
 
     if isinstance(result, dict):
-        content = _extract_text(result.get("parts") or result.get("content") or result)
+        content = extract_opencode_response_text(result)
         if content:
             lines = [_clean_line(line) for line in content.splitlines() if _clean_line(line)]
 
@@ -265,7 +282,7 @@ def condense_for_voice(result: dict, task: str) -> str:
                 summary_parts.append("OpenCode finished the build")
 
             if created_items:
-                summary_parts.append(created_items[0])
+                summary_parts.extend(created_items[:2])
 
             if run_hint:
                 summary_parts.append(run_hint)
@@ -282,9 +299,11 @@ def condense_for_voice(result: dict, task: str) -> str:
     return "Task executed via OpenCode"
 
 
-def return_success(speech: str, data=None):
+def return_success(speech: str, data=None, raw_llm_response: str | None = None):
     """Return success response."""
     result = {"ok": True, "speech": speech}
+    if raw_llm_response:
+        result["raw_llm_response"] = raw_llm_response
     if data:
         result["data"] = data
     print(json.dumps(result))

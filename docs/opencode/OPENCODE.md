@@ -369,6 +369,7 @@ OpenCode receives this system prompt with every task:
 - [ ] **Live progress streaming** - Surface real build steps/permission states instead of generic filler updates
 - [ ] **Memory strategy** - Decide when Jarvis should inject memory vs keep OpenCode task-only
 - [ ] **Structured artifact reporting** - Return created files, run commands, and test status in a more machine-usable way
+- [ ] **Resume existing OpenCode sessions from follow-up requests** - Use `jarvis_session`, optional `web_conversation_id`, and prior `session_id` context so requests like "add keyboard support" continue the existing OpenCode project/session instead of starting fresh when appropriate
 
 ## Longer-Term Architecture Direction
 
@@ -387,6 +388,7 @@ Desired future behavior:
 - If OpenCode gets off-task, Jarvis corrects it
 - If OpenCode hits a true decision point, Jarvis escalates to the user
 - OpenCode remains isolated in `~/jarvis-workspace` so it can build autonomous artifacts without touching the main Jarvis repo
+- Jarvis can detect when a new user request is really a continuation of the last OpenCode build and resume that same session/project deliberately
 
 That supervision loop is not fully implemented yet, but the current workspace-isolated model is the foundation for it.
 - [x] **Context injection** - Pass user preferences, credentials to OpenCode (We already have .env in /home/boss/.config/opencode/jarvis-env.env)

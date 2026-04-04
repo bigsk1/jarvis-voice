@@ -143,6 +143,7 @@ class Orchestrator:
         self.workflow_loader = WorkflowLoader(explicit_only=True)
         self.pipeline_executor = PipelineExecutor(mode, self.executor)
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")  # Unique session ID
+        self.executor.set_session_context(jarvis_session_id=self.session_id)
         self.timezone = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
         
         # Auto-context configuration
@@ -183,6 +184,10 @@ class Orchestrator:
         Only set this for web UI requests, not CLI/voice.
         """
         self.web_conversation_id = conversation_id
+        self.executor.set_session_context(
+            jarvis_session_id=self.session_id,
+            web_conversation_id=conversation_id
+        )
     
     def set_cancel_check(self, callback):
         """Set callback to check if processing should be cancelled.
