@@ -37,7 +37,7 @@ provider = get_config_value('LLM_PROVIDER', 'anthropic')
 if provider == 'xai':
     model = get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
 elif provider == 'anthropic':
-    model = get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+    model = get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-6')
 elif provider == 'openai':
     model = get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
 else:
@@ -228,10 +228,16 @@ def handle_trigger():
         print(f"say.sh failed: {e}", file=sys.stderr)
 
     # Run Q&A flow
+    should_exit = False
     try:
-        subprocess.run([ASK], check=False)
+        result = subprocess.run([ASK], check=False)
+        should_exit = result.returncode == 20
     except Exception as e:
         print(f"question-mic.sh failed: {e}", file=sys.stderr)
+
+    if should_exit:
+        print("🛑 Wake loop stopped by voice command.")
+        return False
 
     # Cooldown + re-arm
     time.sleep(COOLDOWN_AFTER_QA)
@@ -241,6 +247,7 @@ def handle_trigger():
         last_arm_ts = time.time()
         start_stream()
     print("🟡 Re-armed, listening again 🎙️  Say --> Hey Jarvis")
+    return True
 
 def main():
     print(f"🎙️  Listening for '{WAKE_MODEL.replace('_',' ')}'... Ctrl+C to quit.")
@@ -249,7 +256,8 @@ def main():
         while True:
             if trigger_evt.wait(timeout=0.2):
                 trigger_evt.clear()
-                handle_trigger()
+                if handle_trigger() is False:
+                    break
     except KeyboardInterrupt:
         print("\n👋 Bye.")
     finally:

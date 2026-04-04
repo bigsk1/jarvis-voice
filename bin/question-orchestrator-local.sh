@@ -26,6 +26,25 @@ mkdir -p "$AUDIO_DIR/mic"
 mkdir -p "$AUDIO_DIR/tts"
 mkdir -p "$AUDIO_DIR/logs"
 
+normalize_control_phrase() {
+    printf '%s' "$1" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed -E 's/^[[:space:][:punct:]]+//; s/[[:space:][:punct:]]+$//; s/[[:space:]]+/ /g'
+}
+
+is_exit_command() {
+    local normalized
+    normalized="$(normalize_control_phrase "$1")"
+    case "$normalized" in
+        exit|quit|bye|goodbye|"stop listening"|"go to sleep"|sleep)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # If transcript provided as argument, skip recording
 if [ -n "${1:-}" ]; then
     TRANSCRIPT="$1"
@@ -49,6 +68,12 @@ else
     fi
     
     echo "🙋 You asked: $TRANSCRIPT"
+fi
+
+if is_exit_command "$TRANSCRIPT"; then
+    echo "🛑 Exit command detected. Stopping wake loop."
+    "$SAY_SCRIPT" "Okay, stopping wake word listening."
+    exit 20
 fi
 
 # Save transcript

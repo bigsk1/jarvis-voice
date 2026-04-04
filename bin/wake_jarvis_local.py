@@ -213,10 +213,16 @@ def handle_trigger():
         print(f"say-local.sh failed: {e}", file=sys.stderr)
 
     # Local pipeline
+    should_exit = False
     try:
-        subprocess.run([ASK], check=False)
+        result = subprocess.run([ASK], check=False)
+        should_exit = result.returncode == 20
     except Exception as e:
         print(f"question-mic-local.sh failed: {e}", file=sys.stderr)
+
+    if should_exit:
+        print("🛑 Wake loop stopped by voice command.")
+        return False
 
     time.sleep(COOLDOWN_AFTER_QA)
     with lock:
@@ -225,6 +231,7 @@ def handle_trigger():
         last_arm_ts = time.time()
         start_stream()
     print("🟡 Re-armed, listening again 🎙️  Say --> Hey Jarvis")
+    return True
 
 def main():
     print(f"🎙️  Listening for '{WAKE_MODEL.replace('_',' ')}'... Ctrl+C to quit.")
@@ -233,7 +240,8 @@ def main():
         while True:
             if trigger_evt.wait(timeout=0.2):
                 trigger_evt.clear()
-                handle_trigger()
+                if handle_trigger() is False:
+                    break
     except KeyboardInterrupt:
         print("\n👋 Bye.")
     finally:
