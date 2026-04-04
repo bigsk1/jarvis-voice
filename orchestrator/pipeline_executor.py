@@ -204,15 +204,16 @@ class PipelineExecutor:
                 status_callback(f"Step {step_num}: {description}")
             
             # Check condition (if specified)
-            if step.get("condition") == "${llm_decides}":
-                if not self._llm_should_execute(step, variables):
-                    results.append({
-                        "step": step_num,
-                        "tool": tool_name,
-                        "skipped": True,
-                        "reason": "LLM decided to skip"
-                    })
-                    continue
+            should_execute, skip_reason = self._should_execute_step(step, variables)
+            if not should_execute:
+                self._apply_variable_assignments(step.get("set_variables_on_skip"), variables)
+                results.append({
+                    "step": step_num,
+                    "tool": tool_name,
+                    "skipped": True,
+                    "reason": skip_reason or "Condition evaluated to false"
+                })
+                continue
             
             # Handle for_each loops
             if "for_each" in step:
@@ -271,6 +272,7 @@ class PipelineExecutor:
                 output_var = step.get("output_var")
                 if output_var and step_result.get("ok"):
                     variables[output_var] = step_result.get("data", {})
+                    self._apply_variable_assignments(step.get("set_variables_on_success"), variables)
                 
                 # Apply output transformations defined in the step
                 self._apply_output_transforms(step, step_result, variables, tool_name, action)
@@ -470,22 +472,17 @@ class PipelineExecutor:
         if not isinstance(expr, str):
             return expr
         
-        # Handle embedded variables like "Research: ${topic}"
-        if "${" in expr and not (expr.startswith("${") and expr.endswith("}")):
-            result = expr
-            for match in re.finditer(r'\$\{([^}]+)\}', expr):
-                full_match = match.group(0)
-                var_path = match.group(1)
-                value = self._get_nested_value(variables, var_path)
-                if value is not None:
-                    result = result.replace(full_match, str(value))
-            return result
+        full_placeholder = re.fullmatch(r'\$\{([^}]+)\}', expr)
+
+        # Handle embedded variables like "Research: ${topic}" or mixed templates.
+        if "${" in expr and not full_placeholder:
+            return self._resolve_template_string(expr, variables)
         
-        if not expr.startswith("${") or not expr.endswith("}"):
+        if not full_placeholder:
             return expr
         
         # Extract variable path
-        path = expr[2:-1]  # Remove ${ and }
+        path = full_placeholder.group(1)
         
         # Handle array slicing like urls[:5]
         slice_match = re.match(r'^(.+)\[(\d*):(\d*)\]$', path)
@@ -512,6 +509,21 @@ class PipelineExecutor:
         
         # Simple path like "topic" or "search_results.urls"
         return self._get_nested_value(variables, path)
+
+    def _resolve_template_string(self, template: str, variables: dict) -> str:
+        """Resolve all ${...} placeholders inside a larger template string."""
+        result = template
+        for match in re.finditer(r'\$\{([^}]+)\}', template):
+            full_match = match.group(0)
+            value = self._resolve_variable(full_match, variables)
+            if value is None:
+                continue
+            if isinstance(value, (dict, list)):
+                replacement = json.dumps(value, default=str)
+            else:
+                replacement = str(value)
+            result = result.replace(full_match, replacement)
+        return result
     
     def _get_nested_value(self, data: dict, path: str) -> Any:
         """Get a nested value from a dict using dot notation."""
@@ -528,6 +540,13 @@ class PipelineExecutor:
                 return None
         
         return current
+
+    def _apply_variable_assignments(self, assignments: dict | None, variables: dict) -> None:
+        """Apply workflow-defined variable assignments with template resolution."""
+        if not isinstance(assignments, dict):
+            return
+        for key, value in assignments.items():
+            variables[key] = self._resolve_variable(value, variables)
     
     def _apply_output_transforms(self, step: dict, result: dict, variables: dict, 
                                     tool_name: str, action: str) -> None:
@@ -733,6 +752,7 @@ class PipelineExecutor:
         - {"from": "query", "extract": "main_subject"}
         - {"from": "query", "extract": "main_subject", "default": "vps2"}
         - {"from": "static", "value": "some fixed value"}
+        - {"from": "env", "key": "JARVIS_DEFAULT_LOCATION", "default": "Hillsboro, Oregon"}
         - {"from": "url", "transform": "domain"}  # Derive from another variable
         """
         variables = {
@@ -764,6 +784,9 @@ class PipelineExecutor:
             if source == "static":
                 # Static value - use directly
                 extracted_value = var_def.get("value")
+            elif source == "env":
+                env_key = var_def.get("key", var_name)
+                extracted_value = os.environ.get(env_key)
             elif source == "query":
                 if extract_type == "url":
                     # Extract URL from query
@@ -923,10 +946,7 @@ class PipelineExecutor:
             return True  # Skip LLM validation if no provider
         
         # Resolve variables in prompt
-        prompt = prompt_template
-        for key, value in variables.items():
-            if isinstance(value, str):
-                prompt = prompt.replace(f"${{{key}}}", value)
+        prompt = self._resolve_template_string(prompt_template, variables)
         
         # Truncate content for validation
         content_preview = content[:2000] if len(content) > 2000 else content
@@ -949,12 +969,10 @@ class PipelineExecutor:
         if not self.provider:
             return True
         
-        prompt = step.get("llm_prompt", "Should this step be executed?")
-        
-        # Resolve variables in prompt
-        for key, value in variables.items():
-            if isinstance(value, str):
-                prompt = prompt.replace(f"${{{key}}}", value)
+        prompt = self._resolve_template_string(
+            step.get("llm_prompt", "Should this step be executed?"),
+            variables
+        )
         
         try:
             system_prompt = "Decide if this action should be taken. Respond with only 'YES' or 'NO'."
@@ -966,6 +984,138 @@ class PipelineExecutor:
             return answer.startswith("YES")
         except Exception:
             return True
+
+    def _should_execute_step(self, step: dict, variables: dict) -> tuple[bool, str | None]:
+        """Evaluate whether a workflow step should execute."""
+        condition = step.get("condition")
+        if condition is None:
+            return True, None
+
+        if condition == "${llm_decides}":
+            return (
+                self._llm_should_execute(step, variables),
+                "LLM decided to skip"
+            )
+
+        try:
+            should_execute = self._evaluate_condition(condition, variables)
+            return should_execute, "Condition evaluated to false"
+        except Exception as e:
+            print(f"Warning: condition evaluation failed for step {step.get('step')}: {e}", file=sys.stderr)
+            # Fail open so a bad condition does not silently suppress important work.
+            return True, None
+
+    def _evaluate_condition(self, condition: Any, variables: dict) -> bool:
+        """Evaluate a deterministic workflow condition."""
+        if isinstance(condition, list):
+            return all(self._evaluate_condition(item, variables) for item in condition)
+
+        if isinstance(condition, dict):
+            if "any" in condition:
+                return any(self._evaluate_condition(item, variables) for item in condition["any"])
+            if "all" in condition:
+                return all(self._evaluate_condition(item, variables) for item in condition["all"])
+
+            op = str(condition.get("op", "truthy")).strip().lower()
+            left = self._resolve_variable(condition.get("left"), variables)
+            right = self._resolve_variable(condition.get("right"), variables)
+
+            if op in {"truthy", "exists"}:
+                return self._is_truthy(left)
+            if op == "not_exists":
+                return not self._is_truthy(left)
+            if op == "eq":
+                return self._normalize_condition_value(left) == self._normalize_condition_value(right)
+            if op == "ne":
+                return self._normalize_condition_value(left) != self._normalize_condition_value(right)
+            if op == "lt":
+                try:
+                    return self._compare_condition_values(left, right) < 0
+                except ValueError:
+                    return False
+            if op == "lte":
+                try:
+                    return self._compare_condition_values(left, right) <= 0
+                except ValueError:
+                    return False
+            if op == "gt":
+                try:
+                    return self._compare_condition_values(left, right) > 0
+                except ValueError:
+                    return False
+            if op == "gte":
+                try:
+                    return self._compare_condition_values(left, right) >= 0
+                except ValueError:
+                    return False
+            if op == "contains":
+                return str(right or "").lower() in str(left or "").lower()
+            if op == "contains_any":
+                haystack = str(left or "").lower()
+                if isinstance(right, str):
+                    needles = [item.strip() for item in right.split(",")]
+                elif isinstance(right, list):
+                    needles = right
+                else:
+                    needles = [right]
+                return any(str(needle).strip().lower() in haystack for needle in needles if str(needle).strip())
+
+            raise ValueError(f"Unsupported condition op: {op}")
+
+        if isinstance(condition, str):
+            resolved = self._resolve_variable(condition, variables)
+            return self._is_truthy(resolved)
+
+        return self._is_truthy(condition)
+
+    def _normalize_condition_value(self, value: Any) -> Any:
+        """Normalize workflow condition values for comparisons."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return ""
+            if stripped.lower() in {"true", "false"}:
+                return stripped.lower() == "true"
+            if re.fullmatch(r"-?\d+", stripped):
+                try:
+                    return int(stripped)
+                except ValueError:
+                    pass
+            if re.fullmatch(r"-?\d+\.\d+", stripped):
+                try:
+                    return float(stripped)
+                except ValueError:
+                    pass
+            return stripped
+        return value
+
+    def _compare_condition_values(self, left: Any, right: Any) -> int:
+        """Compare two values for workflow conditions."""
+        norm_left = self._normalize_condition_value(left)
+        norm_right = self._normalize_condition_value(right)
+
+        if norm_left is None or norm_right is None:
+            raise ValueError("Cannot compare None values")
+
+        if isinstance(norm_left, (int, float)) and isinstance(norm_right, (int, float)):
+            return (norm_left > norm_right) - (norm_left < norm_right)
+
+        if isinstance(norm_left, (int, float)) != isinstance(norm_right, (int, float)):
+            raise ValueError("Cannot compare numeric and non-numeric values")
+
+        left_str = str(norm_left)
+        right_str = str(norm_right)
+        return (left_str > right_str) - (left_str < right_str)
+
+    def _is_truthy(self, value: Any) -> bool:
+        """Truthiness helper for workflow conditions."""
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return value.strip().lower() not in {"", "0", "false", "none", "null"}
+        if isinstance(value, (list, dict, tuple, set)):
+            return len(value) > 0
+        return bool(value)
     
     def _llm_fill_params(self, step: dict, variables: dict) -> dict:
         """Use LLM to fill in parameters based on llm_prompt.
@@ -993,7 +1143,7 @@ class PipelineExecutor:
             placeholder = f"${{{var_path}}}"
             
             # Get value using nested path resolution
-            value = self._get_nested_value(variables, var_path)
+            value = self._resolve_variable(placeholder, variables)
             
             if value is None:
                 continue
@@ -1068,8 +1218,20 @@ class PipelineExecutor:
         variables["article_count"] = article_count  # Make available for speech
         
         # Build speech from template - resolve all ${variables}
-        speech_template = workflow.get("success_speech", "Workflow complete.")
-        speech = self._resolve_variable(speech_template, variables)
+        speech_prompt = workflow.get("success_speech_llm_prompt")
+        if speech_prompt and self.provider:
+            resolved_prompt = self._resolve_variable(speech_prompt, variables)
+            system_prompt = (
+                "Write a short voice-friendly workflow completion message. "
+                "Be direct and actionable. Keep it under 45 words."
+            )
+            speech = self._chat_with_usage(str(resolved_prompt), system_prompt=system_prompt, max_tokens=120).strip()
+            if not speech:
+                speech_template = workflow.get("success_speech", "Workflow complete.")
+                speech = self._resolve_variable(speech_template, variables)
+        else:
+            speech_template = workflow.get("success_speech", "Workflow complete.")
+            speech = self._resolve_variable(speech_template, variables)
         
         # If still has unresolved vars, they stay as-is (shouldn't happen normally)
         if not isinstance(speech, str):

@@ -64,4 +64,4 @@ class AlertResponse(BaseModel):
     alert: Alert | None = None
     alerts: list[Alert] | None = None
     message: str | None = None
-
+    duplicate_suppressed: bool | None = None

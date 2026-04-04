@@ -36,6 +36,7 @@
           <button class="nav-tab" data-tab="intel">📁 Intel</button>
           <button class="nav-tab" data-tab="conversations">💬 Conversations</button>
           <button class="nav-tab" data-tab="reminders">⏰ Reminders</button>
+          <button class="nav-tab" data-tab="alerts">🚨 Alerts</button>
           <button class="nav-tab" data-tab="scheduled">⏱️ Scheduled</button>
           <button class="nav-tab" data-tab="stats">📊 Stats</button>
         </nav>
@@ -64,6 +65,7 @@
         <button class="nav-tab" data-tab="intel">📁 Intel</button>
         <button class="nav-tab" data-tab="conversations">💬 Conversations</button>
         <button class="nav-tab" data-tab="reminders">⏰ Reminders</button>
+        <button class="nav-tab" data-tab="alerts">🚨 Alerts</button>
         <button class="nav-tab" data-tab="scheduled">⏱️ Scheduled</button>
         <button class="nav-tab" data-tab="stats">📊 Stats</button>
       </nav>
@@ -156,6 +158,38 @@
             </div>
           </div>
           <div class="memory-list" id="reminderList">
+            <div class="loading"><div class="spinner"></div></div>
+          </div>
+        </div>
+
+        <!-- Alerts Panel -->
+        <div class="tab-panel" id="alertsPanel">
+          <div class="panel-controls">
+            <div class="panel-controls-group">
+              <label class="panel-controls-label" for="alertStatusFilter">Status</label>
+              <select class="form-input panel-select" id="alertStatusFilter">
+                <option value="all">All</option>
+                <option value="pending">Pending</option>
+                <option value="acknowledged">Acknowledged</option>
+                <option value="auto_resolved">Auto Resolved</option>
+                <option value="canceled">Canceled</option>
+              </select>
+            </div>
+            <div class="panel-controls-group">
+              <label class="panel-controls-label" for="alertSeverityFilter">Severity</label>
+              <select class="form-input panel-select" id="alertSeverityFilter">
+                <option value="all">All</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="panel-controls-group">
+              <button class="btn btn-secondary" id="ackPendingAlertsBtn">✅ Acknowledge Pending</button>
+            </div>
+          </div>
+          <div class="memory-list" id="alertList">
             <div class="loading"><div class="spinner"></div></div>
           </div>
         </div>

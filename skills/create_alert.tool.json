@@ -1,0 +1,56 @@
+{
+  "enabled": true,
+  "name": "create_alert",
+  "description": "Create a proactive alert in Jarvis. Use when the user wants a notification or warning to be created, especially for system issues, weather risks, workflow-generated warnings, or anything that should appear in alerts and optionally speak immediately. This uses the same backend alert manager as the FastAPI webhook endpoint. Required: title, source. Optional: description, severity, metadata, auto_resolve_url. If metadata includes dedupe_key, pending alerts from the same source with that exact dedupe key are suppressed as duplicates. High and critical alerts can speak immediately.",
+  "script": "create_alert.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Alert title"
+      },
+      "source": {
+        "type": "string",
+        "description": "Source system name, such as 'crop_frost_watch', 'workflow', 'uptime_kuma', or 'custom'"
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional detailed description"
+      },
+      "severity": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "critical"],
+        "description": "Alert severity. Default: medium"
+      },
+      "auto_resolve_url": {
+        "type": "string",
+        "description": "Optional URL to check for automatic resolution"
+      },
+      "auto_resolve_check_interval": {
+        "type": "integer",
+        "description": "Seconds between auto-resolve checks. Default: 300"
+      },
+      "metadata": {
+        "type": "object",
+        "description": "Optional metadata object stored with the alert. Include metadata.dedupe_key when you want duplicate suppression for the same source and condition."
+      },
+      "related_intel_file": {
+        "type": "string",
+        "description": "Optional intel file path related to this alert"
+      },
+      "speak_immediately": {
+        "type": "boolean",
+        "description": "Whether to speak the alert right away for high/critical alerts. Default: true"
+      }
+    },
+    "required": ["title", "source"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

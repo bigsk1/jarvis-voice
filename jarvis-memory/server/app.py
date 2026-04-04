@@ -39,6 +39,7 @@ from .routes.memories import memories_bp
 from .routes.intel import intel_bp
 from .routes.conversations import conversations_bp
 from .routes.reminders import reminders_bp
+from .routes.alerts import alerts_bp
 from .routes.stats import stats_bp
 from .routes.auth import auth_bp
 from .routes.scheduled_tasks import scheduled_tasks_bp
@@ -56,6 +57,7 @@ app.register_blueprint(memories_bp)
 app.register_blueprint(intel_bp)
 app.register_blueprint(conversations_bp)
 app.register_blueprint(reminders_bp)
+app.register_blueprint(alerts_bp)
 app.register_blueprint(stats_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(scheduled_tasks_bp)

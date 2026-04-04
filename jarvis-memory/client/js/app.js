@@ -10,6 +10,7 @@ let categories = [];
 let conversations = [];
 let intelFiles = [];
 let reminders = [];
+let alerts = [];
 let scheduledTasks = [];
 let searchQuery = '';
 let editingMemory = null;
@@ -19,6 +20,8 @@ let editingScheduledTask = null;
 const DEFAULT_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles';
 let reminderStatusFilter = 'all';
 let reminderSortBy = 'trigger_time_asc';
+let alertStatusFilter = 'all';
+let alertSeverityFilter = 'all';
 let scheduledStatusFilter = 'all';
 let scheduledSortBy = 'next_run_asc';
 let scheduledTaskRuns = {};
@@ -31,6 +34,7 @@ const SEARCH_PLACEHOLDERS = {
   intel: 'Search intel files...',
   conversations: 'Search conversations...',
   reminders: 'Search reminders...',
+  alerts: 'Search alerts...',
   scheduled: 'Search scheduled tasks...',
   stats: 'Search...'
 };
@@ -129,6 +133,15 @@ function setupEventListeners() {
     renderReminders();
   });
   document.getElementById('ackTriggeredRemindersBtn')?.addEventListener('click', acknowledgeTriggeredReminders);
+  document.getElementById('alertStatusFilter')?.addEventListener('change', (e) => {
+    alertStatusFilter = e.target.value;
+    renderAlerts();
+  });
+  document.getElementById('alertSeverityFilter')?.addEventListener('change', (e) => {
+    alertSeverityFilter = e.target.value;
+    renderAlerts();
+  });
+  document.getElementById('ackPendingAlertsBtn')?.addEventListener('click', acknowledgePendingAlerts);
   
   // Refresh buttons
   document.getElementById('refreshBtn').addEventListener('click', loadData);
@@ -165,6 +178,8 @@ async function loadData() {
       await loadIntelFiles();
     } else if (currentTab === 'reminders') {
       await loadReminders();
+    } else if (currentTab === 'alerts') {
+      await loadAlerts();
     } else if (currentTab === 'scheduled') {
       await loadScheduledTasks();
     } else if (currentTab === 'stats') {
@@ -243,6 +258,18 @@ async function loadReminders() {
     console.error('Error loading reminders:', error);
     reminders = [];
     renderReminders();
+  }
+}
+
+async function loadAlerts() {
+  try {
+    const result = await api.listAlerts({ status: 'all', limit: 300 });
+    alerts = result.alerts || [];
+    renderAlerts();
+  } catch (error) {
+    console.error('Error loading alerts:', error);
+    alerts = [];
+    renderAlerts();
   }
 }
 
@@ -589,6 +616,67 @@ function renderReminderCard(reminder) {
   `;
 }
 
+function renderAlerts() {
+  const container = document.getElementById('alertList');
+  const filteredAlerts = getVisibleAlerts();
+
+  if (filteredAlerts.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🚨</div>
+        <div class="empty-state-title">${searchQuery ? 'No alerts found' : 'No alerts yet'}</div>
+        <div class="empty-state-desc">${searchQuery || alertStatusFilter !== 'all' || alertSeverityFilter !== 'all' ? 'Try a different search term or filter' : 'Workflow and webhook alerts will appear here'}</div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="memory-grid">
+      ${filteredAlerts.map(alert => renderAlertCard(alert)).join('')}
+    </div>
+  `;
+}
+
+function renderAlertCard(alert) {
+  const status = String(alert.status || 'pending').toLowerCase();
+  const severity = String(alert.severity || 'medium').toLowerCase();
+  const preview = getAlertPreview(alert);
+
+  return `
+    <div class="memory-card alert-card" onclick="viewAlert(${alert.id})">
+      <div class="memory-card-header">
+        <div>
+          <div class="memory-key">${escapeHtml(alert.title || `Alert ${alert.id}`)}</div>
+          <div class="scheduled-task-subtitle">${escapeHtml(alert.source || 'unknown source')}</div>
+        </div>
+        <div class="scheduled-task-badges">
+          <span class="status-badge alert-severity ${escapeHtml(severity)}">${escapeHtml(formatAlertSeverity(severity))}</span>
+          <span class="status-badge run-status ${getAlertStatusClass(status)}">${escapeHtml(formatAlertStatus(status))}</span>
+        </div>
+      </div>
+      <div class="memory-value">${escapeHtml(truncate(preview, 180))}</div>
+      <div class="scheduled-next-run">
+        <span class="scheduled-next-run-label">Created</span>
+        <span class="scheduled-next-run-value">${escapeHtml(formatDate(alert.created_at))}</span>
+        ${alert.acknowledged_at ? `<span class="scheduled-next-run-relative">Acknowledged ${escapeHtml(formatDate(alert.acknowledged_at))}</span>` : ''}
+      </div>
+      <div class="memory-card-footer">
+        <div class="memory-meta">
+          <span title="Severity">🚨 ${escapeHtml(formatAlertSeverity(severity))}</span>
+          <span title="Status">📌 ${escapeHtml(formatAlertStatus(status))}</span>
+          ${alert.spoken ? '<span title="Spoken immediately">🔊 Spoken</span>' : ''}
+          ${alert.related_intel_file ? '<span title="Related intel file">📁 Intel</span>' : ''}
+        </div>
+        <div class="memory-actions">
+          ${status === 'pending' ? `<button class="btn btn-icon" onclick="event.stopPropagation(); acknowledgeAlert(${alert.id})" title="Acknowledge">✅</button>` : ''}
+          ${status === 'pending' ? `<button class="btn btn-icon" onclick="event.stopPropagation(); cancelAlert(${alert.id})" title="Cancel">⏸️</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderScheduledTasks() {
   const container = document.getElementById('scheduledTaskList');
   const filteredTasks = getVisibleScheduledTasks();
@@ -804,9 +892,32 @@ function getVisibleReminders() {
   return items;
 }
 
+function getVisibleAlerts() {
+  let items = [...alerts];
+
+  if (searchQuery) {
+    items = items.filter(alert => alertMatchesQuery(alert, searchQuery));
+  }
+
+  items = items.filter(alert => matchesAlertStatusFilter(alert, alertStatusFilter));
+  items = items.filter(alert => matchesAlertSeverityFilter(alert, alertSeverityFilter));
+  items.sort((a, b) => compareAlerts(a, b));
+  return items;
+}
+
 function matchesReminderStatusFilter(reminder, filter) {
   if (filter === 'all') return true;
   return String(reminder.status || '').toLowerCase() === filter;
+}
+
+function matchesAlertStatusFilter(alert, filter) {
+  if (filter === 'all') return true;
+  return String(alert.status || '').toLowerCase() === filter;
+}
+
+function matchesAlertSeverityFilter(alert, filter) {
+  if (filter === 'all') return true;
+  return String(alert.severity || '').toLowerCase() === filter;
 }
 
 function compareReminders(a, b, sortBy) {
@@ -828,6 +939,12 @@ function compareReminders(a, b, sortBy) {
     default:
       return aTrigger - bTrigger;
   }
+}
+
+function compareAlerts(a, b) {
+  const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
+  const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
+  return bCreated - aCreated;
 }
 
 function matchesScheduledStatusFilter(task, filter) {
@@ -1235,6 +1352,103 @@ async function confirmDeleteReminder(id) {
     await api.deleteReminder(id);
     showToast('Reminder deleted', 'success');
     await loadReminders();
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function viewAlert(id) {
+  try {
+    const result = await api.getAlert(id);
+    const alert = result.alert;
+    const metadata = parseJsonSafe(alert.metadata) || alert.metadata;
+    const modal = document.getElementById('viewModal');
+    const content = document.getElementById('viewContent');
+    const status = String(alert.status || 'pending').toLowerCase();
+    const severity = String(alert.severity || 'medium').toLowerCase();
+
+    content.innerHTML = `
+      <div class="form-group">
+        <label class="form-label">Title</label>
+        <div class="code-block">${escapeHtml(alert.title || '')}</div>
+      </div>
+      ${alert.description ? `
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <div class="code-block" style="white-space: pre-wrap;">${escapeHtml(alert.description)}</div>
+      </div>
+      ` : ''}
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <div><strong>Severity:</strong> ${escapeHtml(formatAlertSeverity(severity))}</div>
+        <div><strong>Status:</strong> ${escapeHtml(formatAlertStatus(status))}</div>
+        <div><strong>Source:</strong> ${escapeHtml(alert.source || 'unknown')}</div>
+        <div><strong>Spoken:</strong> ${alert.spoken ? '✅ Yes' : '❌ No'}</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Timestamps</label>
+        <div><strong>Created:</strong> ${escapeHtml(formatDate(alert.created_at))}</div>
+        ${alert.updated_at ? `<div><strong>Updated:</strong> ${escapeHtml(formatDate(alert.updated_at))}</div>` : ''}
+        ${alert.acknowledged_at ? `<div><strong>Acknowledged:</strong> ${escapeHtml(formatDate(alert.acknowledged_at))}</div>` : ''}
+        ${alert.resolved_at ? `<div><strong>Resolved:</strong> ${escapeHtml(formatDate(alert.resolved_at))}</div>` : ''}
+        ${alert.spoken_at ? `<div><strong>Spoken at:</strong> ${escapeHtml(formatDate(alert.spoken_at))}</div>` : ''}
+      </div>
+      ${alert.auto_resolve_url || alert.related_intel_file ? `
+      <div class="form-group">
+        <label class="form-label">Links</label>
+        ${alert.auto_resolve_url ? `<div><strong>Auto-resolve URL:</strong> ${escapeHtml(alert.auto_resolve_url)}</div>` : ''}
+        ${alert.related_intel_file ? `<div><strong>Related intel file:</strong> ${escapeHtml(alert.related_intel_file)}</div>` : ''}
+      </div>
+      ` : ''}
+      ${metadata ? `
+      <div class="form-group">
+        <label class="form-label">Metadata</label>
+        <div class="code-block" style="white-space: pre-wrap;">${escapeHtml(typeof metadata === 'string' ? metadata : JSON.stringify(metadata, null, 2))}</div>
+      </div>
+      ` : ''}
+      <div class="form-group" style="margin-top: var(--space-lg); display: flex; flex-wrap: wrap; gap: var(--space-sm);">
+        ${status === 'pending' ? `<button class="btn btn-primary" onclick="acknowledgeAlert(${alert.id}); closeAllModals();">✅ Acknowledge</button>` : ''}
+        ${status === 'pending' ? `<button class="btn btn-secondary" onclick="cancelAlert(${alert.id}); closeAllModals();">⏸️ Cancel</button>` : ''}
+      </div>
+    `;
+
+    modal.classList.add('active');
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function acknowledgeAlert(id) {
+  try {
+    await api.acknowledgeAlert(id);
+    showToast('Alert acknowledged', 'success');
+    await loadAlerts();
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function acknowledgePendingAlerts() {
+  if (!confirm('Acknowledge all currently pending alerts?')) {
+    return;
+  }
+  try {
+    const result = await api.acknowledgeAllAlerts('pending');
+    showToast(result.message || 'Pending alerts acknowledged', 'success');
+    await loadAlerts();
+  } catch (error) {
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+async function cancelAlert(id) {
+  if (!confirm('Cancel this alert?')) {
+    return;
+  }
+  try {
+    await api.cancelAlert(id);
+    showToast('Alert canceled', 'success');
+    await loadAlerts();
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
@@ -1903,6 +2117,53 @@ function getReminderPreview(reminder) {
   if (reminder.callback_url) return `Callback: ${reminder.callback_url}`;
   if (reminder.recurrence_rule) return `Recurs: ${formatReminderRecurrence(reminder.recurrence_rule, reminder.trigger_time)}`;
   return `Reminder set for ${formatReminderTriggerLocal(reminder.trigger_time)}`;
+}
+
+function alertMatchesQuery(alert, query) {
+  const q = query.toLowerCase();
+  const metadata = parseJsonSafe(alert.metadata);
+  return [
+    alert.title,
+    alert.description,
+    alert.source,
+    alert.status,
+    alert.severity,
+    alert.related_intel_file,
+    typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {})
+  ].filter(Boolean).some(value => String(value).toLowerCase().includes(q));
+}
+
+function getAlertPreview(alert) {
+  if (alert.description) return alert.description;
+  if (alert.related_intel_file) return `Intel file: ${alert.related_intel_file}`;
+  if (alert.auto_resolve_url) return `Auto-resolve URL: ${alert.auto_resolve_url}`;
+  return `Alert from ${alert.source || 'unknown source'}`;
+}
+
+function formatAlertStatus(status) {
+  const normalized = String(status || '').toLowerCase();
+  if (!normalized) return 'Pending';
+  const labels = {
+    pending: 'Pending',
+    acknowledged: 'Acknowledged',
+    auto_resolved: 'Auto Resolved',
+    canceled: 'Canceled'
+  };
+  return labels[normalized] || normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function formatAlertSeverity(severity) {
+  const normalized = String(severity || '').toLowerCase();
+  if (!normalized) return 'Medium';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function getAlertStatusClass(status) {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'pending') return 'running';
+  if (normalized === 'acknowledged' || normalized === 'auto_resolved') return 'success';
+  if (normalized === 'canceled') return 'cancelled';
+  return 'neutral';
 }
 
 function parseReminderRecurrenceRule(rule, triggerTime = null) {

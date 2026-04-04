@@ -2,6 +2,7 @@
 
 import sqlite3
 import json
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +40,38 @@ class AlertManager:
         
         self.db = MemoryDB()  # Use existing memory system
         self.project_root = Path(__file__).parent.parent.parent
+
+    def _sanitize_weather_watch_speech(self, text: str) -> str:
+        """Remove overly verbose machine-formatted date strings from spoken weather alerts."""
+        if not text:
+            return text
+
+        sanitized = re.sub(r'\b\d{4}-\d{2}-\d{2}\b', '', text)
+        sanitized = re.sub(r'(\d+)\s*°\s*F\b', r'\1 degrees', sanitized, flags=re.IGNORECASE)
+        sanitized = re.sub(r'(\d+)\s*°\s*C\b', r'\1 degrees Celsius', sanitized, flags=re.IGNORECASE)
+        sanitized = re.sub(r'\s+([.,])', r'\1', sanitized)
+        sanitized = re.sub(r'\s{2,}', ' ', sanitized)
+        return sanitized.strip()
+
+    def _find_existing_alert_by_metadata_key(
+        self,
+        cursor: sqlite3.Cursor,
+        source: str,
+        metadata: dict[str, Any],
+        key: str
+    ) -> int | None:
+        """Find a pending alert by a specific metadata key/value pair."""
+        value = metadata.get(key)
+        if value in (None, ""):
+            return None
+
+        cursor.execute("""
+            SELECT id FROM alerts
+            WHERE source = ? AND status = 'pending'
+            AND metadata LIKE ?
+        """, (source, f'%"{key}": "{value}"%'))
+        existing = cursor.fetchone()
+        return existing[0] if existing else None
         
     def create_alert(self, 
                      title: str,
@@ -71,6 +104,13 @@ class AlertManager:
         
         # Deduplication: Check for existing pending alert from same source
         # This prevents n8n price monitors from creating duplicate alerts every 10 minutes
+        if metadata:
+            # Generic dedupe path for workflows and tools that provide a stable key.
+            dedupe_id = self._find_existing_alert_by_metadata_key(cursor, source, metadata, "dedupe_key")
+            if dedupe_id:
+                conn.close()
+                return -dedupe_id
+
         if source == 'price_monitor' and metadata:
             # For price alerts with symbol
             if 'symbol' in metadata:
@@ -126,7 +166,7 @@ class AlertManager:
         
         # Speak immediately if high severity or requested
         if speak_immediately and severity in ['high', 'critical']:
-            self._speak_alert(alert_id, title, severity)
+            self._speak_alert(alert_id, title, severity, description=description, source=source)
         
         return alert_id
     
@@ -328,7 +368,8 @@ class AlertManager:
             # Connection failed - not resolved
             return False
     
-    def _speak_alert(self, alert_id: int, title: str, severity: str):
+    def _speak_alert(self, alert_id: int, title: str, severity: str,
+                     description: str | None = None, source: str | None = None):
         """Speak alert via TTS and mark as spoken"""
         # Determine urgency phrase
         if severity == "critical":
@@ -339,6 +380,11 @@ class AlertManager:
             prefix = "Alert:"
         
         message = f"Boss, {prefix} {title}"
+        if source == "weather_watch" and description:
+            detail = self._sanitize_weather_watch_speech(description.strip())
+            if len(detail) > 220:
+                detail = detail[:217].rstrip() + "..."
+            message = f"{message}. {detail}"
         
         self._speak(message, priority=severity)
         
@@ -354,7 +400,7 @@ class AlertManager:
         conn.close()
     
     def _speak(self, message: str, priority: str = "medium"):
-        """Trigger TTS using say-status.sh (with caching) for repeated alerts"""
+        """Trigger TTS using say-status.sh without blocking workflow execution."""
         try:
             # Use say-status.sh which has caching for repeated phrases
             # This is ideal for alerts like "Person: Front Door" spoken many times
@@ -371,11 +417,10 @@ class AlertManager:
                     say_script = self.project_root / 'bin' / 'say.sh'
             
             if say_script.exists():
-                subprocess.run(
-                    [str(say_script), message],
-                    check=False,
-                    capture_output=True,
-                    text=True
+                subprocess.Popen(
+                    [str(say_script), message, "false"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
                 )
         except Exception as e:
             # TTS failure shouldn't crash the system
@@ -392,4 +437,3 @@ class AlertManager:
         
         conn.close()
         return result[0] if result else 0
-

@@ -1,0 +1,251 @@
+{
+  "id": "weather_watch",
+  "name": "Weather Watch",
+  "description": "Create a weather watch report for the default location and raise condition-specific alerts for cold, wind, heat, or severe weather.",
+  "version": "1.0",
+  "enabled": true,
+  "triggers": {
+    "explicit": ["/weather-watch", "/garden-watch"],
+    "patterns": [],
+    "keywords": []
+  },
+  "variables": {
+    "location": {
+      "from": "env",
+      "key": "JARVIS_DEFAULT_LOCATION",
+      "default": "Hillsboro, Oregon"
+    },
+    "forecast_days": 3,
+    "cold_threshold_f": 34,
+    "freeze_threshold_f": 32,
+    "heat_threshold_f": 95,
+    "wind_threshold_mph": 25,
+    "alert_source": "weather_watch",
+    "forecast_dates": ["forecast unavailable", "forecast unavailable", "forecast unavailable"],
+    "forecast_day_names": ["Day 1", "Day 2", "Day 3"],
+    "forecast_highs": ["n/a", "n/a", "n/a"],
+    "forecast_lows": ["n/a", "n/a", "n/a"],
+    "forecast_conditions": ["forecast unavailable", "forecast unavailable", "forecast unavailable"],
+    "forecast_precip_probs": ["n/a", "n/a", "n/a"],
+    "forecast_wind_maxes": ["n/a", "n/a", "n/a"],
+    "storm_keywords": "thunderstorm, hail, freezing rain, snow, heavy rain",
+    "cold_alert_status": "Not triggered",
+    "cold_alert_reason": "Cold threshold not met or forecast data unavailable.",
+    "cold_alert_duplicate_suppressed": false,
+    "wind_alert_status": "Not triggered",
+    "wind_alert_reason": "Wind threshold not met or forecast data unavailable.",
+    "wind_alert_duplicate_suppressed": false,
+    "heat_alert_status": "Not triggered",
+    "heat_alert_reason": "Heat threshold not met or forecast data unavailable.",
+    "heat_alert_duplicate_suppressed": false,
+    "storm_alert_status": "Not triggered",
+    "storm_alert_reason": "No watched severe weather condition was forecast or forecast data was unavailable.",
+    "storm_alert_duplicate_suppressed": false
+  },
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {},
+      "output_var": "time_result",
+      "extract": {
+        "timestamp": "time",
+        "date": "date",
+        "day_of_week": "day_of_week"
+      },
+      "required": true,
+      "description": "Get current date and time"
+    },
+    {
+      "step": 2,
+      "tool": "weather",
+      "params": {
+        "location": "${location}",
+        "forecast": true,
+        "days": "${forecast_days}"
+      },
+      "output_var": "weather_result",
+      "extract": {
+        "resolved_location": "location",
+        "temperature": "temperature",
+        "feels_like": "feels_like",
+        "condition": "condition",
+        "humidity": "humidity",
+        "wind_speed": "wind_speed",
+        "provider": "provider",
+        "forecast_dates": "daily_forecast[*].date",
+        "forecast_day_names": "daily_forecast[*].day",
+        "forecast_highs": "daily_forecast[*].high",
+        "forecast_lows": "daily_forecast[*].low",
+        "forecast_conditions": "daily_forecast[*].condition",
+        "forecast_precip_probs": "daily_forecast[*].precip_probability",
+        "forecast_wind_maxes": "daily_forecast[*].wind_max"
+      },
+      "required": true,
+      "description": "Get current weather and multi-day forecast"
+    },
+    {
+      "step": 3,
+      "tool": "create_alert",
+      "params": {
+        "title": "Cold watch for ${resolved_location}",
+        "description": "Forecast low ${forecast_lows[0]}F tonight meets the cold watch threshold of ${cold_threshold_f}F for ${resolved_location}. ${forecast_day_names[0]} ${forecast_dates[0]} high ${forecast_highs[0]}F with ${forecast_conditions[0]}. ${forecast_day_names[1]} ${forecast_dates[1]} low ${forecast_lows[1]}F, high ${forecast_highs[1]}F, condition ${forecast_conditions[1]}. Cover sensitive plants tonight.",
+        "severity": "high",
+        "source": "${alert_source}",
+        "speak_immediately": true,
+        "metadata": {
+          "dedupe_key": "${alert_source}:cold:${location}:${forecast_dates[0]}",
+          "condition_type": "cold",
+          "location": "${location}",
+          "forecast_date": "${forecast_dates[0]}",
+          "cold_threshold_f": "${cold_threshold_f}",
+          "freeze_threshold_f": "${freeze_threshold_f}",
+          "today_low_f": "${forecast_lows[0]}",
+          "tomorrow_low_f": "${forecast_lows[1]}"
+        }
+      },
+      "condition": {
+        "any": [
+          { "op": "lte", "left": "${forecast_lows[0]}", "right": "${cold_threshold_f}" },
+          { "op": "lte", "left": "${forecast_lows[1]}", "right": "${cold_threshold_f}" }
+        ]
+      },
+      "set_variables_on_success": {
+        "cold_alert_status": "Created"
+      },
+      "output_var": "cold_alert_result",
+      "extract": {
+        "cold_alert_reason": "alert.description",
+        "cold_alert_duplicate_suppressed": "duplicate_suppressed"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Create cold watch alert when overnight lows are risky"
+    },
+    {
+      "step": 4,
+      "tool": "create_alert",
+      "params": {
+        "title": "Wind advisory for ${resolved_location}",
+        "description": "Forecast max wind ${forecast_wind_maxes[0]} mph reaches the wind alert threshold of ${wind_threshold_mph} mph for ${resolved_location}. ${forecast_day_names[0]} ${forecast_dates[0]} condition ${forecast_conditions[0]}. ${forecast_day_names[1]} ${forecast_dates[1]} max wind ${forecast_wind_maxes[1]} mph with ${forecast_conditions[1]}. Secure covers, trays, or lightweight materials if needed.",
+        "severity": "high",
+        "source": "${alert_source}",
+        "speak_immediately": true,
+        "metadata": {
+          "dedupe_key": "${alert_source}:wind:${location}:${forecast_dates[0]}",
+          "condition_type": "wind",
+          "location": "${location}",
+          "forecast_date": "${forecast_dates[0]}",
+          "wind_threshold_mph": "${wind_threshold_mph}",
+          "today_wind_max_mph": "${forecast_wind_maxes[0]}",
+          "tomorrow_wind_max_mph": "${forecast_wind_maxes[1]}"
+        }
+      },
+      "condition": {
+        "any": [
+          { "op": "gte", "left": "${forecast_wind_maxes[0]}", "right": "${wind_threshold_mph}" },
+          { "op": "gte", "left": "${forecast_wind_maxes[1]}", "right": "${wind_threshold_mph}" }
+        ]
+      },
+      "set_variables_on_success": {
+        "wind_alert_status": "Created"
+      },
+      "output_var": "wind_alert_result",
+      "extract": {
+        "wind_alert_reason": "alert.description",
+        "wind_alert_duplicate_suppressed": "duplicate_suppressed"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Create wind alert when forecast gusts are elevated"
+    },
+    {
+      "step": 5,
+      "tool": "create_alert",
+      "params": {
+        "title": "Heat watch for ${resolved_location}",
+        "description": "Forecast high ${forecast_highs[0]}F meets the heat watch threshold of ${heat_threshold_f}F for ${resolved_location}. ${forecast_day_names[0]} ${forecast_dates[0]} low ${forecast_lows[0]}F. ${forecast_day_names[1]} ${forecast_dates[1]} high ${forecast_highs[1]}F with low ${forecast_lows[1]}F. Plan watering and shade support if needed.",
+        "severity": "high",
+        "source": "${alert_source}",
+        "speak_immediately": true,
+        "metadata": {
+          "dedupe_key": "${alert_source}:heat:${location}:${forecast_dates[0]}",
+          "condition_type": "heat",
+          "location": "${location}",
+          "forecast_date": "${forecast_dates[0]}",
+          "heat_threshold_f": "${heat_threshold_f}",
+          "today_high_f": "${forecast_highs[0]}",
+          "tomorrow_high_f": "${forecast_highs[1]}"
+        }
+      },
+      "condition": {
+        "any": [
+          { "op": "gte", "left": "${forecast_highs[0]}", "right": "${heat_threshold_f}" },
+          { "op": "gte", "left": "${forecast_highs[1]}", "right": "${heat_threshold_f}" }
+        ]
+      },
+      "set_variables_on_success": {
+        "heat_alert_status": "Created"
+      },
+      "output_var": "heat_alert_result",
+      "extract": {
+        "heat_alert_reason": "alert.description",
+        "heat_alert_duplicate_suppressed": "duplicate_suppressed"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Create heat alert when forecast highs are elevated"
+    },
+    {
+      "step": 6,
+      "tool": "create_alert",
+      "params": {
+        "title": "Severe weather watch for ${resolved_location}",
+        "description": "Watched severe weather conditions are forecast for ${resolved_location}. ${forecast_day_names[0]} ${forecast_dates[0]} expects ${forecast_conditions[0]} with ${forecast_precip_probs[0]}% precipitation chance and max wind ${forecast_wind_maxes[0]} mph. ${forecast_day_names[1]} ${forecast_dates[1]} expects ${forecast_conditions[1]} with ${forecast_precip_probs[1]}% precipitation chance and max wind ${forecast_wind_maxes[1]} mph.",
+        "severity": "high",
+        "source": "${alert_source}",
+        "speak_immediately": true,
+        "metadata": {
+          "dedupe_key": "${alert_source}:storm:${location}:${forecast_dates[0]}",
+          "condition_type": "storm",
+          "location": "${location}",
+          "forecast_date": "${forecast_dates[0]}",
+          "storm_keywords": "${storm_keywords}",
+          "today_condition": "${forecast_conditions[0]}",
+          "tomorrow_condition": "${forecast_conditions[1]}"
+        }
+      },
+      "condition": {
+        "any": [
+          { "op": "contains_any", "left": "${forecast_conditions[0]}", "right": ["thunderstorm", "hail", "freezing rain", "snow", "heavy rain"] },
+          { "op": "contains_any", "left": "${forecast_conditions[1]}", "right": ["thunderstorm", "hail", "freezing rain", "snow", "heavy rain"] }
+        ]
+      },
+      "set_variables_on_success": {
+        "storm_alert_status": "Created"
+      },
+      "output_var": "storm_alert_result",
+      "extract": {
+        "storm_alert_reason": "alert.description",
+        "storm_alert_duplicate_suppressed": "duplicate_suppressed"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Create severe weather alert for storms, hail, snow, or freezing rain"
+    },
+    {
+      "step": 7,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Workflows/Weather Watch/${date}",
+        "tags": ["weather", "watch", "workflow", "${date}", "${location}"],
+        "content": "# Weather Watch for ${resolved_location}\n\n- Date: ${date} (${day_of_week})\n- Time: ${timestamp}\n- Source: ${provider}\n- Current weather: ${temperature}F, feels like ${feels_like}F\n- Current condition: ${condition}\n- Current humidity: ${humidity}%\n- Current wind: ${wind_speed} mph\n\n## Alert Thresholds\n\n- Cold watch at or below ${cold_threshold_f}F overnight\n- Freeze line at or below ${freeze_threshold_f}F\n- Wind alert at or above ${wind_threshold_mph} mph max daily wind\n- Heat watch at or above ${heat_threshold_f}F high\n- Severe weather keywords: ${storm_keywords}\n\n## Forecast\n\n### ${forecast_day_names[0]} ${forecast_dates[0]}\n- High: ${forecast_highs[0]}F\n- Low: ${forecast_lows[0]}F\n- Condition: ${forecast_conditions[0]}\n- Precipitation chance: ${forecast_precip_probs[0]}%\n- Max wind: ${forecast_wind_maxes[0]} mph\n\n### ${forecast_day_names[1]} ${forecast_dates[1]}\n- High: ${forecast_highs[1]}F\n- Low: ${forecast_lows[1]}F\n- Condition: ${forecast_conditions[1]}\n- Precipitation chance: ${forecast_precip_probs[1]}%\n- Max wind: ${forecast_wind_maxes[1]} mph\n\n### ${forecast_day_names[2]} ${forecast_dates[2]}\n- High: ${forecast_highs[2]}F\n- Low: ${forecast_lows[2]}F\n- Condition: ${forecast_conditions[2]}\n- Precipitation chance: ${forecast_precip_probs[2]}%\n- Max wind: ${forecast_wind_maxes[2]} mph\n\n## Alerts Triggered\n\n- Cold alert: ${cold_alert_status}\n- Cold reason: ${cold_alert_reason}\n- Cold duplicate suppressed: ${cold_alert_duplicate_suppressed}\n- Wind alert: ${wind_alert_status}\n- Wind reason: ${wind_alert_reason}\n- Wind duplicate suppressed: ${wind_alert_duplicate_suppressed}\n- Heat alert: ${heat_alert_status}\n- Heat reason: ${heat_alert_reason}\n- Heat duplicate suppressed: ${heat_alert_duplicate_suppressed}\n- Severe weather alert: ${storm_alert_status}\n- Severe weather reason: ${storm_alert_reason}\n- Severe weather duplicate suppressed: ${storm_alert_duplicate_suppressed}\n\n## Garden Notes\n\n- If tonight's low is near freezing, cover sensitive plants before dusk.\n- If wind is elevated, secure row covers and lightweight trays.\n- If heat is elevated, plan for extra water and early-morning checks."
+      },
+      "required": true,
+      "description": "Create canvas weather watch report"
+    }
+  ],
+  "success_speech_llm_prompt": "Give a short spoken summary for this weather watch. Keep it under 45 words. Mention the current weather in ${resolved_location}. If forecast lows and winds are available, mention tonight's low ${forecast_lows[0]}F and tomorrow's max wind ${forecast_wind_maxes[1]} mph. If forecast values are unavailable, say the extended forecast was unavailable. Mention that the full report is on canvas.",
+  "abort_speech": "Couldn't complete the weather watch workflow."
+}

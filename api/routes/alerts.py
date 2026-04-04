@@ -87,14 +87,21 @@ async def create_alert(alert: AlertCreate):
             related_intel_file=alert.related_intel_file,
             speak_immediately=True
         )
-        
-        created_alert = alert_manager.get_alert(alert_id)
+
+        duplicate_suppressed = alert_id < 0
+        actual_alert_id = abs(alert_id)
+        created_alert = alert_manager.get_alert(actual_alert_id)
         
         return AlertResponse(
             ok=True,
-            alert_id=alert_id,
+            alert_id=actual_alert_id,
             alert=Alert(**created_alert) if created_alert else None,
-            message=f"Alert created (ID: {alert_id})"
+            message=(
+                f"Alert already exists (ID: {actual_alert_id})"
+                if duplicate_suppressed
+                else f"Alert created (ID: {actual_alert_id})"
+            ),
+            duplicate_suppressed=duplicate_suppressed
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -213,4 +220,3 @@ async def check_auto_resolve(alert_id: int):
             ok=True,
             message=f"Alert {alert_id} still active (not resolved)"
         )
-

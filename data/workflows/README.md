@@ -40,6 +40,7 @@ This folder contains JSON workflow definitions that the orchestrator can execute
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
 | `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, system health dashboard |
 | `daily_status_visual.json` | `/status-visual` | Same as /status but with AI-generated dashboard image |
+| `weather_watch.json` | `/weather-watch` | Default-location weather watch with canvas report and condition-specific alerts |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, keywords, canvas study notes |
 | `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |
@@ -68,6 +69,13 @@ Two formats supported:
   "url": {"from": "query", "extract": "url"},
   "host": {"from": "query", "extract": "main_subject", "default": "vps2"},
   "url_domain": {"from": "url", "transform": "domain"}
+}
+```
+
+**Environment-backed variables:**
+```json
+"variables": {
+  "location": {"from": "env", "key": "JARVIS_DEFAULT_LOCATION", "default": "Hillsboro, Oregon"}
 }
 ```
 

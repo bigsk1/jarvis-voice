@@ -227,6 +227,46 @@ class MemoryAPI {
   }
 
   // =========================================================================
+  // Alerts
+  // =========================================================================
+
+  async listAlerts(options = {}) {
+    const params = new URLSearchParams();
+    if (options.status) params.set('status', options.status);
+    if (options.severity) params.set('severity', options.severity);
+    if (options.source) params.set('source', options.source);
+    if (options.limit) params.set('limit', options.limit);
+    const query = params.toString();
+    return this.fetch(`/api/alerts${query ? '?' + query : ''}`);
+  }
+
+  async getAlert(id) {
+    return this.fetch(`/api/alerts/${id}`);
+  }
+
+  async acknowledgeAlert(id) {
+    return this.fetch(`/api/alerts/${id}/acknowledge`, {
+      method: 'POST'
+    });
+  }
+
+  async acknowledgeAllAlerts(status = 'pending', severity = null) {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (severity) params.set('severity', severity);
+    const query = params.toString();
+    return this.fetch(`/api/alerts/acknowledge-all${query ? '?' + query : ''}`, {
+      method: 'POST'
+    });
+  }
+
+  async cancelAlert(id) {
+    return this.fetch(`/api/alerts/${id}`, {
+      method: 'DELETE'
+    });
+  }
+
+  // =========================================================================
   // Scheduled Tasks
   // =========================================================================
 

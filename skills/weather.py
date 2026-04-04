@@ -325,7 +325,7 @@ def fetch_open_meteo_daily_forecast(location: str, days: int) -> list[dict[str, 
         "forecast_days": max(1, min(days, 10)),
         "temperature_unit": "fahrenheit",
         "wind_speed_unit": "mph",
-        "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode"
+        "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode,wind_speed_10m_max"
     }
 
     response = http_request(
@@ -345,6 +345,7 @@ def fetch_open_meteo_daily_forecast(location: str, days: int) -> list[dict[str, 
     lows = daily.get("temperature_2m_min", [])
     precip_probs = daily.get("precipitation_probability_max", [])
     weather_codes = daily.get("weathercode", [])
+    wind_maxes = daily.get("wind_speed_10m_max", [])
 
     if not times:
         return None
@@ -394,6 +395,7 @@ def fetch_open_meteo_daily_forecast(location: str, days: int) -> list[dict[str, 
             "day": day_name,
             "high": round(highs[i]) if i < len(highs) and highs[i] is not None else None,
             "low": round(lows[i]) if i < len(lows) and lows[i] is not None else None,
+            "wind_max": round(wind_maxes[i]) if i < len(wind_maxes) and wind_maxes[i] is not None else None,
             "condition": code_map.get(code, "unknown"),
             "precip_probability": precip_probs[i] if i < len(precip_probs) else None,
             "weather_code": code
@@ -613,4 +615,3 @@ def return_error(speech: str, data: dict | None = None):
 
 if __name__ == "__main__":
     sys.exit(main())
-
