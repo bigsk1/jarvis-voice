@@ -30,6 +30,7 @@ class ChatHandler:
         'send_email',
         'create_reminder',
         'create_alert',
+        'opencode',
     }
     
     def __init__(self, socketio):

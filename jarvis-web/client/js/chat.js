@@ -269,6 +269,7 @@ class ChatUI {
     this.cumulativeCost = 0;
     this.contextWindow = 2000000;  // Default to xAI's 2M, updated from server
     this.llmProvider = 'xai';      // Default, updated from server
+    this.systemConfig = {};
     
     this._setupEventListeners();
     this._setupSocketListeners();
@@ -312,7 +313,8 @@ class ChatUI {
           try {
             const sysRes = await fetch(`/api/settings/system?mode=${currentMode}`);
             if (sysRes.ok) {
-              const sysConfig = await sysRes.json();
+              const sysData = await sysRes.json();
+              const sysConfig = sysData.config || {};
               this.contextWindow = parseInt(sysConfig.OLLAMA_CONTEXT_WINDOW) || 32768;
             } else {
               this.contextWindow = 32768;
@@ -321,12 +323,46 @@ class ChatUI {
             this.contextWindow = 32768;
           }
         }
+
+        await this._refreshSystemConfig(currentMode);
         
         this.llmProvider = provider;  // Store for display
         console.log('[Chat] LLM Provider:', provider, '| Context window:', this.contextWindow.toLocaleString(), 'tokens');
       }
     } catch (err) {
       console.warn('[Chat] Could not fetch context window:', err);
+    }
+  }
+
+  async _refreshSystemConfig(mode = null) {
+    try {
+      const currentMode = mode || this.socket?.mode || 'cloud';
+      const res = await fetch(`/api/settings/system?mode=${encodeURIComponent(currentMode)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      this.systemConfig = data.config || {};
+    } catch (err) {
+      console.warn('[Chat] Could not fetch system config:', err);
+    }
+  }
+
+  _getOpenCodeSessionUrl(sessionId) {
+    if (!sessionId) return null;
+
+    const configuredBase = this.systemConfig?.OPENCODE_BASE_URL || 'http://localhost:4096';
+
+    try {
+      const base = new URL(configuredBase);
+      const pageProtocol = window.location.protocol || base.protocol;
+      const pageHost = window.location.hostname || base.hostname;
+      const needsBrowserHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(base.hostname);
+      const finalHost = needsBrowserHost ? pageHost : base.hostname;
+      const port = base.port || '4096';
+      return `${pageProtocol}//${finalHost}:${port}/Lw/session/${encodeURIComponent(sessionId)}`;
+    } catch {
+      const pageProtocol = window.location.protocol || 'http:';
+      const pageHost = window.location.hostname || 'localhost';
+      return `${pageProtocol}//${pageHost}:4096/Lw/session/${encodeURIComponent(sessionId)}`;
     }
   }
 
@@ -3302,6 +3338,20 @@ class ChatUI {
     } else if (data) {
       summary = String(data);
     }
+
+    let detailsLinkHtml = '';
+    if (toolName === 'opencode' && data && typeof data === 'object' && data.session_id) {
+      const sessionUrl = this._getOpenCodeSessionUrl(data.session_id);
+      if (sessionUrl) {
+        detailsLinkHtml = `
+          <div class="tool-card-link-row">
+            <a href="${Utils.escapeHtml(sessionUrl)}" target="_blank" rel="noopener noreferrer" class="content-link tool-card-link">
+              Open session: ${Utils.escapeHtml(data.session_id)}
+            </a>
+          </div>
+        `;
+      }
+    }
     
     return `
       <div class="tool-card ${status}">
@@ -3309,6 +3359,7 @@ class ChatUI {
           <span class="tool-card-title">${Utils.escapeHtml(toolName)}</span>
           <span class="tool-card-status">${statusText}</span>
         </div>
+        ${detailsLinkHtml}
         <pre class="tool-card-body">${Utils.escapeHtmlAndLinkify(summary)}</pre>
       </div>
     `;

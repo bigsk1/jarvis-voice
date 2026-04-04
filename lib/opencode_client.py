@@ -82,10 +82,18 @@ class OpenCodeClient:
         except Exception as e:
             return {"healthy": False, "status": "error", "error": str(e)}
 
-    def create_session(self, title: str = "Jarvis Session") -> dict[str, Any]:
+    def create_session(
+        self,
+        title: str = "Jarvis Session",
+        agent_mode: str = "build"
+    ) -> dict[str, Any]:
         """Create a new OpenCode session."""
+        payload: dict[str, Any] = {"title": title}
+        if agent_mode:
+            payload["agent"] = agent_mode
+
         response = requests.post(
-            f"{self.base_url}/session", json={"title": title}, timeout=self.timeout
+            f"{self.base_url}/session", json=payload, timeout=self.timeout
         )
         response.raise_for_status()
         return response.json()
@@ -149,8 +157,11 @@ class OpenCodeClient:
         try:
             # Create or use existing session
             if session_id is None:
-                session = self.create_session(title=f"Jarvis: {task[:50]}")
-                session_id = session.get("id")
+                session = self.create_session(
+                    title=f"Jarvis: {task[:50]}",
+                    agent_mode=agent_mode,
+                )
+                session_id = session.get("id") or session.get("sessionId")
                 if not session_id:
                     raise Exception("Failed to get session ID")
             

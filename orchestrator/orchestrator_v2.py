@@ -136,6 +136,7 @@ class Orchestrator:
             model_override=self._model_override
         )
         self.executor = ToolExecutor(mode, registry=self.registry)
+        self.executor.set_cancel_check(self._is_cancelled)
         self.max_retries = 1  # Maximum retry attempts
         
         # Workflow orchestration (explicit commands like /research, /note)
@@ -1051,6 +1052,26 @@ Mode: {self.mode}
             Synthesized speech response that actually answers the user's question
         """
         try:
+            def _extract_text_from_payload(payload: Any) -> str:
+                if isinstance(payload, str):
+                    return payload.strip()
+                if isinstance(payload, list):
+                    parts = []
+                    for item in payload:
+                        text = _extract_text_from_payload(item)
+                        if text:
+                            parts.append(text)
+                    return "\n".join(parts).strip()
+                if isinstance(payload, dict):
+                    if isinstance(payload.get("text"), str):
+                        return payload["text"].strip()
+                    for key in ("parts", "content"):
+                        if key in payload:
+                            text = _extract_text_from_payload(payload.get(key))
+                            if text:
+                                return text
+                return ""
+
             def _is_machine_like_speech(text: str) -> bool:
                 """Detect raw JSON or machine-formatted tool payloads."""
                 if not text or not isinstance(text, str):
@@ -1074,6 +1095,30 @@ Mode: {self.mode}
                 if s.count("{") >= 2 and s.count(":") >= 3:
                     return True
                 return False
+
+            # If OpenCode already returned a useful build summary, prefer that
+            # over later status/verification tools like check_opencode_sessions.
+            if conversation_context:
+                for ctx in reversed(conversation_context):
+                    if ctx.get("tool") != "opencode":
+                        continue
+                    result = ctx.get("result", {}) if isinstance(ctx, dict) else {}
+                    opencode_result = (
+                        (result.get("data", {}) or {}).get("opencode_result", {})
+                        if isinstance(result, dict)
+                        else {}
+                    )
+                    extracted = _extract_text_from_payload(opencode_result)
+                    if extracted and not _is_machine_like_speech(extracted):
+                        return extracted.strip()
+
+                    op_speech = (result or {}).get("speech") or ctx.get("speech") or ""
+                    if (
+                        isinstance(op_speech, str)
+                        and op_speech.strip()
+                        and not _is_machine_like_speech(op_speech)
+                    ):
+                        return op_speech.strip()
 
             # If we already have clear tool speech, prefer it over re-synthesis.
             # This avoids hallucinated contradictions when duplicate prevention triggers.

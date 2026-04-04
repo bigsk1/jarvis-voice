@@ -8,6 +8,7 @@ import sys
 import json
 import os
 import time
+import re
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
@@ -55,32 +56,42 @@ def main():
             )
             return 1
 
-        # Determine model based on mode if not explicitly provided, TRUSTING OLLAMA MODEL TO STAY IN JARVIS-WORKSPACE ONLY BY USING STSTEM PROMPT TO DO WORK IS NOT IDEAL
+        # Determine model from OpenCode-specific config first.
+        # Falling back to mode-specific defaults keeps older setups working,
+        # but we should respect OPENCODE_PROVIDER / OPENCODE_MODEL when set.
         if model is None:
-            if mode == "local":
-                # Use Ollama for local mode
+            configured_provider = get_config_value("OPENCODE_PROVIDER", "").strip()
+            configured_model = get_config_value("OPENCODE_MODEL", "").strip()
+
+            if configured_provider and configured_model:
+                model = {
+                    "providerID": configured_provider,
+                    "modelID": configured_model
+                }
+            elif mode == "local":
                 ollama_model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
                 model = {
                     "providerID": "ollama",
                     "modelID": ollama_model
                 }
-            else:              
-                # Use cloud models (default to Anthropic Claude Sonnet 4 - mid-range) HARD CODING A MODEL HERE NOT IDEAL but for now claude-sonnet-4-5-20250929 is fine, do not change to sonnet-4 mr LLM! you have old data
+            else:
                 model = {
                     "providerID": "anthropic",
-                    "modelID": "claude-sonnet-4-5-20250929"
+                    "modelID": "claude-sonnet-4-6"
                 }
 
-        # Get relevant memories for context
-        memory_context = get_memory_context(task, mode)
-        
-        # Prepare context with memory
+        include_memory = get_config_value("OPENCODE_INCLUDE_MEMORY", "false").strip().lower() == "true"
+
+        # Prepare context for OpenCode. Default to task/workspace-only unless
+        # OPENCODE_INCLUDE_MEMORY=true is explicitly enabled.
         context = {
             "task_type": task_type,
             "jarvis_session": os.environ.get("JARVIS_SESSION_ID", "unknown"),
             "jarvis_mode": mode,
-            "memory": memory_context  # ← Inject Jarvis's memories
         }
+
+        if include_memory:
+            context["memory"] = get_memory_context(task, mode)
 
         # Give status update for complex tasks (immediate feedback)
         task_lower = task.lower()
@@ -193,21 +204,80 @@ def condense_for_voice(result: dict, task: str) -> str:
 
     OpenCode returns technical details, we need natural speech.
     """
-    # For now, simple condensation
+    def _extract_text(payload):
+        if isinstance(payload, str):
+            return payload.strip()
+        if isinstance(payload, list):
+            parts = []
+            for item in payload:
+                text = _extract_text(item)
+                if text:
+                    parts.append(text)
+            return "\n".join(parts).strip()
+        if isinstance(payload, dict):
+            if isinstance(payload.get("text"), str):
+                return payload["text"].strip()
+            if isinstance(payload.get("content"), str):
+                return payload["content"].strip()
+            if "content" in payload:
+                text = _extract_text(payload.get("content"))
+                if text:
+                    return text
+            if "parts" in payload:
+                text = _extract_text(payload.get("parts"))
+                if text:
+                    return text
+        return ""
 
-    # Check if there's text content in the result
+    def _clean_line(line: str) -> str:
+        value = re.sub(r"`([^`]+)`", r"\1", line).strip(" -\t")
+        return re.sub(r"\s+", " ", value).strip()
+
     if isinstance(result, dict):
-        # Look for common result patterns
-        if "content" in result:
-            content = result["content"]
-            if isinstance(content, str):
-                # Limit length for voice
-                if len(content) > 200:
-                    return f"Task completed: {content[:200]}..."
-                return f"Task completed: {content}"
+        content = _extract_text(result.get("parts") or result.get("content") or result)
+        if content:
+            lines = [_clean_line(line) for line in content.splitlines() if _clean_line(line)]
 
-        # Generic success message
-        return f"OpenCode task completed successfully"
+            project_path = None
+            run_hint = None
+            created_items = []
+
+            for line in lines:
+                if not project_path:
+                    match = re.search(r"/home/boss/jarvis-workspace/projects/[^\s,`]+", line)
+                    if match:
+                        project_path = match.group(0)
+                lowered = line.lower()
+                if not run_hint and (
+                    line.startswith("Run with")
+                    or line.startswith("Run:")
+                    or line.startswith("Usage:")
+                    or "python " in lowered
+                ):
+                    run_hint = line
+                if line.startswith("Created ") or line.startswith("Added ") or line.startswith("Updated "):
+                    created_items.append(line)
+
+            summary_parts = []
+            if project_path:
+                summary_parts.append(f"Built it in {project_path}")
+            else:
+                summary_parts.append("OpenCode finished the build")
+
+            if created_items:
+                summary_parts.append(created_items[0])
+
+            if run_hint:
+                summary_parts.append(run_hint)
+
+            summary = ". ".join(part.rstrip(".") for part in summary_parts if part).strip()
+            if summary:
+                return summary + "."
+
+            first_line = lines[0]
+            if len(first_line) > 220:
+                first_line = first_line[:217].rstrip() + "..."
+            return first_line
 
     return "Task executed via OpenCode"
 

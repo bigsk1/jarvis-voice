@@ -25,6 +25,14 @@
         "type": "string",
         "description": "Optional: OpenCode session ID to resume previous conversation/task or check logs"
       },
+      "agent_mode": {
+        "type": "string",
+        "enum": [
+          "build",
+          "plan"
+        ],
+        "description": "OpenCode agent mode. Use 'build' for implementation with full permissions and 'plan' for read-only analysis that may ask before changes."
+      },
       "model": {
         "type": "object",
         "description": "Optional: Override model selection",

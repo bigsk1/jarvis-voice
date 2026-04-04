@@ -310,6 +310,18 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-04-04:**
+- ✅ **OpenCode integration hardening**
+  - OpenCode now respects `OPENCODE_PROVIDER` and `OPENCODE_MODEL` instead of drifting to stale defaults
+  - `agent_mode` is forwarded correctly for `build` vs `plan` sessions, and Jarvis accepts either `id` or `sessionId` from the OpenCode API
+  - Jarvis no longer injects memory into OpenCode build tasks by default; optional memory injection now requires `OPENCODE_INCLUDE_MEMORY=true`
+  - Router guidance now treats `check_opencode_sessions` as a fallback-only verification tool instead of a normal post-build step
+  - Duplicate-prevention synthesis now prefers real OpenCode build output over thin session-status summaries
+  - `opencode` tool summaries now extract stronger user-facing results from OpenCode response parts, including project path and run hints when available
+- ✅ **OpenCode UX improvements**
+  - Stop/cancel handling now interrupts long-running local tool execution cleanly, which fixes lingering OpenCode status updates after cancellation
+  - Completion Guard now excludes `opencode` so cancelled or stalled builds do not silently relaunch a second OpenCode task
+  - Jarvis Web UI tool-card details now show a clickable `Open session` link for OpenCode results, one click away from the full OpenCode UI flow
+  - OpenCode docs now reflect the current runtime model: one blocking build call, generic Jarvis progress updates, fallback-only session checks, and direct session URL access
 - ✅ **Alerts: first-class tool + Memory UI tab**
   - Added `create_alert` as a real Jarvis tool on top of the existing FastAPI alert manager path
   - Added a dedicated `Alerts` tab in Jarvis Memory UI for browsing and managing proactive alerts alongside reminders and scheduled tasks

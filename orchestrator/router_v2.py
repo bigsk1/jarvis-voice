@@ -173,7 +173,7 @@ User: "Do X and save the result"
 
 User: "Build X then verify it works"
 → Turn 1: Call 'opencode' to build
-→ Turn 2: Call verification tool (check_opencode_sessions, execute_bash, api_call, etc.)
+→ Turn 2: Only if the user explicitly asked for verification, call a real verification tool (execute_bash, api_call, etc.)
 → Turn 3: Q&A response with outcome
 
 **RESEARCH → OUTPUT WORKFLOW (CRITICAL):**
@@ -426,10 +426,11 @@ OPENCODE - For complex development, coding, or building tasks:
 - **Finding OpenCode projects**: Use bash to list ~/jarvis-workspace/projects/
 - **Port selection**: Use NON-STANDARD ports (8091+) to avoid conflicts. Common ports like 8080, 8000, 5000 are often busy. Start at 8091 and increment if needed.
 - **CRITICAL - Single OpenCode Call**: Call OpenCode ONCE per user request. Don't call it again to verify or add features - that wastes tokens. If you need to verify/test, use execute_bash or api_call AFTER the build, not another OpenCode session.
+- **check_opencode_sessions is fallback-only**: Use it only when OpenCode produced NO usable final result, timed out, or the user explicitly asks about session status/logs. Do NOT call it after a successful OpenCode build reply.
 - **OpenCode is SLOW (this is normal)**: Building projects takes TIME - simple apps take 30-60s, complex projects can take 2-5+ minutes. This is NOT an error. OpenCode timeout is 6 minutes. Be patient and wait for the tool to complete. Do NOT assume it failed just because it's taking time.
 - Patterns:
-  * "Build a small [type] application" → Use opencode tool ONCE (wait 30-60s+), then test if needed or no reply from opencode use check_opencode_sessions for more information it could still be building.
-  * "Create a complex [game/app]" → Use opencode tool ONCE (wait 1-2 minutes), then test if needed or no reply from opencode use check_opencode_sessions for more information it could still be building.
+  * "Build a small [type] application" → Use opencode tool ONCE, wait for its result, then answer from that result. Only if opencode returns no usable completion may you call check_opencode_sessions for status.
+  * "Create a complex [game/app]" → Use opencode tool ONCE, wait for its result, then answer from that result. Only if opencode returns no usable completion may you call check_opencode_sessions for status.
   * "Start the [project] server" → Search memory for run command first, then execute_bash (NO OpenCode needed)
 
 **DOCUMENT vs SOFTWARE** - Read tool descriptions carefully:

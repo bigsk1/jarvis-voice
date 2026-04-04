@@ -171,6 +171,7 @@ def get_system_config():
         
         # Features
         'JARVIS_INTELLIGENCE': get_jarvis_setting('JARVIS_INTELLIGENCE', 'false'),
+        'OPENCODE_BASE_URL': get_jarvis_setting('OPENCODE_BASE_URL', 'http://localhost:4096'),
     }
     
     # Add mode-specific model info

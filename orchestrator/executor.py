@@ -46,6 +46,11 @@ class ToolExecutor:
         
         # Initialize logger
         self.logger = get_logger(mode)
+        self.cancel_check = None
+
+    def set_cancel_check(self, callback):
+        """Set callback to check if the current tool execution should be cancelled."""
+        self.cancel_check = callback
     
     def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False) -> dict[str, Any]:
         """
@@ -150,27 +155,81 @@ class ToolExecutor:
             # Pass current environment to subprocess so tools inherit LLM_PROVIDER
             tool_env = os.environ.copy()
             
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
-                input=input_json if tool_script.suffix != '.py' else None,
-                capture_output=True,
+                stdin=subprocess.PIPE if tool_script.suffix != '.py' else None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout,
                 cwd=self.skills_dir,
                 env=tool_env  # Pass environment so tools see LLM_PROVIDER
             )
+
+            if tool_script.suffix != '.py' and process.stdin:
+                process.stdin.write(input_json)
+                process.stdin.close()
+
+            deadline = start_time + timeout
+            cancelled = False
+            stdout = ""
+            stderr = ""
+
+            while True:
+                if self.cancel_check:
+                    try:
+                        if self.cancel_check():
+                            cancelled = True
+                            process.terminate()
+                            try:
+                                process.wait(timeout=3)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                            break
+                    except Exception:
+                        pass
+
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate()
+                    break
+
+                if time.time() >= deadline:
+                    process.kill()
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+
+                time.sleep(0.25)
+
+            if cancelled:
+                if process.stdout:
+                    process.stdout.close()
+                if process.stderr:
+                    process.stderr.close()
+                duration_ms = (time.time() - start_time) * 1000
+                output = {
+                    "ok": True,
+                    "speech": f"Stopped {tool_name}.",
+                    "cancelled": True,
+                    "error": "Cancelled by user"
+                }
+                self.logger.log_tool_call(
+                    tool_name=tool_name,
+                    arguments=args,
+                    result=output,
+                    duration_ms=duration_ms,
+                    mode=self.mode
+                )
+                return output
             
             duration_ms = (time.time() - start_time) * 1000
             
             # Parse output (tools write JSON to stdout even on failure)
             try:
-                output = json.loads(result.stdout)
+                output = json.loads(stdout)
             except json.JSONDecodeError:
                 # If JSON parsing fails, fallback to error message
                 output = {
                     "ok": False,
                     "speech": f"Tool {tool_name} failed",
-                    "error": result.stderr or result.stdout or "Unknown error"
+                    "error": stderr or stdout or "Unknown error"
                 }
             
             # Note: We don't check returncode because tools write valid JSON even on failure
@@ -334,4 +393,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
