@@ -701,6 +701,8 @@ class IntelligenceLayer:
         corrected_tools_used = context_data.get('corrected_tools_used', [])
         corrected_tool_results = context_data.get('corrected_tool_results', '[Not captured]')
         tool_results = context_data.get('tool_results', '[Not captured]')
+        server_side_tools = context_data.get('server_side_tools', {})
+        provider_native_tools_used = context_data.get('provider_native_tools_used', [])
         completion_guard = raw_data.get('completion_guard', {})
         
         # CRITICAL: What tools were AVAILABLE to the LLM (from Tool RAG + ghost tools)
@@ -718,6 +720,8 @@ class IntelligenceLayer:
         # Format available tools list
         available_tools_str = ', '.join(available_tools) if available_tools else '[Not captured]'
         tools_used_list = json.loads(exp['tools_used']) if exp['tools_used'] else []
+        provider_native_tools_str = ', '.join(provider_native_tools_used) if provider_native_tools_used else '(none captured)'
+        server_side_tools_str = json.dumps(server_side_tools) if server_side_tools else '(none captured)'
         
         # Identify tools that were available but NOT used (for reflection analysis)
         unused_tools = [t for t in available_tools if t not in tools_used_list] if available_tools else []
@@ -732,6 +736,7 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 {available_tools_str}
 
 **Tools Actually Used (in order)**: {exp['tools_used']}
+**Provider-Native Tools Used**: {provider_native_tools_str}
 **Tools Available But NOT Used**: {unused_tools_str}
 **Turns Taken**: {exp['turns_taken']}
 **Final Tool**: {exp['final_tool']}
@@ -763,6 +768,9 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 - Note: {completion_guard.get('note', '') or '(none)'}
 - Metadata: {json.dumps(completion_guard.get('metadata', {}))[:800] if completion_guard else '(none)'}
 
+**Provider-Native Tool Metadata**:
+{server_side_tools_str}
+
 CRITICAL EVALUATION:
 1. Did the tool(s) return relevant data for the query? (tool_results vs query)
 2. Did the LLM response accurately reflect the tool data? (llm_response vs tool_results)
@@ -770,6 +778,8 @@ CRITICAL EVALUATION:
 4. Was the FIRST tool the optimal choice, or should a different tool have been used initially?
 5. If Completion Guard marked this as repaired, unresolved, or ticket_created, treat that as strong evidence the ORIGINAL answer path was insufficient even if a later repair improved it.
 6. If a corrected/repaired response exists, compare the original path with the repaired path and learn from what changed.
+7. Provider-native tools are metadata-only evidence paths, not normal Jarvis tool choices. If provider-native tools are listed, do NOT infer "zero-tool hallucination" from an empty tools_used list alone.
+8. Do NOT create preferred_tool/avoided_tool insights that tell Jarvis to prefer or avoid provider-native tools such as native:x_search or native:code_interpreter.
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
@@ -778,6 +788,7 @@ TOOL CATEGORIES (for understanding what tools do):
 - **UTILITY TOOLS** (simple tasks): get_time, crypto_price, list_reminders, list_alerts
 - **SEARCH TOOLS** (web search): mcp_brave_search_*, mcp_duckduckgo_*
 - **BUILD TOOLS** (create projects): opencode
+- **PROVIDER-NATIVE TOOLS** (metadata only, not Jarvis routing choices): native:x_search, native:web_search, native:code_interpreter
 
 SYSTEM RULES THE LLM SHOULD HAVE FOLLOWED:
 - **MEMORY-FIRST RULE**: For questions about user's info, servers, configs, preferences → SHOULD check memory FIRST
@@ -989,7 +1000,7 @@ Example for FACTUAL (should NOT be stored here):
                 provider = create_provider(
                     "anthropic",
                     api_key=get_config_value("ANTHROPIC_API_KEY"),
-                    model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+                    model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-6")
                 )
             elif provider_type == "xai":
                 provider = create_provider(

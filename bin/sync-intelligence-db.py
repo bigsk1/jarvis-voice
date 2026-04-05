@@ -260,10 +260,11 @@ def sync_intelligence(target_mode: str, dry_run: bool = False):
     target_conn.commit()
     
     source_cursor.execute("""
-        SELECT id, insight_type, description, constraint_type, trigger_concept,
+        SELECT id, created_at, updated_at, insight_type, description, constraint_type, trigger_concept,
                applies_to_pattern, preferred_tools, avoided_tools, avoided_patterns,
                generalizability, reasoning, confidence, strength, evidence_count,
-               times_applied, times_helpful, times_failed, consecutive_failures, last_outcome
+               times_applied, times_helpful, times_failed, consecutive_failures, last_outcome,
+               last_applied
         FROM insights
     """)
     source_insights = source_cursor.fetchall()
@@ -297,12 +298,16 @@ def sync_intelligence(target_mode: str, dry_run: bool = False):
             # Insert into target
             target_cursor.execute("""
                 INSERT INTO insights (
+                    created_at, updated_at,
                     insight_type, description, insight_embedding, constraint_type, trigger_concept,
                     applies_to_pattern, pattern_embedding, preferred_tools, avoided_tools, avoided_patterns,
                     generalizability, reasoning, confidence, strength, evidence_count,
-                    times_applied, times_helpful, times_failed, consecutive_failures, last_outcome
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    times_applied, times_helpful, times_failed, consecutive_failures, last_outcome,
+                    last_applied
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
+                row['created_at'],
+                row['updated_at'],
                 row['insight_type'],
                 description,
                 insight_embedding,
@@ -322,7 +327,8 @@ def sync_intelligence(target_mode: str, dry_run: bool = False):
                 row['times_helpful'],
                 row['times_failed'],
                 row['consecutive_failures'],
-                row['last_outcome']
+                row['last_outcome'],
+                row['last_applied']
             ))
             insight_success += 1
             
@@ -341,7 +347,9 @@ def sync_intelligence(target_mode: str, dry_run: bool = False):
     target_conn.commit()
     
     source_cursor.execute("""
-        SELECT experience_id, priority, processed FROM reflection_queue
+        SELECT experience_id, priority, processed, queued_at
+        FROM reflection_queue
+        WHERE processed = 0
     """)
     source_queue = source_cursor.fetchall()
     
@@ -355,15 +363,15 @@ def sync_intelligence(target_mode: str, dry_run: bool = False):
         if old_exp_id in exp_id_map:
             new_exp_id = exp_id_map[old_exp_id]
             target_cursor.execute("""
-                INSERT INTO reflection_queue (experience_id, priority, processed)
-                VALUES (?, ?, ?)
-            """, (new_exp_id, row['priority'], row['processed']))
+                INSERT INTO reflection_queue (experience_id, priority, processed, queued_at)
+                VALUES (?, ?, ?, ?)
+            """, (new_exp_id, row['priority'], row['processed'], row['queued_at']))
             queue_success += 1
         else:
             queue_skipped += 1
     
     target_conn.commit()
-    print(f"  ✅ Copied {queue_success} queue entries" + (f" ({queue_skipped} skipped - missing experiences)" if queue_skipped else ""))
+    print(f"  ✅ Copied {queue_success} pending reflection entries" + (f" ({queue_skipped} skipped - missing experiences)" if queue_skipped else ""))
     
     # ============================================
     # CLEANUP
@@ -382,7 +390,7 @@ def sync_intelligence(target_mode: str, dry_run: bool = False):
     print(f"{GREEN}✅ Full sync complete:{NC}")
     print(f"   Experiences: {exp_success}" + (f" ({exp_errors} errors)" if exp_errors else ""))
     print(f"   Insights:    {insight_success}" + (f" ({insight_errors} errors)" if insight_errors else ""))
-    print(f"   Queue:       {queue_success}" + (f" ({queue_skipped} skipped)" if queue_skipped else ""))
+    print(f"   Pending reflections: {queue_success}" + (f" ({queue_skipped} skipped)" if queue_skipped else ""))
     
     total_errors = exp_errors + insight_errors
     return total_errors == 0
@@ -416,4 +424,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

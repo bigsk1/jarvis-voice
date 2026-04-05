@@ -134,6 +134,14 @@ When Jarvis Web runs [Completion Guard](./COMPLETION_GUARD.md), outcomes are wri
 
 Feedback collection in Web UI is **gated** until guard settlement so grades align with this record. See also [FEEDBACK_SYSTEM.md](./FEEDBACK_SYSTEM.md).
 
+### 7. Provider-Native Tool Metadata in Reflection (2026-04-04)
+
+When providers use native server-side tools such as xAI `x_search` / `web_search` or native code execution, the intelligence layer now treats that as **evidence metadata**, not as Jarvis routing behavior.
+
+- Reflection can see provider-native tool usage so it does **not** misread an empty `tools_used` list as a zero-tool hallucination.
+- Completion Guard also treats those native tools as real evidence during audits.
+- These native provider tools are **not** converted into `preferred_tool` / `avoided_tool` insights, so Jarvis does not start preferring provider-specific internals over normal Jarvis tools.
+
 ---
 
 ## Phase 1.5 Features (Implemented 2025-11-28)
@@ -1025,6 +1033,14 @@ Local now knows: "Use crypto_price for price queries" (768-dim embedding)
 
 
 **Note**: Syncing regenerates embeddings for the target mode's embedding model. This ensures dimension compatibility.
+
+**Also preserved during sync**:
+- `insights.created_at`
+- `insights.updated_at`
+- `insights.last_applied`
+- `reflection_queue.queued_at` for pending entries
+
+This matters because the decay job falls back to `created_at` when an insight has never been applied. Resetting timestamps would make stale insights look artificially fresh.
 
 ### Embedding Fallback
 

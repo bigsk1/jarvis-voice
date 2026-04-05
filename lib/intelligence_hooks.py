@@ -29,6 +29,30 @@ sys.path.insert(0, os.path.dirname(__file__))
 logger = logging.getLogger(__name__)
 
 
+def normalize_server_side_tools_for_reflection(server_side_tools: dict[str, Any] | None) -> list[str]:
+    """
+    Convert provider-native tool usage into stable metadata labels for reflection.
+
+    These are NOT first-class Jarvis tool choices. They exist only so reflection
+    can understand that evidence may have come from provider-native search/code
+    paths even when tools_used is empty.
+    """
+    if not isinstance(server_side_tools, dict):
+        return []
+
+    normalized = []
+    for name, count in server_side_tools.items():
+        if not name:
+            continue
+        label = str(name).replace('SERVER_SIDE_TOOL_', '').lower()
+        try:
+            repeat = max(1, int(count))
+        except Exception:
+            repeat = 1
+        normalized.extend([f"native:{label}"] * repeat)
+    return normalized
+
+
 def _run_async(coro):
     """
     Run an async coroutine from sync context.
@@ -133,6 +157,8 @@ def record_interaction(
 
         # Actual tool results (data returned by tools)
         tool_results = result.get('data', {})
+        server_side_tools = result.get('server_side_tools') or {}
+        native_tool_labels = normalize_server_side_tools_for_reflection(server_side_tools)
         
         # Tools that were AVAILABLE to the LLM (from Tool RAG + ghost tools)
         # This is critical for reflection - shows what LLM COULD have chosen
@@ -159,6 +185,8 @@ def record_interaction(
             'raw_llm_response': raw_llm_response,
             'final_speech': final_speech,
             'tool_results': tool_results_str,
+            'server_side_tools': server_side_tools,
+            'provider_native_tools_used': native_tool_labels,
             # CRITICAL: What tools the LLM could have chosen from
             'available_tools': available_tools,
             'experience_id': result.get('experience_id')

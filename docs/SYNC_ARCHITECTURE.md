@@ -494,6 +494,18 @@ Synchronizes the **intelligence layer** (self-learning system) between cloud and
 - ✅ **Reflection Queue** - Pending reflections awaiting processing
 - ✅ Regenerates all embeddings for target mode dimensions
 
+### Important Behavior
+
+- **Insight timestamps are preserved** during sync:
+  - `created_at`
+  - `updated_at`
+  - `last_applied`
+- **Only pending reflection queue rows are synced**. Processed queue history is not copied across modes.
+- **Ollama embedding requests now use context-aware safeguards**:
+  - `OLLAMA_EMBEDDING_CONTEXT_WINDOW` when set
+  - otherwise `OLLAMA_CONTEXT_WINDOW`
+  - automatic compact-and-retry for oversized raw text before fallback embeddings are used
+
 ### Why Intelligence Syncs
 Unlike provider-specific configurations, **learned insights are universal**:
 - "Use `crypto_price` for price queries" applies to ANY LLM
@@ -508,7 +520,7 @@ Unlike provider-specific configurations, **learned insights are universal**:
 # 2. Regenerate embeddings with target mode's model
 query_embedding = get_embedding(query)  # 1536-dim (cloud) or 768-dim (local)
 # 3. Insert into target database with new IDs
-# 4. Remap reflection_queue to new experience IDs
+# 4. Remap pending reflection_queue rows to new experience IDs
 ```
 
 ### When to Run
@@ -663,4 +675,3 @@ Note: Intelligence sync is MANUAL (run when switching modes)
 2. **Tool sync** - System capabilities (available tools)
 3. **Health check** - Validation (embedding dimensions)
 4. **Intelligence sync** - Learned patterns (manual, when switching modes)
-

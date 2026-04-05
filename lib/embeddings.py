@@ -5,7 +5,61 @@ Supports:
 - OpenAI text-embedding-3-small (cloud mode)
 - Ollama nomic-embed-text (local mode)
 """
-from config_loader import get_config_value
+from config_loader import get_config_value, get_int
+
+
+def _compact_text_for_embedding(text: str, max_chars: int) -> str:
+    """Trim oversized text while preserving both the start and end."""
+    if len(text) <= max_chars:
+        return text
+
+    normalized = " ".join(text.split())
+    if len(normalized) <= max_chars:
+        return normalized
+
+    if max_chars <= 32:
+        return normalized[:max_chars]
+
+    separator = " ... "
+    available = max_chars - len(separator)
+    head_chars = int(available * 0.7)
+    tail_chars = max(0, available - head_chars)
+
+    return f"{normalized[:head_chars].rstrip()}{separator}{normalized[-tail_chars:].lstrip()}"
+
+
+def _is_ollama_context_length_error(error_text: str) -> bool:
+    """Detect Ollama errors caused by oversized embedding input."""
+    lowered = (error_text or "").lower()
+    return "input length exceeds the context length" in lowered
+
+
+def _get_ollama_embedding_options() -> dict:
+    """Get runtime options for Ollama embedding requests."""
+    options = {}
+
+    embedding_ctx = get_int("OLLAMA_EMBEDDING_CONTEXT_WINDOW", 0)
+    if embedding_ctx <= 0:
+        embedding_ctx = get_int("OLLAMA_CONTEXT_WINDOW", 0)
+
+    if embedding_ctx > 0:
+        options["num_ctx"] = embedding_ctx
+
+    return options
+
+
+def _extract_ollama_embedding(result: dict) -> list[float]:
+    """Support both /api/embed and legacy /api/embeddings response shapes."""
+    if "embedding" in result:
+        return result["embedding"]
+
+    embeddings = result.get("embeddings")
+    if embeddings and isinstance(embeddings, list):
+        first = embeddings[0]
+        if isinstance(first, list):
+            return first
+
+    raise KeyError("No embedding found in Ollama response")
 
 
 def get_embedding(text: str, provider: str = None) -> list[float]:
@@ -118,22 +172,55 @@ def _get_ollama_embedding(text: str) -> list[float]:
     
     # Use nomic-embed-text model (768 dimensions, fast, local)
     model = get_config_value("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
-    
+    options = _get_ollama_embedding_options()
+
+    prompt_variants = [text]
+    for max_chars in (6000, 4000, 2500, 1500):
+        compacted = _compact_text_for_embedding(text, max_chars)
+        if compacted != prompt_variants[-1]:
+            prompt_variants.append(compacted)
+
     try:
-        response = requests.post(
-            f"{base_url}/api/embeddings",
-            json={
-                "model": model,
-                "prompt": text
-            },
-            timeout=30
-        )
-        
-        if response.status_code != 200:
-            raise Exception(f"Ollama API error: {response.text}")
-        
-        result = response.json()
-        return result["embedding"]
+        for idx, prompt in enumerate(prompt_variants):
+            response = requests.post(
+                f"{base_url}/api/embed",
+                json={
+                    "model": model,
+                    "input": prompt,
+                    "truncate": True,
+                    "options": options,
+                },
+                timeout=30
+            )
+
+            if response.status_code == 404:
+                legacy_payload = {
+                    "model": model,
+                    "prompt": prompt,
+                }
+                if options:
+                    legacy_payload["options"] = options
+                response = requests.post(
+                    f"{base_url}/api/embeddings",
+                    json=legacy_payload,
+                    timeout=30
+                )
+
+            if response.status_code == 200:
+                result = response.json()
+                return _extract_ollama_embedding(result)
+
+            error_text = response.text
+            if _is_ollama_context_length_error(error_text) and idx < len(prompt_variants) - 1:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Ollama embedding input too long; retrying with compacted text (%s -> %s chars)",
+                    len(prompt),
+                    len(prompt_variants[idx + 1]),
+                )
+                continue
+
+            raise Exception(f"Ollama API error: {error_text}")
     except Exception as e:
         # Fallback on any error (connection, timeout, etc.)
         import logging
@@ -206,4 +293,3 @@ def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
         return 0.0
     
     return dot_product / (magnitude1 * magnitude2)
-

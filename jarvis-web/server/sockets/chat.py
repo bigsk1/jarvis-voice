@@ -227,6 +227,24 @@ class ChatHandler:
         }
 
     @staticmethod
+    def _normalize_server_side_tool_names(server_side_tools: dict | None) -> list[str]:
+        """Convert provider-native tool usage dict into stable pseudo-tool names."""
+        if not isinstance(server_side_tools, dict):
+            return []
+        normalized = []
+        for name, count in server_side_tools.items():
+            if not name:
+                continue
+            label = str(name).replace('SERVER_SIDE_TOOL_', '').lower()
+            repeat = 1
+            try:
+                repeat = max(1, int(count))
+            except Exception:
+                repeat = 1
+            normalized.extend([f"native:{label}"] * repeat)
+        return normalized
+
+    @staticmethod
     def _combine_feedback_tools(original_tools: list[str] | None, settled_tools: list[str] | None = None) -> list[str]:
         """Preserve the full task tool path for feedback, original first then settled-phase tools."""
         combined = []
@@ -240,6 +258,10 @@ class ChatHandler:
         """Summarize Completion Guard state so feedback can grade the settled outcome."""
         original_tools = list(record.get('tools_used', []) or [])
         repair_tools = list((record.get('repair_result') or {}).get('tools_used', []) or [])
+        original_native_tools = ChatHandler._normalize_server_side_tool_names(record.get('server_side_tools'))
+        repair_native_tools = ChatHandler._normalize_server_side_tool_names(
+            (record.get('repair_result') or {}).get('server_side_tools')
+        )
         return {
             'status': status,
             'note': record.get('user_note', ''),
@@ -248,13 +270,16 @@ class ChatHandler:
             'repair_strategy': record.get('repair_strategy'),
             'repair_result': record.get('repair_result'),
             'ticket_path': record.get('ticket_path', ''),
-            'combined_tools_used': ChatHandler._combine_feedback_tools(original_tools, repair_tools),
+            'combined_tools_used': ChatHandler._combine_feedback_tools(
+                original_tools + original_native_tools,
+                repair_tools + repair_native_tools
+            ),
             'original_response': {
                 'speech': record.get('speech', ''),
                 'raw_llm_response': record.get('raw_llm_response', ''),
-                'tools_used': original_tools
+                'tools_used': original_tools + original_native_tools
             },
-            'repair_tools_used': repair_tools
+            'repair_tools_used': repair_tools + repair_native_tools
         }
 
     def _start_feedback_async(
@@ -354,6 +379,8 @@ class ChatHandler:
         """
         original_tools = [str(item).strip() for item in (record.get('tools_used') or []) if str(item).strip()]
         repair_tools = [str(item).strip() for item in (result.get('tools_used') or []) if str(item).strip()]
+        original_tools.extend(self._normalize_server_side_tool_names(record.get('server_side_tools')))
+        repair_tools.extend(self._normalize_server_side_tool_names(result.get('server_side_tools')))
 
         original_tool_set = set(original_tools)
         repair_tool_set = set(repair_tools)
@@ -779,6 +806,9 @@ Final spoken response:
 Tools used:
 {', '.join(record.get('tools_used', [])) or '(none)'}
 
+Native provider tools used:
+{', '.join(self._normalize_server_side_tool_names(record.get('server_side_tools'))) or '(none)'}
+
 Available tools:
 {', '.join(record.get('available_tools', [])) or '(not captured)'}
 
@@ -786,6 +816,10 @@ Structured result data:
 ```json
 {self._truncate_for_prompt(record.get('data', {}), max_chars=7000)}
 ```
+
+Important:
+- Native provider tools listed above are REAL tool usage. Do not call this a zero-tool answer if native provider tools were used.
+- If native provider search returned sources/URLs, treat that as valid external evidence unless the answer still overclaims beyond what was returned.
 """
 
         system_prompt = (
@@ -3069,6 +3103,8 @@ Previous structured data:
                 raw_response = result.get('raw_llm_response', '')
                 if raw_response:
                     save_data['raw_llm_response'] = raw_response
+                if result.get('server_side_tools'):
+                    save_data['server_side_tools'] = result['server_side_tools']
                 if prepared_speech:
                     save_data['speech'] = prepared_speech
                 # Include vision analysis if we processed an image
@@ -3123,6 +3159,8 @@ Previous structured data:
             raw_response = result.get('raw_llm_response', '')
             if raw_response:
                 response_data['raw_llm_response'] = raw_response
+            if result.get('server_side_tools'):
+                response_data['server_side_tools'] = result['server_side_tools']
             # Include vision analysis if we processed an image
             if vision_result:
                 response_data['vision_analysis'] = vision_result

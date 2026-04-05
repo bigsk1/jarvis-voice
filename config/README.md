@@ -151,6 +151,16 @@ OLLAMA_CONTEXT_LENGTH=12888
 MAX_CONTEXT_TOKENS=12888
 ```
 
+### Ollama Embeddings
+```bash
+# Embeddings use the local Ollama embedding model
+OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
+
+# Optional: override embedding num_ctx specifically for Ollama embed requests.
+# If omitted, Jarvis reuses OLLAMA_CONTEXT_WINDOW.
+OLLAMA_EMBEDDING_CONTEXT_WINDOW=8192
+```
+
 ### Hybrid Mode
 ```bash
 # Use Ollama for Jarvis, Claude for OpenCode
@@ -435,4 +445,3 @@ For issues, see:
 - MCP Quickstart: `/home/boss/jarvis-voice/docs/MCP_QUICKSTART.md`
 - Docs: `/home/boss/jarvis-voice/docs/`
 - Logs: `/home/boss/jarvis-voice/logs/`
-

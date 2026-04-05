@@ -127,7 +127,7 @@
 | **EMBEDDING_HEALTH_CHECKS.md** | Embedding dimension validation |
 | **SEMANTIC_THRESHOLD_TUNING.md** | How to tune similarity threshold |
 | **MEMORY_SYSTEM_TUNING.md** | Advanced memory optimization |
-| **MEMORY_INTELLIGENCE_FIXES.md** | Auto-save improvements |
+| **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync behavior |
 
 ### Tool System
 | Document | Purpose |
@@ -310,6 +310,14 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-04-04:**
+- ✅ **Intelligence sync + embedding hardening**
+  - `sync-intelligence-db.py` now preserves insight timestamps (`created_at`, `updated_at`, `last_applied`) so decay and pruning history survives cloud ↔ local sync
+  - Reflection queue sync now copies **only pending** entries and reports them clearly as pending reflections
+  - Ollama embeddings now use the newer embed API when available, support `OLLAMA_EMBEDDING_CONTEXT_WINDOW`, and retry with compacted text before falling back
+- ✅ **Provider-native tool awareness for guard + reflection**
+  - Completion Guard now treats xAI/Anthropic native server-side tools as real evidence instead of false "zero tools used" hallucination cases
+  - Intelligence reflection now sees provider-native tool usage as metadata-only evidence
+  - Native provider tools are intentionally excluded from preferred/avoided Jarvis tool learning
 - ✅ **OpenCode integration hardening**
   - OpenCode now respects `OPENCODE_PROVIDER` and `OPENCODE_MODEL` instead of drifting to stale defaults
   - `agent_mode` is forwarded correctly for `build` vs `plan` sessions, and Jarvis accepts either `id` or `sessionId` from the OpenCode API
