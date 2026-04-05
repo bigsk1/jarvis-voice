@@ -361,6 +361,44 @@
                 <span>Allow overlap</span>
               </label>
             </div>
+            <div class="form-group" style="margin-top: 18px;">
+              <label class="form-label">Post-Run Notifications</label>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" for="scheduledTaskNotifyContact">Email Contact</label>
+                  <input type="text" class="form-input" id="scheduledTaskNotifyContact" placeholder="e.g., boss">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="scheduledTaskNotifyWebhook">Named Webhook</label>
+                  <input type="text" class="form-input" id="scheduledTaskNotifyWebhook" placeholder="e.g., notify_slack">
+                </div>
+              </div>
+              <div class="form-check-row">
+                <label class="form-check">
+                  <input type="checkbox" id="scheduledTaskEmailOnSuccess">
+                  <span>Email on success</span>
+                </label>
+                <label class="form-check">
+                  <input type="checkbox" id="scheduledTaskEmailOnFailure">
+                  <span>Email on failure</span>
+                </label>
+                <label class="form-check">
+                  <input type="checkbox" id="scheduledTaskAlertOnFailure" checked>
+                  <span>Create alert on failure</span>
+                </label>
+              </div>
+              <div class="form-check-row">
+                <label class="form-check">
+                  <input type="checkbox" id="scheduledTaskWebhookOnSuccess">
+                  <span>Webhook on success</span>
+                </label>
+                <label class="form-check">
+                  <input type="checkbox" id="scheduledTaskWebhookOnFailure">
+                  <span>Webhook on failure</span>
+                </label>
+              </div>
+              <div class="form-help">Notifications are deduped per scheduled run so a restart glitch does not spam the same occurrence repeatedly.</div>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary modal-close">Cancel</button>

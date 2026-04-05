@@ -91,6 +91,7 @@ data/*.db-*
 data/backups
 data/.email_rate_limit
 data/.webhook_rate_limit
+data/.scheduled_task_notification_rate_limit
 data/canvas/*
 data/generated_videos/*
 data/generated_videos/.thumbnails/

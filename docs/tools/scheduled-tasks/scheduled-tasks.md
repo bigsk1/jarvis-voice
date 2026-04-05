@@ -45,6 +45,12 @@ What works now:
   - `bin/start`
   - `bin/restart-services`
   - `services/self_healing_daemon.py`
+- per-task post-run notifications:
+  - email on success / failure using contact names from `config/contacts.json`
+  - alert on failure
+  - webhook on success / failure using named webhooks
+  - per-occurrence notification cooldown to avoid spam if a restart hiccup reruns the same scheduled slot
+  - notification delivery results are visible in scheduled-task run history (`email sent`, `alert created`, `webhook sent`, `cooldown suppressed`, etc.)
 - shared natural-language schedule parsing for:
   - one-time future tasks
   - explicit dates like `April 4th at 4pm`
@@ -57,8 +63,8 @@ What works now:
 What is still next:
 
 - stronger execution metadata in intelligence/reflection
-- production-hardening around retries, overlap policy, and notifications
-- optional notification / output policies per task
+- production-hardening around retries and overlap policy
+- optional chaining / dependency policies between tasks
 
 ## Important Revelation: Timezone Handling Had To Be Fixed First
 

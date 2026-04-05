@@ -309,7 +309,17 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-05:**
+- ✅ **Scheduled task notification UX**
+  - Scheduled-task run history and task details now show notification outcomes such as `Email sent to Boss`, `Alert created`, `Webhook sent`, and `cooldown suppressed`
+  - Runtime notification cooldown state is now ignored by git so local delivery artifacts do not pollute the worktree
+
 **2026-04-04:**
+- ✅ **Scheduled task notifications**
+  - Scheduled tasks can now send email on success/failure using contact names from `config/contacts.json`
+  - Scheduled tasks can create failure alerts and send named webhooks on success/failure
+  - Notification delivery is deduped per scheduled occurrence to avoid restart-loop email or alert spam
+  - `everyday at 9am` now parses like `every day at 9am` in the shared schedule parser
 - ✅ **Intelligence sync + embedding hardening**
   - `sync-intelligence-db.py` now preserves insight timestamps (`created_at`, `updated_at`, `last_applied`) so decay and pruning history survives cloud ↔ local sync
   - Reflection queue sync now copies **only pending** entries and reports them clearly as pending reflections

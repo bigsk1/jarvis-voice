@@ -53,6 +53,14 @@ def _normalize_meridiem(text: str) -> str:
     return re.sub(r"\b([ap])\s*\.?\s*m\.?\b", r"\1m", text.lower())
 
 
+def _normalize_schedule_text(text: str) -> str:
+    """Normalize common schedule phrasing variants before parsing."""
+    normalized = _normalize_meridiem(text).strip()
+    # Treat "everyday" like "every day" so it hits the recurring daily parser.
+    normalized = re.sub(r"\beveryday\b", "every day", normalized)
+    return normalized
+
+
 def _word_to_number(word: str) -> int | None:
     mapping = {
         "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -81,7 +89,7 @@ def _normalize_time_words(text: str) -> str:
 
 
 def extract_time_from_expression(text: str, default_hour: int = 10) -> tuple[int, int]:
-    text = _normalize_meridiem(text)
+    text = _normalize_schedule_text(text)
     time_match = re.search(r"(\d+)(?::(\d+))?\s*(am|pm)\b", text)
     if time_match:
         hour = int(time_match.group(1))
@@ -188,7 +196,7 @@ def calculate_next_run(schedule_type: str, schedule_expr: dict[str, Any], from_u
 
 
 def parse_schedule_expression(when: str, tz_name: str | None = None, default_hour: int = 10) -> dict[str, Any]:
-    text = _normalize_time_words(_normalize_meridiem(when).strip())
+    text = _normalize_time_words(_normalize_schedule_text(when))
     tz = get_app_timezone() if not tz_name else get_timezone_by_name(tz_name)
     now = datetime.now(tz)
 

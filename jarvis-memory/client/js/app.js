@@ -774,6 +774,7 @@ function renderScheduledTaskCard(task) {
                     ${run.speech ? `<div>${escapeHtml(truncate(run.speech, 200))}</div>` : ''}
                     ${run.error ? `<div class="run-history-error">${escapeHtml(run.error)}</div>` : ''}
                     ${run.tools_used ? `<div class="run-history-meta">Tools: ${escapeHtml(run.tools_used)}</div>` : ''}
+                    ${renderScheduledRunNotifications(run)}
                   </div>
                 </div>
               `).join('')}
@@ -1460,6 +1461,8 @@ function openScheduledTaskModal(task = null) {
   const modal = document.getElementById('scheduledTaskModal');
   const title = document.getElementById('scheduledTaskModalTitle');
   const payload = parseJsonSafe(task?.task_payload) || {};
+  const metadata = parseJsonSafe(task?.metadata) || {};
+  const notifications = metadata.notifications || {};
 
   title.textContent = task ? 'Edit Scheduled Task' : 'Add Scheduled Task';
 
@@ -1474,6 +1477,13 @@ function openScheduledTaskModal(task = null) {
   document.getElementById('scheduledTaskTimeout').value = task?.timeout_seconds ?? 300;
   document.getElementById('scheduledTaskEnabled').checked = task?.enabled ?? true;
   document.getElementById('scheduledTaskAllowOverlap').checked = !!task?.allow_overlap;
+  document.getElementById('scheduledTaskNotifyContact').value = notifications.contact_name || '';
+  document.getElementById('scheduledTaskNotifyWebhook').value = notifications.webhook_name || '';
+  document.getElementById('scheduledTaskEmailOnSuccess').checked = !!notifications.email_on_success;
+  document.getElementById('scheduledTaskEmailOnFailure').checked = !!notifications.email_on_failure;
+  document.getElementById('scheduledTaskAlertOnFailure').checked = notifications.alert_on_failure !== false;
+  document.getElementById('scheduledTaskWebhookOnSuccess').checked = !!notifications.webhook_on_success;
+  document.getElementById('scheduledTaskWebhookOnFailure').checked = !!notifications.webhook_on_failure;
 
   handleScheduledTaskTypeChange();
   modal.classList.add('active');
@@ -1489,6 +1499,15 @@ async function handleScheduledTaskSubmit(e) {
   e.preventDefault();
 
   const taskType = document.getElementById('scheduledTaskType').value;
+  const notifications = {
+    contact_name: document.getElementById('scheduledTaskNotifyContact').value.trim(),
+    webhook_name: document.getElementById('scheduledTaskNotifyWebhook').value.trim(),
+    email_on_success: document.getElementById('scheduledTaskEmailOnSuccess').checked,
+    email_on_failure: document.getElementById('scheduledTaskEmailOnFailure').checked,
+    alert_on_failure: document.getElementById('scheduledTaskAlertOnFailure').checked,
+    webhook_on_success: document.getElementById('scheduledTaskWebhookOnSuccess').checked,
+    webhook_on_failure: document.getElementById('scheduledTaskWebhookOnFailure').checked
+  };
   const data = {
     name: document.getElementById('scheduledTaskName').value.trim(),
     task_type: taskType,
@@ -1500,7 +1519,10 @@ async function handleScheduledTaskSubmit(e) {
     max_retries: parseInt(document.getElementById('scheduledTaskMaxRetries').value, 10) || 1,
     timeout_seconds: parseInt(document.getElementById('scheduledTaskTimeout').value, 10) || 300,
     enabled: document.getElementById('scheduledTaskEnabled').checked,
-    allow_overlap: document.getElementById('scheduledTaskAllowOverlap').checked
+    allow_overlap: document.getElementById('scheduledTaskAllowOverlap').checked,
+    metadata: {
+      notifications
+    }
   };
 
   if (!data.name || !data.when) {
@@ -1513,6 +1535,14 @@ async function handleScheduledTaskSubmit(e) {
   }
   if (taskType === 'workflow' && !data.workflow_id) {
     showToast('Workflow ID is required for workflow tasks', 'error');
+    return;
+  }
+  if ((notifications.email_on_success || notifications.email_on_failure) && !notifications.contact_name) {
+    showToast('Enter an email contact name when email notifications are enabled', 'error');
+    return;
+  }
+  if ((notifications.webhook_on_success || notifications.webhook_on_failure) && !notifications.webhook_name) {
+    showToast('Enter a named webhook when webhook notifications are enabled', 'error');
     return;
   }
 
@@ -1541,6 +1571,8 @@ async function viewScheduledTask(id) {
     const runs = runsResult.runs || [];
     const payload = parseJsonSafe(task.task_payload) || {};
     const scheduleExpr = parseJsonSafe(task.schedule_expr) || {};
+    const metadata = parseJsonSafe(task.metadata) || {};
+    const notifications = metadata.notifications || {};
 
     const modal = document.getElementById('viewModal');
     const content = document.getElementById('viewContent');
@@ -1569,6 +1601,16 @@ async function viewScheduledTask(id) {
         <div class="code-block" style="margin-top: 8px;">${escapeHtml(JSON.stringify(scheduleExpr, null, 2))}</div>
       </div>
       <div class="form-group">
+        <label class="form-label">Notifications</label>
+        <div><strong>Email contact:</strong> ${escapeHtml(notifications.contact_name || 'none')}</div>
+        <div><strong>Email on success:</strong> ${notifications.email_on_success ? '✅ Yes' : '❌ No'}</div>
+        <div><strong>Email on failure:</strong> ${notifications.email_on_failure ? '✅ Yes' : '❌ No'}</div>
+        <div><strong>Alert on failure:</strong> ${notifications.alert_on_failure ? '✅ Yes' : '❌ No'}</div>
+        <div><strong>Webhook:</strong> ${escapeHtml(notifications.webhook_name || 'none')}</div>
+        <div><strong>Webhook on success:</strong> ${notifications.webhook_on_success ? '✅ Yes' : '❌ No'}</div>
+        <div><strong>Webhook on failure:</strong> ${notifications.webhook_on_failure ? '✅ Yes' : '❌ No'}</div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Last Result</label>
         <div><strong>Status:</strong> ${escapeHtml(task.last_status || 'never run')}</div>
         <div><strong>Last Run:</strong> ${escapeHtml(formatDate(task.last_run_at))}</div>
@@ -1592,6 +1634,7 @@ async function viewScheduledTask(id) {
                   ${run.speech ? `<div>${escapeHtml(truncate(run.speech, 200))}</div>` : ''}
                   ${run.error ? `<div class="run-history-error">${escapeHtml(run.error)}</div>` : ''}
                   ${run.tools_used ? `<div class="run-history-meta">Tools: ${escapeHtml(run.tools_used)}</div>` : ''}
+                  ${renderScheduledRunNotifications(run)}
                 </div>
               </div>
             `).join('')}
@@ -1610,6 +1653,53 @@ async function viewScheduledTask(id) {
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
+}
+
+function getScheduledRunNotificationLines(run) {
+  const metadata = parseJsonSafe(run?.metadata) || {};
+  const notifications = Array.isArray(metadata.notifications) ? metadata.notifications : [];
+  if (!notifications.length) {
+    return [];
+  }
+
+  return notifications.map(item => {
+    const channel = item.channel || 'notification';
+    const result = item.result || {};
+
+    if (result.ok) {
+      if (channel === 'email') {
+        const toName = result.data?.to_name || result.data?.to || 'recipient';
+        return `Email sent to ${toName}`;
+      }
+      if (channel === 'alert') {
+        return 'Alert created';
+      }
+      if (channel === 'webhook') {
+        const webhook = result.data?.webhook || result.data?.url || 'webhook';
+        return `Webhook sent: ${webhook}`;
+      }
+      return `${channel} sent`;
+    }
+
+    if (result.error === 'cooldown_suppressed') {
+      return `${channel} cooldown suppressed`;
+    }
+
+    return `${channel} failed: ${result.error || 'unknown error'}`;
+  });
+}
+
+function renderScheduledRunNotifications(run) {
+  const lines = getScheduledRunNotificationLines(run);
+  if (!lines.length) {
+    return '';
+  }
+
+  return `
+    <div class="run-history-meta">
+      Notifications: ${escapeHtml(lines.join(' • '))}
+    </div>
+  `;
 }
 
 async function editScheduledTask(id) {

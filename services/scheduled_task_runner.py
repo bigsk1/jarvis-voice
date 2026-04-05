@@ -8,6 +8,8 @@ import os
 import sys
 import time
 import json
+import hashlib
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -15,9 +17,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / 'orchestrator'))
 
-from config_loader import load_config, get_config_value
+from config_loader import load_config, get_config_value, get_int
 from service_logger import ServiceLogger
 from api.managers.scheduled_task_manager import ScheduledTaskManager
+
+PROJECT_ROOT = Path(__file__).parent.parent
+NOTIFICATION_RATE_LIMIT_FILE = PROJECT_ROOT / "data" / ".scheduled_task_notification_rate_limit"
 
 
 def _load_mode() -> str:
@@ -63,6 +68,187 @@ def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) ->
     return executor.execute(workflow, transcript)
 
 
+def _parse_json_field(value):
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value)
+    except Exception:
+        return {}
+
+
+def _get_notification_settings(task: dict) -> dict:
+    metadata = _parse_json_field(task.get("metadata"))
+    notifications = metadata.get("notifications", {})
+    if not isinstance(notifications, dict):
+        return {}
+    return notifications
+
+
+def _notification_identifier(task_id: int, channel: str, outcome: str, scheduled_for: str | None) -> str:
+    slot = scheduled_for or "manual"
+    return f"{task_id}:{channel}:{outcome}:{slot}"
+
+
+def _notification_allowed(identifier: str) -> bool:
+    cooldown = get_int("SCHEDULED_TASK_NOTIFICATION_COOLDOWN_SECONDS", 900)
+    digest = hashlib.md5(identifier.encode("utf-8")).hexdigest()[:12]
+    now = time.time()
+
+    try:
+        if NOTIFICATION_RATE_LIMIT_FILE.exists():
+            limits = json.loads(NOTIFICATION_RATE_LIMIT_FILE.read_text(encoding="utf-8"))
+        else:
+            limits = {}
+    except Exception:
+        limits = {}
+
+    last_sent = float(limits.get(digest, 0) or 0)
+    if cooldown > 0 and now - last_sent < cooldown:
+        return False
+
+    limits[digest] = now
+    try:
+        NOTIFICATION_RATE_LIMIT_FILE.write_text(json.dumps(limits), encoding="utf-8")
+    except Exception:
+        pass
+    return True
+
+
+def _run_skill_script(script_name: str, payload: dict) -> dict:
+    script_path = PROJECT_ROOT / "skills" / script_name
+    proc = subprocess.run(
+        [sys.executable, str(script_path), json.dumps(payload)],
+        capture_output=True,
+        text=True,
+        timeout=60
+    )
+
+    stdout = (proc.stdout or "").strip()
+    if stdout:
+        try:
+            return json.loads(stdout)
+        except Exception:
+            return {"ok": False, "error": f"Invalid JSON from {script_name}", "raw": stdout}
+
+    return {
+        "ok": False,
+        "error": (proc.stderr or f"{script_name} returned no output").strip()
+    }
+
+
+def _build_notification_body(task: dict, *, status: str, summary: str | None, error: str | None,
+                             scheduled_for: str | None, next_run: str | None) -> str:
+    payload = _parse_json_field(task.get("task_payload"))
+    lines = [
+        f"Scheduled task: {task['name']}",
+        f"Status: {status}",
+        f"Task type: {task['task_type']}",
+        f"Mode: {task['mode']}",
+    ]
+    if task['task_type'] == 'workflow':
+        lines.append(f"Workflow: {task.get('task_target') or payload.get('workflow_id') or 'unknown'}")
+    else:
+        lines.append(f"Query: {payload.get('query', '')}")
+    if scheduled_for:
+        lines.append(f"Scheduled for: {scheduled_for}")
+    if summary:
+        lines.append(f"Summary: {summary}")
+    if error:
+        lines.append(f"Error: {error}")
+    if next_run:
+        lines.append(f"Next run: {next_run}")
+    return "\n".join(lines)
+
+
+def _maybe_send_notifications(task: dict, *, status: str, summary: str | None, error: str | None,
+                              scheduled_for: str | None, next_run: str | None) -> list[dict]:
+    notifications = _get_notification_settings(task)
+    if not notifications:
+        return []
+
+    results: list[dict] = []
+    is_success = status == "success"
+    is_failure = status == "failure"
+    if not (is_success or is_failure):
+        return results
+
+    outcome = "success" if is_success else "failure"
+    body = _build_notification_body(
+        task,
+        status=status,
+        summary=summary,
+        error=error,
+        scheduled_for=scheduled_for,
+        next_run=next_run,
+    )
+
+    contact_name = (notifications.get("contact_name") or "").strip()
+    webhook_name = (notifications.get("webhook_name") or "").strip()
+
+    if contact_name and ((is_success and notifications.get("email_on_success")) or (is_failure and notifications.get("email_on_failure"))):
+        ident = _notification_identifier(task["id"], "email", outcome, scheduled_for)
+        if _notification_allowed(ident):
+            subject = f"Jarvis scheduled task {outcome}: {task['name']}"
+            result = _run_skill_script("send_email.py", {
+                "to": contact_name,
+                "subject": subject,
+                "body": body,
+            })
+            results.append({"channel": "email", "outcome": outcome, "result": result})
+        else:
+            results.append({"channel": "email", "outcome": outcome, "result": {"ok": False, "error": "cooldown_suppressed"}})
+
+    if webhook_name and ((is_success and notifications.get("webhook_on_success")) or (is_failure and notifications.get("webhook_on_failure"))):
+        ident = _notification_identifier(task["id"], "webhook", outcome, scheduled_for)
+        if _notification_allowed(ident):
+            result = _run_skill_script("send_webhook.py", {
+                "webhook": webhook_name,
+                "data": {
+                    "task_id": task["id"],
+                    "task_name": task["name"],
+                    "status": status,
+                    "mode": task["mode"],
+                    "task_type": task["task_type"],
+                    "scheduled_for": scheduled_for,
+                    "next_run_at": next_run,
+                    "summary": summary,
+                    "error": error,
+                }
+            })
+            results.append({"channel": "webhook", "outcome": outcome, "result": result})
+        else:
+            results.append({"channel": "webhook", "outcome": outcome, "result": {"ok": False, "error": "cooldown_suppressed"}})
+
+    if is_failure and notifications.get("alert_on_failure"):
+        ident = _notification_identifier(task["id"], "alert", outcome, scheduled_for)
+        if _notification_allowed(ident):
+            from api.managers.alert_manager import AlertManager
+            alert_manager = AlertManager(mode=task["mode"])
+            description = body
+            alert_id = alert_manager.create_alert(
+                title=f"Scheduled task failed: {task['name']}",
+                source="scheduled_task_runner",
+                description=description,
+                severity="medium",
+                metadata={
+                    "task_id": task["id"],
+                    "task_name": task["name"],
+                    "scheduled_for": scheduled_for,
+                    "mode": task["mode"],
+                    "dedupe_key": f"scheduled_task_failure:{task['id']}:{scheduled_for or 'manual'}",
+                },
+                speak_immediately=False,
+            )
+            results.append({"channel": "alert", "outcome": outcome, "result": {"ok": True, "alert_id": alert_id}})
+        else:
+            results.append({"channel": "alert", "outcome": outcome, "result": {"ok": False, "error": "cooldown_suppressed"}})
+
+    return results
+
+
 def main():
     mode = _load_mode()
     manager = ScheduledTaskManager(mode=mode)
@@ -94,6 +280,7 @@ def main():
                 error = None
                 summary = None
                 result = {}
+                scheduled_for = task.get('next_run_at')
 
                 try:
                     payload = json.loads(task.get('task_payload') or "{}")
@@ -118,6 +305,22 @@ def main():
 
                 duration_ms = round((time.time() - started) * 1000, 2)
                 next_run = manager.calculate_followup_next_run(task, reference_utc=task.get('next_run_at'))
+                notification_results = _maybe_send_notifications(
+                    task,
+                    status=status,
+                    summary=summary,
+                    error=error,
+                    scheduled_for=scheduled_for,
+                    next_run=next_run
+                )
+                for item in notification_results:
+                    if not item.get("result", {}).get("ok"):
+                        logger.log_error("Scheduled task notification issue", {
+                            "task_id": task_id,
+                            "channel": item.get("channel"),
+                            "outcome": item.get("outcome"),
+                            "error": item.get("result", {}).get("error"),
+                        })
                 manager.finish_run(
                     run_id,
                     status=status,
@@ -133,7 +336,7 @@ def main():
                     duration_ms=duration_ms,
                     completion_guard_applied=False,
                     feedback_collected=False,
-                    metadata={"task_name": task['name']}
+                    metadata={"task_name": task['name'], "notifications": notification_results}
                 )
                 manager.release_lock_and_update(
                     task_id,
