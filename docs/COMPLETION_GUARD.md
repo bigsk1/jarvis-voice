@@ -125,6 +125,10 @@ Implemented now:
 - Rewrite-only tighten passes do not fold a corrected path back into the original experience as if they were a true operational fix
 - The auto evaluator can use a different provider/model than the main chat model; by default it follows `JARVIS_COMPLETION_GUARD_EVAL_PROVIDER` then `FEEDBACK_PROVIDER`
 - Jarvis Web AI Config now exposes per-mode Completion Guard eval provider/model overrides
+- The **Completion Guard evaluator** and the **repair pass** are separate model paths:
+  - the evaluator/judge uses `JARVIS_COMPLETION_GUARD_EVAL_PROVIDER` + `JARVIS_COMPLETION_GUARD_EVAL_MODEL`
+  - the repair pass still runs through the normal orchestrator/runtime for that conversation, so it uses the active chat provider/model unless explicitly changed in the future
+  - this means server logs may show the main provider/model for repair activity even when the guard evaluator itself is using a different judge model
 - Ollama cloud judge models are now handled more defensively for auto eval:
   - cloud models use plain JSON mode instead of full schema mode
   - cloud JSON eval calls get a larger `num_predict` budget so internal reasoning does not consume the whole response budget

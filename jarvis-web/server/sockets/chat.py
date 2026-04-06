@@ -898,7 +898,22 @@ Important:
             })
             return strategy
 
+        asks_for_fresh_research = any(token in combined for token in [
+            'what size', 'which size', 
+            'amazon product', 'purchase', 'buy', 'compatible', 'spec', 'specs',
+            'recommend', 'compare', 'price', 'pricing'
+        ])
+
         if any(token in combined for token in ['canvas', 'canva', 'page', 'slides', 'doc', 'update the page', 'update canvas']):
+            if asks_for_fresh_research:
+                strategy.update({
+                    'family': 'verification_repair',
+                    'reason': 'The note mentions an artifact, but the unresolved task is still a fresh factual/product question that needs verification before any artifact update.',
+                    'preferred_tools': ['brave_search', 'fetch_url'],
+                    'avoid_tools': ['semantic_recall'],
+                    'completion_hint': 'Verify the missing product/spec facts first. Only update Canvas after you have verified findings worth saving.'
+                })
+                return strategy
             strategy.update({
                 'family': 'artifact_update',
                 'reason': 'The failure likely involves an artifact that may need to be checked or updated instead of just re-explained.',

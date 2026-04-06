@@ -1808,7 +1808,7 @@ def enhance_prompt():
         ]
         tool_descriptions = "\n".join([
             f"- {t['name']}: {t.get('description', 'No description')[:100]}"
-            for t in available_tools[:30]  # Limit to top 30 tools
+            for t in available_tools[:100]  # Limit to 100 tools, lists them A-Z , not smart but currently at 70 tools 4/6/26 is 1,900 token context window
         ])
         
         # Build the enhancement system prompt
@@ -1829,6 +1829,11 @@ Your job is to take a rough, casual user input and transform it into an optimal,
 5. **DON'T add commands** like /canvas or @prompts - just enhance the natural language
 6. **Keep it conversational** - this is for a voice assistant
 7. **If user wants to save/view results**, mention Canvas but naturally
+8. **Clarify the primary intent**: Make the user's main goal explicit near the start (e.g. find, compare, buy, verify, summarize, troubleshoot, build, update)
+9. **Preserve exact entities**: Keep product names, model numbers, company names, URLs, and other exact identifiers unchanged
+10. **Reduce distracting nouns**: If the query includes domain words that could pull retrieval the wrong way, rewrite so the real action is clearer than the background topic
+11. **Express desired outcome**: State what a successful answer should deliver, such as a compatible product, a verified recommendation, a short comparison, or a direct answer
+12. **Stay provider/tool agnostic**: Do not mention tool names, APIs, or internal system behavior
 
 ## Examples
 Input: "bitcoin news"
@@ -1839,6 +1844,9 @@ Enhanced: "What's the current weather and forecast for my location? Include toda
 
 Input: "email john about meeting"
 Enhanced: "Send an email to John about scheduling a meeting. Keep it professional and brief, asking about his availability this week."
+
+Input: "need mount for ambient weather ws-2902 on amazon"
+Enhanced: "Find a compatible Amazon pole-mount option for the Ambient Weather WS-2902 WiFi Smart Weather Station. Focus on products I can actually buy, including fixed pole mounts or right-angle adjustable bracket mounts if they fit. Compare the best compatible options with links, prices, and a short note on why each should work."
 
 Now enhance the following input. Return ONLY the enhanced prompt text, nothing else."""
 
@@ -1861,7 +1869,7 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
             provider = create_provider(
                 'anthropic',
                 api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+                model=get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-6')
             )
         else:
             provider = create_provider(

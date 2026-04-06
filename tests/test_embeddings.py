@@ -19,6 +19,8 @@ from embeddings import (
     _extract_ollama_embedding,
     _get_ollama_embedding,
     _get_ollama_embedding_options,
+    consume_embedding_fallback_tracking,
+    reset_embedding_fallback_tracking,
 )
 
 
@@ -59,6 +61,18 @@ class EmbeddingsTests(unittest.TestCase):
         second_prompt = mock_post.call_args_list[1].kwargs["json"]["input"]
         self.assertEqual(len(first_prompt), 7000)
         self.assertLess(len(second_prompt), len(first_prompt))
+
+    @patch("requests.post")
+    def test_ollama_embedding_records_fallback_tracking(self, mock_post):
+        mock_post.return_value = _FakeResponse(500, '{"error":"connection refused"}')
+
+        reset_embedding_fallback_tracking()
+        _get_ollama_embedding("semantic query")
+        diagnostics = consume_embedding_fallback_tracking()
+
+        self.assertTrue(diagnostics["fallback_embeddings"])
+        self.assertEqual(diagnostics["fallback_count"], 1)
+        self.assertEqual(diagnostics["fallback_providers"], ["ollama"])
 
     @patch.dict("os.environ", {"OLLAMA_CONTEXT_WINDOW": "48000"}, clear=False)
     def test_get_ollama_embedding_options_uses_context_window(self):

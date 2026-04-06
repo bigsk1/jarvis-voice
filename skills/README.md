@@ -60,6 +60,33 @@ Every tool needs a `.tool.json` file:
 }
 ```
 
+### Schema Rules For Reliable Tool Calling
+
+For best cross-provider compatibility, keep the top-level `parameters` schema simple:
+- `"type": "object"`
+- `"properties": { ... }`
+- optional `"required": [...]`
+- optional `"additionalProperties": false`
+
+Do **not** rely on these at the top level of `parameters`:
+- `allOf`
+- `anyOf`
+- `oneOf`
+- `not`
+- `if` / `then` / `else`
+- `dependentSchemas`
+- top-level `enum`
+
+Why:
+- OpenAI tool calling is stricter than full JSON Schema and can reject the entire request if one tool has unsupported top-level schema constructs.
+- Anthropic may accept more, but the safest shared subset is still plain object + properties.
+- Jarvis now sanitizes some unsupported OpenAI schema keywords before sending tools, but new tools should still be authored in the strict subset first.
+
+If you need conditional validation, do it in the tool script itself:
+- accept the input schema at the tool-calling layer
+- validate combinations like “`group_ids` required when `action=apply`” inside Python
+- return a structured error message if inputs are invalid
+
 ---
 
 ## Tool Contract

@@ -9,6 +9,31 @@ Jarvis uses different embedding models for cloud and local modes, which generate
 
 **Why this matters**: If embeddings in the database don't match the expected dimensions for the current mode, semantic search will **silently fail** (returning 0 results) because the vector similarity calculation breaks with mismatched dimensions.
 
+## Two Different Failure Modes
+
+There are **two separate embedding health concerns** in Jarvis:
+
+1. **Stored embeddings in the database**
+   - Memories in `knowledge_base.embedding`
+   - Tool vectors in `tool_definitions.embedding`
+   - Intelligence embeddings in the intelligence DB
+   - These are what the health-check scripts validate
+
+2. **Runtime query embeddings**
+   - Generated fresh for each semantic search / tool search request
+   - Used by:
+     - `semantic_recall`
+     - auto memory injection
+     - Tool RAG / tool retrieval
+     - parts of deep memory search and memory-update fallback
+   - These are **not saved in the DB**
+
+This distinction matters because you can have:
+- **healthy stored embeddings** in the DB
+- but a **temporary runtime embedding failure** on a single request
+
+That means DB health checks can pass while one live query still degrades semantically.
+
 ## The Problem
 
 Embedding dimension mismatches can occur when:
@@ -24,6 +49,79 @@ Embedding dimension mismatches can occur when:
 3. **Config changes affecting embedding provider**
    - `LLM_PROVIDER` changed in `.env` file
    - Environment variable override not matched by embeddings
+
+4. **Runtime embedding provider failures**
+   - OpenAI embedding quota/credit issue
+   - missing API key
+   - Ollama unavailable or overloaded
+   - timeout / connection failure
+   - input too large for Ollama embedding context
+
+These runtime failures do **not** corrupt stored DB embeddings, but they can make a live semantic request behave poorly for that turn.
+
+## Runtime Fallback Behavior
+
+When the real embedding provider fails, Jarvis falls back to a **deterministic hash-based vector**.
+
+Properties of the fallback embedding:
+- Same text → same vector
+- Different text → different vector
+- It preserves continuity, **not semantic meaning**
+- Cosine similarity still runs, but ranking quality is degraded
+
+This is intentionally a **continuity mechanism**, not a quality mechanism.
+
+### What uses runtime fallback?
+
+Potentially affected:
+- `semantic_recall`
+- auto memory injection
+- Tool RAG / tool retrieval
+- semantic parts of `deep_memory_search`
+- semantic fallback inside `update_memory`
+
+Not affected:
+- `search_memory` (FTS5/BM25 only, no embeddings)
+
+## Visibility and Logging
+
+### Stored embeddings
+
+Use the health-check scripts to verify DB state:
+
+```bash
+./bin/check-embeddings-health.py cloud
+./bin/check-embeddings-health.py local
+./bin/check-intelligence-health.py --both
+```
+
+If these are healthy, your saved vectors in the DB are likely fine.
+
+### Runtime fallback
+
+Runtime fallback is now surfaced in tool results and logs for embedding-backed memory tools.
+
+Tool log behavior:
+- `fallback_embeddings: true` → runtime fallback occurred for that tool call
+- `fallback_embeddings: null` → no fallback detected for that tool call
+
+Today this appears for:
+- `semantic_recall`
+- `deep_memory_search` when semantic memory search is used
+- `update_memory` when semantic lookup fallback is used
+
+Important caveat:
+- `search_memory` will always log `fallback_embeddings: null` because it does **not** use embeddings
+
+### Non-tool semantic paths
+
+Auto memory injection and Tool RAG are not tool calls, so they do not appear in `logs/tools/tool-calls-*.jsonl`.
+
+When runtime fallback happens there, Jarvis now emits warning lines such as:
+- `[SEMANTIC_SEARCH] Fallback embeddings used for query: ...`
+- `[TOOL_SEARCH] Fallback embeddings used for query: ...`
+
+These are process/runtime warnings, not DB corruption.
 
 ## The Solution: Automated Health Checks
 
@@ -46,6 +144,8 @@ Embedding dimension mismatches can occur when:
 - ✅ Embedding dimensions in `tool_definitions` table (Tool RAG)
 - ✅ Current config generates correct dimensions
 - ✅ Embedding provider matches expected model
+
+These checks validate **stored embeddings**, not every transient runtime query embedding.
 
 **Example output (healthy):**
 ```
@@ -235,6 +335,24 @@ Add to crontab for daily validation:
 0 2 * * * cd /home/boss/jarvis-voice && ./bin/check-embeddings-health.py --both --json | logger -t jarvis-embeddings
 ```
 
+### Runtime Degradation Checks
+
+If you suspect semantic retrieval is acting strangely but DB health checks are clean:
+
+1. Check recent memory-tool logs:
+```bash
+./skills/check_tool_logs.py '{"tool_name":"semantic_recall","limit":5}'
+```
+
+2. Look for `fallback_embeddings: true` in:
+```bash
+logs/tools/tool-calls-YYYY-MM-DD.jsonl
+```
+
+3. Check server/runtime output for:
+- `[SEMANTIC_SEARCH] Fallback embeddings used`
+- `[TOOL_SEARCH] Fallback embeddings used`
+
 ### API Health Endpoint
 
 The Jarvis API includes a health endpoint:
@@ -257,6 +375,24 @@ curl http://localhost:8091/health
 **A**: Check if you're only searching recently-added memories. Old memories might have wrong dimensions, but if your search only hits recent ones (with correct dimensions), it appears to work.
 
 Run `check-embeddings-health.py` to see the full picture.
+
+### Q: Health checks are clean, but a semantic query still feels wrong?
+
+**A**: That usually points to a **runtime query embedding issue**, not bad stored embeddings.
+
+Examples:
+- temporary OpenAI credit/quota issue
+- transient Ollama timeout
+- local embedding server hiccup
+
+In that case:
+- stored DB vectors can still be healthy
+- only that live request degraded
+- tool logs or runtime warnings will show fallback usage if it occurred
+
+### Q: Does runtime fallback get saved back into the DB?
+
+**A**: No. Query embeddings are generated per request and are **not** stored. A runtime fallback does not poison the memory DB or intelligence DB by itself.
 
 ### Q: Can I mix embedding dimensions in one database?
 
@@ -314,4 +450,3 @@ If dimensions don't match expectations for the mode, the health check fails.
 ---
 
 **Key Takeaway**: Run `./bin/check-embeddings-health.py --both` after ANY database operation or config change to ensure semantic search will work correctly.
-

@@ -34,6 +34,7 @@ def main():
         
         # Get database connection
         db = get_memory_db()
+        semantic_meta = {"fallback_embeddings": None}
         
         # If no memory_id provided, search for it
         if not memory_id:
@@ -53,6 +54,7 @@ def main():
             if not memories:
                 # Fallback to semantic search (no category filter available)
                 all_memories = db.semantic_search(query=search_query, limit=5)
+                semantic_meta = getattr(db, 'last_semantic_search_meta', {"fallback_embeddings": None})
                 # Filter by category if specified
                 if category:
                     memories = [m for m in all_memories if m.get('category') == category][:1]
@@ -92,17 +94,20 @@ def main():
             result = {
                 "ok": True,
                 "speech": speech,
+                "fallback_embeddings": semantic_meta.get("fallback_embeddings"),
                 "data": {
                     "memory_id": memory_id,
                     "old_value": old_value,
-                    "new_value": new_value
+                    "new_value": new_value,
+                    "embedding_diagnostics": semantic_meta,
                 }
             }
         else:
             result = {
                 "ok": False,
                 "speech": f"I couldn't find a memory with ID {memory_id}",
-                "error": "Memory not found"
+                "error": "Memory not found",
+                "fallback_embeddings": semantic_meta.get("fallback_embeddings"),
             }
         
         print(json.dumps(result))
@@ -120,4 +125,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

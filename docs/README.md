@@ -183,6 +183,7 @@
 | Document | Purpose |
 |----------|---------|
 | **PROMPT_CACHING.md** | Anthropic prompt caching |
+| **MODEL_PROMPT_OVERRIDES.md** | Provider/model-specific prompt overlays for surgical behavior tuning |
 | **EXTENDED_THINKING.md** | Extended thinking mode |
 | **CASUAL_VS_DETAILED_MODE.md** | Response styles |
 | **AUTO_MODE_EXPLAINED.md** | Auto formatting mode |
@@ -308,6 +309,21 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-04-06:**
+- ✅ **Embedding fallback visibility**
+  - Runtime embedding fallback is now tracked separately from stored DB embedding health
+  - `semantic_recall`, semantic deep-memory search, and semantic memory-update fallback now surface `fallback_embeddings` in tool results/logs
+  - Non-tool semantic paths like auto memory injection and Tool RAG now emit explicit fallback warnings instead of degrading silently
+- ✅ **OpenAI tool-schema compatibility**
+  - OpenAI function-call schemas are now sanitized before dispatch so unsupported top-level schema features do not break tool routing
+  - Added documentation for the strict cross-provider schema subset in `TOOL_CALLING_SYSTEM.md` and `skills/README.md`
+- ✅ **Web UI model-default + context fixes**
+  - Web UI provider defaults now respect env-configured model defaults instead of silently using the first provider model
+  - Context-window hover now resolves model-specific limits correctly, including GPT-5.4 Nano at 400K
+- ✅ **Prompt enhancer + shopping/tool guidance**
+  - The `✨` prompt enhancer now emphasizes the user's primary intent, preserves exact entities like model numbers, reduces distracting context, and stays tool/provider agnostic
+  - Strengthened `serpapi_search` descriptions for Amazon-style product lookup, comparison, and purchase intent
 
 **2026-04-05:**
 - ✅ **Scheduled task notification UX**

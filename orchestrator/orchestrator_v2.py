@@ -1057,6 +1057,26 @@ Mode: {self.mode}
             Synthesized speech response that actually answers the user's question
         """
         try:
+            def _query_wants_artifact_update(text: str) -> bool:
+                lowered = (text or "").lower()
+                artifact_terms = [
+                    "save to canvas", "save it to canvas", "update canvas", "update the canvas",
+                    "put it on canvas", "add to canvas", "save to the page", "update the page",
+                    "update the doc", "save the doc", "create a canvas page", "make a canvas page",
+                    "save this", "write this up", "document this", "create slides", "update slides"
+                ]
+                return any(term in lowered for term in artifact_terms)
+
+            def _is_generic_artifact_confirmation(tool_name: str, text: str) -> bool:
+                if not text or not isinstance(text, str):
+                    return False
+                lowered = text.strip().lower()
+                if not lowered:
+                    return False
+                if tool_name == "canvas":
+                    return bool(re.match(r"^(updated|saved|created)\b.+\b(canvas|page)\.?\s*$", lowered))
+                return bool(re.match(r"^(updated|saved|created)\b.+\b(doc|page|canvas|slides|presentation|stash)\.?\s*$", lowered))
+
             def _extract_text_from_payload(payload: Any) -> str:
                 if isinstance(payload, str):
                     return payload.strip()
@@ -1130,11 +1150,14 @@ Mode: {self.mode}
             if conversation_context:
                 last_ctx = conversation_context[-1]
                 last_result = last_ctx.get("result", {}) if isinstance(last_ctx, dict) else {}
+                last_tool = last_ctx.get("tool", "") if isinstance(last_ctx, dict) else ""
                 last_speech = (
                     (last_result or {}).get("speech")
                     or last_ctx.get("speech")
                     or ""
                 )
+                if _is_generic_artifact_confirmation(last_tool, last_speech) and not _query_wants_artifact_update(user_query):
+                    last_speech = ""
                 if (
                     isinstance(last_speech, str)
                     and last_speech.strip()
@@ -1189,10 +1212,11 @@ Your synthesized response:"""
                 system_prompt="Synthesize research results into a helpful answer. MAX 100 words. Answer the user's actual question using the data provided."
             )
             if not response or self._looks_like_provider_error_text(response):
-                if "canvas" in [t.lower() for t in tools_used]:
+                if "canvas" in [t.lower() for t in tools_used] and _query_wants_artifact_update(user_query):
                     return "Research complete and saved to Canvas. Check the Canvas page for full details on your request."
-                tools_summary = ', '.join(set(tools_used))
-                return f"Task completed using {tools_summary}. Please check the results above."
+                if "canvas" in [t.lower() for t in tools_used]:
+                    return "I hit the repeat-tool safeguard before finishing the new answer. The current Canvas page may not include these details yet."
+                return "I hit the repeat-tool safeguard before finishing the answer. Please try again so I can verify the remaining details."
             return response.strip()
             
         except Exception as e:
@@ -1201,11 +1225,10 @@ Your synthesized response:"""
                 print(f"⚠️ Failed to synthesize duplicate response: {e}", file=sys.stderr)
             
             # Better fallback than just "I used X tools"
-            if "canvas" in [t.lower() for t in tools_used]:
+            if "canvas" in [t.lower() for t in tools_used] and _query_wants_artifact_update(user_query):
                 return "Research complete and saved to Canvas. Check the Canvas page for full details on your request."
             else:
-                tools_summary = ', '.join(set(tools_used))
-                return f"Task completed using {tools_summary}. Please check the results above."
+                return "I hit the repeat-tool safeguard before finishing the answer."
 
     def _format_natural_response(self, user_query: str, tool_name: str, tool_result: dict[str, Any]) -> str:
         """

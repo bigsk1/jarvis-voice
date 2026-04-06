@@ -5,7 +5,41 @@ Supports:
 - OpenAI text-embedding-3-small (cloud mode)
 - Ollama nomic-embed-text (local mode)
 """
+import threading
+
 from config_loader import get_config_value, get_int
+
+
+_EMBEDDING_FALLBACK_STATE = threading.local()
+
+
+def reset_embedding_fallback_tracking():
+    """Reset per-thread fallback tracking for the current operation."""
+    _EMBEDDING_FALLBACK_STATE.events = []
+
+
+def _record_embedding_fallback(provider: str, text: str, reason: str | None = None):
+    """Record that a fallback embedding was used during the current operation."""
+    events = list(getattr(_EMBEDDING_FALLBACK_STATE, "events", []))
+    events.append({
+        "provider": provider,
+        "reason": (reason or "")[:300],
+        "text_preview": (text or "")[:120],
+    })
+    _EMBEDDING_FALLBACK_STATE.events = events
+
+
+def consume_embedding_fallback_tracking() -> dict:
+    """Return and clear fallback tracking for the current operation."""
+    events = list(getattr(_EMBEDDING_FALLBACK_STATE, "events", []))
+    _EMBEDDING_FALLBACK_STATE.events = []
+    providers = sorted({event.get("provider", "unknown") for event in events})
+    return {
+        "fallback_embeddings": True if events else None,
+        "fallback_count": len(events),
+        "fallback_providers": providers,
+        "fallback_reasons": [event.get("reason", "") for event in events if event.get("reason")],
+    }
 
 
 def _compact_text_for_embedding(text: str, max_chars: int) -> str:
@@ -91,12 +125,14 @@ def _get_openai_embedding(text: str) -> list[float]:
         from openai import OpenAI
     except ImportError:
         # Fallback if openai not installed
+        _record_embedding_fallback("openai", text, "openai package not installed")
         return _get_fallback_embedding(text, dimensions=1536)
     
     # Get API key from config
     api_key = get_config_value("OPENAI_API_KEY")
     if not api_key:
         # Fallback if no API key
+        _record_embedding_fallback("openai", text, "OPENAI_API_KEY missing")
         return _get_fallback_embedding(text, dimensions=1536)
     
     try:
@@ -114,6 +150,7 @@ def _get_openai_embedding(text: str) -> list[float]:
         # Fallback on any API error
         import logging
         logging.getLogger(__name__).warning(f"OpenAI embedding failed, using fallback: {e}")
+        _record_embedding_fallback("openai", text, str(e))
         return _get_fallback_embedding(text, dimensions=1536)
 
 
@@ -165,6 +202,7 @@ def _get_ollama_embedding(text: str) -> list[float]:
         import requests
     except ImportError:
         # Fallback if requests not installed
+        _record_embedding_fallback("ollama", text, "requests package not installed")
         return _get_fallback_embedding(text, dimensions=768)
     
     # Get Ollama base URL from config
@@ -225,6 +263,7 @@ def _get_ollama_embedding(text: str) -> list[float]:
         # Fallback on any error (connection, timeout, etc.)
         import logging
         logging.getLogger(__name__).warning(f"Ollama embedding failed, using fallback: {e}")
+        _record_embedding_fallback("ollama", text, str(e))
         return _get_fallback_embedding(text, dimensions=768)
 
 

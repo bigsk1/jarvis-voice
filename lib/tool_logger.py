@@ -60,6 +60,7 @@ class ToolLogger:
             "mode": mode,
             "tool": tool_name,
             "arguments": arguments,
+            "fallback_embeddings": result.get("fallback_embeddings"),
             "result": {
                 "ok": result.get("ok", False),
                 "speech": result.get("speech", "")[:200] if result.get("speech") else "",
@@ -207,4 +208,3 @@ class ToolLogger:
 def get_logger(mode: str = "cloud") -> ToolLogger:
     """Get a tool logger instance."""
     return ToolLogger()
-

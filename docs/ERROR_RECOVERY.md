@@ -15,6 +15,11 @@ These mechanisms solve **different layers** of failure and do **not** replace ea
 
 So: a tool can succeed and still leave the task incomplete—that is where Completion Guard helps. Conversely, Completion Guard does not remove the need for **in-turn retries** when the tool returns a hard error.
 
+Important runtime distinction:
+- Completion Guard may **judge** a response with a dedicated eval provider/model
+- but if it launches a repair pass, that repair still runs through the normal orchestrator/runtime for the conversation
+- so logs for the repair step can show the active chat provider/model rather than the separate Completion Guard eval model
+
 ## How It Works
 
 ### 1. Automatic Retry on Failure
@@ -345,4 +350,3 @@ cat logs/tools/tool-calls-2025-11-11.jsonl | jq 'select(.result.ok == false)'
 ---
 
 For post-answer quality control and bounded repair, see [Completion Guard](./COMPLETION_GUARD.md).
-

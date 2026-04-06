@@ -165,6 +165,55 @@ print(json.dumps({
 }
 ```
 
+### Tool Schema Compatibility Notes
+
+Jarvis tool schemas are provider-agnostic in storage, but cloud providers do not all accept the same JSON Schema surface area for function/tool calling.
+
+Safest cross-provider rule:
+- Top-level `parameters` should always be a plain object schema:
+  - `"type": "object"`
+  - `"properties": { ... }`
+  - optional `"required": [...]`
+  - optional `"additionalProperties": false`
+
+Avoid these at the **top level** of `parameters` if you want the schema to work reliably with OpenAI tool calling:
+- `allOf`
+- `anyOf`
+- `oneOf`
+- `not`
+- `if` / `then` / `else`
+- `dependentSchemas`
+- top-level `enum`
+
+Example of the recommended shape:
+
+```json
+{
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "location": {
+        "type": "string",
+        "description": "City name or location"
+      },
+      "units": {
+        "type": "string",
+        "enum": ["imperial", "metric"],
+        "description": "Temperature units"
+      }
+    },
+    "required": ["location"]
+  }
+}
+```
+
+Notes:
+- Nested schema features may still work with some providers, but the safest authoring target is the common subset above.
+- OpenAI is currently the strictest path in this repo for tool schema validation.
+- Anthropic is generally more tolerant of richer `input_schema`, but if you want one schema that works across OpenAI, Anthropic, xAI/OpenAI-compatible paths, and Ollama prompts, stick to the object/properties/required subset.
+- Jarvis now sanitizes some unsupported keywords before sending tools to OpenAI, but that is a compatibility fallback, not a license to author overly-complex schemas.
+
 ### 3. Make Executable & Use
 
 ```bash
@@ -203,6 +252,10 @@ When adding a new tool, don't forget these steps beyond the script + schema:
 
 3. **Stash integration** — If the tool produces files, save to stash and return a
    `stash_ref` or `ref`. See `docs/STASH_SYSTEM.md` for the `ref` vs `stash_ref` naming.
+
+4. **Schema discipline** — Keep the top-level `parameters` schema in the strict subset above.
+   If you need conditional validation, enforce it inside the tool code and return a clear
+   runtime error instead of relying on top-level JSON Schema combinators.
 
 ---
 
@@ -457,4 +510,3 @@ def extract_pdf_text(file_path: str) -> str:
 ---
 
 **You now have a voice-activated AI that can actually DO things!** 🚀
-

@@ -105,6 +105,8 @@ def main():
         duration = log["duration_ms"]
         
         summary = f"{tool} {status} in {duration:.0f}ms"
+        if log.get("fallback_embeddings"):
+            summary += " - fallback embeddings used"
         
         if not log["result"]["ok"]:
             error = log["result"].get("error", "unknown error")
@@ -138,6 +140,7 @@ def main():
             "timestamp": log["timestamp"],
             "tool": log["tool"],
             "arguments": log["arguments"],
+            "fallback_embeddings": log.get("fallback_embeddings"),
             "ok": log["result"]["ok"],
             "speech": log["result"]["speech"],
             "error": log["result"].get("error"),
@@ -195,4 +198,3 @@ def return_error(speech, data=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

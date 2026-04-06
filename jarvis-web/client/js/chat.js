@@ -297,10 +297,33 @@ class ChatUI {
         
         // Get effective provider from settings (includes UI overrides)
         const provider = settings.llm?.provider?.value || 'xai';
+        const modelId = settings.llm?.model?.value || '';
         const currentMode = settings.mode || mode || 'cloud';
+        const providerModels =
+          settings.provider_models?.[provider]
+          || settings.llm?.model?.options
+          || [];
+
+        const parseContextString = (value) => {
+          if (!value) return null;
+          if (typeof value === 'number') return value;
+          const raw = String(value).trim().toUpperCase();
+          const match = raw.match(/^(\d+(?:\.\d+)?)([KM]?)$/);
+          if (!match) return null;
+          const amount = parseFloat(match[1]);
+          const suffix = match[2];
+          if (suffix === 'M') return Math.round(amount * 1_000_000);
+          if (suffix === 'K') return Math.round(amount * 1_000);
+          return Math.round(amount);
+        };
+
+        const selectedModel = providerModels.find((entry) => entry.id === modelId);
+        const selectedContext = parseContextString(selectedModel?.context);
         
         // Set context window based on LLM provider (not TTS)
-        if (provider === 'xai') {
+        if (selectedContext) {
+          this.contextWindow = selectedContext;
+        } else if (provider === 'xai') {
           // grok-4-fast models have 2M context
           this.contextWindow = 2000000;
         } else if (provider === 'anthropic') {

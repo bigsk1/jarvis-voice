@@ -221,7 +221,7 @@ class SettingsManager:
         
         # Calculate effective values
         effective_provider = web_provider or env_provider
-        effective_model = web_model or self._get_default_model(effective_provider)
+        effective_model = web_model or self._get_env_provider_model(effective_provider)
         effective_image = web_image or env_image_provider
         effective_video = web_video or env_video_provider
         effective_response_style = web_response_style or env_response_style
@@ -261,7 +261,11 @@ class SettingsManager:
             else env_completion_guard_auto_threshold
         )
         effective_completion_guard_eval_provider = web_completion_guard_eval_provider or env_completion_guard_eval_provider
-        effective_completion_guard_eval_model = web_completion_guard_eval_model or env_completion_guard_eval_model or self._get_default_model(effective_completion_guard_eval_provider)
+        effective_completion_guard_eval_model = (
+            web_completion_guard_eval_model
+            or env_completion_guard_eval_model
+            or self._get_env_provider_model(effective_completion_guard_eval_provider)
+        )
         
         return {
             'mode': self.mode,
@@ -276,7 +280,7 @@ class SettingsManager:
                 },
                 'model': {
                     'value': effective_model,
-                    'default': self._get_default_model(env_provider),
+                    'default': self._get_env_provider_model(env_provider),
                     'is_override': web_model is not None,
                     'options': PROVIDER_MODELS.get(effective_provider, [])
                 }
@@ -367,7 +371,7 @@ class SettingsManager:
                 },
                 'eval_model': {
                     'value': effective_completion_guard_eval_model,
-                    'default': env_completion_guard_eval_model or self._get_default_model(env_completion_guard_eval_provider),
+                    'default': env_completion_guard_eval_model or self._get_env_provider_model(env_completion_guard_eval_provider),
                     'is_override': web_completion_guard_eval_model is not None,
                     'options': PROVIDER_MODELS.get(effective_completion_guard_eval_provider, [])
                 }
@@ -442,6 +446,21 @@ class SettingsManager:
         if models:
             return models[0]['id']
         return ''
+
+    def _get_env_provider_model(self, provider: str) -> str:
+        """Get the configured model from env for a provider, or fall back to the provider default."""
+        env_key_map = {
+            'xai': 'XAI_MODEL',
+            'anthropic': 'ANTHROPIC_MODEL',
+            'openai': 'OPENAI_MODEL',
+            'ollama': 'OLLAMA_MODEL',
+        }
+        env_key = env_key_map.get(provider)
+        if env_key:
+            value = get_jarvis_setting(env_key, '').strip()
+            if value:
+                return value
+        return self._get_default_model(provider)
     
     def _get_api_key_status(self) -> dict[str, bool]:
         """Check which API keys are configured"""

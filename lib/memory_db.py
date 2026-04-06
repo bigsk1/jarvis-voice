@@ -8,6 +8,7 @@ import sqlite3
 import json
 import os
 import pickle
+import logging
 from pathlib import Path
 
 
@@ -39,6 +40,8 @@ class MemoryDB:
         
         self.db_path = db_path
         self.conn = None
+        self.last_semantic_search_meta = {"fallback_embeddings": None}
+        self.last_tool_search_meta = {"fallback_embeddings": None}
         self._init_db()
     
     def _init_db(self):
@@ -449,8 +452,15 @@ class MemoryDB:
         Returns:
             List of memories with similarity/relevance scores, sorted by relevance
         """
+        logger = logging.getLogger(__name__)
+        self.last_semantic_search_meta = {"fallback_embeddings": None}
         try:
-            from embeddings import get_embedding, cosine_similarity
+            from embeddings import (
+                get_embedding,
+                cosine_similarity,
+                reset_embedding_fallback_tracking,
+                consume_embedding_fallback_tracking,
+            )
             from config_loader import get_float
             
             # Use provided threshold or read from config
@@ -458,7 +468,14 @@ class MemoryDB:
                 similarity_threshold = get_float('SEMANTIC_SIMILARITY_THRESHOLD', 0.40)
             
             # Generate embedding for query
+            reset_embedding_fallback_tracking()
             query_embedding = get_embedding(query)
+            self.last_semantic_search_meta = consume_embedding_fallback_tracking()
+            if self.last_semantic_search_meta.get("fallback_embeddings"):
+                logger.warning(
+                    "[SEMANTIC_SEARCH] Fallback embeddings used for query: '%s...'",
+                    query[:120],
+                )
             
             # Get all memories with embeddings
             cursor = self.conn.cursor()
@@ -501,6 +518,7 @@ class MemoryDB:
             
         except Exception:
             # If embedding generation fails, fall back to FTS5
+            self.last_semantic_search_meta = {"fallback_embeddings": None}
             return self.fts_search(query, limit=limit)
     
     # ========== Conversation History ==========
@@ -738,14 +756,26 @@ class MemoryDB:
             List of tool definitions with similarity scores
         """
         cursor = self.conn.cursor()
+        self.last_tool_search_meta = {"fallback_embeddings": None}
         
         try:
-            from embeddings import get_embedding, cosine_similarity
-            import logging
+            from embeddings import (
+                get_embedding,
+                cosine_similarity,
+                reset_embedding_fallback_tracking,
+                consume_embedding_fallback_tracking,
+            )
             logger = logging.getLogger(__name__)
             
             # 1. Generate query embedding
+            reset_embedding_fallback_tracking()
             query_embedding = get_embedding(query)
+            self.last_tool_search_meta = consume_embedding_fallback_tracking()
+            if self.last_tool_search_meta.get("fallback_embeddings"):
+                logger.warning(
+                    "[TOOL_SEARCH] Fallback embeddings used for query: '%s...'",
+                    query[:120],
+                )
             
             # 2. Get all ENABLED tools with embeddings
             results = cursor.execute("""
@@ -807,6 +837,7 @@ class MemoryDB:
             
         except Exception as e:
             # Fallback: Basic keyword match
+            self.last_tool_search_meta = {"fallback_embeddings": None}
             print(f"⚠️ Semantic tool search failed: {e}. Falling back to keyword search.")
             results = cursor.execute("""
                 SELECT name, description, schema_json 
@@ -857,4 +888,3 @@ class MemoryDB:
 def get_memory_db() -> MemoryDB:
     """Get memory database instance."""
     return MemoryDB()
-

@@ -9,6 +9,42 @@ from pathlib import Path
 from typing import Any
 
 
+def _sanitize_schema_for_openai(schema: Any, *, is_root: bool = False) -> Any:
+    """
+    Strip JSON Schema features that OpenAI function calling rejects.
+
+    OpenAI tool schemas require a top-level object schema and are stricter than
+    full JSON Schema. In practice, combinators like allOf/anyOf/oneOf/not and
+    conditional keywords can cause the entire request to fail before routing.
+    We keep the core object/property shape and drop unsupported validation-only
+    constructs so tool calling stays available.
+    """
+    if isinstance(schema, list):
+        return [_sanitize_schema_for_openai(item, is_root=False) for item in schema]
+
+    if not isinstance(schema, dict):
+        return schema
+
+    unsupported_keys = {
+        "allOf", "anyOf", "oneOf", "not",
+        "if", "then", "else", "dependentSchemas"
+    }
+
+    sanitized: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in unsupported_keys:
+            continue
+        if is_root and key == "enum":
+            continue
+        sanitized[key] = _sanitize_schema_for_openai(value, is_root=False)
+
+    if is_root:
+        sanitized.setdefault("type", "object")
+        sanitized.setdefault("properties", {})
+
+    return sanitized
+
+
 class ToolSchema:
     """Defines a tool's capabilities in a provider-agnostic way."""
     
@@ -56,7 +92,7 @@ class ToolSchema:
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters
+                "parameters": _sanitize_schema_for_openai(self.parameters, is_root=True)
             }
         }
     
@@ -505,6 +541,5 @@ def reset_tool_registry():
         _tool_registry_instance.cleanup()
         _tool_registry_instance = None
         _tool_registry_mode = None
-
 
 

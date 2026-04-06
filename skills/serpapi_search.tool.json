@@ -1,22 +1,22 @@
 {
   "enabled": true,
   "name": "serpapi_search",
-  "description": "Run generic SerpApi searches across engines (amazon, amazon_product, google, shopping, news). Use for Amazon product lookup, listing search, and result aggregation with structured output.",
+  "description": "Structured shopping and search lookup via SerpApi across engines like amazon, amazon_product, google, google_shopping, and news. Best tool for Amazon product search, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, product comparisons, and finding products to buy when the user asks about Amazon items or shopping results.",
   "script": "serpapi_search.py",
   "parameters": {
     "type": "object",
     "properties": {
       "engine": {
         "type": "string",
-        "description": "SerpApi engine. Examples: amazon search, amazon_product, google, google_shopping, bing, youtube search."
+        "description": "SerpApi engine. Use amazon for Amazon listing/product searches, amazon_product for a specific Amazon ASIN/product page, google_shopping for shopping comparisons, google for general web search, bing, or youtube."
       },
       "query": {
         "type": "string",
-        "description": "Search text. For amazon engine this maps to 'k'; for most others it maps to 'q'."
+        "description": "Search text. For amazon this is the Amazon product/listing query (maps to 'k'); for most others it maps to 'q'. Good for product names, shopping phrases, bestseller/category searches, and buyer-intent queries like 'best weather station under 300'."
       },
       "asin": {
         "type": "string",
-        "description": "Amazon ASIN. Best for engine=amazon_product."
+        "description": "Amazon ASIN for a specific product detail lookup. Best with engine=amazon_product when you want one exact listing."
       },
       "amazon_domain": {
         "type": "string",

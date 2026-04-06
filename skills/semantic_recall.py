@@ -36,6 +36,7 @@ def main():
         # Semantic search
         db = get_memory_db()
         memories = db.semantic_search(query=query, limit=limit)
+        semantic_meta = getattr(db, 'last_semantic_search_meta', {"fallback_embeddings": None})
         db.close()
         
         if not memories:
@@ -58,8 +59,17 @@ def main():
             result = {
                 "ok": True,
                 "speech": speech,
-                "data": {"memories": memories, "count": len(memories)}
+                "data": {
+                    "memories": memories,
+                    "count": len(memories),
+                    "embedding_diagnostics": semantic_meta,
+                },
+                "fallback_embeddings": semantic_meta.get("fallback_embeddings"),
             }
+        if "fallback_embeddings" not in result:
+            result["fallback_embeddings"] = semantic_meta.get("fallback_embeddings")
+            if "data" in result:
+                result["data"]["embedding_diagnostics"] = semantic_meta
         
         print(json.dumps(result))
         return result
@@ -76,4 +86,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

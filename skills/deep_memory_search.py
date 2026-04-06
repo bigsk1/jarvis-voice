@@ -132,9 +132,10 @@ def ripgrep_search(query: str, paths: list[str], file_globs: list[str] = None,
     return results
 
 
-def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = None) -> list[dict]:
+def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = None) -> tuple[list[dict], dict]:
     """Search memory database using existing methods."""
     results = []
+    semantic_meta = {"fallback_embeddings": None}
     
     try:
         db = get_memory_db()
@@ -163,6 +164,7 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
         if mode in ['comprehensive', 'semantic']:
             # Semantic search
             semantic_results = db.semantic_search(query=query, limit=limit)
+            semantic_meta = getattr(db, 'last_semantic_search_meta', {"fallback_embeddings": None})
             for mem in semantic_results:
                 # Avoid duplicates from keyword search
                 existing_keys = [r.get('key') for r in results]
@@ -185,7 +187,7 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
     except Exception:
         pass
     
-    return results[:limit]
+    return results[:limit], semantic_meta
 
 
 def search_terminal_conversations(query: str, limit: int, date_filter: datetime = None) -> list[dict]:
@@ -525,9 +527,11 @@ def main():
         source_counts = {}
         
         if 'memory' in sources:
-            memory_results = search_memory_db(query, limit, mode, date_filter)
+            memory_results, memory_semantic_meta = search_memory_db(query, limit, mode, date_filter)
             all_results['memory'] = memory_results
             source_counts['memory'] = len(memory_results)
+        else:
+            memory_semantic_meta = {"fallback_embeddings": None}
         
         if 'conversations' in sources:
             conv_results = search_terminal_conversations(query, limit, date_filter)
@@ -576,11 +580,15 @@ def main():
         output = {
             "ok": True,
             "speech": speech,
+            "fallback_embeddings": memory_semantic_meta.get("fallback_embeddings"),
             "data": {
                 "query": query,
                 "mode": mode,
                 "sources_searched": sources,
                 "date_filter": args.get('date_filter'),
+                "embedding_diagnostics": {
+                    "memory_semantic_search": memory_semantic_meta,
+                },
                 "summary": {
                     "total_results": total_found,
                     "by_source": source_counts,
