@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_int, get_float, get_config_value
 from memory_db import get_memory_db
+from model_prompt_overrides import apply_prompt_override_sections
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
 
@@ -135,6 +136,7 @@ class Orchestrator:
             provider_override=self._provider_override,
             model_override=self._model_override
         )
+        self.prompt_override = getattr(self.router, "prompt_override", None)
         self.executor = ToolExecutor(mode, registry=self.registry)
         self.executor.set_cancel_check(self._is_cancelled)
         self.max_retries = 1  # Maximum retry attempts
@@ -1209,7 +1211,10 @@ Your synthesized response:"""
             
             response = self.router.provider.chat(
                 context, 
-                system_prompt="Synthesize research results into a helpful answer. MAX 100 words. Answer the user's actual question using the data provided."
+                system_prompt=self._apply_qa_prompt_overrides(
+                    "Synthesize research results into a helpful answer. MAX 100 words. "
+                    "Answer the user's actual question using the data provided."
+                )
             )
             if not response or self._looks_like_provider_error_text(response):
                 if "canvas" in [t.lower() for t in tools_used] and _query_wants_artifact_update(user_query):
@@ -1311,6 +1316,15 @@ Your response:"""
             or "StatusCode.PERMISSION_DENIED" in value
             or "Content violates usage guidelines" in value
             or "grpc_status:7" in value
+        )
+
+    def _apply_qa_prompt_overrides(self, base_prompt: str) -> str:
+        """Apply model-specific QA overlays to synthesis-style prompts."""
+        return apply_prompt_override_sections(
+            base_prompt,
+            self.prompt_override,
+            prepend_sections=("qa_prepend",),
+            append_sections=("qa_append",),
         )
     
     def _format_auto_mode(self, user_query: str, tools_used: list, accumulated_data: dict, raw_response: str, turn_num: int) -> str:
@@ -1457,7 +1471,12 @@ GOOD (preserves entities): "Top restaurants nearby: Olive Garden for Italian, Th
 
 Your condensed response:"""
             
-            response = self.router.provider.chat(context, system_prompt=f"Condense for voice output. MAX {qa_limit} words. Keep key info. No greetings/emojis.")
+            response = self.router.provider.chat(
+                context,
+                system_prompt=self._apply_qa_prompt_overrides(
+                    f"Condense for voice output. MAX {qa_limit} words. Keep key info. No greetings/emojis."
+                ),
+            )
             if not response or self._looks_like_provider_error_text(response):
                 return raw_response
             return response.strip()
@@ -1534,7 +1553,12 @@ BAD: "[Names from results]" or "Found 3 options" ← Never use placeholders!
 
 Your response:"""
             
-            response = self.router.provider.chat(context, system_prompt=f"Condense to MAX {multi_turn_limit} words. Preserve names, titles, and numbers exactly. No placeholders.")
+            response = self.router.provider.chat(
+                context,
+                system_prompt=self._apply_qa_prompt_overrides(
+                    f"Condense to MAX {multi_turn_limit} words. Preserve names, titles, and numbers exactly. No placeholders."
+                ),
+            )
             if not response or self._looks_like_provider_error_text(response):
                 return llm_response
             return response.strip()
@@ -1598,7 +1622,7 @@ Your BEST EFFORT response:"""
             
             response = self.router.provider.chat(
                 context,
-                system_prompt=(
+                system_prompt=self._apply_qa_prompt_overrides(
                     f"You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. "
                     f"MAX {multi_turn_limit} words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc."
                 ),

@@ -1,0 +1,22 @@
+enabled: true
+description: "OpenAI GPT-5.4 Nano shopping and product-link tuning"
+applies_to_modes:
+  - cloud
+
+routing_prepend: |
+  When the user wants something to buy, compare, or verify for compatibility, keep the shopping intent explicit and prioritize product-search evidence over topic-adjacent background knowledge.
+
+routing_append: |
+  Preserve exact store names, product names, model numbers, dimensions, and compatibility constraints.
+
+qa_prepend: |
+  For Amazon or buyable-product requests, prefer 2 to 4 concrete listing options with direct links and a short reason each is relevant. Do not answer with only ASINs if listing URLs are available.
+
+qa_append: |
+  If compatibility is not fully verified, state the uncertainty clearly and say what measurement or detail still needs confirmation.
+
+tool_calling_prepend: |
+  Make the desired product-search or compatibility-check action explicit before supporting context from the product category.
+
+completion_guard_eval_prepend: |
+  For shopping or compatibility tasks, treat answers that provide only identifiers without actionable listings or verification as potentially incomplete.

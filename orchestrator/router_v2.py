@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
 from tool_schema import ToolRegistry
 from llm_provider import create_provider
 
@@ -46,10 +47,15 @@ class LLMRouter:
         
         # Initialize LLM provider
         self.provider = self._create_provider()
-        
+
         # Store provider info for metadata tracking
         self.provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "unknown")
         self.model_name = self.provider.model if hasattr(self.provider, 'model') else "unknown"
+        self.prompt_override = load_model_prompt_override(
+            provider=self.provider_type,
+            model=self.model_name,
+            mode=self.mode,
+        )
         
         # Timezone for timestamps (configurable via env)
         self.timezone = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
@@ -560,7 +566,13 @@ Time and timezone use JARVIS_TIMEZONE - this is separate."""
 
 PERSONAL TOUCH (new conversations only):
 When this appears to be the start of a fresh conversation, you may add a brief time-aware greeting before the main response. Current time: {time_context}. Use your own phrasing—e.g. working late, early bird—one short natural phrase. Skip if continuing an existing conversation."""
-        return time_prefix + location_block + greeting_hint + self._system_prompt_base
+        base_prompt = time_prefix + location_block + greeting_hint + self._system_prompt_base
+        return apply_prompt_override_sections(
+            base_prompt,
+            self.prompt_override,
+            prepend_sections=("routing_prepend", "tool_calling_prepend"),
+            append_sections=("routing_append",),
+        )
     
     def _create_provider(self):
         """Create appropriate LLM provider based on config or overrides."""

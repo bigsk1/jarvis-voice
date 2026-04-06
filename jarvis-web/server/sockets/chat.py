@@ -21,6 +21,8 @@ JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 
+from model_prompt_overrides import apply_prompt_override_sections, load_model_prompt_override
+
 
 class ChatHandler:
     """Handles WebSocket chat events"""
@@ -822,10 +824,19 @@ Important:
 - If native provider search returned sources/URLs, treat that as valid external evidence unless the answer still overclaims beyond what was returned.
 """
 
-        system_prompt = (
-            "You are Completion Guard, a strict but practical QA evaluator. "
-            "Judge whether a follow-up repair pass is warranted. "
-            "Return valid JSON only."
+        override = load_model_prompt_override(
+            provider=provider_name,
+            model=model_name,
+            mode=mode,
+        )
+        system_prompt = apply_prompt_override_sections(
+            (
+                "You are Completion Guard, a strict but practical QA evaluator. "
+                "Judge whether a follow-up repair pass is warranted. "
+                "Return valid JSON only."
+            ),
+            override,
+            prepend_sections=("completion_guard_eval_prepend",),
         )
         response = provider.chat(prompt, system_prompt=system_prompt, max_tokens=300)
         parsed = self._parse_completion_guard_auto_eval(response)

@@ -324,6 +324,10 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Prompt enhancer + shopping/tool guidance**
   - The `✨` prompt enhancer now emphasizes the user's primary intent, preserves exact entities like model numbers, reduces distracting context, and stays tool/provider agnostic
   - Strengthened `serpapi_search` descriptions for Amazon-style product lookup, comparison, and purchase intent
+- ✅ **Model prompt overrides implemented**
+  - Added runtime model/provider-specific prompt overrides with YAML config loading for routing, QA synthesis, and Completion Guard evaluation
+  - Override resolution now supports exact model folders plus deterministic aliases for dated model names and runtime suffixes like `:latest` and `:cloud`
+  - New design and usage details documented in `MODEL_PROMPT_OVERRIDES.md`
 
 **2026-04-05:**
 - ✅ **Scheduled task notification UX**

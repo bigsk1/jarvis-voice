@@ -181,6 +181,10 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
 ### Dual Mode Operation
 - **Cloud Mode**: **xAI Grok** (2M context, 10-15x cheaper!), Anthropic Claude, OpenAI GPT
 - **Local Mode**: Ollama (qwen3-coder, mistral-nemo) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
+- **Model Prompt Overrides**: Small provider/model-specific YAML prompt overlays in `config/models/`
+  - Lets you patch stable model quirks without changing the global prompts for every provider
+  - Supports exact model folders plus deterministic aliases for dated model names and runtime suffixes like `:latest` and `:cloud`
+  - See [`docs/MODEL_PROMPT_OVERRIDES.md`](docs/MODEL_PROMPT_OVERRIDES.md)
 
 ### TTS Providers
 | Provider | Mode | Quality | Cost | Notes |
@@ -1151,8 +1155,10 @@ LIMIT 7;"
 
 **Getting Started:**
 - [`config/README.md`](config/README.md) - Configuration guide
+- [`config/models/README.md`](config/models/README.md) - Model prompt override config layout
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md) - Quick setup guide
 - [`docs/TOOL_CALLING_SYSTEM.md`](docs/TOOL_CALLING_SYSTEM.md) - How tools work
+- [`docs/MODEL_PROMPT_OVERRIDES.md`](docs/MODEL_PROMPT_OVERRIDES.md) - Provider/model-specific runtime prompt tuning
 - [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md) - **Qwen3-TTS** (28 cloned voices, local network)
 
 **Proactive System:**
@@ -1818,4 +1824,4 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.46.2 (March 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Completion Guard ↔ feedback ↔ intelligence bridge + scheduled task runner + routing freshness & duplicate suppression + weather 7-day + workflow true timings + stock_price proxy fallback + Web UI limits/style overrides & completion-guard settings
+**Latest Features:** Completion Guard ↔ feedback ↔ intelligence bridge + scheduled task runner + routing freshness & duplicate suppression + weather 7-day + workflow true timings + stock_price proxy fallback + Web UI limits/style overrides + model prompt overrides + completion-guard settings

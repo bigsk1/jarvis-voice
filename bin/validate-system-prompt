@@ -28,7 +28,6 @@ import argparse
 import json
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 # Add lib and orchestrator to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -90,92 +89,16 @@ def get_previous_validation():
 def get_full_system_prompt(mode='cloud'):
     """
     Get the COMPLETE system prompt as the LLM would see it.
-    Includes time prefix, style notes, native search notes, and base prompt.
+    Uses the live router so dynamic layers like model prompt overrides are included.
     """
-    # Load config for the mode
     load_config(mode)
-    
-    # Get timezone
-    tz_str = get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles")
     try:
-        timezone = ZoneInfo(tz_str)
-    except:
-        timezone = ZoneInfo("America/Los_Angeles")
-    
-    now = datetime.now(timezone)
-    
-    # Get response style
-    response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
-    
-    # Build style note
-    if response_style == 'detailed':
-        style_note = """
-RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
-- Output will be DISPLAYED, not spoken through TTS
-- Markdown formatting IS allowed (links, bold, lists)
-- Full URLs with markdown links ARE allowed: [Title](https://...)
-- No word limit - provide comprehensive information
-- The VOICE OUTPUT RULES section does NOT apply in detailed mode
-"""
-    else:
-        style_note = f"""
-RESPONSE STYLE: {response_style.upper()}
-- Keep voice output concise (35-75 words depending on complexity)
-- Tool confirmations: brief (35 words max)
-- Q&A/informational: more room (75 words max)
-- No URLs for speech unless critical
-"""
-    
-    # Check native search - include xAI code_execution if enabled
-    native_search_note = ""
-    xai_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
-    xai_code_exec = get_config_value("XAI_CODE_EXECUTION", "true").lower() == "true"
-    anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
-    provider_type = get_config_value("LLM_PROVIDER", "")
-    
-    if xai_search and provider_type == "xai":
-        capabilities = ["- NATIVE WEB/X SEARCH: Use for current info, news, prices - DO NOT use external search tools"]
-        if xai_code_exec:
-            capabilities.append("- NATIVE CODE EXECUTION: Python REPL for complex math, data analysis")
-        native_search_note = f"""
-NATIVE SERVER-SIDE TOOLS ENABLED:
-{chr(10).join(capabilities)}
-- Results are grounded and cited automatically
-"""
-    elif anthropic_search and provider_type == "anthropic":
-        native_search_note = """
-NATIVE SEARCH ENABLED:
-You have built-in web search capability. For current info:
-- Use your NATIVE SEARCH - DO NOT use external search tools
-"""
-    
-    # Build time prefix
-    time_prefix = f"""CURRENT DATE/TIME: {now.strftime('%A, %B %d, %Y at %I:%M %p %Z')}
-When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
-{native_search_note}{style_note}"""
-    
-    # Get base prompt from router_v2.py
-    router_path = Path(__file__).parent.parent / 'orchestrator' / 'router_v2.py'
-    content = router_path.read_text()
-    
-    start_marker = '_system_prompt_base = """'
-    end_marker = '"""'
-    
-    start = content.find(start_marker)
-    if start == -1:
-        return None, "Could not find _system_prompt_base"
-    
-    start += len(start_marker)
-    end = content.find(end_marker, start)
-    if end == -1:
-        return None, "Could not find end of system prompt"
-    
-    base_prompt = content[start:end].strip()
-    
-    # Combine
-    full_prompt = time_prefix + base_prompt
-    
-    return full_prompt, None
+        from router_v2 import LLMRouter
+
+        router = LLMRouter(mode)
+        return router.system_prompt, None
+    except Exception as exc:
+        return None, f"Could not build live router system prompt: {exc}"
 
 
 def get_actual_tools(mode='cloud'):
@@ -500,7 +423,10 @@ def main():
         print("DRY RUN - What the LLM receives:")
         print("=" * 60)
         print("\n## SYSTEM PROMPT:\n")
-        print(system_prompt[:4000] + "\n..." if len(system_prompt) > 4000 else system_prompt)
+        if args.full_prompt:
+            print(system_prompt)
+        else:
+            print(system_prompt[:4000] + "\n..." if len(system_prompt) > 4000 else system_prompt)
         
         if tools:
             print(f"\n## TOOLS ({len(tools)}):\n")

@@ -22,9 +22,10 @@ Model prompt overrides solve that by letting Jarvis load **small, targeted promp
    - These are quirk patches, not alternate personalities
    - Keep them short and specific
 
-2. **Exact-match only**
-   - If there is no exact provider/model match, Jarvis skips the override completely
-   - No fuzzy matching, no partial matching, no “closest model” inference
+2. **Exact first, normalized alias second**
+   - Jarvis checks the exact provider/model path first
+   - If that file does not exist, Jarvis can fall back to a deterministic normalized alias for common runtime suffixes like dated releases and `:latest` / `:cloud`
+   - No fuzzy matching, no “closest model” inference
 
 3. **Graceful failure**
    - Bad YAML should log a warning and be ignored
@@ -38,7 +39,7 @@ Model prompt overrides solve that by letting Jarvis load **small, targeted promp
    - Global system behavior still lives in the main prompts
    - Overrides should be easy to find, review, and disable
 
-## Proposed File Layout
+## File Layout
 
 ```text
 config/
@@ -54,11 +55,21 @@ config/
         prompt_overrides.yaml
 ```
 
-One file per exact provider/model pair.
+One file per provider/model pair or normalized alias.
 
 This keeps behavior modular and makes it easy to compare model-specific tuning over time.
 
-## Proposed YAML Format
+Scaffolding included in the repo:
+- `config/models/prompt_overrides.example.yaml`
+- provider roots:
+  - `config/models/openai/`
+  - `config/models/anthropic/`
+  - `config/models/xai/`
+  - `config/models/ollama/`
+
+Use the `.yaml` extension consistently in this project.
+
+## YAML Format
 
 ```yaml
 enabled: true
@@ -111,21 +122,23 @@ completion_guard_eval_prepend: |
 
 Future sections can be added later if they prove necessary, but the initial version should stay small.
 
-## Exact Match Rules
+## Match Rules
 
 Jarvis should load an override **only** if:
 - provider matches exactly
-- model matches exactly
+- model matches exactly OR resolves to a supported normalized alias
 - mode is allowed by `applies_to_modes` if present
 - YAML parsed successfully
 - `enabled` is not `false`
 
 Examples:
 - `openai / gpt-5.4-nano` → load only `config/models/openai/gpt-5.4-nano/prompt_overrides.yaml`
+- `openai / gpt-5.4-nano-2026-03-17` → first try `config/models/openai/gpt-5.4-nano-2026-03-17/prompt_overrides.yaml`, then fall back to `config/models/openai/gpt-5.4-nano/prompt_overrides.yaml`
+- `ollama / qwen3:latest` → first try `config/models/ollama/qwen3:latest/prompt_overrides.yaml`, then fall back to `config/models/ollama/qwen3/prompt_overrides.yaml`
+- `ollama / kimi-k2.5:cloud` → first try `config/models/ollama/kimi-k2.5:cloud/prompt_overrides.yaml`, then fall back to `config/models/ollama/kimi-k2.5/prompt_overrides.yaml`
 - `openai / gpt-5.4` → do **not** load the `gpt-5.4-nano` override
-- `ollama / qwen3:latest` → do **not** load `qwen3` unless the file path also matches `qwen3:latest`
 
-This is intentionally strict. Silent fuzzy matching would make prompt behavior unpredictable.
+This is intentionally strict. Normalization is limited to deterministic runtime suffix cleanup, not fuzzy matching.
 
 ## Failure Handling
 
@@ -286,7 +299,7 @@ Possible future sections, if ever needed:
 
 But these should be added only after a concrete repeated need appears.
 
-## Recommended First Implementation
+## Implemented Scope
 
 ### Scope
 
@@ -302,13 +315,16 @@ Skip more exotic sections until the basic pattern proves useful.
 ### Loader behavior
 
 1. Determine effective provider/model
-2. Build path:
+2. Try exact path:
    - `config/models/<provider>/<model>/prompt_overrides.yaml`
-3. If file missing → return empty override
-4. If invalid YAML → warning + empty override
-5. If `enabled: false` → skip
-6. If `applies_to_modes` excludes current mode → skip
-7. Return only recognized string sections
+3. If exact path is missing, try deterministic aliases:
+   - strip `:latest` / `:cloud`
+   - strip dated suffixes like `-2026-03-17`
+4. If file missing → return empty override
+5. If invalid YAML → warning + empty override
+6. If `enabled: false` → skip
+7. If `applies_to_modes` excludes current mode → skip
+8. Return only recognized string sections
 
 ### Runtime behavior
 

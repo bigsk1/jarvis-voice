@@ -1,0 +1,26 @@
+enabled: true
+description: "Template for model-specific prompt overrides"
+applies_to_modes:
+  - cloud
+  - local
+
+# Put only small, surgical nudges here.
+# Omit any section you do not need.
+
+routing_prepend: |
+  Preserve the user's primary action intent early.
+
+routing_append: |
+  Preserve exact entity names, model numbers, and constraints.
+
+qa_prepend: |
+  Answer concretely and prefer actionable results when available.
+
+qa_append: |
+  If evidence is partial, say what remains unverified.
+
+tool_calling_prepend: |
+  Make the next action explicit before supporting context.
+
+completion_guard_eval_prepend: |
+  Judge whether the requested outcome was actually delivered.
