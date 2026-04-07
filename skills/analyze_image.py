@@ -20,6 +20,7 @@ from datetime import datetime
 # Add lib to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
+from model_catalog import get_provider_fallback_model
 
 
 def _debug(msg: str):
@@ -397,7 +398,7 @@ def _vision_xai(image_base64: str, question: str, model: str = None) -> str | No
             _debug("[ANALYZE_IMAGE] XAI_API_KEY not configured")
             return None
         
-        model = model or get_config_value('VISION_MODEL') or get_config_value('XAI_MODEL', 'grok-4')
+        model = model or get_config_value('VISION_MODEL') or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
         
         response = requests.post(
             "https://api.x.ai/v1/chat/completions",
@@ -443,7 +444,7 @@ def _vision_anthropic(image_base64: str, question: str, model: str = None) -> st
             _debug("[ANALYZE_IMAGE] ANTHROPIC_API_KEY not configured")
             return None
         
-        model = model or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514')
+        model = model or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
         
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
@@ -491,7 +492,7 @@ def _vision_openai(image_base64: str, question: str, model: str = None) -> str |
             _debug("[ANALYZE_IMAGE] OPENAI_API_KEY not configured")
             return None
         
-        model = model or get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
+        model = model or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
         
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
@@ -657,4 +658,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

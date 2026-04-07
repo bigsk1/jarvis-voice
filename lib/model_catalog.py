@@ -14,7 +14,11 @@ not specify a model.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
 
 
 def _context_label(tokens: int) -> str:
@@ -224,29 +228,39 @@ def get_provider_catalog(provider: str) -> list[dict[str, Any]]:
     return [dict(entry) for entry in CLOUD_MODEL_CATALOG.get(provider, [])]
 
 
-def _candidate_model_ids(entry: dict[str, Any]) -> list[str]:
-    candidates = [entry["id"], *entry.get("aliases", [])]
+def _candidate_model_ids(entry: dict[str, Any]) -> list[tuple[str, bool]]:
+    candidates: list[tuple[str, bool]] = [(entry["id"], True)]
+    candidates.extend((alias, False) for alias in entry.get("aliases", []))
     model_id = entry["id"]
     if model_id.endswith("-latest"):
-        candidates.append(model_id[:-7])
-    return [candidate.lower() for candidate in candidates]
+        candidates.append((model_id[:-7], False))
+    return [(candidate.lower(), is_id) for candidate, is_id in candidates]
 
 
 def get_model_metadata(provider: str, model: str | None) -> dict[str, Any] | None:
     """Resolve catalog metadata for an exact or family-compatible model id."""
     if not model:
         return None
+    if provider not in CLOUD_MODEL_CATALOG:
+        logger.warning("[MODEL_CATALOG] Unknown provider requested for model metadata: %s", provider)
+        return None
 
     normalized = model.lower().strip()
     best_entry = None
-    best_match_len = -1
+    best_score: tuple[int, int] = (-1, -1)
 
     for entry in CLOUD_MODEL_CATALOG.get(provider, []):
-        for candidate in _candidate_model_ids(entry):
-            if normalized == candidate or normalized.startswith(candidate + "-"):
-                if len(candidate) > best_match_len:
-                    best_entry = entry
-                    best_match_len = len(candidate)
+        for candidate, is_id in _candidate_model_ids(entry):
+            if normalized == candidate:
+                score = (3 if is_id else 2, len(candidate))
+            elif normalized.startswith(candidate + "-"):
+                score = (1 if is_id else 0, len(candidate))
+            else:
+                continue
+
+            if score > best_score:
+                best_entry = entry
+                best_score = score
 
     return dict(best_entry) if best_entry else None
 
@@ -266,10 +280,22 @@ def get_provider_model_options(provider: str) -> list[dict[str, str]]:
 
 
 def get_default_model_id(provider: str) -> str:
-    for entry in CLOUD_MODEL_CATALOG.get(provider, []):
-        if entry.get("default"):
-            return entry["id"]
-    first = CLOUD_MODEL_CATALOG.get(provider, [])
+    entries = CLOUD_MODEL_CATALOG.get(provider, [])
+    if not entries:
+        logger.warning("[MODEL_CATALOG] Unknown provider requested for default model: %s", provider)
+        return ""
+
+    defaults = [entry for entry in entries if entry.get("default")]
+    if len(defaults) > 1:
+        logger.warning(
+            "[MODEL_CATALOG] Multiple defaults configured for %s; using first: %s",
+            provider,
+            defaults[0]["id"],
+        )
+    if defaults:
+        return defaults[0]["id"]
+
+    first = entries
     return first[0]["id"] if first else ""
 
 

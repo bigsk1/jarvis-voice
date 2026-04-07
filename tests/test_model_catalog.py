@@ -18,7 +18,9 @@ from lib.model_catalog import (
     get_default_model_id,
     get_model_context_label,
     get_model_context_window,
+    get_model_metadata,
     get_model_pricing,
+    get_provider_fallback_model,
     get_provider_model_options,
 )
 
@@ -43,6 +45,38 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(get_default_model_id("openai"), "gpt-5.4-nano")
         self.assertEqual(get_default_model_id("xai"), "grok-4-1-fast-non-reasoning-latest")
         self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-4-5-20250929")
+
+    def test_exact_id_beats_alias_when_names_overlap(self):
+        metadata = get_model_metadata("anthropic", "claude-4-5")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["id"], "claude-4-5")
+
+    def test_latest_suffix_falls_back_to_family_match(self):
+        metadata = get_model_metadata("xai", "grok-4-1-fast-non-reasoning-latest")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["id"], "grok-4-1-fast-non-reasoning-latest")
+        family = get_model_metadata("xai", "grok-4-1-fast-non-reasoning-2026-04-01")
+        self.assertIsNotNone(family)
+        self.assertEqual(family["id"], "grok-4-1-fast-non-reasoning-latest")
+
+    def test_unknown_provider_default_warns_and_returns_empty(self):
+        with self.assertLogs("lib.model_catalog", level="WARNING") as captured:
+            result = get_default_model_id("not-a-provider")
+        self.assertEqual(result, "")
+        self.assertTrue(any("Unknown provider requested" in line for line in captured.output))
+
+    def test_unknown_provider_metadata_warns_and_returns_none(self):
+        with self.assertLogs("lib.model_catalog", level="WARNING") as captured:
+            result = get_model_metadata("not-a-provider", "some-model")
+        self.assertIsNone(result)
+        self.assertTrue(any("Unknown provider requested for model metadata" in line for line in captured.output))
+
+    def test_ollama_fallback_default_can_be_overridden(self):
+        self.assertEqual(get_provider_fallback_model("ollama"), "qwen3.5:latest")
+        self.assertEqual(
+            get_provider_fallback_model("ollama", local_default="qwen3:latest"),
+            "qwen3:latest",
+        )
 
 
 if __name__ == "__main__":
