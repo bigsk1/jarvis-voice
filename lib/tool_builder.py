@@ -26,6 +26,7 @@ from dataclasses import dataclass, asdict
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_config_value
 from llm_provider import create_provider
+from model_catalog import get_provider_fallback_model
 
 # Directories
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
@@ -659,19 +660,19 @@ class ToolBuilder:
             self.provider = create_provider(
                 provider_type,
                 api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=model or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+                model=model or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
             )
         elif provider_type == 'openai':
             self.provider = create_provider(
                 provider_type,
                 api_key=get_config_value('OPENAI_API_KEY'),
-                model=model or get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
+                model=model or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
             )
         elif provider_type == 'xai':
             self.provider = create_provider(
                 provider_type,
                 api_key=get_config_value('XAI_API_KEY'),
-                model=model or get_config_value('XAI_MODEL', 'grok-4.1-fast-non-reasoning-latest')
+                model=model or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
             )
         elif provider_type == 'ollama':
             self.provider = create_provider(

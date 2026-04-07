@@ -328,6 +328,11 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Added runtime model/provider-specific prompt overrides with YAML config loading for routing, QA synthesis, and Completion Guard evaluation
   - Override resolution now supports exact model folders plus deterministic aliases for dated model names and runtime suffixes like `:latest` and `:cloud`
   - New design and usage details documented in `MODEL_PROMPT_OVERRIDES.md`
+- ✅ **Shared cloud model catalog**
+  - Curated cloud model metadata now lives in one shared catalog used by the Web UI dropdowns, default-model fallbacks, cost estimation, and context-window reporting
+  - New env or override models that are not yet curated now still appear in the settings UI as custom entries instead of disappearing from the selector
+  - This reduces model-maintenance drift between `settings_manager.py`, `cost_estimator.py`, and `measure-baseline-tokens`
+  - `config/README.md` now documents `lib/model_catalog.py` as the source of truth for adding or removing curated cloud chat models
 
 **2026-04-05:**
 - ✅ **Scheduled task notification UX**

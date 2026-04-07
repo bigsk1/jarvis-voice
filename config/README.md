@@ -65,6 +65,29 @@ This directory contains configuration files for Jarvis Voice Assistant.
 
 ### LLM Provider Selection
 
+Note:
+- Curated cloud model metadata for the Web UI, context labels, and cost/context helpers now comes from `lib/model_catalog.py`.
+- If you point `OPENAI_MODEL`, `XAI_MODEL`, or `ANTHROPIC_MODEL` at a newer model that is not yet curated, Jarvis can still use it at runtime and the settings UI will show it as a custom model entry.
+
+### Cloud Model Maintenance
+
+Source of truth for curated cloud chat model metadata:
+- `lib/model_catalog.py`
+
+When adding a new curated cloud chat model:
+1. Add it to `lib/model_catalog.py`
+2. Include display name, context window, pricing, aliases if needed, and mark `default: true` only if it should become the curated fallback
+3. Update docs/examples only if you want the new model surfaced in human-facing guidance
+
+When removing an old curated cloud chat model:
+1. Remove it from `lib/model_catalog.py`
+2. Clean up docs/examples that still mention it
+3. Keep or remove any fallback pricing in `lib/cost_estimator.py` depending on whether you still want historical/specialized cost estimation support
+
+Notes:
+- Ollama models are not curated here; they are still discovered/configured dynamically
+- Image/video provider models are still managed in their existing provider-specific code paths
+
 **Jarvis Tool Calling** (main LLM):
 ```bash
 # Cloud mode

@@ -25,6 +25,7 @@ from pathlib import Path
 # Add lib to path if needed
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_config_value
+from model_catalog import get_provider_fallback_model
 
 
 FEEDBACK_PROMPT = """A task was just completed as a voice assistant. Now provide HONEST, SPECIFIC FEEDBACK to help improve the system.
@@ -313,19 +314,19 @@ class FeedbackCollector:
                 self.provider = create_provider(
                     "anthropic",
                     api_key=get_config_value("ANTHROPIC_API_KEY"),
-                    model=feedback_model or "claude-sonnet-4-5-20250929"
+                    model=feedback_model or get_provider_fallback_model("anthropic")
                 )
             elif feedback_provider == "openai":
                 self.provider = create_provider(
                     "openai",
                     api_key=get_config_value("OPENAI_API_KEY"),
-                    model=feedback_model or "gpt-5.4-nano"
+                    model=feedback_model or get_provider_fallback_model("openai")
                 )
             elif feedback_provider == "xai":
                 self.provider = create_provider(
                     "xai",
                     api_key=get_config_value("XAI_API_KEY"),
-                    model=feedback_model or "grok-4-1-fast-non-reasoning-latest"
+                    model=feedback_model or get_provider_fallback_model("xai")
                 )
             elif feedback_provider == "ollama":
                 self.provider = create_provider(
@@ -351,21 +352,21 @@ class FeedbackCollector:
                 self.provider_name = provider_type
                 
                 if provider_type == "xai":
-                    self.model_name = get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+                    self.model_name = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
                     self.provider = create_provider(
                         "xai",
                         api_key=get_config_value("XAI_API_KEY"),
                         model=self.model_name
                     )
                 elif provider_type == "openai":
-                    self.model_name = get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
+                    self.model_name = get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
                     self.provider = create_provider(
                         "openai",
                         api_key=get_config_value("OPENAI_API_KEY"),
                         model=self.model_name
                     )
                 else:
-                    self.model_name = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+                    self.model_name = get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
                     self.provider = create_provider(
                         "anthropic",
                         api_key=get_config_value("ANTHROPIC_API_KEY"),

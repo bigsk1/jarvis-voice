@@ -7,44 +7,12 @@ from ..config import (
     get_web_setting, save_web_config, load_web_config,
     get_jarvis_setting, load_jarvis_config
 )
-
-
-# Model options per provider
-PROVIDER_MODELS = {
-    'xai': [
-        {'id': 'grok-4-1-fast-non-reasoning-latest', 'name': 'Grok 4.1 Fast (Default)', 'context': '2M'},
-        {'id': 'grok-4-fast', 'name': 'Grok 4 Fast', 'context': '256K'},
-        {'id': 'grok-4-1-reasoning-latest', 'name': 'Grok 4.1 Reasoning', 'context': '2M'},
-        {'id': 'grok-3-fast', 'name': 'Grok 3 Fast (Legacy)', 'context': '131K'},
-    ],
-    'anthropic': [
-        {'id': 'claude-opus-4-6', 'name': 'Claude Opus 4.6', 'context': '200K'},
-        {'id': 'claude-opus-4-5', 'name': 'Claude Opus 4.5', 'context': '200K'},
-        {'id': 'claude-4-opus', 'name': 'Claude 4 Opus', 'context': '200K'},
-        {'id': 'claude-4-5', 'name': 'Claude 4.5', 'context': '200K'},
-        {'id': 'claude-sonnet-4-5-20250929', 'name': 'Claude Sonnet 4.5 (Default)', 'context': '200K'},
-        {'id': 'claude-sonnet-4-20250514', 'name': 'Claude Sonnet 4', 'context': '200K'},
-        {'id': 'claude-3-5-sonnet-20241022', 'name': 'Claude 3.5 Sonnet', 'context': '200K'},
-        {'id': 'claude-3-opus-20240229', 'name': 'Claude 3 Opus', 'context': '200K'},
-    ],
-    'openai': [
-        {'id': 'gpt-5.1', 'name': 'GPT-5.1', 'context': '128K'},
-        {'id': 'gpt-5.4', 'name': 'GPT-5.4', 'context': '400K'},
-        {'id': 'gpt-5.4-nano', 'name': 'GPT-5.4 Nano', 'context': '400K'},
-        {'id': 'gpt-4o', 'name': 'GPT-4o', 'context': '128K'},
-        {'id': 'gpt-4.1', 'name': 'GPT-4.1', 'context': '128K'},
-        {'id': 'gpt-5.1-codex-mini', 'name': 'GPT-5.1 Codex Mini', 'context': '128K'},
-        {'id': 'gpt-5.1-codex', 'name': 'GPT-5.1 Codex', 'context': '128K'},
-        {'id': 'gpt-5-mini', 'name': 'GPT-5 Mini', 'context': '128K'},
-        {'id': 'gpt-5-codex', 'name': 'GPT-5 Codex', 'context': '128K'},
-        {'id': 'gpt-5.1-chat-latest', 'name': 'GPT-5.1 Chat Latest', 'context': '128K'},
-        {'id': 'gpt-5-nano-2025-08-07', 'name': 'GPT-5 Nano (Aug 2025)', 'context': '128K'},
-        {'id': 'gpt-5.2-2025-12-11', 'name': 'GPT-5.2 (Dec 2025)', 'context': '400K'},
-        {'id': 'gpt-5.2-chat-latest', 'name': 'GPT-5.2 Chat Latest', 'context': '400K'},
-        {'id': 'gpt-5.2', 'name': 'GPT-5.2', 'context': '400K'},
-    ],
-    'ollama': []  # Populated dynamically from Ollama server
-}
+from model_catalog import (
+    get_catalog_providers,
+    get_default_model_id,
+    get_model_context_label,
+    get_provider_model_options,
+)
 
 
 def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
@@ -141,6 +109,21 @@ class SettingsManager:
         if not self._jarvis_loaded:
             load_jarvis_config(self.mode)
             self._jarvis_loaded = True
+
+    def _get_model_options_with_current(self, provider: str, current_model: str | None) -> list[dict[str, str]]:
+        """Return curated provider options plus any active custom model."""
+        options = get_provider_model_options(provider)
+        if not current_model:
+            return options
+
+        if any(option.get('id') == current_model for option in options):
+            return options
+
+        context = get_model_context_label(provider, current_model) or 'custom'
+        return [
+            {'id': current_model, 'name': f'{current_model} (custom)', 'context': context},
+            *options,
+        ]
     
     def _is_sensitive(self, key: str) -> bool:
         """Check if a setting key is sensitive"""
@@ -197,7 +180,11 @@ class SettingsManager:
         env_completion_guard_eval_provider = get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'ollama' if self.mode == 'local' else 'openai')
         env_completion_guard_eval_model = get_jarvis_setting(
             'JARVIS_COMPLETION_GUARD_EVAL_MODEL',
-            get_jarvis_setting('OLLAMA_MODEL', 'qwen3.5:latest') if env_completion_guard_eval_provider == 'ollama' else ''
+            (
+                get_jarvis_setting('OLLAMA_MODEL', 'qwen3.5:latest')
+                if env_completion_guard_eval_provider == 'ollama'
+                else get_default_model_id(env_completion_guard_eval_provider)
+            )
         )
         
         # Get per-mode web overrides (null = use env default)
@@ -276,13 +263,13 @@ class SettingsManager:
                     'value': effective_provider,
                     'default': env_provider,
                     'is_override': web_provider is not None,
-                    'options': list(PROVIDER_MODELS.keys())
+                    'options': get_catalog_providers()
                 },
                 'model': {
                     'value': effective_model,
                     'default': self._get_env_provider_model(env_provider),
                     'is_override': web_model is not None,
-                    'options': PROVIDER_MODELS.get(effective_provider, [])
+                    'options': self._get_model_options_with_current(effective_provider, effective_model)
                 }
             },
             
@@ -367,13 +354,16 @@ class SettingsManager:
                     'value': effective_completion_guard_eval_provider,
                     'default': env_completion_guard_eval_provider,
                     'is_override': web_completion_guard_eval_provider is not None,
-                    'options': ['ollama'] if self.mode == 'local' else list(PROVIDER_MODELS.keys())
+                    'options': ['ollama'] if self.mode == 'local' else get_catalog_providers()
                 },
                 'eval_model': {
                     'value': effective_completion_guard_eval_model,
                     'default': env_completion_guard_eval_model or self._get_env_provider_model(env_completion_guard_eval_provider),
                     'is_override': web_completion_guard_eval_model is not None,
-                    'options': PROVIDER_MODELS.get(effective_completion_guard_eval_provider, [])
+                    'options': self._get_model_options_with_current(
+                        effective_completion_guard_eval_provider,
+                        effective_completion_guard_eval_model,
+                    )
                 }
             },
             
@@ -415,7 +405,10 @@ class SettingsManager:
     
     def _get_provider_models(self) -> dict:
         """Get provider models with dynamic Ollama fetching"""
-        models = PROVIDER_MODELS.copy()
+        models = {
+            provider: get_provider_model_options(provider)
+            for provider in get_catalog_providers()
+        }
         
         # Dynamically fetch Ollama models if in local mode or Ollama selected
         web_config = load_web_config()
@@ -441,11 +434,8 @@ class SettingsManager:
         if provider == 'ollama':
             # For Ollama, use the configured model from env
             return get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
-        
-        models = PROVIDER_MODELS.get(provider, [])
-        if models:
-            return models[0]['id']
-        return ''
+
+        return get_default_model_id(provider)
 
     def _get_env_provider_model(self, provider: str) -> str:
         """Get the configured model from env for a provider, or fall back to the provider default."""

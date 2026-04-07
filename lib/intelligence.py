@@ -1045,6 +1045,7 @@ Example for FACTUAL (should NOT be stored here):
         """Direct LLM call for reflection when sequential thinking unavailable."""
         try:
             from llm_provider import create_provider
+            from model_catalog import get_provider_fallback_model
             from config_loader import load_config, get_config_value
             
             # Ensure config is loaded
@@ -1057,19 +1058,19 @@ Example for FACTUAL (should NOT be stored here):
                 provider = create_provider(
                     "openai",
                     api_key=get_config_value("OPENAI_API_KEY"),
-                    model=get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
+                    model=get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
                 )
             elif provider_type == "anthropic":
                 provider = create_provider(
                     "anthropic",
                     api_key=get_config_value("ANTHROPIC_API_KEY"),
-                    model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+                    model=get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
                 )
             elif provider_type == "xai":
                 provider = create_provider(
                     "xai",
                     api_key=get_config_value("XAI_API_KEY"),
-                    model=get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+                    model=get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
                 )
             elif provider_type == "ollama":
                 provider = create_provider(

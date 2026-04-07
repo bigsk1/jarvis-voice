@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
 from tool_schema import ToolRegistry
 from llm_provider import create_provider
@@ -580,21 +581,21 @@ When this appears to be the start of a fresh conversation, you may add a brief t
         provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "openai" if self.mode == "cloud" else "ollama")
         
         if provider_type == "openai":
-            model = self._model_override or get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
+            model = self._model_override or get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),
                 model=model
             )
         elif provider_type == "anthropic":
-            model = self._model_override or get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+            model = self._model_override or get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
             return create_provider(
                 "anthropic",
                 api_key=get_config_value("ANTHROPIC_API_KEY"),
                 model=model
             )
         elif provider_type == "xai":
-            model = self._model_override or get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+            model = self._model_override or get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
             return create_provider(
                 "xai",
                 api_key=get_config_value("XAI_API_KEY"),

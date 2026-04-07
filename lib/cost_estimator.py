@@ -4,50 +4,35 @@ Cost estimation for LLM API calls.
 Provides token usage tracking and cost estimates for cloud providers.
 """
 
+from model_catalog import get_model_pricing
+
+# Pricing fallback table for non-catalog or specialized models.
+#
+# Source of truth:
+# - Curated cloud chat model pricing now lives in lib/model_catalog.py
+# - This file keeps the calculator logic plus fallback pricing for older,
+#   specialized, or non-curated models
+#
 # Pricing as of November 2025 (USD per million tokens)
 # Note: User is Tier 2 with Anthropic
 PRICING = {
     "openai": {
-        # GPT-5.1 series (Nov 2025) - Official pricing from openai.com/api/pricing
-        "gpt-5.2": {"input": 1.75, "output": 14.00, "cached": 0.17},
-        "gpt-5.2-2025-12-11": {"input": 1.75, "output": 14.00, "cached": 0.17},
-        "gpt-5.2-chat-latest": {"input": 1.75, "output": 14.00, "cached": 0.17},
-        # GPT-5.4: 1,050,000 context, 128,000 max output; $/1M tokens
-        "gpt-5.4": {"input": 2.50, "output": 15.00, "cached": 0.25},
-        # GPT-5.4-nano: 400,000 context, 128,000 max output; $/1M tokens
-        "gpt-5.4-nano": {"input": 0.20, "output": 1.25, "cached": 0.02},
-        "gpt-5.1": {"input": 1.25, "output": 10.00, "cached": 0.125},
-        "gpt-5.1-2025-11-13": {"input": 1.25, "output": 10.00, "cached": 0.125},
-        "gpt-5.1-chat-latest": {"input": 1.25, "output": 10.00, "cached": 0.125},
-        "gpt-5.1-codex": {"input": 1.25, "output": 10.00, "cached": 0.125},
-        "gpt-5.1-codex-mini": {"input": 0.25, "output": 2.00, "cached": 0.025},
-        
         # GPT-5 series (Aug 2025) - Official pricing from openai.com/api/pricing
         "gpt-5": {"input": 1.25, "output": 10.00, "cached": 0.125},
         "gpt-5-2025-08-07": {"input": 1.25, "output": 10.00, "cached": 0.125},
         "gpt-5-chat-latest": {"input": 1.25, "output": 10.00, "cached": 0.125},
-        "gpt-5-codex": {"input": 1.25, "output": 10.00, "cached": 0.125},
-        "gpt-5-mini": {"input": 0.25, "output": 2.00, "cached": 0.025},
         "gpt-5-mini-2025-08-07": {"input": 0.25, "output": 2.00, "cached": 0.025},
-        "gpt-5-nano": {"input": 0.05, "output": 0.40, "cached": 0.005},
-        "gpt-5-nano-2025-08-07": {"input": 0.05, "output": 0.40, "cached": 0.005},
         "gpt-5-pro": {"input": 15.00, "output": 120.00},
         "gpt-5-pro-2025-10-06": {"input": 15.00, "output": 120.00},
         
         # GPT-4.1 series (Apr 2025) - Based on fine-tuning pricing
-        "gpt-4.1": {"input": 3.00, "output": 12.00, "cached": 0.75},
-        "gpt-4.1-2025-04-14": {"input": 3.00, "output": 12.00, "cached": 0.75},
         "gpt-4.1-mini": {"input": 0.15, "output": 2.00, "cached": 0.025},
         "gpt-4.1-mini-2025-04-14": {"input": 0.15, "output": 2.00, "cached": 0.025},
         "gpt-4.1-nano": {"input": 0.05, "output": 0.40, "cached": 0.005},
         "gpt-4.1-nano-2025-04-14": {"input": 0.05, "output": 0.40, "cached": 0.005},
         
-        # GPT-4o series (Legacy compatibility - maps to GPT-4.1 pricing)
-        "gpt-4o": {"input": 5.00, "output": 15.00, "cached": 0.75},
+        # GPT-4o series (specialized / legacy compatibility)
         "gpt-4o-mini": {"input": 0.15, "output": 0.60, "cached": 0.025},
-        "gpt-4o-2024-11-20": {"input": 5.00, "output": 15.00, "cached": 0.75},
-        "gpt-4o-2024-08-06": {"input": 5.00, "output": 15.00, "cached": 0.75},
-        "gpt-4o-2024-05-13": {"input": 5.00, "output": 15.00, "cached": 0.75},
         "chatgpt-4o-latest": {"input": 3.00, "output": 12.00, "cached": 0.75},
         
         # Specialized models (estimated pricing based on model tier)
@@ -72,51 +57,18 @@ PRICING = {
         "gpt-4-turbo-2024-04-09": {"input": 10.00, "output": 30.00},
     },
     "anthropic": {
-        # Claude 4 series (most recent)
-        "opus-4.6": {"input": 15.00, "output": 75.00},
-        "opus-4.5": {"input": 15.00, "output": 75.00},
+        # Claude 4 / 3 fallback families not yet curated in the catalog
         "opus-4.1": {"input": 15.00, "output": 75.00},
-        "sonnet-4.5": {"input": 3.00, "output": 15.00},  # Base tier (≤200K tokens)
         "haiku-4.5": {"input": 1.00, "output": 5.00},
-        "sonnet-4": {"input": 3.00, "output": 15.00},
-        "opus-4": {"input": 15.00, "output": 75.00},
-        # Claude 3 series
         "sonnet-3.7": {"input": 3.00, "output": 15.00},
         "haiku-3.5": {"input": 0.80, "output": 4.00},
         "opus-3": {"input": 15.00, "output": 75.00},
         "haiku-3": {"input": 0.25, "output": 1.25},
-        # Legacy dated versions (backward compatibility)
-        "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
-        "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
-        "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
-        "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
     },
     "xai": {
-        # Grok 4 series (xAI/X.AI official pricing as of Nov 2025)
-        # Extremely competitive pricing with 2M context window!
-        # Source: https://docs.x.ai/docs/guides/pricing
-        
-        # Grok 4.1 Fast series (2M context window)
-        "grok-4-1-fast-reasoning": {"input": 0.20, "output": 0.50},  # 2M context
-        "grok-4-1-fast-reasoning-latest": {"input": 0.20, "output": 0.50},  # 2M context
-        "grok-4-1-fast-non-reasoning": {"input": 0.20, "output": 0.50},  # 2M context
-        "grok-4-1-fast-non-reasoning-latest": {"input": 0.20, "output": 0.50},  # 2M context
-        "grok-4-1-fast": {"input": 0.20, "output": 0.50},  # 2M context
-        
-        # Grok 4 Fast series (2M context window)
-        "grok-4-fast-reasoning": {"input": 0.20, "output": 0.50},  # 2M context
-        "grok-4-fast-reasoning-latest": {"input": 0.20, "output": 0.50},  # 2M context
-        "grok-4-fast-non-reasoning": {"input": 0.20, "output": 0.50},  # 2M context
-        "grok-4-fast-non-reasoning-latest": {"input": 0.20, "output": 0.50},  # 2M context
-        "grok-4-fast": {"input": 0.20, "output": 0.50},  # 2M context
-        
-        # Grok Code Fast (256k context window)
+        # Grok fallback entries not yet curated in the catalog
         "grok-code-fast-1": {"input": 0.20, "output": 1.50},  # 256k context
         "grok-code-fast": {"input": 0.20, "output": 1.50},
-        
-        # Grok 4 (256k context window)
-        "grok-4": {"input": 3.00, "output": 15.00},  # 256k context
-        
     }
 }
 
@@ -175,7 +127,7 @@ def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: i
     
     # Normalize model name for matching
     model_normalized = model.lower().replace("_", "-")
-    model_pricing = PRICING[provider].get(model_normalized)
+    model_pricing = get_model_pricing(provider, model_normalized) or PRICING[provider].get(model_normalized)
     
     if not model_pricing:
         # Try partial match (e.g., "gpt-4.1-mini-2025" matches "gpt-4.1-mini")
@@ -308,4 +260,3 @@ def estimate_cache_cost(provider: str, model: str, cache_creation_tokens: int = 
         result["cache_hit"] = True
     
     return result
-

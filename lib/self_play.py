@@ -23,6 +23,7 @@ from dataclasses import dataclass, asdict
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_config_value
 from llm_provider import create_provider
+from model_catalog import get_provider_fallback_model
 
 # Tools that are too side-effectful or operationally powerful for unattended self-play.
 DEFAULT_EXCLUDED_TOOLS = [
@@ -646,19 +647,19 @@ Generate {count} queries:"""
             return create_provider(
                 "xai",
                 api_key=get_config_value("XAI_API_KEY"),
-                model=get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest"),
+                model=get_config_value("XAI_MODEL", get_provider_fallback_model("xai")),
             )
         elif provider_type == "anthropic":
             return create_provider(
                 "anthropic",
                 api_key=get_config_value("ANTHROPIC_API_KEY"),
-                model=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+                model=get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic")),
             )
         else:
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),
-                model=get_config_value("OPENAI_MODEL", "gpt-5.4-nano"),
+                model=get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai")),
             )
     
     def _log_result(self, session_id: str, result: dict[str, Any]):
@@ -793,4 +794,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

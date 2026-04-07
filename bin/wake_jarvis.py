@@ -12,6 +12,7 @@ SCRIPT_DIR = os.path.dirname(SCRIPT_PATH)
 # Add lib to path
 sys.path.insert(0, os.path.join(SCRIPT_DIR, '..', 'lib'))
 from config_loader import load_config, get_config_value, get_int, get_float
+from model_catalog import get_provider_fallback_model
 from tts_normalizer import normalize_tts_text
 
 import warnings
@@ -35,11 +36,11 @@ load_config('cloud')
 # Display mode and model info
 provider = get_config_value('LLM_PROVIDER', 'anthropic')
 if provider == 'xai':
-    model = get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
+    model = get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
 elif provider == 'anthropic':
-    model = get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-6')
+    model = get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
 elif provider == 'openai':
-    model = get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
+    model = get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
 else:
     model = 'unknown'
 print(f"🤖 Jarvis v{_jarvis_version}")

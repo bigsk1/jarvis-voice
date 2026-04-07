@@ -16,6 +16,7 @@ import sys
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 # Ensure shared lib helpers are importable in this module
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+from model_catalog import get_provider_fallback_model
 
 
 def _get_jarvis_version():
@@ -205,7 +206,10 @@ def get_system_config():
             'JARVIS_COMPLETION_GUARD_MODE': get_jarvis_setting('JARVIS_COMPLETION_GUARD_MODE', 'manual'),
             'JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD': get_jarvis_setting('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70'),
             'JARVIS_COMPLETION_GUARD_EVAL_PROVIDER': get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'ollama' if mode == 'local' else 'openai'),
-            'JARVIS_COMPLETION_GUARD_EVAL_MODEL': get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_MODEL', get_jarvis_setting('OLLAMA_MODEL', 'qwen3.5:latest') if mode == 'local' else 'gpt-5.4-nano'),
+            'JARVIS_COMPLETION_GUARD_EVAL_MODEL': get_jarvis_setting(
+                'JARVIS_COMPLETION_GUARD_EVAL_MODEL',
+                get_jarvis_setting('OLLAMA_MODEL', 'qwen3.5:latest') if mode == 'local' else get_provider_fallback_model('openai'),
+            ),
             
             # Feedback/Evolution System
             'FEEDBACK_RANDOM_ENABLED': get_jarvis_setting('FEEDBACK_RANDOM_ENABLED', 'false'),
@@ -284,8 +288,16 @@ def get_provider_models(provider):
             mode=mode
         )
     else:
-        from ..services.settings_manager import PROVIDER_MODELS
-        models = PROVIDER_MODELS.get(provider, [])
+        from ..config import load_jarvis_config, get_jarvis_setting
+        load_jarvis_config(mode)
+        settings = get_settings_manager(mode)
+        env_key_map = {
+            'openai': 'OPENAI_MODEL',
+            'anthropic': 'ANTHROPIC_MODEL',
+            'xai': 'XAI_MODEL',
+        }
+        current_model = get_jarvis_setting(env_key_map.get(provider, ''), '').strip() if provider in env_key_map else ''
+        models = settings._get_model_options_with_current(provider, current_model)
     return jsonify({
         'ok': True,
         'provider': provider,
@@ -1863,19 +1875,19 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
             provider = create_provider(
                 'xai',
                 api_key=get_config_value('XAI_API_KEY'),
-                model=get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
+                model=get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
             )
         elif provider_type == 'anthropic':
             provider = create_provider(
                 'anthropic',
                 api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-6')
+                model=get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
             )
         else:
             provider = create_provider(
                 'openai',
                 api_key=get_config_value('OPENAI_API_KEY'),
-                model=get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
+                model=get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
             )
         
         # Call LLM to enhance

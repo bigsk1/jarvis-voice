@@ -22,6 +22,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 
 from model_prompt_overrides import apply_prompt_override_sections, load_model_prompt_override
+from model_catalog import get_provider_fallback_model
 
 
 class ChatHandler:
@@ -511,35 +512,35 @@ class ChatHandler:
 
         model_name = (
             (completion_guard_config or {}).get('eval_model')
-            or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', 'gpt-5.4-nano')
-            or get_config_value('FEEDBACK_MODEL', 'gpt-5.4-nano')
+            or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', get_provider_fallback_model(provider_name))
+            or get_config_value('FEEDBACK_MODEL', get_provider_fallback_model(provider_name))
             or fallback_model
             or ''
         ).strip()
 
         if provider_name == 'anthropic':
             return provider_name, (
-                model_name or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-6')
+                model_name or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
             ), create_provider(
                 'anthropic',
                 api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=model_name or get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-6')
+                model=model_name or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
             )
         if provider_name == 'openai':
             return provider_name, (
-                model_name or get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
+                model_name or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
             ), create_provider(
                 'openai',
                 api_key=get_config_value('OPENAI_API_KEY'),
-                model=model_name or get_config_value('OPENAI_MODEL', 'gpt-5.4-nano')
+                model=model_name or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
             )
         if provider_name == 'xai':
             return provider_name, (
-                model_name or get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
+                model_name or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
             ), create_provider(
                 'xai',
                 api_key=get_config_value('XAI_API_KEY'),
-                model=model_name or get_config_value('XAI_MODEL', 'grok-4-1-fast-non-reasoning-latest')
+                model=model_name or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
             )
 
         return provider_name, (

@@ -9,6 +9,8 @@ import json
 from typing import Any
 from abc import ABC, abstractmethod
 
+from model_catalog import get_provider_fallback_model
+
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
@@ -1234,17 +1236,17 @@ def create_provider(provider_type: str, **config) -> LLMProvider:
     if provider_type == "openai":
         return OpenAIProvider(
             api_key=config["api_key"],
-            model=config.get("model", "gpt-5.4-nano")
+            model=config.get("model", get_provider_fallback_model("openai"))
         )
     elif provider_type == "anthropic":
         return AnthropicProvider(
             api_key=config["api_key"],
-            model=config.get("model", "claude-sonnet-4-20250514")
+            model=config.get("model", get_provider_fallback_model("anthropic"))
         )
     elif provider_type == "xai":
         return XAIProvider(
             api_key=config["api_key"],
-            model=config.get("model", "grok-4-1-fast-non-reasoning-latest")
+            model=config.get("model", get_provider_fallback_model("xai"))
         )
     elif provider_type == "ollama":
         return OllamaProvider(

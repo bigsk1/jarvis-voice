@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_int, get_float, get_config_value
 from memory_db import get_memory_db
+from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import apply_prompt_override_sections
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
@@ -2491,11 +2492,11 @@ def main():
         if mode == "cloud":
             provider = get_config_value("LLM_PROVIDER", "anthropic")
             if provider == "openai":
-                model = get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
+                model = get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
             elif provider == "xai":
-                model = get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+                model = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
             else:
-                model = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+                model = get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
         else:
             model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
         print(f"🤖 Model: {model}")

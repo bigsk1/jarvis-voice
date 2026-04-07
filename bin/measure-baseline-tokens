@@ -19,6 +19,7 @@ sys.path.insert(0, str(project_root / "lib"))
 sys.path.insert(0, str(project_root / "orchestrator"))
 
 from config_loader import load_config, get_config_value
+from model_catalog import get_model_context_window, get_provider_fallback_model
 from tool_schema import ToolRegistry
 
 
@@ -123,38 +124,33 @@ def measure_baseline(mode='cloud'):
     
     if mode == "cloud":
         if provider == "anthropic":
-            model = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
-            context_window = 200000  # Claude Sonnet 4.5
+            model = get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
+            context_window = get_model_context_window("anthropic", model) or 200000
             print(f"🧠 MODEL CAPACITY (Anthropic)")
             print(f"   Model: {model}")
             print(f"   Context window: {context_window:,} tokens")
         elif provider == "openai":
-            model = get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
-            mlow = model.lower()
-            # Approximate published limits (script display only)
-            if "gpt-5.4" in mlow and "nano" not in mlow:
-                context_window = 1_050_000
-            elif "5.4" in mlow and "nano" in mlow:
-                context_window = 400_000
-            elif (
-                "gpt-4o" in mlow
-                or "gpt-4-turbo" in mlow
-                or "gpt-3.5" in mlow
-                or (mlow.startswith("gpt-4") and "gpt-5" not in mlow)
-            ):
-                context_window = 128_000  # GPT-4 / 4o / 3.5 class
-            else:
-                context_window = 400_000  # GPT-5.x, o-series, chat-latest, etc.
+            model = get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
+            context_window = get_model_context_window("openai", model)
+            if context_window is None:
+                mlow = model.lower()
+                if (
+                    "gpt-4o" in mlow
+                    or "gpt-4-turbo" in mlow
+                    or "gpt-3.5" in mlow
+                    or (mlow.startswith("gpt-4") and "gpt-5" not in mlow)
+                ):
+                    context_window = 128_000
+                else:
+                    context_window = 400_000
             print(f"🧠 MODEL CAPACITY (OpenAI)")
             print(f"   Model: {model}")
             print(f"   Context window: {context_window:,} tokens")
         elif provider == "xai":
-            model = get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
-            # grok-4-fast models have 2M context, grok-4 has 256k
-            if "fast" in model.lower():
-                context_window = 2000000  # 2M context for grok-4-fast models
-            else:
-                context_window = 256000  # 256k for grok-4
+            model = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
+            context_window = get_model_context_window("xai", model)
+            if context_window is None:
+                context_window = 2_000_000 if "fast" in model.lower() else 256_000
             print(f"🧠 MODEL CAPACITY (xAI)")
             print(f"   Model: {model}")
             print(f"   Context window: {context_window:,} tokens")
@@ -270,4 +266,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

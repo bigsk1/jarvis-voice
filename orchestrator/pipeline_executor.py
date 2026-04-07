@@ -22,6 +22,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
 from llm_provider import create_provider
+from model_catalog import get_provider_fallback_model
 from tool_logger import ToolLogger
 from llm_logger import LLMLogger
 
@@ -119,13 +120,13 @@ class PipelineExecutor:
             config = {}
             if provider_type == "openai":
                 config["api_key"] = get_config_value("OPENAI_API_KEY")
-                config["model"] = get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
+                config["model"] = get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
             elif provider_type == "anthropic":
                 config["api_key"] = get_config_value("ANTHROPIC_API_KEY")
-                config["model"] = get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+                config["model"] = get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
             elif provider_type == "xai":
                 config["api_key"] = get_config_value("XAI_API_KEY")
-                config["model"] = get_config_value("XAI_MODEL", "grok-4-1-fast-non-reasoning-latest")
+                config["model"] = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
             elif provider_type == "ollama":
                 config["model"] = get_config_value("OLLAMA_MODEL", "qwen3.5:latest")
                 config["base_url"] = get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
