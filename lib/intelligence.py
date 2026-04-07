@@ -46,6 +46,68 @@ from config_loader import load_config, get_float, get_int
 
 logger = logging.getLogger(__name__)
 
+_EXTERNAL_SEARCH_TOOL_PREFIXES = (
+    'mcp_brave_search_',
+    'mcp_duckduckgo_',
+    'serpapi_',
+)
+
+
+def _row_value(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None) -> Any:
+    """Read a field from either sqlite Row or plain dict."""
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except Exception:
+        return default
+
+
+def _has_provider_native_search(labels: list[str] | None) -> bool:
+    """Return True when provider-native web/X search was used."""
+    if not labels:
+        return False
+    return any(label in {'native:x_search', 'native:web_search'} for label in labels)
+
+
+def _is_external_search_tool(tool_name: str | None) -> bool:
+    """Detect normal Jarvis search tools that should not override native-search lessons."""
+    if not tool_name:
+        return False
+    return any(tool_name.startswith(prefix) for prefix in _EXTERNAL_SEARCH_TOOL_PREFIXES)
+
+
+def should_suppress_preferred_tool_for_native_search(
+    reflection: dict[str, Any],
+    experience: sqlite3.Row | dict[str, Any],
+) -> bool:
+    """
+    Suppress misleading preferred_tool storage when native search was the key evidence path.
+
+    This prevents reflections like "perform X-targeted searches first" from becoming
+    "prefer mcp_brave_search_*" just because the original path ended on Brave.
+    """
+    raw_data_text = _row_value(experience, 'raw_data', '{}')
+    try:
+        raw_data = json.loads(raw_data_text) if raw_data_text else {}
+    except Exception:
+        raw_data = {}
+
+    context_data = raw_data.get('context', {})
+    native_labels = context_data.get('provider_native_tools_used', []) or []
+    if not _has_provider_native_search(native_labels):
+        return False
+
+    preferred_tool = reflection.get('preferred_tool')
+    if preferred_tool and _is_external_search_tool(preferred_tool):
+        return True
+
+    final_tool = _row_value(experience, 'final_tool')
+    if not preferred_tool and final_tool and _is_external_search_tool(final_tool):
+        return True
+
+    return False
+
 
 class IntelligenceLogger:
     """Dedicated logger for intelligence layer operations."""
@@ -780,6 +842,7 @@ CRITICAL EVALUATION:
 6. If a corrected/repaired response exists, compare the original path with the repaired path and learn from what changed.
 7. Provider-native tools are metadata-only evidence paths, not normal Jarvis tool choices. If provider-native tools are listed, do NOT infer "zero-tool hallucination" from an empty tools_used list alone.
 8. Do NOT create preferred_tool/avoided_tool insights that tell Jarvis to prefer or avoid provider-native tools such as native:x_search or native:code_interpreter.
+9. If provider-native web/X search was part of the successful evidence path, and the lesson is about search targeting or freshness, set preferred_tool to null unless a normal Jarvis tool was clearly the decisive improvement.
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
@@ -1159,12 +1222,20 @@ Example for FACTUAL (should NOT be stored here):
             # Create new insight with PHASE 1 schema
             preferred_tools = {}
             avoided_tools = []
+            suppress_preferred_tool = should_suppress_preferred_tool_for_native_search(reflection, experience)
+            if suppress_preferred_tool:
+                logger.info(
+                    "Suppressing preferred_tool for native-search-backed insight: %s",
+                    reflection.get('insight_summary', reflection.get('rule', ''))[:120]
+                )
             
             # Extract preferred tool
             preferred_tool = reflection.get('preferred_tool')
+            if suppress_preferred_tool:
+                preferred_tool = None
             if preferred_tool:
                 preferred_tools[preferred_tool] = reflection.get('confidence', 0.5)
-            elif experience['final_tool']:
+            elif experience['final_tool'] and not suppress_preferred_tool:
                 # Fallback to final tool if not specified
                 preferred_tools[experience['final_tool']] = reflection.get('confidence', 0.5)
             

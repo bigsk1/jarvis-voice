@@ -7,13 +7,19 @@ Run:
 """
 
 import sys
+import types
 import unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
+fake_numpy = types.ModuleType("numpy")
+fake_numpy.ndarray = list
+sys.modules.setdefault("numpy", fake_numpy)
+
 from intelligence_hooks import normalize_server_side_tools_for_reflection
+from intelligence import should_suppress_preferred_tool_for_native_search
 
 
 class IntelligenceServerSideToolsTests(unittest.TestCase):
@@ -26,6 +32,34 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
         self.assertEqual(
             normalized,
             ["native:x_search", "native:x_search", "native:code_interpreter"]
+        )
+
+    def test_suppresses_external_search_preference_when_native_search_was_used(self):
+        experience = {
+            "final_tool": "mcp_brave_search_brave_web_search",
+            "raw_data": '{"context":{"provider_native_tools_used":["native:x_search"]}}',
+        }
+        reflection = {
+            "preferred_tool": "mcp_brave_search_brave_web_search",
+            "insight_summary": "Use X-targeted search first for recent X media lookups.",
+        }
+
+        self.assertTrue(
+            should_suppress_preferred_tool_for_native_search(reflection, experience)
+        )
+
+    def test_does_not_suppress_non_search_tool_preference(self):
+        experience = {
+            "final_tool": "canvas",
+            "raw_data": '{"context":{"provider_native_tools_used":["native:web_search"]}}',
+        }
+        reflection = {
+            "preferred_tool": "canvas",
+            "insight_summary": "Save the final comparison to canvas after research.",
+        }
+
+        self.assertFalse(
+            should_suppress_preferred_tool_for_native_search(reflection, experience)
         )
 
 
