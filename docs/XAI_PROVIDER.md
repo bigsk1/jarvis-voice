@@ -138,7 +138,7 @@ XAI_SEARCH=true   # Enable live search (default: true)
 **Server-Side Tools Available**:
 | Tool | Description | Features |
 |------|-------------|----------|
-| `web_search` | Real-time web search + browsing | Image understanding enabled |
+| `web_search` | Real-time web search + browsing | Image understanding via native `view_image` |
 | `x_search` | X/Twitter search (keyword, semantic, user) | Image + video understanding |
 | `code_execution` | Python REPL for math, data analysis, plotting | numpy, pandas, sympy, matplotlib |
 
@@ -148,7 +148,7 @@ XAI_SEARCH=true   # Enable live search (default: true)
 │                   xAI Agent Tools API                        │
 ├─────────────────────────────────────────────────────────────┤
 │  Server-Side Tools (executed by xAI automatically):         │
-│    • web_search - Web search with image understanding       │
+│    • web_search - Web search with native view_image support │
 │    • x_search - X search with image/video understanding     │
 │    • code_execution - Python REPL for math/analysis         │
 │                                                             │
@@ -164,6 +164,11 @@ XAI_SEARCH=true   # Enable live search (default: true)
 - No external Brave Search tool calls for current events
 - Cleaner context (search handled server-side)
 - Works transparently alongside all existing Jarvis tools
+
+**Image Understanding Note**:
+- `XAI_IMAGE_UNDERSTANDING=true` enables xAI's native `view_image` server-side tool during web/X search.
+- When xAI uses it, Jarvis will pass through `SERVER_SIDE_TOOL_VIEW_IMAGE` in `server_side_tools`.
+- Per xAI docs, enabling image understanding for `web_search` also enables it for `x_search` when both tools are included.
 
 **Example**:
 ```
@@ -604,4 +609,3 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 - [QUICKSTART.md](QUICKSTART.md) - Getting started
 - [MEMORY_SYSTEM.md](MEMORY_SYSTEM.md) - Memory features
 - [xAI Docs](https://docs.x.ai) - Official xAI documentation
-

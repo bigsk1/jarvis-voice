@@ -31,12 +31,13 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
     def test_normalize_server_side_tool_names(self):
         tools = ChatHandler._normalize_server_side_tool_names({
             "SERVER_SIDE_TOOL_X_SEARCH": 2,
+            "SERVER_SIDE_TOOL_VIEW_IMAGE": 1,
             "SERVER_SIDE_TOOL_WEB_SEARCH": 1,
         })
 
         self.assertEqual(
             tools,
-            ["native:x_search", "native:x_search", "native:web_search"]
+            ["native:x_search", "native:x_search", "native:view_image", "native:web_search"]
         )
 
     def test_feedback_context_counts_native_tools_as_real_usage(self):

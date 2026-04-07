@@ -498,6 +498,8 @@ RESPONSE STYLE: {response_style.upper()}
         native_search_note = ""
         xai_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
         xai_code_exec = get_config_value("XAI_CODE_EXECUTION", "true").lower() == "true"
+        xai_image_understanding = get_config_value("XAI_IMAGE_UNDERSTANDING", "true").lower() == "true"
+        xai_video_understanding = get_config_value("XAI_VIDEO_UNDERSTANDING", "true").lower() == "true"
         anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
         provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "")
         
@@ -505,6 +507,16 @@ RESPONSE STYLE: {response_style.upper()}
             # Build xAI capabilities note
             capabilities = []
             capabilities.append("- NATIVE WEB/X SEARCH: Use for current info, news, prices - DO NOT use brave_search or mcp_fetch_fetch (crawl_url is OK for specific URL extraction)")
+
+            if xai_image_understanding:
+                capabilities.append(
+                    "- NATIVE IMAGE UNDERSTANDING: Search can inspect images encountered during web/X browsing via xAI's native view_image capability"
+                )
+
+            if xai_video_understanding:
+                capabilities.append(
+                    "- NATIVE VIDEO UNDERSTANDING: X search can inspect videos in posts when needed"
+                )
             
             if xai_code_exec:
                 capabilities.append("""- NATIVE CODE EXECUTION: You have a Python REPL (numpy, pandas, sympy, scipy, matplotlib).

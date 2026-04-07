@@ -26,12 +26,13 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
     def test_normalize_server_side_tools_for_reflection(self):
         normalized = normalize_server_side_tools_for_reflection({
             "SERVER_SIDE_TOOL_X_SEARCH": 2,
+            "SERVER_SIDE_TOOL_VIEW_IMAGE": 1,
             "SERVER_SIDE_TOOL_CODE_INTERPRETER": 1,
         })
 
         self.assertEqual(
             normalized,
-            ["native:x_search", "native:x_search", "native:code_interpreter"]
+            ["native:x_search", "native:x_search", "native:view_image", "native:code_interpreter"]
         )
 
     def test_suppresses_external_search_preference_when_native_search_was_used(self):
