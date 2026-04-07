@@ -34,6 +34,14 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(get_model_context_label("xai", "grok-4-fast"), "2M")
         self.assertEqual(get_model_context_window("xai", "grok-4-fast"), 2_000_000)
 
+    def test_grok_4_20_variant_resolves_with_pricing(self):
+        self.assertEqual(get_model_context_window("xai", "grok-4.20-non-reasoning-latest"), 2_000_000)
+        self.assertEqual(get_model_context_window("xai", "grok-4-20-non-reasoning"), 2_000_000)
+        pricing = get_model_pricing("xai", "grok-4.20-non-reasoning-latest")
+        self.assertIsNotNone(pricing)
+        self.assertEqual(pricing["input"], 2.00)
+        self.assertEqual(pricing["cached"], 0.20)
+
     def test_dated_openai_variant_resolves_to_family_metadata(self):
         self.assertEqual(get_model_context_window("openai", "gpt-5.4-nano-2026-03-17"), 400_000)
         pricing = get_model_pricing("openai", "gpt-5.4-nano-2026-03-17")

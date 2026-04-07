@@ -123,8 +123,10 @@ def extract_generic_results(payload: dict[str, Any], engine: str, limit: int) ->
                     "url": product.get("link_clean") or product.get("link"),
                     "asin": product.get("asin"),
                     "price": product.get("price"),
+                    "extracted_price": product.get("extracted_price"),
                     "rating": product.get("rating"),
                     "reviews": product.get("reviews"),
+                    "thumbnail": product.get("thumbnail"),
                     "source": "product_results",
                 }
             )
@@ -143,8 +145,10 @@ def extract_generic_results(payload: dict[str, Any], engine: str, limit: int) ->
                         "url": item.get("link_clean") or item.get("link") or item.get("source"),
                         "asin": item.get("asin"),
                         "price": item.get("price"),
+                        "extracted_price": item.get("extracted_price"),
                         "rating": item.get("rating"),
                         "reviews": item.get("reviews"),
+                        "thumbnail": item.get("thumbnail"),
                         "source": bucket,
                     }
                 )

@@ -45,6 +45,46 @@ def return_error(speech: str, data: dict[str, Any] | None = None) -> None:
     print(json.dumps(result))
 
 
+AMAZON_SORT_MAP = {
+    "featured": "relevanceblender",
+    "relevance": "relevanceblender",
+    "price_low": "price-asc-rank",
+    "price_low_to_high": "price-asc-rank",
+    "price_asc": "price-asc-rank",
+    "price-high": "price-desc-rank",
+    "price_high": "price-desc-rank",
+    "price_high_to_low": "price-desc-rank",
+    "price_desc": "price-desc-rank",
+    "rating": "review-rank",
+    "reviews": "review-rank",
+    "review": "review-rank",
+    "review_score": "review-rank",
+    "best_reviews": "review-rank",
+    "best_review_rating": "review-rank",
+    "newest": "date-desc-rank",
+    "latest": "date-desc-rank",
+    "best_sellers": "exact-aware-popularity-rank",
+    "bestseller": "exact-aware-popularity-rank",
+    "bestseller": "exact-aware-popularity-rank",
+    "popularity": "exact-aware-popularity-rank",
+}
+
+
+def normalize_sort_by(engine: str, sort_by: Any) -> tuple[str | None, str | None]:
+    """Map friendly sort names to engine-specific SerpApi params."""
+    if sort_by is None:
+        return None, None
+
+    raw = str(sort_by).strip()
+    if not raw:
+        return None, None
+
+    lowered = raw.lower().replace(" ", "_")
+    if engine == "amazon":
+        return "s", AMAZON_SORT_MAP.get(lowered, raw)
+    return "sort_by", raw
+
+
 def main() -> int:
     try:
         load_config()
@@ -66,6 +106,11 @@ def main() -> int:
         no_cache = parse_bool(input_data.get("no_cache", False))
         optimize_query = parse_bool(input_data.get("optimize_query", True), default=True)
         include_raw = parse_bool(input_data.get("include_raw", False))
+        sort_by = input_data.get("sort_by")
+        node = input_data.get("node")
+        rh = input_data.get("rh")
+        min_price = input_data.get("min_price")
+        max_price = input_data.get("max_price")
         extra_params = input_data.get("extra_params", {}) or {}
 
         if not engine:
@@ -102,6 +147,21 @@ def main() -> int:
 
         if asin:
             params["asin"] = asin
+
+        sort_param_key, sort_param_value = normalize_sort_by(engine, sort_by)
+        if sort_param_key and sort_param_value is not None:
+            params[sort_param_key] = sort_param_value
+
+        if node is not None:
+            params["node"] = node
+        if rh is not None:
+            params["rh"] = rh
+        # Generic passthrough convenience for engines that support direct price filters.
+        # For Amazon specifically, query/rh may still be the primary filtering path.
+        if min_price is not None:
+            params["min_price"] = min_price
+        if max_price is not None:
+            params["max_price"] = max_price
 
         merge_extra_params(params, extra_params, reserved_keys=GENERIC_RESERVED_KEYS)
 
@@ -155,6 +215,11 @@ def main() -> int:
             "query_effective": query_effective or None,
             "query_was_optimized": query_was_optimized,
             "asin": asin or None,
+            "sort_by": sort_by,
+            "node": node,
+            "rh": rh,
+            "min_price": min_price,
+            "max_price": max_price,
             "results_count": len(results),
             "results": results,
             "top_results": results[:5],

@@ -2247,6 +2247,7 @@ class ChatUI {
     // Check for generated images
     let imageHtml = '';
     let filename = null;
+    let shoppingHtml = '';
     
     // Method 1: Check data.generate_image object
     const imageData = data.generate_image;
@@ -2631,6 +2632,58 @@ class ChatUI {
     const rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
     const storedSpeech = innerData.speech || data.speech || '';
 
+    // Shopping/product preview card for focused SerpApi Amazon product lookups
+    // and single clear product results where a link + image is helpful.
+    const serpapiPayload = toolResultsData.serpapi_search || data.serpapi_search;
+    const latestSerpapi = Array.isArray(serpapiPayload)
+      ? serpapiPayload[serpapiPayload.length - 1]
+      : serpapiPayload;
+
+    if (latestSerpapi && typeof latestSerpapi === 'object') {
+      const engine = latestSerpapi.engine;
+      const results = Array.isArray(latestSerpapi.top_results) && latestSerpapi.top_results.length > 0
+        ? latestSerpapi.top_results
+        : (Array.isArray(latestSerpapi.results) ? latestSerpapi.results : []);
+      const product = results[0];
+      const isFocusedProduct =
+        engine === 'amazon_product'
+        || Boolean(latestSerpapi.asin)
+        || (results.length === 1 && engine === 'amazon');
+
+      if (isFocusedProduct && product && product.url && product.title) {
+        const title = Utils.escapeHtml(product.title);
+        const link = Utils.escapeHtml(product.url);
+        const image = product.thumbnail ? Utils.escapeHtml(product.thumbnail) : '';
+        const price = product.price ? Utils.escapeHtml(String(product.price)) : '';
+        const rating = product.rating != null ? Utils.escapeHtml(String(product.rating)) : '';
+        const reviews = product.reviews != null ? Utils.escapeHtml(String(product.reviews)) : '';
+        const asin = product.asin ? Utils.escapeHtml(String(product.asin)) : '';
+        const metaParts = [];
+        if (price) metaParts.push(`<span class="product-chip price">${price}</span>`);
+        if (rating) metaParts.push(`<span class="product-chip">⭐ ${rating}</span>`);
+        if (reviews) metaParts.push(`<span class="product-chip">${reviews} reviews</span>`);
+        if (asin) metaParts.push(`<span class="product-chip">ASIN ${asin}</span>`);
+
+        shoppingHtml = `
+          <div class="product-preview-card">
+            ${image ? `
+              <a class="product-preview-image" href="${link}" target="_blank" rel="noopener noreferrer">
+                <img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer">
+              </a>
+            ` : ''}
+            <div class="product-preview-body">
+              <div class="product-preview-label">Amazon Product</div>
+              <a class="product-preview-title" href="${link}" target="_blank" rel="noopener noreferrer">${title}</a>
+              ${metaParts.length ? `<div class="product-preview-meta">${metaParts.join('')}</div>` : ''}
+              <div class="product-preview-actions">
+                <a class="product-preview-link" href="${link}" target="_blank" rel="noopener noreferrer">Open product</a>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
     // Prefer the richer raw response for chat display when it is the same answer with
     // better visual structure. This keeps TTS concise while avoiding paragraph blobs.
     if (this._shouldPreferRawForDisplay(rawResponse, storedSpeech, text)) {
@@ -2660,6 +2713,7 @@ class ChatUI {
     
     messageEl.innerHTML = `
       ${toolCardsHtml}
+      ${shoppingHtml}
       ${imageHtml}
       ${convertedFileHtml}
       ${audioHtml}

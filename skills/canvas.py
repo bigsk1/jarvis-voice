@@ -2,10 +2,12 @@
 """
 Canvas Tool - Create and manage pages in Jarvis Canvas viewer.
 
-Input: { 
+Input: {
     "action": "create|update|delete|list|open",
     "title": "Page Title",
     "content": "Markdown content",
+    "image_url": "https://..." or "stash://...",
+    "image_alt": "Optional image alt/caption",
     "tags": ["tag1", "tag2"],
     "page_id": "page_20241201_143022"  # for update/delete
 }
@@ -43,6 +45,49 @@ def _find_truncated_urls(content: str) -> list[str]:
             seen.add(m)
             bad.append(m)
     return bad
+
+
+def _extract_inline_image_url(content: str) -> tuple[str | None, str]:
+    """Extract a plain-text image URL label and return cleaned content."""
+    if not content:
+        return None, content
+
+    lines = content.splitlines()
+    cleaned_lines = []
+    image_url = None
+    image_label_pattern = re.compile(
+        r'^\s*(?:image|product image|thumbnail|image url)\s*:\s*(https?://\S+|stash://\S+)\s*$',
+        flags=re.IGNORECASE,
+    )
+
+    for line in lines:
+        match = image_label_pattern.match(line.strip())
+        if match and not image_url:
+            image_url = match.group(1).strip()
+            continue
+        cleaned_lines.append(line)
+
+    cleaned_content = "\n".join(cleaned_lines).strip()
+    return image_url, cleaned_content
+
+
+def _embed_image_markdown(content: str, image_url: str | None = None, image_alt: str | None = None) -> str:
+    """Prepend a markdown image block when a valid image URL is provided."""
+    content = content or ""
+    inline_image_url, content = _extract_inline_image_url(content)
+    image_url = (image_url or inline_image_url or "").strip()
+    image_alt = (image_alt or "Image").strip() or "Image"
+
+    if not image_url:
+        return content
+
+    if image_url in content:
+        return content
+
+    image_block = f"![{image_alt}]({image_url})"
+    if not content.strip():
+        return image_block
+    return f"{image_block}\n\n{content}"
 
 
 def check_canvas_health() -> bool:
@@ -128,8 +173,9 @@ def remove_from_memory(page_id: str) -> None:
         pass  # Non-fatal
 
 
-def create_page(title: str, content: str, tags: list[str] = None, 
-                source_query: str = None, pinned: bool = False) -> dict[str, Any]:
+def create_page(title: str, content: str, tags: list[str] = None,
+                source_query: str = None, pinned: bool = False,
+                image_url: str | None = None, image_alt: str | None = None) -> dict[str, Any]:
     """Create a new canvas page."""
     
     # Check if server is running
@@ -143,6 +189,8 @@ def create_page(title: str, content: str, tags: list[str] = None,
     # Fix LLM escape sequences - convert literal \n to actual newlines
     if content:
         content = content.replace('\\n', '\n')
+
+    content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
     
     truncated_urls = _find_truncated_urls(content or "")
     if truncated_urls:
@@ -184,8 +232,9 @@ def create_page(title: str, content: str, tags: list[str] = None,
     }
 
 
-def update_page(page_id: str, title: str = None, content: str = None, 
-                tags: list[str] = None, pinned: bool = None) -> dict[str, Any]:
+def update_page(page_id: str, title: str = None, content: str = None,
+                tags: list[str] = None, pinned: bool = None,
+                image_url: str | None = None, image_alt: str | None = None) -> dict[str, Any]:
     """Update an existing canvas page."""
     
     if not check_canvas_health():
@@ -199,6 +248,7 @@ def update_page(page_id: str, title: str = None, content: str = None,
     if title is not None:
         data['title'] = title
     if content is not None:
+        content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
         truncated_urls = _find_truncated_urls(content)
         if truncated_urls:
             return {
@@ -514,7 +564,15 @@ def main():
             if not title:
                 raise ValueError("title is required for create action")
             
-            result = create_page(title, content, tags, source_query, pinned)
+            result = create_page(
+                title,
+                content,
+                tags,
+                source_query,
+                pinned,
+                image_url=args.get('image_url'),
+                image_alt=args.get('image_alt')
+            )
         
         elif action == 'update':
             page_id = args.get('page_id')
@@ -526,7 +584,9 @@ def main():
                 title=args.get('title'),
                 content=args.get('content'),
                 tags=args.get('tags'),
-                pinned=args.get('pinned')
+                pinned=args.get('pinned'),
+                image_url=args.get('image_url'),
+                image_alt=args.get('image_alt')
             )
         
         elif action == 'delete':
@@ -567,4 +627,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

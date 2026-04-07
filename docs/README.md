@@ -310,6 +310,19 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-07:**
+- ✅ **Amazon product follow-up + Canvas improvements**
+  - `serpapi_search` now supports stronger Amazon shopping flows with top-level sort and price fields, better Amazon sort mapping, and improved focused-product handling
+  - Jarvis WebUI can now render a single Amazon product preview card with image, title, price, rating, review count, ASIN, and direct link for `amazon_product` lookups
+  - Amazon search follow-up context now preserves a compact shortlist of prior product candidates so later turns like "tell me more about the Aura frame" or "save that one to canvas" have the right ASIN, URL, and thumbnail available
+  - Canvas page creation/update now supports explicit embedded images and also auto-recovers inline `Image: https://...` product-image lines into a real embedded image block
+- ✅ **Conversation recovery + feedback polish**
+  - Random pre-collected feedback now emits the normal feedback card payload in WebUI instead of silently logging without showing the card
+  - Usage metadata now survives max-turn-limit and duplicate-prevention exits so the WebUI token counter no longer shows `0 tokens` for those completed runs
+- ✅ **Model catalog hardening**
+  - Added curated support for newer xAI model IDs like `grok-4.20-non-reasoning-latest`
+  - Tightened exact-id vs alias matching, quieter Ollama metadata handling, and safer fallback/default resolution across the shared model catalog
+
 **2026-04-06:**
 - ✅ **Embedding fallback visibility**
   - Runtime embedding fallback is now tracked separately from stored DB embedding health

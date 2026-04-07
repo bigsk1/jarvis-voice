@@ -41,6 +41,20 @@ class _FakeRouter:
 
 
 class CanvasDuplicateGuardTests(unittest.TestCase):
+    def test_completion_guard_avoids_artifact_loop_when_user_complains_about_tool_churn(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        record = {
+            "query": "search amazon using serpapi for a good birthday gift for 23 year old male who likes star wars, product can be between $100-$300",
+            "raw_llm_response": "Saved results to canvas.",
+        }
+        note = "horrible, max out tool turns, should have had enough info after a few serpapi calls, used canvas 3 times, this is completly wrong."
+
+        strategy = handler._classify_completion_guard_strategy(record, note)
+
+        self.assertEqual(strategy["family"], "minimal_repair")
+        self.assertIn("canvas", strategy["avoid_tools"])
+        self.assertIn("answer directly", strategy["completion_hint"])
+
     def test_completion_guard_prefers_verification_when_canvas_is_only_context(self):
         handler = ChatHandler.__new__(ChatHandler)
         record = {
@@ -79,7 +93,10 @@ class CanvasDuplicateGuardTests(unittest.TestCase):
         )
 
         self.assertNotIn("Updated 'Ambient Weather WS-2902 Integration Options' in your canvas.", result)
-        self.assertIn("does not answer", result)
+        self.assertTrue(
+            "does not answer" in result or "repeat-tool safeguard" in result,
+            result
+        )
 
 
 if __name__ == "__main__":

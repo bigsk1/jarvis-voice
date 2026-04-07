@@ -85,6 +85,25 @@ Standard tool contract:
 }
 ```
 
+### Recommended Amazon pattern
+
+For shopping requests, the best flow is usually:
+
+1. Use `engine=amazon` to gather multiple candidate listings.
+2. Compare price, rating, reviews, and fit for the request.
+3. If the user wants one best item or a deeper look at a chosen candidate, follow with `engine=amazon_product` using the ASIN.
+
+This keeps broad comparison and focused product inspection separate:
+- `amazon` is better for candidate discovery and ranking
+- `amazon_product` is better for one final item with richer details, direct link, and thumbnail/image
+
+Jarvis now also preserves a compact shortlist of prior Amazon candidates in follow-up context, so later turns like:
+- `tell me more about the Aura frame`
+- `save that one to canvas`
+- `show the dog bed again`
+
+have a much better chance of resolving to the right prior ASIN, link, and thumbnail instead of forcing a fresh guess.
+
 ### Amazon product lookup by ASIN
 
 ```json
@@ -138,6 +157,10 @@ Tool-forced follow-up:
 
 `Use serpapi_search with the same query and return 5 options with links.`
 
+Focused follow-up:
+
+`Take the best ASIN from those options, use serpapi_search with engine=amazon_product, and give me the direct product details and link.`
+
 ## Known behavior and troubleshooting
 
 ### "It used Brave MCP instead"
@@ -171,4 +194,6 @@ Amazon search quality depends on query wording. Add stronger constraints:
 ## Notes
 
 - Links in `data.results[].url` can be rendered in WebUI and shown in CLI output.
+- For focused Amazon product lookups, Jarvis WebUI can now render a single product preview card with image, title, price, rating, reviews, ASIN, and direct link when the tool returns one clear item.
+- If a focused Amazon product result is later saved to Canvas, the thumbnail/image URL can now be embedded on the page instead of only appearing as plain text.
 - For cleaner gift recommendations, pair this tool with one synthesis step that filters out low-quality matches.

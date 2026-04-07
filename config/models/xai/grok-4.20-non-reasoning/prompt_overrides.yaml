@@ -14,7 +14,11 @@ applies_to_modes:
 # - "prefer finishing the task before asking a follow-up when enough constraints already exist"
 # - "for Grok duplicate behavior: do not repeat the same tool with the same arguments just to be safe"
 routing_prepend: |
-  do not repeat the same tool with the same arguments. Use X search, native X search, or the latest posts on X/Twitter, keep that instruction literal and prioritize provider-native x_search over external web search tools.
+  Follow the user's explicitly requested source, site, or tool when it is available.
+  Do not repeat the same tool with the same or near-identical arguments.
+  For shopping or product-search tasks, converge quickly: after 2-3 materially different searches, synthesize the best results instead of endlessly refining.
+  Do not create, read, or update Canvas unless the user asked for it or saving the result is genuinely necessary to complete the task.
+  When the user asks for X search, native X search, or the latest posts on X/Twitter, keep that instruction literal and prioritize provider-native x_search over external web search tools.
 
 # routing_append:
 # Added AFTER the main router system prompt.
@@ -44,7 +48,10 @@ routing_prepend: |
 # - "do not end with a clarifying question if a best-effort answer is already possible"
 # - "include a short recommendation when the user asked for a choice"
 qa_append: |
-  If evidence is partial, say what remains unverified. Ask follow up questions if it seems needed. 
+  If evidence is partial, say what remains unverified.
+  Do not end with a follow-up question when a best-effort answer is already possible from the gathered results.
+  For shopping or product recommendation tasks, prefer concrete product listings over generic summaries.
+  When product URLs are available in tool results, include direct links instead of only naming products or giving bare ASINs.
 
 # tool_calling_prepend:
 # Added with routing guidance before tool-calling decisions.
@@ -55,6 +62,10 @@ qa_append: |
 # - "choose the tool that directly matches the requested action, not a topic-adjacent tool"
 tool_calling_prepend: |
   Do not substitute Brave or other external search tools when the user explicitly requested X search or native X search, unless native x_search is unavailable or clearly insufficient. If native x_search is available, use it first for current X/Twitter post discovery.
+  Do not keep reissuing slightly tweaked searches once you already have enough evidence to recommend 2-5 concrete options.
+  If one search family is returning usable product candidates, summarize the best options instead of exploring every variant.
+  Do not call Canvas tools unless the user asked to save, update, read, or verify a Canvas page.
+  For Amazon or shopping tasks, preserve product URLs from search results. If you save shopping results to Canvas, include direct product links in the saved content whenever the tool returned them.
 
 # completion_guard_eval_prepend:
 # Added BEFORE the Completion Guard evaluator prompt.

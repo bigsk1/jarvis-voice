@@ -899,6 +899,29 @@ Important:
             })
             return strategy
 
+        asks_for_fresh_research = any(token in combined for token in [
+            'what size', 'which size', 
+            'amazon product', 'purchase', 'buy', 'compatible', 'spec', 'specs',
+            'recommend', 'compare', 'price', 'pricing'
+        ])
+
+        overtooled_complaint = any(token in combined for token in [
+            'max out tool turns', 'maxed out tool turns', 'max tool turns',
+            'too many tool', 'tool happy', 'used canvas 3 times', 'used canvas three times',
+            'same tool', 'duplicate tool', 'repeated tool', 're-read', 'reread',
+            'should have had enough info', 'stop calling tools', 'stop using tools'
+        ])
+
+        if overtooled_complaint:
+            strategy.update({
+                'family': 'minimal_repair',
+                'reason': 'The complaint is about over-tooling or repeated tool calls, so the repair should avoid artifact churn and answer from existing evidence unless one clearly different tool is needed.',
+                'preferred_tools': [],
+                'avoid_tools': ['canvas', 'search_memory', 'semantic_recall'],
+                'completion_hint': 'Audit the previous tool results first. If they already contain enough evidence, answer directly. If not, use at most one clearly different tool call and then stop.'
+            })
+            return strategy
+
         strong_claim_terms = ['shutdown', 'shut down', 'deprecated', 'removed', 'disabled', 'not available', 'sent', 'updated', 'created', 'saved']
         if any(term in combined for term in strong_claim_terms):
             strategy.update({
@@ -909,12 +932,6 @@ Important:
                 'completion_hint': 'Do not repeat strong claims unless the repair pass verifies them with a relevant live or direct inspection tool.'
             })
             return strategy
-
-        asks_for_fresh_research = any(token in combined for token in [
-            'what size', 'which size', 
-            'amazon product', 'purchase', 'buy', 'compatible', 'spec', 'specs',
-            'recommend', 'compare', 'price', 'pricing'
-        ])
 
         if any(token in combined for token in ['canvas', 'canva', 'page', 'slides', 'doc', 'update the page', 'update canvas']):
             if asks_for_fresh_research:
@@ -2537,7 +2554,7 @@ Previous structured data:
             'create_reminder': ['reminder_id', 'formatted_time'],
             'send_email': ['to', 'subject', 'status'],
             'api_call': ['url', 'method', 'status_code'],
-            'serpapi_search': ['engine', 'query', 'asin', 'results_count'],
+            'serpapi_search': ['engine', 'query', 'asin', 'results_count', 'top_url'],
             'serpapi_maps_search': ['engine', 'query', 'results_count'],
             'serpapi_hotel_search': ['engine', 'query', 'destination', 'check_in_date', 'check_out_date', 'results_count'],
             'spotify': ['name', 'artist'],
@@ -2587,6 +2604,55 @@ Previous structured data:
             # Always include provider if present (needed for follow-ups)
             if value.get('provider') and 'provider' not in extracted:
                 extracted['provider'] = value['provider']
+
+            # Preserve compact focused product details for shopping follow-ups.
+            if key == 'serpapi_search':
+                results = value.get('results') or value.get('top_results') or []
+                if isinstance(results, list) and results:
+                    first = results[0] if isinstance(results[0], dict) else {}
+                    if isinstance(first, dict):
+                        if first.get('title'):
+                            extracted['title'] = first['title']
+                        if first.get('url') and 'top_url' not in extracted:
+                            extracted['top_url'] = first['url']
+                        if first.get('thumbnail'):
+                            extracted['thumbnail'] = first['thumbnail']
+                        if first.get('price'):
+                            extracted['price'] = first['price']
+                        if first.get('rating'):
+                            extracted['rating'] = first['rating']
+                        if first.get('reviews'):
+                            extracted['reviews'] = first['reviews']
+                    # Preserve a compact shortlist so follow-ups like
+                    # "tell me more about the Aura frame" can resolve against
+                    # prior candidates instead of guessing a new ASIN.
+                    candidates = []
+                    for item in results[:5]:
+                        if not isinstance(item, dict):
+                            continue
+                        title = item.get('title')
+                        asin = item.get('asin')
+                        url = item.get('url')
+                        if not (title or asin or url):
+                            continue
+                        candidate = {}
+                        if title:
+                            candidate['title'] = title
+                        if asin:
+                            candidate['asin'] = asin
+                        if url:
+                            candidate['url'] = url
+                        if item.get('price'):
+                            candidate['price'] = item['price']
+                        if item.get('rating'):
+                            candidate['rating'] = item['rating']
+                        if item.get('reviews'):
+                            candidate['reviews'] = item['reviews']
+                        if item.get('thumbnail'):
+                            candidate['thumbnail'] = item['thumbnail']
+                        candidates.append(candidate)
+                    if candidates:
+                        extracted['candidates'] = candidates
             
             # @TOOL_CONFIG: video URL expiration — provider URLs have time limits
             # xAI ~4h, OpenAI 60min
@@ -3284,9 +3350,9 @@ Previous structured data:
                     effective_model,
                     None
                 )
-            elif already_has_feedback and request_feedback:
-                # Orchestrator already collected feedback (random trigger), emit that result
-                print(f"[CHAT] Using orchestrator's feedback (random trigger)")
+            elif already_has_feedback:
+                # Orchestrator already collected feedback (for example random trigger), emit that result
+                print(f"[CHAT] Using orchestrator's feedback (pre-collected)")
                 feedback = result.get('feedback', {})
                 self.socketio.emit('feedback:start', {
                     'message_id': message_id,
@@ -3297,7 +3363,11 @@ Previous structured data:
                     'message_id': message_id,
                     'conversation_id': conversation_id,
                     'rating': feedback.get('rating'),
+                    'summary': feedback.get('summary', ''),
+                    'positive': feedback.get('positive', ''),
+                    'issues': feedback.get('issues', []),
                     'suggestions': feedback.get('suggestions', []),
+                    'tool_ratings': feedback.get('tool_ratings', {}),
                     'analysis': feedback.get('analysis', ''),
                     'duration_ms': 0,  # Already collected
                     'success': True

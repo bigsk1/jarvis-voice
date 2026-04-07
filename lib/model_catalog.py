@@ -36,6 +36,13 @@ def _context_label(tokens: int) -> str:
 CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     "xai": [
         {
+            "id": "grok-4.20-non-reasoning-latest",
+            "name": "Grok 4.20 Non-Reasoning",
+            "context_tokens": 2_000_000,
+            "pricing": {"input": 2.00, "output": 6.00, "cached": 0.20},
+            "aliases": ["grok-4.20-non-reasoning", "grok-4-20-non-reasoning"],
+        },
+        {
             "id": "grok-4-1-fast-non-reasoning-latest",
             "name": "Grok 4.1 Fast (Default)",
             "context_tokens": 2_000_000,
@@ -61,11 +68,6 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
                 "grok-4-fast-non-reasoning",
                 "grok-4-fast-non-reasoning-latest",
             ],
-        },
-        {
-            "id": "grok-3-fast",
-            "name": "Grok 3 Fast (Legacy)",
-            "context_tokens": 131_000,
         },
     ],
     "anthropic": [
@@ -240,6 +242,8 @@ def _candidate_model_ids(entry: dict[str, Any]) -> list[tuple[str, bool]]:
 def get_model_metadata(provider: str, model: str | None) -> dict[str, Any] | None:
     """Resolve catalog metadata for an exact or family-compatible model id."""
     if not model:
+        return None
+    if provider == "ollama":
         return None
     if provider not in CLOUD_MODEL_CATALOG:
         logger.warning("[MODEL_CATALOG] Unknown provider requested for model metadata: %s", provider)

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_search",
-  "description": "Structured shopping and search lookup via SerpApi across engines like amazon, amazon_product, google, google_shopping, and news. Best tool for Amazon product search, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, product comparisons, and finding products to buy when the user asks about Amazon items or shopping results.",
+  "description": "Structured shopping and search lookup via SerpApi across engines like amazon, amazon_product, google, google_shopping, and news. Best tool for Amazon product search, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, product comparisons, and finding products to buy when the user asks about Amazon items or shopping results. Recommended shopping pattern: use engine=amazon first to gather and compare multiple candidate listings, then use engine=amazon_product with a chosen ASIN when you want one focused product page with richer details, direct link, image/thumbnail, and a cleaner final recommendation. If saving that focused product to Canvas, preserve the thumbnail by passing it to the canvas tool as image_url.",
   "script": "serpapi_search.py",
   "parameters": {
     "type": "object",
@@ -37,6 +37,26 @@
       "num_results": {
         "type": "integer",
         "description": "How many normalized results to return (1-10, default: 5)."
+      },
+      "sort_by": {
+        "type": "string",
+        "description": "Optional sort mode. For amazon, friendly values like review_score, rating, reviews, best_reviews, price_low, price_high, newest, and bestseller are mapped to Amazon's documented sort parameter."
+      },
+      "node": {
+        "type": "string",
+        "description": "Optional Amazon category node filter. Useful when the query should stay inside a category like electronics or smart home."
+      },
+      "rh": {
+        "type": "string",
+        "description": "Optional raw Amazon rh filter string for advanced narrowing (for example category/attribute filters discovered from Amazon URLs)."
+      },
+      "min_price": {
+        "type": "number",
+        "description": "Optional generic minimum price passthrough for engines that support it directly. For Amazon, keep the price range in the query and use rh when known."
+      },
+      "max_price": {
+        "type": "number",
+        "description": "Optional generic maximum price passthrough for engines that support it directly. For Amazon, keep the price range in the query and use rh when known."
       },
       "no_cache": {
         "type": "boolean",

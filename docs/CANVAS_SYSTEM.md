@@ -35,6 +35,8 @@ You: "Put my server IPs in the canvas"
 You: "Save that code snippet to my canvas"
 ```
 
+Canvas pages support embedded images. Jarvis can now pass an explicit `image_url` (including normal `https://` URLs and `stash://` refs) when creating or updating a page, and the Canvas tool will insert the markdown image block automatically at the top of the page. If a tool or model only includes a plain text line such as `Image: https://...`, the Canvas tool will now recover that inline URL and convert it into a real embedded image block automatically.
+
 ## Architecture
 
 ```
@@ -618,11 +620,12 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 
 ---
 
-**Version:** 2.1
-**Last Updated:** 2026-02-09
+**Version:** 2.2
+**Last Updated:** 2026-04-07
 
 ### Changelog
 
+- **v2.2** (Apr 2026): Explicit `image_url` support for page create/update plus inline `Image: https://...` auto-conversion so Amazon/product pages can reliably save with embedded images
 - **v2.1** (Feb 2026): Hierarchical tree view sidebar, breadcrumb titles, LLM title summarization for research workflow, smart folder segment detection, hash-based polling
 - **v2.0** (Feb 2026): Modular architecture refactor (monolith to Flask blueprints) + Video Gallery
 - **v1.4** (Feb 2026): Image-to-video conversion

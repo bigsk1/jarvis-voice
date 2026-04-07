@@ -102,6 +102,24 @@ def _sanitize_error_for_speech(error) -> str:
 
 class Orchestrator:
     """Main orchestration with LLM-based routing, error recovery, and retry logic."""
+
+    @staticmethod
+    def _has_usage_data(usage: dict | None) -> bool:
+        """Return True when usage contains meaningful token, cache, cost, or native-tool info."""
+        if not isinstance(usage, dict):
+            return False
+        numeric_keys = (
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cost_usd",
+            "cache_creation_tokens",
+            "cache_read_tokens",
+            "cache_savings_usd",
+        )
+        if any((usage.get(key) or 0) > 0 for key in numeric_keys):
+            return True
+        return bool(usage.get("server_side_tools"))
     
     def __init__(self, mode='cloud', provider_override=None, model_override=None):
         """
@@ -703,7 +721,9 @@ Mode: {self.mode}
                         "ok": True,
                         "tools_used": tools_used,
                         "data": accumulated_data,
-                        "duplicate_prevented": True
+                        "duplicate_prevented": True,
+                        "usage": total_usage if self._has_usage_data(total_usage) else None,
+                        "server_side_tools": total_usage.get("server_side_tools", {})
                     }
                 
                 # Only print if in interactive mode
@@ -946,7 +966,7 @@ Mode: {self.mode}
                     print(f"💬 Task complete{turn_marker}: {speech}")
                 
                 # Auto-log conversation with all tools used and usage info
-                token_info = total_usage if total_usage["cost_usd"] > 0 else None
+                token_info = total_usage if self._has_usage_data(total_usage) else None
                 self._log_conversation(transcript, speech, tools_used, success=True, token_info=token_info)
                 
                 # Build response
@@ -1031,7 +1051,9 @@ Mode: {self.mode}
             "ok": True,
             "tools_used": tools_used,
             "data": accumulated_data,
-            "max_turns_reached": True
+            "max_turns_reached": True,
+            "usage": total_usage if self._has_usage_data(total_usage) else None,
+            "server_side_tools": total_usage.get("server_side_tools", {})
         }
         
         # Maybe collect feedback (random chance based on env config)

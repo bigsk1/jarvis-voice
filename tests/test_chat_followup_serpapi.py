@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""Regression tests for SerpApi follow-up context extraction."""
+
+import types
+import importlib.util
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+fake_socketio = types.ModuleType("flask_socketio")
+fake_socketio.emit = lambda *args, **kwargs: None
+fake_socketio.join_room = lambda *args, **kwargs: None
+fake_socketio.leave_room = lambda *args, **kwargs: None
+sys.modules.setdefault("flask_socketio", fake_socketio)
+
+fake_flask = types.ModuleType("flask")
+fake_flask.request = object()
+sys.modules.setdefault("flask", fake_flask)
+
+CHAT_PATH = PROJECT_ROOT / "jarvis-web" / "server" / "sockets" / "chat.py"
+SPEC = importlib.util.spec_from_file_location("jarvis_web_chat", CHAT_PATH)
+MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC and SPEC.loader
+SPEC.loader.exec_module(MODULE)
+ChatHandler = MODULE.ChatHandler
+
+
+def _handler():
+    return ChatHandler.__new__(ChatHandler)
+
+
+def test_extract_followup_data_includes_focused_serpapi_product_fields():
+    handler = _handler()
+    data = {
+        "serpapi_search": {
+            "engine": "amazon_product",
+            "query": None,
+            "asin": "B072MQ5BRX",
+            "results_count": 1,
+            "results": [
+                {
+                    "title": "Amazon Fresh, Colombia Ground Coffee, Medium Roast, 32 Oz",
+                    "url": "https://www.amazon.com/dp/B072MQ5BRX/",
+                    "thumbnail": "https://m.media-amazon.com/images/I/example.jpg",
+                    "price": "$17.79",
+                    "rating": 4.4,
+                    "reviews": 10873,
+                }
+            ],
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    serp = result["serpapi_search"]
+
+    assert serp["engine"] == "amazon_product"
+    assert serp["asin"] == "B072MQ5BRX"
+    assert serp["title"].startswith("Amazon Fresh")
+    assert serp["top_url"] == "https://www.amazon.com/dp/B072MQ5BRX/"
+    assert serp["thumbnail"] == "https://m.media-amazon.com/images/I/example.jpg"
+    assert serp["price"] == "$17.79"
+    assert serp["rating"] == 4.4
+    assert serp["reviews"] == 10873
+
+
+def test_extract_followup_data_preserves_compact_candidate_list():
+    handler = _handler()
+    data = {
+        "serpapi_search": {
+            "engine": "amazon",
+            "query": "interesting tech gift over 100 no logo",
+            "results_count": 2,
+            "results": [
+                {
+                    "title": "Amazon Echo Show 5 (newest model)",
+                    "url": "https://www.amazon.com/dp/B09B2SBHQK/",
+                    "asin": "B09B2SBHQK",
+                    "price": "$89.99",
+                    "rating": 4.2,
+                    "reviews": 64800,
+                    "thumbnail": "https://m.media-amazon.com/images/I/echo.jpg",
+                },
+                {
+                    "title": "Aura Carver HD WiFi Digital Picture Frame, 10.1",
+                    "url": "https://www.amazon.com/dp/B09X1XN3FZ/",
+                    "asin": "B09X1XN3FZ",
+                    "price": "$149.00",
+                    "rating": 4.7,
+                    "reviews": 19000,
+                    "thumbnail": "https://m.media-amazon.com/images/I/aura.jpg",
+                },
+            ],
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    serp = result["serpapi_search"]
+    candidates = serp["candidates"]
+
+    assert len(candidates) == 2
+    assert candidates[1]["title"].startswith("Aura Carver HD")
+    assert candidates[1]["asin"] == "B09X1XN3FZ"
+    assert candidates[1]["url"] == "https://www.amazon.com/dp/B09X1XN3FZ/"
+    assert candidates[1]["thumbnail"] == "https://m.media-amazon.com/images/I/aura.jpg"
