@@ -12,8 +12,8 @@ routing_append: |
 qa_prepend: |
   For Amazon or buyable-product requests, prefer 2 to 4 concrete listing options with direct links and a short reason each is relevant. Do not answer with only ASINs if listing URLs are available.
 
-qa_append: |
-  If compatibility is not fully verified, state the uncertainty clearly and say what measurement or detail still needs confirmation.
+# qa_append: |
+#   If compatibility is not fully verified, state the uncertainty clearly and say what measurement or detail still needs confirmation.
 
 tool_calling_prepend: |
   Make the desired product-search or compatibility-check action explicit before supporting context from the product category.

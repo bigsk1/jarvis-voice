@@ -2,6 +2,10 @@
 
 This folder holds small model/provider-specific prompt overlays.
 
+This helps to fine tune model behavior without changing the global prompt.
+
+Different models have there own bad habits or lean toward certain behaviors that can be corrected with a small override.
+
 Use:
 
 ```text
