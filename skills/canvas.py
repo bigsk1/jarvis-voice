@@ -55,17 +55,39 @@ def _extract_inline_image_url(content: str) -> tuple[str | None, str]:
     lines = content.splitlines()
     cleaned_lines = []
     image_url = None
-    image_label_pattern = re.compile(
+    image_inline_pattern = re.compile(
         r'^\s*(?:image|product image|thumbnail|image url)\s*:\s*(https?://\S+|stash://\S+)\s*$',
         flags=re.IGNORECASE,
     )
+    image_label_only_pattern = re.compile(
+        r'^\s*(?:image|product image|thumbnail|image url)\s*:?\s*$',
+        flags=re.IGNORECASE,
+    )
 
-    for line in lines:
-        match = image_label_pattern.match(line.strip())
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        match = image_inline_pattern.match(stripped)
         if match and not image_url:
             image_url = match.group(1).strip()
+            i += 1
             continue
+
+        if image_label_only_pattern.match(stripped) and not image_url:
+            next_index = i + 1
+            while next_index < len(lines) and not lines[next_index].strip():
+                next_index += 1
+            if next_index < len(lines):
+                next_line = lines[next_index].strip()
+                if re.match(r'^(https?://\S+|stash://\S+)\s*$', next_line, flags=re.IGNORECASE):
+                    image_url = next_line
+                    i = next_index + 1
+                    continue
+
         cleaned_lines.append(line)
+        i += 1
 
     cleaned_content = "\n".join(cleaned_lines).strip()
     return image_url, cleaned_content
@@ -88,6 +110,46 @@ def _embed_image_markdown(content: str, image_url: str | None = None, image_alt:
     if not content.strip():
         return image_block
     return f"{image_block}\n\n{content}"
+
+
+def _find_existing_page_by_title(title: str) -> dict[str, Any] | None:
+    """Find an existing canvas page by exact title match."""
+    if not title:
+        return None
+
+    title_normalized = title.strip().lower()
+
+    if check_canvas_health():
+        pages = api_request('GET', '/pages')
+        if isinstance(pages, list):
+            matches = [
+                p for p in pages
+                if (p.get('title') or '').strip().lower() == title_normalized
+            ]
+            if matches:
+                matches.sort(key=lambda x: x.get('updated', x.get('created', '')), reverse=True)
+                return matches[0]
+
+    if not os.path.exists(CANVAS_DIR):
+        return None
+
+    matches = []
+    for filename in os.listdir(CANVAS_DIR):
+        if filename.startswith("page_") and filename.endswith(".json"):
+            filepath = os.path.join(CANVAS_DIR, filename)
+            try:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+                if (data.get('title') or '').strip().lower() == title_normalized:
+                    matches.append(data)
+            except Exception:
+                continue
+
+    if not matches:
+        return None
+
+    matches.sort(key=lambda x: x.get('updated', x.get('created', '')), reverse=True)
+    return matches[0]
 
 
 def check_canvas_health() -> bool:
@@ -199,6 +261,29 @@ def create_page(title: str, content: str, tags: list[str] = None,
             "error": f"Canvas content contains truncated URLs: {truncated_urls[:3]}",
             "speech": "I couldn't save that canvas page because one or more source links were truncated. I'll need to regenerate it with full URLs."
         }
+
+    existing_page = _find_existing_page_by_title(title)
+    if existing_page and existing_page.get('id'):
+        update_result = update_page(
+            existing_page['id'],
+            title=title,
+            content=content,
+            tags=tags,
+            pinned=pinned,
+            image_url=image_url,
+            image_alt=image_alt,
+        )
+        if update_result.get("ok"):
+            update_result["speech"] = f"Updated existing canvas page '{title}'."
+            data = update_result.get("data", {}) or {}
+            update_result["data"] = {
+                "page_id": data.get("id", existing_page['id']),
+                "title": data.get("title", title),
+                "url": CANVAS_URL,
+                "tags": data.get("tags", tags or []),
+                "updated_existing": True,
+            }
+        return update_result
     
     data = {
         "title": title,
