@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'orchestrator'))
 from config_loader import load_config, get_config_value
 from llm_provider import create_provider
+from model_catalog import get_provider_fallback_model
 
 LOG_DIR = Path(__file__).parent.parent / 'logs' / 'validate-system-prompt'
 
@@ -453,17 +454,17 @@ def main():
     if args.provider == "anthropic":
         provider = create_provider("anthropic",
             api_key=get_config_value("ANTHROPIC_API_KEY"),
-            model="claude-sonnet-4-5-20250929"
+            model=get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
         )
     elif args.provider == "xai":
         provider = create_provider("xai",
             api_key=get_config_value("XAI_API_KEY"),
-            model="grok-4-1-fast-non-reasoning-latest"
+            model=get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
         )
     elif args.provider == "openai":
         provider = create_provider("openai",
             api_key=get_config_value("OPENAI_API_KEY"),
-            model=get_config_value("OPENAI_MODEL", "gpt-5.4-nano")
+            model=get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
         )
     else:
         print(f"❌ Unknown provider: {args.provider}")

@@ -3952,7 +3952,7 @@ Mode: {mode}
         if vision_model and str(vision_model).lower().startswith('claude-'):
             model = vision_model
         else:
-            model = get_jarvis_setting('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929')
+            model = get_jarvis_setting('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
         print(f"[VISION] Anthropic model: {model}")
         
         payload = {
@@ -4008,7 +4008,7 @@ Mode: {mode}
             return None
         
         # Use VISION_MODEL if set, otherwise fall back to XAI_MODEL or grok-4
-        model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', 'grok-4-1-fast-non-reasoning')
+        model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', get_provider_fallback_model('xai'))
         print(f"[VISION] xAI model: {model}")
         
         # xAI uses OpenAI-compatible format with detail parameter (high = better accuracy)
