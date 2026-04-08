@@ -83,6 +83,8 @@ const Utils = {
         text = String(text);
       }
     }
+
+    text = this.escapeStandaloneTildes(text);
     
     if (typeof marked !== 'undefined') {
       if (!this._markedConfigured) {
@@ -120,6 +122,39 @@ const Utils = {
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/`(.*?)`/g, '<code>$1</code>')
       .replace(/\n/g, '<br>');
+  },
+
+  /**
+   * Keep single "~" approximation markers literal while preserving "~~" markdown.
+   * Marked treats lone tildes as strikethrough delimiters in some cases.
+   */
+  escapeStandaloneTildes(text) {
+    if (!text || !text.includes('~')) {
+      return text;
+    }
+
+    const codeSegments = text.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
+    return codeSegments
+      .map((segment, index) => {
+        if (index % 2 === 1) {
+          return segment;
+        }
+        let escaped = '';
+        for (let i = 0; i < segment.length; i++) {
+          const char = segment[i];
+          if (char !== '~') {
+            escaped += char;
+            continue;
+          }
+
+          const prevChar = i > 0 ? segment[i - 1] : '';
+          const nextChar = i < segment.length - 1 ? segment[i + 1] : '';
+          const isDoubleTilde = prevChar === '~' || nextChar === '~';
+          escaped += isDoubleTilde ? '~' : '&#126;';
+        }
+        return escaped;
+      })
+      .join('');
   },
 
   /**
