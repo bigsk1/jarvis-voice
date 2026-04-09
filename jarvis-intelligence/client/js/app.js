@@ -28,6 +28,7 @@ let selectedFeedback = null;
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('app')?.classList.add('has-desktop-sidebar');
   setupEventListeners();
   loadInitialData();
 });
@@ -672,7 +673,7 @@ function showFeedbackModal(feedback) {
     </div>
   `;
   
-  modal.classList.add('active');
+  showModal(modal);
 }
 
 async function loadReflectionQueue() {
@@ -1212,7 +1213,7 @@ function renderStats(stats, toolPerformance) {
     const modal = document.getElementById('anomalyModal');
     const body = document.getElementById('anomalyModalBody');
     body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    modal.classList.add('active');
+    showModal(modal);
     
     try {
       const result = await api.runAnomalyDetection();
@@ -1249,7 +1250,7 @@ async function viewExperience(id) {
   const body = document.getElementById('experienceModalBody');
   
   body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  modal.classList.add('active');
+  showModal(modal);
   
   try {
     const result = await api.getExperience(id);
@@ -1413,7 +1414,7 @@ async function viewInsight(id) {
   const modal = document.getElementById('insightModal');
   const body = document.getElementById('insightModalBody');
   
-  modal.classList.add('active');
+  showModal(modal);
   
   try {
     const result = await api.getInsight(id);
@@ -1546,7 +1547,7 @@ async function runHealthCheck() {
   const body = document.getElementById('healthModalBody');
   
   body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  modal.classList.add('active');
+  showModal(modal);
   
   try {
     const result = await api.checkHealth();
@@ -1851,6 +1852,8 @@ function updateInsightCounts() {
 // ============================================================================
 
 function toggleSidebar() {
+  if (hasActiveModal()) return;
+
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
   
@@ -1866,12 +1869,29 @@ function closeSidebar() {
   overlay.classList.remove('active');
 }
 
+function hasActiveModal() {
+  return !!document.querySelector('.modal-overlay.active');
+}
+
+function setModalOpenState(isOpen) {
+  document.getElementById('app')?.classList.toggle('modal-open', isOpen);
+}
+
+function showModal(modal) {
+  if (!modal) return;
+  closeSidebar();
+  modal.classList.add('active');
+  setModalOpenState(true);
+}
+
 // ============================================================================
 // Utilities
 // ============================================================================
 
 function closeAllModals() {
   document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+  closeSidebar();
+  setModalOpenState(false);
   selectedExperienceId = null;
   selectedInsightId = null;
 }
@@ -1927,4 +1947,3 @@ function getMetaTypeLabel(type) {
   };
   return labels[type] || type;
 }
-

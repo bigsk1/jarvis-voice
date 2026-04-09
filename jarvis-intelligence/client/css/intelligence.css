@@ -27,6 +27,7 @@ body {
 
 /* App container */
 #app {
+  --desktop-sidebar-width: 280px;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -171,7 +172,7 @@ body {
 
 /* Sidebar - Filters/Actions */
 .sidebar {
-  width: 280px;
+  width: var(--desktop-sidebar-width);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-primary);
   display: flex;
@@ -841,10 +842,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-modal);
+  padding: var(--space-lg);
+  z-index: calc(var(--z-modal) + 10);
   opacity: 0;
   visibility: hidden;
   transition: all var(--transition-base);
+}
+
+@media (min-width: 731px) {
+  #app.has-desktop-sidebar .modal-overlay {
+    inset: 0 0 0 var(--desktop-sidebar-width);
+  }
+}
+
+#app.modal-open .hamburger-btn {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .modal-overlay.active {
@@ -1214,6 +1227,11 @@ textarea.form-input {
   .sidebar-overlay {
     display: block;
     pointer-events: none;
+  }
+
+  .modal-overlay {
+    inset: 0;
+    padding: var(--space-md);
   }
   
   .sidebar-overlay.active {

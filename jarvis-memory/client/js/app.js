@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Set up event listeners
   setupEventListeners();
+  updateSidebarLayout();
   
   // Load initial data
   await loadData();
@@ -804,6 +805,8 @@ function getVisibleScheduledTasks() {
 // =========================================================================
 
 function toggleSidebar() {
+  if (hasActiveModal()) return;
+
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
   
@@ -821,6 +824,21 @@ function closeSidebar() {
   sidebar.classList.remove('open');
   overlay.classList.remove('active');
   document.body.style.overflow = '';
+}
+
+function hasActiveModal() {
+  return !!document.querySelector('.modal-overlay.active');
+}
+
+function setModalOpenState(isOpen) {
+  document.getElementById('app')?.classList.toggle('modal-open', isOpen);
+}
+
+function showModal(modal) {
+  if (!modal) return;
+  closeSidebar();
+  modal.classList.add('active');
+  setModalOpenState(true);
 }
 
 // =========================================================================
@@ -847,7 +865,7 @@ function switchTab(tab) {
   });
   
   // Show/hide sidebar for memories tab
-  document.querySelector('.sidebar').style.display = tab === 'memories' ? 'flex' : 'none';
+  updateSidebarLayout();
   
   // Update toolbar buttons
   document.getElementById('addMemoryBtn').style.display = tab === 'memories' ? 'flex' : 'none';
@@ -859,6 +877,18 @@ function switchTab(tab) {
   
   // Load data for tab
   loadData();
+}
+
+function updateSidebarLayout() {
+  const app = document.getElementById('app');
+  const sidebar = document.querySelector('.sidebar');
+  const sidebarVisible = currentTab === 'memories';
+
+  if (sidebar) {
+    sidebar.style.display = sidebarVisible ? 'flex' : 'none';
+  }
+
+  app?.classList.toggle('has-desktop-sidebar', sidebarVisible);
 }
 
 // =========================================================================
@@ -998,7 +1028,7 @@ function openMemoryModal(memory = null) {
   document.getElementById('memoryValue').value = memory?.value || '';
   document.getElementById('memoryImportance').value = memory?.importance || 5;
   
-  modal.classList.add('active');
+  showModal(modal);
 }
 
 async function handleMemorySubmit(e) {
@@ -1096,7 +1126,7 @@ async function viewMemory(id) {
       </div>
     `;
     
-    modal.classList.add('active');
+    showModal(modal);
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
@@ -1154,7 +1184,7 @@ function openIntelModal(file = null) {
   document.getElementById('intelFilename').disabled = !!file;
   document.getElementById('intelContent').value = file?.content || '';
   
-  modal.classList.add('active');
+  showModal(modal);
 }
 
 function openReminderModal(reminder = null) {
@@ -1179,7 +1209,7 @@ function openReminderModal(reminder = null) {
   if (!reminder) {
     syncReminderRecurrenceDefaultsFromTrigger();
   }
-  modal.classList.add('active');
+  showModal(modal);
 }
 
 function handleReminderRecurrenceChange() {
@@ -1294,7 +1324,7 @@ async function viewReminder(id) {
       </div>
     `;
 
-    modal.classList.add('active');
+    showModal(modal);
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
@@ -1413,7 +1443,7 @@ async function viewAlert(id) {
       </div>
     `;
 
-    modal.classList.add('active');
+    showModal(modal);
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
@@ -1486,7 +1516,7 @@ function openScheduledTaskModal(task = null) {
   document.getElementById('scheduledTaskWebhookOnFailure').checked = !!notifications.webhook_on_failure;
 
   handleScheduledTaskTypeChange();
-  modal.classList.add('active');
+  showModal(modal);
 }
 
 function handleScheduledTaskTypeChange() {
@@ -1649,7 +1679,7 @@ async function viewScheduledTask(id) {
       </div>
     `;
 
-    modal.classList.add('active');
+    showModal(modal);
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
@@ -1926,7 +1956,7 @@ async function viewIntelFile(filename) {
       </div>
     `;
     
-    modal.classList.add('active');
+    showModal(modal);
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
@@ -2015,7 +2045,7 @@ function viewConversation(index) {
     ` : ''}
   `;
   
-  modal.classList.add('active');
+  showModal(modal);
 }
 
 // =========================================================================
@@ -2024,6 +2054,8 @@ function viewConversation(index) {
 
 function closeAllModals() {
   document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+  closeSidebar();
+  setModalOpenState(false);
   editingMemory = null;
   editingFile = null;
   editingReminder = null;

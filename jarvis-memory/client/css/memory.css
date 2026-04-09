@@ -27,6 +27,7 @@ body {
 
 /* App container */
 #app {
+  --desktop-sidebar-width: 280px;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -174,7 +175,7 @@ body {
 
 /* Sidebar */
 .sidebar {
-  width: 280px;
+  width: var(--desktop-sidebar-width);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-primary);
   display: flex;
@@ -722,10 +723,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-modal);
+  padding: var(--space-lg);
+  z-index: calc(var(--z-modal) + 10);
   opacity: 0;
   visibility: hidden;
   transition: all var(--transition-base);
+}
+
+@media (min-width: 731px) {
+  #app.has-desktop-sidebar .modal-overlay {
+    inset: 0 0 0 var(--desktop-sidebar-width);
+  }
+}
+
+#app.modal-open .hamburger-btn {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .modal-overlay.active {
@@ -948,12 +961,15 @@ textarea.form-input {
 .run-history-list {
   display: grid;
   gap: var(--space-sm);
+  min-width: 0;
 }
 
 .scheduled-inline-runs {
   margin-top: var(--space-md);
   padding-top: var(--space-md);
   border-top: 1px solid var(--border-primary);
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .scheduled-inline-runs-title {
@@ -973,26 +989,48 @@ textarea.form-input {
 .run-history-head {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: var(--space-sm);
   margin-bottom: var(--space-xs);
   color: var(--text-primary);
+  min-width: 0;
 }
 
 .run-history-body {
   color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: 1.5;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.run-history-body > div {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .run-history-meta {
   margin-top: var(--space-xs);
   color: var(--text-muted);
   font-size: var(--text-xs);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .run-history-error {
   margin-top: var(--space-xs);
   color: var(--error);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .empty-inline {
@@ -1187,6 +1225,11 @@ textarea.form-input {
     display: block;
     pointer-events: none;
   }
+
+  .modal-overlay {
+    inset: 0;
+    padding: var(--space-md);
+  }
   
   .sidebar-overlay.active {
     pointer-events: auto;
@@ -1226,6 +1269,41 @@ textarea.form-input {
   /* Memory list padding */
   .memory-list {
     padding: var(--space-md);
+    overflow-x: hidden;
+  }
+
+  #scheduledTaskList {
+    overscroll-behavior-x: contain;
+  }
+
+  .scheduled-task-card .memory-card-header,
+  .scheduled-task-card .memory-card-footer,
+  .scheduled-task-card .run-history-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .scheduled-task-card .memory-card-header > div:first-child,
+  .scheduled-task-card .memory-card-footer > div:first-child,
+  .scheduled-task-card .run-history-head > span,
+  .scheduled-task-subtitle,
+  .scheduled-next-run-value,
+  .scheduled-next-run-relative,
+  .scheduled-last-preview-text,
+  .run-history-meta,
+  .run-history-error {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .scheduled-task-card .scheduled-task-badges,
+  .scheduled-task-card .memory-meta,
+  .scheduled-task-card .memory-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   
   /* Stats grid adjustments */
