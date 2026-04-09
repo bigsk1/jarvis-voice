@@ -1377,8 +1377,12 @@ cp data/jarvis_memory.db data/jarvis_memory.db.backup
 cp data/jarvis_memory_local.db data/jarvis_memory_local.db.backup
 
 # Manual sync between cloud and local databases
-./bin/sync-memory-db.py cloud  # Sync from local → cloud
-./bin/sync-memory-db.py local  # Sync from cloud → local
+./bin/sync-memory-db.py --from local --to cloud  # Sync local → cloud
+./bin/sync-memory-db.py --from cloud --to local  # Sync cloud → local
+
+# Prompt evolution sync after using cloud/local prompt tuning
+./bin/sync-evolution-db.py local                # Sync cloud prompt versions → local
+./bin/sync-evolution-db.py local --update-files # Also refresh local tool description files
 
 # Restore from backup (after compare-models.sh tests)
 mv data/jarvis_memory_local.db.backup-compare-models data/jarvis_memory_local.db

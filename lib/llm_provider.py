@@ -896,13 +896,13 @@ class OllamaProvider(LLMProvider):
     def _get_context_options(self) -> dict[str, Any]:
         """Get context window options for the current model."""
         options = {}
-        # Extended context for models that support it
-        # Configurable via OLLAMA_CONTEXT_WINDOW in local.env
-        # Models known to support large context: qwen3, ministral, mistral-nemo
-        model_lower = self.model.lower()
-        if any(m in model_lower for m in ['qwen3', 'ministral', 'mistral-nemo', 'llama3']):
-            from config_loader import get_int
-            context_window = get_int('OLLAMA_CONTEXT_WINDOW', 32000)
+        # For Ollama-backed requests, always honor the configured context window.
+        # Whether the model/runtime can fully use that budget is up to Ollama/model support,
+        # but the app should consistently request the configured window instead of using a
+        # hardcoded allowlist of model names.
+        from config_loader import get_int
+        context_window = get_int('OLLAMA_CONTEXT_WINDOW', 32000)
+        if context_window and context_window > 0:
             options["num_ctx"] = context_window
         return options
     
@@ -930,6 +930,37 @@ class OllamaProvider(LLMProvider):
                 }
             })
         return ollama_tools
+
+    def _build_tool_contract_prompt(self, tools: list[dict[str, Any]]) -> str:
+        """Build a strict tool-calling contract for local models."""
+        if not tools:
+            return ""
+
+        tool_lines = []
+        for tool in tools:
+            name = tool.get("name", "unknown")
+            schema = tool.get("input_schema") or tool.get("parameters") or {}
+            properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+            required = set(schema.get("required", [])) if isinstance(schema, dict) else set()
+            if properties:
+                params = ", ".join(
+                    f"{param}{'*' if param in required else ''}"
+                    for param in properties.keys()
+                )
+            else:
+                params = "no parameters"
+            tool_lines.append(f"- {name}: {params}")
+
+        return (
+            "TOOL CALL CONTRACT:\n"
+            "- Use ONLY the exact tool/function names listed below.\n"
+            "- Use ONLY argument keys defined for the selected tool.\n"
+            "- Never invent aliases, wrappers, or API-style names such as get_*, *_api, or *_tool.\n"
+            "- If none of these tools exactly fit, do not call a tool.\n"
+            "- Required parameters are marked with *.\n\n"
+            "Exact tool names and parameters:\n"
+            f"{chr(10).join(tool_lines)}"
+        )
     
     def chat_with_tools(
         self,
@@ -960,8 +991,14 @@ class OllamaProvider(LLMProvider):
         
         # Build full messages with system prompt
         full_messages = []
-        if system_prompt:
-            full_messages.append({"role": "system", "content": system_prompt})
+        effective_system_prompt = system_prompt or ""
+        tool_contract_prompt = self._build_tool_contract_prompt(tools)
+        if tool_contract_prompt:
+            effective_system_prompt = (
+                f"{effective_system_prompt}\n\n{tool_contract_prompt}".strip()
+            )
+        if effective_system_prompt:
+            full_messages.append({"role": "system", "content": effective_system_prompt})
         full_messages.extend(messages)
         
         try:
@@ -969,7 +1006,8 @@ class OllamaProvider(LLMProvider):
             request_data = {
                 "model": self.model,
                 "messages": full_messages,
-                "stream": False
+                "stream": False,
+                "think": bool(enable_thinking),
             }
             
             # Add tools if provided (native tool calling)
@@ -983,7 +1021,13 @@ class OllamaProvider(LLMProvider):
             
             # Debug logging
             if os.environ.get('JARVIS_DEBUG'):
-                print(f"DEBUG: Ollama request - model={self.model}, tools={len(ollama_tools)}, messages={len(full_messages)}", file=sys.stderr)
+                debug_options = request_data.get("options", {})
+                print(
+                    f"DEBUG: Ollama request - model={self.model}, tools={len(ollama_tools)}, "
+                    f"messages={len(full_messages)}, think={request_data.get('think')}, "
+                    f"num_ctx={debug_options.get('num_ctx')}",
+                    file=sys.stderr
+                )
             
             response = requests.post(
                 f"{self.base_url}/api/chat",
@@ -1090,7 +1134,10 @@ class OllamaProvider(LLMProvider):
         tools_text = self._format_tools_for_prompt(tools)
         
         # Create enhanced system prompt with tool instructions
+        tool_contract_prompt = self._build_tool_contract_prompt(tools)
         enhanced_system = f"""{system_prompt or 'You are a helpful AI assistant.'}
+
+{tool_contract_prompt}
 
 You have access to the following tools. When the user's request matches a tool's capability, respond with a JSON tool call in this EXACT format:
 {{"tool": "tool_name", "arguments": {{"param": "value"}}}}
@@ -1106,6 +1153,9 @@ CRITICAL RULES:
 - NO explanatory text before or after the JSON
 - NO newlines or extra whitespace
 - JUST the JSON: {{"tool": "name", "arguments": {{}}}}
+- The "tool" value must exactly match one of the listed tool names.
+- Argument keys must exactly match that tool's schema.
+- Do not invent aliases like "get_crypto_price" or "crypto_api".
 - If not using a tool, respond in plain conversational text without any JSON.
 """
         
@@ -1117,7 +1167,8 @@ CRITICAL RULES:
             request_data = {
                 "model": self.model,
                 "messages": full_messages,
-                "stream": False
+                "stream": False,
+                "think": bool(enable_thinking),
             }
             
             # Set context window options
@@ -1126,7 +1177,12 @@ CRITICAL RULES:
                 request_data["options"] = options
             
             if os.environ.get('JARVIS_DEBUG'):
-                print(f"DEBUG: Ollama structured prompting fallback - model={self.model}", file=sys.stderr)
+                debug_options = request_data.get("options", {})
+                print(
+                    f"DEBUG: Ollama structured prompting fallback - model={self.model}, "
+                    f"think={request_data.get('think')}, num_ctx={debug_options.get('num_ctx')}",
+                    file=sys.stderr
+                )
             
             response = requests.post(
                 f"{self.base_url}/api/chat",

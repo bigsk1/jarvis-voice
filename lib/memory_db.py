@@ -89,6 +89,9 @@ class MemoryDB:
                 metadata TEXT
             )
         """)
+
+        # Self-heal older DBs created before newer conversation metadata support.
+        self._ensure_column(cursor, "conversations", "metadata", "TEXT")
         
         # Note: tool_patterns and preferences tables removed (not used)
         # Memory now uses metadata field in knowledge_base for flexible data
@@ -146,6 +149,15 @@ class MemoryDB:
         """)
         
         self.conn.commit()
+
+    def _ensure_column(self, cursor: sqlite3.Cursor, table: str, column: str, definition: str) -> None:
+        """Add a missing column to an existing SQLite table."""
+        columns = {
+            row["name"] if isinstance(row, sqlite3.Row) else row[1]
+            for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     
     # ========== Knowledge Base Operations ==========
     

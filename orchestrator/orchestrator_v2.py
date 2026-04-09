@@ -295,6 +295,27 @@ class Orchestrator:
             return str(v).strip().lower() if v is not None else None
         return None
 
+    def _format_available_tool_contract(self, tool_names: list[str]) -> str:
+        """Compact exact tool-name/schema hint for retry prompts."""
+        lines: list[str] = []
+        for tool_name in tool_names:
+            tool = self.registry.get_tool(tool_name)
+            if not tool:
+                lines.append(f"- {tool_name}")
+                continue
+            schema = tool.parameters or {}
+            properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+            required = set(schema.get("required", [])) if isinstance(schema, dict) else set()
+            if properties:
+                params = ", ".join(
+                    f"{name}{'*' if name in required else ''}"
+                    for name in properties.keys()
+                )
+            else:
+                params = "no parameters"
+            lines.append(f"- {tool_name}: {params}")
+        return "\n".join(lines)
+
     def _query_explicitly_requests_refresh(self, transcript: str) -> bool:
         """Detect explicit user intent to refresh/recheck live data."""
         text = (transcript or "").lower()
@@ -890,7 +911,22 @@ Mode: {self.mode}
                         
                         # Build error context for retry
                         error_context = f"Tool '{tool_name}' failed with: {error}. Arguments used: {json.dumps(arguments)}"
-                        
+                        error_lower = str(error).lower()
+                        if (
+                            available_tools
+                            and (
+                                error_lower == "tool not found"
+                                or "required" in error_lower
+                                or "missing" in error_lower
+                                or "invalid" in error_lower
+                            )
+                        ):
+                            error_context += (
+                                "\n\nUse ONLY one of these exact tool names and exact argument keys on retry:\n"
+                                f"{self._format_available_tool_contract(available_tools)}\n"
+                                "Do not invent aliases or wrapper names."
+                            )
+
                         # Recursive retry with error context
                         return self.process(transcript, retry_count + 1, error_context)
                     

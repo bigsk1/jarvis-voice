@@ -10,6 +10,8 @@ This allows you to:
 Usage:
     ./bin/sync-evolution-db.py cloud   # Sync from local → cloud
     ./bin/sync-evolution-db.py local   # Sync from cloud → local
+    ./bin/sync-evolution-db.py local --dry-run
+    ./bin/sync-evolution-db.py local --update-files
 """
 
 import os
@@ -29,6 +31,75 @@ def get_db_path(mode: str) -> str:
     return os.path.join(base_path, 'jarvis_memory.db')
 
 
+def _table_exists(cursor, table_name: str) -> bool:
+    """Return True when a SQLite table exists."""
+    row = cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def ensure_prompt_evolution_schema(cursor):
+    """Create prompt evolution tables if they do not exist."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            component TEXT NOT NULL,
+            component_type TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            parent_version_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT DEFAULT 'human',
+            times_used INTEGER DEFAULT 0,
+            total_rating_sum REAL DEFAULT 0,
+            is_active BOOLEAN DEFAULT FALSE,
+            is_archived BOOLEAN DEFAULT FALSE,
+            trigger_feedback_ids TEXT,
+            change_summary TEXT,
+            FOREIGN KEY (parent_version_id) REFERENCES prompt_versions(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_prompt_active
+        ON prompt_versions(component, is_active)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_prompt_component
+        ON prompt_versions(component, version DESC)
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_evolution_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            action TEXT NOT NULL,
+            component TEXT NOT NULL,
+            from_version_id INTEGER,
+            to_version_id INTEGER,
+            trigger_type TEXT,
+            trigger_details TEXT,
+            status TEXT,
+            notes TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_backups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            component TEXT NOT NULL,
+            version_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            reason TEXT,
+            FOREIGN KEY (version_id) REFERENCES prompt_versions(id)
+        )
+    """)
+
+
 def sync_prompt_versions(source_db: str, target_db: str, dry_run: bool = False, force: bool = False):
     """Sync prompt_versions table from source to target."""
     source_conn = sqlite3.connect(source_db)
@@ -38,6 +109,16 @@ def sync_prompt_versions(source_db: str, target_db: str, dry_run: bool = False, 
     
     source_cursor = source_conn.cursor()
     target_cursor = target_conn.cursor()
+
+    ensure_prompt_evolution_schema(target_cursor)
+
+    if not _table_exists(source_cursor, "prompt_versions"):
+        if not dry_run:
+            target_conn.commit()
+        source_conn.close()
+        target_conn.close()
+        print("⚠️  Source database has no prompt_versions table yet. Nothing to sync.")
+        return 0, 0, 0
     
     # Get all components and their active versions from source
     source_cursor.execute("""
@@ -140,6 +221,11 @@ def update_tool_files_from_db(mode: str):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+
+    if not _table_exists(cursor, "prompt_versions"):
+        conn.close()
+        print("  ⚠️  No prompt_versions table found, skipping tool file updates")
+        return 0
     
     skills_dir = os.path.join(os.path.dirname(__file__), '..', 'skills')
     
@@ -233,4 +319,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -1,0 +1,10 @@
+enabled: true
+description: "Gemma 4 strict tool name and schema adherence"
+applies_to_modes:
+  - local
+
+tool_calling_prepend: |
+  When calling a tool, copy the exact tool name from the available tools list and use only that tool's exact parameter keys. Do not invent wrapper names, helper names, API names, or alternate argument labels.
+
+routing_append: |
+  For tool use, prefer exact schema adherence over guesswork. If the exact tool name or exact parameter keys are unclear, avoid the tool call instead of inventing a near match.

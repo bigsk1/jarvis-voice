@@ -24,6 +24,8 @@ Synchronizes **memories** (knowledge_base) and **conversations** between cloud a
 - ✅ Knowledge base entries (memories from `remember` and `ingest_intel`)
 - ✅ Conversations (recent 100 exchanges)
 - ✅ Alerts (proactive system notifications)
+- ✅ Reminders
+- ✅ Scheduled tasks and recent scheduled-task runs
 - ❌ Tool definitions (synced separately by `sync_tools.py`)
 
 ### Key Feature: Embedding Regeneration
@@ -83,6 +85,19 @@ cursor.execute("INSERT OR REPLACE INTO knowledge_base (..., embedding) VALUES (.
    # New local DB, populate from cloud
    ./bin/sync-memory-db.py --from cloud --to local
    ```
+
+### Fresh-Install Behavior
+
+`sync-memory-db.py` now doubles as a repair step for newly recreated local databases:
+- Creates missing target tables for `conversations`, `alerts`, `reminders`, `scheduled_tasks`, and `scheduled_task_runs`
+- Backfills missing `conversations.metadata` on target DBs created from older schemas
+- Reads conversation metadata from the source DB when present, or safely substitutes `NULL` for older source databases
+
+This means a clean local rebuild can usually be repopulated with:
+
+```bash
+./bin/sync-memory-db.py --from cloud --to local
+```
 
 ---
 
@@ -538,6 +553,37 @@ query_embedding = get_embedding(query)  # 1536-dim (cloud) or 768-dim (local)
 
 # Reset (delete) intelligence DB
 ./bin/sync-intelligence-db.py --reset local
+```
+
+---
+
+## 5. Prompt Evolution Sync (`sync-evolution-db.py`)
+
+### Purpose
+Synchronizes active `prompt_versions` between cloud and local memory databases so prompt-evolution improvements can move between environments.
+
+### What it Syncs
+- ✅ Active prompt versions from `prompt_versions`
+- ✅ Optional tool-description file refresh via `--update-files`
+- ❌ Does not regenerate tool embeddings by itself; run `sync_tools.py` after updating tool files when needed
+
+### Fresh-Install Behavior
+
+`sync-evolution-db.py` now supports newly recreated target databases:
+- Creates `prompt_versions`, `prompt_evolution_log`, and `prompt_backups` on the target if missing
+- Exits cleanly with a warning if the source DB has not been initialized with `prompt_versions` yet
+
+### When to Run
+
+```bash
+# Sync from cloud → local
+./bin/sync-evolution-db.py local
+
+# Preview before applying changes
+./bin/sync-evolution-db.py local --dry-run
+
+# Sync and refresh local tool description files
+./bin/sync-evolution-db.py local --update-files
 ```
 
 ### Use Cases

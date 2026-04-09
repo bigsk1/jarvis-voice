@@ -2,6 +2,18 @@
 """
 Sync memory databases between cloud and local modes.
 Each mode has its own database with mode-appropriate embeddings.
+
+Usage:
+    ./bin/sync-memory-db.py --from cloud --to local
+        Sync cloud memory into the local DB.
+        This is the command to run after a fresh local DB rebuild or sync.
+        It will also backfill missing columns like conversations.metadata.
+
+    ./bin/sync-memory-db.py --from local --to cloud
+        Sync local memory into the cloud DB.
+
+    ./bin/sync-memory-db.py --from cloud --to local --quiet
+        Run the same repair/sync path with minimal output.
 """
 
 import sys
@@ -16,6 +28,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import load_config
 from embeddings import get_embedding
+
+
+def _table_columns(cursor, table_name):
+    """Return column names for a SQLite table."""
+    return {row[1] for row in cursor.execute(f"PRAGMA table_info({table_name})").fetchall()}
+
+
+def _ensure_column(cursor, table_name, column_name, definition):
+    """Add a missing column to an existing SQLite table."""
+    if column_name not in _table_columns(cursor, table_name):
+        cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
 def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
     """
@@ -95,9 +118,11 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
             jarvis_response TEXT,
             tools_used TEXT,
             session_id TEXT,
-            success BOOLEAN DEFAULT 1
+            success BOOLEAN DEFAULT 1,
+            metadata TEXT
         )
     """)
+    _ensure_column(target_cursor, "conversations", "metadata", "TEXT")
     
     # Get all memories from source
     memories = source_cursor.execute("""
@@ -182,9 +207,13 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
             errors += 1
     
     # Also sync conversations (no embeddings needed)
-    conversations = source_cursor.execute("""
+    source_conversation_columns = _table_columns(source_cursor, "conversations")
+    conversation_metadata_select = (
+        "metadata" if "metadata" in source_conversation_columns else "NULL AS metadata"
+    )
+    conversations = source_cursor.execute(f"""
         SELECT timestamp, user_query, jarvis_response, tools_used, 
-               session_id, success
+               session_id, success, {conversation_metadata_select}
         FROM conversations
         ORDER BY timestamp DESC
         LIMIT 100
@@ -205,16 +234,41 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
             if not existing:
                 target_cursor.execute("""
                     INSERT INTO conversations 
-                    (timestamp, user_query, jarvis_response, tools_used, session_id, success)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (timestamp, user_query, jarvis_response, tools_used, session_id, success, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (conv['timestamp'], conv['user_query'], conv['jarvis_response'],
-                      conv['tools_used'], conv['session_id'], conv['success']))
+                      conv['tools_used'], conv['session_id'], conv['success'], conv['metadata']))
         except Exception as e:
             if verbose:
                 print(f"⚠️  Skipping conversation: {e}")
     
     # Sync alerts (if table exists)
     try:
+        target_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                severity TEXT CHECK(severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
+                source TEXT NOT NULL,
+                status TEXT CHECK(status IN ('pending', 'acknowledged', 'auto_resolved', 'canceled')) DEFAULT 'pending',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT,
+                acknowledged_at TEXT,
+                resolved_at TEXT,
+                spoken BOOLEAN DEFAULT 0,
+                spoken_at TEXT,
+                follow_up_count INTEGER DEFAULT 0,
+                last_follow_up TEXT,
+                auto_resolve_url TEXT,
+                auto_resolve_check_interval INTEGER DEFAULT 300,
+                last_check_at TEXT,
+                metadata TEXT,
+                related_intel_file TEXT,
+                synced_to_other_db BOOLEAN DEFAULT 0,
+                sync_timestamp TEXT
+            )
+        """)
         alerts = source_cursor.execute("SELECT * FROM alerts ORDER BY created_at DESC LIMIT 100").fetchall()
         if verbose and len(alerts) > 0:
             print()
@@ -252,6 +306,26 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
     
     # Sync reminders (if table exists)
     try:
+        target_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                trigger_time TEXT NOT NULL,
+                status TEXT CHECK(status IN ('scheduled', 'triggered', 'acknowledged', 'canceled', 'expired')) DEFAULT 'scheduled',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                triggered_at TEXT,
+                acknowledged_at TEXT,
+                spoken BOOLEAN DEFAULT 0,
+                spoken_at TEXT,
+                related_intel_file TEXT,
+                callback_url TEXT,
+                recurrence_rule TEXT,
+                metadata TEXT,
+                synced_to_other_db BOOLEAN DEFAULT 0,
+                sync_timestamp TEXT
+            )
+        """)
         reminders = source_cursor.execute("SELECT * FROM reminders ORDER BY trigger_time ASC LIMIT 100").fetchall()
         if verbose and len(reminders) > 0:
             print()

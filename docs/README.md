@@ -310,6 +310,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-09:**
+- ✅ **Ollama local-model routing hardening**
+  - Ollama tool-routing requests now apply `OLLAMA_CONTEXT_WINDOW` to any Ollama model, including newer local models like `gemma4`
+  - Native Ollama tool calls now send explicit exact-schema tool-contract guidance plus stricter retry hints after invalid tool-name or arg-shape failures
+  - Tool-routing requests now explicitly disable Ollama thinking unless thinking is intentionally enabled, which helps preserve context for large Tool RAG turns
+- ✅ **Fresh-install sync repair path**
+  - `sync-memory-db.py` now documents the current `--from/--to` usage at the top of the script and repairs fresh local targets by creating missing `conversations.metadata`, `alerts`, and `reminders` schema before syncing
+  - Conversation sync now tolerates older source DBs that do not yet have a `metadata` column
+  - `sync-evolution-db.py` now creates prompt-evolution tables on the target during sync and exits cleanly when the source DB has not been initialized with `prompt_versions` yet
+
 **2026-04-07:**
 - ✅ **Amazon product follow-up + Canvas improvements**
   - `serpapi_search` now supports stronger Amazon shopping flows with top-level sort and price fields, better Amazon sort mapping, and improved focused-product handling
