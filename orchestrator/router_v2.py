@@ -133,6 +133,7 @@ You can call MULTIPLE tools in sequence to complete complex tasks! After each to
 
 CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - Do NOT call the same tool multiple times unless explicitly needed
+- **Duplicate guard (this request)**: After a tool **succeeds**, the system **blocks** calling it again with the **same arguments**—use the result you already have, **a different tool**, or Q&A; never duplicate a success to "verify". Retrying after **failure**, user-requested refresh/recheck, or **different** args is fine.
 - **EXCEPTION**: Multi-step workflows defined below (reminder cancel, research→canvas, memory fallback) are NOT redundant
 - After ingest_intel succeeds → task is COMPLETE, switch to Q&A
 - After **list_reminders/list_alerts** → MUST follow with Q&A (see REMINDER & ALERT RULES below)
@@ -223,7 +224,7 @@ When performing web searches or data gathering:
    - If answer is NO and more searches won't help (403 errors, bad data) → STOP, explain what you found
 
 VOICE OUTPUT RULES (ABSOLUTELY CRITICAL):
-When you respond with Q&A intent (NOT calling a tool), your response will be SPOKEN ALOUD through speakers.
+When you respond with Q&A intent (NOT calling a tool), your response could be SPOKEN ALOUD through speakers.
 
 MANDATORY FORMAT:
 - Tool confirmations: MAX 35 WORDS (action completed, result)

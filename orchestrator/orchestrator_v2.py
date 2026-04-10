@@ -2280,6 +2280,7 @@ Your BEST EFFORT response:"""
         context_parts.append("FRESHNESS RULES (highest priority):")
         context_parts.append("- Prefer the most recent authoritative_live tool result for live-data queries.")
         context_parts.append("- If the latest live result is still within ttl/expires_in, DO NOT re-call the same tool unless user explicitly asked to refresh/recheck/update.")
+        context_parts.append("- Do not re-issue the same tool with identical arguments after it already succeeded above (duplicate guard blocks it); use prior results, another tool, or Q&A.")
         context_parts.append("- Treat stored memory/intel for price-like data as historical context, not live truth.")
         context_parts.append("- For crypto/stock, ignore stale memories older than 60 minutes when a newer live tool result exists.")
         
