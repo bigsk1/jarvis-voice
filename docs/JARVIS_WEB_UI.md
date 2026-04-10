@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.10)  
-> **Last Updated**: April 3, 2026
+> **Status**: MVP Complete (v2.11)  
+> **Last Updated**: April 10, 2026
 
 ---
 
@@ -53,6 +53,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Provider dropdowns | ✅ | xAI/Anthropic/OpenAI/Ollama with model options |
 | Error handling | ✅ | Toast notifications, error messages |
 | Status updates | ✅ | Stream to browser, not local speaker |
+| Duplicate-call recovery status | ✅ | Blocked duplicate tool attempts surface as red status text, not fake failed tool cards |
 
 ### Phase 3: Voice - COMPLETE ✅
 
@@ -162,6 +163,22 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Provider-split auto evaluator** | ✅ | Auto eval can run on a different provider/model than the main chat response |
 | **Eval provider/model overrides** | ✅ | AI Config exposes per-mode Completion Guard eval provider/model controls |
 | **Ollama cloud judge support** | ✅ | Cloud Ollama eval uses cloud-only model lists and defensive JSON parsing/budgeting for auto eval |
+
+### Tool Cards, Status, and Reload Behavior
+
+- `tool:start`, `tool:complete`, and `tool:error` drive the live tool cards shown during a request.
+- Real tool failures show a red tool card because the tool actually executed and returned an error.
+- Duplicate-guard blocks are different: the repeated tool call is stopped before execution, so the UI shows a red status/progress message instead of a failed tool card.
+- Routing status text can include turn-aware messages like `Turn 3: using serpapi_search...`, which follow the orchestrator's `MAX_TOOL_TURNS` loop.
+- Tool cards rendered after a page reload are rebuilt from the saved conversation message, not from the original live WebSocket event stream.
+- Because of that, historical reload is best at restoring successful tool outcomes. Live-only per-call events such as intermediate failures or duplicate-guard status lines are not guaranteed to reappear unless they were explicitly persisted in the saved message data.
+
+### Large Tool Result Context
+
+- The orchestrator may truncate large prior tool payloads before sending them back to the LLM on later turns.
+- Jarvis now marks these previews with explicit metadata such as `result_truncated`, `result_chars_shown`, and `result_chars_total`.
+- `ok=true` still means the tool succeeded even if the LLM only sees a preview of the payload in later turns.
+- This helps reduce redundant rereads of large transcript- or stash-based results during multi-turn recovery.
 
 ---
 
@@ -1496,4 +1513,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.7: Completion Guard auto mode - background evaluator, threshold override, persisted accept state, and intelligence-layer outcome tracking - March 30, 2026*  
 *v2.8: Completion Guard learning model - repair cancel support, structured learning on the original experience, and corrected-path reflection context - March 30, 2026*  
 *v2.9: Completion Guard tighten-only path, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback - April 2, 2026*  
-*v2.10: Completion Guard eval provider/model overrides, cloud/local Ollama model separation in AI Config, and Ollama cloud auto-eval JSON compatibility fixes - April 3, 2026*
+*v2.10: Completion Guard eval provider/model overrides, cloud/local Ollama model separation in AI Config, and Ollama cloud auto-eval JSON compatibility fixes - April 3, 2026*  
+*v2.11: Duplicate-tool recovery status, explicit large-result truncation metadata, and retry-state-preserving tool-card behavior - April 10, 2026*

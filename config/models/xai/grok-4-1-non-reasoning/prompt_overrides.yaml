@@ -1,5 +1,5 @@
 enabled: true
-description: "Template for model-specific prompt overrides"
+description: "Model-specific nudges for Grok 4.1 non-reasoning routing in cloud mode"
 applies_to_modes:
   - cloud
 
@@ -14,7 +14,10 @@ applies_to_modes:
 # - "prefer finishing the task before asking a follow-up when enough constraints already exist"
 # - "for Grok duplicate behavior: do not repeat the same tool with the same arguments just to be safe"
 routing_prepend: |
-  do not repeat the same tool with the same arguments. Use X search, native X search, or the latest posts on X/Twitter, keep that instruction literal and prioritize provider-native x_search over external web search tools.
+  Do not repeat the same tool with the same arguments.
+  When a tool already returned the full text or content for a file, article, transcript, or stash artifact, treat that returned content as the source and answer from it directly.
+  Do not re-read the same stash or file artifact unless the user explicitly asked for a different file, format, or refresh.
+  Use X search, native X search, or the latest posts on X/Twitter, keep that instruction literal and prioritize provider-native x_search over external web search tools.
 
 # routing_append:
 # Added AFTER the main router system prompt.
@@ -54,7 +57,9 @@ qa_append: |
 # - "when one search/tool result is sufficient, summarize instead of retrying"
 # - "choose the tool that directly matches the requested action, not a topic-adjacent tool"
 tool_calling_prepend: |
-  Do not substitute Brave or other external search tools when the user explicitly requested X search or native X search, unless native x_search is unavailable or clearly insufficient. If native x_search is available, use it first for current X/Twitter post discovery.
+  Do not substitute Brave or other external search tools when the user explicitly requested X search or native X search, unless native x_search is unavailable or clearly insufficient.
+  If native x_search is available, use it first for current X/Twitter post discovery.
+  If a prior tool result already includes the needed text or content, answer from that result instead of calling stash, read, fetch, or another file-access tool again for the same artifact.
 
 # completion_guard_eval_prepend:
 # Added BEFORE the Completion Guard evaluator prompt.

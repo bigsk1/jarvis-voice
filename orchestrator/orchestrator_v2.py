@@ -487,7 +487,8 @@ Mode: {self.mode}
     
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
                 conversation_history: list = None, excluded_tools: list = None,
-                tool_overrides: dict[str, dict] | None = None) -> dict[str, Any]:
+                tool_overrides: dict[str, dict] | None = None,
+                _retry_state: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
         Supports multi-turn tool execution until task is complete.
@@ -505,6 +506,9 @@ Mode: {self.mode}
                            enforce user-selected parameters (e.g. aspect_ratio, duration)
                            that the LLM may otherwise ignore.
                            Used by web app to block tools that don't make sense in web context.
+            _retry_state: Internal only. Carries in-flight orchestrator state across
+                         recursive tool-failure retries so UI events and accumulated
+                         results stay consistent within one user request.
             
         Returns:
             dict: Response for TTS
@@ -580,20 +584,24 @@ Mode: {self.mode}
         
         # Multi-turn context tracking
         max_turns = get_int('MAX_TOOL_TURNS', 15)  # Configurable, default 15 for deep research
-        conversation_context = []
-        tools_used = []
-        accumulated_data = {}
-        seen_successful_tool_calls = set()  # Track exact tool calls that already succeeded in this request
-        tool_call_counts = {}  # Track how many times each tool has been called (for progress events)
+        retry_state = _retry_state or {}
+        conversation_context = retry_state.get("conversation_context") or []
+        tools_used = retry_state.get("tools_used") or []
+        accumulated_data = retry_state.get("accumulated_data") or {}
+        seen_successful_tool_calls = retry_state.get("seen_successful_tool_calls") or set()
+        blocked_duplicate_calls = retry_state.get("blocked_duplicate_calls") or {}
+        tool_call_counts = retry_state.get("tool_call_counts") or {}
+        duplicate_recovery_attempts = retry_state.get("duplicate_recovery_attempts", 0)
+        max_duplicate_recovery_attempts = retry_state.get("max_duplicate_recovery_attempts", 2)
         
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
             enhanced_transcript = f"{enhanced_transcript}\n\n===PREVIOUS ATTEMPT FAILED WITH ERROR===: {error_context}\nPlease try again with corrected parameters or check logs if needed."
         
         # Track usage info across all turns
-        total_usage = {
-            "input_tokens": 0, 
-            "output_tokens": 0, 
+        total_usage = retry_state.get("total_usage") or {
+            "input_tokens": 0,
+            "output_tokens": 0,
             "cost_usd": 0.0,
             "cache_creation_tokens": 0,
             "cache_read_tokens": 0,
@@ -602,10 +610,10 @@ Mode: {self.mode}
         }
         
         # Track thinking from first turn (for display)
-        first_thinking = None
+        first_thinking = retry_state.get("first_thinking")
         
         # Track available tools from first routing (for intelligence reflection)
-        available_tools = []
+        available_tools = retry_state.get("available_tools") or []
         
         # Multi-turn loop
         for turn_num in range(max_turns):
@@ -624,12 +632,27 @@ Mode: {self.mode}
                 }
             
             # Build context for this turn
-            if turn_num == 0:
-                # First turn: use original transcript
+            if turn_num == 0 and not conversation_context:
+                # First turn in a fresh request: use original transcript
                 turn_input = enhanced_transcript
             else:
-                # Subsequent turns: provide context from previous tools
+                # Subsequent turns and retries: provide context from previous tools
                 turn_input = self._build_turn_context(enhanced_transcript, conversation_context)
+
+            if blocked_duplicate_calls:
+                recent_blocks = list(blocked_duplicate_calls.values())[-3:]
+                guard_lines = [
+                    "DUPLICATE TOOL GUARD:",
+                    "- One or more attempted tool calls were blocked in this request.",
+                    "- The exact blocked call signatures below are unavailable for the rest of this in-flight request.",
+                    "- You must either answer directly from the existing results or choose a clearly different tool call.",
+                    "- Repeating a blocked call again will end the task with the duplicate safeguard fallback.",
+                ]
+                for blocked in recent_blocks:
+                    guard_lines.append(
+                        f"- Blocked exact call: tool={blocked['tool']}, reason={blocked['reason']}, args={blocked['args_json']}"
+                    )
+                turn_input = f"{turn_input}\n\n" + "\n".join(guard_lines)
             
             # Inject turn limit awareness (helps LLM prioritize finishing critical tasks)
             turns_remaining = max_turns - turn_num
@@ -724,19 +747,71 @@ Mode: {self.mode}
                         reason = f"{tool_name} already has fresh result for same target"
                     if sys.stdout.isatty():
                         print(f"⚠️  Duplicate/capped tool call detected: {tool_name} ({reason})")
-                        print(f"   Forcing Q&A mode to synthesize results")
-                    
+                        print(f"   Blocking exact call and giving the model a recovery turn")
+
+                    blocked_duplicate_calls[current_call] = {
+                        "tool": tool_name,
+                        "reason": reason,
+                        "args_json": json.dumps(arguments, sort_keys=True),
+                    }
+                    duplicate_recovery_attempts += 1
+
+                    executed_at = datetime.now(self.timezone)
+                    conversation_context.append({
+                        "tool": "duplicate_guard",
+                        "arguments": {
+                            "blocked_tool": tool_name,
+                            "blocked_arguments": arguments,
+                            "reason": reason,
+                        },
+                        "result": {
+                            "ok": False,
+                            "speech": f"Blocked duplicate tool call for {tool_name}.",
+                            "error": (
+                                f"Duplicate guard blocked tool '{tool_name}' ({reason}). "
+                                "Answer directly from existing results or choose a different tool."
+                            ),
+                            "data": {
+                                "blocked_tool": tool_name,
+                                "blocked_arguments": arguments,
+                                "reason": reason,
+                            }
+                        },
+                        "speech": (
+                            f"Duplicate guard blocked tool '{tool_name}' ({reason}). "
+                            "Answer directly from existing results or choose a different tool."
+                        ),
+                        "meta": {
+                            "executed_at_iso": executed_at.isoformat(),
+                            "executed_at_local": executed_at.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                            "freshness": "duplicate_guard",
+                            "ttl_seconds": None,
+                            "source": "duplicate_guard",
+                            "authoritative_live": False
+                        }
+                    })
+
+                    if duplicate_recovery_attempts <= max_duplicate_recovery_attempts and (turn_num + 1) < max_turns:
+                        self._emit_progress(
+                            'routing',
+                            message=(
+                                f"Blocked repeated {tool_name} call. "
+                                "Trying to recover with the results already gathered..."
+                            )
+                        )
+                        continue
+
                     # Generate intelligent summary using accumulated data (not just tool list!)
                     # This ensures the user gets actual research results, not just "I used tools"
                     final_speech = self._synthesize_duplicate_prevented_response(
                         transcript, tools_used, accumulated_data, conversation_context
                     )
-                    
+
                     self._log_conversation(transcript, final_speech, tools_used, success=True)
-                    
+
                     # Mark status updates complete
                     self.status_updater.mark_complete()
-                    
+
                     return {
                         "speech": final_speech,
                         "ok": True,
@@ -928,11 +1003,31 @@ Mode: {self.mode}
                             )
 
                         # Recursive retry with error context
-                        return self.process(transcript, retry_count + 1, error_context)
+                        return self.process(
+                            transcript,
+                            retry_count + 1,
+                            error_context,
+                            conversation_history=conversation_history,
+                            excluded_tools=excluded_tools,
+                            tool_overrides=tool_overrides,
+                            _retry_state={
+                                "conversation_context": conversation_context,
+                                "tools_used": tools_used,
+                                "accumulated_data": accumulated_data,
+                                "seen_successful_tool_calls": seen_successful_tool_calls,
+                                "blocked_duplicate_calls": blocked_duplicate_calls,
+                                "tool_call_counts": tool_call_counts,
+                                "duplicate_recovery_attempts": duplicate_recovery_attempts,
+                                "max_duplicate_recovery_attempts": max_duplicate_recovery_attempts,
+                                "total_usage": total_usage,
+                                "first_thinking": first_thinking,
+                                "available_tools": available_tools,
+                            }
+                        )
                     
                     # Max retries exceeded - sanitize error for voice output
                     friendly_error = _sanitize_error_for_speech(error)
-                    final_speech = f"{speech}. {friendly_error.capitalize()}. I tried {retry_count + 1} time(s) but couldn't complete the task."
+                    final_speech = f"{speech}. {friendly_error.capitalize()}. I tried {retry_count + 1} time(s) but couldn't complete the task because I couldn't stop calling tools and switch to Q&A in time."
                     
                     # Auto-log failed conversation
                     self._log_conversation(transcript, final_speech, tools_used, success=False)
@@ -1182,6 +1277,58 @@ Mode: {self.mode}
                     return True
                 return False
 
+            def _is_unhelpful_duplicate_speech(text: str) -> bool:
+                """Detect terse tool-confirmation text that is bad as a final duplicate fallback."""
+                if not text or not isinstance(text, str):
+                    return True
+                s = text.strip()
+                if not s:
+                    return True
+                if re.match(r"^Read\s+.+\.(md|txt|srt|pdf|json|csv|html?)$", s, flags=re.IGNORECASE):
+                    return True
+                if re.match(r"^(Saved|Created|Updated|Listed|Found)\b.+\b(stash|file|files|items|results)\b", s, flags=re.IGNORECASE):
+                    return True
+                return False
+
+            def _build_duplicate_safeguard_fallback() -> str:
+                """Provide a deterministic fallback when LLM synthesis is weak or unavailable."""
+                youtube_data = accumulated_data.get("youtube_transcript")
+                if isinstance(youtube_data, list) and youtube_data:
+                    youtube_data = youtube_data[-1]
+                if isinstance(youtube_data, dict):
+                    title = youtube_data.get("video_title") or "the YouTube video"
+                    saved_formats = []
+                    if youtube_data.get("srt_saved"):
+                        saved_formats.append("SRT")
+                    if youtube_data.get("md_saved"):
+                        saved_formats.append("markdown")
+                    formats_text = ""
+                    if saved_formats:
+                        if len(saved_formats) == 1:
+                            formats_text = f" and saved a {saved_formats[0]} copy to stash"
+                        else:
+                            formats_text = f" and saved {saved_formats[0]} and {saved_formats[1]} copies to stash"
+                    return (
+                        f"Duplicate tool detection triggered. I got the transcript for {title}{formats_text}. "
+                        "I have not answered your full question yet because the model tried to reread the same file instead of summarizing it. "
+                        "Reply again and I will continue from the transcript."
+                    )
+
+                stash_data = accumulated_data.get("stash")
+                if isinstance(stash_data, list) and stash_data:
+                    stash_data = stash_data[-1]
+                if isinstance(stash_data, dict):
+                    name = stash_data.get("name") or "the file"
+                    return (
+                        f"Duplicate tool detection triggered. I already read {name}, but the model tried to read it again instead of summarizing it. "
+                        "Reply again and I will continue from what I already have."
+                    )
+
+                if "canvas" in [t.lower() for t in tools_used] and _query_wants_artifact_update(user_query):
+                    return "Duplicate tool detection triggered after saving the work to Canvas. Reply again if you want me to continue from the saved results."
+
+                return "Duplicate tool detection triggered. I stopped the repeated tool call. Reply again and I will continue from the results gathered so far."
+
             # If OpenCode already returned a useful build summary, prefer that
             # over later status/verification tools like check_opencode_sessions.
             if conversation_context:
@@ -1222,6 +1369,7 @@ Mode: {self.mode}
                 if (
                     isinstance(last_speech, str)
                     and last_speech.strip()
+                    and not _is_unhelpful_duplicate_speech(last_speech)
                     and not _is_machine_like_speech(last_speech)
                 ):
                     return last_speech.strip()
@@ -1252,7 +1400,7 @@ IMPORTANT: The task completed but tried to call a duplicate tool.
 You MUST synthesize a proper answer using the data above.
 
 CRITICAL RULES:
-1. MAX 100 WORDS - but ACTUALLY ANSWER the user's question
+1. MAX 150 WORDS - but ACTUALLY ANSWER the user's question
 2. If you found relevant info (camera models, prices, specs, comparisons) - INCLUDE IT
 3. Reference the Canvas page if detailed results were saved there
 4. DO NOT say "I used tools" or mention tool counts - just answer!
@@ -1271,16 +1419,16 @@ Your synthesized response:"""
             response = self.router.provider.chat(
                 context, 
                 system_prompt=self._apply_qa_prompt_overrides(
-                    "Synthesize research results into a helpful answer. MAX 100 words. "
+                    "Synthesize research results into a helpful answer. MAX 150 words. "
                     "Answer the user's actual question using the data provided."
                 )
             )
-            if not response or self._looks_like_provider_error_text(response):
-                if "canvas" in [t.lower() for t in tools_used] and _query_wants_artifact_update(user_query):
-                    return "Research complete and saved to Canvas. Check the Canvas page for full details on your request."
-                if "canvas" in [t.lower() for t in tools_used]:
-                    return "I hit the repeat-tool safeguard before finishing the new answer. The current Canvas page may not include these details yet."
-                return "I hit the repeat-tool safeguard before finishing the answer. Please try again so I can verify the remaining details."
+            if (
+                not response
+                or self._looks_like_provider_error_text(response)
+                or _is_unhelpful_duplicate_speech(response)
+            ):
+                return _build_duplicate_safeguard_fallback()
             return response.strip()
             
         except Exception as e:
@@ -1289,10 +1437,7 @@ Your synthesized response:"""
                 print(f"⚠️ Failed to synthesize duplicate response: {e}", file=sys.stderr)
             
             # Better fallback than just "I used X tools"
-            if "canvas" in [t.lower() for t in tools_used] and _query_wants_artifact_update(user_query):
-                return "Research complete and saved to Canvas. Check the Canvas page for full details on your request."
-            else:
-                return "I hit the repeat-tool safeguard before finishing the answer."
+            return _build_duplicate_safeguard_fallback()
 
     def _format_natural_response(self, user_query: str, tool_name: str, tool_result: dict[str, Any]) -> str:
         """
@@ -2041,6 +2186,9 @@ Your BEST EFFORT response:"""
         """
         context_parts = [f"Original user request: {original_query}\n"]
         context_parts.append("Tools executed so far:")
+        context_parts.append("Context note: some large tool payloads are intentionally truncated for context efficiency.")
+        context_parts.append("If ok=true, the tool completed successfully even when only a preview is shown.")
+        context_parts.append("Do not repeat the same tool just to recover omitted tail content; answer from the available result or choose a different tool if genuinely needed.")
         now = datetime.now(self.timezone)
         
         for i, ctx in enumerate(conversation_context, 1):
@@ -2074,6 +2222,9 @@ Your BEST EFFORT response:"""
                     if "status_code" in result["data"]:
                         summary_parts.append(f"Status Code: {result['data']['status_code']}")
                 result_summary = "\n   ".join(summary_parts)
+                result_chars_total = len(result_summary)
+                result_chars_shown = result_chars_total
+                result_truncated = False
             else:
                 # For success: Pass full result (ok, speech, data, etc.) so LLM sees everything
                 # @TOOL_CONFIG: context truncation limits — tools with large outputs get more chars
@@ -2084,10 +2235,14 @@ Your BEST EFFORT response:"""
                     # Status recap aggregates lots of data - needs full context (4000 chars)
                     max_chars = 4000
                 else:
-                    # Other tools: standard truncation (1500 chars)
-                    max_chars = 1500
-                
-                result_summary = json.dumps(result, indent=2)[:max_chars]
+                    # Other tools: standard truncation (2000 chars)
+                    max_chars = 2000
+
+                serialized_result = json.dumps(result, indent=2)
+                result_chars_total = len(serialized_result)
+                result_summary = serialized_result[:max_chars]
+                result_chars_shown = len(result_summary)
+                result_truncated = result_chars_total > result_chars_shown
             
             context_parts.append(f"\n{i}. {tool_name}")
             context_parts.append(
@@ -2098,6 +2253,13 @@ Your BEST EFFORT response:"""
                 f"expires_in={self._format_age_seconds(expires_in) if expires_in is not None else 'n/a'}, "
                 f"source={source}, "
                 f"authoritative_live={authoritative}"
+            )
+            context_parts.append(
+                "   Result Meta: "
+                f"ok={result.get('ok', True)}, "
+                f"result_truncated={result_truncated}, "
+                f"result_chars_shown={result_chars_shown}, "
+                f"result_chars_total={result_chars_total}"
             )
             context_parts.append(f"   Result: {result_summary}")
         

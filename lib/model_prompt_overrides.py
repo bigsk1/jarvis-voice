@@ -65,7 +65,8 @@ def _dedupe_preserve_order(values: list[str]) -> list[str]:
 
 def _strip_runtime_suffix(model_name: str) -> str:
     if ":" not in model_name:
-        return model_name
+        bare = re.sub(r"-(latest|cloud)$", "", model_name, flags=re.IGNORECASE)
+        return bare or model_name
     base, suffix = model_name.rsplit(":", 1)
     if suffix.lower() in _KNOWN_RUNTIME_SUFFIXES and base:
         return base

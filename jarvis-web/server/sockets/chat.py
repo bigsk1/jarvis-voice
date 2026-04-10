@@ -2545,6 +2545,7 @@ Previous structured data:
             'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
             'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
             'memory_deduper': ['stash_ref', 'canvas_page_id'],
+            'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
             'screenshot_url': ['url', 'screenshot_path'],
             # --- Knowledge/session refs ---
             'canvas': ['page_id', 'title'],
@@ -2561,17 +2562,20 @@ Previous structured data:
             'docker_control': ['container', 'status'],
             'ssh_remote': ['host'],
             'status_recap': ['stash_ref', 'canvas_id'],
-            # NOTE: 'stash' is NOT here — top-level data.stash is from image uploads
-            # and is handled separately below as 'uploaded_image'.
-            # The stash tool's own results (when LLM calls stash directly) will still
-            # get stash_ref/ref extracted by the generic checks above.
         }
         
         for key, value in data.items():
             if not isinstance(value, dict):
                 continue
-            # Skip keys handled specially below or that aren't tool results
-            if key in ('stash', 'usage', 'raw_llm_response', 'vision_analysis', '_error'):
+            # Auto-stashed web uploads are also stored under top-level "stash".
+            # Keep skipping those lightweight upload refs here, but preserve actual
+            # stash tool outputs so later follow-up turns can reference them.
+            if key == 'stash' and value.get('stash_ref') and not any(
+                marker in value for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name')
+            ):
+                continue
+            # Skip keys that aren't tool results
+            if key in ('usage', 'raw_llm_response', 'vision_analysis', '_error'):
                 continue
             
             extracted = {}
@@ -2672,8 +2676,13 @@ Previous structured data:
             if extracted:
                 followup[key] = extracted
         
-        # Also extract top-level stash info (from image uploads)
-        if data.get('stash') and isinstance(data['stash'], dict):
+        # Also extract top-level upload stash info (from image uploads)
+        if (
+            data.get('stash')
+            and isinstance(data['stash'], dict)
+            and data['stash'].get('stash_ref')
+            and not any(marker in data['stash'] for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name'))
+        ):
             stash = data['stash']
             followup['uploaded_image'] = {
                 'stash_ref': stash.get('stash_ref'),

@@ -24,7 +24,7 @@ Model prompt overrides solve that by letting Jarvis load **small, targeted promp
 
 2. **Exact first, normalized alias second**
    - Jarvis checks the exact provider/model path first
-   - If that file does not exist, Jarvis can fall back to a deterministic normalized alias for common runtime suffixes like dated releases and `:latest` / `:cloud`
+   - If that file does not exist, Jarvis can fall back to a deterministic normalized alias for common runtime suffixes like dated releases, `:latest` / `:cloud`, and bare runtime suffixes such as `-latest` / `-cloud`
    - No fuzzy matching, no “closest model” inference
 
 3. **Graceful failure**
@@ -136,6 +136,8 @@ Examples:
 - `openai / gpt-5.4-nano-2026-03-17` → first try `config/models/openai/gpt-5.4-nano-2026-03-17/prompt_overrides.yaml`, then fall back to `config/models/openai/gpt-5.4-nano/prompt_overrides.yaml`
 - `ollama / qwen3:latest` → first try `config/models/ollama/qwen3:latest/prompt_overrides.yaml`, then fall back to `config/models/ollama/qwen3/prompt_overrides.yaml`
 - `ollama / kimi-k2.5:cloud` → first try `config/models/ollama/kimi-k2.5:cloud/prompt_overrides.yaml`, then fall back to `config/models/ollama/kimi-k2.5/prompt_overrides.yaml`
+- `xai / grok-4-1-fast-non-reasoning-latest` → first try `config/models/xai/grok-4-1-fast-non-reasoning-latest/prompt_overrides.yaml`, then fall back to `config/models/xai/grok-4-1-fast-non-reasoning/prompt_overrides.yaml`
+- `xai / grok-4-1-fast-non-reasoning-cloud` → first try `config/models/xai/grok-4-1-fast-non-reasoning-cloud/prompt_overrides.yaml`, then fall back to `config/models/xai/grok-4-1-fast-non-reasoning/prompt_overrides.yaml`
 - `openai / gpt-5.4` → do **not** load the `gpt-5.4-nano` override
 
 This is intentionally strict. Normalization is limited to deterministic runtime suffix cleanup, not fuzzy matching.
@@ -319,6 +321,7 @@ Skip more exotic sections until the basic pattern proves useful.
    - `config/models/<provider>/<model>/prompt_overrides.yaml`
 3. If exact path is missing, try deterministic aliases:
    - strip `:latest` / `:cloud`
+   - strip bare `-latest` / `-cloud`
    - strip dated suffixes like `-2026-03-17`
 4. If file missing → return empty override
 5. If invalid YAML → warning + empty override
