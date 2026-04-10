@@ -31,6 +31,54 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANVAS_DIR = os.path.join(PROJECT_ROOT, "data", "canvas")
 
 
+# Schemeless host[/path] for Sources lines (avoids false positives like version numbers: no lone digit TLD).
+_BARE_SOURCE_HOST_PATH = re.compile(
+    r"(?<!://)(?<![@\w/\-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:/[^\s\],;)<>\"\']*)?)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_bare_urls_in_sources_sections(content: str) -> str:
+    """
+    Prepend https:// to schemeless host[/path] tokens in Sources blocks so markdown renders clickable links.
+    Only touches lines labeled Sources (and bullet/numbered lines immediately below until a blank line or new heading).
+    """
+
+    def fix_line(line: str) -> str:
+        return _BARE_SOURCE_HOST_PATH.sub(lambda m: f"https://{m.group(1)}", line)
+
+    if not content:
+        return content
+
+    lines = content.split("\n")
+    out: list[str] = []
+    in_sources = False
+    for line in lines:
+        stripped = line.strip()
+        if re.search(r"(?i)\bSources?\s*:", line):
+            in_sources = True
+            out.append(fix_line(line))
+            continue
+        if in_sources:
+            if not stripped:
+                in_sources = False
+                out.append(line)
+                continue
+            if stripped.startswith("#"):
+                in_sources = False
+                out.append(line)
+                continue
+            if re.match(r"^([-*]|\d+\.)\s+", stripped):
+                out.append(fix_line(line))
+                continue
+            # Paragraph after a Sources block — stop special handling
+            in_sources = False
+            out.append(line)
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def _find_truncated_urls(content: str) -> list[str]:
     """Detect clearly truncated URLs like 'https://example.com/...'. """
     if not content:
@@ -253,7 +301,8 @@ def create_page(title: str, content: str, tags: list[str] = None,
         content = content.replace('\\n', '\n')
 
     content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
-    
+    content = _normalize_bare_urls_in_sources_sections(content)
+
     truncated_urls = _find_truncated_urls(content or "")
     if truncated_urls:
         return {
@@ -334,6 +383,7 @@ def update_page(page_id: str, title: str = None, content: str = None,
         data['title'] = title
     if content is not None:
         content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
+        content = _normalize_bare_urls_in_sources_sections(content)
         truncated_urls = _find_truncated_urls(content)
         if truncated_urls:
             return {
