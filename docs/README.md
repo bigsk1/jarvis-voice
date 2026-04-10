@@ -314,7 +314,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Duplicate-tool recovery + transcript follow-up hardening**
   - Exact duplicate tool calls no longer immediately end the request. Jarvis now blocks the repeated call, injects a duplicate-guard note into the next routing turn, and gives the model bounded recovery turns before falling back to duplicate-prevention synthesis.
   - Duplicate-prevention fallback text is now more useful for transcript/stash-style runs and no longer returns weak tool speech like `Read file.md` as the final user-facing answer.
-  - `_build_turn_context()` now tells the model that large tool payload previews may be intentionally truncated and includes explicit `result_truncated`, `result_chars_shown`, and `result_chars_total` metadata for each prior tool result.
+  - `_build_turn_context()` now tells the model that large tool payload previews may be intentionally truncated, includes explicit `result_truncated`, `result_chars_shown`, and `result_chars_total` metadata for each prior tool result, and uses valid JSON `Result Preview` objects instead of raw sliced JSON fragments.
   - Tool-failure retries now preserve in-flight orchestrator state such as `tool_call_counts`, `tools_used`, accumulated data, and prior tool context, which keeps repeated tool cards and WebUI/tool-history behavior consistent across retries.
 - ✅ **Stash follow-up context + model override fixes**
   - Web conversation follow-up extraction now preserves real `stash` tool results instead of treating them like upload-only metadata, which improves same-conversation follow-up questions against prior transcript/file reads.

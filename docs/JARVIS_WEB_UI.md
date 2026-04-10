@@ -177,6 +177,8 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 
 - The orchestrator may truncate large prior tool payloads before sending them back to the LLM on later turns.
 - Jarvis now marks these previews with explicit metadata such as `result_truncated`, `result_chars_shown`, and `result_chars_total`.
+- When truncation is needed, later routing turns now receive a valid JSON `Result Preview:` block instead of a raw sliced JSON fragment.
+- When the full prior result fits in budget, the turn context still shows `Result:` with the full serialized payload.
 - `ok=true` still means the tool succeeded even if the LLM only sees a preview of the payload in later turns.
 - This helps reduce redundant rereads of large transcript- or stash-based results during multi-turn recovery.
 

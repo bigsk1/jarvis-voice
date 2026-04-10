@@ -2221,28 +2221,14 @@ Your BEST EFFORT response:"""
                         summary_parts.append(f"Details: {result['data']['error']}")
                     if "status_code" in result["data"]:
                         summary_parts.append(f"Status Code: {result['data']['status_code']}")
-                result_summary = "\n   ".join(summary_parts)
+                result_summary = self._truncate_preview_text("\n   ".join(summary_parts), 1200)
                 result_chars_total = len(result_summary)
                 result_chars_shown = result_chars_total
                 result_truncated = False
             else:
-                # For success: Pass full result (ok, speech, data, etc.) so LLM sees everything
-                # @TOOL_CONFIG: context truncation limits — tools with large outputs get more chars
-                if "search" in tool_name.lower() or "fetch" in tool_name.lower():
-                    # Search/fetch tools: need MORE context (3000 chars) to capture movie titles, URLs, descriptions
-                    max_chars = 3000
-                elif tool_name == "status_recap":
-                    # Status recap aggregates lots of data - needs full context (4000 chars)
-                    max_chars = 4000
-                else:
-                    # Other tools: standard truncation (2000 chars)
-                    max_chars = 2000
-
-                serialized_result = json.dumps(result, indent=2)
-                result_chars_total = len(serialized_result)
-                result_summary = serialized_result[:max_chars]
-                result_chars_shown = len(result_summary)
-                result_truncated = result_chars_total > result_chars_shown
+                result_summary, result_chars_total, result_chars_shown, result_truncated = (
+                    self._build_llm_result_context_preview(tool_name, result)
+                )
             
             context_parts.append(f"\n{i}. {tool_name}")
             context_parts.append(
@@ -2261,7 +2247,8 @@ Your BEST EFFORT response:"""
                 f"result_chars_shown={result_chars_shown}, "
                 f"result_chars_total={result_chars_total}"
             )
-            context_parts.append(f"   Result: {result_summary}")
+            result_label = "Result Preview" if result_truncated else "Result"
+            context_parts.append(f"   {result_label}: {result_summary}")
         
         # Check if any tool requested news - prompt LLM to use native search
         news_requested = False
@@ -2280,14 +2267,201 @@ Your BEST EFFORT response:"""
         context_parts.append("FRESHNESS RULES (highest priority):")
         context_parts.append("- Prefer the most recent authoritative_live tool result for live-data queries.")
         context_parts.append("- If the latest live result is still within ttl/expires_in, DO NOT re-call the same tool unless user explicitly asked to refresh/recheck/update.")
-        context_parts.append("- Do not re-issue the same tool with identical arguments after it already succeeded above (duplicate guard blocks it); use prior results, another tool, or Q&A.")
+        # context_parts.append("- Do not re-issue the same tool with identical arguments after it already succeeded above (duplicate guard blocks it); use prior results, another tool, or Q&A.")
         context_parts.append("- Treat stored memory/intel for price-like data as historical context, not live truth.")
         context_parts.append("- For crypto/stock, ignore stale memories older than 60 minutes when a newer live tool result exists.")
         
         if news_requested:
             context_parts.append("\n⚠️ NEWS REQUESTED: The user asked for news. Use your NATIVE SEARCH capability to get current news headlines. DO NOT call external search tools - use your built-in web search to find 3-5 relevant news headlines and include them in your response.")
-        
+
         return "\n".join(context_parts)
+
+    def _tool_context_max_chars(self, tool_name: str) -> int:
+        """Return the LLM-context preview budget for a tool result."""
+        lowered = (tool_name or "").lower()
+        if "search" in lowered or "fetch" in lowered:
+            return 3000
+        if tool_name == "status_recap":
+            return 4000
+        return 2000
+
+    def _truncate_preview_text(self, value: Any, max_chars: int) -> str:
+        """Truncate preview text without changing the original stored result."""
+        text = str(value)
+        if len(text) <= max_chars:
+            return text
+        suffix = "... [truncated]"
+        if max_chars <= len(suffix):
+            return suffix[:max_chars]
+        return text[: max_chars - len(suffix)] + suffix
+
+    def _preview_key_rank(self, key: str, value: Any) -> tuple[int, int, str]:
+        """Prioritize handles and compact scalar fields ahead of bulky payloads."""
+        critical_exact = {
+            "space_id", "file_id", "ref", "stash_ref", "md_stash_ref", "srt_stash_ref",
+            "memory_id", "conversation_id", "page_id", "video_id", "image_id", "asin",
+            "url", "top_url", "video_title", "title", "name", "engine", "query",
+            "query_effective", "results_count", "count", "status", "id"
+        }
+        bulky_keys = {
+            "content", "markdown", "html", "raw_html", "raw_text", "body",
+            "transcript", "results", "top_results", "items", "matches", "documents",
+            "pages", "outputs"
+        }
+        is_handle = (
+            key in critical_exact
+            or key.endswith(("_id", "_ref", "_url"))
+        )
+        is_scalar = value is None or isinstance(value, (str, int, float, bool))
+        is_bulky = key in bulky_keys
+
+        if is_handle:
+            rank = 0
+        elif is_scalar and not is_bulky:
+            rank = 1
+        elif not is_bulky:
+            rank = 2
+        else:
+            rank = 3
+        return (rank, len(key), key)
+
+    def _build_preview_value(
+        self,
+        value: Any,
+        parent_key: str = "",
+        depth: int = 0,
+        max_depth: int = 3,
+    ) -> Any:
+        """Build a compact, JSON-safe preview for LLM context."""
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+
+        if isinstance(value, str):
+            text_limit = 600 if parent_key in {"content", "markdown", "html", "raw_html", "raw_text", "body", "transcript"} else 240
+            return self._truncate_preview_text(value, text_limit)
+
+        if depth >= max_depth:
+            compact = json.dumps(value, default=str, separators=(",", ":"))
+            return self._truncate_preview_text(compact, 240)
+
+        if isinstance(value, list):
+            if not value:
+                return []
+            item_limit = 3 if parent_key in {"results", "top_results", "items", "matches", "documents", "pages", "outputs"} else 4
+            preview_items = [
+                self._build_preview_value(item, parent_key=parent_key, depth=depth + 1, max_depth=max_depth)
+                for item in value[:item_limit]
+            ]
+            if len(value) <= item_limit:
+                return preview_items
+            return {
+                "total_items": len(value),
+                "items_preview": preview_items,
+            }
+
+        if isinstance(value, dict):
+            preview = {}
+            keys = sorted(value.keys(), key=lambda key: self._preview_key_rank(key, value.get(key)))
+            max_keys = 12
+            shown_keys = 0
+            for key in keys:
+                if shown_keys >= max_keys:
+                    break
+                preview[key] = self._build_preview_value(
+                    value.get(key),
+                    parent_key=key,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                )
+                shown_keys += 1
+            omitted = len(keys) - shown_keys
+            if omitted > 0:
+                preview["_omitted_keys"] = omitted
+            return preview
+
+        return self._truncate_preview_text(value, 240)
+
+    def _build_llm_result_context_preview(self, tool_name: str, result: dict[str, Any]) -> tuple[str, int, int, bool]:
+        """
+        Build a valid JSON preview for later LLM turns while keeping the full result untouched.
+        Returns (preview_text, full_result_chars, preview_chars, preview_truncated).
+        """
+        full_serialized = json.dumps(result, indent=2, default=str)
+        result_chars_total = len(full_serialized)
+        max_chars = self._tool_context_max_chars(tool_name)
+
+        if result_chars_total <= max_chars:
+            return full_serialized, result_chars_total, result_chars_total, False
+
+        data = result.get("data")
+        preview_payload: dict[str, Any] = {
+            "ok": result.get("ok", True),
+            "speech": self._truncate_preview_text(result.get("speech", ""), 400),
+            "llm_context_preview": {
+                "tool": tool_name,
+                "data_preview": self._build_preview_value(data, parent_key="data"),
+            },
+        }
+        if result.get("error"):
+            preview_payload["error"] = self._truncate_preview_text(result["error"], 300)
+
+        preview_serialized = json.dumps(preview_payload, indent=2, default=str)
+        if len(preview_serialized) <= max_chars:
+            return preview_serialized, result_chars_total, len(preview_serialized), True
+
+        preview_compact = json.dumps(preview_payload, separators=(",", ":"), default=str)
+        if len(preview_compact) <= max_chars:
+            return preview_compact, result_chars_total, len(preview_compact), True
+
+        fallback_payload = {
+            "ok": result.get("ok", True),
+            "speech": self._truncate_preview_text(result.get("speech", ""), 240),
+            "preview_notice": (
+                "Structured result preview trimmed to fit LLM context. "
+                "Use speech and lifted identifiers first; do not re-call the same tool just to recover omitted tail content."
+            ),
+            "llm_context_preview": {
+                "tool": tool_name,
+                "data_preview_text": "",
+            },
+        }
+        if result.get("error"):
+            fallback_payload["error"] = self._truncate_preview_text(result["error"], 200)
+
+        data_preview_text = json.dumps(
+            self._build_preview_value(data, parent_key="data"),
+            default=str,
+            separators=(",", ":"),
+        )
+        suffix = "... [truncated]"
+
+        base_serialized = json.dumps(fallback_payload, default=str, separators=(",", ":"))
+        if len(base_serialized) >= max_chars:
+            minimal_payload = {
+                "ok": result.get("ok", True),
+                "speech": self._truncate_preview_text(result.get("speech", ""), 120),
+                "preview_notice": "Result preview omitted to fit LLM context. Do not re-call the same tool just to recover omitted tail content.",
+            }
+            minimal_serialized = json.dumps(minimal_payload, default=str, separators=(",", ":"))
+            return minimal_serialized, result_chars_total, len(minimal_serialized), True
+
+        empty_preview_serialized = json.dumps(fallback_payload, default=str, separators=(",", ":"))
+        remaining = max_chars - len(empty_preview_serialized)
+        if remaining > len(suffix):
+            fallback_payload["llm_context_preview"]["data_preview_text"] = (
+                self._truncate_preview_text(data_preview_text, remaining)
+            )
+
+        fallback_serialized = json.dumps(fallback_payload, default=str, separators=(",", ":"))
+        if len(fallback_serialized) > max_chars:
+            allowed = max_chars - len(empty_preview_serialized)
+            if allowed > len(suffix):
+                fallback_payload["llm_context_preview"]["data_preview_text"] = data_preview_text[: allowed - len(suffix)] + suffix
+            else:
+                fallback_payload["llm_context_preview"]["data_preview_text"] = ""
+            fallback_serialized = json.dumps(fallback_payload, default=str, separators=(",", ":"))
+
+        return fallback_serialized, result_chars_total, len(fallback_serialized), True
     
     def _get_relevant_memories(self, transcript: str) -> str:
         """

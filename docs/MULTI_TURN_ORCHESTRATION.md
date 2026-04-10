@@ -167,9 +167,10 @@ def _build_turn_context(self, original_query: str, conversation_context: list) -
     
     for i, ctx in enumerate(conversation_context, 1):
         tool_name = ctx["tool"]
-        result_summary = json.dumps(ctx["result"], indent=2)[:300]
+        result_summary = self._build_llm_result_context_preview(tool_name, ctx["result"])
         context_parts.append(f"\n{i}. {tool_name}")
-        context_parts.append(f"   Result: {result_summary}")
+        context_parts.append("   Result Meta: ok=..., result_truncated=..., result_chars_shown=..., result_chars_total=...")
+        context_parts.append("   Result or Result Preview: valid JSON shown to the LLM")
     
     context_parts.append("\n\nDetermine if you need to:")
     context_parts.append("1. Call another tool to complete the request")
@@ -177,6 +178,11 @@ def _build_turn_context(self, original_query: str, conversation_context: list) -
     
     return "\n".join(context_parts)
 ```
+
+Notes:
+- Full prior tool results are still kept in `conversation_context`.
+- The preview builder only changes how those results are presented back to the LLM on later turns.
+- Large results are now shown as valid JSON previews instead of raw sliced `json.dumps(...)` fragments, which reduces malformed-context issues during multi-turn tool recovery.
 
 ### Return Structure
 
@@ -320,4 +326,3 @@ Current: 300 chars per tool result (adjustable)
 ---
 
 **Questions?** Check logs or review the test scenarios above.
-
