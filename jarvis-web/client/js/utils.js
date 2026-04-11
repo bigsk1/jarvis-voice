@@ -111,6 +111,31 @@ const Utils = {
 
           return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="content-link"${safeTitle}>${safeLabel}</a>`;
         };
+        renderer.code = (codeOrToken, infostring, escaped) => {
+          let rawCode = codeOrToken;
+          let language = infostring || '';
+
+          if (codeOrToken && typeof codeOrToken === 'object') {
+            rawCode = codeOrToken.text || '';
+            language = codeOrToken.lang || '';
+          }
+
+          const codeText = rawCode == null ? '' : String(rawCode);
+          const safeCode = this.escapeHtml(codeText);
+          const safeLanguage = this.escapeHtml(String(language || '').trim());
+          const languageLabel = safeLanguage || 'code';
+          const languageClass = safeLanguage ? ` language-${safeLanguage}` : '';
+
+          return `
+            <div class="code-block">
+              <div class="code-block-header">
+                <span class="code-block-language">${languageLabel}</span>
+                <button class="code-block-copy" type="button" onclick="Utils.copyCodeBlock(this)">Copy</button>
+              </div>
+              <pre><code class="${languageClass}">${safeCode}</code></pre>
+            </div>
+          `;
+        };
         marked.use({ renderer });
         this._markedConfigured = true;
       }
@@ -189,6 +214,70 @@ const Utils = {
       toast.style.opacity = '0';
       setTimeout(() => toast.remove(), 300);
     }, duration);
+  },
+
+  async copyCodeBlock(button) {
+    const container = button?.closest('.code-block');
+    const codeEl = container?.querySelector('code');
+    const codeText = codeEl?.textContent || '';
+
+    if (!codeText) {
+      this.toast('Nothing to copy', 'warning');
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(codeText);
+      } else {
+        this.copyTextFallback(codeText);
+      }
+      const original = button.textContent;
+      button.textContent = 'Copied';
+      button.disabled = true;
+      this.toast('Code copied', 'success', 1500);
+      setTimeout(() => {
+        button.textContent = original;
+        button.disabled = false;
+      }, 1200);
+    } catch (error) {
+      console.error('[Utils] Failed to copy code block:', error);
+      this.toast('Failed to copy code', 'error');
+    }
+  },
+
+  copyTextFallback(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    textarea.style.left = '-9999px';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+
+    const selection = document.getSelection();
+    const originalRange = selection && selection.rangeCount > 0
+      ? selection.getRangeAt(0)
+      : null;
+
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    const success = document.execCommand('copy');
+    document.body.removeChild(textarea);
+
+    if (selection) {
+      selection.removeAllRanges();
+      if (originalRange) {
+        selection.addRange(originalRange);
+      }
+    }
+
+    if (!success) {
+      throw new Error('document.execCommand("copy") failed');
+    }
   },
 
   /**

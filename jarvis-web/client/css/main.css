@@ -1964,15 +1964,66 @@ body {
 }
 
 /* Code blocks in messages */
-.message pre {
-  background: var(--bg-primary);
+.message .code-block {
+  margin: var(--space-sm) 0;
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.message .code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.message .code-block-language {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.message .code-block-copy {
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.message .code-block-copy:hover:not(:disabled) {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.message .code-block-copy:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.message pre {
+  background: var(--bg-primary);
   padding: var(--space-md);
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   margin: var(--space-sm) 0;
+}
+
+.message .code-block pre {
+  border: none;
+  border-radius: 0;
+  margin: 0;
 }
 
 .message code {
