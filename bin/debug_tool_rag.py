@@ -2,7 +2,7 @@
 """
 Tool RAG Debugger
 Shows exactly what tools are retrieved and their similarity scores for a given query.
-Helps debug tool selection issues.
+Helps debug tool selection issues. DOES NOT FACTOR IN INSIGHTS, AUTO MEMORY which dilutes the results in runtime for tool rag.
 
 Usage:
     ./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?"
