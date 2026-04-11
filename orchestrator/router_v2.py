@@ -482,6 +482,11 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
 - Full URLs with markdown links ARE allowed: [Title](https://...)
 - No word limit - provide comprehensive information
 - The VOICE OUTPUT RULES section does NOT apply in detailed mode
+- For code, commands, config, or multi-line examples: keep headings/explanations OUTSIDE the fence and put only executable/code content inside fenced blocks
+- Use fenced code blocks with a language tag when possible: ```bash, ```python, ```json, ```yaml, ```text
+- Leave a blank line before and after each fenced block, and always close the fence correctly
+- Prefer `##` or `###` section headings in chat responses; reserve top-level `#` for full document-style outputs
+- Do not escape backticks unless you are literally explaining markdown syntax
 
 """
         else:
