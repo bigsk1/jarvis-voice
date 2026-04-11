@@ -57,6 +57,9 @@ Tools Used: {tools_used}
 **FINAL VOICE OUTPUT** (see style in Configuration - may be short OR detailed):
 {final_speech}
 
+**SERVER-SIDE / PROVIDER-NATIVE TOOL METADATA**:
+{server_side_tools}
+
 ⚠️ IMPORTANT CONTEXT FOR GRADING:
 
 1. **RESPONSE STYLE DETERMINES OUTPUT FORMAT** - check Configuration section FIRST!
@@ -71,6 +74,13 @@ Tools Used: {tools_used}
    - URLs with markdown links = CORRECT (displayed, not synthesized)
    - Markdown formatting = CORRECT (**, ##, bullets are fine for display)
    - This is NOT a voice interface in detailed mode - it's a display interface
+
+2b. **RAW RESPONSE VS SPOKEN OUTPUT** - grade these differently:
+   - `ORIGINAL LLM RESPONSE` may include provider-native search citations, raw URLs, source blocks, or social links intended for display/debugging.
+   - `FINAL VOICE OUTPUT` is the TTS-facing text Jarvis stores for speech.
+   - Jarvis speech sanitization strips URLs, markdown noise, source blocks, and social post IDs before TTS.
+   - DO NOT penalize raw URLs or source lists in `ORIGINAL LLM RESPONSE` if `FINAL VOICE OUTPUT` is clean, concise, and natural.
+   - ONLY penalize URL/source spam when it survives into `FINAL VOICE OUTPUT` or degrades the actual spoken UX.
 
 3. **SHORT SPOKEN RESPONSES ARE CORRECT WHEN CONTENT GOES TO CANVAS/STASH** ⚠️ CRITICAL:
    - This is a VOICE ASSISTANT - responses are SPOKEN OUT LOUD
@@ -99,6 +109,8 @@ Tools Used: {tools_used}
    - The LLM has BUILT-IN web search (xAI Grok live search or Anthropic web_search)
    - It can answer real-time queries (news, stocks, unemployment, Netflix, weather, sports, prices)
      **WITHOUT calling any external tools** - this is CORRECT behavior
+   - Native/provider search may also appear in `SERVER-SIDE / PROVIDER-NATIVE TOOL METADATA`
+   - Source URLs returned by provider-native search count as evidence, not hallucination
    - "Tools Used: none" + specific details = NATIVE SEARCH WAS USED = RATE 4-5
    - The information WAS verified via native search even though no tool appears in the list
    - DO NOT say "hallucinated" or "unverified" when native search is ENABLED
@@ -174,6 +186,7 @@ Rate the interaction (1-5) using this STRICT rubric:
 ⚠️ NATIVE SEARCH RULE: If "Native Search: ENABLED" in Configuration:
    - "Tools Used: none" is CORRECT for real-time queries (the LLM used built-in search)
    - Specific details without tools = native search was used = NOT hallucination
+   - Provider-native URLs/citations in the raw answer can be valid evidence
    - Rate 4-5 unless information is demonstrably wrong
 
 **5 = PERFECT** - All criteria met:
@@ -428,6 +441,13 @@ class FeedbackCollector:
         # Get both the original LLM response and the formatted voice output
         raw_llm_response = result.get('raw_llm_response', result.get('speech', 'No response'))
         final_speech = result.get('speech', 'No response')
+        server_side_tools = result.get('server_side_tools') or {}
+        if server_side_tools:
+            server_side_tools_text = json.dumps(server_side_tools, ensure_ascii=False, indent=2)
+            if len(server_side_tools_text) > 3000:
+                server_side_tools_text = server_side_tools_text[:3000] + "\n... [truncated]"
+        else:
+            server_side_tools_text = "None"
         
         # Determine native search status for prominent display
         # Check config_context for native search status or check environment
@@ -468,7 +488,8 @@ If real-time data was needed and no tools were used, rate poorly."""
             config_context=config_context or "No configuration context provided.",
             completion_guard_context=json.dumps(completion_guard_context or {"status": "none"}, ensure_ascii=False, indent=2),
             native_search_status=native_search_status,
-            native_search_instructions=native_search_instructions
+            native_search_instructions=native_search_instructions,
+            server_side_tools=server_side_tools_text
         )
         
         try:

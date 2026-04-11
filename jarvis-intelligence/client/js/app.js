@@ -1781,7 +1781,55 @@ async function handleSearch(e) {
     } catch (error) {
       showToast(`Search failed: ${error.message}`, 'error');
     }
+  } else if (currentTab === 'feedback') {
+    feedbackData = filterFeedbackByQuery(allFeedbackData, query);
+    renderFeedback();
   }
+}
+
+function filterFeedbackByQuery(entries, query) {
+  const normalizedQuery = (query || '').trim().toLowerCase();
+  if (!normalizedQuery) return [...(entries || [])];
+
+  return (entries || []).filter(entry => {
+    const issues = Array.isArray(entry.issues) ? entry.issues : [];
+    const tools = Array.isArray(entry.tools_used) ? entry.tools_used : [];
+    const toolRatings = entry.tool_ratings && typeof entry.tool_ratings === 'object'
+      ? Object.entries(entry.tool_ratings).flatMap(([tool, data]) => {
+          if (data && typeof data === 'object') {
+            return [tool, data.note || '', String(data.rating ?? '')];
+          }
+          return [tool, String(data ?? '')];
+        })
+      : [];
+
+    const searchableParts = [
+      entry.query,
+      entry.summary,
+      entry.positive,
+      entry.final_speech,
+      entry.raw_llm_response,
+      entry.feedback_model,
+      entry.feedback_provider,
+      entry.mode,
+      entry.session_id,
+      entry.timestamp,
+      ...tools,
+      ...toolRatings,
+      ...issues.flatMap(issue => {
+        if (!issue || typeof issue !== 'object') return [];
+        return [
+          issue.category || '',
+          issue.description || '',
+          issue.suggestion || '',
+        ];
+      }),
+    ];
+
+    return searchableParts
+      .filter(Boolean)
+      .some(value => String(value).toLowerCase().includes(normalizedQuery));
+  });
 }
 
 // ============================================================================
