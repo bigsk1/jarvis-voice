@@ -2580,9 +2580,11 @@ Your BEST EFFORT response:"""
                             if days_old <= 7:
                                 recency_factor = 1.0
                             elif days_old <= 30:
-                                recency_factor = 0.95
+                                recency_factor = 0.97
                             elif days_old <= 60:
-                                recency_factor = 0.9
+                                recency_factor = 0.94
+                            elif days_old <= 120:
+                                recency_factor = 0.90
                             else:
                                 recency_factor = 0.85
                         except (ValueError, TypeError, AttributeError):

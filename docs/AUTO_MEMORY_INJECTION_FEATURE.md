@@ -225,7 +225,7 @@ AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=2
 - **orchestrator/router_v2.py**: Stronger remember prompting for "call me sir" / "from now on" patterns
 - **config/*.env.example**: All `AUTO_MEMORY_*` vars documented
 
-Recency: 7 days = 1.0, 30 days = 0.95, 60 days = 0.9, 90+ days = 0.85. Importance used for tie-break and conflict resolution.
+Recency: 7 days = 1.0, 30 days = 0.97, 60 days = 0.94, 120 days = 0.90, older than 120 days = 0.85. Importance used for tie-break and conflict resolution.
 
 **Labeling**: Always-included preferences show "user preference (always included)" (not "100% relevance") so it's clear they're not semantically matched to the query. Semantic results show actual relevance %.
 
