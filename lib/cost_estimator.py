@@ -75,6 +75,7 @@ PRICING = {
 
 # Cache Pricing as of November 2025 (USD per million tokens)
 # Anthropic Prompt Caching for Tier 2
+# TODO: verify anthropic cache pricing is correct, in lib/model_catalog.py it shows it missing.
 CACHE_PRICING = {
     "anthropic": {
         # All models use same cache pricing regardless of tier

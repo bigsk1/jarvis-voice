@@ -19,6 +19,41 @@ body.logs-page {
   min-height: 100vh;
 }
 
+@media (min-width: 769px) {
+  html,
+  body.logs-page {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #logsApp {
+    height: 100vh;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .logs-shell {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+    align-items: stretch;
+  }
+
+  .logs-panel {
+    min-height: 0;
+    max-height: 100%;
+  }
+
+  .folder-list,
+  .file-list,
+  .viewer-content {
+    overscroll-behavior: contain;
+  }
+}
+
 .logs-header {
   position: sticky;
   top: 0;
