@@ -126,6 +126,12 @@ def serve_index():
     return send_from_directory(CLIENT_PATH, 'index.html')
 
 
+@app.route('/logs')
+def serve_logs():
+    """Serve the dedicated log viewer page"""
+    return send_from_directory(CLIENT_PATH, 'logs.html')
+
+
 @app.route('/<path:path>')
 def serve_static(path):
     """Serve static files"""
@@ -212,4 +218,3 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     run_server(host=args.host, port=args.port, mode=args.mode, debug=args.debug)
-

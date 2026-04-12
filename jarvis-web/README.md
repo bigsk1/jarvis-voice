@@ -43,6 +43,12 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
   - 🔄 Workflow executions
   - 💻 OpenCode sessions
   - ⭐ Feedback ratings
+- **Dedicated `/logs` Viewer** - Read-only log browser for `.jsonl`, `.log`, and `.md`
+  - Folder list stays A→Z for predictable navigation
+  - Files default to newest-first inside each folder
+  - Folder search ranks files by content hits and filters the viewer to matching records/lines
+  - JSONL entries render as nested YAML-style cards with modal expansion
+  - Markdown files render cleanly in the viewer and modal
 - **Tools Browser** - View all available tools with descriptions
 - **Workflows System** - `/workflows` for deterministic multi-tool pipelines
 - **Prompts System** - `@prompts` with Markdown templates
@@ -85,24 +91,28 @@ jarvis-web/
 │   ├── app.py                # Main application
 │   ├── config.py             # Configuration loader
 │   ├── routes/
-│   │   └── api.py            # REST API endpoints (40+ routes)
+│   │   └── api.py            # REST API endpoints (chat, settings, /logs, media)
 │   ├── sockets/
 │   │   └── chat.py           # WebSocket handlers
 │   └── services/
 │       ├── tool_discovery.py # Tool loading & filtering
 │       ├── settings_manager.py # Web-specific settings
-│       └── conversation_store.py # Conversation persistence
+│       ├── conversation_store.py # Conversation persistence
+│       └── log_explorer.py   # Read-only log browser service for /logs
 ├── client/                    # Frontend (vanilla JS)
 │   ├── index.html            # Main page
+│   ├── logs.html             # Dedicated log browser page
 │   ├── css/
 │   │   ├── variables.css     # CSS custom properties
 │   │   ├── main.css          # Core styles
-│   │   └── glow-refinements.css # Holographic effects
+│   │   ├── glow-refinements.css # Holographic effects
+│   │   └── log-viewer.css    # /logs layout and viewer styles
 │   └── js/
 │       ├── app.js            # Main application
 │       ├── chat.js           # Chat UI logic
 │       ├── socket.js         # WebSocket connection
 │       ├── logs.js           # Server log panel
+│       ├── log-viewer.js     # /logs folder/file/viewer client
 │       ├── proactive.js      # Proactive features
 │       └── utils.js          # Utility functions
 ├── config/
@@ -171,6 +181,15 @@ jarvis-web/
 | `/api/prompts` | GET | List all @prompts |
 | `/api/prompts/:name` | GET | Get specific prompt |
 | `/api/enhance-prompt` | POST | AI-enhanced prompt generation |
+
+### Logs Explorer
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/logs` | GET | Read-only log browser UI |
+| `/api/logs/folders` | GET | List folders containing `.jsonl`, `.log`, or `.md` files |
+| `/api/logs/files` | GET | List files for a folder with search, filters, and newest-first sorting |
+| `/api/logs/content` | GET | Fetch paged file content for YAML/markdown/log rendering |
 
 ### WebSocket Events
 

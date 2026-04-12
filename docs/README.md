@@ -310,6 +310,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-12:**
+- ✅ **Jarvis Web UI v2.12** - Dedicated `/logs` browser for local log triage
+  - **Read-only `/logs` page**: Auth-protected log browser inside Jarvis Web UI
+  - **Allowed file types only**: Lists folders containing `.jsonl`, `.log`, and `.md`, while skipping hidden files and `.pid`
+  - **Stable folder navigation**: Folder column stays A-Z while files remain newest-first
+  - **Folder search**: Search ranks matching files and filters viewer content to matching records/lines
+  - **JSONL viewer**: Dotted keys are nestified and rendered as YAML-style cards with modal expansion
+  - **Markdown/log viewing**: Markdown renders cleanly, logs lazy-load, and mobile uses folder → file → viewer drill-down
+  - See: `docs/JARVIS_WEB_UI.md`
+  
 **2026-04-10:**
 - ✅ **Duplicate-tool recovery + transcript follow-up hardening**
   - Exact duplicate tool calls no longer immediately end the request. Jarvis now blocks the repeated call, injects a duplicate-guard note into the next routing turn, and gives the model bounded recovery turns before falling back to duplicate-prevention synthesis.

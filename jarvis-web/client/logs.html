@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Jarvis Logs</title>
+
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/glow-refinements.css">
+  <link rel="stylesheet" href="/css/log-viewer.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+</head>
+<body class="logs-page">
+  <div id="logsApp">
+    <header class="header logs-header">
+      <div class="header-left">
+        <a class="logs-home-link" href="/">
+          <div class="logo">
+            <span class="logo-icon"></span>
+            <span></span>
+          </div>
+        </a>
+        <div class="logs-title-block">
+          <div class="logs-eyebrow">Read-only viewer</div>
+          <h1 class="logs-title">Logs</h1>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <a href="/" class="icon-btn" title="Back to chat">🤖</a>
+        <a href="#" class="icon-btn" title="Open Canvas" onclick="window.open('http://' + window.location.hostname + ':8890', '_blank'); return false;">📄</a>
+        <a href="#" class="icon-btn" title="Memory Browser" onclick="window.open('http://' + window.location.hostname + ':5002', '_blank'); return false;">🧠</a>
+        <a href="#" class="icon-btn" title="Intelligence Dashboard" onclick="window.open('http://' + window.location.hostname + ':5003', '_blank'); return false;">📊</a>
+      </div>
+    </header>
+
+    <main class="logs-shell">
+      <section class="logs-panel folders-panel">
+        <div class="panel-header">
+          <h2>Folders</h2>
+          <button class="icon-btn panel-refresh-btn" id="refreshFoldersBtn" title="Refresh folders">↻</button>
+        </div>
+
+        <div class="panel-controls">
+          <input type="search" id="folderFilterInput" class="logs-input" placeholder="Filter folders...">
+        </div>
+
+        <div class="folder-list" id="folderList">
+          <div class="empty-state compact">Loading folders...</div>
+        </div>
+      </section>
+
+      <section class="logs-panel files-panel">
+        <div class="panel-header">
+          <div class="panel-heading-with-back">
+            <button class="mobile-back-btn" id="backToFoldersBtn" title="Back to folders">←</button>
+            <h2 id="selectedFolderLabel">Choose a folder</h2>
+          </div>
+          <div class="panel-summary" id="fileSummary">No folder selected</div>
+        </div>
+
+        <div class="panel-controls stacked">
+          <input type="search" id="fileSearchInput" class="logs-input" placeholder="Find filename or content inside this folder">
+
+          <div class="filter-row">
+            <div class="chip-group" id="extensionChips">
+              <button class="filter-chip active" data-extension="">All</button>
+              <button class="filter-chip" data-extension="jsonl">JSONL</button>
+              <button class="filter-chip" data-extension="log">LOG</button>
+              <button class="filter-chip" data-extension="md">MD</button>
+            </div>
+
+            <div class="chip-group" id="daysChips">
+              <button class="filter-chip active" data-days="">Any date</button>
+              <button class="filter-chip" data-days="1">24h</button>
+              <button class="filter-chip" data-days="7">7d</button>
+              <button class="filter-chip" data-days="30">30d</button>
+            </div>
+          </div>
+
+          <div class="filter-row split">
+            <label class="logs-select-label">
+              Sort
+              <select id="sortSelect" class="logs-select">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="name">Name</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="file-list" id="fileList">
+          <div class="empty-state compact">Pick a folder to see files.</div>
+        </div>
+
+        <button class="load-more-btn" id="loadMoreFilesBtn" hidden>Load more files</button>
+      </section>
+
+      <section class="logs-panel viewer-panel">
+        <div class="panel-header">
+          <div class="panel-heading-with-back">
+            <button class="mobile-back-btn" id="backToFilesBtn" title="Back to files">←</button>
+            <button class="viewer-title-btn" id="selectedFileLabelBtn" title="Open full-size view" disabled>
+              <span class="viewer-title-text" id="selectedFileLabel">Choose a file</span>
+            </button>
+          </div>
+          <div class="panel-summary" id="viewerSummary">JSONL auto-nests dotted keys into YAML</div>
+        </div>
+
+        <div class="viewer-content" id="viewerContent">
+          <div class="empty-state">
+            <p>Pick a file to open it in a cleaner read-only view.</p>
+            <p>`.jsonl` shows newest entries first and converts dotted keys like `a.b.c` into nested YAML.</p>
+          </div>
+        </div>
+
+        <button class="load-more-btn" id="loadMoreContentBtn" hidden>Load more content</button>
+      </section>
+    </main>
+  </div>
+
+  <div class="log-modal" id="logRecordModal" hidden>
+    <div class="log-modal-backdrop" data-close-modal="true"></div>
+    <div class="log-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="logRecordModalTitle">
+      <div class="log-modal-header">
+        <div>
+          <div class="panel-eyebrow">Log entry</div>
+          <h2 id="logRecordModalTitle">Record</h2>
+        </div>
+        <button class="icon-btn" id="closeLogRecordModal" title="Close log modal">✕</button>
+      </div>
+      <div class="log-modal-body">
+        <div id="logRecordModalBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/utils.js"></script>
+  <script src="/js/log-viewer.js"></script>
+</body>
+</html>

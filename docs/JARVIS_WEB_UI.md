@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.11)  
-> **Last Updated**: April 10, 2026
+> **Status**: MVP Complete (v2.12)  
+> **Last Updated**: April 12, 2026
 
 ---
 
@@ -127,6 +127,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Source toggles** | ✅ | Enable/disable LLM, Tools, OpenCode, Feedback  |
 | **Expandable details** | ✅ | Click entry to see full parsed JSON  |
 | **Resizable panel** | ✅ | Drag to resize, state persisted  |
+| **`/logs` browser** | ✅ | Read-only log explorer for `.jsonl`, `.log`, and `.md` with search, lazy loading, and mobile drill-down |
 
 ### Phase 8: Manual Feedback - COMPLETE ✅
 
@@ -218,11 +219,11 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 jarvis-web/
 ├── server/
 │   ├── __init__.py
-│   ├── app.py                 # Flask + SocketIO app
+│   ├── app.py                 # Flask + SocketIO app + /logs page route
 │   ├── config.py              # Config loader (cloud.env + web_config)
 │   ├── routes/
 │   │   ├── __init__.py
-│   │   └── api.py             # REST endpoints
+│   │   └── api.py             # REST endpoints, including /api/logs/*
 │   ├── sockets/
 │   │   ├── __init__.py
 │   │   └── chat.py            # WebSocket handlers
@@ -230,17 +231,21 @@ jarvis-web/
 │       ├── __init__.py
 │       ├── tool_discovery.py  # Load tools from skills/
 │       ├── settings_manager.py # Settings with overrides
-│       └── conversation_store.py # Chat history
+│       ├── conversation_store.py # Chat history
+│       └── log_explorer.py    # Read-only log listing/search/content
 │
 ├── client/
-│   ├── index.html             # Main HTML
+│   ├── index.html             # Main chat UI
+│   ├── logs.html              # Dedicated /logs page
 │   ├── css/
 │   │   ├── variables.css      # CSS custom properties
-│   │   └── main.css           # All styles
+│   │   ├── main.css           # Main chat UI styles
+│   │   └── log-viewer.css     # /logs styles
 │   └── js/
 │       ├── app.js             # Main app
 │       ├── socket.js          # WebSocket client
 │       ├── chat.js            # Chat UI
+│       ├── log-viewer.js      # /logs folder/file/viewer logic
 │       └── utils.js           # Helpers
 │
 ├── config/
@@ -288,6 +293,9 @@ jarvis-web/
 | GET | `/api/stash/<space_id>/<file_id>` | Serve file from stash |
 | GET | `/api/music/<filename>` | Serve generated music files |
 | GET | `/api/videos/<filename>` | Serve generated video files |
+| GET | `/api/logs/folders` | List folders containing `.jsonl`, `.log`, or `.md` |
+| GET | `/api/logs/files` | List files in a folder, newest-first, with optional search |
+| GET | `/api/logs/content` | Fetch paged content for the selected log file |
 
 ### WebSocket Events
 
@@ -1170,6 +1178,27 @@ A collapsible panel at the bottom of the UI that streams server logs in real-tim
 - **Clear** - Clears UI only (disk logs preserved)
 - **Persisted state** - Height, collapsed state, enabled sources saved to localStorage
 
+### `/logs` Read-Only Browser (NEW)
+
+A dedicated page at `/logs` for browsing structured and plain-text logs without leaving Jarvis Web UI.
+
+**Features:**
+- **Read-only by design** - No editing, deletion, or file writes
+- **Auth-protected** - Reuses the existing Jarvis Web auth/session checks
+- **Focused file types** - Shows only folders containing `.jsonl`, `.log`, or `.md`
+- **Predictable navigation** - Folders stay A-Z while files inside each folder stay newest-first
+- **Folder-level search** - Search ranks matching files and carries the filter into the viewer
+- **JSONL rendering** - Parses each line, nestifies dotted keys, and renders YAML-style cards newest-first
+- **Markdown rendering** - `.md` files render as markdown in both the viewer and modal
+- **Lazy loading** - Large files page in more content instead of loading the entire file at once
+- **Mobile drill-down** - Small screens switch to folder → files → viewer with back arrows
+
+**Routes and APIs:**
+- `GET /logs` - Dedicated viewer page
+- `GET /api/logs/folders` - List allowed folders
+- `GET /api/logs/files` - List files in a folder with search/sort context
+- `GET /api/logs/content` - Fetch paged content for a selected file
+
 **Log Sources:**
 
 | Source | File | Content |
@@ -1318,6 +1347,7 @@ Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 - [x] **LLM + Tool logs** - Parsed, color-coded, expandable details 
 - [x] **Log source toggles** - Enable/disable LLM, Tools, OpenCode, Feedback 
 - [x] **Resizable log panel** - Drag to resize, state persisted in localStorage 
+- [x] **`/logs` browser** - Read-only log explorer with folder search, YAML-style JSONL rendering, markdown viewing, and mobile drill-down
 - [x] **Manual Feedback Analysis** - 📊 button + `--feedback` inline trigger 
 - [x] **Feedback Card** - Purple tool card with rating, summary, issues, tool ratings 
 - [x] **Feedback Toast** - 6-second notification with rating summary 
@@ -1452,6 +1482,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - ✅ **Server Logs Panel**: Real-time LLM + Tool logs at bottom of UI (DONE!)
 - ✅ **LLM call inspector**: Model, tokens, cost, duration, tool called (DONE!)
 - ✅ **Tool logs viewer**: See tool executions with expandable details (DONE!)
+- ✅ **`/logs` browser**: Dedicated auth-protected viewer for `.jsonl`, `.log`, and `.md` (DONE!)
 - 🔮 **Cost tracker**: Daily/weekly/monthly spend summary
 - 🔮 **A/B test viewer**: See prompt evolution experiments
 
@@ -1516,4 +1547,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.8: Completion Guard learning model - repair cancel support, structured learning on the original experience, and corrected-path reflection context - March 30, 2026*  
 *v2.9: Completion Guard tighten-only path, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback - April 2, 2026*  
 *v2.10: Completion Guard eval provider/model overrides, cloud/local Ollama model separation in AI Config, and Ollama cloud auto-eval JSON compatibility fixes - April 3, 2026*  
-*v2.11: Duplicate-tool recovery status, explicit large-result truncation metadata, and retry-state-preserving tool-card behavior - April 10, 2026*
+*v2.11: Duplicate-tool recovery status, explicit large-result truncation metadata, and retry-state-preserving tool-card behavior - April 10, 2026*  
+*v2.12: Dedicated `/logs` browser with auth protection, folder search, YAML-style JSONL rendering, markdown viewing, and mobile drill-down - April 12, 2026*

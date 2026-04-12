@@ -2231,8 +2231,8 @@ body {
 
 /* Extra small screens (phones) */
 @media (max-width: 480px) {
-  .header-left .logo {
-    display: none; /* Hide entire logo including robot head */
+  .header-left .logo span:not(.logo-icon) {
+    display: none; /* Keep robot head visible on tiny screens */
   }
   
   .header-left {

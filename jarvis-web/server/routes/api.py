@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory, abort
+from ..services.log_explorer import get_log_explorer, LogExplorerError
 from ..services.tool_discovery import get_tool_service
 from ..services.settings_manager import get_settings_manager
 from ..config import get_web_setting, JARVIS_ROOT, reload_web_config
@@ -67,6 +68,67 @@ def get_status():
             'stt': get_web_setting('audio.stt_enabled', False),
             'auth': is_auth_enabled()  # Dynamic from WEBUI_PASSWORD env var
         }
+    })
+
+
+@api_bp.route('/logs/folders', methods=['GET'])
+def list_log_folders():
+    """List folders under logs/ that contain supported view-only files."""
+    explorer = get_log_explorer()
+    return jsonify({
+        'ok': True,
+        'folders': explorer.list_folders(),
+    })
+
+
+@api_bp.route('/logs/files', methods=['GET'])
+def list_log_files():
+    """List supported log files in a folder with filtering and pagination."""
+    explorer = get_log_explorer()
+    folder = request.args.get('folder', '')
+    search = request.args.get('search', '')
+    extension = request.args.get('extension', '')
+    sort = request.args.get('sort', 'newest')
+    days = request.args.get('days', type=int)
+    offset = max(request.args.get('offset', 0, type=int) or 0, 0)
+    limit = min(max(request.args.get('limit', 50, type=int) or 50, 1), 200)
+
+    try:
+        payload = explorer.list_files(
+            folder=folder,
+            search=search,
+            extension=extension,
+            sort=sort,
+            days=days,
+            offset=offset,
+            limit=limit,
+        )
+    except LogExplorerError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+
+    return jsonify({
+        'ok': True,
+        **payload,
+    })
+
+
+@api_bp.route('/logs/content', methods=['GET'])
+def get_log_content():
+    """Read a supported log file with lazy-loaded content."""
+    explorer = get_log_explorer()
+    relative_path = request.args.get('path', '')
+    search = request.args.get('search', '')
+    offset = max(request.args.get('offset', 0, type=int) or 0, 0)
+    limit = min(max(request.args.get('limit', 50, type=int) or 50, 1), 200)
+
+    try:
+        payload = explorer.read_file(relative_path, offset=offset, limit=limit, search=search)
+    except LogExplorerError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+
+    return jsonify({
+        'ok': True,
+        **payload,
     })
 
 

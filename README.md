@@ -29,6 +29,7 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - **Audio playback controls**: Speaker button with pause/resume/stop
   - **Music generation**: ElevenLabs music plays inline in chat
   - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
+  - **`/logs` Log Viewer**: Read-only browser for `.jsonl`, `.log`, and `.md` logs with folder drill-down, search, lazy loading, and YAML-style JSONL rendering
   - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines 
   - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions 
   - **Prompt hover tooltips**: Hover over `@` suggestions to see key points 
@@ -1636,6 +1637,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **Music playback**: ElevenLabs generated music plays inline
   - **New @prompts**: `@generate_music`, `@email`, `@daily` with context-first injection
   - **Server Logs Panel**: Real-time LLM + Tool streaming at bottom of UI
+  - **`/logs` Log Viewer**: Dedicated read-only log browser with auth protection, mobile drill-down navigation, folder/file search, lazy loading, YAML-style JSONL rendering, and markdown viewing
   - **Color-coded logs**: LLM (purple), Tools (green), with success/error status
   - **Expandable details**: Click log entry to see full parsed JSON
   - **Slash commands**: `/canvas`, `/search`, `/recall`, `/detailed` - modify behavior

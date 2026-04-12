@@ -2,7 +2,7 @@
 
 Complete overview of where every log goes and how to find errors across all services.
 
-**Last Updated:** February 5, 2026
+**Last Updated:** April 12, 2026
 
 ---
 
@@ -153,6 +153,11 @@ logs/
 ```
 
 **Also outputs to:** tmux session `jarvis-web` (Flask default stderr)
+
+**Notes:**
+- The Jarvis Web `/logs` browser is read-only and runs inside the same Flask app on port `5001`
+- `/logs` uses the existing Jarvis Web auth/session checks, so protected deployments stay protected there too
+- If `/logs` hits a handled or unhandled HTTP error, it lands in the same `logs/web-ui/errors-YYYY-MM-DD.jsonl` stream as the rest of the Web UI
 
 ---
 
