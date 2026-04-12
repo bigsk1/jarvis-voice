@@ -245,8 +245,8 @@ class Orchestrator:
         TTL hint for how long a tool result should be considered authoritative.
         """
         ttl_map = {
-            "crypto_price": 60,
-            "stock_price": 60,
+            "crypto_price": 120,
+            "stock_price": 120,
             "weather": 600,
             "get_time": 30,
         }
