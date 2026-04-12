@@ -6,7 +6,8 @@
 #   chmod +x install.sh && ./install.sh
 #
 # Environment:
-#   SKIP_SYSTEM_DEPS=1   Skip sudo apt / install-system-deps.sh (deps already installed)
+#   SKIP_SYSTEM_DEPS=1        Skip sudo apt / install-system-deps.sh (deps already installed)
+#   SKIP_JARVIS_HOME_CHECK=1  Allow running when the repo is not at $HOME/jarvis-voice (advanced)
 #
 # See: docs/INSTALL_GUIDE.md (OpenCode, n8n, and other optional steps are left to you)
 
@@ -40,6 +41,31 @@ require_python312() {
   need_cmd python3
   python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' \
     || die "Python 3.12+ required (found: $(python3 -V 2>&1))"
+}
+
+# Repo must live at ~/jarvis-voice (aliases + docs assume this). Compare real paths so symlinks OK.
+require_jarvis_voice_home() {
+  if [[ "${SKIP_JARVIS_HOME_CHECK:-}" == "1" ]]; then
+    echo "SKIP_JARVIS_HOME_CHECK=1 — not requiring \$HOME/jarvis-voice"
+    return 0
+  fi
+  local expected="$HOME/jarvis-voice"
+  if [[ ! -d "$expected" ]]; then
+    echo "ERROR: Clone the repository to exactly: $expected" >&2
+    echo "       Then run: cd $expected && ./install.sh" >&2
+    exit 1
+  fi
+  local actual exp
+  actual="$(cd "$REPO_ROOT" && pwd -P)"
+  exp="$(cd "$expected" && pwd -P)"
+  if [[ "$actual" != "$exp" ]]; then
+    echo "ERROR: install.sh must be run from \$HOME/jarvis-voice" >&2
+    echo "       Repository root is: $actual" >&2
+    echo "       Expected:            $exp" >&2
+    echo "       Fix: move/re-clone to $expected and run ./install.sh from there." >&2
+    echo "       Advanced: SKIP_JARVIS_HOME_CHECK=1 ./install.sh (non-standard layout)" >&2
+    exit 1
+  fi
 }
 
 run_system_deps() {
@@ -201,6 +227,7 @@ echo "=========================================="
 echo ""
 
 [[ -f "${REPO_ROOT}/pyproject.toml" ]] || die "Run this script from the jarvis-voice repo root (pyproject.toml missing)."
+require_jarvis_voice_home
 require_python312
 
 run_system_deps

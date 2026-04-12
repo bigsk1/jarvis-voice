@@ -1,8 +1,8 @@
 # Jarvis Voice Assistant
 
-> **Heads up** — This is my personal AI voice assistant that I have been building for about four months now. I never planned to release it publicly. The codebase reflects that: there are hardcoded paths assume a user named "boss", and some things are wired together in ways that made sense for my setup but might confuse you.
+> **Heads up** — Personal project I have been building for months; it was not originally built for public release, so rough edges are possible.
 >
-> That said, if you want to run your own version, the [Install Guide](docs/INSTALL_GUIDE.md) walks through setting up a fresh Ubuntu 24.04 server from scratch. You'll need to change a few config values, but everything *should* work if you follow the steps. No promises, no support — just sharing what I built. If you care to support and cover some of the api costs, please consider donating.
+> **If you want to run it yourself:** clone into **`$HOME/jarvis-voice`** (that path matters for scripts and aliases), then run **`./install.sh`** on Ubuntu 24.04+ with Python 3.12+. The installer sets up system deps, `uv`, the `~/jarvis-venv` environment, and project setup; you still add API keys and audio settings in `config/cloud.env` and `config/local.env`. Full walkthrough: [Install Guide](docs/INSTALL_GUIDE.md). No promises, no formal support — sharing what I built. If you want to help cover API costs, consider donating.
 
 ## What is Jarvis?
 
