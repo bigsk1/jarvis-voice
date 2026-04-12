@@ -902,7 +902,7 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 | **LLM Routing** | Any query | LLM analyzes and selects | General questions, flexible tasks |
 | **Workflow Pipelines** | `/command` | Predefined in JSON recipe | Repeatable multi-step tasks |
 
-### Available Workflows (14)
+### Available Workflows (15)
 
 | Command | Description | Tools Used |
 |---------|-------------|------------|
@@ -917,6 +917,7 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 | `/serpapi <query>` | SerpApi workflow: search + stash export + canvas report | serpapi_search, stash, canvas |
 | `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, stock_price, list_alerts, list_reminders, system_monitor, canvas |
 | `/status-visual` | Status briefing + AI-generated dashboard image | get_time, weather, crypto_price, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
+| `/weather_watch`, `/garden_watch` | Weather watch for default location (`JARVIS_DEFAULT_LOCATION`); alerts for cold, wind, heat, or severe conditions | get_time, weather, create_alert, canvas |
 | `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel |
 | `/youtube_ingest <url>` | Download video + transcript, summarize, create study brief | youtube_transcript, youtube_video, stash, text_summarizer, canvas |
 | `/youtube_research <url>` | Download transcript, summarize, create study notes | youtube_transcript, stash, text_summarizer, canvas |
@@ -982,7 +983,7 @@ Stores facts, preferences, and technical information with **hybrid search** (FTS
 ./bin/memory list
 
 # Tune semantic search sensitivity (in config/cloud.env or local.env)
-SEMANTIC_SIMILARITY_THRESHOLD=0.40  # Default: 0.40 (balanced)
+SEMANTIC_SIMILARITY_THRESHOLD=0.30  # Default: 0.30 (balanced)
 # Lower (0.30-0.35) = more results, may include loosely related
 # Higher (0.45-0.50) = fewer results, only close matches
 ```
@@ -1409,6 +1410,19 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
+**Completed (April 2026):**
+- ✅ **Jarvis Web UI `/logs` (v2.12)** — Auth-protected log browser: allowed extensions (`.jsonl`, `.log`, `.md`), stable folder navigation, folder search, YAML-style JSONL cards with modal expansion, markdown viewing, mobile drill-down
+- ✅ **Orchestrator: duplicate tools & follow-ups** — Repeated identical tool calls no longer end the turn immediately; bounded recovery with duplicate-guard context; better duplicate-prevention synthesis for transcript/stash-style answers; prior tool results carry `result_truncated` / char-count metadata; retries preserve tool cards and orchestrator state
+- ✅ **Stash & model overrides** — Conversation follow-ups keep real `stash` tool payloads (not upload-only); model prompt overrides strip `-latest` / `-cloud` suffixes for folder matching
+- ✅ **Ollama & install sync** — `OLLAMA_CONTEXT_WINDOW` applied broadly; explicit tool-contract guidance and retries; thinking disabled unless intended; `sync-memory-db` / `sync-evolution-db` repair paths for fresh targets and older DBs
+- ✅ **SerpAPI / Amazon / Canvas** — Stronger Amazon shopping in `serpapi_search`; Web UI product preview cards; shortlist context for “tell me more” follow-ups; Canvas supports embedded images and recovers inline `Image: https://…` product lines
+- ✅ **Embeddings & routing hygiene** — Embedding fallback surfaced in tool results/logs (`fallback_embeddings`); OpenAI tool schemas sanitized for cross-provider compatibility; shared cloud model catalog; Web UI defaults follow env-configured models; prompt enhancer + shopping guidance tightened
+- ✅ **Scheduled task notifications** — Email, alerts, and webhooks on success/failure (deduped per run); run history shows delivery outcomes; notification UX polish
+- ✅ **Alerts & Weather Watch** — `create_alert` as a first-class tool; Memory UI **Alerts** tab; **Weather Watch** workflow (`/weather_watch`, `/garden_watch`) with Canvas report and condition-based alerts (`create_alert`)
+- ✅ **TTS stack** — Central `lib/tts_normalizer.py`; named profiles (e.g. `weather_watch`, `camera_alert`, `price_quote`, `timestamped`); `/api/voice/speak` optional `profile` parameter
+- ✅ **OpenCode** — Respects `OPENCODE_PROVIDER` / `OPENCODE_MODEL`; optional memory via `OPENCODE_INCLUDE_MEMORY`; Completion Guard excludes `opencode`; stronger summaries and “Open session” links in Web UI tool cards
+- ✅ **Completion Guard refinements** — AI Config overrides for guard eval provider/model; `tighten_only` auto outcome; clearer evaluator provider chain; provider formatter errors don’t leak raw gRPC/safety strings
+
 **Completed (March 2026):**
 - ✅ **Completion Guard** — Post-answer “was this actually done?” control loop (Jarvis Web) ⭐ MAJOR
   - Manual (Yes/No card) and auto modes with structured scoring + threshold (`JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD`, AI Config overrides)
@@ -1830,4 +1844,4 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.46.3 (March 2026)  
 **Status:** Production Ready ✅  
-**Latest Features:** Completion Guard ↔ feedback ↔ intelligence bridge + scheduled task runner + routing freshness & duplicate suppression + weather 7-day + workflow true timings + stock_price proxy fallback + Web UI limits/style overrides + model prompt overrides + completion-guard settings
+**Latest Features:** Completion Guard ↔ feedback ↔ intelligence + scheduled tasks & run notifications + Web UI `/logs` + duplicate-tool recovery & stash follow-ups + alerts & Weather Watch + TTS normalizer & profiles + SerpAPI/Amazon/Canvas + OpenCode hardening + embedding fallback + model catalog + routing freshness & workflow timings
