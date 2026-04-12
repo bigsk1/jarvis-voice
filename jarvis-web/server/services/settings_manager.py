@@ -13,17 +13,20 @@ from model_catalog import (
     get_model_context_label,
     get_provider_model_options,
 )
+from ollama_utils import get_ollama_base_urls, request_ollama
 
 
 def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
     """Fetch available models from Ollama server, filtered by mode when useful."""
-    import requests
-    
-    if not base_url:
-        base_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
-    
     try:
-        response = requests.get(f"{base_url}/api/tags", timeout=5)
+        response, used_base_url = request_ollama(
+            "get",
+            "/api/tags",
+            base_urls=get_ollama_base_urls() if base_url is None else None,
+            base_url=base_url,
+            timeout=5,
+        )
+        base_url = used_base_url
         if response.status_code == 200:
             data = response.json()
             models = []

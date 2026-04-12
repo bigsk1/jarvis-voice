@@ -44,9 +44,9 @@ class EmbeddingsTests(unittest.TestCase):
         self.assertIn("end", compacted)
         self.assertIn(" ... ", compacted)
 
-    @patch("requests.post")
-    def test_ollama_embedding_retries_with_compacted_text_on_context_error(self, mock_post):
-        mock_post.side_effect = [
+    @patch("requests.request")
+    def test_ollama_embedding_retries_with_compacted_text_on_context_error(self, mock_request):
+        mock_request.side_effect = [
             _FakeResponse(500, '{"error":"the input length exceeds the context length"}'),
             _FakeResponse(200, payload={"embedding": [0.1, 0.2, 0.3]}),
         ]
@@ -55,16 +55,16 @@ class EmbeddingsTests(unittest.TestCase):
         embedding = _get_ollama_embedding(long_text)
 
         self.assertEqual(embedding, [0.1, 0.2, 0.3])
-        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(mock_request.call_count, 2)
 
-        first_prompt = mock_post.call_args_list[0].kwargs["json"]["input"]
-        second_prompt = mock_post.call_args_list[1].kwargs["json"]["input"]
+        first_prompt = mock_request.call_args_list[0].kwargs["json"]["input"]
+        second_prompt = mock_request.call_args_list[1].kwargs["json"]["input"]
         self.assertEqual(len(first_prompt), 7000)
         self.assertLess(len(second_prompt), len(first_prompt))
 
-    @patch("requests.post")
-    def test_ollama_embedding_records_fallback_tracking(self, mock_post):
-        mock_post.return_value = _FakeResponse(500, '{"error":"connection refused"}')
+    @patch("requests.request")
+    def test_ollama_embedding_records_fallback_tracking(self, mock_request):
+        mock_request.return_value = _FakeResponse(500, '{"error":"connection refused"}')
 
         reset_embedding_fallback_tracking()
         _get_ollama_embedding("semantic query")

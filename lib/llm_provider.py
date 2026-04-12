@@ -10,6 +10,7 @@ from typing import Any
 from abc import ABC, abstractmethod
 
 from model_catalog import get_provider_fallback_model
+from ollama_utils import parse_ollama_base_urls, request_ollama
 
 
 class LLMProvider(ABC):
@@ -736,7 +737,8 @@ class OllamaProvider(LLMProvider):
     
     def __init__(self, base_url: str, model: str):
         """Initialize Ollama provider."""
-        self.base_url = base_url.rstrip('/')
+        self.base_urls = parse_ollama_base_urls(base_url)
+        self.base_url = self.base_urls[0]
         self.model = model
 
     @staticmethod
@@ -858,11 +860,14 @@ class OllamaProvider(LLMProvider):
             if options:
                 request_data["options"] = options
             
-            response = requests.post(
-                f"{self.base_url}/api/chat",
+            response, used_base_url = request_ollama(
+                "post",
+                "/api/chat",
+                base_urls=self.base_urls,
                 json=request_data,
                 timeout=180  # 3 minutes for local models (qwen3-vl is heavy)
             )
+            self.base_url = used_base_url
             response.raise_for_status()
             
             result = response.json()
@@ -1029,11 +1034,14 @@ class OllamaProvider(LLMProvider):
                     file=sys.stderr
                 )
             
-            response = requests.post(
-                f"{self.base_url}/api/chat",
+            response, used_base_url = request_ollama(
+                "post",
+                "/api/chat",
+                base_urls=self.base_urls,
                 json=request_data,
                 timeout=180  # 3 minutes for local models
             )
+            self.base_url = used_base_url
             
             # Check for "does not support tools" error (HTTP 400) - fall back to structured prompting
             if response.status_code == 400:
@@ -1184,11 +1192,14 @@ CRITICAL RULES:
                     file=sys.stderr
                 )
             
-            response = requests.post(
-                f"{self.base_url}/api/chat",
+            response, used_base_url = request_ollama(
+                "post",
+                "/api/chat",
+                base_urls=self.base_urls,
                 json=request_data,
                 timeout=180
             )
+            self.base_url = used_base_url
             response.raise_for_status()
             
             result = response.json()

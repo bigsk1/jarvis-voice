@@ -8,6 +8,7 @@ Supports:
 import threading
 
 from config_loader import get_config_value, get_int
+from ollama_utils import get_ollama_base_urls, request_ollama
 
 
 _EMBEDDING_FALLBACK_STATE = threading.local()
@@ -205,8 +206,7 @@ def _get_ollama_embedding(text: str) -> list[float]:
         _record_embedding_fallback("ollama", text, "requests package not installed")
         return _get_fallback_embedding(text, dimensions=768)
     
-    # Get Ollama base URL from config
-    base_url = get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
+    base_urls = get_ollama_base_urls()
     
     # Use nomic-embed-text model (768 dimensions, fast, local)
     model = get_config_value("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
@@ -220,15 +220,17 @@ def _get_ollama_embedding(text: str) -> list[float]:
 
     try:
         for idx, prompt in enumerate(prompt_variants):
-            response = requests.post(
-                f"{base_url}/api/embed",
+            response, used_base_url = request_ollama(
+                "post",
+                "/api/embed",
+                base_urls=base_urls,
                 json={
                     "model": model,
                     "input": prompt,
                     "truncate": True,
                     "options": options,
                 },
-                timeout=30
+                    timeout=30
             )
 
             if response.status_code == 404:
@@ -238,8 +240,10 @@ def _get_ollama_embedding(text: str) -> list[float]:
                 }
                 if options:
                     legacy_payload["options"] = options
-                response = requests.post(
-                    f"{base_url}/api/embeddings",
+                response, _ = request_ollama(
+                    "post",
+                    "/api/embeddings",
+                    base_url=used_base_url,
                     json=legacy_payload,
                     timeout=30
                 )

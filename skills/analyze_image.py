@@ -21,6 +21,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from model_catalog import get_provider_fallback_model
+from ollama_utils import get_ollama_base_urls, request_ollama
 
 
 def _debug(msg: str):
@@ -346,13 +347,15 @@ def _analyze_with_vision(image_base64: str, question: str, mode: str) -> str | N
 def _vision_ollama(image_base64: str, question: str) -> str | None:
     """Use Ollama vision model (llava, etc)."""
     try:
-        base_url = get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
+        base_urls = get_ollama_base_urls()
         model = get_config_value('OLLAMA_VISION_MODEL', 'llava:latest')
         
         _debug(f"[ANALYZE_IMAGE] Using Ollama vision: {model}")
         
-        response = requests.post(
-            f"{base_url}/api/generate",
+        response, _ = request_ollama(
+            "post",
+            "/api/generate",
+            base_urls=base_urls,
             json={
                 "model": model,
                 "prompt": question,

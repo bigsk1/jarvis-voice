@@ -167,6 +167,10 @@ OLLAMA_BASE_URL="http://localhost:11434"
 OPENCODE_BASE_URL="http://localhost:4096"
 ```
 
+`OLLAMA_BASE_URL` also accepts a comma-separated fallback list like
+`"http://192.168.70.226:11434,http://192.168.1.68:11434"`. Jarvis will still
+try `http://localhost:11434` last if it is not already included.
+
 ### GPU Optimization
 ```bash
 # Adjust for your VRAM (16GB example)

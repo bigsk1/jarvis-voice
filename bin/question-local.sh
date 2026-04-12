@@ -14,6 +14,56 @@ if [ -z "$QUESTION" ]; then
   exit 1
 fi
 
+declare -a OLLAMA_URLS=()
+
+build_ollama_urls() {
+  local raw="${OLLAMA_BASE_URL:-http://localhost:11434},http://localhost:11434"
+  local part normalized
+  local -A seen=()
+
+  IFS=',' read -r -a parts <<< "$raw"
+  for part in "${parts[@]}"; do
+    normalized="$(echo "$part" | xargs)"
+    normalized="${normalized%/}"
+    [ -z "$normalized" ] && continue
+    [ -n "${seen[$normalized]:-}" ] && continue
+    seen["$normalized"]=1
+    OLLAMA_URLS+=("$normalized")
+  done
+}
+
+ollama_post() {
+  local path="$1"
+  local payload="$2"
+  local url
+  local response_with_code
+  local http_code
+  local response_body
+
+  for url in "${OLLAMA_URLS[@]}"; do
+    response_with_code=$(curl --connect-timeout 2 --max-time 90 -sS \
+      -w $'\n%{http_code}' "$url$path" \
+      -H "Content-Type: application/json" \
+      -d "$payload" 2>/dev/null) || continue
+
+    http_code="${response_with_code##*$'\n'}"
+    response_body="${response_with_code%$'\n'*}"
+
+    case "$http_code" in
+      500|502|503|504)
+        continue
+        ;;
+    esac
+
+    printf "%s" "$response_body"
+    return 0
+  done
+
+  return 1
+}
+
+build_ollama_urls
+
 
 OUTDIR="${AUDIO_DIR}"
 mkdir -p "$OUTDIR/tts" "$OUTDIR/logs"
@@ -39,9 +89,7 @@ REQ=$(jq -n --arg model "$OLLAMA_MODEL" \
   ],
   stream: false
 }')
-ANSWER=$(curl -sS "$OLLAMA_BASE_URL/v1/chat/completions" \
-  -H "Content-Type: application/json" \
-  -d "$REQ" \
+ANSWER=$(ollama_post "/v1/chat/completions" "$REQ" \
   | jq -r '.choices[0].message.content // empty' || true)
 
 # --- Fallback to native /api/generate if needed
@@ -58,9 +106,7 @@ Assistant:"
       stream: false,
       options: { num_predict: 800 }  # cap output
     }')
-  ANSWER=$(curl -sS "$OLLAMA_BASE_URL/api/generate" \
-    -H "Content-Type: application/json" \
-    -d "$REQ_NATIVE" \
+  ANSWER=$(ollama_post "/api/generate" "$REQ_NATIVE" \
     | jq -r '.response // empty' || true)
 fi
 
@@ -93,9 +139,7 @@ $SANITIZED
 >>>"
   REQ_SUM=$(jq -n --arg model "$OLLAMA_MODEL" --arg prompt "$SUM_PROMPT" '
     { model: $model, prompt: $prompt, stream: false, options: { num_predict: 150 } }')
-  SHORT=$(curl -sS "$OLLAMA_BASE_URL/api/generate" \
-    -H "Content-Type: application/json" \
-    -d "$REQ_SUM" | jq -r '.response // empty')
+  SHORT=$(ollama_post "/api/generate" "$REQ_SUM" | jq -r '.response // empty')
   if [ -n "$SHORT" ]; then
     SANITIZED=$(printf "%s" "$SHORT" \
       | tr -d '\000' | tr '\r' '\n' | sed 's/[[:cntrl:]]//g' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//;s/ *$//')

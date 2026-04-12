@@ -28,7 +28,11 @@ if [ -f "$JARVIS_CONFIG_DIR/local.env" ]; then
     echo "📖 Loading Ollama URL from: $JARVIS_CONFIG_DIR/local.env"
     source "$JARVIS_CONFIG_DIR/local.env"
     OLLAMA_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
-    echo "   Found OLLAMA_BASE_URL: $OLLAMA_URL"
+    IFS=',' read -r -a OLLAMA_URL_CANDIDATES <<< "$OLLAMA_URL,http://localhost:11434"
+    OLLAMA_URL="$(echo "${OLLAMA_URL_CANDIDATES[0]}" | xargs)"
+    OLLAMA_URL="${OLLAMA_URL%/}"
+    echo "   Found OLLAMA_BASE_URL candidates: ${OLLAMA_BASE_URL:-http://localhost:11434}"
+    echo "   Using primary Ollama URL for OpenCode: $OLLAMA_URL"
 else
     echo "⚠️  local.env not found, using default Ollama URL"
     OLLAMA_URL="http://localhost:11434"
@@ -102,4 +106,3 @@ echo "   - Default provider: anthropic (claude-sonnet-4-20250514)"
 echo ""
 echo "💡 To use Ollama in local mode, Jarvis will automatically select it."
 echo "   For cloud mode, OpenCode will use Anthropic Claude by default."
-

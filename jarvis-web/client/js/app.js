@@ -1003,10 +1003,13 @@ class JarvisApp {
         providerSelect.value = s.llm?.provider?.is_override ? s.llm.provider.value : '';
         const providerDefault = document.getElementById('llm-provider-default');
         const envFile = s.mode === 'local' ? 'local.env' : 'cloud.env';
-        providerDefault.textContent = `(${envFile}: ${s.llm?.provider?.default || 'xai'})`;
-        providerDefault.className = s.llm?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
+        const provEnvDefault = s.llm?.provider?.default || 'xai';
         if (s.llm?.provider?.is_override) {
-          providerDefault.textContent = `⚡ override: ${s.llm.provider.value}`;
+          providerDefault.textContent = `⚡ override: ${s.llm.provider.value} · (${envFile} default: ${provEnvDefault})`;
+          providerDefault.className = 'setting-default setting-override';
+        } else {
+          providerDefault.textContent = `(${envFile}: ${provEnvDefault})`;
+          providerDefault.className = 'setting-default';
         }
         
         // Populate LLM Model dropdown based on provider
@@ -1015,10 +1018,13 @@ class JarvisApp {
         const modelSelect = document.getElementById('setting-llm-model');
         modelSelect.value = s.llm?.model?.is_override ? s.llm.model.value : '';
         const modelDefault = document.getElementById('llm-model-default');
-        modelDefault.textContent = `(${envFile}: ${s.llm?.model?.default || 'default'})`;
-        modelDefault.className = s.llm?.model?.is_override ? 'setting-default setting-override' : 'setting-default';
+        const modelEnvDefault = s.llm?.model?.default || 'default';
         if (s.llm?.model?.is_override) {
-          modelDefault.textContent = `⚡ override: ${s.llm.model.value}`;
+          modelDefault.textContent = `⚡ override: ${s.llm.model.value} · (${envFile} default: ${modelEnvDefault})`;
+          modelDefault.className = 'setting-default setting-override';
+        } else {
+          modelDefault.textContent = `(${envFile}: ${modelEnvDefault})`;
+          modelDefault.className = 'setting-default';
         }
         
         // Populate Image Provider

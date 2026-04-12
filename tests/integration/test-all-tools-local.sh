@@ -59,13 +59,32 @@ echo "========================================="
 
 
 
-# Check if Ollama is running (use configured URL)
-OLLAMA_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
-echo -e "${BLUE}Checking Ollama at: $OLLAMA_URL${NC}"
+# Check if Ollama is running (use configured fallback order)
+declare -a OLLAMA_URLS=()
+declare -A OLLAMA_SEEN=()
+OLLAMA_URL=""
 
-if ! curl -s "$OLLAMA_URL/api/tags" &>/dev/null; then
-    echo -e "${RED}❌ Ollama is not reachable at $OLLAMA_URL${NC}"
-    echo "Check if the remote Ollama server is running"
+IFS=',' read -r -a OLLAMA_RAW_URLS <<< "${OLLAMA_BASE_URL:-http://localhost:11434},http://localhost:11434"
+for candidate in "${OLLAMA_RAW_URLS[@]}"; do
+    candidate="$(echo "$candidate" | xargs)"
+    candidate="${candidate%/}"
+    [ -z "$candidate" ] && continue
+    [ -n "${OLLAMA_SEEN[$candidate]:-}" ] && continue
+    OLLAMA_SEEN["$candidate"]=1
+    OLLAMA_URLS+=("$candidate")
+done
+
+for candidate in "${OLLAMA_URLS[@]}"; do
+    echo -e "${BLUE}Checking Ollama at: $candidate${NC}"
+    if curl --connect-timeout 2 --max-time 5 -s "$candidate/api/tags" &>/dev/null; then
+        OLLAMA_URL="$candidate"
+        break
+    fi
+done
+
+if [ -z "$OLLAMA_URL" ]; then
+    echo -e "${RED}❌ Ollama is not reachable at any configured host${NC}"
+    printf 'Tried: %s\n' "${OLLAMA_URLS[*]}"
     exit 1
 fi
 
@@ -169,4 +188,3 @@ else
     echo -e "\n${BLUE}Tip: Local LLMs may interpret queries differently. Check if the tool was called correctly.${NC}"
     exit 1
 fi
-

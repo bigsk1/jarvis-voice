@@ -20,6 +20,7 @@ import subprocess
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from ollama_utils import get_ollama_base_urls, request_ollama
 from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
     StashFile
@@ -151,11 +152,13 @@ Do NOT add commentary or opinions - just the facts."""
         
         
         elif provider == 'ollama':
-            base_url = get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
+            base_urls = get_ollama_base_urls()
             model = get_config_value('STASH_SUMMARIZE_MODEL', 'qwen3.5:latest')
             
-            response = requests.post(
-                f'{base_url}/api/chat',
+            response, _ = request_ollama(
+                'post',
+                '/api/chat',
+                base_urls=base_urls,
                 json={
                     'model': model,
                     'messages': [
@@ -765,4 +768,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

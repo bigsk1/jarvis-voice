@@ -3958,11 +3958,12 @@ Mode: {mode}
     
     def _vision_ollama(self, image_base64: str, prompt: str) -> str:
         """Use Ollama vision model (llava, llama3.2-vision, etc.)"""
-        import requests
         from ..config import get_jarvis_setting
+        from ollama_utils import get_ollama_base_urls, get_primary_ollama_base_url, request_ollama
         
         try:
-            base_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+            base_url = get_primary_ollama_base_url()
+            base_urls = get_ollama_base_urls()
             vision_model = get_jarvis_setting('OLLAMA_VISION_MODEL', 'llava:latest')
             
             print(f"[VISION] Using Ollama: {vision_model} at {base_url}")
@@ -3976,11 +3977,14 @@ Mode: {mode}
             }
             
             print(f"[VISION] Sending request to Ollama...")
-            response = requests.post(
-                f"{base_url}/api/generate",
+            response, used_base_url = request_ollama(
+                "post",
+                "/api/generate",
+                base_urls=base_urls,
                 json=payload,
                 timeout=120  # Vision can be slow
             )
+            base_url = used_base_url
             print(f"[VISION] Got response: {response.status_code}")
             
             if response.status_code == 200:

@@ -15,6 +15,7 @@ import requests
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
+from ollama_utils import get_ollama_base_urls, get_primary_ollama_base_url, request_ollama
 
 
 class StatusSummarizer:
@@ -55,7 +56,7 @@ Only output the status phrase, nothing else."""
             self.api_key = get_config_value('ANTHROPIC_API_KEY')
             self.base_url = 'https://api.anthropic.com/v1'
         elif self.provider == 'ollama':
-            self.base_url = get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
+            self.base_url = get_primary_ollama_base_url()
             self.model = get_config_value('STATUS_LLM_MODEL', 'qwen3')
     
     def _build_system_prompt(self) -> str:
@@ -219,11 +220,14 @@ Generate a natural 5-8 word status update:"""
             }
         }
         
-        response = requests.post(
-            f'{self.base_url}/api/generate',
+        response, used_base_url = request_ollama(
+            'post',
+            '/api/generate',
+            base_urls=get_ollama_base_urls(),
             json=payload,
             timeout=10  # Ollama may need more time
         )
+        self.base_url = used_base_url
         response.raise_for_status()
         
         result = response.json()
@@ -312,4 +316,3 @@ if __name__ == "__main__":
     else:
         print("Summarizer not enabled or not configured.")
         print("Set STATUS_LLM_ENABLED=true and configure provider/API key.")
-
