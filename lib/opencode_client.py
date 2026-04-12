@@ -36,10 +36,10 @@ class OpenCodeClient:
         # Load model config from environment
         try:
             from config_loader import get_config_value
-            self.default_model_id = get_config_value("OPENCODE_MODEL", "claude-sonnet-4-20250514")
+            self.default_model_id = get_config_value("OPENCODE_MODEL", "claude-sonnet-4-6")
             self.default_provider_id = get_config_value("OPENCODE_PROVIDER", "anthropic")
         except:
-            self.default_model_id = "claude-sonnet-4-20250514"
+            self.default_model_id = "claude-sonnet-4-6"
             self.default_provider_id = "anthropic"
         
         self._verify_connection()

@@ -1829,7 +1829,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - Home automation integrations (Home Assistant, MQTT)
 - Multi-user support with isolated memory contexts
 - Tool profiles for local vs cloud modes
-- Single start / stop script for api, services, jarvis
 - Custom wake word training
 - Mobile app for remote control
 - Additional n8n workflows to integrate features
