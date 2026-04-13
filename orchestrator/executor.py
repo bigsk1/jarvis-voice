@@ -129,6 +129,7 @@ class ToolExecutor:
             # Use longer timeout for local mode (Ollama can be slower)
             # OpenCode tasks need much more time (building, coding, etc.)
             # Ingest intel needs time for embedding generation (especially large profiles)
+            # phone_call: Vapi max call length + poll loop + canvas save (see skills/phone_call.py)
             # Subprocess timeout settings see tool.json for HTTP timeouts
             if tool_name == "opencode":
                 timeout = 480  # 8 minutes for OpenCode tasks (complex builds)
@@ -156,6 +157,8 @@ class ToolExecutor:
                 timeout = 180  # 3 minutes - Samantha is a remote assistant, so we need to increase the timeout
             elif tool_name == "youtube_video":
                 timeout = 900  # 15 minutes - YouTube video download can be slow if downloading 2hr video
+            elif tool_name == "phone_call":
+                timeout = 900  # 15 min — aligns with VAPI_WAIT_TIMEOUT / wait_for_call_completion + Vapi maxDurationSeconds
             else:
                 timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
             

@@ -19,10 +19,12 @@ from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config, get_config_value, get_int
 
 # Vapi API base URL
 VAPI_API_BASE = "https://api.vapi.ai"
+# Per-request (connect, read) — long work is the live call, not HTTP to Vapi
+VAPI_REQUEST_TIMEOUT = (15, 90)
 
 # Persona definitions with rich backstories and boundaries
 PERSONAS = {
@@ -338,13 +340,16 @@ def resolve_phone_number(recipient: str) -> str:
 _recent_calls = {}  # phone_number -> timestamp
 CALL_LOCK_FILE = Path(__file__).parent.parent / 'data' / '.phone_call_lock'
 CALL_IN_PROGRESS_FILE = Path(__file__).parent.parent / 'data' / '.phone_call_in_progress'
+# Stale if older than max wait + Vapi max call length (see assistant maxDurationSeconds)
+CALL_LOCK_STALE_SECONDS = 960
 
 def cleanup_old_temp_assistants():
     """Delete any old temporary assistants to prevent duplicates."""
     try:
         response = requests.get(
             f"{VAPI_API_BASE}/assistant",
-            headers=get_vapi_headers()
+            headers=get_vapi_headers(),
+            timeout=VAPI_REQUEST_TIMEOUT,
         )
         if response.status_code == 200:
             assistants = response.json()
@@ -353,7 +358,8 @@ def cleanup_old_temp_assistants():
                 if '-call' in name or '-temp' in name:
                     requests.delete(
                         f"{VAPI_API_BASE}/assistant/{a['id']}",
-                        headers=get_vapi_headers()
+                        headers=get_vapi_headers(),
+                        timeout=VAPI_REQUEST_TIMEOUT,
                     )
     except Exception:
         pass  # Non-critical, continue anyway
@@ -364,8 +370,8 @@ def is_call_in_progress() -> dict | None:
     try:
         if CALL_IN_PROGRESS_FILE.exists():
             data = json.loads(CALL_IN_PROGRESS_FILE.read_text())
-            # Check if it's stale (more than 10 minutes old)
-            if time.time() - data.get('started', 0) < 600:
+            # Stale if older than max wait + longest expected call
+            if time.time() - data.get('started', 0) < CALL_LOCK_STALE_SECONDS:
                 return data
             else:
                 # Stale lock, remove it
@@ -585,7 +591,8 @@ def create_assistant_for_call(persona: str, owner: str, task: str, context: str)
     response = requests.post(
         f"{VAPI_API_BASE}/assistant",
         headers=get_vapi_headers(),
-        json=assistant_config
+        json=assistant_config,
+        timeout=VAPI_REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     return response.json()
@@ -644,7 +651,8 @@ def make_call(recipient: str, task: str, context: str = "", persona: str = "defa
     response = requests.post(
         f"{VAPI_API_BASE}/call",
         headers=get_vapi_headers(),
-        json=call_config
+        json=call_config,
+        timeout=VAPI_REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     call = response.json()
@@ -661,7 +669,8 @@ def get_call_status(call_id: str) -> dict:
     """Get the status and details of a call."""
     response = requests.get(
         f"{VAPI_API_BASE}/call/{call_id}",
-        headers=get_vapi_headers()
+        headers=get_vapi_headers(),
+        timeout=VAPI_REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     return response.json()
@@ -721,12 +730,14 @@ def extract_transcript(call: dict) -> str:
     return transcript
 
 
-def wait_for_call_completion(call_id: str, timeout: int = 60) -> dict:
+def wait_for_call_completion(call_id: str, timeout: int | None = None) -> dict:
     """Wait for a call to complete and return the result.
     
-    Timeout is kept short (60s default) because orchestrator has its own timeout.
-    Phone calls can be longer - if we timeout here, we return gracefully.
+    Uses VAPI_WAIT_TIMEOUT seconds (default 900) so this stays under orchestrator
+    phone_call subprocess timeout. Override for tests.
     """
+    if timeout is None:
+        timeout = get_int('VAPI_WAIT_TIMEOUT', 900)
     start_time = time.time()
     last_status = "unknown"
     
@@ -818,7 +829,8 @@ def list_recent_calls(limit: int = 10) -> list:
     response = requests.get(
         f"{VAPI_API_BASE}/call",
         headers=get_vapi_headers(),
-        params={"limit": limit}
+        params={"limit": limit},
+        timeout=VAPI_REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     calls = response.json()

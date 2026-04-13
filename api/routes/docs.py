@@ -6,7 +6,7 @@ tool parameters, and system information.
 Rate limited due to CPU-intensive semantic search (~15-20s per query).
 """
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from typing import Literal
 import subprocess
@@ -14,18 +14,16 @@ import json
 import re
 import time
 from pathlib import Path
-from datetime import datetime, timedelta
-from collections import defaultdict
+from datetime import datetime
+
+from lib.rate_limiter import get_docs_search_rate_limit_per_minute
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 
 # Project root for running QMD
 PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 
-# Rate limiting: max requests per IP per minute
-RATE_LIMIT_REQUESTS = 3
-RATE_LIMIT_WINDOW = 60  # seconds
-rate_limit_store: dict[str, list[float]] = defaultdict(list)
+# CPU-heavy /search is rate-limited by lib.rate_limiter.APIRateLimitMiddleware (docs bucket).
 
 
 class DocsSearchRequest(BaseModel):
@@ -55,26 +53,6 @@ class DocsSearchResponse(BaseModel):
     documentation: str
     results: list[DocsSearchResult]
     search_time_ms: int
-
-
-def check_rate_limit(client_ip: str) -> bool:
-    """Check if client has exceeded rate limit. Returns True if allowed."""
-    now = time.time()
-    window_start = now - RATE_LIMIT_WINDOW
-    
-    # Clean old entries
-    rate_limit_store[client_ip] = [
-        ts for ts in rate_limit_store[client_ip] 
-        if ts > window_start
-    ]
-    
-    # Check limit
-    if len(rate_limit_store[client_ip]) >= RATE_LIMIT_REQUESTS:
-        return False
-    
-    # Record this request
-    rate_limit_store[client_ip].append(now)
-    return True
 
 
 def run_qmd_vsearch(query: str, limit: int = 5, min_score: float = 0.4) -> list[dict]:
@@ -205,16 +183,8 @@ async def search_docs(request: Request, body: DocsSearchRequest):
     - API endpoints and usage
     - System features and workflows
     
-    Rate limited to 3 requests/minute per IP due to CPU-intensive search.
+    Rate limited per IP (docs bucket; see lib.rate_limiter / DOCS_API_RATE_LIMIT_PER_MINUTE).
     """
-    # Rate limiting
-    client_ip = request.client.host if request.client else "unknown"
-    if not check_rate_limit(client_ip):
-        raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit exceeded. Max {RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW}s."
-        )
-    
     start_time = time.time()
     
     # Run search
@@ -288,7 +258,7 @@ async def docs_status():
             "vectors": int(vectors_match.group(1)) if vectors_match else 0,
             "last_updated": updated_match.group(1).strip() if updated_match else "unknown",
             "collection": "jarvis-docs",
-            "rate_limit": f"{RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW}s"
+            "rate_limit": f"{get_docs_search_rate_limit_per_minute()} requests per minute (POST /search only)"
         }
     except Exception as e:
         return {

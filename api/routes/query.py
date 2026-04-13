@@ -1,6 +1,6 @@
 """Query/Chat API endpoints - Send queries to Jarvis programmatically"""
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request
 import sys
 import os
 from pathlib import Path
@@ -12,19 +12,7 @@ from api.models.query import QueryRequest, QueryResponse, QuickQueryRequest
 
 router = APIRouter(prefix="/api/query", tags=["query"])
 
-
-def _check_rate_limit(request: Request) -> None:
-    """Raise 429 if rate limit exceeded. QUERY_RATE_LIMIT_PER_MINUTE=0 disables."""
-    from rate_limiter import get_query_rate_limiter
-    client_ip = request.client.host if request.client else "unknown"
-    limiter = get_query_rate_limiter()
-    allowed, retry_after = limiter.is_allowed(client_ip)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
-            headers={"Retry-After": str(retry_after)},
-        )
+# Rate limiting: lib.rate_limiter.APIRateLimitMiddleware (query bucket / QUERY_RATE_LIMIT_PER_MINUTE)
 
 
 @router.post("", response_model=QueryResponse)
@@ -55,7 +43,6 @@ async def query_jarvis(request: Request, body: QueryRequest):
     
     **Note**: Long-running queries may take 10-60+ seconds depending on tools used.
     """
-    _check_rate_limit(request)
     try:
         # Load config for the requested mode
         from config_loader import load_config

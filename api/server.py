@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router, stash_router, canvas_router, prices_router, config_router, workflows_router, intel_router, images_router, generated_images_router, generated_videos_router, docs_router, scheduled_tasks_router
 from api.routes.intelligence import router as intelligence_router
+from lib.rate_limiter import APIRateLimitMiddleware
 
 
 # ============================================================================
@@ -350,6 +351,10 @@ async def swagger_ui_dark():
         f"<style>{SWAGGER_DARK_CSS}</style></head>"
     )
     return HTMLResponse(content=dark_html)
+
+# Per-IP rate limits for /api/* (buckets in lib/rate_limiter.py); skips /api/health, OPTIONS, etc.
+# Added first so it runs innermost (just before route handlers): Logging → Auth → CORS → RateLimit → app
+app.add_middleware(APIRateLimitMiddleware)
 
 # CORS middleware (for web UIs in the future)
 app.add_middleware(
