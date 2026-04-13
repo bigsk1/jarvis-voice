@@ -2544,7 +2544,7 @@ Previous structured data:
             'youtube_transcript': ['video_title', 'srt_stash_ref', 'md_stash_ref'],
             'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
             'serpapi_youtube': ['video_id', 'url', 'title', 'channel', 'duration', 'published_date', 'transcript_api_url'],
-            'serpapi_youtube_search': ['search_query', 'top_url'],
+            'serpapi_youtube_search': ['search_query', 'top_url', 'title'],
             'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
             'memory_deduper': ['stash_ref', 'canvas_page_id'],
             'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
