@@ -36,6 +36,35 @@ VALID_HOSTS = {
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v"}
 
 
+def serpapi_youtube_fallback_enabled() -> bool:
+    """Only advertise SerpApi YouTube fallback when explicitly enabled and the tool is active."""
+    enabled = get_config_value("SERPAPI_YOUTUBE_FALLBACK", "false").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        return False
+
+    tool_path = Path(__file__).resolve().parent.parent / "serpapi_youtube.tool.json"
+    try:
+        if not tool_path.is_file():
+            return False
+        with open(tool_path, "r", encoding="utf-8") as fh:
+            tool_config = json.load(fh)
+        return bool(tool_config.get("enabled", True))
+    except Exception:
+        return False
+
+
+def maybe_append_serpapi_hint(message: str, url: str) -> str:
+    """Append an opt-in hint for SerpApi YouTube fallback after yt-dlp failures."""
+    text = (message or "").strip()
+    if not serpapi_youtube_fallback_enabled():
+        return text
+    hint = (
+        f" SerpApi YouTube fallback is enabled. "
+        f"Try serpapi_youtube with this URL for video details and transcript fallback: {url}"
+    )
+    return text + hint
+
+
 def is_youtube_url(url: str) -> bool:
     """Basic YouTube URL validation."""
     try:
@@ -376,10 +405,18 @@ def main():
 
             if not ok:
                 error_tail = (stderr or stdout or "unknown error").strip()[-800:]
+                error_message = maybe_append_serpapi_hint(
+                    f"yt-dlp failed after fallback attempts: {error_tail}",
+                    url,
+                )
+                speech = maybe_append_serpapi_hint(
+                    "Failed to download that YouTube video. It may require cookies, be region/age restricted, or unavailable.",
+                    url,
+                )
                 print(json.dumps({
                     "ok": False,
-                    "error": f"yt-dlp failed after fallback attempts: {error_tail}",
-                    "speech": "Failed to download that YouTube video. It may require cookies, be region/age restricted, or unavailable."
+                    "error": error_message,
+                    "speech": speech
                 }))
                 sys.exit(1)
 

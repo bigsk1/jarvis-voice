@@ -1,0 +1,51 @@
+{
+  "enabled": true,
+  "name": "serpapi_youtube_search",
+  "description": "Search YouTube videos through SerpApi using keyword queries, with normalized video-first results including title, URL, channel, published date, views, duration, thumbnail, and pagination token. Use this to find YouTube videos when you do not already have a specific URL.",
+  "script": "serpapi_youtube_search.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "search_query": {
+        "type": "string",
+        "description": "YouTube search keywords. Use anything you would type into normal YouTube search."
+      },
+      "sp": {
+        "type": "string",
+        "description": "Optional YouTube filter/pagination token from SerpApi. Can filter by upload date, quality, exact match, or continue to next page."
+      },
+      "gl": {
+        "type": "string",
+        "description": "Optional country code for YouTube localization, like us or gb."
+      },
+      "hl": {
+        "type": "string",
+        "description": "Optional UI language for search results. Default: en."
+      },
+      "num_results": {
+        "type": "integer",
+        "description": "How many normalized video results to return, clamped to 1..10. Default: 5."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "If true, bypass SerpApi cache for fresh fetch."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Additional SerpApi YouTube search parameters passed through, excluding reserved keys."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "If true, include the raw SerpApi payload in data.raw."
+      }
+    },
+    "required": ["search_query"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

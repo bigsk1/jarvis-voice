@@ -2543,6 +2543,8 @@ Previous structured data:
             'upload_cloudflare': ['url', 'image_id', 'filename'],
             'youtube_transcript': ['video_title', 'srt_stash_ref', 'md_stash_ref'],
             'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
+            'serpapi_youtube': ['video_id', 'url', 'title', 'channel', 'duration', 'published_date', 'transcript_api_url'],
+            'serpapi_youtube_search': ['search_query', 'top_url'],
             'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
             'memory_deduper': ['stash_ref', 'canvas_page_id'],
             'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
@@ -2652,6 +2654,43 @@ Previous structured data:
                             candidate['rating'] = item['rating']
                         if item.get('reviews'):
                             candidate['reviews'] = item['reviews']
+                        if item.get('thumbnail'):
+                            candidate['thumbnail'] = item['thumbnail']
+                        candidates.append(candidate)
+                    if candidates:
+                        extracted['candidates'] = candidates
+
+            if key == 'serpapi_youtube_search':
+                results = value.get('results') or value.get('top_results') or []
+                if isinstance(results, list) and results:
+                    first = results[0] if isinstance(results[0], dict) else {}
+                    if isinstance(first, dict):
+                        if first.get('title'):
+                            extracted['title'] = first['title']
+                        if first.get('url') and 'top_url' not in extracted:
+                            extracted['top_url'] = first['url']
+                        if first.get('thumbnail'):
+                            extracted['thumbnail'] = first['thumbnail']
+                    candidates = []
+                    for item in results[:5]:
+                        if not isinstance(item, dict):
+                            continue
+                        title = item.get('title')
+                        url = item.get('url')
+                        video_id = item.get('video_id')
+                        if not (title or url or video_id):
+                            continue
+                        candidate = {}
+                        if title:
+                            candidate['title'] = title
+                        if url:
+                            candidate['url'] = url
+                        if video_id:
+                            candidate['video_id'] = video_id
+                        if item.get('channel'):
+                            candidate['channel'] = item['channel']
+                        if item.get('duration'):
+                            candidate['duration'] = item['duration']
                         if item.get('thumbnail'):
                             candidate['thumbnail'] = item['thumbnail']
                         candidates.append(candidate)

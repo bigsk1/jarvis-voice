@@ -104,3 +104,60 @@ def test_extract_followup_data_preserves_compact_candidate_list():
     assert candidates[1]["asin"] == "B09X1XN3FZ"
     assert candidates[1]["url"] == "https://www.amazon.com/dp/B09X1XN3FZ/"
     assert candidates[1]["thumbnail"] == "https://m.media-amazon.com/images/I/aura.jpg"
+
+
+def test_extract_followup_data_includes_serpapi_youtube_fields():
+    handler = _handler()
+    data = {
+        "serpapi_youtube": {
+            "video_id": "dQw4w9WgXcQ",
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "title": "Example Video",
+            "channel": "Example Channel",
+            "duration": "3:33",
+            "published_date": "2 years ago",
+            "transcript_api_url": "https://serpapi.com/search.json?engine=youtube_video_transcript&video_id=dQw4w9WgXcQ&language_code=en",
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    video = result["serpapi_youtube"]
+
+    assert video["video_id"] == "dQw4w9WgXcQ"
+    assert video["url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert video["title"] == "Example Video"
+    assert video["transcript_api_url"].startswith("https://serpapi.com/search.json")
+
+
+def test_extract_followup_data_preserves_serpapi_youtube_search_candidates():
+    handler = _handler()
+    data = {
+        "serpapi_youtube_search": {
+            "search_query": "pepper fermenting hot sauce",
+            "results": [
+                {
+                    "video_id": "abc123def45",
+                    "title": "Ferment Peppers Hot Sauce",
+                    "url": "https://www.youtube.com/watch?v=abc123def45",
+                    "channel": "Pepper Geek",
+                    "duration": "12:34",
+                    "thumbnail": "https://i.ytimg.com/vi/abc123def45/hqdefault.jpg",
+                },
+                {
+                    "video_id": "zyx987wvu65",
+                    "title": "Belizean Style Fermented Sauce",
+                    "url": "https://www.youtube.com/watch?v=zyx987wvu65",
+                    "channel": "Chili Lab",
+                    "duration": "9:10",
+                },
+            ],
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    youtube = result["serpapi_youtube_search"]
+
+    assert youtube["title"] == "Ferment Peppers Hot Sauce"
+    assert youtube["top_url"] == "https://www.youtube.com/watch?v=abc123def45"
+    assert len(youtube["candidates"]) == 2
+    assert youtube["candidates"][1]["video_id"] == "zyx987wvu65"

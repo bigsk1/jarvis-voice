@@ -180,6 +180,8 @@ JSON object printed to stdout:
 | `serpapi_search` | Generic SerpApi search (Amazon + other engines) |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |
 | `serpapi_hotel_search` | SerpApi Google Hotels search with stay filters |
+| `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |
+| `serpapi_youtube_search` | SerpApi YouTube video search by keywords |
 | `spotify` | Music playback control |
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |

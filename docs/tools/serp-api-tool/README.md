@@ -7,6 +7,8 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 - `serpapi_search` for generic engine-based search
 - `serpapi_maps_search` for Google Maps place and local business lookups
 - `serpapi_hotel_search` for Google Hotels searches
+- `serpapi_youtube` for YouTube video detail lookup with transcript fallback
+- `serpapi_youtube_search` for YouTube video discovery by keyword
 
 ## Files
 
@@ -14,10 +16,14 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 - Generic tool: `skills/serpapi_search.py`
 - Maps wrapper: `skills/serpapi_maps_search.py`
 - Hotels wrapper: `skills/serpapi_hotel_search.py`
+- YouTube wrapper: `skills/serpapi_youtube.py`
+- YouTube search wrapper: `skills/serpapi_youtube_search.py`
 - Tool definitions:
   - `skills/serpapi_search.tool.json`
   - `skills/serpapi_maps_search.tool.json`
   - `skills/serpapi_hotel_search.tool.json`
+  - `skills/serpapi_youtube.tool.json`
+  - `skills/serpapi_youtube_search.tool.json`
 
 ## Setup
 
@@ -146,6 +152,29 @@ have a much better chance of resolving to the right prior ASIN, link, and thumbn
   "num_results": 5
 }
 ```
+
+### YouTube video details with transcript fallback
+
+```json
+{
+  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "include_transcript": true,
+  "language_code": "en"
+}
+```
+
+Use this when `yt-dlp`-based tools fail because of cookies, auth, or transcript availability issues but you still want structured video details and any transcript SerpApi can expose.
+
+### YouTube search
+
+```json
+{
+  "search_query": "pepper fermenting hot sauce",
+  "num_results": 5
+}
+```
+
+Use this when you want to find candidate YouTube videos first, then pass the chosen URL into `serpapi_youtube`, `youtube_transcript`, or `youtube_video`.
 
 ## How to prompt Jarvis
 

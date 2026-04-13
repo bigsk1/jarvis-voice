@@ -1,0 +1,62 @@
+{
+  "enabled": true,
+  "name": "serpapi_youtube",
+  "description": "Fetch YouTube video details through SerpApi using a YouTube URL or video_id, with optional transcript lookup through SerpApi's YouTube transcript engine. Useful fallback when yt-dlp is blocked by cookies, auth, or missing transcript issues.",
+  "script": "serpapi_youtube.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "YouTube watch, short, embed, or youtu.be URL."
+      },
+      "video_id": {
+        "type": "string",
+        "description": "YouTube video ID. Use this instead of url when you already know the ID."
+      },
+      "gl": {
+        "type": "string",
+        "description": "Optional country code for YouTube localization, like us or gb."
+      },
+      "hl": {
+        "type": "string",
+        "description": "Optional UI language for video details. Default: en."
+      },
+      "language_code": {
+        "type": "string",
+        "description": "Transcript language code for transcript lookup. Default: en."
+      },
+      "transcript_title": {
+        "type": "string",
+        "description": "Optional transcript title to select a specific transcript variant."
+      },
+      "transcript_type": {
+        "type": "string",
+        "description": "Optional transcript type, such as asr for auto-generated transcript."
+      },
+      "include_transcript": {
+        "type": "boolean",
+        "description": "If true, fetch transcript details through SerpApi when available. Default: true."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "If true, bypass SerpApi cache for fresh fetch."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Additional SerpApi YouTube video parameters passed through, excluding reserved keys."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "If true, include the raw SerpApi payload in data.raw."
+      }
+    }
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
