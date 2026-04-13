@@ -136,7 +136,8 @@ class LLMLogger:
             "provider": provider,
             "model": model,
             "context": context,  # e.g., "chat", "routing", "workflow_param_fill"
-            "user_query": user_query[:200] if user_query else None,
+            "user_query_preview": user_query[:1000] if user_query else None,
+            "user_query_chars": len(user_query) if user_query else 0,
             "tools": tools,  # e.g., {"SERVER_SIDE_TOOL_X_SEARCH": 2, "SERVER_SIDE_TOOL_WEB_SEARCH": 1}
             "total_calls": sum(tools.values())
         }
@@ -355,4 +356,3 @@ class LLMLogger:
 def get_logger(mode: str = "cloud") -> LLMLogger:
     """Get an LLM logger instance."""
     return LLMLogger()
-

@@ -1027,7 +1027,7 @@ Mode: {self.mode}
                     
                     # Max retries exceeded - sanitize error for voice output
                     friendly_error = _sanitize_error_for_speech(error)
-                    final_speech = f"{speech}. {friendly_error.capitalize()}. I tried {retry_count + 1} time(s) but couldn't complete the task because I couldn't stop calling tools and switch to Q&A in time."
+                    final_speech = f"{speech}. {friendly_error.capitalize()}. I'm a bad assistant 🤖, I tried {retry_count + 1} time(s) but couldn't complete the task because I couldn't stop calling the same tool and switch to Q&A in time. 💀"
                     
                     # Auto-log failed conversation
                     self._log_conversation(transcript, final_speech, tools_used, success=False)

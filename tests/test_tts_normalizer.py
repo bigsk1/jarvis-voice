@@ -31,6 +31,19 @@ class TtsNormalizerTests(unittest.TestCase):
         self.assertNotIn("www.example.org", normalized)
         self.assertNotIn("Sources:", normalized)
 
+    def test_default_normalizer_strips_emoji_for_tts(self):
+        normalized = normalize_tts_text(
+            "Done. Great work \U0001F389 and thanks \U0001F64F. Robot \U0001F916 skull \U0001F480 flag \U0001F1FA\U0001F1F8."
+        )
+        self.assertNotIn("\U0001F389", normalized)
+        self.assertNotIn("\U0001F916", normalized)
+        self.assertNotIn("\U0001F480", normalized)
+        self.assertIn("Done.", normalized)
+        self.assertIn("Great work", normalized)
+        self.assertIn("thanks", normalized)
+        self.assertIn("Robot", normalized)
+        self.assertIn("skull", normalized)
+
     def test_default_normalizer_converts_units_for_speech(self):
         normalized = normalize_tts_text(
             "Tonight is 34°F with a backup low of 10°C and 25% rain."

@@ -130,6 +130,47 @@ def _replace_iso_datetime(match: re.Match[str]) -> str:
         return raw
 
 
+# Broad emoji coverage for TTS (display text elsewhere is unchanged).
+# Does not use \U00010000-\U0010ffff — that would drop many non-emoji chars.
+_EMOJI_FOR_SPEECH_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # misc symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map
+    "\U0001F1E0-\U0001F1FF"  # regional indicators (flags)
+    "\U00002700-\U000027BF"  # dingbats
+    "\U0001F900-\U0001F9FF"  # supplemental symbols
+    "\U0001FA00-\U0001FAFF"  # extended-A / chess etc.
+    "\U00002600-\U000026FF"  # misc symbols
+    "\U0001F7E0-\U0001F7FF"  # geometric shapes extended
+    "\U00002300-\U000023FF"  # technical
+    "\U0001F000-\U0001F0FF"  # mahjong, playing cards
+    "\U0001F200-\U0001F2FF"  # enclosed ideographic supplement
+    "\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9\u21AA\u231A\u231B"
+    "\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2"
+    "\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u27BF"
+    "\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55"
+    "\u3030\u303D\u3297\u3299"
+    "\uFE0F"  # variation selector-16 (emoji style)
+    "\u200D"  # ZWJ (emoji sequences)
+    "\U0001F3FB-\U0001F3FF"  # skin tone modifiers
+    "\u20E3"  # combining enclosing keycap
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _strip_emoji_for_speech(text: str) -> str:
+    """Remove emoji so TTS does not pronounce or pause on them; UI can still show raw text."""
+    if not text:
+        return text
+    # 🚨 U+1F6A8 — must run before bulk strip; _normalize_camera_alert also maps it to Alert
+    text = text.replace("\U0001F6A8", "Alert ")
+    text = _EMOJI_FOR_SPEECH_RE.sub("", text)
+    text = re.sub(r" +", " ", text)
+    return text
+
+
 def _replace_simple_fraction(match: re.Match[str]) -> str:
     """Convert simple numeric fractions into spoken English."""
     numerator = int(match.group(1))
@@ -151,7 +192,7 @@ def _replace_simple_fraction(match: re.Match[str]) -> str:
 
 
 def _strip_visual_noise(text: str) -> str:
-    """Remove links, markdown, and other visual-only noise from spoken output."""
+    """Remove links, markdown, emoji, and other visual-only noise from spoken output."""
     text = re.sub(r'(?im)^\s*Sources?:\s*.*$', '', text)
     text = re.sub(r'(?i)\s+Sources?:\s*[^.\n]*(?:\.)?', '', text)
     text = re.sub(
@@ -177,6 +218,7 @@ def _strip_visual_noise(text: str) -> str:
     text = re.sub(r'(?im)^\s*[-*]\s*$', '', text)
     text = re.sub(r'\(\s*\)', '', text)
     text = re.sub(r'\[\s*\]', '', text)
+    text = _strip_emoji_for_speech(text)
     return text
 
 
@@ -334,7 +376,7 @@ def _normalize_whitespace(text: str) -> str:
 
 
 def normalize_tts_text(text: str, profile: str | None = None) -> str:
-    """Normalize text for natural, safe TTS playback."""
+    """Normalize text for natural, safe TTS playback (emoji stripped; UI may keep raw text)."""
     if not text:
         return ""
 
