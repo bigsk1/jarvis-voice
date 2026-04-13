@@ -414,10 +414,16 @@ class ToolRegistry:
             return parts[0], parts[1]
         return None, None
 
-    def find_tools(self, query: str, limit: int = 5) -> list[ToolSchema]:
+    def find_tools(self, query: str, limit: int = 5, similarity_threshold: float | None = None) -> list[ToolSchema]:
         """
         Find relevant tools for a user query using vector search.
         Always includes GHOST_TOOLS (configured core tools).
+
+        Args:
+            query: Text to embed for similarity search.
+            limit: Max retrieved tools (before merging ghost list).
+            similarity_threshold: Min cosine similarity to keep a tool. If None, uses
+                TOOL_SIMILARITY_THRESHOLD from config (router may pass an explicit value).
         """
         from memory_db import get_memory_db
         from config_loader import get_config_value, get_float
@@ -427,8 +433,9 @@ class ToolRegistry:
         ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time')
         CORE_TOOLS = [t.strip() for t in ghost_tools_str.split(',')]
         
-        # Get similarity threshold from config
-        threshold = get_float('TOOL_SIMILARITY_THRESHOLD', 0.0)
+        if similarity_threshold is None:
+            similarity_threshold = get_float('TOOL_SIMILARITY_THRESHOLD', 0.0)
+        threshold = similarity_threshold
         
         try:
             db = get_memory_db()

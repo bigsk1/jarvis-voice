@@ -1308,6 +1308,10 @@ class JarvisApp {
               <span class="config-value">${c.TOOL_SIMILARITY_THRESHOLD}</span>
             </div>
             <div class="config-item">
+              <span class="config-label">TOOL_SIMILARITY_THRESHOLD_FULL</span>
+              <span class="config-value">${c.TOOL_SIMILARITY_THRESHOLD_FULL || '(unset — same as base for full prompt embedding)'}</span>
+            </div>
+            <div class="config-item">
               <span class="config-label">SEMANTIC_SIMILARITY_THRESHOLD</span>
               <span class="config-value">${c.SEMANTIC_SIMILARITY_THRESHOLD}</span>
             </div>

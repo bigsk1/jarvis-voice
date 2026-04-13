@@ -260,13 +260,20 @@ graph TB
 GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time"
 ```
 
-**Similarity Threshold** (filters retrieved tools):
+**Similarity Thresholds** (filter retrieved tools before top-K):
 ```bash
 # In config/cloud.env or config/local.env
-TOOL_SIMILARITY_THRESHOLD=0.0  # 0.0 = no filtering (use top-K only)
-# 0.30-0.35 = Loose matching (more tools)
-# 0.40-0.45 = Balanced (recommended)
-# 0.50+     = Strict matching (fewer tools)
+TOOL_SIMILARITY_THRESHOLD=0.0       # Base threshold
+TOOL_SIMILARITY_THRESHOLD_FULL=0.0  # Optional: used when Tool RAG embeds the full routing prompt
+
+# If TOOL_SIMILARITY_THRESHOLD_FULL is unset/blank:
+# - full-prompt and stripped-query paths both use TOOL_SIMILARITY_THRESHOLD
+#
+# Practical tuning notes:
+# - Cloud mode: TOOL_SIMILARITY_THRESHOLD_FULL around 0.40 is a good starting point
+#   when long prompts are inflating retrieval and filling the 15-tool cap.
+# - Local/Gemma mode: 0.35-0.45 often behaves like a no-op because scores skew higher
+#   and local only retrieves 5 tools; leave FULL unset unless you tune it separately.
 ```
 
 **Sync Tool Definitions** (required after adding/modifying tools):
@@ -278,12 +285,21 @@ TOOL_SIMILARITY_THRESHOLD=0.0  # 0.0 = no filtering (use top-K only)
 
 **Debug Tool Retrieval**:
 ```bash
+# Activate the Jarvis venv first so embedding generation matches production
+source /home/boss/jarvis-venv/bin/activate
+
 # See exactly what tools are retrieved for a query
 ./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?"
 
+# Compare a plain user string with a real full prompt captured from logs/debug
+./bin/debug_tool_rag.py cloud "and Boston too" \
+  --full-transcript-file /tmp/captured_turn_input.txt \
+  --stripped-threshold 0.23 \
+  --full-threshold 0.40
+
 # Shows:
 # - Similarity scores for all tools
-# - Which tools pass the threshold
+# - Which tools pass the base vs full-prompt threshold
 # - Ghost tools vs. retrieved tools
 # - Recommendations for tuning
 ```
@@ -905,4 +921,3 @@ Jarvis is a **multi-modal, memory-aware, tool-orchestrating voice assistant** wi
 
 **Last Updated**: 2025-11-22  
 **Version**: 2.2 (Tool RAG system with dynamic tool retrieval + FTS5 search + auto-context)
-

@@ -95,6 +95,7 @@ class SettingsManager:
         'IMAGE_TOOL_PROVIDER',
         'VIDEO_TOOL_PROVIDER',
         'TOOL_SIMILARITY_THRESHOLD',
+        'TOOL_SIMILARITY_THRESHOLD_FULL',
         'SEMANTIC_SIMILARITY_THRESHOLD',
         'INTELLIGENCE_ENABLED',
         'INTELLIGENCE_MIN_CONFIDENCE',
@@ -257,6 +258,12 @@ class SettingsManager:
             or self._get_env_provider_model(effective_completion_guard_eval_provider)
         )
         
+        _full_raw = get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD_FULL', '').strip()
+        try:
+            env_tool_similarity_full = float(_full_raw) if _full_raw else None
+        except ValueError:
+            env_tool_similarity_full = None
+        
         return {
             'mode': self.mode,
             
@@ -373,6 +380,7 @@ class SettingsManager:
             # Thresholds (read-only from env)
             'thresholds': {
                 'tool_similarity': float(get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0')),
+                'tool_similarity_full': env_tool_similarity_full,
                 'memory_similarity': float(get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'))
             },
             

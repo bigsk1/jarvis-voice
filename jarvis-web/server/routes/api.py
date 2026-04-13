@@ -226,6 +226,7 @@ def get_system_config():
         
         # Thresholds (important!)
         'TOOL_SIMILARITY_THRESHOLD': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0'),
+        'TOOL_SIMILARITY_THRESHOLD_FULL': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD_FULL', ''),
         'SEMANTIC_SIMILARITY_THRESHOLD': get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'),
         
         # TTS/Audio (mode-specific)

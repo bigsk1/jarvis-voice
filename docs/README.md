@@ -1403,6 +1403,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Enhanced error propagation** - LLM now receives full error details from failed tools for self-healing
 - ✅ **Test script Tool RAG integration** - All test scripts auto-sync tool embeddings after DB cleanup
 - ✅ **Tool RAG debugging utilities** - `debug_tool_rag.py` for comprehensive retrieval analysis
+  - Supports comparing stripped-query vs full-prompt retrieval when tuning `TOOL_SIMILARITY_THRESHOLD_FULL`
 
 **2025-11-21:**
 - ✅ **Randomized wake word greetings** - Dynamic greeting selection for personality

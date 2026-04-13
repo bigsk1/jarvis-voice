@@ -12,11 +12,29 @@ from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config, get_config_value, get_float
 from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
 from tool_schema import ToolRegistry
 from llm_provider import create_provider
+
+
+def _tool_rag_similarity_threshold(transcript: str, tool_search_query: str) -> float:
+    """
+    When the full routing string is embedded for Tool RAG (no strip to a short user line),
+    optionally use TOOL_SIMILARITY_THRESHOLD_FULL; if unset or empty, use TOOL_SIMILARITY_THRESHOLD
+    for both paths.
+    """
+    base = get_float('TOOL_SIMILARITY_THRESHOLD', 0.0)
+    if tool_search_query != transcript:
+        return base
+    raw = get_config_value('TOOL_SIMILARITY_THRESHOLD_FULL', None)
+    if raw is None or str(raw).strip() == '':
+        return base
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return base
 
 
 class LLMRouter:
@@ -681,16 +699,27 @@ When this appears to be the start of a fresh conversation, you may add a brief t
                     tool_search_query = line
                     break
         
+        tool_sim_threshold = _tool_rag_similarity_threshold(transcript, tool_search_query)
+        
         # 3. Find relevant tools using vector search
         # This returns ToolSchema objects for the top matches + ghost tools
-        relevant_tools = self.registry.find_tools(tool_search_query, limit=retrieval_limit)
+        relevant_tools = self.registry.find_tools(
+            tool_search_query, limit=retrieval_limit, similarity_threshold=tool_sim_threshold
+        )
         
         # Filter out excluded tools (e.g., tools blocked for web mode)
         if self._excluded_tools:
             original_count = len(relevant_tools)
             relevant_tools = [t for t in relevant_tools if t.name not in self._excluded_tools]
             if len(relevant_tools) < original_count:
-                excluded = set(self._excluded_tools) & set(t.name for t in self.registry.find_tools(tool_search_query, limit=retrieval_limit))
+                excluded = set(self._excluded_tools) & set(
+                    t.name
+                    for t in self.registry.find_tools(
+                        tool_search_query,
+                        limit=retrieval_limit,
+                        similarity_threshold=tool_sim_threshold,
+                    )
+                )
                 if sys.stdout.isatty():
                     print(f"   🚫 Excluded tools: {', '.join(excluded)}")
         
@@ -715,6 +744,10 @@ When this appears to be the start of a fresh conversation, you may add a brief t
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
         logger.info(f"[TOOL_RAG] Tool search query: {tool_search_query}")
+        logger.info(
+            f"[TOOL_RAG] similarity_threshold={tool_sim_threshold:.4f} "
+            f"(full_transcript_embedding={tool_search_query == transcript})"
+        )
         logger.info(f"[TOOL_RAG] Retrieved {len(retrieved)} tools: {retrieved}")
         logger.info(f"[TOOL_RAG] Ghost tools: {ghosts}")
         logger.info(f"[TOOL_RAG] Total tools sent to LLM: {len(tool_names)}")

@@ -97,6 +97,42 @@ source ~/jarvis-venv/bin/activate
 ### B. Router Logic (`orchestrator/router_v2.py`)
 -   **Local Mode**: Retrieves top **5** tools (Strict context limit).
 -   **Cloud Mode**: Retrieves top **15** tools (Broader context).
+-   **Threshold selection**:
+    - `TOOL_SIMILARITY_THRESHOLD` is the base cutoff.
+    - `TOOL_SIMILARITY_THRESHOLD_FULL` is used only when Tool RAG embeds the full routing prompt (`tool_search_query == transcript`).
+    - If `TOOL_SIMILARITY_THRESHOLD_FULL` is unset or blank, both paths use `TOOL_SIMILARITY_THRESHOLD`.
+
+### C. Dual-threshold tuning
+
+Long routing prompts can inflate similarity scores and cause Tool RAG to hit the retrieval cap with weak matches. To counter that, Jarvis supports an optional stricter cutoff for the full-prompt path.
+
+```bash
+# Base threshold used for stripped/short query retrieval
+TOOL_SIMILARITY_THRESHOLD=0.23
+
+# Optional stricter cutoff when the full routing string is embedded
+TOOL_SIMILARITY_THRESHOLD_FULL=0.40
+```
+
+**Observed behavior (`2026-04-12`):**
+-   **Cloud mode**: `TOOL_SIMILARITY_THRESHOLD_FULL=0.40` was a good starting point in realistic follow-up prompts. It often reduced a noisy 15-tool shortlist down to the one or two tools that actually mattered.
+-   **Local / Gemma mode**: `0.35`-`0.45` often had little effect because local only retrieves 5 tools and long-prompt similarities skewed much higher. Local needed much higher values before behavior changed, and those changes were cliff-like.
+-   **Practical read**: keep cloud and local tuning separate. A cloud-friendly full threshold does not automatically transfer to local.
+
+### D. Debugging with real prompts
+
+Use `bin/debug_tool_rag.py` to compare the plain user string against a real captured full prompt:
+
+```bash
+source /home/boss/jarvis-venv/bin/activate
+
+./bin/debug_tool_rag.py cloud "and Boston too" \
+  --full-transcript-file /tmp/captured_turn_input.txt \
+  --stripped-threshold 0.23 \
+  --full-threshold 0.40
+```
+
+This is the most reliable way to tune `TOOL_SIMILARITY_THRESHOLD_FULL`, because synthetic long prompts can be harsher than production.
 
 ---
 
