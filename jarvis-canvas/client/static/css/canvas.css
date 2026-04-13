@@ -197,7 +197,7 @@
     color: var(--text-primary);
 }
 
-/* Tooltip for full title on hover */
+/* Tooltip for full title on hover (below row — sidebar uses overflow-x: hidden so right-side popouts were clipped) */
 .page-item:hover .tooltip {
     display: block;
 }
@@ -206,32 +206,22 @@
     display: none;
     pointer-events: none;
     position: absolute;
-    left: 100%;
-    top: 50%;
-    transform: translateY(-50%);
-    margin-left: 8px;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
     padding: 8px 12px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
     font-size: 0.85rem;
     color: var(--text-primary);
-    white-space: nowrap;
     z-index: 100;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    max-width: 400px;
+    max-width: 100%;
+    box-sizing: border-box;
     white-space: normal;
     word-break: break-word;
-}
-
-.tooltip::before {
-    content: '';
-    position: absolute;
-    right: 100%;
-    top: 50%;
-    transform: translateY(-50%);
-    border: 6px solid transparent;
-    border-right-color: var(--border-color);
 }
 
 .page-meta {
