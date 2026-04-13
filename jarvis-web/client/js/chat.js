@@ -2398,6 +2398,7 @@ class ChatUI {
     let videoDuration = '';
     let videoHasAudio = false;
     let videoProvider = '';
+    let videoMimeType = 'video/mp4';
     
     // Method 1: Check data.generate_video object
     const videoData = data.generate_video;
@@ -2406,6 +2407,7 @@ class ChatUI {
       const savedInfo = videoData.saved || videoData.data?.saved;
       if (savedInfo?.filename) {
         videoUrl = `/api/videos/${savedInfo.filename}`;
+        videoMimeType = this._inferVideoMimeType(savedInfo.filename, savedInfo.filename);
       }
       
       // Fallback to stash reference
@@ -2413,6 +2415,7 @@ class ChatUI {
         const stashMatch = videoData.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
         if (stashMatch) {
           videoUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+          videoMimeType = this._inferVideoMimeType(videoUrl, videoData.filename, videoData.mime_type);
         }
       }
       
@@ -2420,11 +2423,13 @@ class ChatUI {
       if (!videoUrl && videoData.file_path) {
         const videoFilename = videoData.file_path.split('/').pop();
         videoUrl = `/api/videos/${videoFilename}`;
+        videoMimeType = this._inferVideoMimeType(videoFilename, videoFilename);
       }
       
       // Last resort: remote URL (may expire)
       if (!videoUrl && videoData.video_url) {
         videoUrl = videoData.video_url;
+        videoMimeType = this._inferVideoMimeType(videoData.video_url, videoData.filename, videoData.mime_type);
       }
       
       // Get duration, title, audio, and provider
@@ -2460,6 +2465,7 @@ class ChatUI {
         videoDuration = toolResult.duration_seconds || toolResult.duration || '';
         videoHasAudio = toolResult.has_audio || false;
         videoProvider = toolResult.provider || '';
+        videoMimeType = this._inferVideoMimeType(videoUrl, fn, mime);
         break;
       }
     }
@@ -2473,22 +2479,26 @@ class ChatUI {
         const savedInfo = videoResult.saved || videoResult.data?.saved;
         if (savedInfo?.filename) {
           videoUrl = `/api/videos/${savedInfo.filename}`;
+          videoMimeType = this._inferVideoMimeType(savedInfo.filename, savedInfo.filename);
         }
         
         if (!videoUrl && videoResult.stash_ref) {
           const stashMatch = videoResult.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
           if (stashMatch) {
             videoUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+            videoMimeType = this._inferVideoMimeType(videoUrl, videoResult.filename, videoResult.mime_type);
           }
         }
         
         if (!videoUrl && videoResult.file_path) {
           const videoFilename = videoResult.file_path.split('/').pop();
           videoUrl = `/api/videos/${videoFilename}`;
+          videoMimeType = this._inferVideoMimeType(videoFilename, videoFilename);
         }
         
         if (!videoUrl && videoResult.video_url) {
           videoUrl = videoResult.video_url;
+          videoMimeType = this._inferVideoMimeType(videoResult.video_url, videoResult.filename, videoResult.mime_type);
         }
         
         videoDuration = videoResult.duration || videoResult.data?.duration || videoDuration;
@@ -2511,7 +2521,7 @@ class ChatUI {
             <span class="video-title">${Utils.escapeHtml(videoTitle)}</span>
           </div>
           <video controls preload="metadata" class="video-player">
-            <source src="${videoUrl}" type="video/mp4">
+            <source src="${videoUrl}"${videoMimeType ? ` type="${videoMimeType}"` : ''}>
             Your browser does not support video playback.
           </video>
           ${(durationStr || audioStr) ? `<div class="video-info"><span class="video-duration">${durationStr}${audioStr}${providerStr}</span></div>` : ''}
@@ -2690,6 +2700,30 @@ class ChatUI {
       text = rawResponse;
     }
 
+    const youtubeEmbeds = this._collectYouTubeEmbeds(text, rawResponse, toolResultsData);
+    const youtubeEmbedsHtml = youtubeEmbeds.map((embed) => `
+      <div class="message-video youtube-embed">
+        <div class="video-header">
+          <span class="video-icon">▶</span>
+          <span class="video-title">${Utils.escapeHtml(embed.title)}</span>
+        </div>
+        <div class="video-embed-shell">
+          <iframe
+            class="video-embed-frame"
+            src="${embed.embedUrl}"
+            title="${Utils.escapeHtml(embed.title)}"
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        </div>
+        <div class="video-info">
+          <a href="${embed.watchUrl}" target="_blank" rel="noopener noreferrer" class="content-link">Open on YouTube</a>
+        </div>
+      </div>
+    `).join('');
+
     const parsedText = Utils.parseMarkdown(text);
     
     // Build expandable details section
@@ -2718,6 +2752,7 @@ class ChatUI {
       ${convertedFileHtml}
       ${audioHtml}
       ${videoHtml}
+      ${youtubeEmbedsHtml}
       <div class="message-bubble">
         ${parsedText}
         ${detailsHtml}
@@ -2761,6 +2796,96 @@ class ChatUI {
       .replace(/[*_`#>]+/g, '')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  _inferVideoMimeType(urlOrPath = '', filename = '', declaredMime = '') {
+    if (declaredMime && String(declaredMime).toLowerCase().startsWith('video/')) {
+      return String(declaredMime).toLowerCase();
+    }
+
+    const candidate = String(filename || urlOrPath || '').toLowerCase();
+    if (candidate.endsWith('.webm')) return 'video/webm';
+    if (candidate.endsWith('.mov')) return 'video/quicktime';
+    if (candidate.endsWith('.avi')) return 'video/x-msvideo';
+    if (candidate.endsWith('.mkv')) return 'video/x-matroska';
+    if (candidate.endsWith('.m4v')) return 'video/mp4';
+    return 'video/mp4';
+  }
+
+  _extractYouTubeVideoId(url) {
+    if (!url) return null;
+
+    try {
+      const parsed = new URL(url, window.location.origin);
+      const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+
+      if (host === 'youtu.be') {
+        const id = parsed.pathname.split('/').filter(Boolean)[0];
+        return id || null;
+      }
+
+      if (!host.endsWith('youtube.com') && host !== 'youtube-nocookie.com') {
+        return null;
+      }
+
+      const pathParts = parsed.pathname.split('/').filter(Boolean);
+      if (parsed.pathname === '/watch') {
+        return parsed.searchParams.get('v');
+      }
+      if (pathParts[0] === 'embed' || pathParts[0] === 'shorts' || pathParts[0] === 'live') {
+        return pathParts[1] || null;
+      }
+    } catch (error) {
+      return null;
+    }
+
+    return null;
+  }
+
+  _collectYouTubeEmbeds(displayText, rawResponse, toolResultsData = {}) {
+    const maxEmbeds = 5;
+    const urlRegex = /https?:\/\/[^\s<>"')\]]+/gi;
+    const downloadedIds = new Set();
+
+    for (const toolResult of Object.values(toolResultsData || {})) {
+      if (!toolResult || typeof toolResult !== 'object') continue;
+      if (!toolResult.stash_ref) continue;
+
+      const sourceUrl = toolResult.url || toolResult.youtube_url || '';
+      const videoId = this._extractYouTubeVideoId(sourceUrl);
+      if (videoId) {
+        downloadedIds.add(videoId);
+      }
+    }
+
+    const embeds = [];
+    const seenIds = new Set();
+    const sources = [displayText, rawResponse];
+
+    for (const source of sources) {
+      if (!source || embeds.length >= maxEmbeds) continue;
+
+      const matches = String(source).match(urlRegex) || [];
+      for (const rawUrl of matches) {
+        if (embeds.length >= maxEmbeds) break;
+
+        const videoId = this._extractYouTubeVideoId(rawUrl);
+        if (!videoId || seenIds.has(videoId) || downloadedIds.has(videoId)) continue;
+
+        seenIds.add(videoId);
+        embeds.push({
+          videoId,
+          title: `YouTube Video ${embeds.length + 1}`,
+          watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
+        });
+      }
+    }
+
+    return embeds.map((embed, index) => ({
+      ...embed,
+      title: embeds.length === 1 ? 'YouTube Video' : `YouTube Video ${index + 1}`,
+    }));
   }
 
   _shouldPreferRawForDisplay(rawResponse, storedSpeech = '', fallbackText = '') {

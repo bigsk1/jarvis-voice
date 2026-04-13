@@ -6,6 +6,7 @@
 let pages = [];
 let currentPage = null;
 let editingPage = null;
+let currentSearchQuery = '';
 
 // =========================================================================
 // Sidebar Toggle (Mobile)
@@ -71,6 +72,130 @@ function renderMarkdown(content) {
     return DOMPurify.sanitize(marked.parse(resolved));
 }
 
+function extractYouTubeVideoId(url) {
+    if (!url) return null;
+
+    try {
+        const parsed = new URL(url, window.location.origin);
+        const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+
+        if (host === 'youtu.be') {
+            return parsed.pathname.split('/').filter(Boolean)[0] || null;
+        }
+
+        if (!host.endsWith('youtube.com') && host !== 'youtube-nocookie.com') {
+            return null;
+        }
+
+        const pathParts = parsed.pathname.split('/').filter(Boolean);
+        if (parsed.pathname === '/watch') {
+            return parsed.searchParams.get('v');
+        }
+        if (pathParts[0] === 'embed' || pathParts[0] === 'shorts' || pathParts[0] === 'live') {
+            return pathParts[1] || null;
+        }
+    } catch (err) {
+        return null;
+    }
+
+    return null;
+}
+
+function collectPageYouTubeEmbeds(content, sourceQuery = '') {
+    const maxEmbeds = 5;
+    const seenIds = new Set();
+    const embeds = [];
+    const sources = [content, sourceQuery];
+    const urlRegex = /https?:\/\/[^\s<>"')\]]+/gi;
+
+    for (const source of sources) {
+        if (!source || embeds.length >= maxEmbeds) continue;
+
+        const matches = String(source).match(urlRegex) || [];
+        for (const rawUrl of matches) {
+            if (embeds.length >= maxEmbeds) break;
+
+            const videoId = extractYouTubeVideoId(rawUrl);
+            if (!videoId || seenIds.has(videoId)) continue;
+
+            seenIds.add(videoId);
+            embeds.push({
+                videoId,
+                watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+                embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`
+            });
+        }
+    }
+
+    return embeds.map((embed, index) => ({
+        ...embed,
+        title: embeds.length === 1 ? 'YouTube Video' : `YouTube Video ${index + 1}`
+    }));
+}
+
+function renderYouTubeEmbeds(embeds) {
+    if (!embeds || embeds.length === 0) return '';
+
+    const cards = embeds.map((embed) => `
+        <div class="canvas-video-card">
+            <div class="canvas-video-header">
+                <span class="canvas-video-icon">▶</span>
+                <span class="canvas-video-title">${escapeHtml(embed.title)}</span>
+            </div>
+            <div class="canvas-video-shell">
+                <iframe
+                    class="canvas-video-frame"
+                    src="${embed.embedUrl}"
+                    title="${escapeHtml(embed.title)}"
+                    loading="lazy"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowfullscreen
+                ></iframe>
+            </div>
+            <div class="canvas-video-actions">
+                <a href="${embed.watchUrl}" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+            </div>
+        </div>
+    `).join('');
+
+    return `<div class="canvas-video-embeds">${cards}</div>`;
+}
+
+function getFilteredPages() {
+    const q = currentSearchQuery.trim().toLowerCase();
+    if (!q) return pages;
+
+    return pages.filter(p =>
+        p.title.toLowerCase().includes(q) ||
+        (p.content || '').toLowerCase().includes(q) ||
+        (p.tags || []).some(t => t.toLowerCase().includes(q))
+    );
+}
+
+function updatePageCount() {
+    const pageCount = document.getElementById('pageCount');
+    if (!pageCount) return;
+
+    const visibleCount = getFilteredPages().length;
+    if (currentSearchQuery.trim()) {
+        pageCount.textContent = `${visibleCount} match${visibleCount !== 1 ? 'es' : ''}`;
+    } else {
+        pageCount.textContent = `${pages.length} page${pages.length !== 1 ? 's' : ''}`;
+    }
+}
+
+function updateSearchUI() {
+    const searchInput = document.getElementById('searchInput');
+    const clearBtn = document.getElementById('searchClearBtn');
+    if (searchInput && searchInput.value !== currentSearchQuery) {
+        searchInput.value = currentSearchQuery;
+    }
+    if (clearBtn) {
+        clearBtn.classList.toggle('visible', Boolean(currentSearchQuery.trim()));
+    }
+}
+
 // API Functions
 async function fetchPages() {
     try {
@@ -78,13 +203,14 @@ async function fetchPages() {
         pages = await res.json();
         lastPagesHash = computePagesHash(pages);
         renderSidebar();
-        document.getElementById('pageCount').textContent = `${pages.length} page${pages.length !== 1 ? 's' : ''}`;
+        updatePageCount();
+        updateSearchUI();
         
         if (pages.length === 0) {
             showEmptyState();
         } else if (!currentPage) {
-            // Show most recent page
-            selectPage(pages[0].id);
+            const visiblePages = getFilteredPages();
+            selectPage((visiblePages[0] || pages[0]).id);
         }
     } catch (err) {
         showToast('Failed to load pages', 'error');
@@ -440,12 +566,14 @@ function renderSidebar() {
     const folderList = document.getElementById('folderList');
     const foldersSection = document.getElementById('foldersSection');
     const pageList = document.getElementById('pageList');
-    
-    const pinned = pages.filter(p => p.pinned);
-    const unpinned = pages.filter(p => !p.pinned);
+
+    const visiblePages = getFilteredPages();
+    const isFiltering = Boolean(currentSearchQuery.trim());
+    const pinned = visiblePages.filter(p => p.pinned);
+    const unpinned = visiblePages.filter(p => !p.pinned);
     
     // Show/hide pinned section
-    pinnedSection.style.display = pinned.length > 0 ? 'block' : 'none';
+    pinnedSection.style.display = !isFiltering && pinned.length > 0 ? 'block' : 'none';
     pinnedList.innerHTML = pinned.map(p => renderPageItem(p, true)).join('');
     
     // Build hierarchical tree from unpinned pages
@@ -455,18 +583,22 @@ function renderSidebar() {
     const sortedFolders = Object.keys(tree._children).sort();
     
     // Show/hide folders section
-    foldersSection.style.display = sortedFolders.length > 0 ? 'block' : 'none';
+    foldersSection.style.display = !isFiltering && sortedFolders.length > 0 ? 'block' : 'none';
     
     // Auto-expand ancestor folders of the active page
     autoExpandAncestors();
     
     // Render the tree recursively
-    folderList.innerHTML = sortedFolders.map(folderName => {
+    folderList.innerHTML = isFiltering ? '' : sortedFolders.map(folderName => {
         return renderTreeNode(folderName, tree._children[folderName], 0, folderName);
     }).join('');
     
-    // Render pages without folders (root-level pages)
-    pageList.innerHTML = tree._pages.map(p => renderPageItem(p, false)).join('');
+    if (isFiltering) {
+        pageList.innerHTML = visiblePages.map(p => renderPageItem(p, false)).join('');
+    } else {
+        // Render pages without folders (root-level pages)
+        pageList.innerHTML = tree._pages.map(p => renderPageItem(p, false)).join('');
+    }
 }
 
 function renderPageItem(page, isPinned, inFolder = false) {
@@ -519,12 +651,17 @@ function selectPage(id) {
     
     closeSidebar(); // Close sidebar on mobile
     renderSidebar(); // Update active state
+    updatePageCount();
     document.getElementById('emptyState').style.display = 'none';
     
     const pageView = document.getElementById('pageView');
     pageView.style.display = 'block';
     
-    const tagsHtml = (page.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+    const tagsHtml = (page.tags || []).map(t => `
+        <button class="tag tag-clickable" type="button" onclick="event.stopPropagation(); applyTagFilter(decodeURIComponent('${encodeURIComponent(t)}'))">
+            ${escapeHtml(t)}
+        </button>
+    `).join('');
     const sourceHtml = page.source_query ? `
         <div class="source-query">
             <div class="source-query-label">Source Query</div>
@@ -533,6 +670,9 @@ function selectPage(id) {
     ` : '';
     
     const content = renderMarkdown(page.content || '');
+    const youtubeEmbedsHtml = renderYouTubeEmbeds(
+        collectPageYouTubeEmbeds(page.content || '', page.source_query || '')
+    );
     const created = new Date(page.created).toLocaleString();
     const updated = page.updated ? new Date(page.updated).toLocaleString() : null;
     
@@ -574,6 +714,7 @@ function selectPage(id) {
             </div>
             ${tagsHtml ? `<div class="page-tags">${tagsHtml}</div>` : ''}
         </div>
+        ${youtubeEmbedsHtml}
         <div class="page-content">${content}</div>
         ${sourceHtml}
     `;
@@ -611,28 +752,24 @@ function closeEditModal() {
 
 // Search
 function filterPages(query) {
-    const q = query.toLowerCase();
-    const filtered = pages.filter(p => 
-        p.title.toLowerCase().includes(q) ||
-        (p.content || '').toLowerCase().includes(q) ||
-        (p.tags || []).some(t => t.toLowerCase().includes(q))
-    );
-    
-    const pageList = document.getElementById('pageList');
-    const pinnedList = document.getElementById('pinnedList');
-    const foldersSection = document.getElementById('foldersSection');
-    const pinnedSection = document.getElementById('pinnedSection');
-    
-    if (q) {
-        // When searching, show flat results and hide tree/pinned sections
-        pinnedSection.style.display = 'none';
-        pinnedList.innerHTML = '';
-        foldersSection.style.display = 'none';
-        document.getElementById('folderList').innerHTML = '';
-        pageList.innerHTML = filtered.map(p => renderPageItem(p, false)).join('');
-    } else {
-        renderSidebar();
-    }
+    currentSearchQuery = String(query || '').trim();
+    renderSidebar();
+    updatePageCount();
+    updateSearchUI();
+}
+
+function clearSearch() {
+    filterPages('');
+}
+
+function applyTagFilter(tag) {
+    filterPages(tag);
+}
+
+function refreshFilteredSidebar() {
+    renderSidebar();
+    updatePageCount();
+    updateSearchUI();
 }
 
 // Image Lightbox Functions
@@ -691,7 +828,18 @@ document.addEventListener('DOMContentLoaded', function() {
         searchInput.addEventListener('input', (e) => {
             filterPages(e.target.value);
         });
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                filterPages(searchInput.value);
+            }
+        });
     }
+
+    document.getElementById('searchClearBtn')?.addEventListener('click', () => {
+        clearSearch();
+        document.getElementById('searchInput')?.focus();
+    });
     
     // Initial load
     fetchPages();
@@ -724,10 +872,10 @@ setInterval(async () => {
         if (newHash !== lastPagesHash) {
             lastPagesHash = newHash;
             pages = newPages;
-            renderSidebar();
-            document.getElementById('pageCount').textContent = `${pages.length} page${pages.length !== 1 ? 's' : ''}`;
+            refreshFilteredSidebar();
             if (pages.length > 0 && !currentPage) {
-                selectPage(pages[0].id);
+                const visiblePages = getFilteredPages();
+                selectPage((visiblePages[0] || pages[0]).id);
             }
         }
     } catch (err) {}

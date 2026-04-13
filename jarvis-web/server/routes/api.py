@@ -1388,7 +1388,7 @@ def serve_video(filename):
         abort(404)
     
     # Check common video extensions
-    allowed_extensions = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
+    allowed_extensions = {'.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'}
     ext = os.path.splitext(filename)[1].lower()
     if ext not in allowed_extensions:
         abort(404)
@@ -1455,6 +1455,7 @@ def serve_stash_file(space_id, file_id):
         '.mov': 'video/quicktime',
         '.avi': 'video/x-msvideo',
         '.mkv': 'video/x-matroska',
+        '.m4v': 'video/mp4',
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',
