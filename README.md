@@ -1,8 +1,19 @@
 # Jarvis Voice Assistant
 
-> **Heads up** — Personal project I have been building for months; it was not originally built for public release, so rough edges are possible.
+
+> **Quick start**
+> 1. Clone the repo so it ends up at **`$HOME/jarvis-voice`**
+> 2. Run **`./install.sh`** on Ubuntu 24.04+ with Python 3.12+
+> 3. Add your API keys and audio settings in **`config/cloud.env`** and **`config/local.env`**
+> 4. Re-run **`./verify-env.sh`**, then start with **`./bin/start`**
 >
-> **If you want to run it yourself:** clone into **`$HOME/jarvis-voice`** and run **`./install.sh`** on Ubuntu 24.04+ with Python 3.12+. The base installer handles the core Jarvis setup only: system deps, `uv`, the `~/jarvis-venv` environment, config seeding, and project setup. You still add API keys and audio settings in `config/cloud.env` and `config/local.env`. Optional extras like OpenCode and n8n come later and are not required for a normal install. Full walkthrough: [Install Guide](docs/INSTALL_GUIDE.md). No promises, no formal support — sharing what I built. If you want to help cover API costs, consider donating.
+> The base installer handles the core Jarvis setup only: system deps, `uv`, the `~/jarvis-venv` environment, config seeding, and project setup. Optional extras like OpenCode and n8n come later and are not required for a normal install.
+>
+> Full walkthrough: [Install Guide](docs/INSTALL_GUIDE.md)  
+> Config details: [config/README.md](config/README.md)  
+> Web UI guide: [docs/JARVIS_WEB_UI.md](docs/JARVIS_WEB_UI.md)
+>
+> No promises, no formal support — sharing what I built. If you want to help cover API costs, consider donating.
 
 ## What is Jarvis?
 
