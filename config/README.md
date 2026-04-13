@@ -96,7 +96,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 
 # Local mode
 LLM_PROVIDER="ollama"
-OLLAMA_MODEL="qwen3.5:latest"
+OLLAMA_MODEL="gemma4"
 ```
 
 **OpenCode Agent** (coding tasks):
@@ -434,15 +434,13 @@ echo $BRAVE_API_KEY  # Should show your API key
 
 ## Model Recommendations
 
-### Cloud Mode (Anthropic)
-- **Best overall**: `claude-sonnet-4-5-20250929`
-- **Fastest**: `claude-sonnet-4-20250514`
-- **Legacy**: `claude-3-7-sonnet-20250219`
+### Cloud Mode
+- **Best overall**: `grok-4-1-fast-non-reasoning`
+- **Fastest**: `gpt-5-4-nano`
 
 ### Local Mode (Ollama)
-- **Best for Jarvis**: `qwen3` (8B, 256K context, excellent tool calling)
-- **Best for OpenCode**: Use Claude API (more reliable)
-- **Experimental OpenCode**: `qwen3.5:latest` (13gb of VRAM)
+- **Best for Jarvis**: `gemma4`
+- **Best for OpenCode**: Use Claude or Openai API (more reliable)
 
 ## Quick Reference
 
@@ -452,7 +450,7 @@ echo $BRAVE_API_KEY  # Should show your API key
 - `~/.config/opencode/opencode.json` - OpenCode config (including MCP)
 
 **Key Concepts:**
-- API keys go in `.env` files (not committed to git)
+- API keys go in `.env` files
 - MCP servers can reference `.env` variables via `${VAR_NAME}`
 - **Security**: Only explicitly listed `env` vars are passed (least privilege)
 - Jarvis and OpenCode have separate MCP configurations
