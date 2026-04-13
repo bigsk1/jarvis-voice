@@ -6,9 +6,17 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVICE_FILE="$PROJECT_ROOT/systemd/opencode-jarvis.service"
+RENDER_SCRIPT="$PROJECT_ROOT/bin/render-systemd-unit.sh"
+RENDERED_FILE="$(mktemp)"
+trap 'rm -f "$RENDERED_FILE"' EXIT
 
 if [ ! -f "$SERVICE_FILE" ]; then
     echo "❌ Service file not found: $SERVICE_FILE"
+    exit 1
+fi
+
+if [ ! -x "$RENDER_SCRIPT" ]; then
+    echo "❌ Render script not found or not executable: $RENDER_SCRIPT"
     exit 1
 fi
 
@@ -18,8 +26,9 @@ echo "📦 Installing OpenCode systemd service..."
 echo "🔧 Creating environment file..."
 "$PROJECT_ROOT/bin/create-opencode-env.sh"
 
-# Copy service file
-sudo cp "$SERVICE_FILE" /etc/systemd/system/
+# Render and install service file for the current account
+"$RENDER_SCRIPT" "$SERVICE_FILE" "$RENDERED_FILE"
+sudo install -m 644 "$RENDERED_FILE" /etc/systemd/system/opencode-jarvis.service
 
 # Reload systemd
 sudo systemctl daemon-reload
@@ -50,4 +59,3 @@ else
     echo "   sudo journalctl -u opencode-jarvis.service -n 50"
     exit 1
 fi
-

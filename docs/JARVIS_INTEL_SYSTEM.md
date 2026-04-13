@@ -17,7 +17,7 @@ It also serves as the foundation for Jarvis self-learning: Jarvis can append les
 
 ### Location
 ```
-/home/boss/jarvis-voice/jarvis-intel/
+~/jarvis-voice/jarvis-intel/
 ```
 
 ### Security

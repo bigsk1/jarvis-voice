@@ -12,7 +12,8 @@ echo "Testing if LLM understands WHEN to use semantic_recall vs search_memory"
 echo "(Using queries NOT in the training examples)"
 echo ""
 
-cd /home/boss/jarvis-voice
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$REPO_ROOT"
 source ~/jarvis-venv/bin/activate
 
 # Clean slate - backup and recreate

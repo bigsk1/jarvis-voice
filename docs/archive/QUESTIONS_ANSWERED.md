@@ -114,7 +114,7 @@ def condense_for_voice(opencode_result: dict, task: str) -> str:
 **Complex task (> 30s)**:
 ```
 "That took 42 seconds. OpenCode built your calculator app successfully. 
-Check your workspace at /home/boss/jarvis-workspace for the results."
+Check your workspace at ~/jarvis-workspace for the results."
 ```
 
 **From orchestrator test**:
@@ -409,7 +409,7 @@ cat > jarvis-intel/my_info.md << 'EOF'
 - Database: db.mycompany.com:5432
 - Redis cache: cache.mycompany.com:6379
 
-API key stored in: /home/boss/.secrets/api_key
+API key stored in: ~/.secrets/api_key
 EOF
 ```
 

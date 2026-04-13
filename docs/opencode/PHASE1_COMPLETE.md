@@ -78,7 +78,7 @@ python3 skills/opencode.py '{"task": "List Python files in jarvis-voice"}'
 *Can be overridden per-task*
 
 ### Workspace Location
-**Path**: `/home/boss/jarvis-workspace/`  
+**Path**: `~/jarvis-workspace/`  
 **Purpose**: Isolated build directory for OpenCode projects  
 **Access**: Jarvis can read/write here
 

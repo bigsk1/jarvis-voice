@@ -5,15 +5,20 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SERVICE_FILE="$PROJECT_ROOT/systemd/opencode-jarvis.service"
+RENDER_SCRIPT="$PROJECT_ROOT/bin/render-systemd-unit.sh"
+RENDERED_FILE="$(mktemp)"
+trap 'rm -f "$RENDERED_FILE"' EXIT
 
 echo "🔧 Updating OpenCode service environment..."
 
 # Create/update environment file
 "$PROJECT_ROOT/bin/create-opencode-env.sh"
 
-# Copy updated service file
+# Render and install updated service file
 echo "📦 Updating systemd service..."
-sudo cp "$PROJECT_ROOT/systemd/opencode-jarvis.service" /etc/systemd/system/
+"$RENDER_SCRIPT" "$SERVICE_FILE" "$RENDERED_FILE"
+sudo install -m 644 "$RENDERED_FILE" /etc/systemd/system/opencode-jarvis.service
 
 # Reload systemd
 sudo systemctl daemon-reload
@@ -43,4 +48,3 @@ else
     echo "   sudo journalctl -u opencode-jarvis.service -n 50"
     exit 1
 fi
-

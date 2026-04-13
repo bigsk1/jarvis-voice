@@ -286,7 +286,7 @@ TOOL_SIMILARITY_THRESHOLD_FULL=0.0  # Optional: used when Tool RAG embeds the fu
 **Debug Tool Retrieval**:
 ```bash
 # Activate the Jarvis venv first so embedding generation matches production
-source /home/boss/jarvis-venv/bin/activate
+source ~/jarvis-venv/bin/activate
 
 # See exactly what tools are retrieved for a query
 ./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?"

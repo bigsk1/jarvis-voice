@@ -5,7 +5,7 @@
 ### 1. ✅ Zombie Tables Removed
 **Problem**: `tool_patterns` and `preferences` tables were being created but never used.
 
-**Solution**: Removed table creation from `/home/boss/jarvis-voice/lib/memory_db.py`
+**Solution**: Removed table creation from `~/jarvis-voice/lib/memory_db.py`
 
 **Result**: Fresh database now only has 2 tables:
 - `knowledge_base` - for memories
@@ -225,11 +225,11 @@ For future voice mode, maintain session across multiple turns:
 
 ## Files Modified
 
-1. `/home/boss/jarvis-voice/lib/memory_db.py` - Removed zombie tables
-2. `/home/boss/jarvis-voice/skills/search_conversations.py` - New tool
-3. `/home/boss/jarvis-voice/skills/search_conversations.tool.json` - New tool config
-4. `/home/boss/jarvis-voice/skills/get_recent_conversations.py` - New tool
-5. `/home/boss/jarvis-voice/skills/get_recent_conversations.tool.json` - New tool config
+1. `~/jarvis-voice/lib/memory_db.py` - Removed zombie tables
+2. `~/jarvis-voice/skills/search_conversations.py` - New tool
+3. `~/jarvis-voice/skills/search_conversations.tool.json` - New tool config
+4. `~/jarvis-voice/skills/get_recent_conversations.py` - New tool
+5. `~/jarvis-voice/skills/get_recent_conversations.tool.json` - New tool config
 
 ---
 

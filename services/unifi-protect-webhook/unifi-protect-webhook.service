@@ -1,3 +1,5 @@
+# Template: render with ../../bin/render-systemd-unit.sh before installing so User/Group match the target account.
+# Path specifiers use %h (that user's home) after User= is set.
 [Unit]
 Description=UniFi Protect Webhook Receiver for Jarvis
 After=network.target jarvis-api.service
@@ -5,10 +7,11 @@ Wants=jarvis-api.service
 
 [Service]
 Type=simple
-User=boss
-WorkingDirectory=/home/boss/jarvis-voice/services/unifi-protect-webhook
-EnvironmentFile=/home/boss/jarvis-voice/services/unifi-protect-webhook/config.env
-ExecStart=/home/boss/jarvis-venv/bin/python3 webhook_receiver.py
+User=__JARVIS_USER__
+Group=__JARVIS_GROUP__
+WorkingDirectory=%h/jarvis-voice/services/unifi-protect-webhook
+EnvironmentFile=%h/jarvis-voice/services/unifi-protect-webhook/config.env
+ExecStart=%h/jarvis-venv/bin/python3 webhook_receiver.py
 Restart=always
 RestartSec=5
 
@@ -16,8 +19,7 @@ RestartSec=5
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/boss/jarvis-voice/logs
+ReadWritePaths=%h/jarvis-voice/logs
 
 [Install]
 WantedBy=multi-user.target
-

@@ -15,6 +15,9 @@ from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+
+from paths import get_jarvis_workspace
 
 from skills import opencode
 
@@ -106,33 +109,37 @@ class OpenCodeToolTests(unittest.TestCase):
         self.assertIn("memory", FakeClient.captured["context"])
 
     def test_condense_for_voice_prefers_project_path_and_run_hint_from_parts(self):
+        calc = str((get_jarvis_workspace() / "projects" / "calculator").resolve())
+        calc_py = str((get_jarvis_workspace() / "projects" / "calculator" / "calculator.py").resolve())
         result = {
             "parts": [
-                {"type": "text", "text": "Implemented in `/home/boss/jarvis-workspace/projects/calculator` with a minimal terminal calculator loop and README."},
-                {"type": "text", "text": "- Created `/home/boss/jarvis-workspace/projects/calculator/calculator.py`"},
+                {"type": "text", "text": f"Implemented in `{calc}` with a minimal terminal calculator loop and README."},
+                {"type": "text", "text": f"- Created `{calc_py}`"},
                 {"type": "text", "text": "- Run with `python calculator.py`"},
             ]
         }
 
         speech = opencode.condense_for_voice(result, "Build a calculator")
 
-        self.assertIn("/home/boss/jarvis-workspace/projects/calculator", speech)
-        self.assertIn("Created /home/boss/jarvis-workspace/projects/calculator/calculator.py", speech)
+        self.assertIn(calc, speech)
+        self.assertIn(f"Created {calc_py}", speech)
         self.assertIn("Run with python calculator.py", speech)
 
     def test_extract_opencode_response_text_returns_full_parts_text(self):
+        app_dir = str((get_jarvis_workspace() / "projects" / "calculator-app").resolve())
+        index_html = str((get_jarvis_workspace() / "projects" / "calculator-app" / "index.html").resolve())
         result = {
             "parts": [
-                {"type": "text", "text": "Implemented in `/home/boss/jarvis-workspace/projects/calculator-app`."},
-                {"type": "text", "text": "Created `/home/boss/jarvis-workspace/projects/calculator-app/index.html`."},
+                {"type": "text", "text": f"Implemented in `{app_dir}`."},
+                {"type": "text", "text": f"Created `{index_html}`."},
                 {"type": "text", "text": "OpenCode can also add keyboard support."},
             ]
         }
 
         raw = opencode.extract_opencode_response_text(result)
 
-        self.assertIn("Implemented in `/home/boss/jarvis-workspace/projects/calculator-app`.", raw)
-        self.assertIn("Created `/home/boss/jarvis-workspace/projects/calculator-app/index.html`.", raw)
+        self.assertIn(f"Implemented in `{app_dir}`.", raw)
+        self.assertIn(f"Created `{index_html}`.", raw)
         self.assertIn("OpenCode can also add keyboard support.", raw)
 
 

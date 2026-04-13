@@ -8,7 +8,7 @@ Comprehensive testing guide for all Jarvis tools, MCP servers, and functionality
 Run the full regression test suite (22 tests across 8 sections):
 
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
 ./tests/integration/test-cloud-comprehensive.sh
 ```
@@ -46,7 +46,7 @@ jq '.test_run.tests[] | select(.passed == false)' logs/test/test-cloud-comprehen
 ## Prerequisites
 
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
 ```
 

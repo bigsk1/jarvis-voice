@@ -155,21 +155,9 @@ BLOCKED_REGEX_PATTERNS = [
     r';\s*rm\s',                   # Command chaining with rm
 ]
 
-# PROTECTED PATHS - Jarvis cannot modify its own code!
-PROTECTED_PATHS = [
-    '/home/boss/jarvis-voice',  # Jarvis codebase - NO self-modification
-    '/home/boss/.ssh',          # SSH keys
-    '/home/boss/.gnupg',        # GPG keys
-    '/etc', '/usr', '/bin', '/sbin', '/boot', '/root',
-]
-
-# Exceptions - write allowed in these subdirectories
-ALLOWED_WRITE_PATHS = [
-    '/home/boss/jarvis-voice/data',   # Data files OK
-    '/home/boss/jarvis-voice/logs',   # Log files OK
-    '/home/boss/jarvis-voice/stash',  # Stash artifacts OK
-    '/tmp',                            # Temp files OK
-]
+# PROTECTED PATHS — built at runtime from ``lib/paths.py`` (``get_protected_paths()`` /
+# ``get_allowed_write_paths()``): repo root, ``~/.ssh``, ``~/.gnupg``, ``~/.config``, system
+# prefixes, with writes allowed under ``<repo>/data``, ``logs``, ``stash``, ``/tmp``, etc.
 ```
 
 ---
@@ -336,11 +324,11 @@ Named webhooks from `config/webhook_registry.json` bypass this check (they're ad
 
 ```python
 ALLOWED_DIRS = [
-    Path('/home/boss/jarvis-voice/data'),
-    Path('/home/boss/jarvis-voice/stash'),
-    Path('/home/boss/Downloads'),
-    Path('/home/boss/Documents'),
-    Path('/home/boss/Pictures'),  # analyze_image only
+    Path('~/jarvis-voice/data'),
+    Path('~/jarvis-voice/stash'),
+    Path('~/Downloads'),
+    Path('~/Documents'),
+    Path('~/Pictures'),  # analyze_image only
     Path('/tmp'),
 ]
 ```

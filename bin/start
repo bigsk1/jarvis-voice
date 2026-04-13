@@ -26,8 +26,9 @@
 
 set -e
 
-PROJECT_ROOT="/home/boss/jarvis-voice"
-VENV_PATH="$HOME/jarvis-venv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENV_PATH="${JARVIS_VENV:-$HOME/jarvis-venv}"
 
 # Colors
 GREEN='\033[0;32m'

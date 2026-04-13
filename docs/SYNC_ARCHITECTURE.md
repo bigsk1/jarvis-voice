@@ -416,7 +416,7 @@ See: `docs/TESTING.md` for updated test patterns.
 **Daily health check:**
 ```bash
 # Crontab entry
-0 2 * * * cd /home/boss/jarvis-voice && ./bin/check-embeddings-health.py --both --json | logger -t jarvis-embeddings
+0 2 * * * cd ~/jarvis-voice && ./bin/check-embeddings-health.py --both --json | logger -t jarvis-embeddings
 ```
 
 **API health endpoint:**

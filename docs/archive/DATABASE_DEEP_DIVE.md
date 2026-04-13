@@ -48,7 +48,7 @@ CREATE TABLE knowledge_base (
 This is where **ALL** memory data actually lives. The LLM intelligently categorizes information:
 
 - **`preference`** - User preferences ("favorite_color": "blue")
-- **`fact`** - General facts ("tetris_game_location": "/home/boss/...")
+- **`fact`** - General facts ("tetris_game_location": "~/...")
 - **`project`** - Project-specific data from jarvis-intel docs
 - **`technical`** - Technical details and configurations
 

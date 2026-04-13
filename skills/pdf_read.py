@@ -18,6 +18,7 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
+from paths import get_local_file_tool_allowed_dirs
 from stash_helper import (
     get_space, open_space, StashFile, resolve_file_path, safe_resolve_file
 )
@@ -49,13 +50,7 @@ def resolve_pdf_path(args: dict) -> str:
     if file_path:
         # SECURITY: Restrict file access to allowed directories
         resolved = Path(file_path).expanduser().resolve()
-        ALLOWED_DIRS = [
-            Path('/home/boss/jarvis-voice/data').resolve(),
-            Path('/home/boss/jarvis-voice/stash').resolve(),
-            Path('/home/boss/Downloads').resolve(),
-            Path('/home/boss/Documents').resolve(),
-            Path('/tmp').resolve(),
-        ]
+        ALLOWED_DIRS = get_local_file_tool_allowed_dirs(include_pictures=False)
         
         file_allowed = False
         for allowed in ALLOWED_DIRS:

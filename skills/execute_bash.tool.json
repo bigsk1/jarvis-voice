@@ -1,14 +1,14 @@
 {
   "enabled": true,
   "name": "execute_bash",
-  "description": "Execute a bash command on the system. USE THIS for: curl commands, checking services on private/local networks (192.168.x.x, 10.x.x.x, localhost), running system utilities, checking ports, ping, docker commands, systemctl, etc. When user says 'curl' or asks to check a local/private IP service → use this, NOT mcp_fetch (which only works for public internet URLs). RESTRICTIONS: Cannot modify /home/boss/jarvis-voice (my own code), /etc, ~/.ssh, ~/.gnupg. Cannot run: rm -rf, shutdown, reboot, fork bombs, reverse shells, curl|bash patterns. Read-only access to protected paths is OK.",
+  "description": "Execute a bash command on the system. USE THIS for: curl commands, checking services on private/local networks (192.168.x.x, 10.x.x.x, localhost), running system utilities, checking ports, ping, docker commands, systemctl, etc. When user says 'curl' or asks to check a local/private IP service → use this, NOT mcp_fetch (which only works for public internet URLs). RESTRICTIONS: Cannot modify the Jarvis repo checkout (except allowed data/logs/stash), /etc, ~/.ssh, ~/.gnupg. Cannot run: rm -rf, shutdown, reboot, fork bombs, reverse shells, curl|bash patterns. Read-only access to protected paths is OK.",
   "script": "execute_bash.py",
   "parameters": {
     "type": "object",
     "properties": {
       "command": {
         "type": "string",
-        "description": "The bash command to execute. Cannot modify protected paths like /home/boss/jarvis-voice, /etc, ~/.ssh"
+        "description": "The bash command to execute. Cannot modify protected paths (Jarvis repo except allowed dirs, /etc, ~/.ssh, etc.)"
       },
       "working_directory": {
         "type": "string",
@@ -26,9 +26,9 @@
     "filesystem": true,
     "auto_approve": false,
     "protected_paths": [
-      "/home/boss/jarvis-voice",
-      "/home/boss/.ssh",
-      "/home/boss/.gnupg",
+      "<jarvis-repo-root>",
+      "<user-home>/.ssh",
+      "<user-home>/.gnupg",
       "/etc",
       "/usr",
       "/bin",

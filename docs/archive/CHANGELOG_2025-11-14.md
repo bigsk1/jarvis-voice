@@ -161,7 +161,7 @@ self._log_conversation(transcript, speech, tools_used, success=True, token_info=
 
 **Usage:**
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 ./bin/migrate-remove-zombie-tables.sh
 ```
 
@@ -225,7 +225,7 @@ print(correct_tool_call(raw))"
 
 ```bash
 # Test with real conversation
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
 ./orchestrator/orchestrator_v2.py cloud "What time is it?"
 

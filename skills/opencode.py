@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from opencode_client import OpenCodeClient
 from config_loader import get_config_value, load_config
 from memory_db import MemoryDB
+from paths import get_jarvis_workspace
 
 
 def main():
@@ -259,9 +260,11 @@ def condense_for_voice(result: dict, task: str) -> str:
             run_hint = None
             created_items = []
 
+            projects_root = str((get_jarvis_workspace() / "projects").resolve())
+            project_path_pattern = re.escape(projects_root) + r"[^\s,`]+"
             for line in lines:
                 if not project_path:
-                    match = re.search(r"/home/boss/jarvis-workspace/projects/[^\s,`]+", line)
+                    match = re.search(project_path_pattern, line)
                     if match:
                         project_path = match.group(0)
                 lowered = line.lower()

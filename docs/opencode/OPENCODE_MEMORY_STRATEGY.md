@@ -105,7 +105,7 @@ Not all memories are useful for OpenCode. We need to distinguish:
 # Store in memory (category: "project_context")
 {
     "key": "jarvis_project",
-    "value": "Voice assistant at /home/boss/jarvis-voice, Python 3.11, uses Ollama/OpenAI",
+    "value": "Voice assistant at ~/jarvis-voice, Python 3.11, uses Ollama/OpenAI",
     "category": "project_context"
 }
 

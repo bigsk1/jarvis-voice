@@ -332,7 +332,7 @@ See: `docs/TESTING.md` for details.
 Add to crontab for daily validation:
 ```bash
 # Check embeddings daily at 2 AM
-0 2 * * * cd /home/boss/jarvis-voice && ./bin/check-embeddings-health.py --both --json | logger -t jarvis-embeddings
+0 2 * * * cd ~/jarvis-voice && ./bin/check-embeddings-health.py --both --json | logger -t jarvis-embeddings
 ```
 
 ### Runtime Degradation Checks

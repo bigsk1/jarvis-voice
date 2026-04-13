@@ -45,8 +45,8 @@ IMPORTANT: jarvis-intel/ is FLAT - use simple filenames like
 ```
 
 **Files Changed**:
-- `/home/boss/jarvis-voice/skills/manage_intel.py` (added subdirectory check in `validate_path()`)
-- `/home/boss/jarvis-voice/skills/manage_intel.tool.json` (updated description)
+- `~/jarvis-voice/skills/manage_intel.py` (added subdirectory check in `validate_path()`)
+- `~/jarvis-voice/skills/manage_intel.tool.json` (updated description)
 
 **Result**: 
 - ✅ LLM will now use flat filenames: `bitcoin-price-2025-11-19.md`
@@ -97,8 +97,8 @@ CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - Prevent wasteful duplicate executions
 
 **Files Changed**:
-- `/home/boss/jarvis-voice/orchestrator/router_v2.py` (added redundancy warning)
-- `/home/boss/jarvis-voice/orchestrator/orchestrator_v2.py` (added duplicate detection logic)
+- `~/jarvis-voice/orchestrator/router_v2.py` (added redundancy warning)
+- `~/jarvis-voice/orchestrator/orchestrator_v2.py` (added duplicate detection logic)
 
 **Result**: 
 - ✅ No more duplicate tool calls
@@ -153,7 +153,7 @@ elif tool_name == "manage_intel":
 ```
 
 **Files Changed**:
-- `/home/boss/jarvis-voice/orchestrator/executor.py` (lines 121-122)
+- `~/jarvis-voice/orchestrator/executor.py` (lines 121-122)
 
 **Result**: 
 - ✅ `manage_intel` with `auto_ingest: true` now completes successfully
@@ -199,9 +199,9 @@ Updated three files to clarify tool selection:
 ```
 
 **Files Changed**:
-- `/home/boss/jarvis-voice/skills/get_recent_conversations.tool.json`
-- `/home/boss/jarvis-voice/skills/search_conversations.tool.json`
-- `/home/boss/jarvis-voice/orchestrator/router_v2.py` (lines 168-175)
+- `~/jarvis-voice/skills/get_recent_conversations.tool.json`
+- `~/jarvis-voice/skills/search_conversations.tool.json`
+- `~/jarvis-voice/orchestrator/router_v2.py` (lines 168-175)
 
 **Result**: 
 - ✅ "What was my last question?" now calls `get_recent_conversations`
@@ -245,9 +245,9 @@ For questions about REMINDERS, ALERTS, or SERVICE STATUS → ALWAYS call the spe
 - `list_alerts.tool.json` - Now lists 8+ query variations
 
 **Files Changed**:
-- `/home/boss/jarvis-voice/orchestrator/router_v2.py` (added PROACTIVE SYSTEM QUERIES section)
-- `/home/boss/jarvis-voice/skills/list_reminders.tool.json` (strengthened description)
-- `/home/boss/jarvis-voice/skills/list_alerts.tool.json` (strengthened description)
+- `~/jarvis-voice/orchestrator/router_v2.py` (added PROACTIVE SYSTEM QUERIES section)
+- `~/jarvis-voice/skills/list_reminders.tool.json` (strengthened description)
+- `~/jarvis-voice/skills/list_alerts.tool.json` (strengthened description)
 
 **Result**: 
 - ✅ "When is my next reminder?" now correctly calls `list_reminders`
@@ -301,8 +301,8 @@ def normalize_time_words(text: str) -> str:
 - a, an (converted to 1)
 
 **Files Changed**:
-- `/home/boss/jarvis-voice/skills/create_reminder.py` (added `word_to_number()` and `normalize_time_words()` functions)
-- `/home/boss/jarvis-voice/skills/create_reminder.tool.json` (updated description to mention recurring reminders)
+- `~/jarvis-voice/skills/create_reminder.py` (added `word_to_number()` and `normalize_time_words()` functions)
+- `~/jarvis-voice/skills/create_reminder.tool.json` (updated description to mention recurring reminders)
 
 **Result**: 
 - ✅ "Remind me in one hour" now works
@@ -354,8 +354,8 @@ fi
 ```
 
 **Files Changed**:
-- `/home/boss/jarvis-voice/bin/jarvis-api` (added lines 62-77)
-- `/home/boss/jarvis-voice/bin/jarvis-services` (added lines 161-176)
+- `~/jarvis-voice/bin/jarvis-api` (added lines 62-77)
+- `~/jarvis-voice/bin/jarvis-services` (added lines 161-176)
 
 **Result**: 
 - ✅ Running `./bin/jarvis-api --local` now syncs cloud → local automatically

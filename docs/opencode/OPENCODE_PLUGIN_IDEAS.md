@@ -45,9 +45,9 @@
 **Location**: `~/.config/opencode/plugin/workspace-protection.js`
 
 **Features**:
-- Block `write`, `edit`, `delete` operations outside `/home/boss/jarvis-workspace`
-- Block any access to `/home/boss/jarvis-voice` (Jarvis codebase)
-- Block system directories (`/etc`, `/usr`, `/bin`, `/home/boss/.config` except opencode)
+- Block `write`, `edit`, `delete` operations outside `~/jarvis-workspace`
+- Block any access to `~/jarvis-voice` (Jarvis codebase)
+- Block system directories (`/etc`, `/usr`, `/bin`, `~/.config` except opencode)
 - Allow read-only access for reference (e.g., reading Jarvis code to understand APIs)
 
 **Use Case**:
@@ -180,7 +180,7 @@ tool: {
 **Hooks**:
 ```javascript
 event: async ({ event }) => {
-  const logger = await import('/home/boss/jarvis-voice/lib/opencode_logger.js')
+  const logger = await import('~/jarvis-voice/lib/opencode_logger.js')
   
   if (event.type === "session.start") {
     logger.logSessionStart({
@@ -403,7 +403,7 @@ tool: {
   disk_usage_report: tool({
     description: "Analyze disk usage and find large files",
     args: {
-      path: tool.schema.string().default("/home/boss"),
+      path: tool.schema.string().default("~"),
       min_size_mb: tool.schema.number().default(100)
     }
   })
@@ -624,7 +624,7 @@ plugin/
 
 You mentioned Jarvis's `execute_bash` can run multiple commands:
 ```bash
-cd /home/boss/jarvis-workspace/project && tree -L 3 && ls -la && git status
+cd ~/jarvis-workspace/project && tree -L 3 && ls -la && git status
 ```
 
 **When to use plugins vs bash**:

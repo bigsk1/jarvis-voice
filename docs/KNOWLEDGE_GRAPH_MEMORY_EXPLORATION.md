@@ -374,7 +374,7 @@ After transparent integration:
     "command": "docker",
     "args": [
       "run", "-i", "--rm",
-      "-v", "/home/boss/jarvis-voice/data/knowledge-graph:/data",
+      "-v", "~/jarvis-voice/data/knowledge-graph:/data",
       "mcp/memory"
     ]
   }

@@ -11,8 +11,8 @@
 # This means `jarvis-services --stop` (which removes PID files) won't
 # be fought by the watchdog. Only unexpected crashes trigger a restart.
 #
-# Cron entry (add with: crontab -e):
-#   */5 * * * * /home/boss/jarvis-voice/bin/watchdog-services.sh >> /home/boss/jarvis-voice/logs/watchdog.log 2>&1
+# Cron entry (add with: crontab -e; user crontab expands $HOME — adjust if repo is not ~/jarvis-voice):
+#   */5 * * * * $HOME/jarvis-voice/bin/watchdog-services.sh >> $HOME/jarvis-voice/logs/watchdog.log 2>&1
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PIDFILE="$PROJECT_ROOT/logs/self_healing_daemon.pid"

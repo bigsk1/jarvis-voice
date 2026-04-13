@@ -9,7 +9,8 @@ echo "║         Real-World Memory Intelligence Test                  ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-cd /home/boss/jarvis-voice
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$REPO_ROOT"
 source ~/jarvis-venv/bin/activate
 
 # Backup and clean

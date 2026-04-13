@@ -369,7 +369,7 @@ PRICING = {
 
 ```bash
 # Test cost estimation
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
 python3 -c "
 from lib.cost_estimator import estimate_cost, format_cost_summary

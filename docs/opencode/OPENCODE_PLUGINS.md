@@ -62,17 +62,17 @@ User: "Jarvis, create a Flask API"
 **Protection Rules**:
 | What | Where | Action |
 |------|-------|--------|
-| Write/Edit/Delete | Outside `/home/boss/jarvis-workspace` | ❌ BLOCKED |
-| Any Access | `/home/boss/jarvis-voice` (Jarvis code) | ❌ BLOCKED |
+| Write/Edit/Delete | Outside `~/jarvis-workspace` | ❌ BLOCKED |
+| Any Access | `~/jarvis-voice` (Jarvis code) | ❌ BLOCKED |
 | Any Access | System dirs (`/etc`, `/usr`, `/bin`) | ❌ BLOCKED |
 | Any Access | Sensitive dirs (`~/.ssh`, `~/.gnupg`) | ❌ BLOCKED |
-| All Operations | Within `/home/boss/jarvis-workspace` | ✅ ALLOWED |
+| All Operations | Within `~/jarvis-workspace` | ✅ ALLOWED |
 
 **Example Blocked Operation**:
 ```
 User: "Jarvis, use OpenCode to edit orchestrator_v2.py"
 Jarvis: Delegates to OpenCode
-OpenCode: Attempts to edit /home/boss/jarvis-voice/orchestrator/orchestrator_v2.py
+OpenCode: Attempts to edit ~/jarvis-voice/orchestrator/orchestrator_v2.py
 
 ❌ BLOCKED: Cannot access Jarvis codebase
    Path: ~/jarvis-voice/orchestrator/orchestrator_v2.py
@@ -85,7 +85,7 @@ OpenCode: Attempts to edit /home/boss/jarvis-voice/orchestrator/orchestrator_v2.
 ```
 User: "Jarvis, use OpenCode to build a Flask API"
 Jarvis: Delegates to OpenCode
-OpenCode: Creates files in /home/boss/jarvis-workspace/projects/flask-api/
+OpenCode: Creates files in ~/jarvis-workspace/projects/flask-api/
 
 ✅ ALLOWED: All operations within workspace
 ```
@@ -136,7 +136,7 @@ OpenCode: Creates files in /home/boss/jarvis-workspace/projects/flask-api/
 ./jarvis-local
 > "Use OpenCode to create a simple Python hello world script in the workspace"
 ```
-**Expected**: ✅ File created in `/home/boss/jarvis-workspace/`
+**Expected**: ✅ File created in `~/jarvis-workspace/`
 
 ### Test 4: Verify Plugin Loaded
 ```bash
@@ -231,7 +231,7 @@ curl http://localhost:4096/health
 **Common issues**:
 - Using absolute paths outside workspace → Use relative paths or workspace root
 - Trying to reference Jarvis code → Ask Jarvis to provide the info instead
-- System directory access → Work within `/home/boss/jarvis-workspace`
+- System directory access → Work within `~/jarvis-workspace`
 
 ---
 

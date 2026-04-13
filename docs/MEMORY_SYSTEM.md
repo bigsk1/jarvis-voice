@@ -7,7 +7,7 @@ Jarvis has an intelligent memory system that allows it to remember important inf
 ## Database Location
 
 ```
-/home/boss/jarvis-voice/data/memory.db
+~/jarvis-voice/data/memory.db
 ```
 
 **Note:** The database file is `memory.db`, and the table is called `knowledge_base` (not `memories`).
@@ -134,7 +134,7 @@ Removes memories that are no longer needed or incorrect.
 
 
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
 ./bin/rebuild-fts-index.py  # Both cloud and local DBs
 ```
@@ -144,7 +144,7 @@ This populates the full-text search index for existing memories.
 ### View Memory Stats
 
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
 ./bin/memory stats
 ```

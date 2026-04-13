@@ -2,7 +2,7 @@
 
 > **Heads up** — Personal project I have been building for months; it was not originally built for public release, so rough edges are possible.
 >
-> **If you want to run it yourself:** clone into **`$HOME/jarvis-voice`** (that path matters for scripts and aliases), then run **`./install.sh`** on Ubuntu 24.04+ with Python 3.12+. The installer sets up system deps, `uv`, the `~/jarvis-venv` environment, and project setup; you still add API keys and audio settings in `config/cloud.env` and `config/local.env`. Full walkthrough: [Install Guide](docs/INSTALL_GUIDE.md). No promises, no formal support — sharing what I built. If you want to help cover API costs, consider donating.
+> **If you want to run it yourself:** clone into **`$HOME/jarvis-voice`** and run **`./install.sh`** on Ubuntu 24.04+ with Python 3.12+. The base installer handles the core Jarvis setup only: system deps, `uv`, the `~/jarvis-venv` environment, config seeding, and project setup. You still add API keys and audio settings in `config/cloud.env` and `config/local.env`. Optional extras like OpenCode and n8n come later and are not required for a normal install. Full walkthrough: [Install Guide](docs/INSTALL_GUIDE.md). No promises, no formal support — sharing what I built. If you want to help cover API costs, consider donating.
 
 ## What is Jarvis?
 
@@ -545,7 +545,7 @@ cd jarvis-voice
 You need python 3.12 or higher.
 
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 ./setup.sh
 ```
 
@@ -1841,6 +1841,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.46.3 (March 2026)  
+**Current Version:** v2.47.0 (March 2026)  
 **Status:** Production Ready ✅  
 **Latest Features:** Completion Guard ↔ feedback ↔ intelligence + scheduled tasks & run notifications + Web UI `/logs` + duplicate-tool recovery & stash follow-ups + alerts & Weather Watch + TTS normalizer & profiles + SerpAPI/Amazon/Canvas + OpenCode hardening + embedding fallback + model catalog + routing freshness & workflow timings

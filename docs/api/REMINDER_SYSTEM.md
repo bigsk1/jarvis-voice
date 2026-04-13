@@ -273,7 +273,7 @@ for event in events.get('items', []):
 Run with cron:
 ```bash
 # Sync every hour
-0 * * * * /home/boss/jarvis-voice/sync-calendar.py
+0 * * * * ~/jarvis-voice/sync-calendar.py
 ```
 
 ---

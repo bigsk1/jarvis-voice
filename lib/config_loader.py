@@ -5,6 +5,22 @@ import sys
 from pathlib import Path
 
 
+def _expand_env_value(value: str) -> str:
+    """Expand ~ and $HOME / ${HOME} so seeded env files work on any Unix user.
+
+    Does not use full ``os.path.expandvars`` — only home-related tokens so values
+    containing other ``$`` characters (rare in secrets) are left unchanged.
+    """
+    if not value or not isinstance(value, str):
+        return value
+    home = os.environ.get("HOME")
+    if home:
+        value = value.replace("${HOME}", home).replace("$HOME", home)
+    if value.startswith("~"):
+        value = os.path.expanduser(value)
+    return value
+
+
 def load_env_file(env_file):
     """Load environment variables from a file."""
     env_vars = {}
@@ -64,20 +80,21 @@ def load_config(mode=None):
     config_file = project_root / 'config' / f'{mode}.env'
     
     env_vars = load_env_file(config_file)
-    
+    expanded_vars = {k: _expand_env_value(v) for k, v in env_vars.items()}
+
     # Web UI overrides are prefixed with JARVIS_OVERRIDE_ and take precedence
     # over env file values. This prevents load_config() from overwriting
     # runtime overrides set by the web UI settings panel.
     override_prefix = 'JARVIS_OVERRIDE_'
-    
+
     # Set environment variables
-    for key, value in env_vars.items():
+    for key, value in expanded_vars.items():
         # Don't overwrite if a web UI override exists for this key
         if f'{override_prefix}{key}' in os.environ:
             continue
         os.environ[key] = value
-    
-    return env_vars
+
+    return expanded_vars
 
 
 def get_config_value(key, default=None):

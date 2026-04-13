@@ -27,7 +27,7 @@
 **What Happened**:
 1. Jarvis told OpenCode: "Create test.txt in ~/jarvis-voice/"
 2. **OpenCode REFUSED**: Recognized jarvis-voice is protected (from system prompt)
-3. OpenCode response: *"I cannot create files in `/home/boss/jarvis-voice/`. This directory is Jarvis's protected codebase and is strictly **READ ONLY**."*
+3. OpenCode response: *"I cannot create files in `~/jarvis-voice/`. This directory is Jarvis's protected codebase and is strictly **READ ONLY**."*
 4. Jarvis tried to verify → File doesn't exist (blocked!)
 5. Jarvis retried → OpenCode refused again
 6. **Final Result**: ❌ Task failed (as it should!)
@@ -35,7 +35,7 @@
 **Verification**:
 ```bash
 $ ls -la ~/jarvis-voice/test.txt
-ls: cannot access '/home/boss/jarvis-voice/test.txt': No such file or directory
+ls: cannot access '~/jarvis-voice/test.txt': No such file or directory
 ```
 ✅ **No file created in Jarvis codebase** (CORRECT)
 
@@ -50,13 +50,13 @@ ls: cannot access '/home/boss/jarvis-voice/test.txt': No such file or directory
 
 **What Happened**:
 1. Jarvis told OpenCode: "Create test.txt with hello world"
-2. OpenCode chose workspace: `/home/boss/jarvis-workspace/test.txt`
+2. OpenCode chose workspace: `~/jarvis-workspace/test.txt`
 3. **Plugin ALLOWED** the operation (inside workspace)
 4. **Result**: ✅ File created successfully
 
 **OpenCode Response**:
 ```
-Created file: `/home/boss/jarvis-workspace/test.txt`
+Created file: `~/jarvis-workspace/test.txt`
 Content: "hello world"
 File size: 11 bytes
 ```
@@ -64,7 +64,7 @@ File size: 11 bytes
 **Verification**:
 ```bash
 $ ls -la ~/jarvis-workspace/test.txt
--rw-r--r-- 1 boss boss 11 Nov 15 03:35 /home/boss/jarvis-workspace/test.txt
+-rw-r--r-- 1 boss boss 11 Nov 15 03:35 ~/jarvis-workspace/test.txt
 
 $ cat ~/jarvis-workspace/test.txt
 hello world
@@ -78,7 +78,7 @@ hello world
 ### Two-Layer Defense System
 
 **Layer 1: System Prompt (Soft Protection)**
-- OpenCode's system prompt says: "DO NOT access `/home/boss/jarvis-voice`"
+- OpenCode's system prompt says: "DO NOT access `~/jarvis-voice`"
 - OpenCode LLM understands and refuses before attempting
 
 **Layer 2: Plugin Hook (Hard Protection)**
@@ -125,7 +125,7 @@ The current system prompt in `lib/opencode_client.py` says:
 
 **ABSOLUTE RULES - DO NOT VIOLATE:**
 
-1. **NEVER create, modify, or delete files in `/home/boss/jarvis-voice`**
+1. **NEVER create, modify, or delete files in `~/jarvis-voice`**
    - This is Jarvis's codebase - READ ONLY
    - If asked to modify Jarvis code, refuse and explain it's protected
 ```

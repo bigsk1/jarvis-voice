@@ -13,8 +13,8 @@ This directory contains OpenCode plugins that enforce safety and enhance capabil
 **Purpose**: Enforce strict workspace boundaries for OpenCode
 
 **Safety Rules**:
-1. ✅ Block write/edit/delete outside `/home/boss/jarvis-workspace`
-2. ✅ Block all access to `/home/boss/jarvis-voice` (Jarvis codebase)
+1. ✅ Block write/edit/delete outside `~/jarvis-workspace`
+2. ✅ Block all access to `~/jarvis-voice` (Jarvis codebase)
 3. ✅ Block system directories (`/etc`, `/usr`, `/bin`, `/sys`, `/proc`)
 4. ✅ Block sensitive home directories (`~/.ssh`, `~/.gnupg`, `~/.config/*`)
 5. ✅ Allow OpenCode to work freely within its workspace
@@ -23,8 +23,8 @@ This directory contains OpenCode plugins that enforce safety and enhance capabil
 ```
 User: "Jarvis, use OpenCode to build a Flask API"
 Jarvis: Calls OpenCode tool
-OpenCode: Works in /home/boss/jarvis-workspace ✅ Allowed
-OpenCode: Tries to edit /home/boss/jarvis-voice/orchestrator.py ❌ BLOCKED
+OpenCode: Works in ~/jarvis-workspace ✅ Allowed
+OpenCode: Tries to edit ~/jarvis-voice/orchestrator.py ❌ BLOCKED
 ```
 
 **Error messages** (when boundaries are violated):
@@ -63,13 +63,13 @@ cd ~/jarvis-voice && ./bin/start-opencode
 
 # Test via Jarvis (should be blocked)
 ./jarvis-local
-> "Use OpenCode to edit the file /home/boss/jarvis-voice/README.md"
+> "Use OpenCode to edit the file ~/jarvis-voice/README.md"
 # Expected: ❌ BLOCKED error message
 
 # Test via Jarvis (should work)
 ./jarvis-local
 > "Use OpenCode to create a test file in the workspace"
-# Expected: ✅ File created in /home/boss/jarvis-workspace
+# Expected: ✅ File created in ~/jarvis-workspace
 ```
 
 Or test directly via OpenCode API (if you want to test without Jarvis):
@@ -170,7 +170,7 @@ See: https://opencode.ai/docs/plugins/
 **Plugin blocking valid operations?**
 - Check the error message for specific reason
 - Verify paths are absolute or relative to workspace
-- Ensure operation is within `/home/boss/jarvis-workspace`
+- Ensure operation is within `~/jarvis-workspace`
 
 **Need to disable temporarily?**
 - Rename: `mv 00-workspace-protection.js 00-workspace-protection.js.disabled`

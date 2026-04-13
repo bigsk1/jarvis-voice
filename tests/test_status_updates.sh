@@ -2,8 +2,9 @@
 set -e
 
 # Activate venv and go to project
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$HOME/jarvis-venv/bin/activate"
-cd /home/boss/jarvis-voice
+cd "$REPO_ROOT"
 
 python3 << 'EOF'
 import os

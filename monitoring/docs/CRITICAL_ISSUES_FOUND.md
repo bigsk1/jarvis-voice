@@ -16,7 +16,7 @@ When asked: **"What are the top 3 movies playing in Hillsboro, OR this week?"**
 - Hits `max_turns_reached: true` limit
 - Returns: "Sorry, I couldn't find what you were looking for" (or similar)
 
-**Example from logs** (`/home/boss/jarvis-voice/logs/tools/tool-calls-2025-11-24.jsonl`):
+**Example from logs** (`~/jarvis-voice/logs/tools/tool-calls-2025-11-24.jsonl`):
 ```json
 Line 8-27: 10 consecutive tool calls:
 - mcp_brave_search_brave_web_search (8 times!)

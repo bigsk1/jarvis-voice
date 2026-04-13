@@ -30,7 +30,7 @@ OpenCode → ???: "Need permission to edit"
 1. **Workspace boundaries** enforce what OpenCode can access
    - Via global `AGENTS.md` rules
    - Via system prompt (ABSOLUTE RULES)
-   - OpenCode cannot modify `/home/boss/jarvis-voice`
+   - OpenCode cannot modify `~/jarvis-voice`
 
 2. **Jarvis is the permission layer**
    - User already approved by speaking to Jarvis
@@ -80,8 +80,8 @@ OpenCode → ???: "Need permission to edit"
 
 | What | Permission | Boundary Enforcement |
 |------|-----------|---------------------|
-| Edit `/home/boss/jarvis-workspace/test.py` | ✅ Allowed | ✅ In workspace |
-| Edit `/home/boss/jarvis-voice/config.py` | ✅ Allowed | ❌ **BLOCKED by AGENTS.md** |
+| Edit `~/jarvis-workspace/test.py` | ✅ Allowed | ✅ In workspace |
+| Edit `~/jarvis-voice/config.py` | ✅ Allowed | ❌ **BLOCKED by AGENTS.md** |
 | Bash in workspace | ✅ Allowed | ✅ In workspace |
 | Bash `rm -rf /` | ✅ Allowed | ❌ **User wouldn't request this** |
 
@@ -122,7 +122,7 @@ cat ~/.config/opencode/opencode.json | jq '.permission'
 
 **Test workspace boundaries:**
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 python3 << 'EOF'
 import sys
 sys.path.insert(0, 'lib')
@@ -134,7 +134,7 @@ client = OpenCodeClient()
 
 # Should be REFUSED despite "allow" permissions
 result = client.execute_task(
-    task="Create test.py in /home/boss/jarvis-voice/",
+    task="Create test.py in ~/jarvis-voice/",
     context={}
 )
 # Check logs - OpenCode should refuse due to AGENTS.md rules

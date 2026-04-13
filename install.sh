@@ -2,6 +2,9 @@
 # Jarvis Voice — one-shot installer for Ubuntu 24.04+ (Python 3.12+).
 # Intended for a fresh clone on a new machine. Does NOT overwrite existing config/*.env.
 #
+# Typical new machine: clone to ~/jarvis-voice, then:
+#   cd ~/jarvis-voice && chmod +x install.sh && ./install.sh
+#
 # Usage:
 #   chmod +x install.sh && ./install.sh
 #
@@ -152,6 +155,19 @@ run_project_setup() {
   fi
 }
 
+run_verify_env() {
+  cd "$REPO_ROOT"
+  # shellcheck source=/dev/null
+  source "${VENV}/bin/activate"
+
+  if [[ -x ./verify-env.sh ]]; then
+    echo "Running ./verify-env.sh ..."
+    ./verify-env.sh || true
+  else
+    echo "WARN: verify-env.sh not found — skipping environment check" >&2
+  fi
+}
+
 collect_audio_hints() {
   local play cap
   play="$(aplay -L 2>/dev/null | grep -E '^(plughw|hw):' || true)"
@@ -193,18 +209,23 @@ Venv: `{venv}`
 - System packages via `install-system-deps.sh` (unless `SKIP_SYSTEM_DEPS=1`)
 - `uv` + `uv sync` (or `pip` fallback) into `~/jarvis-venv`
 - Seed `config/cloud.env` / `config/local.env` **only if missing** (never overwrites)
-- Ran `setup.sh` and `setup_tools.sh`
+- Ran `setup.sh`, `verify-env.sh`, and `setup_tools.sh`
 - **Did not** run OpenCode workspace, n8n, or plugin installs
+
+### Paths & config
+- Repo is expected at **`$HOME/jarvis-voice`** (this run: `{root}`). Seeded `config/*.env` use **`$HOME`** for values like `AUDIO_DIR`; the app expands that on load—no need to hand-edit paths if you keep that layout.
+- Full walkthrough: **`docs/INSTALL_GUIDE.md`**
 
 ### You must do manually
 1. **API keys & providers** — Edit `config/cloud.env` (and `config/local.env` for local/Ollama). Minimum: LLM + STT/TTS keys per `docs/INSTALL_GUIDE.md`.
 2. **Audio devices** — Set `IN_DEV` and `OUT_DEV` in both env files. Hints below (typical ALSA `plughw:...` lines; servers often use `pulse` or `default`).
-3. **Tool DB sync** (after keys work):  
+3. **Re-run verify after edits**: `./verify-env.sh`
+4. **Tool DB sync** (after keys work):  
    `source {venv}/bin/activate && cd {root} && ./bin/sync_tools.py cloud && ./bin/sync_tools.py local`
-4. **Verify**: `./verify-env.sh` then a smoke test:  
+5. **Smoke test**:  
    `./orchestrator/orchestrator_v2.py cloud "what time is it"`
-5. **Aliases (optional)**: `./update-aliases.sh` then `source ~/.bashrc`
-6. **Run stack**: `./bin/start` (see `docs/INSTALL_GUIDE.md`)
+6. **Aliases (optional)**: `./update-aliases.sh` then `source ~/.bashrc`
+7. **Run stack**: `./bin/start` (see `docs/INSTALL_GUIDE.md`)
 
 ### Optional (skipped by design)
 - OpenCode: `./setup_opencode_workspace.sh` — `docs/opencode/OPENCODE.md`
@@ -234,6 +255,7 @@ run_system_deps
 create_venv_and_sync
 seed_env_files
 run_project_setup
+run_verify_env
 collect_audio_hints
 
 export JARVIS_VENV="$VENV"

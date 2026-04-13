@@ -390,7 +390,7 @@ To add your own voice samples:
 2. **Name the file**: `VoiceName.wav` (e.g., `MyVoice.wav`)
 3. **Copy to server**:
    ```bash
-   scp Samantha.wav boss@localhost:/home/boss/apps/Qwen3-TTS-Openai-Fastapi/sample-voices-xtts/
+   scp Samantha.wav boss@localhost:~/apps/Qwen3-TTS-Openai-Fastapi/sample-voices-xtts/
    ```
 4. **Restart container**:
    ```bash

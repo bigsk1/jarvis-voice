@@ -377,7 +377,7 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Add a hat to the character",
-    "reference_image": "/home/boss/jarvis-voice/data/generated_images/my_character.png",
+    "reference_image": "~/jarvis-voice/data/generated_images/my_character.png",
     "provider": "openai"
   }'
 ```
@@ -429,7 +429,7 @@ curl http://localhost:8880/api/generated-images/health
 ```json
 {
   "ok": true,
-  "directory": "/home/boss/jarvis-voice/data/generated_images",
+  "directory": "~/jarvis-voice/data/generated_images",
   "exists": true,
   "image_count": 42,
   "total_size": 156789012,

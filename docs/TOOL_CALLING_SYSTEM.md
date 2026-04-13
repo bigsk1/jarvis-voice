@@ -9,7 +9,7 @@ Your Jarvis voice assistant can now **execute real-world tasks** through natural
 ### 1. Setup (One-time)
 
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 chmod +x setup_tools.sh
 ./setup_tools.sh
 ```

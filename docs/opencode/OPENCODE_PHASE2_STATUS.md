@@ -8,14 +8,14 @@
 ## ✅ Completed Today
 
 ### 1. Workspace Isolation
-- **System prompt enforcement** - OpenCode refuses to access `/home/boss/jarvis-voice`
-- **Context injection** - Always specifies workspace `/home/boss/jarvis-workspace`
+- **System prompt enforcement** - OpenCode refuses to access `~/jarvis-voice`
+- **Context injection** - Always specifies workspace `~/jarvis-workspace`
 - **Tested and verified** - OpenCode correctly respects boundaries
 
 **Test results:**
 ```
-✅ OpenCode CANNOT access /home/boss/jarvis-voice (refused with explanation)
-✅ OpenCode CAN work in /home/boss/jarvis-workspace (authorized)
+✅ OpenCode CANNOT access ~/jarvis-voice (refused with explanation)
+✅ OpenCode CAN work in ~/jarvis-workspace (authorized)
 ✅ Boundaries enforced via system prompt (OpenCode config doesn't support workspace key)
 ```
 
@@ -67,7 +67,7 @@
 ```python
 # In lib/opencode_client.py - enhance context
 context = {
-    "workspace": "/home/boss/jarvis-workspace",
+    "workspace": "~/jarvis-workspace",
     "user_preferences": db.get_preferences(),
     "recent_memories": db.semantic_recall(query=task, limit=3),
     "project_context": project_info
@@ -95,7 +95,7 @@ context = {
 
 ### Test workspace isolation:
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 python3 << 'EOF'
 import sys
 sys.path.insert(0, 'lib')
@@ -107,7 +107,7 @@ client = OpenCodeClient()
 
 # Should refuse
 result = client.execute_task(
-    task="List files in /home/boss/jarvis-voice",
+    task="List files in ~/jarvis-voice",
     context={}
 )
 # Check logs for refusal

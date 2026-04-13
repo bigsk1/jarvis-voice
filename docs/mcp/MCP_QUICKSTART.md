@@ -74,7 +74,7 @@ docker pull mcp/duckduckgo
 ### Test MCP Server
 
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
 ./bin/test-mcp --server
 ```
@@ -122,7 +122,7 @@ Edit `config/mcp-servers.json`:
         "-i",
         "--rm",
         "-v",
-        "/home/boss:/workspace",
+        "~:/workspace",
         "mcp/filesystem"
       ],
       "description": "File system operations",

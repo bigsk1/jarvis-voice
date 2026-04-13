@@ -99,7 +99,7 @@ self-healing itself. A lightweight cron job fills that gap.
 **Schedule:** Every 5 minutes via cron
 
 ```
-*/5 * * * * /home/boss/jarvis-voice/bin/watchdog-services.sh >> /home/boss/jarvis-voice/logs/watchdog.log 2>&1
+*/5 * * * * ~/jarvis-voice/bin/watchdog-services.sh >> ~/jarvis-voice/logs/watchdog.log 2>&1
 ```
 
 **Logic:**
@@ -293,7 +293,7 @@ Weekly cleanup runs every Sunday at 3am via cron:
 
 ```bash
 # Current crontab entry:
-0 3 * * 0 /home/boss/jarvis-voice/bin/cleanup-all >> /home/boss/jarvis-voice/logs/cleanup.log 2>&1
+0 3 * * 0 ~/jarvis-voice/bin/cleanup-all >> ~/jarvis-voice/logs/cleanup.log 2>&1
 ```
 
 ### Master Cleanup Script

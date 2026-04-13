@@ -3,7 +3,7 @@
 
 ### 1. Navigate & Setup
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 ./setup.sh
 ```
 

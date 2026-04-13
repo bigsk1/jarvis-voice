@@ -132,7 +132,7 @@ JARVIS_RESPONSE_STYLE="auto"  # Recommended
 3. **OpenCode Safety**: 
    - Local models can execute arbitrary code
    - Recommended: Use Claude for OpenCode even in local mode
-   - Workspace is sandboxed to `/home/boss/jarvis-workspace`
+   - Workspace is sandboxed to `~/jarvis-workspace`
 
 ## Troubleshooting
 
@@ -467,8 +467,8 @@ echo $BRAVE_API_KEY  # Should show your API key
 ## Support
 
 For issues, see:
-- Main README: `/home/boss/jarvis-voice/README.md`
-- MCP Security: `/home/boss/jarvis-voice/docs/MCP_SECURITY_AUDIT.md`
-- MCP Quickstart: `/home/boss/jarvis-voice/docs/MCP_QUICKSTART.md`
-- Docs: `/home/boss/jarvis-voice/docs/`
-- Logs: `/home/boss/jarvis-voice/logs/`
+- Main README: `~/jarvis-voice/README.md`
+- MCP Security: `~/jarvis-voice/docs/MCP_SECURITY_AUDIT.md`
+- MCP Quickstart: `~/jarvis-voice/docs/MCP_QUICKSTART.md`
+- Docs: `~/jarvis-voice/docs/`
+- Logs: `~/jarvis-voice/logs/`

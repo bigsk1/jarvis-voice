@@ -189,8 +189,8 @@ def main():
 
 **Protected by:**
 1. **Workspace boundaries** (AGENTS.md global rules)
-   - OpenCode CANNOT access `/home/boss/jarvis-voice`
-   - OpenCode MUST work in `/home/boss/jarvis-workspace`
+   - OpenCode CANNOT access `~/jarvis-voice`
+   - OpenCode MUST work in `~/jarvis-workspace`
 
 2. **User intent** (Jarvis routing)
    - User explicitly asked for the task

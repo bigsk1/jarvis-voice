@@ -17,7 +17,8 @@ if [ -z "$MODE" ] || [ -z "$MODEL1" ] || [ -z "$MODEL2" ]; then
     exit 1
 fi
 
-cd /home/boss/jarvis-voice
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$REPO_ROOT"
 source ~/jarvis-venv/bin/activate
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)

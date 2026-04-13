@@ -96,7 +96,7 @@ Production Jarvis
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    HOST MACHINE                                  │
-│  /home/boss/jarvis-voice (production)                           │
+│  ~/jarvis-voice (production)                           │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
               ┌─────────────┴─────────────┐
@@ -355,7 +355,7 @@ def run_self_play_session(
 ./bin/jarvis-self-play results --session latest
 
 # Schedule nightly (cron)
-# 0 3 * * * /home/boss/jarvis-voice/bin/jarvis-self-play --queries 100 --mode cloud
+# 0 3 * * * ~/jarvis-voice/bin/jarvis-self-play --queries 100 --mode cloud
 ```
 
 ---

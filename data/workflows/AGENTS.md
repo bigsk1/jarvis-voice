@@ -11,7 +11,7 @@
 
 ```bash
 # Test any tool to see its actual return structure:
-cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate
+cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate
 python << 'PYEOF'
 import sys, json
 sys.path.insert(0, 'orchestrator')
@@ -688,13 +688,13 @@ Use `required: false` for steps that may fail (crawling protected sites, screens
 
 ### Quick CLI Test
 ```bash
-cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate
+cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate
 ./orchestrator/orchestrator_v2.py cloud "/command args"
 ```
 
 ### Detailed Debug Test
-```python
-cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate
+```bash
+cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate
 python << 'PYEOF'
 import sys, json
 sys.path.insert(0, 'orchestrator')
@@ -717,7 +717,7 @@ PYEOF
 
 ### Check Canvas Output
 ```bash
-cat "$(ls /home/boss/jarvis-voice/data/canvas/page_* | tail -1)"
+cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 ```
 
 ---

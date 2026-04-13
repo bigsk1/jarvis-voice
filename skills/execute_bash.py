@@ -9,11 +9,19 @@ Security:
 - Blocks interpreter escapes
 - Logs all executed commands
 """
+import os
 import sys
 import json
 import subprocess
 import re
 import logging
+import shlex
+from pathlib import Path
+
+# Add lib to path (same pattern as other skills)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "lib"))
+from security_utils import is_path_protected
+from paths import get_project_root
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -92,20 +100,6 @@ BLOCKED_REGEX_PATTERNS = [
     r'\|\|\s*rm\s',  # Command chaining with rm
 ]
 
-# Protected paths - Jarvis cannot modify its own code or critical system areas
-PROTECTED_PATHS = [
-    '/home/boss/jarvis-voice',  # Jarvis codebase - NO self-modification
-    '/home/boss/.ssh',          # SSH keys
-    '/home/boss/.gnupg',        # GPG keys
-    '/home/boss/.config',       # User config (careful)
-    '/etc',                     # System config
-    '/usr',                     # System binaries
-    '/bin',                     # System binaries
-    '/sbin',                    # System binaries
-    '/boot',                    # Boot files
-    '/root',                    # Root home
-]
-
 # Commands that modify files - used to check against protected paths
 MODIFYING_COMMANDS = [
     'rm', 'rmdir', 'mv', 'cp', 'touch', 'mkdir',
@@ -137,29 +131,74 @@ def is_modifying_command(command: str) -> bool:
     return False
 
 
-def targets_protected_path(command: str) -> tuple[bool, str]:
+def _looks_like_path_token(token: str) -> bool:
+    """Heuristic: identify shell tokens that likely reference filesystem paths."""
+    if not token or token in {"|", "||", "&&", ";", ">", ">>", "<", "<<", "2>", "2>>"}:
+        return False
+    if token.startswith("-"):
+        return False
+    return token.startswith(("~", "/", "./", "../")) or "/" in token
+
+
+def _extract_candidate_paths(command: str, working_dir: str | None = None) -> list[str]:
+    """Extract path-like shell tokens and normalize them against the working directory."""
+    base_dir = Path(working_dir or os.getcwd()).expanduser().resolve()
+    candidates: list[str] = []
+
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        tokens = command.split()
+
+    for token in tokens:
+        parts = [token]
+        if "=" in token and not token.startswith("/"):
+            left, right = token.split("=", 1)
+            if _looks_like_path_token(right):
+                parts = [right]
+
+        for part in parts:
+            if not _looks_like_path_token(part):
+                continue
+            normalized = Path(part).expanduser()
+            if not normalized.is_absolute():
+                normalized = (base_dir / normalized)
+            candidates.append(str(normalized.resolve()))
+
+    return candidates
+
+
+def _is_execute_bash_blocked_path(path: str) -> tuple[bool, str]:
+    """Apply execute_bash-specific write restrictions on top of shared security rules."""
+    normalized = str(Path(path).expanduser().resolve())
+    data_root = str((get_project_root().resolve() / "data").resolve())
+
+    if normalized == data_root or normalized.startswith(data_root + os.sep):
+        return True, data_root
+
+    protected, matched = is_path_protected(normalized, for_write=True)
+    if protected:
+        return True, matched or normalized
+
+    return False, ""
+
+
+def targets_protected_path(command: str, working_dir: str | None = None) -> tuple[bool, str]:
     """
     Check if command targets a protected path.
     
     Returns:
         (targets_protected, path_matched)
     """
-    # Expand common path shortcuts
-    expanded = command.replace('~', '/home/boss')
-    
-    for protected in PROTECTED_PATHS:
-        # Check if protected path appears in command
-        if protected in expanded:
-            return True, protected
-        
-        # Also check with trailing slash
-        if protected.rstrip('/') + '/' in expanded:
-            return True, protected
-    
+    for candidate in _extract_candidate_paths(command, working_dir):
+        protected, matched = _is_execute_bash_blocked_path(candidate)
+        if protected:
+            return True, matched or candidate
+
     return False, ""
 
 
-def is_command_safe(command: str) -> tuple[bool, str]:
+def is_command_safe(command: str, working_dir: str | None = None) -> tuple[bool, str]:
     """
     Check if a command is safe to execute.
     
@@ -186,7 +225,7 @@ def is_command_safe(command: str) -> tuple[bool, str]:
     
     # CRITICAL: Check if modifying command targets protected paths
     if is_modifying_command(command):
-        targets, path = targets_protected_path(command)
+        targets, path = targets_protected_path(command, working_dir)
         if targets:
             return False, f"cannot modify protected path: {path}"
     
@@ -211,7 +250,7 @@ def main():
         return 1
     
     # SECURITY: Comprehensive safety check
-    is_safe, reason = is_command_safe(command)
+    is_safe, reason = is_command_safe(command, working_dir)
     if not is_safe:
         logger.warning(f"BLOCKED command: {command[:200]} - Reason: {reason}")
         return_error(f"Command blocked for safety: {reason}")
@@ -298,4 +337,3 @@ def return_error(speech, data=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

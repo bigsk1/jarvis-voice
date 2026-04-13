@@ -55,7 +55,7 @@ Alert phrases are automatically cached after first playback:
 ### 1. Configure
 
 ```bash
-cd /home/boss/jarvis-voice/services/unifi-protect-webhook
+cd ~/jarvis-voice/services/unifi-protect-webhook
 cp config.env.example config.env
 nano config.env  # Edit as needed
 ```
@@ -88,7 +88,8 @@ In UDM Pro → Protect → Settings → Alarms:
 ### 4. Install as systemd service
 
 ```bash
-sudo cp unifi-protect-webhook.service /etc/systemd/system/
+../../bin/render-systemd-unit.sh unifi-protect-webhook.service /tmp/unifi-protect-webhook.service
+sudo cp /tmp/unifi-protect-webhook.service /etc/systemd/system/unifi-protect-webhook.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now unifi-protect-webhook
 ```

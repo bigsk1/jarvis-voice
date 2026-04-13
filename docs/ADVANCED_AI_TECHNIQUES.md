@@ -228,10 +228,10 @@ For periodic evolution even when Jarvis is idle, add a cron job:
 
 ```bash
 # Run evolution check daily at 2 AM
-0 2 * * * cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate >> /tmp/jarvis-evolution.log 2>&1
+0 2 * * * cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate >> /tmp/jarvis-evolution.log 2>&1
 
 # Or weekly (every Sunday at 3 AM)
-0 3 * * 0 cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate
+0 3 * * 0 cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate
 ```
 
 **Tip**: Scheduled evolution uses the same feedback window (`EVOLUTION_WINDOW_DAYS`), so it will process accumulated feedback from days you didn't use Jarvis.
@@ -917,7 +917,7 @@ MUTATION_STRATEGIES = {
 
 # Schedule nightly runs
 # Add to crontab:
-# 0 3 * * * /home/boss/jarvis-voice/bin/jarvis-self-play --iterations 50 --mode cloud
+# 0 3 * * * ~/jarvis-voice/bin/jarvis-self-play --iterations 50 --mode cloud
 ```
 
 ---
@@ -1160,7 +1160,7 @@ EVOLUTION_WINDOW_DAYS=14
 # 3. Add cron job for scheduled evolution
 crontab -e
 # Add:
-0 3 * * * cd /home/boss/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate >> /tmp/jarvis-evolution.log 2>&1
+0 3 * * * cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate >> /tmp/jarvis-evolution.log 2>&1
 
 # 4. Check current feedback state
 sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM feedback WHERE rating < 6"
@@ -1415,7 +1415,7 @@ MAINTENANCE_CHECKS = [
 # Run with --execute to perform actions
 
 # Cron (every 6 hours)
-0 */6 * * * cd /home/boss/jarvis-voice && ./bin/jarvis-maintenance --mode cloud --execute >> logs/maintenance.log 2>&1
+0 */6 * * * cd ~/jarvis-voice && ./bin/jarvis-maintenance --mode cloud --execute >> logs/maintenance.log 2>&1
 ```
 
 ---

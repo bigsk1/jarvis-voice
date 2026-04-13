@@ -207,7 +207,7 @@ Omit `container` to get stats for all running containers.
 "show me all docker containers"
 "restart the nginx container"
 "show logs for jarvis-grafana"
-"docker compose up in /home/boss/myproject"
+"docker compose up in ~/myproject"
 "pull the latest postgres image"
 "what's the health status of blinko-app"
 "prune docker system"
@@ -227,7 +227,7 @@ python3 skills/auto-tools/docker_control.py '{"action": "restart", "container": 
 python3 skills/auto-tools/docker_control.py '{
   "action": "compose",
   "compose_action": "up",
-  "compose_file": "/home/boss/project/docker-compose.yml",
+  "compose_file": "~/project/docker-compose.yml",
   "force_recreate": true
 }'
 
@@ -316,7 +316,7 @@ Different operations have different timeouts:
   "data": {
     "action": "up",
     "output": "Container nginx Started\nContainer redis Started",
-    "compose_file": "/home/boss/project/docker-compose.yml"
+    "compose_file": "~/project/docker-compose.yml"
   }
 }
 ```

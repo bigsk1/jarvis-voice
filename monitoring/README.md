@@ -16,7 +16,7 @@ Complete observability solution for Jarvis Voice Assistant using **Grafana + Lok
 ```
 Fred (localhost) - Jarvis Host
 ├── Jarvis Voice Assistant
-│   └── Logs → /home/boss/jarvis-voice/logs/
+│   └── Logs → ~/jarvis-voice/logs/
 │       ├── tools/tool-calls-*.jsonl
 │       ├── llm-calls-*.jsonl
 │       └── opencode-*.log

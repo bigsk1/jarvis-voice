@@ -9,6 +9,7 @@ import time
 from typing import Any
 import requests
 from opencode_logger import OpenCodeLogger
+from paths import get_jarvis_workspace, get_project_root
 
 
 class OpenCodeClient:
@@ -174,8 +175,16 @@ class OpenCodeClient:
                 context=context
             )
 
-            # Inject system prompt explaining Jarvis integration
-            system_prompt = """# You are OpenCode - A specialized coding agent called by Jarvis
+            _ws = get_jarvis_workspace().resolve()
+            _repo = get_project_root().resolve()
+            _ws_str = str(_ws)
+            _repo_str = str(_repo)
+            _proj_str = str(_ws / "projects")
+            _temp_str = str(_ws / "temp")
+            _dep_str = str(_ws / "deployments")
+
+            # Inject system prompt explaining Jarvis integration (paths from lib.paths — portable across users)
+            system_prompt = f"""# You are OpenCode - A specialized coding agent called by Jarvis
 
 ## Your Identity
 - **Name**: OpenCode (always use "OpenCode" when referring to yourself, never "Claude" or "Claude Code")
@@ -204,15 +213,15 @@ You are executing tasks on behalf of Jarvis. The user spoke to Jarvis via voice,
 
 **ABSOLUTE RULES - DO NOT VIOLATE:**
 
-1. **NEVER create, modify, or delete files in `/home/boss/jarvis-voice`**
+1. **NEVER create, modify, or delete files in `{_repo_str}`**
    - This is Jarvis's codebase - READ ONLY
    - If asked to modify Jarvis code, refuse and explain it's protected
 
-2. **ALL file operations MUST be in `/home/boss/jarvis-workspace`**
-   - Your workspace root: `/home/boss/jarvis-workspace`
-   - Projects: `/home/boss/jarvis-workspace/projects/`
-   - Temp files: `/home/boss/jarvis-workspace/temp/`
-   - Deployments: `/home/boss/jarvis-workspace/deployments/`
+2. **ALL file operations MUST be in `{_ws_str}`**
+   - Your workspace root: `{_ws_str}`
+   - Projects: `{_proj_str}/`
+   - Temp files: `{_temp_str}/`
+   - Deployments: `{_dep_str}/`
 
 3. **If asked to work outside workspace:**
    - Politely refuse
@@ -248,14 +257,14 @@ Remember: Your response goes to Jarvis, who will intelligently format it for voi
             
             # Always specify workspace
             if "workspace" not in context:
-                context["workspace"] = "/home/boss/jarvis-workspace"
+                context["workspace"] = _ws_str
             
             context_text = f"""# Jarvis Context
 
 ## Workspace
-Your workspace root: `/home/boss/jarvis-workspace`
+Your workspace root: `{_ws_str}`
 
-All file operations must be within this directory. DO NOT access `/home/boss/jarvis-voice`.
+All file operations must be within this directory. DO NOT access `{_repo_str}`.
 
 ## Task Context
 {json.dumps(context, indent=2)}"""

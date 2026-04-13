@@ -1,23 +1,28 @@
 /**
  * OpenCode Workspace Protection Plugin
- * 
+ *
  * Purpose: Enforce strict workspace boundaries for OpenCode operations
- * 
+ *
  * Safety Rules:
- * 1. BLOCK write/edit/delete outside /home/boss/jarvis-workspace
- * 2. BLOCK all access to /home/boss/jarvis-voice (Jarvis codebase)
+ * 1. BLOCK write/edit/delete outside $HOME/jarvis-workspace (override: JARVIS_WORKSPACE_ROOT)
+ * 2. BLOCK all access to $HOME/jarvis-voice (override: JARVIS_VOICE_ROOT)
  * 3. BLOCK system directories (/etc, /usr, /bin, /sys, /proc, etc.)
  * 4. ALLOW read-only access for reference (can read Jarvis code to understand APIs)
- * 
- * Architecture: Jarvis (boss) → OpenCode (specialist)
- * This plugin ensures OpenCode stays in its sandbox.
+ *
+ * Defaults match a clone at ~/jarvis-voice and workspace at ~/jarvis-workspace (see lib/paths.py).
  */
 
+import { homedir } from "node:os";
+import path from "node:path";
+
 export const WorkspaceProtection = async ({ project, client, $, directory, worktree }) => {
-  // Define protected paths
-  const WORKSPACE_ROOT = "/home/boss/jarvis-workspace";
-  const JARVIS_ROOT = "/home/boss/jarvis-voice";
-  
+  const HOME = homedir();
+  const JARVIS_ROOT = path.resolve(process.env.JARVIS_VOICE_ROOT || path.join(HOME, "jarvis-voice"));
+  const WORKSPACE_ROOT = path.resolve(
+    process.env.JARVIS_WORKSPACE_ROOT || path.join(HOME, "jarvis-workspace"),
+  );
+  const CURRENT_DIRECTORY = path.resolve(directory || process.cwd());
+
   const SYSTEM_DIRS = [
     "/etc",
     "/usr",
@@ -33,56 +38,58 @@ export const WorkspaceProtection = async ({ project, client, $, directory, workt
     "/var/log",
   ];
   
+  const CONFIG_DIR = path.join(HOME, ".config");
   const PROTECTED_HOME_DIRS = [
-    "/home/boss/.ssh",
-    "/home/boss/.gnupg",
-    "/home/boss/.config",  // Except opencode subdir
-    "/home/boss/.local",
+    path.join(HOME, ".ssh"),
+    path.join(HOME, ".gnupg"),
+    CONFIG_DIR, // Except opencode subdir
+    path.join(HOME, ".local"),
   ];
+
+  function resolvePath(inputPath) {
+    if (!inputPath) return "";
+    return path.resolve(CURRENT_DIRECTORY, inputPath);
+  }
+
+  function isWithin(candidate, root) {
+    return candidate === root || candidate.startsWith(root + path.sep);
+  }
 
   /**
    * Check if a path is within the allowed workspace
    */
-  function isInWorkspace(path) {
-    if (!path) return false;
-    
-    // Normalize path (resolve relative paths from current directory)
-    const absolutePath = path.startsWith('/') 
-      ? path 
-      : `${directory}/${path}`;
-    
-    return absolutePath.startsWith(WORKSPACE_ROOT);
+  function isInWorkspace(inputPath) {
+    const absolutePath = resolvePath(inputPath);
+    return isWithin(absolutePath, WORKSPACE_ROOT);
   }
 
   /**
    * Check if a path is the Jarvis codebase (protected)
    */
-  function isJarvisCode(path) {
-    if (!path) return false;
-    const absolutePath = path.startsWith('/') ? path : `${directory}/${path}`;
-    return absolutePath.startsWith(JARVIS_ROOT);
+  function isJarvisCode(inputPath) {
+    const absolutePath = resolvePath(inputPath);
+    return isWithin(absolutePath, JARVIS_ROOT);
   }
 
   /**
    * Check if a path is a system directory (protected)
    */
-  function isSystemDir(path) {
-    if (!path) return false;
-    const absolutePath = path.startsWith('/') ? path : `${directory}/${path}`;
+  function isSystemDir(inputPath) {
+    const absolutePath = resolvePath(inputPath);
     
     // Check system directories
     for (const sysDir of SYSTEM_DIRS) {
-      if (absolutePath.startsWith(sysDir)) {
+      if (isWithin(absolutePath, sysDir)) {
         return true;
       }
     }
     
     // Check protected home directories (except opencode config)
     for (const protectedDir of PROTECTED_HOME_DIRS) {
-      if (absolutePath.startsWith(protectedDir)) {
+      if (isWithin(absolutePath, protectedDir)) {
         // Allow opencode's own config
-        if (protectedDir === "/home/boss/.config" && 
-            absolutePath.startsWith("/home/boss/.config/opencode")) {
+        if (protectedDir === CONFIG_DIR &&
+            isWithin(absolutePath, path.join(CONFIG_DIR, "opencode"))) {
           return false;
         }
         return true;
@@ -95,8 +102,12 @@ export const WorkspaceProtection = async ({ project, client, $, directory, workt
   /**
    * Get user-friendly path for error messages
    */
-  function formatPath(path) {
-    return path.replace('/home/boss', '~');
+  function formatPath(p) {
+    if (!p) return p;
+    if (p === HOME || p.startsWith(HOME + path.sep)) {
+      return "~" + (p === HOME ? "" : p.slice(HOME.length));
+    }
+    return p;
   }
 
   console.log("🛡️  Workspace Protection Plugin loaded");
@@ -139,12 +150,13 @@ export const WorkspaceProtection = async ({ project, client, $, directory, workt
         // No file path found, skip validation
         return;
       }
+      const resolvedPath = resolvePath(filePath);
 
       // RULE 1: Block ALL access to Jarvis codebase
-      if (isJarvisCode(filePath)) {
+      if (isJarvisCode(resolvedPath)) {
         throw new Error(
           `❌ BLOCKED: Cannot access Jarvis codebase\n` +
-          `   Path: ${formatPath(filePath)}\n` +
+          `   Path: ${formatPath(resolvedPath)}\n` +
           `   Reason: ${formatPath(JARVIS_ROOT)} is protected (read-only from workspace only)\n\n` +
           `   If you need to understand Jarvis APIs, ask Jarvis to provide the information.`
         );
@@ -152,13 +164,13 @@ export const WorkspaceProtection = async ({ project, client, $, directory, workt
 
       // RULE 2: Block destructive operations outside workspace
       if (DESTRUCTIVE_TOOLS.includes(tool)) {
-        if (!isInWorkspace(filePath)) {
+        if (!isInWorkspace(resolvedPath)) {
           // Check if it's a system directory for specific error message
-          if (isSystemDir(filePath)) {
+          if (isSystemDir(resolvedPath)) {
             throw new Error(
               `❌ BLOCKED: Cannot modify system directories\n` +
               `   Tool: ${tool}\n` +
-              `   Path: ${formatPath(filePath)}\n` +
+              `   Path: ${formatPath(resolvedPath)}\n` +
               `   Reason: System directories are protected\n\n` +
               `   All file operations must be within: ${formatPath(WORKSPACE_ROOT)}`
             );
@@ -167,7 +179,7 @@ export const WorkspaceProtection = async ({ project, client, $, directory, workt
           throw new Error(
             `❌ BLOCKED: File operation outside workspace\n` +
             `   Tool: ${tool}\n` +
-            `   Path: ${formatPath(filePath)}\n` +
+            `   Path: ${formatPath(resolvedPath)}\n` +
             `   Workspace: ${formatPath(WORKSPACE_ROOT)}\n\n` +
             `   All file operations must be within the workspace directory.\n` +
             `   Create your project in: ${formatPath(WORKSPACE_ROOT)}/projects/`
@@ -176,11 +188,11 @@ export const WorkspaceProtection = async ({ project, client, $, directory, workt
       }
 
       // RULE 3: Block system directory access (even reads)
-      if (isSystemDir(filePath)) {
+      if (isSystemDir(resolvedPath)) {
         throw new Error(
           `❌ BLOCKED: Cannot access system directories\n` +
           `   Tool: ${tool}\n` +
-          `   Path: ${formatPath(filePath)}\n` +
+          `   Path: ${formatPath(resolvedPath)}\n` +
           `   Reason: System directories are protected\n\n` +
           `   Work within: ${formatPath(WORKSPACE_ROOT)}`
         );
@@ -195,7 +207,7 @@ export const WorkspaceProtection = async ({ project, client, $, directory, workt
      */
     "session.start": async () => {
       console.log("\n🛡️  Workspace Protection Active");
-      console.log(`   Current directory: ${formatPath(directory)}`);
+      console.log(`   Current directory: ${formatPath(CURRENT_DIRECTORY)}`);
       console.log(`   Allowed workspace: ${formatPath(WORKSPACE_ROOT)}`);
       console.log(`   Protected: ${formatPath(JARVIS_ROOT)}\n`);
     },
@@ -212,4 +224,3 @@ export const WorkspaceProtection = async ({ project, client, $, directory, workt
     }
   };
 };
-

@@ -2,7 +2,13 @@
 
 Complete installation guide. Follow these steps **in order** from top to bottom.
 
-**Note:** This project assumes a user named `boss` with paths like `/home/boss/jarvis-voice`. Adapt to your setup if different.
+**Recommended path:** clone to `~/jarvis-voice` and run `./install.sh`.
+
+**Important:** This project does **not** require a Unix user named `boss`. The portable default layout is:
+- Repo: `~/jarvis-voice`
+- Virtual environment: `~/jarvis-venv`
+
+Optional integrations such as OpenCode and n8n are covered later and are **not required** for a normal Jarvis install.
 
 ---
 
@@ -16,11 +22,12 @@ Complete installation guide. Follow these steps **in order** from top to bottom.
 6. [Step 5: Configure Environment Files](#step-5-configure-environment-files)
 7. [Step 6: Run Setup Scripts](#step-6-run-setup-scripts)
 8. [Step 7: Configure Audio Devices](#step-7-configure-audio-devices)
-9. [Step 8: Install OpenCode Plugins](#step-8-install-opencode-plugins)
+9. [Step 8: Optional Integrations](#step-8-optional-integrations)
 10. [Step 9: Setup Aliases](#step-9-setup-aliases)
 11. [Step 10: Verify and Start](#step-10-verify-and-start)
 12. [Database Restoration](#database-restoration)
 13. [Troubleshooting](#troubleshooting)
+14. [Additional Resources](#additional-resources)
 
 ---
 
@@ -31,8 +38,9 @@ Complete installation guide. Follow these steps **in order** from top to bottom.
 - **RAM:** 8GB minimum, 16GB+ if running local LLMs
 - **Storage:** 50GB+ SSD
 - **Network:** Static IP recommended
-- **User:** Admin user named `boss` with sudo access
-- **Virtual Environment:** ~/jarvis-venv
+- **User:** Any sudo-capable Linux user
+- **Checkout path:** `~/jarvis-voice`
+- **Virtual Environment:** `~/jarvis-venv`
 - **Python Version:** 3.12+
 
 ### Hardware
@@ -44,16 +52,18 @@ Complete installation guide. Follow these steps **in order** from top to bottom.
 
 ## Step 1: Create User
 
-If you didn't create `boss` during Ubuntu install:
+Skip this if you already have a normal sudo-capable user account.
+
+If you want to create a dedicated user for Jarvis, use any username you want:
 
 ```bash
-sudo useradd -m -s /bin/bash boss
-sudo passwd boss
-sudo usermod -aG sudo boss
-sudo usermod -aG docker boss  # Optional: if using Docker for n8n
+sudo useradd -m -s /bin/bash jarvis
+sudo passwd jarvis
+sudo usermod -aG sudo jarvis
+sudo usermod -aG docker jarvis  # Optional: only if using Docker later for n8n
 
-# Switch to boss for remaining steps
-su - boss
+# Switch to that user for remaining steps
+su - jarvis
 cd ~
 ```
 
@@ -62,10 +72,31 @@ cd ~
 ## Step 2: Clone Repository
 
 ```bash
-cd /home/boss
+cd ~
 git clone https://github.com/bigsk1/jarvis-voice.git
 cd jarvis-voice
 ```
+
+## Fast Path: One-Command Install
+
+If you want the smoothest setup, stop here and run:
+
+```bash
+cd ~/jarvis-voice
+chmod +x install.sh
+./install.sh
+```
+
+That script handles:
+- system dependencies
+- `uv` install if missing
+- `~/jarvis-venv` creation and package sync
+- seeding `config/cloud.env` and `config/local.env` if missing
+- `setup.sh`
+- `verify-env.sh`
+- `setup_tools.sh`
+
+After it finishes, edit your API keys and audio device settings, then continue at **Step 7: Configure Audio Devices** and **Step 9: Setup Aliases** if you want them.
 
 ---
 
@@ -147,7 +178,7 @@ nano config/cloud.env
 nano config/local.env
 ```
 
-**Minimum required settings in cloud.env:**
+**What you usually need to change in `cloud.env`:**
 ```bash
 # ===== LLM Provider (pick ONE) =====
 LLM_PROVIDER="xai"  # Options: "xai", "anthropic", "openai"
@@ -188,14 +219,24 @@ OUT_DEV="plughw:CARD=Device,DEV=0"
 # OUT_DEV="pulse"
 ```
 
-> **Tip:** Copy values from `cloud.env.example` and only change the API keys and audio devices.
-> The example file has sensible defaults for most settings.
+> **Important:** Do **not** shrink `cloud.env` down to only the fields shown above.
+> Start by copying the full `config/cloud.env.example` to `config/cloud.env`, then keep the existing defaults unless you have a reason to change them.
+>
+> In most cases, the only things a new user needs to decide are:
+> - provider choices (`LLM_PROVIDER`, `STT_PROVIDER`, `TTS_PROVIDER`)
+> - API keys for the providers they enabled
+> - model selections if they want something different from the defaults
+> - audio device values (`IN_DEV`, `OUT_DEV`)
+>
+> The example file already contains many smaller settings that are tuned to work well together, so leaving the rest alone is usually the best path.
 
 ---
 
 ## Step 6: Run Setup Scripts
 
-Now run the setup scripts **in this order**:
+If you already ran `./install.sh`, most of this step is already done.
+
+For a manual install, run the setup scripts **in this order**:
 
 ```bash
 cd ~/jarvis-voice
@@ -207,11 +248,8 @@ source ~/jarvis-venv/bin/activate
 # 2. Verify everything is configured
 ./verify-env.sh
 
-# 3. Sync tools to database (registers all 60+ skills)
+# 3. Verify tool registration / executable bits
 ./setup_tools.sh
-
-# 4. Create OpenCode workspace (for autonomous coding) install opencode first see docs/opencode/OPENCODE.md
-./setup_opencode_workspace.sh
 ```
 
 ### Script Reference
@@ -220,8 +258,7 @@ source ~/jarvis-venv/bin/activate
 |--------|---------|
 | `setup.sh` | Creates audio dirs, symlinks, permissions |
 | `verify-env.sh` | Validates config files and dependencies |
-| `setup_tools.sh` | Syncs tool definitions to SQLite database |
-| `setup_opencode_workspace.sh` | Creates ~/jarvis-workspace for OpenCode projects |
+| `setup_tools.sh` | Makes scripts executable, checks the venv, and verifies tool registration |
 | `install-system-deps.sh` | Installs apt packages (run with sudo) |
 
 ---
@@ -284,13 +321,20 @@ Figure out your own mic and speaker setup and update config/local.env and config
 
 ---
 
-## Step 8: Install OpenCode Plugins
+## Step 8: Optional Integrations
+
+You can skip this entire section if you only want the core Jarvis install.
+
+### OpenCode (Optional)
 
 See [OPENCODE.md](docs/opencode/OPENCODE.md) for more information.
 
-If using OpenCode for autonomous coding:
+If you want OpenCode for autonomous coding:
 
 ```bash
+# Create OpenCode workspace
+./setup_opencode_workspace.sh
+
 # Create plugin directory
 mkdir -p ~/.config/opencode/plugin
 
@@ -302,6 +346,16 @@ cp ~/jarvis-voice/docs/opencode/plugin/README.md ~/.config/opencode/plugin/
 ls ~/.config/opencode/plugin/
 # Should show: 00-workspace-protection.js  README.md
 ```
+
+Optional OpenCode systemd service:
+
+```bash
+./bin/install-opencode-service.sh
+```
+
+### n8n (Optional)
+
+If you want n8n workflows, Docker-based automations, or Google Calendar sync, use the optional n8n section later in this guide. It is not required for core Jarvis voice/chat usage.
 
 ---
 
@@ -349,16 +403,12 @@ source ~/jarvis-venv/bin/activate
 # Check everything
 ./verify-env.sh
 
-# Sync tools to database (required before first run)
+# Sync tool embeddings after your keys/providers are configured
 ./bin/sync_tools.py cloud
 ./bin/sync_tools.py local
 
 # Test orchestrator
 ./orchestrator/orchestrator_v2.py cloud "what time is it"
-
-### If you get any WARNINGS like xai_sdk not installed it is because uv really wants you to use the .venv in current dir but we override that so just install it manually 
-source ~/jarvis-venv/bin/activate
-pip install xai-sdk
 
 # Start all services background services, web ui, api, in tmux
 ./bin/start
@@ -367,13 +417,20 @@ pip install xai-sdk
 ./bin/start --list
 ```
 
+If you get warnings about a provider SDK missing, install the SDK for the provider you enabled in `config/cloud.env`, for example:
+
+```bash
+source ~/jarvis-venv/bin/activate
+pip install xai-sdk
+```
+
 **Test voice mode:**
 ```bash
 # Start wake word listener
 ./jarvis
 # Say "Hey Jarvis" followed by a question
 
-# Or use dashboard for TUI
+# Or use dashboard for TUI jarvis-d alias and then start all services, then click services status and wait for everything to be green. I control the whole app from TUI basiclly. 
 ./bin/jarvis-dashboard
 ```
 
@@ -391,7 +448,7 @@ pip install xai-sdk
 
 ### Directory Structure
 ```
-/home/boss/
+$HOME/
 ├── jarvis-voice/          # Main codebase
 ├── jarvis-venv/           # Python virtual environment
 ├── jarvis-workspace/      # OpenCode projects (autonomous coding sandbox)
@@ -415,8 +472,22 @@ Get API keys from:
 - **xAI**: https://console.x.ai/
 - **Anthropic**: https://console.anthropic.com/
 - **OpenAI**: https://platform.openai.com/api-keys
+- **Google Gemini / Google AI Studio**: https://aistudio.google.com/apikey
 - **ElevenLabs**: https://elevenlabs.io/
 - **Brave Search**: https://api.search.brave.com/
+- **OpenWeatherMap**: https://home.openweathermap.org/api_keys
+- **Spotify Developer Dashboard**: https://developer.spotify.com/dashboard
+- **Vapi**: https://dashboard.vapi.ai/
+- **SerpApi**: https://serpapi.com/dashboard
+- **CoinGecko API**: https://www.coingecko.com/en/api
+- **Cloudflare API Tokens**: https://dash.cloudflare.com/profile/api-tokens
+- **GitHub Personal Access Tokens**: https://github.com/settings/tokens
+
+For self-hosted or optional integrations:
+- **OpenCode**: no external API key for Jarvis itself; set up your local OpenCode server and use `OPENCODE_SERVER_PASSWORD` plus provider keys in the OpenCode environment. See `docs/opencode/OPENCODE.md`.
+- **n8n**: generate the API key from your own n8n instance at `Settings -> API` after n8n is running. Used by `N8N_LOCAL_API_KEY`.
+- **Crawl4AI**: if using a hosted Crawl4AI service, use the key issued by that service/provider.
+- **Blinko**: generate the API key from your own Blinko instance if you enable that integration..
 
 **Verify keys are set:**
 ```bash
@@ -430,7 +501,7 @@ grep "API_KEY" config/cloud.env | grep -v "^#"
 ### Step 1: Verify Databases
 
 ```bash
-cd /home/boss/jarvis-voice/data
+cd "$HOME/jarvis-voice/data"
 
 # Check databases exist
 ls -lh jarvis_memory.db jarvis_memory_local.db
@@ -515,7 +586,7 @@ See [`docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`](n8n/docs/GOOGLE_CALENDAR_SYNC.md) 
 **Option B: Import from JSON** (if you have backups, see docs/n8n/docs/workflows/):
 
 ```bash
-# Workflows are in docs/n8n/workflows/ (if you backed them up)
+# Workflows are in docs/n8n/workflows/
 # Or export from old n8n before disaster
 
 # In n8n UI:
@@ -538,7 +609,7 @@ See [`docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`](n8n/docs/GOOGLE_CALENDAR_SYNC.md) 
 3. Add to Jarvis config:
 
 ```bash
-nano /home/boss/jarvis-voice/config/cloud.env
+nano "$HOME/jarvis-voice/config/cloud.env"
 ```
 
 Update:
@@ -555,7 +626,7 @@ N8N_LOCAL_API_KEY="your-api-key-here"
 Jarvis services run in tmux sessions, managed by `./bin/start`:
 
 ```bash
-cd /home/boss/jarvis-voice
+cd "$HOME/jarvis-voice"
 source ~/jarvis-venv/bin/activate
 
 # Start all services
@@ -574,10 +645,10 @@ source ~/jarvis-venv/bin/activate
 ```
 
 **tmux session names:**
-- `jarvis-api` - Main API server (port 5050)
+- `jarvis-api` - Main API server (port 8880)
 - `jarvis-services` - Background services
-- `jarvis-web` - Web UI (port 3000)
-- `jarvis-canvas` - Canvas service (port 5001)
+- `jarvis-web` - Web UI (port 5001)
+- `jarvis-canvas` - Canvas service (port 8890)
 - `jarvis-memory` - Memory service (port 5002)
 - `jarvis-intelligence` - Intelligence service (port 5003)
 
@@ -589,7 +660,7 @@ if it crashes unexpectedly.
 
 ```bash
 # Add watchdog cron entry
-(crontab -l 2>/dev/null; echo "# Jarvis watchdog - restart self_healing_daemon if it crashes"; echo "*/5 * * * * /home/boss/jarvis-voice/bin/watchdog-services.sh >> /home/boss/jarvis-voice/logs/watchdog.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "# Jarvis watchdog - restart self_healing_daemon if it crashes"; echo "*/5 * * * * \$HOME/jarvis-voice/bin/watchdog-services.sh >> \$HOME/jarvis-voice/logs/watchdog.log 2>&1") | crontab -
 ```
 
 The watchdog checks every 5 minutes. It only restarts if the PID file exists
@@ -620,7 +691,8 @@ Only one systemd service exists for OpenCode server:
 
 ```bash
 # Install (if using OpenCode integration)
-sudo cp /home/boss/jarvis-voice/systemd/opencode-jarvis.service /etc/systemd/system/
+./bin/render-systemd-unit.sh ./systemd/opencode-jarvis.service /tmp/opencode-jarvis.service
+sudo cp /tmp/opencode-jarvis.service /etc/systemd/system/opencode-jarvis.service
 sudo systemctl daemon-reload
 sudo systemctl enable opencode-jarvis.service
 sudo systemctl start opencode-jarvis.service
@@ -641,7 +713,7 @@ could always run on systemd later
 ### Step 1: Test Cloud Mode
 
 ```bash
-cd /home/boss/jarvis-voice
+cd "$HOME/jarvis-voice"
 source ~/jarvis-venv/bin/activate
 
 # Test basic query
@@ -801,7 +873,7 @@ arecord -D plughw:CARD=Device,DEV=0 -f cd -d 3 test.wav
 
 # Check permissions
 groups | grep audio
-sudo usermod -aG audio boss
+sudo usermod -aG audio "$USER"
 ```
 
 **Speaker not working:**
@@ -838,7 +910,7 @@ nano config/cloud.env
 tmux attach -t jarvis-api
 
 # Test API manually
-cd /home/boss/jarvis-voice
+cd "$HOME/jarvis-voice"
 source ~/jarvis-venv/bin/activate
 python api/main.py  # Should start API
 ```
@@ -846,10 +918,10 @@ python api/main.py  # Should start API
 **Permission denied:**
 ```bash
 # Make scripts executable
-chmod +x /home/boss/jarvis-voice/jarvis
-chmod +x /home/boss/jarvis-voice/jarvis-local
-chmod +x /home/boss/jarvis-voice/skills/*.py
-chmod +x /home/boss/jarvis-voice/bin/*
+chmod +x "$HOME/jarvis-voice/jarvis"
+chmod +x "$HOME/jarvis-voice/jarvis-local"
+chmod +x "$HOME/jarvis-voice/skills/"*.py
+chmod +x "$HOME/jarvis-voice/bin/"*
 ```
 
 ### Database Issues
@@ -907,7 +979,7 @@ docker restart n8n
 ```bash
 # Check keys are set
 source ~/jarvis-venv/bin/activate
-cd /home/boss/jarvis-voice
+cd "$HOME/jarvis-voice"
 python3 << 'TEST'
 import sys
 sys.path.insert(0, 'lib')
@@ -952,7 +1024,7 @@ docker inspect n8n | grep IPAddress
 tmux attach -t jarvis-api
 
 # Test API health
-curl http://localhost:5050/api/health
+curl http://localhost:8880/api/health
 
 # Restart API
 ./bin/start --stop
@@ -999,15 +1071,15 @@ Once everything is working, verify:
 - [ ] Email tool sends emails successfully
 - [ ] API server responds on port 8880
 - [ ] All tmux sessions running (./bin/start --list)
-- [ ] n8n workflows active and webhooks responding
+- [ ] n8n workflows active and webhooks responding (if using n8n)
 - [ ] Logs being written to logs/ directory
-- [ ] OpenCode can create projects in ~/jarvis-workspace
-- [ ] OpenCode plugins installed (~/.config/opencode/plugin/)
+- [ ] OpenCode can create projects in ~/jarvis-workspace (if using OpenCode)
+- [ ] OpenCode plugins installed (~/.config/opencode/plugin/) (if using OpenCode)
 
 **Optional but recommended:**
 - [ ] Install watchdog cron (`bin/watchdog-services.sh`) for self-healing daemon
 - [ ] Set up cron job for daily database backups
-- [ ] Configure rsync to backup /home/boss nightly
+- [ ] Configure rsync to back up `$HOME` nightly
 - [ ] Test disaster recovery on a VM (validate these docs!)
 - [ ] Document any hardware-specific changes you made
 - [ ] Update this doc with lessons learned
@@ -1100,38 +1172,11 @@ docker start n8n
 
 ---
 
-## Hardware-Specific Notes
-
-**Document YOUR specific hardware here:**
-
-### Audio Devices
-```
-Microphone: hw:___,___ (Model: _______________)
-Speaker:    hw:___,___ (Model: _______________)
-USB Audio:  plughw:CARD=_____
-```
-
-### Network
-```
-Jarvis server IP: 192.168.70.___
-n8n server IP:    192.168.70.___
-Router IP:        192.168.70.___
-```
-
-### Tweaks/Adjustments Made
-```
-- 
-- 
-- 
-```
-
----
-
 ## Backup Strategy
 
 **Current backup methods:**
 1. **Git repository** - Code, docs, scripts
-2. **rsync backup** - Full /home/boss directory
+2. **rsync backup** - Full `$HOME` directory
 3. **Database backups** - Manual or cron
 
 **Recommended cron jobs:**
@@ -1143,24 +1188,27 @@ crontab -e
 # Add these lines:
 
 # Jarvis watchdog - restart self_healing_daemon if it crashes
-*/5 * * * * /home/boss/jarvis-voice/bin/watchdog-services.sh >> /home/boss/jarvis-voice/logs/watchdog.log 2>&1
+*/5 * * * * $HOME/jarvis-voice/bin/watchdog-services.sh >> $HOME/jarvis-voice/logs/watchdog.log 2>&1
 
 # Daily database backup at 2 AM
-0 2 * * * cp /home/boss/jarvis-voice/data/jarvis_memory.db /home/boss/jarvis-voice/data/backups/jarvis_memory-$(date +\%Y\%m\%d).db
+0 2 * * * cp $HOME/jarvis-voice/data/jarvis_memory.db $HOME/jarvis-voice/data/backups/jarvis_memory-$(date +\%Y\%m\%d).db
 
 # Weekly rsync to backup server at 3 AM Sunday
-0 3 * * 0 rsync -avz /home/boss/ backup-server:/backup/jarvis-home/
+0 3 * * 0 rsync -avz $HOME/ backup-server:/backup/jarvis-home/
 
 # Keep only last 30 days of database backups
-0 4 * * * find /home/boss/jarvis-voice/data/backups/ -name "jarvis_memory-*.db" -mtime +30 -delete
+0 4 * * * find $HOME/jarvis-voice/data/backups/ -name "jarvis_memory-*.db" -mtime +30 -delete
+
+# Jarvis weekly cleanup (logs 60d, audio 30d, images 90d, stash TTL)
+0 3 * * 0 $HOME/jarvis-voice/bin/cleanup-all >> $HOME/jarvis-voice/logs/cleanup.log 2>&1
 ```
 
 ---
 
 ## Version Information
 
-**Last Updated:** 2026-01-25  
-**Jarvis Version:** v2.39  
+**Last Updated:** 2026-04-12  
+**Jarvis Version:** v2.46.3 
 **Tested On:** Ubuntu 24.04 LTS  
 **Python Version:** 3.12+  
 **Package Manager:** uv (recommended) or pip
@@ -1169,16 +1217,24 @@ crontab -e
 
 ## Additional Resources
 
+### Getting It Running
+
 - **Main README:** [`README.md`](../README.md)
 - **Documentation Index:** [`docs/README.md`](README.md)
 - **Quickstart Guide:** [`docs/QUICKSTART.md`](QUICKSTART.md)
+- **Config Guide:** [`config/README.md`](../config/README.md)
+- **Web UI Guide:** [`docs/JARVIS_WEB_UI.md`](JARVIS_WEB_UI.md)
+- **Service README:** [`docs/service/README.md`](service/README.md)
+- **Testing Guide:** [`docs/TESTING.md`](TESTING.md)
+
+### Optional Integrations
+
 - **Webhook System:** [`docs/WEBHOOK_SYSTEM.md`](WEBHOOK_SYSTEM.md)
 - **Google Calendar Sync:** [`docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`](n8n/docs/GOOGLE_CALENDAR_SYNC.md)
-- **Service Architecture:** [`docs/service/SERVICE_ARCHITECTURE_FAQ.md`](service/SERVICE_ARCHITECTURE_FAQ.md)
+- **n8n Integration:** [`docs/n8n/docs/N8N_INTEGRATION.md`](n8n/docs/N8N_INTEGRATION.md)
+- **OpenCode:** [`docs/opencode/OPENCODE.md`](opencode/OPENCODE.md)
+- **Service Architecture FAQ:** [`docs/service/SERVICE_ARCHITECTURE_FAQ.md`](service/SERVICE_ARCHITECTURE_FAQ.md)
 
 ---
 
-**Need Help?** Use this guide with an LLM (Claude, GPT-4, etc.) to walk through each section step-by-step. The LLM can help troubleshoot issues and adapt commands to your specific hardware/environment.
-
-**🚨 IMPORTANT:** Test this guide on a VM or spare machine BEFORE you need it! Update this doc with any corrections or hardware-specific notes.
-
+**Need Help?** Use this guide with an LLM (Claude, GPT-5, etc.) to walk through each section step-by-step. The LLM can help troubleshoot issues and adapt commands to your specific hardware/environment.

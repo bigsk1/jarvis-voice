@@ -126,7 +126,7 @@ GROUP BY file;
 If you want to clear the 2 old entries without metadata:
 
 ```bash
-cd /home/boss/jarvis-voice
+cd ~/jarvis-voice
 python3 -c "
 import sqlite3
 conn = sqlite3.connect('data/jarvis_memory.db')

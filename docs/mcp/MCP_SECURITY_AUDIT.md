@@ -357,8 +357,8 @@ Immediately disable and investigate if you see:
 
 ## Additional Resources
 
-- Main README: `/home/boss/jarvis-voice/README.md`
-- Config Guide: `/home/boss/jarvis-voice/config/README.md`
-- MCP Quickstart: `/home/boss/jarvis-voice/docs/MCP_QUICKSTART.md`
-- Test Script: `/home/boss/jarvis-voice/bin/test-mcp`
+- Main README: `~/jarvis-voice/README.md`
+- Config Guide: `~/jarvis-voice/config/README.md`
+- MCP Quickstart: `~/jarvis-voice/docs/MCP_QUICKSTART.md`
+- Test Script: `~/jarvis-voice/bin/test-mcp`
 

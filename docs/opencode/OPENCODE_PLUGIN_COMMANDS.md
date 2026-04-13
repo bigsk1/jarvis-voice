@@ -13,7 +13,7 @@ curl -s http://localhost:4096/config | jq -r '.plugin[]'
 
 **Expected Output**:
 ```
-file:///home/boss/.config/opencode/plugin/00-workspace-protection.js
+file://~/.config/opencode/plugin/00-workspace-protection.js
 ```
 
 ### Method 2: Check Config with Full Details
@@ -119,7 +119,7 @@ Then say:
 "Use OpenCode to create a simple hello world Python script"
 ```
 
-**Expected**: ✅ File created in `/home/boss/jarvis-workspace/`
+**Expected**: ✅ File created in `~/jarvis-workspace/`
 
 ---
 
@@ -180,7 +180,7 @@ sudo systemctl restart opencode-jarvis.service
 
 # Verify enabled
 curl -s http://localhost:4096/config | jq -r '.plugin[]'
-# Should show: file:///home/boss/.config/opencode/plugin/00-workspace-protection.js
+# Should show: file://~/.config/opencode/plugin/00-workspace-protection.js
 ```
 
 ---

@@ -272,12 +272,12 @@ Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini Veo.
       "saved": true,
       "stash_ref": "stash://space_20260201_101028_05045a8d/video_a_cat_playing_20260201_021027.mp4",
       "space_id": "space_20260201_101028_05045a8d",
-      "path": "/home/boss/jarvis-voice/data/generated_videos/video_a_cat_playing_20260201_021027.mp4",
+      "path": "~/jarvis-voice/data/generated_videos/video_a_cat_playing_20260201_021027.mp4",
       "filename": "video_a_cat_playing_20260201_021027.mp4",
       "size_bytes": 3456789,
       "stash": true
     },
-    "file_path": "/home/boss/jarvis-voice/data/generated_videos/video_a_cat_playing_20260201_021027.mp4"
+    "file_path": "~/jarvis-voice/data/generated_videos/video_a_cat_playing_20260201_021027.mp4"
   }
 }
 ```
@@ -396,7 +396,7 @@ Check video generation service status.
 ```json
 {
   "ok": true,
-  "directory": "/home/boss/jarvis-voice/data/generated_videos",
+  "directory": "~/jarvis-voice/data/generated_videos",
   "exists": true,
   "video_count": 5,
   "total_size": 16789012,

@@ -34,7 +34,7 @@ mkdir -p "$WORKSPACE_ROOT/temp"
 mkdir -p "$WORKSPACE_ROOT/deployments"
 
 # Create README files for each directory
-cat > ~/jarvis-workspace/README.md << 'EOF'
+cat > "$WORKSPACE_ROOT/README.md" << 'EOF'
 # Jarvis Workspace
 
 This directory contains projects built by Jarvis + OpenCode.
@@ -91,7 +91,7 @@ When you say:
 just copy the files to a proper git repository location.
 EOF
 
-cat > ~/jarvis-workspace/projects/README.md << 'EOF'
+cat > "$WORKSPACE_ROOT/projects/README.md" << 'EOF'
 # Projects Directory
 
 Long-term projects organized by category.
@@ -110,7 +110,7 @@ Long-term projects organized by category.
 4. Deploy when ready: "Hey Jarvis, deploy my-blog"
 EOF
 
-cat > ~/jarvis-workspace/temp/README.md << 'EOF'
+cat > "$WORKSPACE_ROOT/temp/README.md" << 'EOF'
 # Temporary Workspace
 
 Quick experiments and tests.
@@ -128,14 +128,14 @@ Perfect for:
 EOF
 
 # Set proper permissions
-chmod -R 755 ~/jarvis-workspace
+chmod -R 755 "$WORKSPACE_ROOT"
 
 # Display structure
 echo ""
 echo "✅ Workspace created at: ~/jarvis-workspace"
 echo ""
 echo "📁 Structure:"
-find ~/jarvis-workspace -type d | sed 's|/home/boss/jarvis-workspace|.|' | head -20
+find "$WORKSPACE_ROOT" -type d | sed "s|^${WORKSPACE_ROOT}|.|" | head -20
 
 echo ""
 echo "🎯 Ready for OpenCode integration!"

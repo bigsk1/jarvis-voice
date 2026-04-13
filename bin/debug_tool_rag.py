@@ -14,7 +14,7 @@ Script-only options (no app code changes):
 
 Activate the project venv first (so real embeddings run; otherwise you may see fallback embeddings and junk scores):
 
-  source /home/boss/jarvis-venv/bin/activate
+  source ~/jarvis-venv/bin/activate
 
 Usage:
   ./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?"

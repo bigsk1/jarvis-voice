@@ -335,7 +335,7 @@ GET /api/memory/stats
     "project": 26,
     "personal": 5
   },
-  "database": "/home/boss/jarvis-voice/data/jarvis_memory.db"
+  "database": "~/jarvis-voice/data/jarvis_memory.db"
 }
 ```
 

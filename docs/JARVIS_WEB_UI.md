@@ -814,7 +814,7 @@ A dedicated tool for analyzing images from various sources:
 ```
 "Analyze this image https://example.com/chart.png"
 "What's in stash://space_20251218_094432/f_abc123?"
-"Analyze /home/boss/photos/vacation.jpg and tell me where it was taken"
+"Analyze ~/photos/vacation.jpg and tell me where it was taken"
 ```
 
 **When to Use:**

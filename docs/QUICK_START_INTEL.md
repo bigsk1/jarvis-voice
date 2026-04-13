@@ -87,7 +87,7 @@ EOF
 
 ## Files
 
-- **Location**: `/home/boss/jarvis-voice/jarvis-intel/`
+- **Location**: `~/jarvis-voice/jarvis-intel/`
 - **Formats**: `.txt` or `.md` (except README.md)
 - **Security**: Not tracked by git ✅
 - **Tool**: `skills/ingest_intel.py`

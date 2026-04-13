@@ -3,7 +3,7 @@
 DEPRECATED: This is an example file only.
 
 For the production-ready UniFi Protect webhook receiver, see:
-  /home/boss/jarvis-voice/services/unifi-protect-webhook/
+  ~/jarvis-voice/services/unifi-protect-webhook/
 
 That version includes:
 - Environment-based configuration (no hardcoded values)

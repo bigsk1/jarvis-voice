@@ -152,7 +152,7 @@ Get conversation statistics including totals, success rate, and top tools.
     "status_recap": 18,
     "phone_call": 18
   },
-  "database": "/home/boss/jarvis-voice/data/jarvis_memory.db"
+  "database": "~/jarvis-voice/data/jarvis_memory.db"
 }
 ```
 

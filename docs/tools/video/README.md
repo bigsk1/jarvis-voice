@@ -364,7 +364,7 @@ LOCAL_PROXY="http://127.0.0.1:7890"
 
 1. Cookie file path:
 ```bash
-YTDLP_COOKIES_FILE="/home/boss/.config/yt-dlp/cookies.txt"
+YTDLP_COOKIES_FILE="~/.config/yt-dlp/cookies.txt"
 ```
 
 2. Browser extraction:
@@ -380,7 +380,7 @@ data/secrets/youtube/cookies.txt
 
 Then set:
 ```bash
-YTDLP_COOKIES_FILE="/home/boss/jarvis-voice/data/secrets/youtube/cookies.txt"
+YTDLP_COOKIES_FILE="~/jarvis-voice/data/secrets/youtube/cookies.txt"
 ```
 
 Note: `data/secrets/` is not ignored by default in this repo. If you store cookies there, add it to `.gitignore`.

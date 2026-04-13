@@ -83,11 +83,11 @@ OpenCode receives relevant context from Jarvis's memory:
 ```bash
 # 1. Hello World Python Script
 ./orchestrator/orchestrator_v2.py cloud "Use OpenCode to create a hello world script"
-# Result: /home/boss/jarvis-workspace/hello_world.py ✅
+# Result: ~/jarvis-workspace/hello_world.py ✅
 
 # 2. Professional Bash Script
 ./orchestrator/orchestrator_v2.py cloud "Use OpenCode to create a bash script"
-# Result: /home/boss/jarvis-workspace/hello.sh (with usage docs, error handling, args) ✅
+# Result: ~/jarvis-workspace/hello.sh (with usage docs, error handling, args) ✅
 
 # 3. Full Calculator App
 ./orchestrator/orchestrator_v2.py cloud "Use OpenCode to build a Python calculator"

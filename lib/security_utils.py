@@ -13,6 +13,7 @@ import logging
 from typing import Optional
 
 from tts_normalizer import normalize_tts_text
+from paths import get_allowed_write_paths, get_protected_paths
 
 logger = logging.getLogger(__name__)
 
@@ -21,33 +22,6 @@ logger = logging.getLogger(__name__)
 MAX_TRANSCRIPT_LENGTH = 10000
 MAX_MEMORY_VALUE_LENGTH = 10000
 MAX_URL_LENGTH = 2048
-
-# Protected paths - Jarvis cannot modify these
-# Used by execute_bash, and can be imported by other tools
-PROTECTED_PATHS = [
-    '/home/boss/jarvis-voice',  # Jarvis codebase - NO self-modification
-    '/home/boss/.ssh',          # SSH keys
-    '/home/boss/.gnupg',        # GPG keys  
-    '/home/boss/.config',       # User config
-    '/etc',                     # System config
-    '/usr',                     # System binaries
-    '/bin',                     # System binaries
-    '/sbin',                    # System binaries
-    '/boot',                    # Boot files
-    '/root',                    # Root home
-    '/var/log',                 # System logs (read OK, write blocked)
-]
-
-# Paths where write operations are allowed
-ALLOWED_WRITE_PATHS = [
-    '/home/boss/jarvis-voice/data',      # Data directory
-    '/home/boss/jarvis-voice/logs',      # Logs directory  
-    '/home/boss/jarvis-voice/stash',     # Stash artifacts
-    '/tmp',                               # Temp files
-    '/home/boss/Downloads',               # Downloads
-    '/home/boss/Documents',               # Documents
-]
-
 
 # Prompt injection detection patterns
 INJECTION_PATTERNS = [
@@ -237,13 +211,13 @@ def is_path_protected(path: str, for_write: bool = True) -> tuple[bool, Optional
         return False, None
     
     # Check if path is under a protected directory
-    for protected in PROTECTED_PATHS:
+    for protected in get_protected_paths():
         protected_norm = os.path.normpath(protected)
         
         # Check if path starts with protected path
         if path == protected_norm or path.startswith(protected_norm + os.sep):
             # Check if it's in an allowed subdirectory
-            for allowed in ALLOWED_WRITE_PATHS:
+            for allowed in get_allowed_write_paths():
                 allowed_norm = os.path.normpath(allowed)
                 if path == allowed_norm or path.startswith(allowed_norm + os.sep):
                     return False, None  # Allowed
@@ -258,8 +232,8 @@ def get_security_summary() -> dict:
     Get a summary of security settings for debugging/logging.
     """
     return {
-        "protected_paths": PROTECTED_PATHS,
-        "allowed_write_paths": ALLOWED_WRITE_PATHS,
+        "protected_paths": get_protected_paths(),
+        "allowed_write_paths": get_allowed_write_paths(),
         "max_transcript_length": MAX_TRANSCRIPT_LENGTH,
         "injection_patterns_count": len(INJECTION_PATTERNS),
     }

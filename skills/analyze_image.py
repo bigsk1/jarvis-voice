@@ -20,6 +20,7 @@ from datetime import datetime
 # Add lib to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
+from paths import get_local_file_tool_allowed_dirs
 from model_catalog import get_provider_fallback_model
 from ollama_utils import get_ollama_base_urls, request_ollama
 
@@ -184,14 +185,7 @@ def _load_from_file(path: str) -> dict | None:
         file_path = Path(path).expanduser().resolve()
         
         # SECURITY: Restrict file access to allowed directories
-        ALLOWED_DIRS = [
-            Path('/home/boss/jarvis-voice/data').resolve(),
-            Path('/home/boss/jarvis-voice/stash').resolve(),
-            Path('/home/boss/Downloads').resolve(),
-            Path('/home/boss/Documents').resolve(),
-            Path('/home/boss/Pictures').resolve(),
-            Path('/tmp').resolve(),
-        ]
+        ALLOWED_DIRS = get_local_file_tool_allowed_dirs(include_pictures=True)
         
         # Check if file is in an allowed directory
         file_allowed = False

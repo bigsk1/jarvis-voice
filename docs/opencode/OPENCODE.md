@@ -107,7 +107,7 @@ journalctl -u opencode-jarvis.service -f
 ### 2. Workspace Structure
 
 ```
-/home/boss/
+~/
 ├── jarvis-voice/           ← READ-ONLY for OpenCode
 │   └── ...Jarvis code...
 │
@@ -121,14 +121,14 @@ journalctl -u opencode-jarvis.service -f
 ```
 
 **Security:**
-- OpenCode can only write to `/home/boss/jarvis-workspace`
-- `/home/boss/jarvis-voice` is read-only
+- OpenCode can only write to `~/jarvis-workspace`
+- `~/jarvis-voice` is read-only
 - Defined in `~/.config/opencode/opencode.json`:
   ```json
   "workspace": {
-    "root": "/home/boss/jarvis-workspace",
-    "allowedPaths": ["/home/boss/jarvis-workspace"],
-    "readOnlyPaths": ["/home/boss/jarvis-voice"]
+    "root": "~/jarvis-workspace",
+    "allowedPaths": ["~/jarvis-workspace"],
+    "readOnlyPaths": ["~/jarvis-voice"]
   }
   ```
 
@@ -259,7 +259,7 @@ Notes:
 **Good response** (`message_received`):
 ```json
 {
-  "response_preview": "I've created hello.py in /home/boss/jarvis-workspace/projects/scripts/ with...",
+  "response_preview": "I've created hello.py in ~/jarvis-workspace/projects/scripts/ with...",
   "response_length": 450,
   "duration_ms": 3500
 }
@@ -333,7 +333,7 @@ OpenCode receives this system prompt with every task:
 - Identity: "You are OpenCode" (not "Claude Code")
 - Audience: Responding to Jarvis (powerful LLM), not directly to user
 - Style: Technical and detailed - Jarvis will translate to casual speech
-- Boundaries: Read-only for `/home/boss/jarvis-voice`, writable to `/home/boss/jarvis-workspace`
+- Boundaries: Read-only for `~/jarvis-voice`, writable to `~/jarvis-workspace`
 - Focus: Skip lengthy intros, get straight to work
 
 **Full prompt** in `lib/opencode_client.py` lines 150-185
@@ -391,7 +391,7 @@ Desired future behavior:
 - Jarvis can detect when a new user request is really a continuation of the last OpenCode build and resume that same session/project deliberately
 
 That supervision loop is not fully implemented yet, but the current workspace-isolated model is the foundation for it.
-- [x] **Context injection** - Pass user preferences, credentials to OpenCode (We already have .env in /home/boss/.config/opencode/jarvis-env.env)
+- [x] **Context injection** - Pass user preferences, credentials to OpenCode (We already have .env in ~/.config/opencode/jarvis-env.env)
 - [ ] **Session persistence** - Resume long-running tasks - with Jarvis to opencode, currently 300 sec timeout on jarvis? waiting for opencode, but jarvis can check opencode logs without triggering another opencode tool call
 - [x] **Improved condensation** - Better voice response formatting - works fine currently
 

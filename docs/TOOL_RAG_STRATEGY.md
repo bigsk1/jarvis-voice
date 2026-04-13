@@ -124,7 +124,7 @@ TOOL_SIMILARITY_THRESHOLD_FULL=0.40
 Use `bin/debug_tool_rag.py` to compare the plain user string against a real captured full prompt:
 
 ```bash
-source /home/boss/jarvis-venv/bin/activate
+source ~/jarvis-venv/bin/activate
 
 ./bin/debug_tool_rag.py cloud "and Boston too" \
   --full-transcript-file /tmp/captured_turn_input.txt \
