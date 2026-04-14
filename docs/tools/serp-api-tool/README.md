@@ -9,6 +9,7 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 - `serpapi_hotel_search` for Google Hotels searches
 - `serpapi_youtube` for YouTube video detail lookup with transcript fallback
 - `serpapi_youtube_search` for YouTube video discovery by keyword
+- `serpapi_yelp_search` for Yelp place discovery with attrs and reviews
 
 ## Files
 
@@ -18,12 +19,14 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 - Hotels wrapper: `skills/serpapi_hotel_search.py`
 - YouTube wrapper: `skills/serpapi_youtube.py`
 - YouTube search wrapper: `skills/serpapi_youtube_search.py`
+- Yelp wrapper: `skills/serpapi_yelp_search.py`
 - Tool definitions:
   - `skills/serpapi_search.tool.json`
   - `skills/serpapi_maps_search.tool.json`
   - `skills/serpapi_hotel_search.tool.json`
   - `skills/serpapi_youtube.tool.json`
   - `skills/serpapi_youtube_search.tool.json`
+  - `skills/serpapi_yelp_search.tool.json`
 
 ## Setup
 
@@ -175,6 +178,20 @@ Use this when `yt-dlp`-based tools fail because of cookies, auth, or transcript 
 ```
 
 Use this when you want to find candidate YouTube videos first, then pass the chosen URL into `serpapi_youtube`, `youtube_transcript`, or `youtube_video`.
+
+### Yelp search with optional dog-friendly filter and reviews
+
+```json
+{
+  "find_desc": "Coffee",
+  "find_loc": "New York, NY, USA",
+  "dogs_allowed": true,
+  "sort_by": "rating",
+  "include_reviews": true
+}
+```
+
+Use this when you want restaurants, coffee shops, or other Yelp places near a location, especially when attrs like `DogsAllowed` or `GoodForKids` matter.
 
 ## How to prompt Jarvis
 

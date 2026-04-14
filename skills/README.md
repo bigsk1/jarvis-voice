@@ -182,6 +182,7 @@ JSON object printed to stdout:
 | `serpapi_hotel_search` | SerpApi Google Hotels search with stay filters |
 | `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |
 | `serpapi_youtube_search` | SerpApi YouTube video search by keywords |
+| `serpapi_yelp_search` | SerpApi Yelp place search with attrs and reviews |
 | `spotify` | Music playback control |
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |

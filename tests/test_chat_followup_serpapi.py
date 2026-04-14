@@ -161,3 +161,41 @@ def test_extract_followup_data_preserves_serpapi_youtube_search_candidates():
     assert youtube["top_url"] == "https://www.youtube.com/watch?v=abc123def45"
     assert len(youtube["candidates"]) == 2
     assert youtube["candidates"][1]["video_id"] == "zyx987wvu65"
+
+
+def test_extract_followup_data_preserves_serpapi_yelp_candidates():
+    handler = _handler()
+    data = {
+        "serpapi_yelp_search": {
+            "find_desc": "Coffee",
+            "find_loc": "New York, NY, USA",
+            "results": [
+                {
+                    "title": "Pup Cup Coffee",
+                    "url": "https://www.yelp.com/biz/pup-cup-coffee",
+                    "place_id": "pup-cup-coffee-nyc",
+                    "rating": 4.7,
+                    "price": "$$",
+                    "address": "123 Market St, New York, NY 10001",
+                    "thumbnail": "https://s3-media.example.com/pup.jpg",
+                },
+                {
+                    "title": "Dog Park Cafe",
+                    "url": "https://www.yelp.com/biz/dog-park-cafe",
+                    "place_id": "dog-park-cafe-nyc",
+                    "rating": 4.5,
+                    "price": "$",
+                    "address": "9 Broadway, New York, NY 10012",
+                },
+            ],
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    yelp = result["serpapi_yelp_search"]
+
+    assert yelp["title"] == "Pup Cup Coffee"
+    assert yelp["top_url"] == "https://www.yelp.com/biz/pup-cup-coffee"
+    assert yelp["place_id"] == "pup-cup-coffee-nyc"
+    assert len(yelp["candidates"]) == 2
+    assert yelp["candidates"][1]["place_id"] == "dog-park-cafe-nyc"

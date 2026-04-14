@@ -10,6 +10,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
@@ -28,6 +29,16 @@ from server.sockets.chat import ChatHandler
 
 
 class CompletionGuardServerSideToolsTests(unittest.TestCase):
+    def test_completion_guard_location_context_uses_default_location(self):
+        with patch("config_loader.load_config"), patch(
+            "config_loader.get_config_value", return_value="Hillsboro, Oregon"
+        ):
+            context = ChatHandler._get_completion_guard_location_context("cloud")
+
+        self.assertIn("Configured default location:\nHillsboro, Oregon", context)
+        self.assertIn('location-relative question like "near me"', context)
+        self.assertIn("allowed fallback", context)
+
     def test_normalize_server_side_tool_names(self):
         tools = ChatHandler._normalize_server_side_tool_names({
             "SERVER_SIDE_TOOL_X_SEARCH": 2,
@@ -53,6 +64,51 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
 
         self.assertEqual(context["combined_tools_used"], ["native:x_search"])
         self.assertEqual(context["original_response"]["tools_used"], ["native:x_search"])
+
+    def test_completion_guard_eval_prompt_includes_default_location_context(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        captured = {}
+
+        class _FakeProvider:
+            def chat(self, prompt, system_prompt=None, max_tokens=None):
+                captured["prompt"] = prompt
+                return """{
+  "recommended_action": "accept",
+  "task_status": "complete",
+  "risk_level": "low",
+  "repair_worthwhile": false,
+  "failure_types": [],
+  "missing_requirements": [],
+  "unsupported_claims": [],
+  "contradictions": [],
+  "evidence_gaps": [],
+  "reason": "supported",
+  "suggested_note": ""
+}"""
+
+        handler._create_completion_guard_eval_provider = lambda **kwargs: ("openai", "test-model", _FakeProvider())
+
+        record = {
+            "mode": "cloud",
+            "query": "what are some of the best places to eat near me?",
+            "raw_llm_response": "Top-rated restaurants in Hillsboro, OR (default location).",
+            "speech": "Top-rated restaurants in Hillsboro, OR.",
+            "tools_used": ["mcp_brave_search_brave_local_search"],
+            "server_side_tools": {},
+            "available_tools": ["mcp_brave_search_brave_local_search"],
+            "data": {"sample": "value"},
+            "completion_guard": {},
+        }
+
+        with patch("config_loader.load_config"), patch(
+            "config_loader.get_config_value", return_value="Hillsboro, Oregon"
+        ):
+            parsed = handler._evaluate_completion_guard_auto(record)
+
+        self.assertEqual(parsed["recommended_action"], "accept")
+        self.assertIn("Configured default location:\nHillsboro, Oregon", captured["prompt"])
+        self.assertIn('location-relative question like "near me"', captured["prompt"])
+        self.assertIn("allowed fallback", captured["prompt"])
 
 
 if __name__ == "__main__":

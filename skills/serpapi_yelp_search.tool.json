@@ -1,0 +1,67 @@
+{
+  "enabled": true,
+  "name": "serpapi_yelp_search",
+  "description": "Search Yelp places through SerpApi using find_desc and find_loc, with optional attrs filters, sort order, dog-friendly helper, and optional review fetch for a selected or top place. Good for restaurants, coffee shops, bars, and places to eat near a location.",
+  "script": "serpapi_yelp_search.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "find_desc": {
+        "type": "string",
+        "description": "What to search for on Yelp, such as Coffee, pizza, ramen, brunch, or dog friendly restaurants."
+      },
+      "find_loc": {
+        "type": "string",
+        "description": "Location like New York, NY, USA. Defaults to JARVIS_DEFAULT_LOCATION when omitted."
+      },
+      "attrs": {
+        "type": ["string", "array"],
+        "description": "Optional Yelp attrs filter string or list. Example: GoodForKids,DogsAllowed or Smoking.no."
+      },
+      "sort_by": {
+        "type": "string",
+        "description": "Optional sort mode. Common values: best_match, rating, review_count, distance."
+      },
+      "dogs_allowed": {
+        "type": "boolean",
+        "description": "If true, automatically appends DogsAllowed to attrs."
+      },
+      "place_id": {
+        "type": "string",
+        "description": "Optional Yelp place_id for fetching reviews of a specific place."
+      },
+      "include_reviews": {
+        "type": "boolean",
+        "description": "If true, fetch Yelp reviews for place_id or the top result."
+      },
+      "review_limit": {
+        "type": "integer",
+        "description": "How many reviews to return when include_reviews is true. Clamped to 1..10. Default: 3."
+      },
+      "num_results": {
+        "type": "integer",
+        "description": "How many search results to return. Clamped to 1..10. Default: 5."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "If true, bypass SerpApi cache for fresh fetch."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Additional SerpApi Yelp parameters passed through, excluding reserved keys."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "If true, include raw SerpApi payloads in data.raw and review_data.raw."
+      }
+    },
+    "required": ["find_desc"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

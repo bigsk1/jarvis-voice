@@ -28,6 +28,7 @@ class JarvisApp {
     // State
     this.audioEnabled = Utils.storage.get('audioEnabled', false);
     this.glowIntensity = Utils.storage.get('glowIntensity', 'low');
+    this._settingsData = null;
     
     // Audio playback state
     this.currentAudio = null;
@@ -210,13 +211,25 @@ class JarvisApp {
         this.stopAudioPlayback();
       }
       
+      const settingsPayload = { tts_enabled: this.audioEnabled };
+      if (this.audioEnabled) {
+        const effectiveStyle = await this._getEffectiveResponseStyle();
+        if (effectiveStyle === 'detailed') {
+          settingsPayload.response_style = 'auto';
+        }
+      }
+
       // Sync to server so TTS generation is actually disabled (saves 11labs tokens!)
       try {
         await fetch('/api/settings/web', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tts_enabled: this.audioEnabled })
+          body: JSON.stringify(settingsPayload)
         });
+        this._applyLocalSettingsUpdate(settingsPayload);
+        if (settingsPayload.response_style === 'auto') {
+          Utils.toast('TTS enabled. Response style switched from detailed to auto for speech-friendly answers.', 'info', 3500);
+        }
       } catch (err) {
         console.error('Failed to sync TTS setting to server:', err);
       }
@@ -972,6 +985,73 @@ class JarvisApp {
       'speaker_volume': '🔊',
     };
     return emojiMap[name] || '🔧';
+  }
+
+  _getCachedEffectiveResponseStyle() {
+    const responseSettings = this._settingsData?.response;
+    return responseSettings?.style?.value
+      || responseSettings?.style?.default
+      || 'auto';
+  }
+
+  async _getEffectiveResponseStyle() {
+    if (this._settingsData?.mode === this.socket.mode && this._settingsData?.response?.style) {
+      return this._getCachedEffectiveResponseStyle();
+    }
+
+    try {
+      const response = await fetch('/api/settings');
+      const data = await response.json();
+      if (data.ok && data.settings) {
+        this._settingsData = data.settings;
+        return this._getCachedEffectiveResponseStyle();
+      }
+    } catch (err) {
+      console.warn('[App] Failed to fetch settings for response style:', err);
+    }
+
+    return 'auto';
+  }
+
+  _applyLocalSettingsUpdate(settingsPayload = {}) {
+    if (!this._settingsData) {
+      this._settingsData = { mode: this.socket.mode, audio: {}, response: {} };
+    }
+
+    this._settingsData.mode = this.socket.mode;
+    this._settingsData.audio = this._settingsData.audio || {};
+    this._settingsData.response = this._settingsData.response || {};
+
+    if (Object.prototype.hasOwnProperty.call(settingsPayload, 'tts_enabled')) {
+      this._settingsData.audio.tts_enabled = !!settingsPayload.tts_enabled;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(settingsPayload, 'response_style')) {
+      const styleValue = settingsPayload.response_style || null;
+      const defaultStyle = this._settingsData.response.style?.default || 'auto';
+      this._settingsData.response.style = {
+        value: styleValue || defaultStyle,
+        default: defaultStyle,
+        is_override: !!styleValue,
+      };
+
+      const responseStyleSelect = document.getElementById('setting-response-style');
+      if (responseStyleSelect) {
+        responseStyleSelect.value = styleValue || '';
+      }
+
+      const responseStyleDefault = document.getElementById('response-style-default');
+      if (responseStyleDefault) {
+        if (styleValue) {
+          responseStyleDefault.textContent = `⚡ override: ${styleValue}`;
+          responseStyleDefault.className = 'setting-default setting-override';
+        } else {
+          const envFile = this.socket.mode === 'local' ? 'local.env' : 'cloud.env';
+          responseStyleDefault.textContent = `(${envFile}: ${defaultStyle})`;
+          responseStyleDefault.className = 'setting-default';
+        }
+      }
+    }
   }
 
   /**

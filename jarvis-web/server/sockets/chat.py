@@ -489,6 +489,35 @@ class ChatHandler:
             return text
         return text[:max_chars] + "\n... [truncated]"
 
+    @staticmethod
+    def _get_completion_guard_location_context(mode: str) -> str:
+        """Provide location fallback context so Completion Guard audits local queries fairly."""
+        from config_loader import load_config, get_config_value
+
+        try:
+            load_config(mode)
+        except Exception:
+            pass
+
+        default_location = str(get_config_value('JARVIS_DEFAULT_LOCATION', '') or '').strip()
+        if not default_location:
+            return """Configured default location:
+(not set)
+
+Location handling:
+- Jarvis may answer location-relative questions only when it has explicit location context
+- If no configured default location is set, do not treat an unstated fallback location as supported
+- Flag location issues when the answer invents a location or implies live/current geolocation without support"""
+
+        return f"""Configured default location:
+{default_location}
+
+Location handling:
+- The configured default location above is valid runtime context for Jarvis, even when no location tool was used
+- If the user asked a location-relative question like "near me" and the answer uses the configured default location above, that is an allowed fallback
+- Do not treat use of the configured default location above as a hallucinated location claim when the answer is clearly using that default
+- Flag location issues only when the answer claims live/current geolocation, or switches to a different unsupported location"""
+
     def _create_completion_guard_eval_provider(
         self,
         mode: str,
@@ -800,6 +829,8 @@ General failure type vocabulary:
 User request:
 {record.get('query', '')}
 
+{self._get_completion_guard_location_context(mode)}
+
 Raw LLM response:
 {record.get('raw_llm_response', '')}
 
@@ -1033,6 +1064,8 @@ If the tool output is still insufficient, reply with exactly: UNRESOLVED
 
 Original user request:
 {record.get('query', '')}
+
+{self._get_completion_guard_location_context(mode)}
 
 User completion note:
 {note or '(none)'}
@@ -2545,6 +2578,7 @@ Previous structured data:
             'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
             'serpapi_youtube': ['video_id', 'url', 'title', 'channel', 'duration', 'published_date', 'transcript_api_url'],
             'serpapi_youtube_search': ['search_query', 'top_url', 'title'],
+            'serpapi_yelp_search': ['find_desc', 'find_loc', 'top_url', 'place_id'],
             'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
             'memory_deduper': ['stash_ref', 'canvas_page_id'],
             'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
@@ -2691,6 +2725,53 @@ Previous structured data:
                             candidate['channel'] = item['channel']
                         if item.get('duration'):
                             candidate['duration'] = item['duration']
+                        if item.get('thumbnail'):
+                            candidate['thumbnail'] = item['thumbnail']
+                        candidates.append(candidate)
+                    if candidates:
+                        extracted['candidates'] = candidates
+
+            if key == 'serpapi_yelp_search':
+                results = value.get('results') or value.get('top_results') or []
+                if isinstance(results, list) and results:
+                    first = results[0] if isinstance(results[0], dict) else {}
+                    if isinstance(first, dict):
+                        if first.get('title'):
+                            extracted['title'] = first['title']
+                        if first.get('url') and 'top_url' not in extracted:
+                            extracted['top_url'] = first['url']
+                        if first.get('place_id') and 'place_id' not in extracted:
+                            extracted['place_id'] = first['place_id']
+                        if first.get('rating'):
+                            extracted['rating'] = first['rating']
+                        if first.get('price'):
+                            extracted['price'] = first['price']
+                        if first.get('address'):
+                            extracted['address'] = first['address']
+                        if first.get('thumbnail'):
+                            extracted['thumbnail'] = first['thumbnail']
+                    candidates = []
+                    for item in results[:5]:
+                        if not isinstance(item, dict):
+                            continue
+                        title = item.get('title')
+                        url = item.get('url')
+                        place_id = item.get('place_id')
+                        if not (title or url or place_id):
+                            continue
+                        candidate = {}
+                        if title:
+                            candidate['title'] = title
+                        if url:
+                            candidate['url'] = url
+                        if place_id:
+                            candidate['place_id'] = place_id
+                        if item.get('rating'):
+                            candidate['rating'] = item['rating']
+                        if item.get('price'):
+                            candidate['price'] = item['price']
+                        if item.get('address'):
+                            candidate['address'] = item['address']
                         if item.get('thumbnail'):
                             candidate['thumbnail'] = item['thumbnail']
                         candidates.append(candidate)
