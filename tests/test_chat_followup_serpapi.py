@@ -5,6 +5,7 @@ import types
 import importlib.util
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -199,3 +200,127 @@ def test_extract_followup_data_preserves_serpapi_yelp_candidates():
     assert yelp["place_id"] == "pup-cup-coffee-nyc"
     assert len(yelp["candidates"]) == 2
     assert yelp["candidates"][1]["place_id"] == "dog-park-cafe-nyc"
+
+
+def test_extract_followup_data_accepts_list_shaped_yelp_payload():
+    handler = _handler()
+    data = {
+        "serpapi_yelp_search": [
+            {
+                "title": "Pup Cup Coffee",
+                "url": "https://www.yelp.com/biz/pup-cup-coffee",
+                "place_id": "pup-cup-coffee-nyc",
+                "rating": 4.7,
+            },
+            {
+                "title": "Dog Park Cafe",
+                "url": "https://www.yelp.com/biz/dog-park-cafe",
+                "place_id": "dog-park-cafe-nyc",
+                "rating": 4.5,
+            },
+        ]
+    }
+    result = handler._extract_followup_data(data)
+    yelp = result["serpapi_yelp_search"]
+    assert yelp["results_count"] == 2
+    assert len(yelp["candidates"]) == 2
+    assert yelp["candidates"][0]["place_id"] == "pup-cup-coffee-nyc"
+
+
+def test_extract_followup_data_yelp_candidates_respect_evidence_max():
+    handler = _handler()
+    results = [
+        {"title": f"Place {i}", "url": f"https://yelp.com/biz/p{i}", "place_id": f"p{i}"}
+        for i in range(15)
+    ]
+    data = {"serpapi_yelp_search": {"find_desc": "Coffee", "find_loc": "NYC", "results": results}}
+    compact = handler._extract_followup_data(data)
+    assert len(compact["serpapi_yelp_search"]["candidates"]) == 5
+    evidence = handler._extract_followup_data(data, max_candidates=12)
+    assert len(evidence["serpapi_yelp_search"]["candidates"]) == 12
+    assert evidence["serpapi_yelp_search"]["results_count"] == 15
+
+
+def test_compute_effective_evidence_tool_turn():
+    handler = _handler()
+    save_data = {
+        "serpapi_yelp_search": {
+            "find_desc": "pizza",
+            "find_loc": "Hillsboro, OR",
+            "results": [
+                {"title": "A", "url": "https://yelp.com/a", "place_id": "a"},
+            ],
+        },
+    }
+    ev = handler._compute_effective_evidence(
+        "conv1", save_data, ["serpapi_yelp_search"], {}, "msg-web-1", "find pizza"
+    )
+    assert ev["v"] == 1
+    assert ev["derived_from_prior"] is False
+    assert ev["source_message_ids"] == ["msg-web-1"]
+    assert "serpapi_yelp_search" in ev["supporting_tool_results"]
+
+
+def test_compute_effective_evidence_inherits_when_short_refinement():
+    handler = _handler()
+    prior = {
+        "v": 1,
+        "supporting_tools_used": ["serpapi_yelp_search"],
+        "supporting_tool_results": {"serpapi_yelp_search": {"results_count": 3}},
+        "source_message_ids": ["root-id"],
+        "derived_from_prior": False,
+    }
+    with patch.object(handler, "_find_nearest_prior_effective_evidence", return_value=prior):
+        ev = handler._compute_effective_evidence("c", {}, [], {}, "newmid", "sorry meant top 10")
+    assert ev["derived_from_prior"] is True
+    assert ev["source_message_ids"] == ["root-id"]
+
+
+def test_compute_effective_evidence_skips_inherit_on_long_query():
+    handler = _handler()
+    prior = {
+        "v": 1,
+        "supporting_tools_used": ["serpapi_yelp_search"],
+        "supporting_tool_results": {},
+        "source_message_ids": ["root-id"],
+        "derived_from_prior": False,
+    }
+    with patch.object(handler, "_find_nearest_prior_effective_evidence", return_value=prior):
+        ev = handler._compute_effective_evidence("c", {}, [], {}, "newmid", "x" * 900)
+    assert ev is None
+
+
+def test_compute_effective_evidence_skips_inherit_on_unrelated_short_query():
+    handler = _handler()
+    prior = {
+        "v": 1,
+        "supporting_tools_used": ["serpapi_yelp_search"],
+        "supporting_tool_results": {"serpapi_yelp_search": {"results_count": 3}},
+        "source_message_ids": ["root-id"],
+        "derived_from_prior": False,
+    }
+    with patch.object(handler, "_find_nearest_prior_effective_evidence", return_value=prior):
+        ev = handler._compute_effective_evidence("c", {}, [], {}, "newmid", "what's the weather?")
+    assert ev is None
+
+
+def test_compute_effective_evidence_native_tools_only_creates_fresh_epoch():
+    """Provider-native tools: tools_used empty but server_side_tools must rebuild, not inherit."""
+    handler = _handler()
+    save_data = {"raw_llm_response": "...", "server_side_tools": {"web_search": 1}}
+    prior = {
+        "v": 1,
+        "supporting_tools_used": ["serpapi_yelp_search"],
+        "supporting_tool_results": {"serpapi_yelp_search": {"results_count": 99}},
+        "source_message_ids": ["stale"],
+        "derived_from_prior": False,
+    }
+    with patch.object(handler, "_find_nearest_prior_effective_evidence", return_value=prior):
+        ev = handler._compute_effective_evidence(
+            "c", save_data, [], {"web_search": 1}, "native-msg-1", "search the web for foo"
+        )
+    assert ev is not None
+    assert ev["derived_from_prior"] is False
+    assert "native:web_search" in ev["supporting_tools_used"]
+    assert ev["source_message_ids"] == ["native-msg-1"]
+    assert "native_tools" in ev["supporting_tool_results"]

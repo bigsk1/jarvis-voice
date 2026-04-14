@@ -87,7 +87,7 @@ This is a better fit than "self-repair tool" because it is not just a tool call.
 
 ## Current Status
 
-As of April 3, 2026, Completion Guard is implemented and actively in use in Jarvis Web, with a clearer distinction between:
+As of April 14, 2026, Completion Guard is implemented and in use in Jarvis Web, with a clearer distinction between:
 
 - accepted answers
 - wording-only tightening
@@ -100,10 +100,12 @@ Implemented now:
 - Manual mode with inline `Completed correctly? Yes / No` card
 - Auto mode with a background evaluator that scores the raw final answer
 - Configurable auto-repair threshold (`JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD`) with Web UI override support
-- Auto mode now uses a structured audit plus deterministic repair scoring instead of trusting a bare self-reported confidence value
-- Auto mode now supports `tighten_only` for answers that are basically correct but only need wording/scope cleanup
-- Visible repaired answers now require a real evidence delta or tool-path delta, not just a rewrite
-- No-tool rewrite repairs now default to `tighten_only` unless the repaired answer clearly cites a direct source or verified action
+- Auto mode uses a structured audit plus deterministic repair scoring instead of trusting a bare self-reported confidence value
+- When the auto evaluator JSON returns **`recommended_action: "tighten_only"`** (minor hedging/wording only), the turn settles as **`auto_accepted`**—no repair run, and the persisted status is not labeled `tighten_only` (see `_completion_guard.evaluator_recommended_action`). The name **`tighten_only`** is reserved for **post-repair** settlement when a repair actually ran but did not change tools/evidence materially
+- **Effective evidence** (`data['_effective_evidence']` on saved assistant messages): structured grounding for the auto-evaluator, including follow-ups that reuse prior tool results without a new skill call; see [Effective evidence (grounding bundle)](#effective-evidence-grounding-bundle)
+- **Provider-native** (`server_side_tools`) usage counts as a fresh evidence epoch for that bundle (not only `tools_used`)
+- **Repair classification**: a repair pass is classified as substantive `repaired` only when `operational_correction` is true (tool-path delta and/or evidence delta). **Similar-answer rule**: if the tool path did not change and the repaired answer is very similar to the original (see below), the outcome is forced to **`tighten_only`** even when JSON `data` churn would otherwise make `evidence_delta` look true
+- No-tool rewrite repairs still default to `tighten_only` unless the repaired answer clearly cites a direct source or verified action
 - One bounded repair pass when the user clicks `No`
 - Repair pass uses:
   - original query
@@ -139,6 +141,25 @@ Not implemented yet:
 - true same-in-flight orchestrator continuation
 - persistence of unanswered manual cards across refresh
 - dashboard/reporting for Completion Guard outcomes
+
+## Effective evidence (grounding bundle)
+
+Jarvis’s normal chat turn sees **recent conversation history** plus compact **`tool_results`** extracted in `jarvis-web/server/sockets/chat.py` (`_extract_followup_data`). Completion Guard’s auto-evaluator, by default, sees a **single turn record** (query, raw response, speech, tools, `data`). Without alignment, a no-tool follow-up that reuses Yelp or search results can look like “zero grounding” to the judge.
+
+**Effective evidence** fixes that on the **saved message**:
+
+- Stored at `data['_effective_evidence']` on each assistant message (version field `v: 1`).
+- **Tool turns** (non-empty `tools_used` or provider-native tools in `server_side_tools`): rebuild from structured `data` using `_extract_followup_data` with a higher candidate cap for ranked lists than the default follow-up context (e.g. top-N follow-ups). Native tools are recorded under `supporting_tool_results.native_tools` (raw `server_side_tools` plus normalized names) because that key is excluded from generic extraction.
+- **No-tool turns**: may **inherit** the nearest prior bundle from earlier assistant messages (bounded backscan) only when a **refinement heuristic** matches (e.g. “sorry”, “top 5”, “those results”). Short unrelated questions do **not** inherit, so stale Yelp/Amazon grounding is not copied onto a new task.
+- **Follow-up extraction** accepts **list-shaped** tool payloads (list of dicts) by normalizing to `results[]` without a per-tool allowlist.
+
+The auto-eval prompt includes:
+
+- A dedicated **Effective evidence** JSON block (truncated).
+- **Structured result data** (full `data`, truncated).
+- Rules that **native provider tools** are real usage; **`supporting_tool_results`** may ground an answer even when `tools_used` is empty on a refinement turn.
+
+Implementation reference: `ChatHandler._compute_effective_evidence`, `_extract_followup_data`, `_evaluate_completion_guard_auto` in `jarvis-web/server/sockets/chat.py`.
 
 ## Why Same Runtime Matters
 
@@ -291,20 +312,61 @@ When feedback finally runs, it receives Completion Guard context so it can:
 
 ### `auto_accepted`
 
-- Auto evaluator reviewed the answer and found no meaningful issue
+- Auto evaluator reviewed the answer and **no repair pass was started** (e.g. `recommended_action: accept`, or `repair_score` below threshold, or judge JSON **`tighten_only`** which settles here without rewriting)
 - No repair required
+- If the judge JSON says **`recommended_action: "tighten_only"`** (wording/hedging only), the stored status is still **`auto_accepted`**; the full evaluation lives in **`_completion_guard.auto_evaluation`**, and **`_completion_guard.evaluator_recommended_action`** is **`tighten_only`** for analytics. The Web UI does not show a “Tightened only” card for this case (same as other `auto_accepted` turns)
 
 ### `tighten_only`
 
-- The answer is basically correct
-- Completion Guard saw minor scope, hedging, or wording cleanup opportunities
-- No visible repaired answer should be surfaced just for that
-- This should not be treated as a new operational lesson by itself
-- In auto mode this still means the evaluator ran, but it does not cross into a user-visible repair flow
+Use this label **only** when a **repair pass actually ran** and the outcome was rewording / no operational delta:
 
+- Unlike **`repaired`**, **`tighten_only`** does not add a second assistant message for the repair content (`chat.py`: `if not tighten_only:` before `add_message` for the repair response)
+- This should not be treated as a new operational lesson by itself
+
+Settlement is **`tighten_only`** when the repair did **not** materially change tools or evidence (including the **similar-answer rule**):
+
+- **`ChatHandler._completion_guard_tighten_instead_of_substantive_repair`**: if `tool_path_delta` is false and **answer similarity** is at or above **`_CG_TIGHTEN_ONLY_ANSWER_SIMILARITY_THRESHOLD` (0.88)**, `operational_correction` is cleared so the run is **not** labeled **`repaired`**. This avoids treating JSON `data` churn as substantive evidence when the prose and tool path are effectively the same.
+
+The auto-evaluator **prompt** still asks the judge to prefer JSON **`tighten_only`** over **`repair_required`** for disclaimer/hedging-only gaps; that maps to **`auto_accepted`** at settlement, not to the **`tighten_only`** status above.
+
+### `repaired`
+
+- A repair pass found a materially better answer
+- The repaired result used new evidence, a meaningfully different tool path, or a verified action/artifact update (see `_analyze_completion_guard_delta`: `operational_correction` = `tool_path_delta` or `evidence_delta`, subject to the similar-answer override above)
+- This is the case reflections should learn from as a first-pass correction opportunity
+
+### `unresolved`
+
+- A repair pass ran but could not reliably finish the task
+
+### `ticket_created`
+
+- Unresolved after repair, so Jarvis logged a follow-up ticket
+
+### `cancelled`
+
+- Repair was started but stopped before settlement
+
+```mermaid
+
+Auto-eval JSON returned + parsed
+│
+├─ Settled as auto_accepted (e.g. judge hedging-only path, or repair_score < 0.89)
+│    → NO repair, threshold / JSON text similarity not used for “second message”
+│
+└─ Else repair_score >= 0.89
+     → Run ONE repair pass
+          │
+          └─ After repair, classify delta:
+               - tool_path_delta / evidence_delta / answer_similarity
+               → repaired vs tighten_only (second assistant message or not)
+```
+              
 ## Evaluator Provider Notes
 
 Completion Guard auto evaluation can run on a different provider/model than the main response model.
+
+The evaluator and synthesis helpers use **`record.get('mode', 'cloud')`** explicitly for provider selection, model overrides, and **location context** (`_get_completion_guard_location_context`), so the judge does not rely on an undefined `mode` variable.
 
 Current precedence:
 
@@ -330,24 +392,6 @@ What Jarvis does now for Completion Guard eval:
 - keeps `message.thinking` fallback only as a defensive compatibility path, not as the primary design target
 
 The main fix is the larger token budget. The `message.thinking` fallback is there for edge cases and debugging if a cloud model still returns empty `message.content`.
-
-### `repaired`
-
-- A repair pass found a materially better answer
-- The repaired result used new evidence, a meaningfully different tool path, or a verified action/artifact update
-- This is the case reflections should learn from as a first-pass correction opportunity
-
-### `unresolved`
-
-- A repair pass ran but could not reliably finish the task
-
-### `ticket_created`
-
-- Unresolved after repair, so Jarvis logged a follow-up ticket
-
-### `cancelled`
-
-- Repair was started but stopped before settlement
 
 ## Signals For "Not Complete"
 
@@ -913,6 +957,7 @@ That state object is what allows same-runtime continuation instead of a syntheti
 - [x] Score risk of incomplete/incorrect result before finalizing
 - [x] Trigger repair automatically above a threshold
 - [x] Feed accepted/repaired/ticketed outcomes into intelligence analysis
+- [x] Effective evidence bundle + native-tool epoch + similar-answer tighten classification (see [Effective evidence](#effective-evidence-grounding-bundle))
 - [ ] Persist unanswered manual Completion Guard prompts across refresh
 - [ ] Add issue clustering and recurring-failure reporting
 

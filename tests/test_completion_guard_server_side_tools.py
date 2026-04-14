@@ -65,6 +65,30 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         self.assertEqual(context["combined_tools_used"], ["native:x_search"])
         self.assertEqual(context["original_response"]["tools_used"], ["native:x_search"])
 
+    def test_compute_effective_evidence_rebuilds_for_native_server_side_tools(self):
+        handler = ChatHandler.__new__(ChatHandler)
+
+        ev = handler._compute_effective_evidence(
+            "conv1",
+            {"raw_llm_response": "Found results with native search."},
+            [],
+            {"SERVER_SIDE_TOOL_WEB_SEARCH": 1, "SERVER_SIDE_TOOL_VIEW_IMAGE": 1},
+            "msg-web-1",
+            "find restaurants near me",
+        )
+
+        self.assertEqual(
+            ev["supporting_tools_used"],
+            ["native:web_search", "native:view_image"],
+        )
+        native = ev["supporting_tool_results"]["native_tools"]
+        self.assertEqual(native["server_side_tools"]["SERVER_SIDE_TOOL_WEB_SEARCH"], 1)
+        self.assertEqual(
+            native["normalized_tools"],
+            ["native:web_search", "native:view_image"],
+        )
+        self.assertFalse(ev["derived_from_prior"])
+
     def test_completion_guard_eval_prompt_includes_default_location_context(self):
         handler = ChatHandler.__new__(ChatHandler)
         captured = {}
@@ -109,6 +133,31 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         self.assertIn("Configured default location:\nHillsboro, Oregon", captured["prompt"])
         self.assertIn('location-relative question like "near me"', captured["prompt"])
         self.assertIn("allowed fallback", captured["prompt"])
+
+    def test_tighten_instead_of_substantive_repair_when_same_tools_and_similar_answer(self):
+        delta = {
+            "operational_correction": True,
+            "tool_path_delta": False,
+            "evidence_delta": True,
+            "answer_similarity": 0.91,
+        }
+        self.assertTrue(ChatHandler._completion_guard_tighten_instead_of_substantive_repair(delta))
+
+    def test_substantive_repair_when_tool_path_changes(self):
+        delta = {
+            "operational_correction": True,
+            "tool_path_delta": True,
+            "answer_similarity": 0.95,
+        }
+        self.assertFalse(ChatHandler._completion_guard_tighten_instead_of_substantive_repair(delta))
+
+    def test_substantive_repair_when_answer_diverges(self):
+        delta = {
+            "operational_correction": True,
+            "tool_path_delta": False,
+            "answer_similarity": 0.5,
+        }
+        self.assertFalse(ChatHandler._completion_guard_tighten_instead_of_substantive_repair(delta))
 
 
 if __name__ == "__main__":

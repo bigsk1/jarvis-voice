@@ -1432,7 +1432,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Alerts & Weather Watch** — `create_alert` as a first-class tool; Memory UI **Alerts** tab; **Weather Watch** workflow (`/weather_watch`, `/garden_watch`) with Canvas report and condition-based alerts (`create_alert`)
 - ✅ **TTS stack** — Central `lib/tts_normalizer.py`; named profiles (e.g. `weather_watch`, `camera_alert`, `price_quote`, `timestamped`); `/api/voice/speak` optional `profile` parameter
 - ✅ **OpenCode** — Respects `OPENCODE_PROVIDER` / `OPENCODE_MODEL`; optional memory via `OPENCODE_INCLUDE_MEMORY`; Completion Guard excludes `opencode`; stronger summaries and “Open session” links in Web UI tool cards
-- ✅ **Completion Guard refinements** — AI Config overrides for guard eval provider/model; `tighten_only` auto outcome; clearer evaluator provider chain; provider formatter errors don’t leak raw gRPC/safety strings
+- ✅ **Completion Guard refinements** — AI Config overrides for guard eval provider/model; judge `tighten_only` (no repair) settles as `auto_accepted`; post-repair wording-only uses status `tighten_only`; clearer evaluator provider chain; provider formatter errors don’t leak raw gRPC/safety strings
 
 **Completed (March 2026):**
 - ✅ **Completion Guard** — Post-answer “was this actually done?” control loop (Jarvis Web) ⭐ MAJOR

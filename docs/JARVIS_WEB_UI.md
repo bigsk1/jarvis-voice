@@ -153,7 +153,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Conversation export metadata** | ✅ | Markdown export includes Completion Guard status/note/ticket data when present |
 | **Prompt/runtime repair context** | ✅ | Repair uses original query, raw LLM response, tool outputs, and user note |
 | **Auto mode evaluator** | ✅ | Background evaluator can auto-trigger repair using the raw final answer |
-| **`tighten_only` outcome** | ✅ | Auto mode can settle wording-only cleanup without surfacing a visible repaired answer |
+| **`tighten_only` outcome** | ✅ | After a **repair** pass, wording-only settlement without a second assistant message; judge JSON `tighten_only` (no repair) settles as `auto_accepted` |
 | **Visible repair delta-gating** | ✅ | Separate repaired answers now require a real evidence or tool-path delta |
 | **Repair cancel support** | ✅ | Stop button now cleanly cancels an in-flight repair pass |
 | **Auto threshold override** | ✅ | AI Config exposes per-mode threshold override for auto mode |

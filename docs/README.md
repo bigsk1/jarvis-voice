@@ -443,8 +443,8 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 **2026-04-02:**
 - ✅ **Completion Guard: tighten-only settlement**
-  - Added `tighten_only` as a real auto-mode outcome for answers that are basically correct but only need wording, scope, or hedging cleanup
-  - Auto mode now avoids surfacing a visible repaired answer unless the repair introduced a real evidence delta or tool-path delta
+  - `tighten_only` names **post-repair** wording-only settlement; judge JSON `recommended_action: tighten_only` (no repair run) is stored as **`auto_accepted`** with `evaluator_recommended_action` for clarity
+  - Auto mode avoids surfacing a visible repaired answer unless the repair introduced a real evidence delta or tool-path delta
   - No-tool rewrite repairs now default to `tighten_only` unless the repaired answer explicitly cites a direct source or verified action
 - ✅ **Completion Guard: evaluator/provider split**
   - Auto evaluation now clearly follows its own provider/model path: `JARVIS_COMPLETION_GUARD_EVAL_PROVIDER` → `FEEDBACK_PROVIDER` → main provider

@@ -10,6 +10,8 @@ import traceback
 import json
 import ast
 import re
+import copy
+from urllib.parse import urlparse
 from difflib import SequenceMatcher
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +25,26 @@ sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 
 from model_prompt_overrides import apply_prompt_override_sections, load_model_prompt_override
 from model_catalog import get_provider_fallback_model
+
+# Follow-up context: keep orchestrator history compact.
+_FOLLOWUP_DEFAULT_MAX_CANDIDATES = 5
+# Completion Guard / effective evidence: allow ranking follow-ups without re-querying.
+_FOLLOWUP_EVIDENCE_MAX_CANDIDATES = 12
+# Repair pass: same tools + very similar prose → tighten_only (hedging), not "new evidence".
+_CG_TIGHTEN_ONLY_ANSWER_SIMILARITY_THRESHOLD = 0.88
+
+_FOLLOWUP_DATA_SKIP_KEYS = frozenset({
+    'usage',
+    'raw_llm_response',
+    'vision_analysis',
+    '_error',
+    '_effective_evidence',
+    '_web_message_id',
+    '_completion_guard',
+    'speech',
+    'server_side_tools',
+    'experience_id',
+})
 
 
 class ChatHandler:
@@ -420,6 +442,22 @@ class ChatHandler:
         }
 
     @staticmethod
+    def _completion_guard_tighten_instead_of_substantive_repair(delta: dict) -> bool:
+        """
+        True when a 'repair' run did not change the tool path and the answer text is
+        nearly the same—treat as tighten_only (wording/hedging), not a better answer.
+        """
+        if not delta.get('operational_correction'):
+            return False
+        if delta.get('tool_path_delta'):
+            return False
+        try:
+            asim = float(delta.get('answer_similarity') or 0)
+        except (TypeError, ValueError):
+            asim = 0.0
+        return asim >= _CG_TIGHTEN_ONLY_ANSWER_SIMILARITY_THRESHOLD
+
+    @staticmethod
     def _repair_has_explicit_source_or_verified_action(result: dict) -> bool:
         """
         Allow a no-tool repair to count as substantive only when it clearly cites a
@@ -778,9 +816,9 @@ Location handling:
 
     def _evaluate_completion_guard_auto(self, record: dict) -> dict:
         """Evaluate whether the finished answer should auto-trigger a repair pass."""
-        mode = record.get('mode', 'cloud')
+        record_mode = record.get('mode', 'cloud')
         provider_name, model_name, provider = self._create_completion_guard_eval_provider(
-            mode=mode,
+            mode=record_mode,
             completion_guard_config=record.get('completion_guard'),
             fallback_provider=record.get('provider'),
             fallback_model=record.get('model')
@@ -808,6 +846,7 @@ Audit rules:
 - Do not penalize voice-style brevity by itself
 - Focus on support, completeness, contradictions, and missing required outputs
 - Use recommended_action=tighten_only when the answer mostly works and only needs softer wording, tighter scope, or minor hedging
+- Prefer tighten_only over repair_required when the gap is disclaimers, qualification, or uncertainty wording—not missing retrieval or tool calls
 - Use recommended_action=repair_required only when a follow-up pass should materially improve the evidence or tool path
 - Do not request a repair only because the answer could be phrased more cleanly
 - If the answer missed evidence already present in tool data, call that out
@@ -829,7 +868,7 @@ General failure type vocabulary:
 User request:
 {record.get('query', '')}
 
-{self._get_completion_guard_location_context(mode)}
+{self._get_completion_guard_location_context(record_mode)}
 
 Raw LLM response:
 {record.get('raw_llm_response', '')}
@@ -846,6 +885,11 @@ Native provider tools used:
 Available tools:
 {', '.join(record.get('available_tools', [])) or '(not captured)'}
 
+Effective evidence (structured grounding; may include prior turns; may be empty):
+```json
+{self._truncate_for_prompt((record.get('data') or {}).get('_effective_evidence') or {}, max_chars=4500)}
+```
+
 Structured result data:
 ```json
 {self._truncate_for_prompt(record.get('data', {}), max_chars=7000)}
@@ -854,12 +898,13 @@ Structured result data:
 Important:
 - Native provider tools listed above are REAL tool usage. Do not call this a zero-tool answer if native provider tools were used.
 - If native provider search returned sources/URLs, treat that as valid external evidence unless the answer still overclaims beyond what was returned.
+- If effective evidence is non-empty, treat supporting_tool_results as valid grounding for this answer even when tools_used is empty (e.g. refinements like "top 10" using prior tool results).
 """
 
         override = load_model_prompt_override(
             provider=provider_name,
             model=model_name,
-            mode=mode,
+            mode=record_mode,
         )
         system_prompt = apply_prompt_override_sections(
             (
@@ -1047,6 +1092,7 @@ Important:
         strategy: dict
     ) -> str | None:
         """Build a final answer from returned tool data without calling more tools."""
+        record_mode = record.get('mode', 'cloud')
         direct_answer = self._extract_direct_answer_from_tool_data(record, result)
         if direct_answer:
             return direct_answer
@@ -1065,7 +1111,7 @@ If the tool output is still insufficient, reply with exactly: UNRESOLVED
 Original user request:
 {record.get('query', '')}
 
-{self._get_completion_guard_location_context(mode)}
+{self._get_completion_guard_location_context(record_mode)}
 
 User completion note:
 {note or '(none)'}
@@ -1260,25 +1306,30 @@ Returned tool data:
             from ..services.conversation_store import get_conversation_store
             store = get_conversation_store()
 
+            # Judge "tighten_only" = minor wording/hedging issues only; no repair run.
+            # Settle as auto_accepted so we do not label the turn "tighten_only" when nothing
+            # was rewritten. Real tighten_only is reserved for post-repair settlement.
             if recommended_action == 'tighten_only':
-                record['status'] = 'tighten_only'
+                record['status'] = 'auto_accepted'
                 store.update_message_data_by_web_message_id(
                     conversation_id,
                     message_id,
                     {
                         '_completion_guard': {
-                            'status': 'tighten_only',
+                            'status': 'auto_accepted',
                             'auto_evaluation': evaluation,
+                            'evaluator_recommended_action': 'tighten_only',
                             'evaluated_at': datetime.now().isoformat()
                         }
                     }
                 )
                 self._update_completion_guard_experience(
                     record,
-                    'tighten_only',
+                    'auto_accepted',
                     note=note,
                     extra={
                         'auto_evaluation': evaluation,
+                        'evaluator_recommended_action': 'tighten_only',
                         'operational_correction': False
                     }
                 )
@@ -1289,7 +1340,7 @@ Returned tool data:
                     record,
                     self._build_feedback_result_from_record(record),
                     record.get('tools_used', []),
-                    'tighten_only'
+                    'auto_accepted'
                 )
                 return
 
@@ -1603,6 +1654,11 @@ Previous structured data:
                 delta['operational_correction'] = False
                 delta['no_tool_rewrite_defaulted'] = True
 
+            if self._completion_guard_tighten_instead_of_substantive_repair(delta):
+                operational_correction = False
+                delta['operational_correction'] = False
+                delta['tighten_only_similar_answer'] = True
+
             # Require an explicit repaired marker. Missing markers should not be treated as success.
             repaired = result.get('ok', True) and repair_status == 'repaired'
             tighten_only = repaired and not operational_correction
@@ -1645,6 +1701,16 @@ Previous structured data:
                 )
                 if prepared_speech:
                     save_data['speech'] = prepared_speech
+                ev = self._compute_effective_evidence(
+                    conversation_id,
+                    save_data,
+                    result.get('tools_used', []),
+                    result.get('server_side_tools', {}),
+                    repair_message_id,
+                    record.get('query', '') or '',
+                )
+                if ev:
+                    save_data['_effective_evidence'] = ev
                 store.add_message(
                     conversation_id,
                     'assistant',
@@ -2545,7 +2611,7 @@ Previous structured data:
             print(f"[CHAT] Error getting conversation context: {e}")
             return []
     
-    def _extract_followup_data(self, data: dict) -> dict:
+    def _extract_followup_data(self, data: dict, max_candidates: int | None = None) -> dict:
         """
         Extract key data from tool results that enables follow-up actions.
         Returns a dict of tool_name -> relevant fields for each tool result.
@@ -2558,7 +2624,12 @@ Previous structured data:
         
         Only extracts identifiers and references, not content.
         The LLM already sees the speech/content summary in the message text.
+        
+        max_candidates: cap for ranked list tools (default FOLLOWUP_DEFAULT; use
+        FOLLOWUP_EVIDENCE_MAX for Completion Guard grounding bundles).
         """
+        if max_candidates is None:
+            max_candidates = _FOLLOWUP_DEFAULT_MAX_CANDIDATES
         followup = {}
         
         # @TOOL_CONFIG: follow-up data extraction — fields extracted from tool results for LLM context
@@ -2601,6 +2672,16 @@ Previous structured data:
         }
         
         for key, value in data.items():
+            if key in _FOLLOWUP_DATA_SKIP_KEYS:
+                continue
+            # List-shaped tool payloads: normalize to dict with results[] (no per-tool registry).
+            if isinstance(value, list):
+                if not value:
+                    continue
+                if all(isinstance(x, dict) for x in value):
+                    value = {'results': value}
+                else:
+                    continue
             if not isinstance(value, dict):
                 continue
             # Auto-stashed web uploads are also stored under top-level "stash".
@@ -2609,9 +2690,6 @@ Previous structured data:
             if key == 'stash' and value.get('stash_ref') and not any(
                 marker in value for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name')
             ):
-                continue
-            # Skip keys that aren't tool results
-            if key in ('usage', 'raw_llm_response', 'vision_analysis', '_error'):
                 continue
             
             extracted = {}
@@ -2649,6 +2727,7 @@ Previous structured data:
             if key == 'serpapi_search':
                 results = value.get('results') or value.get('top_results') or []
                 if isinstance(results, list) and results:
+                    extracted['results_count'] = value.get('results_count', len(results))
                     first = results[0] if isinstance(results[0], dict) else {}
                     if isinstance(first, dict):
                         if first.get('title'):
@@ -2667,7 +2746,7 @@ Previous structured data:
                     # "tell me more about the Aura frame" can resolve against
                     # prior candidates instead of guessing a new ASIN.
                     candidates = []
-                    for item in results[:5]:
+                    for item in results[:max_candidates]:
                         if not isinstance(item, dict):
                             continue
                         title = item.get('title')
@@ -2697,6 +2776,7 @@ Previous structured data:
             if key == 'serpapi_youtube_search':
                 results = value.get('results') or value.get('top_results') or []
                 if isinstance(results, list) and results:
+                    extracted['results_count'] = value.get('results_count', len(results))
                     first = results[0] if isinstance(results[0], dict) else {}
                     if isinstance(first, dict):
                         if first.get('title'):
@@ -2706,7 +2786,7 @@ Previous structured data:
                         if first.get('thumbnail'):
                             extracted['thumbnail'] = first['thumbnail']
                     candidates = []
-                    for item in results[:5]:
+                    for item in results[:max_candidates]:
                         if not isinstance(item, dict):
                             continue
                         title = item.get('title')
@@ -2734,6 +2814,7 @@ Previous structured data:
             if key == 'serpapi_yelp_search':
                 results = value.get('results') or value.get('top_results') or []
                 if isinstance(results, list) and results:
+                    extracted['results_count'] = value.get('results_count', len(results))
                     first = results[0] if isinstance(results[0], dict) else {}
                     if isinstance(first, dict):
                         if first.get('title'):
@@ -2751,7 +2832,7 @@ Previous structured data:
                         if first.get('thumbnail'):
                             extracted['thumbnail'] = first['thumbnail']
                     candidates = []
-                    for item in results[:5]:
+                    for item in results[:max_candidates]:
                         if not isinstance(item, dict):
                             continue
                         title = item.get('title')
@@ -2775,6 +2856,36 @@ Previous structured data:
                         if item.get('thumbnail'):
                             candidate['thumbnail'] = item['thumbnail']
                         candidates.append(candidate)
+                    if candidates:
+                        extracted['candidates'] = candidates
+
+            # Generic results[] / items[] for tools without explicit branches above
+            if (
+                not extracted.get('candidates')
+                and key not in ('serpapi_search', 'serpapi_youtube_search', 'serpapi_yelp_search')
+            ):
+                results = value.get('results') or value.get('top_results') or value.get('items')
+                if isinstance(results, list) and results:
+                    first = results[0] if isinstance(results[0], dict) else {}
+                    if isinstance(first, dict):
+                        if first.get('title'):
+                            extracted['title'] = first['title']
+                        if first.get('url') and 'top_url' not in extracted:
+                            extracted['top_url'] = first['url']
+                        if first.get('name') and 'name' not in extracted:
+                            extracted['name'] = first['name']
+                    extracted['results_count'] = value.get('results_count', len(results))
+                    generic_keys = (
+                        'title', 'name', 'url', 'asin', 'place_id', 'video_id',
+                        'id', 'rating', 'price', 'thumbnail', 'address', 'reviews',
+                    )
+                    candidates = []
+                    for item in results[:max_candidates]:
+                        if not isinstance(item, dict):
+                            continue
+                        candidate = {k: item[k] for k in generic_keys if item.get(k)}
+                        if candidate:
+                            candidates.append(candidate)
                     if candidates:
                         extracted['candidates'] = candidates
             
@@ -2823,6 +2934,271 @@ Previous structured data:
             followup['error'] = error_info
         
         return followup if followup else None
+
+    @staticmethod
+    def _data_without_effective_evidence(data: dict) -> dict:
+        return {k: v for k, v in data.items() if k != '_effective_evidence'}
+
+    @staticmethod
+    def _should_inherit_effective_evidence(user_query: str) -> bool:
+        """Heuristic: short refinements and follow-ups inherit prior evidence; long new tasks do not."""
+        q = (user_query or '').strip()
+        if not q:
+            return False
+        if len(q) > 800:
+            return False
+        ql = q.lower()
+        phrase_needles = (
+            'sorry', 'meant', 'instead', 'rank', 'summarize', 'summarise',
+            'expand', 'shorter', 'longer', 'clarify', 'same ', 'previous ',
+            'the list', 'that list', 'earlier', 'you mentioned', 'above',
+            'more detail', 'more about',
+        )
+        if any(n in ql for n in phrase_needles):
+            return True
+
+        refinement_patterns = (
+            r'\b(top\s+\d+|top-\d+|first\s+\d+|next\s+\d+|list\s+\d+|show\s+me\s+\d+)\b',
+            r'\b(first|second|third|fourth|fifth|last)\s+(one|two|three|few|result|results|item|items)\b',
+            r'\b(those|these|them|that one|this one|those ones|these ones)\b',
+            r'^(and|also|what about|how about)\b',
+        )
+        return any(re.search(pattern, ql) for pattern in refinement_patterns)
+
+    def _find_nearest_prior_effective_evidence(self, conversation_id: str) -> dict | None:
+        """Walk back assistant messages before the latest user message; return first v1 bundle."""
+        from ..services.conversation_store import get_conversation_store
+        store = get_conversation_store()
+        conv = store.get_conversation(conversation_id)
+        if not conv:
+            return None
+        msgs = conv.get('messages') or []
+        last_user_idx = None
+        for i in range(len(msgs) - 1, -1, -1):
+            if msgs[i].get('role') == 'user':
+                last_user_idx = i
+                break
+        if last_user_idx is None:
+            return None
+        assistant_hops = 0
+        for j in range(last_user_idx - 1, -1, -1):
+            if msgs[j].get('role') != 'assistant':
+                continue
+            assistant_hops += 1
+            if assistant_hops > 8:
+                break
+            mdata = msgs[j].get('data') or {}
+            ev = mdata.get('_effective_evidence')
+            if isinstance(ev, dict) and ev.get('v') == 1:
+                return ev
+        return None
+
+    # TODO: Move to serpapi_yelp_search tool to make it more robust and easier to understand.
+    @staticmethod
+    def _requested_ranked_result_count(user_query: str, default: int = 5, max_count: int = 10) -> int:
+        """Infer how many ranked items the user wants for list-style result answers."""
+        q = (user_query or "").strip().lower()
+        if not q:
+            return default
+
+        match = re.search(r'\b(?:top|first|next|list|show me)\s+(\d{1,2})\b', q)
+        if match:
+            try:
+                return max(1, min(int(match.group(1)), max_count))
+            except Exception:
+                return default
+
+        if any(token in q for token in ("places", "restaurants", "options", "results", "spots", "picks")):
+            return default
+        return 1
+
+    @staticmethod
+    def _infer_yelp_location_label(url: str | None) -> str | None:
+        """Best-effort location label from Yelp business URLs like /biz/foo-hillsboro or /biz/bar-beaverton-2."""
+        if not url or not isinstance(url, str):
+            return None
+        try:
+            slug = Path(urlparse(url).path).name.lower()
+        except Exception:
+            return None
+        if not slug:
+            return None
+
+        parts = [part for part in slug.split('-') if part]
+        if parts and parts[-1].isdigit():
+            parts = parts[:-1]
+        if not parts:
+            return None
+
+        if len(parts) >= 2 and parts[-2] == 'new' and parts[-1] == 'york':
+            return 'New York'
+        return parts[-1].replace('_', ' ').title() if parts else None
+
+    def _build_grounded_yelp_answer(self, user_query: str, source_payload: dict, from_effective_evidence: bool = False) -> str | None:
+        """Build a deterministic Yelp ranking answer from actual returned candidates/evidence."""
+        if not isinstance(source_payload, dict):
+            return None
+
+        if from_effective_evidence:
+            payload = ((source_payload.get('supporting_tool_results') or {}).get('serpapi_yelp_search') or {})
+            if not isinstance(payload, dict):
+                return None
+            results = payload.get('candidates') or []
+        else:
+            payload = source_payload.get('serpapi_yelp_search') or {}
+            if not isinstance(payload, dict):
+                return None
+            results = payload.get('results') or payload.get('top_results') or []
+
+        if not isinstance(results, list) or not results:
+            return None
+
+        find_desc = payload.get('find_desc') or 'results'
+        find_loc = payload.get('find_loc') or 'the selected area'
+        total_results = payload.get('results_count') or len(results)
+        desired = self._requested_ranked_result_count(user_query, default=5, max_count=10)
+        shown = [item for item in results if isinstance(item, dict)][:desired]
+        if not shown:
+            return None
+
+        title_desc = str(find_desc).strip().title()
+        lines = [
+            f"## Top {len(shown)} {title_desc} Places Near {find_loc}",
+        ]
+
+        if from_effective_evidence:
+            lines.append(
+                f"Using the previous Yelp results already in context, here are the top {len(shown)} actual matches I can support."
+            )
+        else:
+            sort_label = payload.get('sort_by') or 'best match'
+            lines.append(
+                f"I used `serpapi_yelp_search` for \"{find_desc}\" in {find_loc} and found **{total_results} results**"
+                + (f", sorted by {sort_label}" if sort_label else "")
+                + ". Here are the top supported matches:"
+            )
+
+        nearby_labels = set()
+        root_city = str(find_loc).split(',')[0].strip().lower()
+
+        for idx, item in enumerate(shown, start=1):
+            name = item.get('title') or item.get('name')
+            url = item.get('url')
+            if not name:
+                continue
+
+            label = self._infer_yelp_location_label(url)
+            heading = f"{idx}. **{name}**"
+            if label:
+                heading += f" ({label})"
+                if label.lower() != root_city:
+                    nearby_labels.add(label)
+            lines.append("")
+            lines.append(heading)
+
+            detail_bits = []
+            if item.get('rating') is not None:
+                detail_bits.append(f"**Rating**: {item['rating']}")
+            if item.get('reviews'):
+                detail_bits.append(f"{item['reviews']} reviews")
+            if item.get('price'):
+                detail_bits.append(f"**Price**: {item['price']}")
+            if detail_bits:
+                lines.append(f"   - " + " | ".join(detail_bits))
+
+            snippet = item.get('snippet')
+            if snippet and not from_effective_evidence:
+                lines.append(f'   - **Snippet**: "{snippet}"')
+            if url:
+                lines.append(f"   - **Yelp**: [View listing]({url})")
+
+        if nearby_labels:
+            labels = ", ".join(sorted(nearby_labels))
+            lines.append("")
+            lines.append(f"Note: Yelp included nearby results outside {find_loc}, including {labels}.")
+
+        if not from_effective_evidence:
+            search_url = ((payload.get('search_metadata') or {}).get('yelp_url'))
+            if search_url:
+                lines.append("")
+                lines.append(f"Original Yelp search: [{search_url}]({search_url})")
+
+        return "\n".join(lines).strip()
+
+    def _maybe_apply_grounded_result_override(self, user_query: str, result: dict, conversation_id: str) -> None:
+        """Override freeform LLM synthesis when we can answer directly from grounded Yelp data/evidence."""
+        if not isinstance(result, dict) or not result.get('ok', True):
+            return
+
+        tools_used = list(result.get('tools_used') or [])
+        data = result.get('data') or {}
+
+        # Fresh Yelp tool run: answer directly from the real returned results.
+        if 'serpapi_yelp_search' in tools_used and isinstance(data, dict) and data.get('serpapi_yelp_search'):
+            grounded = self._build_grounded_yelp_answer(user_query, data, from_effective_evidence=False)
+            if grounded:
+                result['raw_llm_response'] = grounded
+                result['speech'] = grounded
+            return
+
+        # No-tool refinement turns: if previous evidence is Yelp-backed, use that deterministically too.
+        if tools_used:
+            return
+        if not self._should_inherit_effective_evidence(user_query):
+            return
+        prior = self._find_nearest_prior_effective_evidence(conversation_id)
+        if not prior or not isinstance(prior, dict):
+            return
+        if 'serpapi_yelp_search' not in (prior.get('supporting_tool_results') or {}):
+            return
+
+        grounded = self._build_grounded_yelp_answer(user_query, prior, from_effective_evidence=True)
+        if grounded:
+            result['raw_llm_response'] = grounded
+            result['speech'] = grounded
+
+    def _compute_effective_evidence(
+        self,
+        conversation_id: str,
+        save_data: dict,
+        tools_used: list | None,
+        server_side_tools: dict | None,
+        web_message_id: str,
+        user_query: str,
+    ) -> dict | None:
+        """
+        Structured grounding for Completion Guard: tool turns rebuild; no-tool turns may inherit.
+        Stored on assistant message data['_effective_evidence'].
+        """
+        tools_used = list(tools_used or [])
+        native_tools = list(dict.fromkeys(self._normalize_server_side_tool_names(server_side_tools)))
+        if tools_used or native_tools:
+            clean = self._data_without_effective_evidence(save_data)
+            supporting = self._extract_followup_data(
+                clean, max_candidates=_FOLLOWUP_EVIDENCE_MAX_CANDIDATES
+            ) or {}
+            if native_tools:
+                supporting['native_tools'] = {
+                    'server_side_tools': dict(server_side_tools or {}),
+                    'normalized_tools': native_tools,
+                }
+            if not supporting:
+                return None
+            return {
+                'v': 1,
+                'supporting_tools_used': list(dict.fromkeys(tools_used + native_tools)),
+                'supporting_tool_results': supporting,
+                'source_message_ids': [web_message_id],
+                'derived_from_prior': False,
+            }
+        prior = self._find_nearest_prior_effective_evidence(conversation_id)
+        if not prior:
+            return None
+        if not self._should_inherit_effective_evidence(user_query):
+            return None
+        inherited = copy.deepcopy(prior)
+        inherited['derived_from_prior'] = True
+        return inherited
     
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
@@ -3354,6 +3730,18 @@ Previous structured data:
                         args_copy = {k: v for k, v in result['tool_args'].items() if k != 'prompt'}
                         error_data['tool_args'] = {k: str(v)[:300] for k, v in args_copy.items()}
                     save_data['_error'] = error_data
+                ev = self._compute_effective_evidence(
+                    conversation_id,
+                    save_data,
+                    tools_used,
+                    result.get('server_side_tools', {}),
+                    message_id,
+                    original_user_message,
+                )
+                if ev:
+                    save_data['_effective_evidence'] = ev
+                    if isinstance(data, dict):
+                        data['_effective_evidence'] = ev
                 store.add_message(
                     conversation_id, 
                     'assistant', 
