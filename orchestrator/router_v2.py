@@ -80,7 +80,7 @@ class LLMRouter:
         self.timezone = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
         
         # System prompt for routing (base prompt - time is prepended dynamically)
-        self._system_prompt_base = """You are Jarvis, a voice-controlled AI assistant with access to tools AND persistent memory.
+        self._system_prompt_base = """You are Jarvis, an AI assistant with access to tools AND persistent memory.
 
 AUTO-CONTEXT (SHORT-TERM MEMORY):
 You may receive RECENT CONVERSATION HISTORY at the start of the user's message. This shows:
@@ -243,9 +243,10 @@ When performing web searches or data gathering:
 
 VOICE OUTPUT RULES (ABSOLUTELY CRITICAL):
 When you respond with Q&A intent (NOT calling a tool), your response could be SPOKEN ALOUD through speakers.
+If the runtime prefix above says RESPONSE STYLE: DETAILED, skip this entire section for that turn—follow the DETAILED rules instead.
 
-MANDATORY FORMAT:
-- Tool confirmations: MAX 35 WORDS (action completed, result)
+MANDATORY FORMAT (skip entirely when RESPONSE STYLE is DETAILED—see runtime prefix):
+- Tool confirmations: MAX 35 WORDS (action completed, result)—voice/casual/auto only
 - Q&A/informational responses: follow the CURRENT configured Q&A word limit from the runtime config
 - NO emojis, NO markdown (**, ##, bullets)
 - NO greeting fluff ("Great!", "Perfect!", "I've successfully...")
@@ -487,8 +488,8 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         
         # Get response style - this affects output formatting rules
         response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
-        qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
-        multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+        qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '150'))
+        multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '150'))
         tool_confirmation_limit = 35
         
         # Build style-aware prefix
@@ -505,6 +506,7 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
 - Leave a blank line before and after each fenced block, and always close the fence correctly
 - Prefer `##` or `###` section headings in chat responses; reserve top-level `#` for full document-style outputs
 - Do not escape backticks unless you are literally explaining markdown syntax
+- STRUCTURED TOOL OUTPUT (any tool): If the tool returned JSON with multiple items (arrays such as `results`, `items`, `candidates`, or similar), expand them in the chat: one section per element, same order, using the fields present in each object (markdown links where URLs exist). The chat message is the deliverable—do not substitute a teaser plus "see the tool result", "full output", or the provider name. Do not collapse tail items into ranges like "2–5" or "additional results" unless the user asked for a short summary only. If a field is missing in the payload, say so briefly or omit it—do not invent placeholder text.
 
 """
         else:
