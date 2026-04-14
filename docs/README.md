@@ -9,6 +9,7 @@
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
 - **[../config/README.md](../config/README.md)** - Configuration guide
+- **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
@@ -1014,8 +1015,8 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Tool Builder v2.0** - Network/proxy auto-fix ⭐ ENHANCED
   - Auto-detects network errors during tool verification
   - Injects proxy configuration instructions on retry
-  - Three proxy patterns: requests proxies, env vars, http_client
-  - See: `docs/TOOL_BUILDER.md`
+  - Uses `get_proxy_config()` / `http_request` patterns aligned with `docs/NETWORK_PROXY.md`
+  - See: `docs/TOOL_BUILDER.md`, `docs/NETWORK_PROXY.md`
 
 **2026-01-07:**
 - ✅ **SSH Remote Tool** - Execute commands on remote hosts via SSH

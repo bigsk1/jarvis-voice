@@ -226,7 +226,7 @@ In recent testing, repeated calls were caused by follow-up canvas actions after 
 If first call fails, check:
 
 - `SERP_API_KEY` exists and is not a placeholder
-- proxy/network path is healthy
+- proxy/network path is healthy (`LOCAL_PROXY` / `LOCAL_PROXY2`: see [`docs/NETWORK_PROXY.md`](../../NETWORK_PROXY.md))
 - `logs/tools/tool-calls-YYYY-MM-DD.jsonl` for exact failing tool
 
 ### Results not matching budget

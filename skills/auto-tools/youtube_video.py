@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 from config_loader import load_config, get_config_value
+from http_client import get_proxy_url_chain
 from stash_helper import open_space, StashFile
 from memory_db import MemoryDB
 
@@ -378,7 +379,8 @@ def main():
             sys.exit(1)
 
         url = normalize_youtube_url(url)
-        proxy = get_config_value("LOCAL_PROXY", "").strip() or None
+        proxy_urls = get_proxy_url_chain()
+        proxy_attempts: list[str | None] = proxy_urls if proxy_urls else [None]
 
         if not format_selector:
             format_selector = derive_format_selector(quality, audio_only)
@@ -391,17 +393,24 @@ def main():
             temp_dir = Path(td)
             output_template = str(temp_dir / "media.%(ext)s")
 
-            metadata = fetch_video_metadata(url, proxy)
-
-            ok, attempt_used, stdout, stderr = run_download_with_fallbacks(
-                url=url,
-                output_template=output_template,
-                format_selector=format_selector,
-                audio_only=audio_only,
-                max_filesize_mb=max_filesize_mb,
-                proxy=proxy,
-                can_merge=can_merge,
-            )
+            ok = False
+            attempt_used = ""
+            stdout = ""
+            stderr = ""
+            metadata: dict = {}
+            for proxy in proxy_attempts:
+                metadata = fetch_video_metadata(url, proxy) or metadata
+                ok, attempt_used, stdout, stderr = run_download_with_fallbacks(
+                    url=url,
+                    output_template=output_template,
+                    format_selector=format_selector,
+                    audio_only=audio_only,
+                    max_filesize_mb=max_filesize_mb,
+                    proxy=proxy,
+                    can_merge=can_merge,
+                )
+                if ok:
+                    break
 
             if not ok:
                 error_tail = (stderr or stdout or "unknown error").strip()[-800:]

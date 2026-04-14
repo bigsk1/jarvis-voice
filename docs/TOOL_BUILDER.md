@@ -295,6 +295,8 @@ The Tool Builder now includes `_extract_python_code_field()` which:
 
 Many networks require proxy for external API access. The Tool Builder now automatically detects network errors and provides fix instructions.
 
+Canonical reference: **[NETWORK_PROXY.md](NETWORK_PROXY.md)** (`LOCAL_PROXY`, optional `LOCAL_PROXY2`, `lib/http_client.py` chain, direct fallback).
+
 ### How It Works
 
 ```
@@ -313,23 +315,25 @@ Verification passes ✅
 
 ### Proxy Patterns in BUILD_PROMPT
 
-The LLM is taught three patterns for proxy support:
+The LLM is taught three patterns for proxy support (see [NETWORK_PROXY.md](NETWORK_PROXY.md) for full chain behavior):
 
-**Option 1 - requests library:**
+**Option 1 - requests library (first configured proxy URL):**
 ```python
-from config_loader import load_config, get_config_value
+from config_loader import load_config
+from http_client import get_proxy_config
+import requests
 
 def setup_proxy():
-    proxy = get_config_value('LOCAL_PROXY', '')
-    if proxy:
-        return {'http': proxy, 'https': proxy}
-    return None
+    # First non-empty of LOCAL_PROXY, then LOCAL_PROXY2 (same as most Jarvis tools)
+    return get_proxy_config()
 
 proxies = setup_proxy()
 response = requests.get(url, proxies=proxies, timeout=30)
 ```
 
-**Option 2 - Environment variables (for yfinance, etc.):**
+**Option 2 - Environment variables (for yfinance, etc.):**  
+For a full **primary → secondary → direct** flow with yfinance, copy the logic in `skills/stock_price.py` (`LOCAL_PROXY` then `LOCAL_PROXY2`, then clear env). Minimal single-proxy setup:
+
 ```python
 def setup_proxy_env():
     proxy = get_config_value('LOCAL_PROXY', '')
@@ -340,7 +344,7 @@ def setup_proxy_env():
     return False
 ```
 
-**Option 3 - Jarvis http_client (auto-fallback):**
+**Option 3 - Jarvis http_client (full chain + tunnel HTTP errors):**
 ```python
 from http_client import http_request
 
@@ -353,17 +357,7 @@ response = http_request(
 
 ### Example: stock_price Tool
 
-The `stock_price` tool was created after the tool builder learned to add proxy support:
-
-```python
-# skills/stock_price.py uses Option 2 for yfinance
-def setup_proxy_env():
-    proxy = get_config_value('LOCAL_PROXY', '')
-    if proxy:
-        os.environ['http_proxy'] = proxy
-        os.environ['https_proxy'] = proxy
-    return bool(proxy)
-```
+The `stock_price` tool uses environment variables for yfinance but walks **`LOCAL_PROXY`** and **`LOCAL_PROXY2`** before falling back to direct. See `skills/stock_price.py` and [NETWORK_PROXY.md](NETWORK_PROXY.md).
 
 ---
 
@@ -723,7 +717,7 @@ If you see errors like:
 
 The tool builder should auto-inject proxy instructions on retry. If it still fails:
 
-1. Check if `LOCAL_PROXY` is set in `config/cloud.env` or `config/local.env`
+1. Check `LOCAL_PROXY` (and optional `LOCAL_PROXY2`) in `config/cloud.env` or `config/local.env` — see [NETWORK_PROXY.md](NETWORK_PROXY.md)
 2. Manually add proxy support using one of the patterns in the BUILD_PROMPT
 3. Test the API directly with proxy:
    ```python

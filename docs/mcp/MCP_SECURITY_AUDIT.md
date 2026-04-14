@@ -261,6 +261,8 @@ Keep `"enabled": true` after audit passes.
 
 **Why Safe:** Values become command-line arguments, not container environment. The MCP server cannot enumerate other env vars - it only sees the final value in the arg string.
 
+**Jarvis proxy note:** Chromium accepts one `--proxy-server` URL. Use `LOCAL_PROXY` there; optional `LOCAL_PROXY2` is for the Python/HTTP client chain (see `docs/NETWORK_PROXY.md`), not a second MCP expansion.
+
 ### ✅ Empty Env (Still Secure!)
 
 ```json

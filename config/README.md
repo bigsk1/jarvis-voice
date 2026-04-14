@@ -120,6 +120,10 @@ JARVIS_RESPONSE_STYLE="auto"  # Recommended
 #   "detailed" - Full LLM output (debugging)
 ```
 
+### Optional HTTP proxy
+
+For networks that require an HTTP(S) proxy for outbound API calls and downloads, configure `LOCAL_PROXY` and optionally `LOCAL_PROXY2` in `cloud.env` / `local.env`. See **[Network proxy (`LOCAL_PROXY` / `LOCAL_PROXY2`)](../docs/NETWORK_PROXY.md)** for behavior, tool coverage, and MCP limitations.
+
 ## Security Notes
 
 1. **API Keys**: Never commit files with real API keys

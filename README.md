@@ -1448,7 +1448,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Tool-result freshness hints (`executed_at`, TTL, `authoritative_live`) and guard against redundant live tool calls when data is still fresh
   - Post-process strip of unsolicited “check canvas” claims when canvas was not used; router prompt rules for honesty and flexibility (refresh vs history)
 - ✅ **Weather** — True multi-day outlook: daily forecast via Open-Meteo when `forecast` is true and `days` > 1 (`skills/weather.py`, `weather.tool.json`)
-- ✅ **Stock price** — If proxy tunnel errors (e.g. curl 56/7/5), retry once without proxy (`skills/stock_price.py`)
+- ✅ **Stock price** — Proxy chain `LOCAL_PROXY` → `LOCAL_PROXY2` → direct on tunnel-style failures (`skills/stock_price.py`; see [`docs/NETWORK_PROXY.md`](docs/NETWORK_PROXY.md))
 - ✅ **Workflow UX** — Per-step and per-`for_each` item `duration_ms`; WebSocket tool cards show real timings for `/status-visual` and similar runs
 - ✅ **OpenAI defaults & cost** — Default chat model moved toward `gpt-5.4-nano`; cost estimator updates for newer OpenAI SKUs (`docs` / `lib/cost_estimator.py` aligned in-repo)
 - ✅ **Safety & tool quality** — Stronger speech sanitization for TTS (links, stash refs, noise); canvas rejects truncated/unresolvable URLs in sources
@@ -1602,7 +1602,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
   - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
   - Forex pairs: EURUSD=X, USDJPY=X, etc.
-  - Uses LOCAL_PROXY for network connectivity
+  - Uses `LOCAL_PROXY` / `LOCAL_PROXY2` via shared HTTP proxy logic ([`docs/NETWORK_PROXY.md`](docs/NETWORK_PROXY.md))
 - ✅ **Status Recap Tool v1.4** - Comprehensive daily status aggregator
   - Weather, crypto (BTC, SOL), stocks/futures (TSLA, gold, silver defaults)
   - Alerts, reminders, system health (CPU, RAM, disk, uptime)
@@ -1614,8 +1614,8 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Tool Builder v2.0** - Network/proxy auto-fix enhancement
   - Auto-detects network errors during tool verification
   - Injects proxy configuration instructions on retry
-  - Three proxy patterns: requests proxies, env vars, http_client
-  - See: [`docs/TOOL_BUILDER.md`](docs/TOOL_BUILDER.md)
+  - Patterns: `get_proxy_config()` / `http_request` from `lib/http_client.py`, env vars for yfinance-style libs
+  - See: [`docs/TOOL_BUILDER.md`](docs/TOOL_BUILDER.md), [`docs/NETWORK_PROXY.md`](docs/NETWORK_PROXY.md)
 
 **Completed (December 2025):**
 - ✅ **Deep Memory Search** - Multi-source search across all Jarvis data repositories

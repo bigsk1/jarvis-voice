@@ -6,6 +6,7 @@ Both files are saved to stash for indexing.
 import sys
 import os
 import json
+import shutil
 import subprocess
 import tempfile
 import re
@@ -14,6 +15,7 @@ from pathlib import Path
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
 from config_loader import load_config, get_config_value
+from http_client import get_proxy_url_chain
 from stash_helper import open_space, StashFile
 from memory_db import MemoryDB
 
@@ -84,11 +86,22 @@ def convert_srt_to_markdown(srt_content, video_title):
     
     return ''.join(markdown_lines)
 
-def get_video_title(url):
+def resolve_yt_dlp_command() -> list[str]:
+    """Prefer yt-dlp binary, fallback to module invocation (matches youtube_video)."""
+    if shutil.which("yt-dlp"):
+        return ["yt-dlp"]
+    return [sys.executable, "-m", "yt_dlp"]
+
+
+def get_video_title(url, proxy=None):
     """Extract video title using yt-dlp."""
     try:
+        cmd = resolve_yt_dlp_command()
+        if proxy:
+            cmd.extend(["--proxy", proxy])
+        cmd.extend(["--no-warnings", "--get-title", url])
         result = subprocess.run(
-            ['yt-dlp', '--get-title', url],
+            cmd,
             capture_output=True,
             text=True,
             timeout=30
@@ -102,27 +115,29 @@ def get_video_title(url):
     except Exception:
         return "youtube_video"
 
-def download_transcript(url):
+def download_transcript(url, proxy=None):
     """Download transcript using yt-dlp."""
     temp_dir = tempfile.mkdtemp()
     
     try:
         # Get video title first
-        video_title = get_video_title(url)
+        video_title = get_video_title(url, proxy=proxy)
         
         # Download subtitles
         output_template = os.path.join(temp_dir, 'transcript')
         
-        cmd = [
-            'yt-dlp',
+        cmd = resolve_yt_dlp_command()
+        if proxy:
+            cmd.extend(["--proxy", proxy])
+        cmd.extend([
             '--write-auto-sub',
             '--write-sub',
             '--sub-lang', 'en',
             '--sub-format', 'srt',
             '--skip-download',
             '--output', output_template,
-            url
-        ]
+            url,
+        ])
         
         result = subprocess.run(
             cmd,
@@ -152,11 +167,9 @@ def download_transcript(url):
     except Exception as e:
         return None, None, str(e)
     finally:
-        # Cleanup
         try:
-            import shutil
             shutil.rmtree(temp_dir)
-        except:
+        except OSError:
             pass
 
 def save_to_stash(filename, content, space=None):
@@ -211,9 +224,16 @@ def main():
             }))
             sys.exit(1)
         
-        # Download transcript
-        srt_content, video_title, error = download_transcript(url)
-        
+        proxy_attempts = get_proxy_url_chain()
+        if not proxy_attempts:
+            proxy_attempts = [None]
+
+        srt_content, video_title, error = None, None, None
+        for proxy in proxy_attempts:
+            srt_content, video_title, error = download_transcript(url, proxy=proxy)
+            if not error:
+                break
+
         if error:
             error_message = maybe_append_serpapi_hint(error, url)
             speech = maybe_append_serpapi_hint(f"Failed to download transcript: {error}", url)

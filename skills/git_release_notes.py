@@ -29,6 +29,7 @@ import requests
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config, get_config_value
+from http_client import get_proxy_chain, proxy_response_indicates_tunnel_failure
 from stash_helper import open_space, StashFile
 from memory_db import MemoryDB
 
@@ -144,7 +145,6 @@ class GitHubClient:
             or os.getenv("GH_TOKEN")
             or ""
         ).strip()
-        self.proxy = (get_config_value("LOCAL_PROXY") or "").strip()
 
         self.session = requests.Session()
         self.session.headers.update({
@@ -157,25 +157,30 @@ class GitHubClient:
 
     def get(self, path: str, params: dict | None = None, timeout: int = 30) -> tuple[int, Any]:
         url = f"{API_BASE}{path}"
+        chain = get_proxy_chain()
+        last_err: requests.exceptions.RequestException | None = None
 
-        def _call(use_proxy: bool) -> requests.Response:
-            proxies = None
-            if use_proxy and self.proxy:
-                proxies = {"http": self.proxy, "https": self.proxy}
-            return self.session.get(url, params=params, timeout=timeout, proxies=proxies)
+        for proxies in chain:
+            try:
+                resp = self.session.get(url, params=params, timeout=timeout, proxies=proxies)
+                if proxy_response_indicates_tunnel_failure(resp):
+                    resp.close()
+                    continue
+                return self._parse_github_response(resp)
+            except requests.RequestException as e:
+                last_err = e
+                continue
 
         try:
-            resp = _call(use_proxy=True)
-        except requests.exceptions.ProxyError:
-            # Proxy configured but unavailable in current runtime: retry direct.
-            resp = _call(use_proxy=False)
-        except requests.exceptions.ConnectionError as e:
-            # Some proxy failures surface as ConnectionError.
-            if self.proxy and "proxy" in str(e).lower():
-                resp = _call(use_proxy=False)
-            else:
-                raise
+            resp = self.session.get(url, params=params, timeout=timeout, proxies=None)
+            return self._parse_github_response(resp)
+        except requests.RequestException:
+            if last_err:
+                raise last_err
+            raise
 
+    @staticmethod
+    def _parse_github_response(resp: requests.Response) -> tuple[int, Any]:
         if resp.status_code == 204:
             return resp.status_code, {}
         try:

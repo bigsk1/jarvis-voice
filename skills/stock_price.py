@@ -141,16 +141,22 @@ STOCK_MAP = {
 }
 
 
-def setup_proxy():
-    """Configure proxy for yfinance via environment variables."""
-    proxy = get_config_value('LOCAL_PROXY', '')
-    if proxy:
-        os.environ['http_proxy'] = proxy
-        os.environ['https_proxy'] = proxy
-        os.environ['HTTP_PROXY'] = proxy
-        os.environ['HTTPS_PROXY'] = proxy
-        return True
-    return False
+def _proxy_url_chain() -> list[str]:
+    """LOCAL_PROXY then LOCAL_PROXY2 (non-empty), matching lib/http_client."""
+    urls: list[str] = []
+    for key in ('LOCAL_PROXY', 'LOCAL_PROXY2'):
+        u = (get_config_value(key, '') or '').strip()
+        if u:
+            urls.append(u)
+    return urls
+
+
+def apply_proxy_env(proxy_url: str) -> None:
+    """Set yfinance/curl_cffi proxy environment variables."""
+    os.environ['http_proxy'] = proxy_url
+    os.environ['https_proxy'] = proxy_url
+    os.environ['HTTP_PROXY'] = proxy_url
+    os.environ['HTTPS_PROXY'] = proxy_url
 
 
 def clear_proxy():
@@ -238,8 +244,8 @@ def main():
         # Load config
         load_config()
         
-        # Setup proxy (required for yfinance on some networks)
-        proxy_enabled = setup_proxy()
+        proxy_chain = _proxy_url_chain()
+        proxy_enabled = bool(proxy_chain)
         
         # Read input from command line argument
         try:
@@ -259,15 +265,41 @@ def main():
         symbol_lower = symbol.lower()
         ticker = STOCK_MAP.get(symbol_lower, symbol.upper())
         
-        # Fetch stock data
+        # Fetch stock data: try each proxy, then direct if tunnel-style failures only
         used_proxy_fallback = False
-        try:
-            stock_data = fetch_stock_snapshot(ticker, symbol)
-        except Exception as e:
-            error_str = str(e)
-            if proxy_enabled and is_proxy_tunnel_error(error_str):
+        stock_data = None
+        tunnel_exhausted = False
+
+        if not proxy_chain:
+            try:
+                stock_data = fetch_stock_snapshot(ticker, symbol)
+            except Exception as e:
+                error_str = str(e)
+                if 'No data found' in error_str or 'delisted' in error_str.lower():
+                    return_error(f"Stock '{symbol}' not found or may be delisted.")
+                else:
+                    return_error(f"Failed to fetch stock data: {error_str}")
+                return 1
+        else:
+            for purl in proxy_chain:
+                apply_proxy_env(purl)
                 try:
-                    # Proxy occasionally returns transient CONNECT 503; retry direct once.
+                    stock_data = fetch_stock_snapshot(ticker, symbol)
+                    tunnel_exhausted = False
+                    break
+                except Exception as e:
+                    error_str = str(e)
+                    if 'No data found' in error_str or 'delisted' in error_str.lower():
+                        return_error(f"Stock '{symbol}' not found or may be delisted.")
+                        return 1
+                    if is_proxy_tunnel_error(error_str):
+                        tunnel_exhausted = True
+                        continue
+                    return_error(f"Failed to fetch stock data: {error_str}")
+                    return 1
+
+            if stock_data is None and tunnel_exhausted:
+                try:
                     clear_proxy()
                     stock_data = fetch_stock_snapshot(ticker, symbol)
                     proxy_enabled = False
@@ -279,11 +311,6 @@ def main():
                     else:
                         return_error(f"Failed to fetch stock data: {retry_error_str}")
                     return 1
-            elif 'No data found' in error_str or 'delisted' in error_str.lower():
-                return_error(f"Stock '{symbol}' not found or may be delisted.")
-            else:
-                return_error(f"Failed to fetch stock data: {error_str}")
-            return 1
 
         current_price = stock_data["price_usd"]
         day_change = stock_data["change_today_usd"]

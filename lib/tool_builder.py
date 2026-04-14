@@ -472,23 +472,19 @@ def safe_get(data, *keys, default='N/A'):
 NETWORK/PROXY SUPPORT (CRITICAL FOR EXTERNAL APIs):
 Many networks require proxy for external API access. Use this pattern for ANY tool making HTTP requests:
 
-OPTION 1 - Using requests library (RECOMMENDED for most APIs):
+OPTION 1 - Using requests (prefer OPTION 3 ``http_request`` for full LOCAL_PROXY → LOCAL_PROXY2 → direct):
 ```python
-from config_loader import load_config, get_config_value
+from config_loader import load_config
+from http_client import get_proxy_config
 import requests
 
 def setup_proxy():
-    """Get proxy config for requests library."""
-    proxy = get_config_value('LOCAL_PROXY', '')
-    if proxy:
-        return {{'http': proxy, 'https': proxy}}
-    return None
+    """First configured proxy URL: LOCAL_PROXY, else LOCAL_PROXY2."""
+    return get_proxy_config()
 
 def main():
     load_config()
     proxies = setup_proxy()
-    
-    # Use proxies parameter in requests
     response = requests.get(url, proxies=proxies, timeout=30)
 ```
 
@@ -517,11 +513,11 @@ def main():
     ticker = yf.Ticker('TSLA')
 ```
 
-OPTION 3 - Using Jarvis http_client (has automatic fallback):
+OPTION 3 - Using Jarvis http_client (LOCAL_PROXY → LOCAL_PROXY2 → direct, incl. HTTP 502/503 tunnel cases):
 ```python
 from http_client import http_request, get_proxy_config
 
-# Automatically uses proxy with fallback to direct connection
+# Automatically uses proxy chain with fallback to direct connection
 response = http_request(
     'GET',
     url,
@@ -1573,16 +1569,14 @@ def main():
     hist = ticker.history(period='1d')
 ```
 
-FOR requests library:
+FOR requests library (or use ``http_request`` from ``http_client`` for full proxy chain):
 ```python
-from config_loader import load_config, get_config_value
+from config_loader import load_config
+from http_client import get_proxy_config
 import requests
 
 def setup_proxy():
-    proxy = get_config_value('LOCAL_PROXY', '')
-    if proxy:
-        return {'http': proxy, 'https': proxy}
-    return None
+    return get_proxy_config()
 
 def main():
     load_config()

@@ -36,6 +36,7 @@ except ImportError:
 # Add lib to path for config
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
+from http_client import http_request
 
 
 # ============================================================================
@@ -161,28 +162,21 @@ def safe_download(url: str, max_size: int = None) -> tuple[bytes, str, str]:
     # Validate initial URL
     validate_url(url)
     
-    # Use proxy if configured
-    proxies = {}
-    proxy = get_config_value('LOCAL_PROXY', '')
-    if proxy:
-        proxies = {'http': proxy, 'https': proxy}
-    
-    # Download with manual redirect handling for security
-    session = requests.Session()
-    session.max_redirects = 0  # We'll handle redirects manually
-    
+    # Download with manual redirect handling for security (LOCAL_PROXY → LOCAL_PROXY2 → direct)
     current_url = url
     redirects = 0
     
     while True:
         try:
-            response = session.get(
+            response = http_request(
+                'GET',
                 current_url,
                 stream=True,
                 timeout=DOWNLOAD_TIMEOUT,
                 allow_redirects=False,
-                proxies=proxies if proxies else None,
-                headers={'User-Agent': 'Jarvis-Stash/1.0'}
+                use_proxy=True,
+                fallback_on_proxy_fail=True,
+                headers={'User-Agent': 'Jarvis-Stash/1.0'},
             )
         except requests.exceptions.RequestException as e:
             raise SecurityError(f"Download failed: {e}")

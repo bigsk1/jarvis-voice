@@ -346,16 +346,18 @@ python3 skills/auto-tools/youtube_video.py '{
 }'
 ```
 
-### Proxy Setup (`LOCAL_PROXY`)
+### Proxy setup (`LOCAL_PROXY` / `LOCAL_PROXY2`)
 
-The tool automatically reads `LOCAL_PROXY` from your env/config and passes it to `yt-dlp` as `--proxy`.
+The tool walks **`LOCAL_PROXY`**, then **`LOCAL_PROXY2`** (if set), trying each with `yt-dlp` until a download succeeds. If both are unset, `yt-dlp` runs **without** `--proxy`.
 
-If you already have `LOCAL_PROXY` in your env files, no extra tool-specific setup is needed.
+Details and MCP/browser nuances: [`docs/NETWORK_PROXY.md`](../../NETWORK_PROXY.md).
 
 Example:
 ```bash
 # config/cloud.env (or your active env file)
 LOCAL_PROXY="http://127.0.0.1:7890"
+# Optional fallback
+# LOCAL_PROXY2="http://192.168.1.50:8888"
 ```
 
 ### Cookie Setup (for restricted/challenging videos)
