@@ -57,10 +57,10 @@ Output: "Image generated and saved to stash"  (NOT stash://space_xxx/f_xxx)
 |---------------|----------|----------|
 | **Search tools** | search_memory, brave_search | Always condense, remove URLs |
 | **Simple tools** | get_time, crypto_price, weather | Keep if <25 words, condense if longer |
-| **Complex tools** | opencode, execute_bash | Keep detailed if >50 words |
+| **Complex tools** | opencode, execute_bash | Keep detailed if >75 words |
 | **Unlisted tools** | (anything else) | Default to condense |
 
-**GAP:** Complex tools with >50 word responses bypass stash/URL stripping. Added TODO in code.
+**GAP:** Complex tools with >75 word responses bypass `_format_single_turn_casual()`. Standard TTS still sanitizes spoken output, so this is mainly a displayed-text cleanliness gap.
 
 ---
 

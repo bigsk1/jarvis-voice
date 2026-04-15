@@ -227,7 +227,7 @@ User asks for complex task
             ├─ auto
             │  └─ _format_auto_mode()
             │     └─ COMPLEX_TOOLS match
-            │        ├─ if raw_speech > 50 words
+            │        ├─ if raw_speech > 75 words
             │        │  └─ raw_speech unchanged
             │        │     └─ final speech
             │        └─ else
@@ -326,7 +326,7 @@ elif matches(SIMPLE_TOOLS):
     return _format_single_turn_casual()
 
 elif matches(COMPLEX_TOOLS):
-    if word_count(raw_response) > 50:
+    if word_count(raw_response) > 75:
         return raw_response
     return _format_single_turn_casual()
 
@@ -369,7 +369,7 @@ SIMPLE_TOOLS = ["get_time", "crypto_price", "weather"]
 
 ### COMPLEX_TOOLS
 
-Keep raw response if `> 50` words, otherwise condense.
+Keep raw response if `> 75` words, otherwise condense.
 
 ```python
 COMPLEX_TOOLS = ["opencode", "execute_bash", "send_webhook", "api_call"]
@@ -399,12 +399,12 @@ These are not env vars today:
 | Value | Meaning |
 |------|---------|
 | `25` | Auto-mode threshold for simple tools: keep raw if `<=25` words |
-| `50` | Auto-mode threshold for complex tools: keep raw if `>50` words |
+| `75` | Auto-mode threshold for complex tools: keep raw if `>75` words |
 | `35` | Voice/tool-confirmation brevity rule in prompts |
 
 So:
 - `JARVIS_QA_WORD_LIMIT` and `JARVIS_MULTI_TURN_WORD_LIMIT` control the main caps
-- `25`, `50`, and `35` are still fixed routing/prompt constants
+- `25`, `75`, and `35` are still fixed routing/prompt constants
 
 ---
 
@@ -441,7 +441,7 @@ Not:
 This TODO is still current in code.
 
 For complex tools in `auto` mode:
-- if the raw response is `>50` words
+- if the raw response is `>75` words
 - Jarvis returns it directly
 - that means it **bypasses** `_format_single_turn_casual()`
 
@@ -610,6 +610,115 @@ With those settings:
 - casual still condenses, but with a generous cap
 - auto still uses the same caps on its condensed paths
 - detailed still ignores them
+
+---
+
+## Future Expansion Ideas
+
+These are good candidates for a future revisit of `_format_auto_mode()` without throwing away the current voice-first behavior.
+
+### 1. Stop Looking Only At `tools_used[0]`
+
+Current behavior:
+- single-turn `auto` classifies only the first tool name
+
+Why this is brittle:
+- the first tool may not represent the final answer shape
+- a lightweight lookup tool may run first, but the final response may really be dominated by a later display-heavy tool
+
+Safer future options:
+- classify by the **last tool used**
+- classify by **all tools used**
+- let tools expose a small metadata hint such as `prefer_detailed`, `voice_safe`, or `display_heavy`
+
+Low-risk path:
+- start by checking `tools_used[-1]` as a secondary fallback when `tools_used[0]` looks too generic
+
+### 2. Split "Display Richness" From "Speech Friendliness"
+
+Right now `auto` is doing two jobs:
+- deciding how detailed the final text should be
+- deciding how voice-friendly the final answer should be
+
+That works, but it mixes display and speech concerns.
+
+A cleaner future model would be:
+- `response_style` or `display_style` decides how rich the returned text should be
+- TTS normalization / speech-style rules decide how the text is spoken
+
+That would help Web UI no-TTS and Web UI with TTS coexist more cleanly.
+
+### 3. Add A Lightweight Post-Processing Step For Long Complex Auto Responses
+
+Current behavior:
+- long single-turn complex responses in `auto` return raw text directly
+
+Possible improvement:
+- keep the response detailed
+- but run a small non-condensing cleanup pass for display hygiene
+
+Examples:
+- strip or soften raw `stash://` refs
+- shorten very long raw URLs in display text
+- simplify noisy filesystem paths when they are not user-relevant
+
+This would preserve detail without routing everything back through `_format_single_turn_casual()`.
+
+### 4. Make Multi-Turn Auto Less Aggressively Summarizing In Display-Heavy Contexts
+
+Current behavior:
+- once `turn_num > 0`, `auto` always uses `_format_multi_turn_summary()`
+
+That is great for voice, but weaker for:
+- top-10 lists
+- search-heavy research
+- multi-source comparisons
+- workflows where the final answer should show more than a single spoken summary
+
+Possible future directions:
+- add an "expanded auto" path for Web UI display-heavy contexts
+- use tool/result metadata to decide whether multi-turn should summarize or preserve more structure
+- allow a larger multi-turn display answer while still keeping TTS playback concise via the TTS normalizer
+
+### 5. Let Tools Tell Auto Mode What Kind Of Output They Produce
+
+Instead of relying only on hardcoded tool-name buckets, tools could eventually declare small formatting hints such as:
+
+- `voice_brief`
+- `display_heavy`
+- `number_sensitive`
+- `prefer_direct_speech`
+- `prefer_detailed_if_long`
+
+That would make the behavior less patchy than:
+- one-off bypass lists
+- substring matching on tool names
+- ad hoc word-count thresholds
+
+### 6. Revisit The Direct Speech Bypass As A Formal Strategy
+
+The current bypass list likely exists for real reasons:
+- LLM number mangling
+- tools that already produce high-quality speech
+- cases where rewording hurts clarity
+
+Future cleanup could formalize this into a tool capability rather than a hardcoded set:
+- tool says "my `speech` is authoritative"
+- orchestrator decides whether to trust it directly or only in voice-first modes
+
+That would preserve the benefit while making the behavior easier to understand and extend.
+
+### 7. Keep The Good Parts
+
+Even if `_format_auto_mode()` gets revisited later, these parts are still worth preserving:
+
+- `casual` as the strict voice-first mode
+- `detailed` as the display/debugging mode
+- `auto` as the pragmatic middle ground
+- TTS normalization as the final speech-safety layer
+
+The goal probably is not to make `auto` fully generic.
+The goal is to keep it useful for voice while making it less underpowered for richer display contexts.
 
 ---
 

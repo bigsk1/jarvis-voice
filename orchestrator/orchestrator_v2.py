@@ -1540,7 +1540,7 @@ Your response:"""
         - Single-turn (turn_num == 0) → Checks tool category to decide formatting:
           - SEARCH_TOOLS → Condense (remove URLs, summarize)
           - SIMPLE_TOOLS → Keep if short (≤25 words), condense if longer
-          - COMPLEX_TOOLS → Keep detailed if long (>50 words), condense if short
+          - COMPLEX_TOOLS → Keep detailed if long (>75 words), condense if short
           - Unlisted tools → Default to condense
         
         NOTE: The tool categories below only affect SINGLE-TURN responses.
@@ -1593,13 +1593,14 @@ Your response:"""
             
             # Complex/build tools: Check if response is technical or simple
             elif any(complex in tool_name.lower() for complex in COMPLEX_TOOLS):
-                # If response is very long (>50 words), it's probably detailed - keep detailed
+                # If response is very long (>75 words), it's probably detailed - keep detailed
                 word_count = len(raw_response.split())
-                if word_count > 50:
-                    # GAP: This bypasses stash/URL stripping rules in _format_single_turn_casual()
-                    # If opencode/bash returns stash:// refs in long response, they'd be spoken.
-                    # For now acceptable since complex tools rarely output stash refs directly.
-                    # TODO: Consider post-processing to strip stash:// even for detailed mode.
+                if word_count > 75:
+                    # GAP: This bypasses _format_single_turn_casual(), so the DISPLAYED text may still
+                    # contain stash:// refs, long URLs, or noisy paths for long single-turn complex responses.
+                    # Standard TTS playback still normalizes final speech via sanitize_for_speech()/normalize_tts_text(),
+                    # so this is mainly a display/text cleanliness gap rather than a spoken-audio safety gap.
+                    # TODO: Consider lightweight post-processing here for display cleanliness without re-condensing.
                     return raw_response  # Keep detailed for complex operations
                 else:
                     # Short response for complex tool - condense it
