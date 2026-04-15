@@ -134,6 +134,41 @@ source ~/jarvis-venv/bin/activate
 
 This is the most reliable way to tune `TOOL_SIMILARITY_THRESHOLD_FULL`, because synthetic long prompts can be harsher than production.
 
+### E. Typo hints (embedding query only)
+
+`lib/tool_rag_typo_hints.py` runs inside `ToolRegistry.find_tools()` **before** `MemoryDB.search_tools()`.
+
+Production behavior:
+- the orchestrator/router pass `typo_hint_source=<raw user request>`
+- typo/segment scanning is done only on that user text
+- the **full** Tool-RAG embedding query is still embedded as normal
+- any resolved canonical tool names are appended only to the embedding string
+
+This avoids scanning:
+- learned strategies
+- auto-memory/intelligence blocks
+- prior tool results
+- turn wrapper text
+
+Matching behavior:
+- **URL-like spans** (`https?://…`, `www.…`) are removed before tokenization so host/path fragments are not typo-matched
+- remaining tokens are compared to each enabled tool's **full name**
+- they are also compared to **snake_case / hyphen segments** long enough (`TOOL_RAG_TYPO_MIN_TOKEN_LEN`, default **4**)
+- distance uses **optimal string alignment** (Damerau-style adjacent transpositions)
+- per tool, the **minimum** full-name/segment distance is used
+- if the global minimum is in `1 … TOOL_RAG_TYPO_MAX_DISTANCE` (default **2**) and **exactly one** tool achieves it, that canonical tool name is appended
+- **exact** token matches (full name or segment, distance **0**) add **no** hint
+- **ties** (multiple tools at the same minimum distance) add **no** hint
+- hints are capped per query (`TOOL_RAG_TYPO_MAX_HINTS`, default **5**)
+
+Practical note:
+- this is now slightly broader than typo-only behavior because segment matching can intentionally help with common nouns, for example `bookmarks` nudging `bookmark_search`
+
+Debugging note:
+- `bin/debug_tool_rag.py` now uses the same typo-hint expansion path for regime 1, so the plain-query debug view is much closer to live routing behavior
+
+Disable with `TOOL_RAG_TYPO_ENABLED=false`.
+
 ---
 
 ## 6. Findings & troubleshooting

@@ -649,13 +649,19 @@ When this appears to be the start of a fresh conversation, you may add a brief t
         else:
             raise ValueError(f"Unknown LLM provider: {provider_type}")
     
-    def route(self, transcript: str, excluded_tools: list = None) -> dict[str, Any]:
+    def route(
+        self,
+        transcript: str,
+        excluded_tools: list = None,
+        typo_hint_source: str | None = None,
+    ) -> dict[str, Any]:
         """
         Use LLM to determine intent and route appropriately.
         
         Args:
-            transcript: User's transcribed speech
+            transcript: Full routing prompt (intelligence, multi-turn context, etc.)
             excluded_tools: Optional list of tool names to exclude from selection
+            typo_hint_source: Raw user request text for typo-RAG token scan only (embedding still uses full tool search string).
             
         Returns:
             dict: Routing decision
@@ -706,7 +712,10 @@ When this appears to be the start of a fresh conversation, you may add a brief t
         # 3. Find relevant tools using vector search
         # This returns ToolSchema objects for the top matches + ghost tools
         relevant_tools = self.registry.find_tools(
-            tool_search_query, limit=retrieval_limit, similarity_threshold=tool_sim_threshold
+            tool_search_query,
+            limit=retrieval_limit,
+            similarity_threshold=tool_sim_threshold,
+            typo_hint_source=typo_hint_source,
         )
         
         # Filter out excluded tools (e.g., tools blocked for web mode)
@@ -720,6 +729,7 @@ When this appears to be the start of a fresh conversation, you may add a brief t
                         tool_search_query,
                         limit=retrieval_limit,
                         similarity_threshold=tool_sim_threshold,
+                        typo_hint_source=typo_hint_source,
                     )
                 )
                 if sys.stdout.isatty():
@@ -957,7 +967,7 @@ def main():
     transcript = " ".join(sys.argv[2:])
     
     router = LLMRouter(mode)
-    result = router.route(transcript)
+    result = router.route(transcript, typo_hint_source=transcript)
     
     print(json.dumps(result, indent=2))
 

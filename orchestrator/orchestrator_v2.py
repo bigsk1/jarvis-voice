@@ -666,7 +666,11 @@ Mode: {self.mode}
             # Route using LLM
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: About to route turn {turn_num}", file=sys.stderr)
-            route = self.router.route(turn_input, excluded_tools=excluded_tools)
+            route = self.router.route(
+                turn_input,
+                excluded_tools=excluded_tools,
+                typo_hint_source=transcript,
+            )
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)
             

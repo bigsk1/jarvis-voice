@@ -7,6 +7,10 @@ Runtime Tool RAG can use either a short "stripped" user line or a long full prom
 (see docs/personal/tool-rag-routing-notes.md). This script does not call the orchestrator;
 it only runs MemoryDB.search_tools so you can tune thresholds offline.
 
+Typo RAG: In production, expand_tool_rag_query_for_typo_hints gets hint_source=raw user
+text (token scan is user-only). Regime 1 below now uses the same user query as the
+hint source, so the plain-query debug view is much closer to live routing behavior.
+
 Script-only options (no app code changes):
   --stripped-threshold / --full-threshold — two cutoffs for two embedding regimes
   --synthetic-full — also embed a built-in synthetic "full transcript" wrapping your query
@@ -32,6 +36,14 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config, get_config_value, get_float
 from memory_db import get_memory_db
+from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
+
+
+def _enabled_tool_names_from_db(db) -> list[str]:
+    rows = db.conn.execute(
+        "SELECT name FROM tool_definitions WHERE enabled = 1"
+    ).fetchall()
+    return [r[0] for r in rows]
 
 
 def build_synthetic_full_transcript(user_query: str) -> str:
@@ -153,9 +165,21 @@ def debug_tool_rag(
     db = get_memory_db()
 
     try:
+        # Regime 1: single-line `query` — use the same text as hint_source so typo matching
+        # mirrors the live path where ToolRegistry.find_tools gets typo_hint_source=user text.
+        tool_names = _enabled_tool_names_from_db(db)
+        plain_query_embed, typo_hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            tool_names,
+            hint_source=query,
+        )
+        if typo_hints:
+            print(f"🔤 Typo RAG hints (embedding only): {typo_hints}")
+            print()
+
         # --- Regime 1: plain query (similar to stripped / debug-style single line) ---
-        plain_all = _run_search(db, query, 100)
-        plain_retrieved = db.search_tools(query, limit=retrieval_limit, threshold=st)
+        plain_all = _run_search(db, plain_query_embed, 100)
+        plain_retrieved = db.search_tools(plain_query_embed, limit=retrieval_limit, threshold=st)
 
         print("📋 Configuration:")
         print(f"   Ghost Tools: {', '.join(ghost_tools)}")
@@ -168,7 +192,7 @@ def debug_tool_rag(
 
         _print_block(
             "=== Regime 1: plain query (stripped-like / default debug) ===",
-            query,
+            plain_query_embed,
             st,
             retrieval_limit,
             ghost_tools,

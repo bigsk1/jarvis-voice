@@ -4,9 +4,14 @@ Tool Schema and Registry System
 Universal tool definition that works across all LLM providers.
 """
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
+
+from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
+
+_logger = logging.getLogger(__name__)
 
 
 def _sanitize_schema_for_openai(schema: Any, *, is_root: bool = False) -> Any:
@@ -414,7 +419,13 @@ class ToolRegistry:
             return parts[0], parts[1]
         return None, None
 
-    def find_tools(self, query: str, limit: int = 5, similarity_threshold: float | None = None) -> list[ToolSchema]:
+    def find_tools(
+        self,
+        query: str,
+        limit: int = 5,
+        similarity_threshold: float | None = None,
+        typo_hint_source: str | None = None,
+    ) -> list[ToolSchema]:
         """
         Find relevant tools for a user query using vector search.
         Always includes GHOST_TOOLS (configured core tools).
@@ -424,6 +435,9 @@ class ToolRegistry:
             limit: Max retrieved tools (before merging ghost list).
             similarity_threshold: Min cosine similarity to keep a tool. If None, uses
                 TOOL_SIMILARITY_THRESHOLD from config (router may pass an explicit value).
+            typo_hint_source: If set, typo/near-segment RAG hints consider only this text
+                (typically the raw user request); ``query`` is still embedded in full with
+                hints appended. If None, hint logic scans all of ``query``.
         """
         from memory_db import get_memory_db
         from config_loader import get_config_value, get_float
@@ -439,9 +453,26 @@ class ToolRegistry:
         
         try:
             db = get_memory_db()
-            
-            # 1. Get relevant tools from vector search
-            relevant_tools_data = db.search_tools(query, limit=limit, threshold=threshold)
+
+            enabled_names = [
+                t.name
+                for t in self.tools.values()
+                if t.permissions.get("enabled", True)
+            ]
+            rag_query, typo_hints = expand_tool_rag_query_for_typo_hints(
+                query,
+                enabled_names,
+                hint_source=typo_hint_source,
+            )
+            if typo_hints:
+                _logger.debug(
+                    "[TOOL_RAG] typo_rag_hints=%s embedding_query_len=%s",
+                    typo_hints,
+                    len(rag_query),
+                )
+
+            # 1. Get relevant tools from vector search (embedding uses rag_query may include typo hints)
+            relevant_tools_data = db.search_tools(rag_query, limit=limit, threshold=threshold)
             
             # 2. Collect retrieved tool names
             retrieved_names = [t['name'] for t in relevant_tools_data]

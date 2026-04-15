@@ -135,7 +135,7 @@
 |----------|---------|
 | **WORKFLOW_ORCHESTRATION.md** | 🔄 **Workflow system** - Deterministic multi-tool pipelines ⭐ IMPLEMENTED |
 | **[../data/workflows/AGENTS.md](../data/workflows/AGENTS.md)** | 📖 **Workflow building guide** - Tool outputs, extract rules, testing |
-| **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval  |
+| **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval, full-prompt tuning, and typo-hint retrieval behavior  |
 | **TOOL_RAG_IMPLEMENTATION_SUMMARY.md** | Tool RAG implementation details  |
 | **TOOL_RAG_TROUBLESHOOTING.md** | Tool RAG debugging guide  |
 | **TEST_SCRIPT_TOOL_RAG_FIX.md** | Test script integration fixes  |
@@ -187,7 +187,7 @@
 | **MODEL_PROMPT_OVERRIDES.md** | Provider/model-specific prompt overlays for surgical behavior tuning |
 | **EXTENDED_THINKING.md** | Extended thinking mode |
 | **CASUAL_VS_DETAILED_MODE.md** | Response styles |
-| **AUTO_MODE_EXPLAINED.md** | Auto formatting mode |
+| **AUTO_MODE_EXPLAINED.md** | Auto/casual/detailed response flow, TTS interplay, direct-speech bypass, and future formatter ideas |
 | **METADATA_SYSTEM.md** | Cost tracking and metadata |
 | **VOICE_MODE_FIXES.md** | Voice mode improvements |
 
@@ -1443,6 +1443,26 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Enhanced tool descriptions** - Better LLM routing with explicit use cases
 - ✅ **Conversation context improvements** - Fixed temporal vs topic-based query routing
 
+**2026-04-14:**
+- ✅ **Response style docs refresh** - Rewrote the response-style mental model around final `speech`
+  - Clarified `casual` vs `auto` vs `detailed`
+  - Documented direct-speech bypass tools and where tool-level `speech` becomes final output
+  - Added tree-view examples for pure Q&A, single-tool, multi-tool, and bypass paths
+  - Clarified that standard TTS normalization is a later playback layer, separate from response style
+  - See: `docs/AUTO_MODE_EXPLAINED.md`, `docs/CASUAL_VS_DETAILED_MODE.md`
+- ✅ **Auto mode tuning update** - Raised the hardcoded complex-tool threshold in `_format_auto_mode()`
+  - Complex single-turn tool responses now stay raw only when they exceed 75 words (was 50)
+  - Better balance between voice-friendly condensation and richer complex answers in `auto`
+  - Updated code comments and docs to match
+  - See: `orchestrator/orchestrator_v2.py`, `docs/AUTO_MODE_EXPLAINED.md`
+- ✅ **Tool RAG typo hints** - Added typo/near-segment hinting to retrieval embeddings
+  - Supports optimal-string-alignment typo detection against tool names and long snake_case segments
+  - URL-like spans are removed before typo tokenization
+  - Production routing now scans typo hints from the raw user request only, not the full Tool-RAG prompt
+  - Debug tooling updated to reflect the live hinting path more closely
+  - Config knobs added: `TOOL_RAG_TYPO_ENABLED`, `TOOL_RAG_TYPO_MAX_DISTANCE`, `TOOL_RAG_TYPO_MIN_TOKEN_LEN`, `TOOL_RAG_TYPO_MAX_HINTS`
+  - See: `docs/TOOL_RAG_STRATEGY.md`, `lib/tool_rag_typo_hints.py`, `bin/debug_tool_rag.py`
+
 **2025-11-11:**
 - ✅ OpenCode integration complete
 - ✅ Workspace isolation enforced
@@ -1456,6 +1476,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-04-03  
-**Latest:** Completion Guard eval overrides, Ollama cloud judge compatibility fixes, and AI Config cloud/local Ollama model separation  
+**Last Updated:** 2026-04-14  
+**Latest:** Response-style documentation refresh, auto-mode threshold tuning, and Tool RAG typo-hint retrieval improvements  
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
