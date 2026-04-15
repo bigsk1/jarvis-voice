@@ -1539,7 +1539,7 @@ Your response:"""
         - Multi-turn (turn_num > 0) → ALWAYS uses _format_multi_turn_summary() for ALL tools
         - Single-turn (turn_num == 0) → Checks tool category to decide formatting:
           - SEARCH_TOOLS → Condense (remove URLs, summarize)
-          - SIMPLE_TOOLS → Keep if short (<25 words), condense if longer
+          - SIMPLE_TOOLS → Keep if short (≤25 words), condense if longer
           - COMPLEX_TOOLS → Keep detailed if long (>50 words), condense if short
           - Unlisted tools → Default to condense
         
@@ -1574,7 +1574,7 @@ Your response:"""
                 'mcp_brave_search',  # Matches all brave search variants (web, local, news, image, video)
                 'mcp_fetch'  # Matches mcp_fetch_fetch
             ]
-            SIMPLE_TOOLS = ['get_time', 'crypto_price', 'get_weather']
+            SIMPLE_TOOLS = ['get_time', 'crypto_price', 'weather']
             COMPLEX_TOOLS = ['opencode', 'execute_bash', 'send_webhook', 'api_call']
             
             # Search tools: Format for voice (remove URLs, summarize)
