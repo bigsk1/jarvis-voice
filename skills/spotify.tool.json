@@ -17,7 +17,7 @@
       },
       "device": {
         "type": "string",
-        "description": "For transfer: device name to play on (e.g., 'Fire TV', 'Living Room', 'iPhone')"
+        "description": "For play and transfer: target device name as shown in Spotify Connect (e.g. 'Office Fire TV', 'Living Room'). Required when the user names a TV or speaker."
       },
       "level": {
         "type": "integer",

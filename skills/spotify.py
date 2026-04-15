@@ -111,6 +111,22 @@ def get_active_device(sp) -> tuple[str | None, str | None]:
         return None, None
 
 
+def resolve_device_id_by_name(sp, device_name: str) -> tuple[str | None, str | None]:
+    """Match a human-readable name to a Spotify Connect device (substring match, same as transfer)."""
+    if not device_name or not str(device_name).strip():
+        return None, None
+    needle = device_name.lower().strip()
+    try:
+        result = sp.devices()
+        for dev in result.get('devices', []):
+            name = (dev.get('name') or '').lower()
+            if needle in name:
+                return dev.get('id'), dev.get('name')
+    except Exception:
+        return None, None
+    return None, None
+
+
 def _is_personalized_spotify_playlist(playlist: dict) -> bool:
     """Check if playlist is a Spotify-generated personalized playlist (Discover Weekly, Daily Mix, etc.).
     
@@ -289,8 +305,60 @@ def _parse_episode_request(query: str) -> tuple[str, str]:
         show_name = show_name.replace(word, '')
     
     show_name = show_name.strip()
+    # Titles like "#2483 - Spencer Pratt" leave a leading dash or hyphen
+    show_name = re.sub(r'^[\s\-–—]+', '', show_name)
+    show_name = re.sub(r'[\s\-–—]+$', '', show_name).strip()
     
     return show_name if show_name else None, episode_num
+
+
+def _try_play_episode_via_global_episode_search(
+    sp, query: str, episode_num: str, device_id: str, guest_hint: str | None
+) -> dict | None:
+    """Resolve episode via Spotify episode search.
+
+    Queries like "#2483 - Guest Name" do not include the podcast title. A show-only
+    search for the guest name can return the wrong podcast (e.g. another show with
+    "Spencer" in the name). Episode search matches the full episode title instead.
+    """
+    queries: list[str] = []
+    q = (query or "").strip()
+    if q:
+        queries.append(q)
+    if guest_hint:
+        gh = guest_hint.strip()
+        if gh and gh not in q.lower():
+            queries.append(f"{gh} #{episode_num}")
+    seen: set[str] = set()
+    guest_words = [w for w in (guest_hint or "").lower().split() if len(w) > 2]
+
+    for search_q in queries:
+        if not search_q or search_q in seen:
+            continue
+        seen.add(search_q)
+        try:
+            res = sp.search(q=search_q, type='episode', limit=50)
+        except Exception:
+            continue
+        items = [e for e in res.get('episodes', {}).get('items', []) if e]
+        for ep in items:
+            name = (ep.get('name') or '')
+            if f"#{episode_num}" not in name and f"#{episode_num} " not in name and f"#{episode_num}:" not in name:
+                continue
+            if guest_words and not any(w in name.lower() for w in guest_words):
+                continue
+            try:
+                sp.start_playback(uris=[ep['uri']], device_id=device_id)
+            except Exception:
+                continue
+            show = ep.get('show') or {}
+            show_nm = show.get('name', 'Podcast')
+            return {
+                "ok": True,
+                "speech": f"Playing {name}",
+                "data": {"uri": ep['uri'], "name": name, "show": show_nm, "type": "episode"},
+            }
+    return None
 
 
 def _check_memory_for_playlist(query: str) -> str | None:
@@ -439,6 +507,22 @@ def action_play(args: dict) -> dict:
     query = args.get('query', '')
     device_id = args.get('device_id')
     search_type = args.get('type', '').lower()  # Explicit type hint from LLM
+    
+    # Resolve device name (LLM passes `device`, e.g. "Office Fire TV") — not only `device_id`.
+    # Without this, get_active_device() prefers whichever device is *already* active (often a phone),
+    # so playback succeeds on the wrong device while the TV never starts.
+    device_name_hint = (args.get('device') or '').strip() or None
+    if not device_id and device_name_hint:
+        device_id, resolved_name = resolve_device_id_by_name(sp, device_name_hint)
+        if not device_id:
+            return {
+                "ok": False,
+                "speech": (
+                    f"Couldn't find a Spotify device matching \"{device_name_hint}\". "
+                    "Open the Spotify app on that device so it appears in Connect, then try again."
+                ),
+                "error": "DEVICE_NOT_FOUND",
+            }
     
     # Auto-detect device if not specified
     if not device_id:
@@ -649,40 +733,54 @@ def action_play(args: dict) -> dict:
         # Check for specific episode number pattern (e.g., "Joe Rogan #2425", "episode 2425")
         elif _has_episode_number(query_lower):
             show_name, episode_num = _parse_episode_request(query_lower)
-            if show_name:
-                results = sp.search(q=show_name, type='show', limit=5)
-                shows = [s for s in results.get('shows', {}).get('items', []) if s]
-                
-                # Find best match
-                show = next((s for s in shows if show_name.lower() in s['name'].lower()), shows[0] if shows else None)
-                
-                if show:
-                    # Search episodes for the number
-                    episodes = sp.show_episodes(show['id'], limit=50)
-                    episode_items = [e for e in episodes.get('items', []) if e]
-                    
-                    # Find episode by number in name
-                    target_ep = None
-                    for ep in episode_items:
-                        ep_name = ep.get('name', '')
-                        if f"#{episode_num}" in ep_name or f"#{episode_num} " in ep_name or f"#{episode_num}:" in ep_name:
-                            target_ep = ep
-                            break
-                        # Also try without #
-                        if f" {episode_num} " in ep_name or ep_name.startswith(f"{episode_num} ") or f"#{episode_num}" in ep_name:
-                            target_ep = ep
-                            break
-                    
-                    if target_ep:
-                        sp.start_playback(uris=[target_ep['uri']], device_id=device_id)
-                        return {
-                            "ok": True,
-                            "speech": f"Playing {target_ep['name']}",
-                            "data": {"uri": target_ep['uri'], "name": target_ep['name'], "show": show['name'], "type": "episode"}
-                        }
-                    else:
+            if episode_num:
+                # 1) Global episode search (JRE titles are often "#NNNN - Guest" without podcast name)
+                global_ep = _try_play_episode_via_global_episode_search(
+                    sp, query, episode_num, device_id, guest_hint=show_name
+                )
+                if global_ep:
+                    return global_ep
+
+                # 2) Show-based lookup when the query includes a podcast name
+                if show_name:
+                    results = sp.search(q=show_name, type='show', limit=5)
+                    shows = [s for s in results.get('shows', {}).get('items', []) if s]
+                    # Do not use shows[0] unless substring match (avoids wrong podcast)
+                    show = next((s for s in shows if show_name.lower() in s['name'].lower()), None)
+                    if show:
+                        episodes = sp.show_episodes(show['id'], limit=50)
+                        episode_items = [e for e in episodes.get('items', []) if e]
+                        target_ep = None
+                        for ep in episode_items:
+                            ep_name = ep.get('name', '')
+                            if f"#{episode_num}" in ep_name or f"#{episode_num} " in ep_name or f"#{episode_num}:" in ep_name:
+                                target_ep = ep
+                                break
+                            if f" {episode_num} " in ep_name or ep_name.startswith(f"{episode_num} ") or f"#{episode_num}" in ep_name:
+                                target_ep = ep
+                                break
+                        if target_ep:
+                            sp.start_playback(uris=[target_ep['uri']], device_id=device_id)
+                            return {
+                                "ok": True,
+                                "speech": f"Playing {target_ep['name']}",
+                                "data": {"uri": target_ep['uri'], "name": target_ep['name'], "show": show['name'], "type": "episode"}
+                            }
+                        fallback = _try_play_episode_via_global_episode_search(
+                            sp, query, episode_num, device_id, guest_hint=None
+                        )
+                        if fallback:
+                            return fallback
                         return {"ok": False, "speech": f"Couldn't find episode {episode_num} of {show['name']}", "error": "Episode not found"}
-        
+                    # No confident show match — unfiltered episode search already tried above; fail clearly
+                    last = _try_play_episode_via_global_episode_search(
+                        sp, query, episode_num, device_id, guest_hint=None
+                    )
+                    if last:
+                        return last
+                    return {"ok": False, "speech": f"Couldn't find episode {episode_num} on Spotify.", "error": "Episode not found"}
+                return {"ok": False, "speech": f"Couldn't find episode {episode_num} on Spotify.", "error": "Episode not found"}
+
         elif 'podcast' in query_lower or 'latest episode' in query_lower or 'latest from' in query_lower or 'newest episode' in query_lower:
             # Search for podcast/show and play LATEST episode
             # Remove keywords to get the podcast name
