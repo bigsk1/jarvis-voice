@@ -372,7 +372,7 @@ jarvis-voice/
 │   ├── evolve-prompts        # Prompt evolution system
 │   ├── manage-tools.py       # Enable/disable tools
 │   ├── sync-memory-db.py     # Manual database sync
-│   ├── sync_tools.py         # Sync tools to LLM context
+│   ├── sync_tools.py         # Tool RAG: sync tool embeddings with hashing
 │   ├── cleanup-intelligence.py # Clean false-positive experiences
 │   ├── spotify-auth          # Spotify OAuth setup
 │   ├── memory                # Memory CLI tool
@@ -1393,6 +1393,10 @@ cp data/jarvis_memory_local.db data/jarvis_memory_local.db.backup
 ./bin/sync-memory-db.py --from local --to cloud  # Sync local → cloud
 ./bin/sync-memory-db.py --from cloud --to local  # Sync cloud → local
 
+# Tool RAG (tool_definitions) is per-mode and not copied by sync-memory-db — run separately:
+./bin/sync_tools.py cloud   # or: local
+./bin/sync_tools.py cloud --force   # re-embed every tool (e.g. after embedding model change)
+
 # Prompt evolution sync after using cloud/local prompt tuning
 ./bin/sync-evolution-db.py local                # Sync cloud prompt versions → local
 ./bin/sync-evolution-db.py local --update-files # Also refresh local tool description files
@@ -1422,7 +1426,8 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (April 2026):**
-- ✅ **Jarvis Web UI `/logs` (v2.12)** — Auth-protected log browser: allowed extensions (`.jsonl`, `.log`, `.md`), stable folder navigation, folder search, YAML-style JSONL cards with modal expansion, markdown viewing, mobile drill-down
+- ✅ **Tool RAG & embeddings (v2.48)** — Unchanged tools skip re-embedding via stored content hash; `./bin/sync_tools.py <cloud|local> --force` for a full refresh; `./bin/check-embeddings-health.py` reports the effective vector backend (`openai` vs `ollama`) separately from the chat LLM; see `docs/SYNC_ARCHITECTURE.md`, `docs/DUAL_DATABASE_SYSTEM.md`, `docs/EMBEDDING_HEALTH_CHECKS.md`
+- ✅ **Jarvis Web UI `/logs`** — Auth-protected log browser: allowed extensions (`.jsonl`, `.log`, `.md`), stable folder navigation, folder search, YAML-style JSONL cards with modal expansion, markdown viewing, mobile drill-down
 - ✅ **Orchestrator: duplicate tools & follow-ups** — Repeated identical tool calls no longer end the turn immediately; bounded recovery with duplicate-guard context; better duplicate-prevention synthesis for transcript/stash-style answers; prior tool results carry `result_truncated` / char-count metadata; retries preserve tool cards and orchestrator state
 - ✅ **Stash & model overrides** — Conversation follow-ups keep real `stash` tool payloads (not upload-only); model prompt overrides strip `-latest` / `-cloud` suffixes for folder matching
 - ✅ **Ollama & install sync** — `OLLAMA_CONTEXT_WINDOW` applied broadly; explicit tool-contract guidance and retries; thinking disabled unless intended; `sync-memory-db` / `sync-evolution-db` repair paths for fresh targets and older DBs
@@ -1852,6 +1857,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.48.0 (March 2026)  
+**Current Version:** v2.48.0 (April 2026)
 **Status:** Production Ready ✅  
-**Latest Features:** Completion Guard ↔ feedback ↔ intelligence + scheduled tasks & run notifications + Web UI `/logs` + duplicate-tool recovery & stash follow-ups + alerts & Weather Watch + TTS normalizer & profiles + SerpAPI/Amazon/Canvas + OpenCode hardening + embedding fallback + model catalog + routing freshness & workflow timings
+**Latest Features:** v2.48: Tool RAG hash skip + `sync_tools --force` + clearer embedding health labels + auto-memory hints + Tool RAG typo hints + SerpAPI YouTube + in-chat/canvas video embeds + Yelp + Completion Guard evidence tweaks + HTTP `LOCAL_PROXY2` / proxy logging + Spotify device fixes + Web UI chat title tooltips — plus Completion Guard ↔ intelligence, `/logs`, alerts & Weather Watch, TTS profiles, Canvas/SerpAPI work
