@@ -734,7 +734,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (65+)
+### Available Skills (70+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -781,6 +781,9 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_search` - **SerpApi search**: Engine-based search (Amazon listings, Amazon product ASIN lookup, and other SerpApi engines)
 - `serpapi_maps_search` - **SerpApi Maps**: Google Maps place and local business search with normalized address/rating/contact fields
 - `serpapi_hotel_search` - **SerpApi Hotels**: Google Hotels search with check-in/out, guest, price, and rating filters
+- `serpapi_yelp_search` - **SerpApi Yelp**: Local places (restaurants, coffee, bars) by description + location; filters, sort, optional reviews
+- `serpapi_youtube_search` - **SerpApi YouTube search**: Keyword search with video-first results (title, channel, views, duration, thumbnails)
+- `serpapi_youtube` - **SerpApi YouTube details**: Video metadata and transcript by URL or `video_id` (useful when `youtube_video` / yt-dlp hits auth or cookie limits)
 
 **Artifact & Output Tools:**
 - `convert_file` - **Local media conversion**: ImageMagick, FFmpeg, Potrace
