@@ -1852,6 +1852,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.47.0 (March 2026)  
+**Current Version:** v2.48.0 (March 2026)  
 **Status:** Production Ready ✅  
 **Latest Features:** Completion Guard ↔ feedback ↔ intelligence + scheduled tasks & run notifications + Web UI `/logs` + duplicate-tool recovery & stash follow-ups + alerts & Weather Watch + TTS normalizer & profiles + SerpAPI/Amazon/Canvas + OpenCode hardening + embedding fallback + model catalog + routing freshness & workflow timings
