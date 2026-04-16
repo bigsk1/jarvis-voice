@@ -2,7 +2,7 @@
   "id": "bookmark_search",
   "name": "Bookmark Search",
   "description": "Search Firefox bookmarks (like * in Firefox address bar)",
-  "version": "1.0",
+  "version": "1.1",
   "enabled": true,
 
   "triggers": {
@@ -25,11 +25,17 @@
         "limit": 20
       },
       "output_var": "bookmark_result",
+      "extract": {
+        "bookmark_matched_count": "matched_count",
+        "bookmark_returned_count": "returned_count",
+        "bookmark_results_text": "results_for_llm"
+      },
       "required": true,
       "description": "Search bookmarks"
     }
   ],
 
-  "success_speech": "Here are your bookmark results. Expand details to view more.",
+  "success_speech_llm_prompt": "The user asked about their saved bookmarks (trigger: * workflow).\n\nUser request: ${query}\n\nTotal matches: ${bookmark_matched_count}. Rows returned in this batch: ${bookmark_returned_count}.\n\nBookmark details (numbered — only these are real; do not invent others):\n${bookmark_results_text}\n\nWrite a concise, friendly answer (under 300 words) for chat or voice. Summarize the most relevant titles and what sites/domains they point to. Show full urls http:// or https://, If there are no matches, say so and suggest trying different keywords. If many matched but only some are listed, mention that. End with a short hint that they can expand the tool card for full JSON.",
+  "success_speech": "Bookmark search finished — expand the tool card below for full results.",
   "abort_speech": "Couldn't search bookmarks."
 }

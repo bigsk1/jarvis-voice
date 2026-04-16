@@ -481,6 +481,29 @@ def search_bookmarks(
         query_part = f" for '{query}'" if query else ""
         speech = f"I found {total_matches} bookmark matches{query_part}, returning {len(results)}."
 
+    # Compact multi-line block for workflow LLM speech (e.g. * bookmark_search)
+    if not results:
+        results_for_llm = "No bookmarks matched this query."
+    else:
+        lines: list[str] = []
+        for i, r in enumerate(results[:15], start=1):
+            title = r.get("title") or "(no title)"
+            url = r.get("url") or ""
+            domain = r.get("domain") or ""
+            folder = (r.get("folder_path") or "").strip()
+            tags = r.get("tags") or []
+            tag_str = ", ".join(str(t) for t in tags[:10]) if tags else ""
+            block = f"{i}. {title}\n   URL: {url}\n   Domain: {domain}"
+            if folder:
+                block += f"\n   Folder: {folder}"
+            if tag_str:
+                block += f"\n   Tags: {tag_str}"
+            lines.append(block)
+        extra = ""
+        if total_matches > len(results):
+            extra = f"\n\n(Showing {len(results)} of {total_matches} total matches.)"
+        results_for_llm = "\n\n".join(lines) + extra
+
     return {
         "speech": speech,
         "data": {
@@ -501,6 +524,7 @@ def search_bookmarks(
             "matched_count": total_matches,
             "returned_count": len(results),
             "results": results,
+            "results_for_llm": results_for_llm,
         },
     }
 
