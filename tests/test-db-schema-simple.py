@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Simple database schema test for long_form column.
-Tests that the column is created correctly in all initialization scenarios.
+Simple database schema tests for MemoryDB: knowledge_base.long_form and
+tool_definitions.embedding_input_hash on fresh init (cloud + local).
 """
 
 import sys
@@ -17,6 +17,14 @@ def print_header(msg):
     print(f"\n{'='*60}")
     print(f"  {msg}")
     print(f"{'='*60}")
+
+def _tool_definitions_column_names(db_path: Path) -> list[str]:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        return [row[1] for row in conn.execute("PRAGMA table_info(tool_definitions)").fetchall()]
+    finally:
+        conn.close()
+
 
 def check_long_form_column(db_path: Path, db_name: str):
     """Check if long_form column exists in knowledge_base table."""
@@ -44,7 +52,7 @@ def main():
     cloud_db = project_root / 'data' / 'jarvis_memory.db'
     local_db = project_root / 'data' / 'jarvis_memory_local.db'
     
-    print_header("Database Schema Test - long_form Column")
+    print_header("Database Schema Test - MemoryDB (long_form + tool_definitions)")
     
     # Backup existing databases
     print("\n📦 Backing up existing databases...")
@@ -76,6 +84,10 @@ def main():
     db = MemoryDB()
     db.close()
     
+    assert "embedding_input_hash" in _tool_definitions_column_names(cloud_db), (
+        "tool_definitions.embedding_input_hash missing after fresh MemoryDB init (cloud)"
+    )
+    
     if not check_long_form_column(cloud_db, "Cloud DB"):
         all_passed = False
     
@@ -94,6 +106,10 @@ def main():
     
     db2 = memory_db.MemoryDB()
     db2.close()
+    
+    assert "embedding_input_hash" in _tool_definitions_column_names(local_db), (
+        "tool_definitions.embedding_input_hash missing after fresh MemoryDB init (local)"
+    )
     
     if not check_long_form_column(local_db, "Local DB"):
         all_passed = False
@@ -165,6 +181,7 @@ def main():
         print("Summary:")
         print("  ✅ long_form column in memory_db.py schema")
         print("  ✅ long_form column created on fresh init")
+        print("  ✅ tool_definitions.embedding_input_hash on fresh cloud/local init")
         print("  ✅ long_form data can be inserted and retrieved")
         print("  ✅ sync-memory-db.py updated for long_form")
         print()

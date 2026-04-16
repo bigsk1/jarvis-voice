@@ -4,12 +4,19 @@ Jarvis Memory Database
 SQLite-based memory system for storing facts, conversations, and learned patterns.
 Supports semantic search with vector embeddings.
 """
+import hashlib
 import sqlite3
 import json
 import os
 import pickle
 import logging
 from pathlib import Path
+
+
+def _tool_definition_content_hash(name: str, description: str, schema_json: str, enabled: bool) -> str:
+    """SHA-256 of inputs that affect Tool RAG embedding and tool identity."""
+    payload = f"{name}\x00{description}\x00{schema_json}\x00{1 if enabled else 0}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 class MemoryDB:
@@ -119,9 +126,11 @@ class MemoryDB:
                 schema_json TEXT NOT NULL,
                 embedding BLOB,
                 enabled BOOLEAN DEFAULT 1,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                embedding_input_hash TEXT
             )
         """)
+        self._ensure_column(cursor, "tool_definitions", "embedding_input_hash", "TEXT")
         
         # Triggers to keep FTS5 in sync with knowledge_base
         cursor.execute("""
@@ -729,31 +738,60 @@ class MemoryDB:
     
     # ========== Tool RAG Operations ==========
     
-    def upsert_tool(self, name: str, description: str, schema_json: str, enabled: bool = True) -> None:
+    def upsert_tool(
+        self,
+        name: str,
+        description: str,
+        schema_json: str,
+        enabled: bool = True,
+        force_reembed: bool = False,
+    ) -> str:
         """
         Insert or update a tool definition in the database.
-        Automatically generates embedding for semantic search.
+        Generates an embedding for semantic search unless content hash matches
+        the stored row and force_reembed is False (skips embedding API).
+
+        Returns:
+            "skipped" — embedding reused (hash unchanged)
+            "embedded" — new or regenerated embedding
         """
         cursor = self.conn.cursor()
-        
-        # Generate embedding
+        new_hash = _tool_definition_content_hash(name, description, schema_json, enabled)
+
         embedding_blob = None
-        try:
-            from embeddings import get_embedding
-            # Combine name and description for embedding
-            text = f"Tool {name}: {description}"
-            embedding_vector = get_embedding(text)
-            embedding_blob = pickle.dumps(embedding_vector)
-        except Exception as e:
-            # Log warning but continue (tool will only be findable by name)
-            print(f"⚠️ Failed to generate embedding for tool {name}: {e}")
-        
+        skip_embed = False
+        if not force_reembed:
+            row = cursor.execute(
+                "SELECT embedding, embedding_input_hash FROM tool_definitions WHERE name = ?",
+                (name,),
+            ).fetchone()
+            if (
+                row
+                and row["embedding"] is not None
+                and row["embedding_input_hash"] is not None
+                and row["embedding_input_hash"] == new_hash
+            ):
+                skip_embed = True
+                embedding_blob = row["embedding"]
+
+        if not skip_embed:
+            try:
+                from embeddings import get_embedding
+                text = f"Tool {name}: {description}"
+                embedding_vector = get_embedding(text)
+                embedding_blob = pickle.dumps(embedding_vector)
+            except Exception as e:
+                print(f"⚠️ Failed to generate embedding for tool {name}: {e}")
+
         cursor.execute("""
-            INSERT OR REPLACE INTO tool_definitions (name, description, schema_json, embedding, enabled, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, (name, description, schema_json, embedding_blob, enabled))
-        
+            INSERT OR REPLACE INTO tool_definitions (
+                name, description, schema_json, embedding, enabled, updated_at, embedding_input_hash
+            )
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+        """, (name, description, schema_json, embedding_blob, enabled, new_hash))
+
         self.conn.commit()
+        return "skipped" if skip_embed else "embedded"
     
     def search_tools(self, query: str, limit: int = 5, threshold: float = 0.0) -> list[dict]:
         """

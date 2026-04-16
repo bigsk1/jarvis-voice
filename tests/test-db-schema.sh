@@ -51,6 +51,15 @@ else
     exit 1
 fi
 
+TOOL_COLS=$(sqlite3 data/jarvis_memory.db "PRAGMA table_info(tool_definitions);" | cut -d'|' -f2)
+if echo "$TOOL_COLS" | grep -q "embedding_input_hash"; then
+    echo "✅ PASS: embedding_input_hash on tool_definitions (cloud)"
+else
+    echo "❌ FAIL: embedding_input_hash missing on tool_definitions (cloud)"
+    echo "Columns found: $TOOL_COLS"
+    exit 1
+fi
+
 echo ""
 
 # Test 2: Fresh database via API server
@@ -88,6 +97,15 @@ if echo "$COLUMNS" | grep -q "long_form"; then
 else
     echo "❌ FAIL: long_form column missing in local DB after MemoryDB init"
     echo "Columns found: $COLUMNS"
+    exit 1
+fi
+
+TOOL_COLS_LOCAL=$(sqlite3 data/jarvis_memory_local.db "PRAGMA table_info(tool_definitions);" | cut -d'|' -f2)
+if echo "$TOOL_COLS_LOCAL" | grep -q "embedding_input_hash"; then
+    echo "✅ PASS: embedding_input_hash on tool_definitions (local)"
+else
+    echo "❌ FAIL: embedding_input_hash missing on tool_definitions (local)"
+    echo "Columns found: $TOOL_COLS_LOCAL"
     exit 1
 fi
 
@@ -168,6 +186,7 @@ echo "╚═══════════════════════�
 echo ""
 echo "Summary:"
 echo "  ✅ long_form column created on fresh init (orchestrator)"
+echo "  ✅ tool_definitions.embedding_input_hash on fresh cloud/local init"
 echo "  ✅ long_form column created on fresh init (API/MemoryDB)"
 echo "  ✅ long_form column synced between databases"
 echo "  ✅ Schema consistency maintained"

@@ -8,6 +8,21 @@ Handles:
 - Adding new tools with embeddings
 - Updating existing tool descriptions/schemas
 - Disabling tools that are no longer in the registry (removed or set enabled=false)
+- Skipping unchanged tools via embedding_input_hash (unless --force)
+
+Usage:
+    ./bin/sync_tools.py cloud
+        Update data/jarvis_memory.db tool_definitions (OpenAI-class embeddings for cloud mode).
+
+    ./bin/sync_tools.py local
+        Update data/jarvis_memory_local.db tool_definitions (Ollama embeddings for local mode).
+
+    ./bin/sync_tools.py cloud --force
+    ./bin/sync_tools.py local --force
+        Regenerate embeddings for every tool (ignore content hash). Use after switching embedding
+        model/dimensions or when debugging Tool RAG.
+
+See also: docs/SYNC_ARCHITECTURE.md, docs/DUAL_DATABASE_SYSTEM.md (tools are not copied by sync-memory-db).
 """
 import sys
 import os
@@ -20,11 +35,11 @@ from tool_schema import ToolRegistry
 from memory_db import get_memory_db
 from config_loader import load_config
 
-def sync_tools(mode='cloud', verbose=True):
+def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False):
     """Sync all tools to the vector database."""
     load_config(mode)
     
-    print(f"🔄 Syncing tools for mode: {mode}")
+    print(f"🔄 Syncing tools for mode: {mode}" + (" (force re-embed all)" if force_reembed else ""))
     
     # Initialize registry (discovers all tools)
     project_root = Path(__file__).parent.parent
@@ -54,6 +69,7 @@ def sync_tools(mode='cloud', verbose=True):
     
     count = 0
     skipped = 0
+    skipped_hash = 0
     total = len(registry.tools)
     syncing = total - len(blocked_tools)
     
@@ -77,15 +93,19 @@ def sync_tools(mode='cloud', verbose=True):
             # MCP tools are enabled if they were discovered
             enabled = True
             
-            # Update DB (generates embedding automatically)
-            db.upsert_tool(
+            # Update DB (embedding skipped when content hash unchanged)
+            result = db.upsert_tool(
                 name=tool_name,
                 description=schema.description,
                 schema_json=schema_json,
-                enabled=enabled
+                enabled=enabled,
+                force_reembed=force_reembed,
             )
-            
-            if verbose:
+            if result == "skipped":
+                skipped_hash += 1
+                if verbose:
+                    print(f"  ○ Unchanged: {tool_name}")
+            elif verbose:
                 print(f"  ✓ Synced: {tool_name}")
             count += 1
             
@@ -96,7 +116,9 @@ def sync_tools(mode='cloud', verbose=True):
     # This handles tools that were removed or have enabled=false in their .tool.json
     disabled_count = _disable_stale_tools(db, active_tools, verbose)
     
-    print(f"\n✅ Successfully synced {count}/{syncing} tools to vector DB.")
+    print(f"\n✅ Processed {count}/{syncing} tools to vector DB.")
+    if skipped_hash > 0 and not force_reembed:
+        print(f"   Skipped embedding (unchanged hash): {skipped_hash}")
     if skipped > 0:
         print(f"   Skipped {skipped} blocked tools (configure via BLOCKED_TOOLS in .env).")
     if disabled_count > 0:
@@ -146,12 +168,21 @@ def _disable_stale_tools(db, active_tools: set, verbose: bool) -> int:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: sync_tools.py <mode>")
+        print("Usage: sync_tools.py <mode> [--force]")
         print("  mode: 'cloud' or 'local'")
+        print("  --force: regenerate embeddings for every tool (ignore content hash)")
         sys.exit(1)
-        
-    mode = sys.argv[1]
-    sync_tools(mode)
+
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    force_reembed = "--force" in sys.argv[1:]
+    if not args:
+        print("Usage: sync_tools.py <mode> [--force]")
+        sys.exit(1)
+    mode = args[0]
+    if mode not in ("cloud", "local"):
+        print("mode must be 'cloud' or 'local'")
+        sys.exit(1)
+    sync_tools(mode, force_reembed=force_reembed)
 
 if __name__ == "__main__":
     main()

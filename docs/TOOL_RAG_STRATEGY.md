@@ -46,13 +46,15 @@ CREATE TABLE IF NOT EXISTS tool_definitions (
     schema_json TEXT NOT NULL,      -- Full JSON schema for the tool
     embedding BLOB,                 -- Vector embedding of name + description
     enabled BOOLEAN DEFAULT 1,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    embedding_input_hash TEXT       -- SHA-256 of embedding inputs; skip re-embed when unchanged (see SYNC_ARCHITECTURE.md)
 );
 ```
 
 **Implementation Notes:**
 -   Embeddings are stored as binary blobs (Pickled python lists for OpenAI, or JSON for others).
 -   The system is robust enough to handle different serialization formats.
+-   `embedding_input_hash` is populated by `MemoryDB.upsert_tool()` / `sync_tools.py`; existing DBs get the column via `ALTER TABLE` on open.
 
 ---
 

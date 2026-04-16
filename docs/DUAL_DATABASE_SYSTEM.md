@@ -61,6 +61,10 @@ Starting LOCAL mode:
   - Tools used, session IDs
   - No embeddings (plain text)
 
+### ❌ Not synced by `sync-memory-db.py`
+
+- **`tool_definitions`** (Tool RAG) lives in the same SQLite files (`jarvis_memory.db` / `jarvis_memory_local.db`) but **is not copied** between cloud and local by `./bin/sync-memory-db.py`. Each mode’s DB keeps its own tool rows and embeddings (1536-dim vs 768-dim). After changing tools, run **`./bin/sync_tools.py cloud`** and/or **`./bin/sync_tools.py local`** as needed. Unchanged tools skip re-embedding when `embedding_input_hash` matches (see `docs/SYNC_ARCHITECTURE.md`); use **`--force`** on that script to re-embed everything.
+
 ### 🔄 Sync Behavior
 
 - **New memories**: Inserted into target DB
@@ -234,8 +238,11 @@ stat data/jarvis_memory_local.db
 
 ```bash
 LLM_PROVIDER="anthropic"
-# Embeddings use OpenAI automatically
+# Chat LLM is separate from embeddings: non-Ollama providers use OpenAI for vectors
+# (see lib/embeddings.py — only LLM_PROVIDER=ollama uses Ollama embeddings)
 ```
+
+`./bin/check-embeddings-health.py` reports **Embedding Provider** as the effective vector backend (`openai` vs `ollama`), not the chat brand (e.g. xAI). If they differ, it prints **LLM Provider (chat)** on a second line.
 
 ### Local Mode (config/local.env)
 
@@ -264,6 +271,11 @@ SEMANTIC_SIMILARITY_THRESHOLD=0.40
 ✅ **Bidirectional**: Changes sync both ways
 ✅ **Fast**: Only syncs when needed
 ✅ **Reliable**: Falls back to keyword search if embeddings fail
+
+## See also
+
+- `docs/EMBEDDING_HEALTH_CHECKS.md` — dimensions, health script output (embedding vs chat LLM), and `sync_tools.py --force` when re-embedding everything.
+- `docs/SYNC_ARCHITECTURE.md` — memory sync vs tool sync, `embedding_input_hash` behavior.
 
 ## Summary
 

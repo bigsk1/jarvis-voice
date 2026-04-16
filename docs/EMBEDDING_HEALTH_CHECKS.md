@@ -142,8 +142,8 @@ These are process/runtime warnings, not DB corruption.
 **What it checks:**
 - ✅ Embedding dimensions in `knowledge_base` table (memories)
 - ✅ Embedding dimensions in `tool_definitions` table (Tool RAG)
-- ✅ Current config generates correct dimensions
-- ✅ Embedding provider matches expected model
+- ✅ Current config generates correct dimensions for the mode
+- ✅ Reports **Embedding Provider** as the effective vector backend (`openai` vs `ollama`), matching `lib/embeddings.get_embedding()` — not the chat LLM brand. If chat and embedding backends differ (e.g. xAI chat + OpenAI embeddings), a second line shows **LLM Provider (chat)**.
 
 These checks validate **stored embeddings**, not every transient runtime query embedding.
 
@@ -159,6 +159,8 @@ Expected Dimensions: 768
 Current Config Generates: 768
 Embedding Provider: ollama
 Embedding Model: nomic-embed-text
+
+(In cloud mode with a non-Ollama chat provider, **Embedding Provider** is typically `openai` and **Embedding Model** `text-embedding-3-small`. If the chat LLM differs, **LLM Provider (chat):** may appear on the next line.)
 
 Knowledge Base:
   Checked: 64 memories
@@ -272,13 +274,16 @@ export LLM_PROVIDER="ollama"
 
 **Symptom**: "Tool XYZ: 1536D (expected 768D)"
 
-**Fix**: Re-sync tools
+**Fix**: Re-sync tools for that mode. Use **`--force`** if you need every tool re-embedded (e.g. after a model change), not only changed definitions:
 ```bash
 # Local mode
 ./bin/sync_tools.py local
+# or full re-embed:
+./bin/sync_tools.py local --force
 
 # Cloud mode
 ./bin/sync_tools.py cloud
+./bin/sync_tools.py cloud --force
 
 # Verify fix
 ./bin/check-embeddings-health.py local
@@ -310,7 +315,7 @@ rm -f data/jarvis_memory_local.db
 # Initialize orchestrator (creates tables)
 ./orchestrator/orchestrator_v2.py local "test query"
 
-# Sync tools (generates embeddings)
+# Sync tools (generates embeddings; add --force to re-embed every tool)
 ./bin/sync_tools.py local
 
 # Health check
@@ -403,7 +408,7 @@ In that case:
 **A**: You must regenerate ALL embeddings:
 1. Update config to new embedding model
 2. Run `sync-memory-db.py` to regenerate memory embeddings
-3. Run `sync_tools.py` to regenerate tool embeddings
+3. Run `./bin/sync_tools.py <cloud|local> --force` to regenerate **all** tool embeddings (normal sync may skip unchanged tools via `embedding_input_hash`)
 4. Run health check to verify
 
 ### Q: How often should I run health checks?

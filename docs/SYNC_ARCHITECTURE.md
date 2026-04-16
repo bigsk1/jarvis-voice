@@ -184,27 +184,24 @@ db.upsert_tool(
    ./bin/sync_tools.py cloud
    ```
 
-### Planned optimization: content-hash skip (not implemented)
+### Implemented: content-hash skip
 
-**Today:** Every run of `sync_tools.py` calls `MemoryDB.upsert_tool()` for each active tool and **always** regenerates the embedding and **INSERT OR REPLACE**s the row. There is **no** comparison to a prior version, so a full sync is *N* embedding API calls (cloud) or *N* local embedding runs, even when nothing changed.
+**Behavior:** `MemoryDB.upsert_tool()` stores **`embedding_input_hash`** (SHA-256 of name, description, schema JSON, and enabled flag). On each sync, if the row already has a non-null embedding and the hash matches, the embedding step is **skipped** (no API / local embed call). New tools, missing embeddings, missing hash, or hash mismatch still embed as before.
 
-**Why consider hashing:** Startup flows (e.g. `jarvis-services` / `jarvis-api` — see **When it Runs** above) already invoke tool sync; manual runs after editing `.tool.json` stay the same. Skipping unchanged tools only makes those runs **faster** and **cheaper** (fewer embedding calls). It does **not** change *when* sync runs or the need to run sync after real edits. Disabling a tool via `enabled: false` / registry removal still relies on the existing **upsert + stale disable** behavior; the optimization only avoids work when the **embedding input** is bit-identical to what was last stored.
+**Schema:** `tool_definitions.embedding_input_hash` is created on **new databases** (`MemoryDB._init_db`) and added to existing files via **`_ensure_column`** on open—same pattern as other additive migrations. Fresh clones that create the DB through `MemoryDB` (including `./bin/setup-memory-db.sh` for an empty file, `sync_tools.py`, and first service startup) get the column automatically.
 
-**Proposed design (high level):**
+| Piece | Implementation |
+|--------|----------------|
+| **Fingerprint** | `_tool_definition_content_hash()` — UTF-8 payload with null separators so fields cannot alias. |
+| **Storage** | Column `embedding_input_hash TEXT` on `tool_definitions`. |
+| **Skip path** | If `embedding IS NOT NULL`, stored hash equals computed hash, and `force_reembed` is false → skip `get_embedding()` and reuse stored blob. |
+| **Always embed** | New row, null embedding, null/mismatched hash, or **`./bin/sync_tools.py cloud|local --force`** (`force_reembed=True`). |
 
-| Piece | Idea |
-|--------|------|
-| **Fingerprint** | Stable hash (e.g. SHA-256) of the exact string (or canonical JSON) used for embedding plus anything that should invalidate the vector: e.g. normalized `schema_json`, `description`, `name`, `enabled` if it affects stored rows. |
-| **Storage** | New column on `tool_definitions`, e.g. `embedding_input_hash TEXT`, or a single `content_hash` covering name + description + schema blob. |
-| **Skip path** | Before `get_embedding()`, if row exists and `hash == stored_hash` and `embedding IS NOT NULL`, skip API call and optionally skip write (or update only non-embedding columns if needed). |
-| **Always embed** | New tool (no row), missing hash, missing embedding, `--force` / env to ignore hash, or embedding model / mode change (dimension mismatch) — same triggers as health check concerns. |
-| **CLI** | Optional `./bin/sync_tools.py cloud --force` to re-embed everything (migrations, provider switch, debugging). |
+**Manual workflow unchanged:** Run `./bin/sync_tools.py cloud|local` after changing tools; use **`--force`** when you need a full re-embed (e.g. after switching embedding model/dimensions or debugging). Startup sync in `jarvis-services` / `jarvis-api` benefits from fewer redundant embedding calls when nothing changed.
 
-**Manual workflow unchanged:** You still run `./bin/sync_tools.py cloud|local` after changing tools; disabling tools and `_disable_stale_tools` behavior stay as today. Services that sync on startup simply do less redundant work when hashes match.
+**Benefit skew:** **Cloud** embeddings save the most in cost and latency; **local** mode saves mainly time on large tool sets.
 
-**Benefit skew:** **Cloud** (paid OpenAI-class embeddings) gains the most in **cost** and **latency**. **Local** (e.g. Nomic) is already relatively fast; gains are mainly **time** on large tool counts.
-
-**Out of scope for this plan:** Changing Tool RAG retrieval logic, web UI behavior, or merging tool sync with memory sync.
+**Out of scope:** Tool RAG retrieval logic, web UI, and merging tool sync with memory sync are unchanged.
 
 ---
 

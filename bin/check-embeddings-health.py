@@ -34,6 +34,13 @@ BOLD = '\033[1m'
 NC = '\033[0m'  # No Color
 
 
+def _effective_embedding_backend() -> str:
+    """Match lib/embeddings.get_embedding(): only 'ollama' uses Ollama; all else use OpenAI API."""
+    llm = get_config_value("LLM_PROVIDER", "openai")
+    resolved = get_config_value("EMBEDDING_PROVIDER", llm)
+    return "ollama" if resolved == "ollama" else "openai"
+
+
 def check_embedding_dimensions(mode='cloud'):
     """
     Check if embeddings in the database match expected dimensions for the mode.
@@ -132,6 +139,17 @@ def check_embedding_dimensions(mode='cloud'):
     test_embedding = get_embedding("test query")
     current_dim = len(test_embedding)
     
+    llm_provider = get_config_value("LLM_PROVIDER", "openai")
+    effective = _effective_embedding_backend()
+    if mode == "local":
+        embedding_model = get_config_value("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+    else:
+        embedding_model = (
+            get_config_value("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+            if effective == "ollama"
+            else "text-embedding-3-small"
+        )
+    
     return {
         'ok': len(memory_issues) == 0 and len(tool_issues) == 0 and current_dim == expected_dim,
         'mode': mode,
@@ -141,8 +159,10 @@ def check_embedding_dimensions(mode='cloud'):
         'memory_issues': memory_issues,
         'tools_checked': len(tools_with_embeddings),
         'tool_issues': tool_issues,
-        'embedding_provider': get_config_value('LLM_PROVIDER'),
-        'embedding_model': get_config_value('OLLAMA_EMBEDDING_MODEL', 'nomic-embed-text') if mode == 'local' else 'text-embedding-3-small'
+        # What actually runs vectors (openai vs ollama), not the chat LLM (xai/anthropic/…)
+        'embedding_provider': effective,
+        'llm_provider': llm_provider,
+        'embedding_model': embedding_model,
     }
 
 
@@ -166,6 +186,8 @@ def print_health_report(health):
     print(f"{BLUE}Expected Dimensions:{NC} {health['expected_dimensions']}")
     print(f"{BLUE}Current Config Generates:{NC} {health['current_embedding_dimensions']}")
     print(f"{BLUE}Embedding Provider:{NC} {health['embedding_provider']}")
+    if health.get("llm_provider") and health["llm_provider"] != health["embedding_provider"]:
+        print(f"{BLUE}LLM Provider (chat):{NC} {health['llm_provider']}")
     print(f"{BLUE}Embedding Model:{NC} {health['embedding_model']}")
     print()
     
