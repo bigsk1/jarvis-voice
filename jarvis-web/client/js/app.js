@@ -180,7 +180,7 @@ class JarvisApp {
       
       // Close sidebar when clicking a conversation (mobile UX)
       sidebar.addEventListener('click', (e) => {
-        if (e.target.closest('.conversation-item') && window.innerWidth <= 768) {
+        if (e.target.closest('.history-item') && window.innerWidth <= 768) {
           sidebar.classList.remove('mobile-open');
           document.body.classList.remove('sidebar-open');
         }
@@ -891,6 +891,76 @@ class JarvisApp {
    * Tooltip stays visible when hovering over item OR tooltip, with delay before hide
    * so user can move mouse into tooltip to scroll long descriptions.
    */
+  /**
+   * Chat history row titles: fixed-position tooltip (not clipped by .history-list).
+   * Show delay avoids flicker; hide is immediate on row leave so moving down the list
+   * can open the next tooltip without the previous one trapping the pointer.
+   */
+  _setupHistoryTitleTooltips(container) {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    const gap = 6;
+    const maxTooltipWidth = 320;
+    const showDelayMs = 380;
+    const hideAllTooltips = () => {
+      container.querySelectorAll('.history-title-tooltip').forEach(el => {
+        el.style.display = 'none';
+      });
+    };
+    container.querySelectorAll('.history-item').forEach(item => {
+      const tooltip = item.querySelector('.history-title-tooltip');
+      if (!tooltip) return;
+      let showTimeout = null;
+      const clearShow = () => {
+        if (showTimeout) {
+          clearTimeout(showTimeout);
+          showTimeout = null;
+        }
+      };
+      const positionAndShow = () => {
+        const rect = item.getBoundingClientRect();
+        const w = Math.min(maxTooltipWidth, window.innerWidth - 16);
+        tooltip.style.display = 'block';
+        tooltip.style.position = 'fixed';
+        tooltip.style.left = `${rect.left}px`;
+        tooltip.style.top = `${rect.bottom + gap}px`;
+        tooltip.style.width = `${w}px`;
+        tooltip.style.maxWidth = `${w}px`;
+        tooltip.style.zIndex = '10050';
+        tooltip.style.boxSizing = 'border-box';
+        requestAnimationFrame(() => {
+          const tr = tooltip.getBoundingClientRect();
+          let top = rect.bottom + gap;
+          if (tr.bottom > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - tr.height - gap);
+          }
+          let left = rect.left;
+          if (left + tr.width > window.innerWidth - 8) {
+            left = Math.max(8, window.innerWidth - tr.width - 8);
+          }
+          tooltip.style.top = `${top}px`;
+          tooltip.style.left = `${left}px`;
+        });
+      };
+      const onEnter = () => {
+        clearShow();
+        hideAllTooltips();
+        showTimeout = setTimeout(() => {
+          showTimeout = null;
+          positionAndShow();
+        }, showDelayMs);
+      };
+      const onLeave = () => {
+        clearShow();
+        tooltip.style.display = 'none';
+      };
+      item.addEventListener('mouseenter', onEnter);
+      item.addEventListener('mouseleave', onLeave);
+    });
+    container.onscroll = () => {
+      hideAllTooltips();
+    };
+  }
+  
   _setupToolHoverTooltips(container) {
     if (!window.matchMedia('(hover: hover)').matches) return;
     const gap = 4;
@@ -1714,16 +1784,17 @@ class JarvisApp {
         for (const conv of convs) {
           const isActive = this.socket.conversationId === conv.id;
           const date = this._formatRelativeDate(conv.updated_at);
+          const fullTitle = conv.title || 'Untitled';
           
           html += `
             <div class="history-item ${isActive ? 'active' : ''}" 
                  data-conv-id="${conv.id}"
-                 title="${conv.id}"
                  onclick="window.jarvisApp.loadConversation('${conv.id}')">
               <div class="history-item-content">
-                <div class="history-title">${Utils.escapeHtml(conv.title || 'Untitled')}</div>
+                <div class="history-title">${Utils.escapeHtml(fullTitle)}</div>
                 <div class="history-date">${date} · ${conv.message_count || 0} messages</div>
               </div>
+              <div class="history-title-tooltip" aria-hidden="true">${Utils.escapeHtml(fullTitle)}</div>
               <button class="history-delete" 
                       onclick="event.stopPropagation(); window.jarvisApp.deleteConversation('${conv.id}')"
                       title="Delete conversation">🗑️</button>
@@ -1732,6 +1803,7 @@ class JarvisApp {
         }
         
         container.innerHTML = html;
+        this._setupHistoryTitleTooltips(container);
         
         // Store conversations for filtering
         this._conversations = data.conversations;

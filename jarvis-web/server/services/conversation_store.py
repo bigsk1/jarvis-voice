@@ -93,9 +93,11 @@ class ConversationStore:
         conversation['messages'].append(message)
         conversation['updated_at'] = message['timestamp']
         
-        # Auto-generate title from first user message
+        # Auto-generate title from first user message (full text; sidebar row ellipsizes in CSS)
         if len(conversation['messages']) == 1 and role == 'user':
-            conversation['title'] = content[:50] + ('...' if len(content) > 50 else '')
+            line = ' '.join(content.strip().split())
+            if line:
+                conversation['title'] = line[:4000]
         
         # Save conversation
         conv_file = self.conversations_dir / f'{conv_id}.json'
