@@ -122,9 +122,11 @@ FRESHNESS & FLEXIBILITY RULES (HIGH PRIORITY):
 - Prefer the newest authoritative_live tool result for live-data questions (prices, weather now, current status).
 - If a fresh result for the same target already exists and user did NOT ask to refresh/recheck, respond directly instead of re-calling the same tool.
 - Treat old memory/stash snapshots as historical context, not live truth, when they conflict with fresh tool output.
+- If conversation context indicates this thread is being resumed after a meaningful gap, treat prior chat messages as historical thread context too.
 - For price-like data, memory older than 60 minutes is usually stale for "right now" queries.
 - IMPORTANT FLEXIBILITY: If user explicitly asks for history/comparison/trends ("last week", "yesterday vs now", "compare to January"), use historical memory/intel and additional tools as needed. Do NOT force a live-only answer.
 - IMPORTANT FLEXIBILITY: If user explicitly asks to refresh/re-run/recheck, a repeat tool call is allowed.
+- IMPORTANT FLEXIBILITY: For a resumed conversation that is clearly continuing the same topic, and the new request is not urgent, transactional, or workflow-heavy, a brief welcome-back or "picking this back up" opener is OK if it feels natural.
 
 **WHEN A TOOL FAILS OR GIVES UNEXPECTED RESULTS:**
 - Do NOT blindly retry with different parameters. First consider: is this a known API limitation?
@@ -219,7 +221,7 @@ When user asks you to research something and create output (canvas, email, etc.)
 
 SEARCH EFFICIENCY RULES (CRITICAL - AVOID INFINITE LOOPS):
 When performing web searches or data gathering:
-1. **Evaluate after 2-3 tool calls**: Do you have enough info to answer the user's question?
+1. **Evaluate after 1-3 tool calls**: Do you have enough info to answer the user's question?
    - If YES → Stop searching, respond with Q&A
    - If NO → Continue, but be strategic
 
@@ -249,7 +251,7 @@ MANDATORY FORMAT (skip entirely when RESPONSE STYLE is DETAILED—see runtime pr
 - Tool confirmations: MAX 35 WORDS (action completed, result)—voice/casual/auto only
 - Q&A/informational responses: follow the CURRENT configured Q&A word limit from the runtime config
 - NO emojis, NO markdown (**, ##, bullets)
-- NO greeting fluff ("Great!", "Perfect!", "I've successfully...")
+- NO empty greeting fluff ("Great!", "Perfect!", "I've successfully..."); a single brief contextual opener is OK only for a genuinely fresh conversation
 - Get straight to the answer
 
 ⚠️ ABSOLUTELY FORBIDDEN - META-LEVEL RESPONSES:
@@ -589,22 +591,15 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
         if default_loc:
             location_block = f"""
 
-DEFAULT LOCATION (weather and location-based queries only):
+DEFAULT LOCATION (weather and location-based queries):
 When the user asks for weather or location-based info WITHOUT specifying a place, use: "{default_loc}"
 Do NOT use this when the user specifies a different location (e.g. "weather in Seattle" → use Seattle).
 Time and timezone use JARVIS_TIMEZONE - this is separate."""
-        # Time-of-day personal touch for new conversations (first message, new chat)
-        greeting_hint = ""
-        hour = now.hour
-        if hour >= 22 or hour < 7:
-            if hour >= 22:
-                time_context = "late night (10pm–midnight)"
-            else:
-                time_context = "early morning (12am–7am)"
-            greeting_hint = f"""
+        # Light personal touch for fresh conversations using existing date/time context above.
+        greeting_hint = """
 
 PERSONAL TOUCH (new conversations only):
-When this appears to be the start of a fresh conversation, you may add a brief time-aware greeting before the main response. Current time: {time_context}. Use your own phrasing—e.g. working late, early bird—one short natural phrase. Skip if continuing an existing conversation."""
+If this appears to be the start of a genuinely fresh conversation, you may add one short natural opener before the main response when it adds warmth/humor/facts. You may lightly draw from the current time, date, season, holiday, observance, or general vibe if it comes naturally from what you already know. Keep it original and brief, and skip it for urgent, transactional, or continuing conversations."""
         base_prompt = time_prefix + location_block + greeting_hint + self._system_prompt_base
         return apply_prompt_override_sections(
             base_prompt,
@@ -640,7 +635,7 @@ When this appears to be the start of a fresh conversation, you may add a brief t
                 model=model
             )
         elif provider_type == "ollama":
-            model = self._model_override or get_config_value("OLLAMA_MODEL", "qwen3")
+            model = self._model_override or get_config_value("OLLAMA_MODEL", "gemma4")
             return create_provider(
                 "ollama",
                 base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
@@ -687,8 +682,8 @@ When this appears to be the start of a fresh conversation, you may add a brief t
         # Cloud models (Claude/GPT) can handle more choices
         retrieval_limit = 5 if self.mode == 'local' else 15
         
-        # 2. Extract the actual user query (remove auto-context if present)
-        # Auto-context prepends "=== RECENT CONVERSATION HISTORY ===" which dilutes tool search
+        # 2. Extract the actual user query (remove auto-context if present) 
+        # Auto-context prepends "=== RECENT CONVERSATION HISTORY ===" which dilutes tool search this applies only when AUTO_CONTEXT_ENABLED=true in env is false no === RECENT CONVERSATION HISTORY === or Instructions: in transcript
         tool_search_query = transcript
         if "=== RECENT CONVERSATION HISTORY ===" in transcript and "Instructions:" in transcript:
             # The actual query is between the last conversation exchange and "Instructions:"

@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_int, get_float, get_config_value
+from time_utils import safe_iso_to_local_datetime
 from memory_db import get_memory_db
 from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import apply_prompt_override_sections
@@ -254,15 +255,7 @@ class Orchestrator:
 
     def _safe_iso_to_local_datetime(self, iso_text: str):
         """Parse ISO timestamp string and normalize to local timezone."""
-        if not iso_text:
-            return None
-        try:
-            dt = datetime.fromisoformat(str(iso_text).replace("Z", "+00:00"))
-            if getattr(dt, "tzinfo", None) is None:
-                return dt.replace(tzinfo=self.timezone)
-            return dt.astimezone(self.timezone)
-        except Exception:
-            return None
+        return safe_iso_to_local_datetime(iso_text, self.timezone)
 
     def _format_age_seconds(self, seconds: float | int | None) -> str:
         """Human-friendly age text."""
@@ -277,6 +270,28 @@ class Orchestrator:
                 return f"{m}m {rem}s"
             h, m = divmod(m, 60)
             return f"{h}h {m}m"
+        except Exception:
+            return "unknown"
+
+    def _format_gap_for_prompt(self, seconds: float | int | None) -> str:
+        """Compact human-friendly text for resumed conversation gaps."""
+        if seconds is None:
+            return "unknown"
+        try:
+            s = int(max(0, seconds))
+            if s < 3600:
+                return self._format_age_seconds(s)
+            if s < 86400:
+                h = round(s / 3600)
+                return f"{h}h"
+            if s < 86400 * 14:
+                d = round(s / 86400)
+                return f"{d}d"
+            if s < 86400 * 60:
+                w = round(s / (86400 * 7))
+                return f"{w}w"
+            months = round(s / (86400 * 30))
+            return f"{months}mo"
         except Exception:
             return "unknown"
 
@@ -526,7 +541,7 @@ Mode: {self.mode}
             
             # Log security events (don't block, but audit)
             if security_info.get("injection_detected"):
-                # Could add to a security audit log here
+                # Could add to a security audit log here TODO: add a security audit log and block risky inputs?
                 pass
         except ImportError:
             # security_utils not available, continue without sanitization
@@ -1412,7 +1427,7 @@ IMPORTANT: The task completed but tried to call a duplicate tool.
 You MUST synthesize a proper answer using the data above.
 
 CRITICAL RULES:
-1. MAX 150 WORDS - but ACTUALLY ANSWER the user's question
+1. MAX 300 WORDS - but ACTUALLY ANSWER the user's question
 2. If you found relevant info (camera models, prices, specs, comparisons) - INCLUDE IT
 3. Reference the Canvas page if detailed results were saved there
 4. DO NOT say "I used tools" or mention tool counts - just answer!
@@ -1730,9 +1745,9 @@ Your condensed response:"""
         Returns:
             Concise voice-friendly summary (50 words max by default)
         """
-        multi_turn_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+        multi_turn_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '75'))
         try:
-            # Get configurable word limit for multi-turn (default 50)
+            # Get configurable word limit for multi-turn (default 75)
             
             # Use LLM to create a concise voice summary
             # Calculate dynamic truncation - more data for repeated tools (arrays)
@@ -1802,7 +1817,7 @@ Your response:"""
         """
         try:
             # Align with JARVIS_MULTI_TURN_WORD_LIMIT (same as multi-turn summary condensation)
-            multi_turn_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+            multi_turn_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '75'))
 
             # Extract useful data from accumulated results (especially for search arrays)
             extracted_data = self._extract_useful_data(accumulated_data)
@@ -1952,7 +1967,7 @@ Your BEST EFFORT response:"""
         
         Args:
             current_query: User's current question/request
-            history: List of previous messages [{role: str, content: str, tools_used: list, tool_results: dict}, ...]
+            history: List of previous messages [{role: str, content: str, timestamp?: str, tools_used: list, tool_results: dict}, ...]
             
         Returns:
             Enhanced query with conversation context
@@ -1965,6 +1980,28 @@ Your BEST EFFORT response:"""
         recent = history
         
         context_lines = ["=== RECENT CONVERSATION CONTEXT ==="]
+        # Gap hints only when the anchor is unambiguous: use the chronologically last
+        # history message only. Skip if it has no timestamp, or if it is a user
+        # message (may duplicate the current transcript when history was not stripped).
+        last_msg = recent[-1]
+        last_role = last_msg.get("role", "user")
+        last_msg_dt = None
+        if last_role != "user":
+            last_msg_dt = self._safe_iso_to_local_datetime(last_msg.get("timestamp"))
+
+        now_local = datetime.now(self.timezone)
+        if last_msg_dt:
+            gap_seconds = int(max(0, (now_local - last_msg_dt).total_seconds()))
+            abs_local = last_msg_dt.strftime("%b %d, %Y %H:%M")
+            rel = self._format_gap_for_prompt(gap_seconds)
+            context_lines.append(
+                f"Context timing: latest prior message in this conversation was {abs_local} (local), about {rel} ago."
+            )
+            if gap_seconds >= 86400:
+                context_lines.append(
+                    "Resumed thread: treat earlier messages as historical context. If the new request clearly continues this thread and is not urgent or transactional, a brief welcome-back or picking-this-back-up acknowledgment is OK."
+                )
+            context_lines.append("")
         
         for msg in recent:
             role = msg.get('role', 'user')
@@ -2492,7 +2529,8 @@ Your BEST EFFORT response:"""
         try:
             db = get_memory_db()
             limit = get_int('AUTO_MEMORY_LIMIT', 8)
-            threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.38)
+            # TODO: show similarity theshold number in logs / transcript to better understand why it was shown.
+            threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.42)
             recency_enabled = get_config_value('AUTO_MEMORY_RECENCY_ENABLED', 'true').lower() == 'true'
             addressing_limit = get_int('AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT', 2)
             transcript_lower = transcript.lower()

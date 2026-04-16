@@ -444,7 +444,7 @@ class ToolRegistry:
         
         # Get Core "Ghost" Tools from config (or use defaults)
         # These ensure basic functionality never fails
-        ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time')
+        ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember')
         CORE_TOOLS = [t.strip() for t in ghost_tools_str.split(',')]
         
         if similarity_threshold is None:

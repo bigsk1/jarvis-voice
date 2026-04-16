@@ -83,6 +83,28 @@ def to_local_from_utc_string(value: str, tz: ZoneInfo | None = None) -> datetime
     return parse_utc_timestamp(value).astimezone(tz)
 
 
+def safe_iso_to_local_datetime(iso_text: str | None, tz: ZoneInfo | None = None) -> datetime | None:
+    """
+    Parse an ISO timestamp string and normalize to local time.
+
+    Used for message timestamps, tool execution times, and other mixed ISO inputs:
+    - Suffix ``Z`` is treated as UTC.
+    - Naive values are interpreted in ``tz`` (default: app timezone).
+    - Aware values are converted to ``tz``.
+    Returns None when empty or unparsable.
+    """
+    if not iso_text:
+        return None
+    tz = tz or get_app_timezone()
+    try:
+        dt = datetime.fromisoformat(str(iso_text).replace("Z", "+00:00"))
+        if getattr(dt, "tzinfo", None) is None:
+            return dt.replace(tzinfo=tz)
+        return dt.astimezone(tz)
+    except Exception:
+        return None
+
+
 def add_months_local(dt: datetime, months: int = 1) -> datetime:
     """Add months while preserving local wall-clock time when possible."""
     year = dt.year

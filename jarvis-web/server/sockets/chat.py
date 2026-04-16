@@ -2585,17 +2585,24 @@ Previous structured data:
                 return []
             
             messages = conversation.get('messages', [])
+            # The current user message is saved before background processing starts.
+            # Exclude a trailing user-only turn so "conversation history" means prior context,
+            # not the in-flight request being processed right now.
+            if messages and messages[-1].get('role') == 'user':
+                messages = messages[:-1]
             
             # Get configurable history limit (default 20)
             history_limit = get_web_setting('conversation.history_limit', 20)
             
-            # Format for orchestrator: [{role: str, content: str, tools_used: list}, ...]
+            # Format for orchestrator: [{role, content, timestamp?, tools_used?, tool_results?}, ...]
             history = []
             for msg in messages[-history_limit:]:
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
                 if content:
                     entry = {'role': role, 'content': content}
+                    if msg.get('timestamp'):
+                        entry['timestamp'] = msg.get('timestamp')
                     # Include tools_used for assistant messages so LLM knows what tools were run
                     if role == 'assistant' and msg.get('tools_used'):
                         entry['tools_used'] = msg.get('tools_used')

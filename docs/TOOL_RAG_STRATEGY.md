@@ -169,6 +169,23 @@ Debugging note:
 
 Disable with `TOOL_RAG_TYPO_ENABLED=false`.
 
+### F. Web UI vs auto-context: who uses which threshold
+
+The two env vars are **not** split by “CLI vs web” or “one tool vs many tools.” They track **one technical distinction**: did the router shorten the string before embedding, or did it embed the whole routing prompt?
+
+**`TOOL_SIMILARITY_THRESHOLD` (e.g. 0.23)**  
+Used when `tool_search_query` is **different from** the full `transcript` because the router **stripped** the blob down to a short line. That only happens when the incoming text matches the **auto-context** shape: it contains `=== RECENT CONVERSATION HISTORY ===` (from memory DB injection in the orchestrator) **and** `Instructions:`. The strip walks backward from `Instructions:` to find the real user line. That path is what older voice/CLI-style flows used; anything that still sends this exact shape gets the short query and the base threshold.
+
+**`TOOL_SIMILARITY_THRESHOLD_FULL` (e.g. 0.40)**  
+Used when **no** strip ran, so `tool_search_query` equals the **entire** routing string. Long prompts dilute the embedding, so similarities skew higher; a stricter cutoff trims weak tools and saves tokens. Typical **web chat** requests look like `=== RECENT CONVERSATION CONTEXT ===` … `Current request:` — different header, no `Instructions:` block, so the HISTORY strip **does not** run. **Every** such turn (first message or tenth, one tool round or four) uses the **full** path until you add a separate strip for the web shape.
+
+So in plain terms:
+
+- **Base threshold** = “we embedded a short user line.”
+- **Full threshold** = “we embedded the whole thing.”
+
+Web UI is usually on the **full** path, not because it is “multi-tool only,” but because the transcript never matched the HISTORY+`Instructions:` heuristic. If you tune both numbers, treat them as **embedding-shape A vs B**, not as product surface labels.
+
 ---
 
 ## 6. Findings & troubleshooting
