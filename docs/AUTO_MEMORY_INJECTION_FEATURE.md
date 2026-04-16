@@ -39,45 +39,24 @@ User: "Let's talk about machine learning"
     ↓
 Orchestrator.process()
     ↓
-1. _format_conversation_context() or _build_conversation_context()  [existing]
-2. _get_relevant_memories(transcript)  [NEW]
-    → memory_db.semantic_search(query=transcript, limit=5–10, threshold=0.35–0.45)
-    → Format as "=== RELEVANT STORED KNOWLEDGE ===" block
-3. _get_learning_insights()  [existing]
+1. Build base transcript: _format_conversation_context() [web] OR _build_conversation_context() [auto-context] OR raw transcript
+2. Prepend _get_relevant_memories(transcript)  →  "=== RELEVANT STORED KNOWLEDGE ===" block
+3. Prepend _get_learning_insights()  →  learned strategies / tool preferences
     ↓
-enhanced_transcript = memory_block + learning_insights + conversation_context + current_query
+Final order (top of prompt downward): LEARNING  →  MEMORY  →  conversation / query
     ↓
 router.route(enhanced_transcript)
 ```
 
-### Implementation Sketch
+Memory runs on the **raw user transcript** for search; the **injected blocks** are ordered so strategies sit above stored knowledge above thread context.
 
-**Location**: `orchestrator/orchestrator_v2.py`
+### Implementation (`orchestrator/orchestrator_v2.py` → `_get_relevant_memories`)
 
-```python
-def _get_relevant_memories(self, transcript: str, limit: int = 8, 
-                           similarity_threshold: float = None) -> str:
-    """
-    Fetch memories semantically relevant to the current query.
-    Injected into context so LLM doesn't need to call search_memory/semantic_recall.
-    """
-    if not get_config_value('AUTO_MEMORY_INJECTION_ENABLED', 'true').lower() == 'true':
-        return ""
-    try:
-        db = get_memory_db()
-        limit = get_int('AUTO_MEMORY_LIMIT', 8)
-        threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.38) if similarity_threshold is None else similarity_threshold
-        memories = db.semantic_search(query=transcript, limit=limit, similarity_threshold=threshold)
-        if not memories:
-            return ""
-        lines = ["=== RELEVANT STORED KNOWLEDGE (use this without calling search tools) ==="]
-        for m in memories:
-            lines.append(f"- {m.get('key')}: {m.get('value')} (category: {m.get('category')}, relevance: {m.get('similarity', 0):.0%})")
-        lines.append("===")
-        return "\n".join(lines) + "\n\n"
-    except Exception:
-        return ""
-```
+**Merge:** Candidates come from (1) addressing preferences (pinned), (2) optional intel FTS matches on tooling-heavy queries, (3) semantic search with recency weighting and intel boosts. Each row gets a numeric **score** used for ordering.
+
+**Sort:** `merged.sort(key=lambda x: (score, importance), reverse=True)`, then `top = merged[:AUTO_MEMORY_LIMIT]`. Primary key is **score** (higher = listed first). **Importance** breaks ties. **Recency** is not a separate column; it multiplies semantic similarity before comparison. There is no “newest first” sort by itself.
+
+**Prompt lines:** Each bullet includes a short **match hint**: `rank=…` matches the sort key; semantic rows also show `embed=…` (raw cosine before recency). A header line states the **semantic bar** (`AUTO_MEMORY_SIMILARITY_THRESHOLD`): adjusted rank must be ≥ threshold to qualify. Pinned and intel-keyword rows use fixed tags (`pinned_pref`, `intel_kw`, `intel_curated`, `intel_semantic`).
 
 **Config** (cloud.env / local.env):
 
@@ -85,7 +64,7 @@ def _get_relevant_memories(self, transcript: str, limit: int = 8,
 # Auto-Memory Injection (pre-LLM semantic search)
 AUTO_MEMORY_INJECTION_ENABLED=true
 AUTO_MEMORY_LIMIT=8
-AUTO_MEMORY_SIMILARITY_THRESHOLD=0.38
+AUTO_MEMORY_SIMILARITY_THRESHOLD=0.45
 ```
 
 ### Tuning
@@ -93,8 +72,8 @@ AUTO_MEMORY_SIMILARITY_THRESHOLD=0.38
 | Threshold | Effect |
 |-----------|--------|
 | 0.30 | More memories, some loosely related |
-| 0.38 | Balanced (recommended) |
-| 0.45 | Fewer, tighter matches |
+| 0.38–0.42 | Balanced (code default fallback) |
+| 0.45 | Fewer, tighter matches (example env) |
 | 0.50+ | Only very close matches |
 
 **Token impact**: ~5–10 memories × ~50 tokens ≈ 250–500 tokens per request. Similar to auto-context.

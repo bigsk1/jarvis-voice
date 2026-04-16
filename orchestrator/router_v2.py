@@ -682,8 +682,10 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         # Cloud models (Claude/GPT) can handle more choices
         retrieval_limit = 5 if self.mode == 'local' else 15
         
-        # 2. Extract the actual user query (remove auto-context if present) 
-        # Auto-context prepends "=== RECENT CONVERSATION HISTORY ===" which dilutes tool search this applies only when AUTO_CONTEXT_ENABLED=true in env is false no === RECENT CONVERSATION HISTORY === or Instructions: in transcript
+        # 2. Extract the actual user query for Tool RAG embeddings only (optional strip).
+        # Auto-context adds === RECENT CONVERSATION HISTORY === ... Instructions:; embedding the
+        # full blob dilutes similarity. Learned strategies / prefs stay on the full transcript
+        # for the routing LLM; only find_tools() uses tool_search_query when strip runs.
         tool_search_query = transcript
         if "=== RECENT CONVERSATION HISTORY ===" in transcript and "Instructions:" in transcript:
             # The actual query is between the last conversation exchange and "Instructions:"

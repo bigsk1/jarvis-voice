@@ -240,6 +240,8 @@ AUTO_CONTEXT_MINUTES=10
 - **WebUI:** Passes `conversation_history` directly (client maintains state)
 - **Terminal:** Uses auto-context from database (server loads state)
 
+**Web thread block (`=== RECENT CONVERSATION CONTEXT ===`):** When the web app sends history, `jarvis-web/server/sockets/chat.py` builds prior turns without duplicating the **current** user message (already the live transcript). `orchestrator_v2._format_conversation_context` may add optional **gap timing** (local timestamp + relative time) when the anchor is unambiguous. This header is **not** the same as DB auto-context’s `=== RECENT CONVERSATION HISTORY ===` (see Tool RAG docs: router Tool-RAG strip only applies to the HISTORY + `Instructions:` shape).
+
 **Design Benefits:**
 - ✅ Context without server-side session state
 - ✅ Works across all providers (not OpenAI-specific)

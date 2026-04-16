@@ -2529,7 +2529,6 @@ Your BEST EFFORT response:"""
         try:
             db = get_memory_db()
             limit = get_int('AUTO_MEMORY_LIMIT', 8)
-            # TODO: show similarity theshold number in logs / transcript to better understand why it was shown.
             threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.42)
             recency_enabled = get_config_value('AUTO_MEMORY_RECENCY_ENABLED', 'true').lower() == 'true'
             addressing_limit = get_int('AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT', 2)
@@ -2666,7 +2665,7 @@ Your BEST EFFORT response:"""
                 keywords = ["price", "btc", "bitcoin", "crypto", "stock", "ticker", "quote", "coin", "market cap", "gold", "tsla", "aapl"]
                 return any(k in text for k in keywords)
 
-            for _, _, m, source in top:
+            for rank_score, _, m, source in top:
                 key = m.get('key', '')
                 value = m.get('value', '')
                 if _is_no_preference(value):
@@ -2684,12 +2683,20 @@ Your BEST EFFORT response:"""
                             age_minutes = int((datetime.now(self.timezone) - dt).total_seconds() // 60)
                     except Exception:
                         pass
-                if source == 'always':
-                    label = "user preference (always included)"
-                elif source == 'intel':
-                    label = "curated intel knowledge" if _is_curated_intel(source_name) else "intel knowledge"
+                # match_hint: rank_score is what we sorted on; embed = raw cosine when present
+                raw_embed = float(m.get("similarity") or 0)
+                if source == "always":
+                    match_hint = f"pinned_pref rank={rank_score:.2f}"
+                elif source == "intel":
+                    # Intel via semantic search carries similarity; FTS intel hits do not
+                    if raw_embed > 0:
+                        match_hint = f"intel_semantic embed={raw_embed:.2f} rank={rank_score:.2f}"
+                    elif _is_curated_intel(source_name):
+                        match_hint = f"intel_curated rank={rank_score:.2f}"
+                    else:
+                        match_hint = f"intel_kw rank={rank_score:.2f}"
                 else:
-                    label = f"relevance: {m.get('similarity', 0) * 100:.0f}%"
+                    match_hint = f"semantic embed={raw_embed:.2f} rank={rank_score:.2f}"
                 staleness_hint = ""
                 if price_like_query and _is_price_like_memory(key, value):
                     if age_minutes is not None and age_minutes > 60:
@@ -2699,7 +2706,7 @@ Your BEST EFFORT response:"""
                 age_text = f"{age_minutes}m" if age_minutes is not None else "unknown"
                 memory_lines.append(
                     f"- {key}: {value} "
-                    f"(category: {cat}, {label}, saved_at: {saved_at_local}, age: {age_text}"
+                    f"(category: {cat}, {match_hint}, saved_at: {saved_at_local}, age: {age_text}"
                     f"{', source: ' + source_name if source_name else ''}"
                     f"{', staleness: ' + staleness_hint if staleness_hint else ''})"
                 )
@@ -2709,6 +2716,7 @@ Your BEST EFFORT response:"""
                 "=== RELEVANT STORED KNOWLEDGE (use this without calling search tools) ===",
                 "When these conflict with your defaults, prefer these (user explicitly told you):",
                 "Freshness note: For live market/weather questions, newer live tool calls outrank older stored memory.",
+                f"Higher rank = stronger fit for this list. Semantic: embed = cosine, rank = after recency (rank ≥ {threshold:.2f} to include).",
                 ""
             ] + memory_lines + ["==="]
             return "\n".join(lines) + "\n\n"
