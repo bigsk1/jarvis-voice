@@ -311,6 +311,11 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-16:**
+- ✅ **Web thread context + gap timing** — Prior turns sent to the orchestrator omit the in-flight user message so the current request is not duplicated; optional per-message timestamps support resumed-thread hints. Context may include local time plus relative gap when the anchor is unambiguous (`orchestrator_v2._format_conversation_context`, `jarvis-web` conversation builder). ISO parsing for those timestamps uses `lib/time_utils.safe_iso_to_local_datetime`.
+- ✅ **Tool RAG docs** — `docs/TOOL_RAG_STRATEGY.md` explains stripped query vs full-routing embedding (`TOOL_SIMILARITY_THRESHOLD` vs `TOOL_SIMILARITY_THRESHOLD_FULL`) and why web `=== RECENT CONVERSATION CONTEXT ===` does not use the HISTORY+`Instructions:` strip. Router comments clarify that only `find_tools()` embeddings use the optional strip; the routing LLM still sees the full transcript.
+- ✅ **Auto-memory injection transparency** — Injected memories include compact **match hints** (sort **rank**, raw **embed** cosine for semantic rows; tags for pinned / intel keyword / intel semantic). Header line shows the configured semantic bar. **Merge/sort** (score, then importance) and prompt assembly order (learning → memory → base) are documented in `docs/AUTO_MEMORY_INJECTION_FEATURE.md`. `docs/CONVERSATION_STATE_ARCHITECTURE.md` notes web CONTEXT vs DB HISTORY. Example envs use `AUTO_MEMORY_SIMILARITY_THRESHOLD=0.45`.
+
 **2026-04-12:**
 - ✅ **Jarvis Web UI v2.12** - Dedicated `/logs` browser for local log triage
   - **Read-only `/logs` page**: Auth-protected log browser inside Jarvis Web UI
