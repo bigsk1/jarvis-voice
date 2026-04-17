@@ -1,14 +1,31 @@
 {
   "enabled": true,
   "name": "text_summarizer",
-  "description": "Text processing tool for summarization, keyword extraction, word/character counting, and sentiment analysis. Use when user asks to: 'summarize this text', 'extract keywords from', 'count words in', 'analyze sentiment of', 'is this positive or negative', 'get key terms from', or 'how many words/characters in'.",
+  "description": "Text processing tool for summarization, keyword extraction, word/character counting, and sentiment analysis. Use when user asks to: 'summarize this text', 'extract keywords from', 'count words in', 'analyze sentiment of', 'is this positive or negative', 'get key terms from', or 'how many words/characters in'. Also use this after reading a long stash/text artifact when the next step is summarization or analysis: pass stash_ref (or space_id+file_id) instead of calling stash.read again.",
   "script": "text_summarizer.py",
   "parameters": {
     "type": "object",
     "properties": {
       "text": {
         "type": "string",
-        "description": "The text to process"
+        "description": "The text to process. Optional if stash_ref or space_id+file_id is provided."
+      },
+      "stash_ref": {
+        "type": "string",
+        "description": "stash:// reference to a text file to process directly. Use this for long stash artifacts instead of re-reading the same file."
+      },
+      "space_id": {
+        "type": "string",
+        "description": "Stash space ID for a text file to process directly. Use with file_id when stash_ref is unavailable."
+      },
+      "file_id": {
+        "type": "string",
+        "description": "Stash file ID or name for a text file to process directly. Use with space_id when stash_ref is unavailable."
+      },
+      "encoding": {
+        "type": "string",
+        "description": "Text encoding for stash files",
+        "default": "utf-8"
       },
       "operation": {
         "type": "string",
@@ -16,30 +33,79 @@
           "summarize",
           "keywords",
           "count",
-          "sentiment"
+          "sentiment",
+          "summary",
+          "summarise",
+          "key_terms",
+          "word_count",
+          "stats"
         ],
         "description": "Operation to perform: 'summarize' for text summary, 'keywords' for keyword extraction, 'count' for word/character count, 'sentiment' for sentiment analysis"
       },
+      "action": {
+        "type": "string",
+        "description": "Alias for operation, supported for older workflows"
+      },
       "num_sentences": {
         "type": "integer",
-        "description": "Number of sentences in summary (only for summarize operation)",
+        "description": "Number of sentences in extractive summary, or rough detail hint when method is auto/llm",
         "default": 3
+      },
+      "method": {
+        "type": "string",
+        "enum": ["auto", "llm", "abstractive", "extractive", "classic", "simple"],
+        "description": "Summarization method. auto uses configured LLM for long text and extractive summarization for short text.",
+        "default": "auto"
+      },
+      "use_llm": {
+        "type": "boolean",
+        "description": "Force configured LLM summarization for summarize operation. Overrides method when true.",
+        "default": false
+      },
+      "max_words": {
+        "type": "integer",
+        "description": "Maximum words for LLM summaries",
+        "default": 300
+      },
+      "summary_style": {
+        "type": "string",
+        "enum": ["concise", "bullets", "executive", "study_notes", "detailed"],
+        "description": "Style for LLM summaries",
+        "default": "concise"
+      },
+      "focus": {
+        "type": "string",
+        "description": "Optional focus instruction for summaries, such as pricing, implementation details, risks, or decisions"
+      },
+      "llm_min_chars": {
+        "type": "integer",
+        "description": "Minimum input characters before auto mode uses the configured LLM",
+        "default": 4000
+      },
+      "llm_provider": {
+        "type": "string",
+        "description": "Optional provider override for LLM summarization: openai, anthropic, xai, or ollama"
+      },
+      "llm_model": {
+        "type": "string",
+        "description": "Optional model override for LLM summarization"
       },
       "top_n": {
         "type": "integer",
         "description": "Number of top keywords to extract (only for keywords operation)",
         "default": 10
+      },
+      "num_keywords": {
+        "type": "integer",
+        "description": "Alias for top_n, supported for older workflows"
       }
     },
-    "required": [
-      "text",
-      "operation"
-    ]
+    "required": []
   },
   "permissions": {
     "dangerous": false,
     "bash": false,
-    "network": false,
+    "network": true,
     "filesystem": false,
     "auto_approve": true
   },

@@ -5,6 +5,7 @@ Uses native tool calling from OpenAI/Anthropic/Ollama to intelligently route req
 """
 import os
 import sys
+import re
 from typing import Any
 from pathlib import Path
 from datetime import datetime
@@ -17,6 +18,7 @@ from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
 from tool_schema import ToolRegistry
 from llm_provider import create_provider
+from provider_errors import classify_provider_error, friendly_provider_error, is_provider_error_text
 
 
 def _tool_rag_similarity_threshold(transcript: str, tool_search_query: str) -> float:
@@ -795,6 +797,9 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             )
             
             llm_duration_ms = (time.time() - llm_start_time) * 1000
+            provider_error = text_response if is_provider_error_text(text_response) else None
+            provider_error_info = classify_provider_error(provider_error) if provider_error else None
+            logged_response_text = provider_error_info.raw_preview if provider_error_info else text_response
             
             # Log LLM call for monitoring
             try:
@@ -805,13 +810,14 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     model=self.model_name,
                     prompt_type="routing",
                     messages=messages,
-                    response_text=text_response,
+                    response_text=logged_response_text,
                     tool_call=tool_call,
                     usage_info=usage_info,
                     thinking=thinking,
                     duration_ms=llm_duration_ms,
                     mode=self.mode,
-                    user_query=transcript
+                    user_query=transcript,
+                    error=provider_error_info.raw_preview if provider_error_info else None
                 )
             except Exception as e:
                 if os.environ.get('JARVIS_DEBUG'):
@@ -819,6 +825,24 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Provider returned: tool_call={tool_call is not None}, usage={usage_info is not None}, thinking={thinking is not None}", file=sys.stderr)
+
+            if provider_error:
+                fallback = self._provider_error_fallback_route(
+                    transcript=transcript,
+                    error_text=provider_error,
+                    tool_names=tool_names,
+                    usage_info=usage_info,
+                )
+                if fallback:
+                    return fallback
+                return {
+                    "intent": "error",
+                    "error": provider_error_info.friendly_message if provider_error_info else friendly_provider_error(provider_error),
+                    "text_response": provider_error_info.friendly_message if provider_error_info else friendly_provider_error(provider_error),
+                    "confidence": 0.0,
+                    "usage_info": usage_info,
+                    "available_tools": tool_names,
+                }
             
             # Log xAI server-side tool usage (native search)
             if usage_info and usage_info.get('server_side_tools'):
@@ -908,6 +932,129 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 "text_response": "Sorry, I had trouble processing your request.",
                 "confidence": 0.0
             }
+
+    def _provider_error_fallback_route(
+        self,
+        transcript: str,
+        error_text: str,
+        tool_names: list[str],
+        usage_info: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """
+        Deterministic fallback for provider/API failures before routing completes.
+
+        This keeps obvious tool requests from surfacing raw provider errors when
+        the model refuses the routing prompt itself.
+        """
+        error_info = classify_provider_error(error_text)
+        for tool in self._deterministic_fallback_tools(tool_names):
+            routing = getattr(tool, "deterministic_routing", {}) or {}
+            fallbacks = routing.get("provider_error_fallbacks") or []
+            if not isinstance(fallbacks, list):
+                continue
+
+            for fallback in fallbacks:
+                if not self._provider_error_fallback_applies(fallback, error_info.kind):
+                    continue
+                arguments = self._arguments_from_deterministic_fallback(transcript, fallback)
+                if arguments is None:
+                    continue
+                return {
+                    "intent": "tool",
+                    "tool_name": tool.name,
+                    "arguments": arguments,
+                    "confidence": 0.7,
+                    "usage_info": usage_info,
+                    "available_tools": tool_names,
+                    "provider_error_recovered": True,
+                    "provider_error_kind": error_info.kind,
+                    "provider_error": error_info.friendly_message,
+                }
+        return None
+
+    def _deterministic_fallback_tools(self, tool_names: list[str]) -> list[Any]:
+        """Return tools with deterministic fallback metadata, preferring RAG order."""
+        tools_by_name = getattr(self.registry, "tools", {}) or {}
+        get_tool = getattr(self.registry, "get_tool", None)
+        seen = set()
+        ordered = []
+
+        def add_tool(tool):
+            if not tool or getattr(tool, "name", None) in seen:
+                return
+            if not (getattr(tool, "deterministic_routing", {}) or {}).get("provider_error_fallbacks"):
+                return
+            seen.add(tool.name)
+            ordered.append(tool)
+
+        for name in tool_names or []:
+            tool = tools_by_name.get(name)
+            if not tool and callable(get_tool):
+                try:
+                    tool = get_tool(name)
+                except Exception:
+                    tool = None
+            add_tool(tool)
+
+        for tool in tools_by_name.values():
+            add_tool(tool)
+
+        return ordered
+
+    @staticmethod
+    def _provider_error_fallback_applies(fallback: dict[str, Any], error_kind: str) -> bool:
+        """Return True when a deterministic fallback rule applies to this provider error kind."""
+        if not isinstance(fallback, dict):
+            return False
+        allowed = fallback.get("error_kinds")
+        if allowed is None:
+            return True
+        if isinstance(allowed, str):
+            allowed = [allowed]
+        if not isinstance(allowed, list):
+            return False
+        return error_kind in {str(kind).strip().lower() for kind in allowed}
+
+    @staticmethod
+    def _arguments_from_deterministic_fallback(transcript: str, fallback: dict[str, Any]) -> dict[str, Any] | None:
+        """Build tool arguments from a deterministic fallback rule."""
+        if not isinstance(fallback, dict):
+            return None
+        fallback_type = fallback.get("type", "regex")
+        if fallback_type != "regex":
+            return None
+
+        pattern = fallback.get("pattern")
+        if not pattern:
+            return None
+        try:
+            match = re.search(pattern, transcript or "")
+        except re.error:
+            return None
+        if not match:
+            return None
+
+        matched = match.group(1) if match.groups() else match.group(0)
+        strip_trailing = fallback.get("strip_trailing")
+        if isinstance(strip_trailing, str):
+            matched = matched.rstrip(strip_trailing)
+
+        arguments_template = fallback.get("arguments") or {}
+        if not isinstance(arguments_template, dict):
+            return None
+
+        arguments = {}
+        for key, value in arguments_template.items():
+            if value == "$match":
+                arguments[key] = matched
+            elif isinstance(value, str) and value.startswith("$group:"):
+                try:
+                    arguments[key] = match.group(int(value.split(":", 1)[1]))
+                except Exception:
+                    return None
+            else:
+                arguments[key] = value
+        return arguments or None
     
     def _detect_opencode_mode(self, query: str, response: dict) -> dict:
         """

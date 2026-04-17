@@ -241,6 +241,63 @@ def test_extract_followup_data_yelp_candidates_respect_evidence_max():
     assert evidence["serpapi_yelp_search"]["results_count"] == 15
 
 
+def test_extract_followup_data_preserves_text_summarizer_summary_and_refs():
+    handler = _handler()
+    data = {
+        "text_summarizer": {
+            "summary": "Postgres can replace several services: queues, cache, search, analytics, and vector storage.",
+            "source": {
+                "stash_ref": "stash://space_20260417_000524_029bf796/f_72ddfcb6db47",
+                "file_id": "f_72ddfcb6db47",
+                "space_id": "space_20260417_000524_029bf796",
+                "source": "stash",
+                "characters_loaded": 13088,
+                "path": "/home/boss/should/not/be/prompted.md",
+            },
+            "summary_meta": {
+                "summary_method": "llm",
+                "llm_used": True,
+                "llm_provider": "xai",
+                "llm_model": "grok-4-1-fast-non-reasoning-latest",
+                "chunks_used": 2,
+                "chunks_total": 2,
+                "input_characters": 13088,
+            },
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    summary = result["text_summarizer"]
+
+    assert summary["summary"].startswith("Postgres can replace")
+    assert summary["stash_ref"] == "stash://space_20260417_000524_029bf796/f_72ddfcb6db47"
+    assert summary["file_id"] == "f_72ddfcb6db47"
+    assert summary["space_id"] == "space_20260417_000524_029bf796"
+    assert summary["summary_method"] == "llm"
+    assert summary["llm_used"] is True
+    assert summary["chunks_total"] == 2
+    assert "path" not in summary
+
+
+def test_extract_followup_data_truncates_text_summarizer_summary():
+    handler = _handler()
+    long_summary = "A" * 6000
+    data = {
+        "text_summarizer": {
+            "summary": long_summary,
+            "source": {"stash_ref": "stash://space/file"},
+            "summary_meta": {"summary_method": "llm"},
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    summary = result["text_summarizer"]["summary"]
+
+    assert len(summary) < len(long_summary)
+    assert summary.endswith("...[summary truncated for follow-up context]")
+    assert result["text_summarizer"]["stash_ref"] == "stash://space/file"
+
+
 def test_compute_effective_evidence_tool_turn():
     handler = _handler()
     save_data = {

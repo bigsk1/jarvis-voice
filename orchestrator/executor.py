@@ -151,6 +151,8 @@ class ToolExecutor:
                 timeout = 90  # 90 seconds - web scraping with JS wait can be slow
             elif tool_name == "search_docs":
                 timeout = 90  # 60 seconds - search documentation with qmd
+            elif tool_name == "text_summarizer":
+                timeout = 180  # May call configured LLM over long stash/transcript artifacts
             elif tool_name == "convert_file":
                 timeout = 180  # 3 minutes - convert files various formats, audio, video, image, ect.
             elif tool_name == "samantha":

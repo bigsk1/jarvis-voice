@@ -30,6 +30,9 @@ from model_catalog import get_provider_fallback_model
 _FOLLOWUP_DEFAULT_MAX_CANDIDATES = 5
 # Completion Guard / effective evidence: allow ranking follow-ups without re-querying.
 _FOLLOWUP_EVIDENCE_MAX_CANDIDATES = 12
+# Keep abstractive summaries available for follow-up turns without dragging
+# whole transcript-sized artifacts through every router prompt.
+_FOLLOWUP_SUMMARY_MAX_CHARS = 5000
 # Repair pass: same tools + very similar prose → tighten_only (hedging), not "new evidence".
 _CG_TIGHTEN_ONLY_ANSWER_SIMILARITY_THRESHOLD = 0.88
 
@@ -2629,8 +2632,9 @@ Previous structured data:
         - Act on created PDFs, converted files, transcripts, canvas pages
         - Continue multi-step workflows across separate API calls
         
-        Only extracts identifiers and references, not content.
-        The LLM already sees the speech/content summary in the message text.
+        Mostly extracts identifiers and references. For text_summarizer, also
+        preserves the compact structured summary because it may be the durable
+        working copy of a much larger stash artifact.
         
         max_candidates: cap for ranked list tools (default FOLLOWUP_DEFAULT; use
         FOLLOWUP_EVIDENCE_MAX for Completion Guard grounding bundles).
@@ -2680,6 +2684,11 @@ Previous structured data:
         
         for key, value in data.items():
             if key in _FOLLOWUP_DATA_SKIP_KEYS:
+                continue
+            if key == 'text_summarizer':
+                extracted = self._extract_text_summarizer_followup(value, max_candidates)
+                if extracted:
+                    followup[key] = extracted
                 continue
             # List-shaped tool payloads: normalize to dict with results[] (no per-tool registry).
             if isinstance(value, list):
@@ -2941,6 +2950,71 @@ Previous structured data:
             followup['error'] = error_info
         
         return followup if followup else None
+
+    @staticmethod
+    def _truncate_followup_summary(summary: str, max_chars: int = _FOLLOWUP_SUMMARY_MAX_CHARS) -> str:
+        """Trim stored summaries to a stable prompt-sized excerpt."""
+        if not isinstance(summary, str):
+            return ''
+        summary = summary.strip()
+        if len(summary) <= max_chars:
+            return summary
+        return summary[:max_chars].rstrip() + "\n...[summary truncated for follow-up context]"
+
+    def _extract_text_summarizer_followup(self, value, max_candidates: int) -> dict | None:
+        """Preserve text_summarizer summaries and source refs for follow-up turns."""
+        if isinstance(value, list):
+            items = [self._compact_text_summarizer_item(item) for item in value[:max_candidates]]
+            items = [item for item in items if item]
+            if not items:
+                return None
+            latest = items[-1]
+            extracted = {
+                'results_count': len(value),
+                'latest_summary': latest.get('summary'),
+                'summaries': items,
+            }
+            if latest.get('stash_ref'):
+                extracted['latest_stash_ref'] = latest['stash_ref']
+            return extracted
+
+        if isinstance(value, dict):
+            return self._compact_text_summarizer_item(value)
+        return None
+
+    def _compact_text_summarizer_item(self, item: dict) -> dict | None:
+        """Compact one text_summarizer result for history/evidence storage."""
+        if not isinstance(item, dict):
+            return None
+
+        summary = item.get('summary')
+        if not isinstance(summary, str) or not summary.strip():
+            return None
+
+        extracted = {
+            'summary': self._truncate_followup_summary(summary),
+        }
+
+        source = item.get('source') if isinstance(item.get('source'), dict) else {}
+        for field in ('stash_ref', 'file_id', 'space_id', 'source', 'characters_loaded'):
+            if source.get(field):
+                extracted[field] = source[field]
+
+        meta = item.get('summary_meta') if isinstance(item.get('summary_meta'), dict) else {}
+        for field in (
+            'summary_method',
+            'llm_used',
+            'llm_provider',
+            'llm_model',
+            'chunks_used',
+            'chunks_total',
+            'input_characters',
+            'fallback_reason',
+        ):
+            if field in meta and meta[field] not in (None, ''):
+                extracted[field] = meta[field]
+
+        return extracted
 
     @staticmethod
     def _data_without_effective_evidence(data: dict) -> dict:

@@ -1289,6 +1289,103 @@ CRITICAL RULES:
         return "\n\n".join(tool_descriptions)
 
 
+def create_configured_provider(
+    provider_override: str | None = None,
+    model_override: str | None = None,
+    provider_config_keys: tuple[str, ...] = ("LLM_PROVIDER",),
+    model_config_keys: tuple[str, ...] = (),
+    default_provider: str = "openai",
+    disable_server_side_tools: bool = False,
+) -> tuple[str, str | None, LLMProvider]:
+    """
+    Create an LLM provider from Jarvis config with optional task-specific keys.
+
+    Args:
+        provider_override: Explicit provider name, if supplied by the caller.
+        model_override: Explicit model name, if supplied by the caller.
+        provider_config_keys: Config keys to try before falling back to default_provider.
+        model_config_keys: Task-specific model config keys to try before provider defaults.
+        default_provider: Provider to use when no configured provider is found.
+        disable_server_side_tools: Temporarily disable provider-native tools
+            during provider init for plain text processing tasks.
+
+    Returns:
+        Tuple of (provider_type, model_name, provider_instance)
+    """
+    from config_loader import get_config_value
+
+    def first_config_value(keys: tuple[str, ...], default: str | None = None) -> str | None:
+        for key in keys:
+            value = get_config_value(key)
+            if value not in (None, ""):
+                return str(value).strip()
+        return default
+
+    provider_type = (
+        str(provider_override).strip()
+        if provider_override not in (None, "")
+        else first_config_value(provider_config_keys, default_provider)
+    )
+    provider_type = (provider_type or default_provider).strip().lower()
+
+    model = str(model_override).strip() if model_override not in (None, "") else None
+    if not model:
+        model = first_config_value(model_config_keys)
+
+    if provider_type == "openai":
+        model = model or get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
+        return provider_type, model, create_provider(
+            "openai",
+            api_key=get_config_value("OPENAI_API_KEY"),
+            model=model,
+        )
+    if provider_type == "anthropic":
+        model = model or get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
+        previous = os.environ.get("JARVIS_OVERRIDE_ANTHROPIC_SEARCH")
+        if disable_server_side_tools:
+            os.environ["JARVIS_OVERRIDE_ANTHROPIC_SEARCH"] = "false"
+        try:
+            provider = create_provider(
+                "anthropic",
+                api_key=get_config_value("ANTHROPIC_API_KEY"),
+                model=model,
+            )
+        finally:
+            if disable_server_side_tools:
+                if previous is None:
+                    os.environ.pop("JARVIS_OVERRIDE_ANTHROPIC_SEARCH", None)
+                else:
+                    os.environ["JARVIS_OVERRIDE_ANTHROPIC_SEARCH"] = previous
+        return provider_type, model, provider
+    if provider_type == "xai":
+        model = model or get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
+        previous = os.environ.get("JARVIS_OVERRIDE_XAI_SEARCH")
+        if disable_server_side_tools:
+            os.environ["JARVIS_OVERRIDE_XAI_SEARCH"] = "false"
+        try:
+            provider = create_provider(
+                "xai",
+                api_key=get_config_value("XAI_API_KEY"),
+                model=model,
+            )
+        finally:
+            if disable_server_side_tools:
+                if previous is None:
+                    os.environ.pop("JARVIS_OVERRIDE_XAI_SEARCH", None)
+                else:
+                    os.environ["JARVIS_OVERRIDE_XAI_SEARCH"] = previous
+        return provider_type, model, provider
+    if provider_type == "ollama":
+        model = model or get_config_value("OLLAMA_MODEL", get_provider_fallback_model("ollama"))
+        return provider_type, model, create_provider(
+            "ollama",
+            base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
+            model=model,
+        )
+
+    raise ValueError(f"Unknown LLM provider: {provider_type}")
+
+
 def create_provider(provider_type: str, **config) -> LLMProvider:
     """
     Factory function to create appropriate provider.

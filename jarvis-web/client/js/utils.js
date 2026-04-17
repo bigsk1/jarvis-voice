@@ -28,12 +28,42 @@ const Utils = {
     if (text === null || text === undefined) return '';
     const str = String(text);
     const escaped = this.escapeHtml(str);
-    // Match http(s) URLs, excluding trailing punctuation
-    const urlRe = /(https?:\/\/[^\s<>"')\]]+)/g;
+    // Match http(s) and stash refs, excluding trailing punctuation
+    const urlRe = /((?:stash:\/\/|https?:\/\/)[^\s<>"')\]]+)/g;
     return escaped.replace(urlRe, (url) => {
-      const href = url.replace(/"/g, '&quot;');
+      const href = (this.stashRefToViewerUrl(url) || url).replace(/"/g, '&quot;');
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="content-link">${url}</a>`;
     });
+  },
+
+  /**
+   * Convert stash://space/file refs into the rendered same-origin viewer URL.
+   */
+  stashRefToViewerUrl(ref) {
+    if (!ref || typeof ref !== 'string') {
+      return null;
+    }
+    const clean = ref.trim().replace(/[.,;)\]]+$/g, '');
+    const match = clean.match(/^stash:\/\/([^/\s?#]+)\/([^/\s?#]+)/);
+    if (!match) {
+      return null;
+    }
+    return `/stash/view/${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}`;
+  },
+
+  /**
+   * Convert stash://space/file refs into the raw API URL.
+   */
+  stashRefToApiUrl(ref) {
+    if (!ref || typeof ref !== 'string') {
+      return null;
+    }
+    const clean = ref.trim().replace(/[.,;)\]]+$/g, '');
+    const match = clean.match(/^stash:\/\/([^/\s?#]+)\/([^/\s?#]+)/);
+    if (!match) {
+      return null;
+    }
+    return `/api/stash/${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}`;
   },
 
   /**
@@ -84,6 +114,7 @@ const Utils = {
       }
     }
 
+    text = this.normalizePlainTextTables(text);
     text = this.escapeStandaloneTildes(text);
     
     if (typeof marked !== 'undefined') {
@@ -105,7 +136,8 @@ const Utils = {
               || href;
           }
 
-          const safeHref = href ? String(href).replace(/"/g, '&quot;') : '';
+          const resolvedHref = this.stashRefToViewerUrl(href) || href;
+          const safeHref = resolvedHref ? String(resolvedHref).replace(/"/g, '&quot;') : '';
           const safeTitle = linkTitle ? ` title="${this.escapeHtml(linkTitle)}"` : '';
           const safeLabel = this.escapeHtml(label || href || '');
 
@@ -136,7 +168,7 @@ const Utils = {
             </div>
           `;
         };
-        marked.use({ renderer });
+        marked.use({ renderer, gfm: true, breaks: false });
         this._markedConfigured = true;
       }
       return marked.parse(text);
@@ -147,6 +179,111 @@ const Utils = {
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/`(.*?)`/g, '<code>$1</code>')
       .replace(/\n/g, '<br>');
+  },
+
+  /**
+   * Convert simple tab/aligned text tables into GitHub-flavored Markdown tables.
+   * LLMs often emit "Header<TAB>Header<TAB>Header" instead of pipe tables.
+   */
+  normalizePlainTextTables(text) {
+    if (!text || typeof text !== 'string') {
+      return text;
+    }
+
+    const codeSegments = text.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g);
+    return codeSegments
+      .map((segment, index) => {
+        if (index % 2 === 1) {
+          return segment;
+        }
+        return this.normalizePlainTextTablesSegment(segment);
+      })
+      .join('');
+  },
+
+  normalizePlainTextTablesSegment(segment) {
+    const lines = segment.split('\n');
+    const output = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const firstRow = this.splitPlainTextTableRow(lines[i]);
+      if (!firstRow) {
+        output.push(lines[i]);
+        i += 1;
+        continue;
+      }
+
+      const rows = [firstRow];
+      let j = i + 1;
+      while (j < lines.length) {
+        const row = this.splitPlainTextTableRow(lines[j]);
+        if (!row || row.length !== firstRow.length) {
+          break;
+        }
+        rows.push(row);
+        j += 1;
+      }
+
+      if (rows.length < 2) {
+        output.push(lines[i]);
+        i += 1;
+        continue;
+      }
+
+      if (output.length && output[output.length - 1].trim() !== '') {
+        output.push('');
+      }
+      output.push(this.toMarkdownTable(rows));
+      if (j < lines.length && lines[j].trim() !== '') {
+        output.push('');
+      }
+      i = j;
+    }
+
+    return output.join('\n');
+  },
+
+  splitPlainTextTableRow(line) {
+    if (!line || !line.trim()) {
+      return null;
+    }
+
+    const trimmed = line.trim();
+    if (
+      trimmed.includes('|')
+      || /^(```|~~~)/.test(trimmed)
+      || /^[>#]/.test(trimmed)
+      || /^[-*+]\s+/.test(trimmed)
+      || /^\d+\.\s+/.test(trimmed)
+    ) {
+      return null;
+    }
+
+    let cells = null;
+    if (line.includes('\t')) {
+      cells = trimmed.split(/\t+/);
+    } else if (/\S {2,}\S/.test(line)) {
+      cells = trimmed.split(/ {2,}/);
+    }
+
+    if (!cells) {
+      return null;
+    }
+
+    cells = cells.map(cell => cell.trim()).filter(Boolean);
+    return cells.length >= 3 ? cells : null;
+  },
+
+  toMarkdownTable(rows) {
+    const escapeCell = (cell) => String(cell).replace(/\|/g, '\\|');
+    const header = rows[0].map(escapeCell);
+    const bodyRows = rows.slice(1).map(row => row.map(escapeCell));
+    return [
+      `| ${header.join(' | ')} |`,
+      `| ${header.map(() => '---').join(' | ')} |`,
+      ...bodyRows.map(row => `| ${row.join(' | ')} |`)
+    ].join('\n');
   },
 
   /**
@@ -389,6 +526,10 @@ window.showImageLightbox = function(imageUrl) {
   const lightbox = document.getElementById('imageLightbox');
   const img = document.getElementById('lightboxImage');
   const downloadBtn = document.getElementById('lightboxDownload');
+  if (!lightbox || !img || !downloadBtn) {
+    window.open(imageUrl, '_blank', 'noopener,noreferrer');
+    return;
+  }
   
   img.src = imageUrl;
   downloadBtn.href = imageUrl;
@@ -408,6 +549,9 @@ window.closeLightbox = function(event) {
   }
   
   const lightbox = document.getElementById('imageLightbox');
+  if (!lightbox) {
+    return;
+  }
   lightbox.classList.remove('active');
   document.body.style.overflow = '';
 };

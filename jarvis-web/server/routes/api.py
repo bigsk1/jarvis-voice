@@ -1475,7 +1475,10 @@ def serve_stash_file(space_id, file_id):
     
     mimetype = mime_types.get(ext, 'application/octet-stream')
     
-    return send_from_directory(str(space_path), file_path.name, mimetype=mimetype)
+    response = send_from_directory(str(space_path), file_path.name, mimetype=mimetype)
+    response.headers['X-Stash-Filename'] = file_path.name
+    response.headers['X-Stash-Ref'] = f"stash://{space_id}/{file_id}"
+    return response
 
 
 @api_bp.route('/stash/upload', methods=['POST'])

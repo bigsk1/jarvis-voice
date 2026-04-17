@@ -201,11 +201,11 @@ class LogStreamer:
             
             model = data.get('model', 'unknown')
             provider = data.get('provider', '')
-            input_tokens = data.get('input_tokens', 0)
-            output_tokens = data.get('output_tokens', 0)
-            total_tokens = data.get('total_tokens', input_tokens + output_tokens)
-            cost = data.get('cost_usd', 0)
-            duration = data.get('duration_ms', 0)  # Correct field name
+            input_tokens = self._safe_number(data.get('input_tokens'), 0)
+            output_tokens = self._safe_number(data.get('output_tokens'), 0)
+            total_tokens = self._safe_number(data.get('total_tokens'), input_tokens + output_tokens)
+            cost = self._safe_number(data.get('cost_usd'), 0.0)
+            duration = self._safe_number(data.get('duration_ms'), 0.0)  # Correct field name
             success = data.get('success', True)
             
             # Check response for tool info
@@ -253,6 +253,16 @@ class LogStreamer:
             )
         except json.JSONDecodeError:
             return None
+
+    @staticmethod
+    def _safe_number(value, default=0):
+        """Normalize nullable log numeric fields before title formatting."""
+        if value is None:
+            return default
+        try:
+            return float(value) if isinstance(default, float) else int(value)
+        except (TypeError, ValueError):
+            return default
     
     def _parse_tool_entry(self, line: str, source: str) -> LogEntry | None:
         """Parse tool call log entry."""
@@ -445,4 +455,3 @@ def stop_log_streamer():
     if _streamer_instance:
         _streamer_instance.stop()
         _streamer_instance = None
-

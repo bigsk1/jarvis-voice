@@ -132,6 +132,12 @@ def serve_logs():
     return send_from_directory(CLIENT_PATH, 'logs.html')
 
 
+@app.route('/stash/view/<space_id>/<file_id>')
+def serve_stash_viewer(space_id, file_id):
+    """Serve a rendered viewer for stash text/markdown artifacts."""
+    return send_from_directory(CLIENT_PATH, 'stash-viewer.html')
+
+
 @app.route('/<path:path>')
 def serve_static(path):
     """Serve static files"""

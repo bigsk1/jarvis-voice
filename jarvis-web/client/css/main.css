@@ -502,6 +502,7 @@ body {
   border-radius: var(--radius-lg);
   line-height: 1.5;
   max-width: 100%;
+  overflow-x: auto;
   overflow-wrap: anywhere; /* Break long URLs / unbroken strings on narrow screens */
   word-break: break-word;
 }
@@ -548,6 +549,45 @@ body {
 
 .message.assistant .message-bubble a:hover {
   color: var(--text-link-chat-hover);
+}
+
+/* Markdown tables in chat responses */
+.message-bubble table {
+  width: 100%;
+  min-width: 520px;
+  margin: var(--space-sm) 0 var(--space-md);
+  border-collapse: collapse;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-size: 0.95em;
+}
+
+.message-bubble thead {
+  background: var(--bg-secondary);
+}
+
+.message-bubble th,
+.message-bubble td {
+  padding: 8px 10px;
+  border: 1px solid var(--border-primary);
+  vertical-align: top;
+  text-align: left;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.message-bubble th {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.message-bubble td {
+  color: var(--text-secondary);
+}
+
+.message-bubble tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.025);
 }
 
 /* Expandable details section */

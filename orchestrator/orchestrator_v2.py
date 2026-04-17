@@ -20,6 +20,7 @@ from time_utils import safe_iso_to_local_datetime
 from memory_db import get_memory_db
 from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import apply_prompt_override_sections
+from provider_errors import is_provider_error_text
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
 
@@ -234,7 +235,7 @@ class Orchestrator:
     
     def _emit_progress(self, event_type: str, **kwargs):
         """Emit progress event if callback is set."""
-        if self.progress_callback:
+        if getattr(self, "progress_callback", None):
             try:
                 self.progress_callback(event_type, **kwargs)
             except Exception as e:
@@ -964,6 +965,23 @@ Mode: {self.mode}
                             "authoritative_live": ttl_seconds is not None
                         }
                     })
+
+                    if tool_name == "stash":
+                        summary_args, summary_result = self._maybe_auto_summarize_stash_result(
+                            result,
+                            arguments,
+                            transcript,
+                            accumulated_data,
+                        )
+                        if summary_result:
+                            self._add_auto_summary_context(
+                                summary_args,
+                                summary_result,
+                                tools_used,
+                                accumulated_data,
+                                conversation_context,
+                                seen_successful_tool_calls,
+                            )
                     
                     # Continue to next turn (LLM will decide if more tools needed)
                     continue
@@ -1313,6 +1331,10 @@ Mode: {self.mode}
                     return True
                 if re.match(r"^Read\s+.+\.(md|txt|srt|pdf|json|csv|html?)$", s, flags=re.IGNORECASE):
                     return True
+                if re.match(r"^Blocked duplicate tool call for\b", s, flags=re.IGNORECASE):
+                    return True
+                if "duplicate guard blocked tool" in s.lower():
+                    return True
                 if re.match(r"^(Saved|Created|Updated|Listed|Found)\b.+\b(stash|file|files|items|results)\b", s, flags=re.IGNORECASE):
                     return True
                 return False
@@ -1383,12 +1405,30 @@ Mode: {self.mode}
             # If we already have clear tool speech, prefer it over re-synthesis.
             # This avoids hallucinated contradictions when duplicate prevention triggers.
             if conversation_context:
-                last_ctx = conversation_context[-1]
-                last_result = last_ctx.get("result", {}) if isinstance(last_ctx, dict) else {}
-                last_tool = last_ctx.get("tool", "") if isinstance(last_ctx, dict) else ""
+                last_ctx = {}
+                last_result = {}
+                last_tool = ""
+                last_speech = ""
+                for candidate_ctx in reversed(conversation_context):
+                    candidate_tool = candidate_ctx.get("tool", "") if isinstance(candidate_ctx, dict) else ""
+                    if candidate_tool == "duplicate_guard":
+                        continue
+                    candidate_result = candidate_ctx.get("result", {}) if isinstance(candidate_ctx, dict) else {}
+                    candidate_speech = (
+                        (candidate_result or {}).get("speech")
+                        or candidate_ctx.get("speech")
+                        or ""
+                    )
+                    if candidate_speech:
+                        last_ctx = candidate_ctx
+                        last_result = candidate_result
+                        last_tool = candidate_tool
+                        last_speech = candidate_speech
+                        break
                 last_speech = (
                     (last_result or {}).get("speech")
-                    or last_ctx.get("speech")
+                    or (last_ctx.get("speech") if isinstance(last_ctx, dict) else "")
+                    or last_speech
                     or ""
                 )
                 if _is_generic_artifact_confirmation(last_tool, last_speech) and not _query_wants_artifact_update(user_query):
@@ -1400,6 +1440,16 @@ Mode: {self.mode}
                     and not _is_machine_like_speech(last_speech)
                 ):
                     return last_speech.strip()
+
+            # If duplicate fallback is reached with a long stash artifact but
+            # no condensed summary, create the summary now instead of relying
+            # only on a head/tail excerpt.
+            self._maybe_backfill_stash_summary_for_synthesis(
+                user_query,
+                tools_used,
+                accumulated_data,
+                conversation_context,
+            )
 
             # Extract useful data from accumulated results
             extracted_data = self._extract_useful_data(accumulated_data)
@@ -1536,24 +1586,202 @@ Your response:"""
     @staticmethod
     def _looks_like_provider_error_text(text: str) -> bool:
         """Detect provider error strings accidentally returned as normal formatter output."""
-        if not text or not isinstance(text, str):
+        return is_provider_error_text(text)
+
+    @staticmethod
+    def _stash_ref_from_result(data: dict, arguments: dict | None = None) -> str:
+        """Resolve a stash:// ref from stash result data or read arguments."""
+        if not isinstance(data, dict):
+            return ""
+        arguments = arguments or {}
+        stash_ref = data.get("ref") or data.get("stash_ref") or ""
+        if not stash_ref and arguments.get("space_id") and arguments.get("file_id"):
+            stash_ref = f"stash://{arguments.get('space_id')}/{arguments.get('file_id')}"
+        return str(stash_ref).strip()
+
+    @staticmethod
+    def _has_text_summarizer_summary_for_ref(accumulated_data: dict, stash_ref: str) -> bool:
+        """Return True if accumulated text_summarizer data already summarizes this stash ref."""
+        if not stash_ref or not isinstance(accumulated_data, dict):
             return False
-        value = text.strip()
-        if not value:
+        summaries = accumulated_data.get("text_summarizer")
+        if summaries is None:
             return False
-        return (
-            value.startswith("Error:")
-            or "_InactiveRpcError" in value
-            or "StatusCode.PERMISSION_DENIED" in value
-            or "Content violates usage guidelines" in value
-            or "grpc_status:7" in value
-        )
+        if not isinstance(summaries, list):
+            summaries = [summaries]
+        for item in summaries:
+            if not isinstance(item, dict) or not item.get("summary"):
+                continue
+            source = item.get("source")
+            if isinstance(source, dict) and source.get("stash_ref") == stash_ref:
+                return True
+        return False
+
+    @staticmethod
+    def _conversation_has_text_summary_for_ref(conversation_context: list, stash_ref: str) -> bool:
+        """Check turn context for a prior text_summarizer result for the same stash ref."""
+        if not stash_ref:
+            return False
+        for ctx in conversation_context or []:
+            if not isinstance(ctx, dict) or ctx.get("tool") != "text_summarizer":
+                continue
+            result = ctx.get("result", {}) if isinstance(ctx.get("result"), dict) else {}
+            data = result.get("data", {}) if isinstance(result.get("data"), dict) else {}
+            source = data.get("source", {}) if isinstance(data.get("source"), dict) else {}
+            if data.get("summary") and source.get("stash_ref") == stash_ref:
+                return True
+        return False
+
+    def _maybe_auto_summarize_stash_result(
+        self,
+        stash_result: dict,
+        stash_arguments: dict,
+        user_query: str,
+        accumulated_data: dict,
+    ) -> tuple[dict[str, Any], dict[str, Any]] | tuple[None, None]:
+        """
+        Automatically condense long stash reads so later turns use a real summary.
+
+        This is intentionally limited to long text stash reads. It prevents the
+        router from repeatedly trying to re-read the same artifact just because
+        the turn context preview had to be truncated.
+        """
+        enabled = str(get_config_value("STASH_AUTO_SUMMARIZE_AFTER_READ", "true")).lower()
+        if enabled not in {"1", "true", "yes", "on"}:
+            return None, None
+        if not hasattr(self, "executor") or self.executor is None:
+            return None, None
+        if not isinstance(stash_result, dict) or not stash_result.get("ok", True):
+            return None, None
+
+        data = stash_result.get("data", {})
+        if not isinstance(data, dict):
+            return None, None
+        content = data.get("content")
+        if not isinstance(content, str):
+            return None, None
+
+        min_chars = get_int("STASH_AUTO_SUMMARIZE_MIN_CHARS", get_int("TEXT_SUMMARIZER_LLM_MIN_CHARS", 4000))
+        if len(content) < min_chars:
+            return None, None
+
+        stash_ref = self._stash_ref_from_result(data, stash_arguments)
+        if not stash_ref or self._has_text_summarizer_summary_for_ref(accumulated_data, stash_ref):
+            return None, None
+
+        summary_args = {
+            "operation": "summarize",
+            "method": "auto",
+            "stash_ref": stash_ref,
+            "num_sentences": 12,
+            "summary_style": "detailed",
+            "max_words": get_int("STASH_AUTO_SUMMARY_MAX_WORDS", 700),
+            "focus": f"Extract the details needed to answer this request: {str(user_query)[:500]}",
+        }
+
+        try:
+            self._emit_progress(
+                "tool_start",
+                tool="text_summarizer",
+                args={"operation": "summarize", "stash_ref": stash_ref},
+                auto=True,
+            )
+            result = self.executor.execute("text_summarizer", summary_args, skip_permission_check=True)
+            self._emit_progress(
+                "tool_complete",
+                tool="text_summarizer",
+                success=bool(result.get("ok")),
+                auto=True,
+            )
+        except Exception as e:
+            if sys.stdout.isatty():
+                print(f"⚠️ Auto text_summarizer failed for stash read: {e}", file=sys.stderr)
+            return None, None
+
+        if not isinstance(result, dict) or not result.get("ok"):
+            return None, None
+        return summary_args, result
+
+    def _add_auto_summary_context(
+        self,
+        summary_args: dict[str, Any],
+        summary_result: dict[str, Any],
+        tools_used: list,
+        accumulated_data: dict,
+        conversation_context: list,
+        seen_successful_tool_calls: set | None = None,
+    ) -> None:
+        """Record an automatic text_summarizer result like any other successful tool result."""
+        tools_used.append("text_summarizer")
+        if seen_successful_tool_calls is not None:
+            seen_successful_tool_calls.add(("text_summarizer", json.dumps(summary_args, sort_keys=True)))
+
+        tool_data = summary_result.get("data", {})
+        if "text_summarizer" in accumulated_data:
+            existing = accumulated_data["text_summarizer"]
+            if not isinstance(existing, list):
+                accumulated_data["text_summarizer"] = [existing]
+            accumulated_data["text_summarizer"].append(tool_data)
+        else:
+            accumulated_data["text_summarizer"] = tool_data
+
+        executed_at = datetime.now(self.timezone)
+        conversation_context.append({
+            "tool": "text_summarizer",
+            "arguments": summary_args,
+            "result": summary_result,
+            "speech": summary_result.get("speech", ""),
+            "meta": {
+                "executed_at_iso": executed_at.isoformat(),
+                "executed_at_local": executed_at.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "freshness": "derived_tool_call",
+                "ttl_seconds": None,
+                "source": "text_summarizer",
+                "authoritative_live": False,
+                "auto": True,
+            }
+        })
+
+    def _maybe_backfill_stash_summary_for_synthesis(
+        self,
+        user_query: str,
+        tools_used: list,
+        accumulated_data: dict,
+        conversation_context: list,
+    ) -> None:
+        """
+        Last-chance summary backfill for older paths that hit duplicate fallback
+        before a long stash artifact was condensed.
+        """
+        stash_data = accumulated_data.get("stash") if isinstance(accumulated_data, dict) else None
+        if stash_data is None:
+            return
+        stash_items = stash_data if isinstance(stash_data, list) else [stash_data]
+
+        for item in reversed(stash_items):
+            if not isinstance(item, dict):
+                continue
+            summary_args, summary_result = self._maybe_auto_summarize_stash_result(
+                {"ok": True, "data": item},
+                {},
+                user_query,
+                accumulated_data,
+            )
+            if summary_result:
+                self._add_auto_summary_context(
+                    summary_args,
+                    summary_result,
+                    tools_used,
+                    accumulated_data,
+                    conversation_context,
+                )
+                return
 
     def _apply_qa_prompt_overrides(self, base_prompt: str) -> str:
         """Apply model-specific QA overlays to synthesis-style prompts."""
         return apply_prompt_override_sections(
             base_prompt,
-            self.prompt_override,
+            getattr(self, "prompt_override", None),
             prepend_sections=("qa_prepend",),
             append_sections=("qa_append",),
         )
@@ -1871,6 +2099,20 @@ Your BEST EFFORT response:"""
                 print(f"⚠️ Failed to format max turns summary: {e}", file=sys.stderr)
             return f"Completed {len(tools_used)} actions but reached the complexity limit. Tools used: {', '.join(tools_used)}. Please review or let me know if you'd like me to continue."
     
+    # Fallback only: long stash reads should normally be condensed through text_summarizer first.
+    def _excerpt_for_synthesis(self, text: str, max_chars: int = 8000) -> str:
+        """Keep enough of long text artifacts for fallback synthesis without flooding the prompt."""
+        if not isinstance(text, str):
+            return ""
+        if len(text) <= max_chars:
+            return text
+        half = max_chars // 2
+        return (
+            text[:half].rstrip()
+            + "\n\n... [middle omitted for fallback synthesis] ...\n\n"
+            + text[-half:].lstrip()
+        )
+
     def _extract_useful_data(self, accumulated_data: dict) -> str:
         """
         Extract the most useful/relevant data from accumulated tool results.
@@ -1896,7 +2138,7 @@ Your BEST EFFORT response:"""
 
             useful_fields = [
                 'title', 'description', 'url', 'name', 'price',
-                'coin', 'price_usd', 'speech', 'result', 'content',
+                'coin', 'price_usd', 'speech', 'summary', 'result', 'content',
                 'count', 'status', 'status_filter', 'source', 'severity',
                 'created_at', 'id'
             ]
@@ -1938,6 +2180,33 @@ Your BEST EFFORT response:"""
             tool_info = []
             for item in items:
                 if isinstance(item, dict):
+                    if tool_name == "text_summarizer" and isinstance(item.get("summary"), str):
+                        source = item.get("source") if isinstance(item.get("source"), dict) else {}
+                        source_label = source.get("stash_ref") or source.get("path") or "provided text"
+                        tool_info.append(f"source: {source_label}")
+                        tool_info.append(f"summary: {item.get('summary')}")
+                        summary_meta = item.get("summary_meta")
+                        if isinstance(summary_meta, dict):
+                            method = summary_meta.get("summary_method")
+                            llm_used = summary_meta.get("llm_used")
+                            if method:
+                                tool_info.append(f"summary_method: {method}, llm_used: {llm_used}")
+
+                    if tool_name == "stash" and isinstance(item.get("content"), str):
+                        name = item.get("name") or item.get("file_id") or "stash artifact"
+                        ref = self._stash_ref_from_result(item, {})
+                        content = item.get("content") or ""
+                        tool_info.append(f"name: {name}")
+                        if ref:
+                            tool_info.append(f"ref: {ref}")
+                        if ref and self._has_text_summarizer_summary_for_ref(accumulated_data, ref):
+                            tool_info.append("content_summary_available: see text_summarizer summary for this stash ref")
+                        else:
+                            tool_info.append(
+                                "content_excerpt: "
+                                + self._excerpt_for_synthesis(content, max_chars=8000)
+                            )
+
                     # Extract search results (brave search, fetch)
                     if 'raw' in item or 'full_text' in item:
                         # Parse search results - extract titles and descriptions
@@ -2299,6 +2568,22 @@ Your BEST EFFORT response:"""
             )
             result_label = "Result Preview" if result_truncated else "Result"
             context_parts.append(f"   {result_label}: {result_summary}")
+            if result_truncated and tool_name == "stash":
+                data = result.get("data", {}) if isinstance(result, dict) else {}
+                content = data.get("content") if isinstance(data, dict) else None
+                args = ctx.get("arguments", {}) if isinstance(ctx, dict) else {}
+                stash_ref = ""
+                if isinstance(data, dict):
+                    stash_ref = data.get("ref") or data.get("stash_ref") or ""
+                if not stash_ref and args.get("space_id") and args.get("file_id"):
+                    stash_ref = f"stash://{args.get('space_id')}/{args.get('file_id')}"
+                has_summary = self._conversation_has_text_summary_for_ref(conversation_context, stash_ref)
+                if isinstance(content, str) and len(content) > 2000 and stash_ref and not has_summary:
+                    context_parts.append(
+                        "   Long Text Hint: This stash.read already succeeded and the full text is stored in tool results. "
+                        "Do NOT call stash.read again for this same file. If you need a smaller working copy for analysis, "
+                        f"call text_summarizer with operation='summarize', num_sentences=12, stash_ref='{stash_ref}', then answer from that summary."
+                    )
         
         # Check if any tool requested news - prompt LLM to use native search
         news_requested = False

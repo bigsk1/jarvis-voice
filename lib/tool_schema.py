@@ -59,7 +59,8 @@ class ToolSchema:
         description: str,
         parameters: dict[str, Any],
         script_path: str,
-        permissions: dict[str, Any] | None = None
+        permissions: dict[str, Any] | None = None,
+        deterministic_routing: dict[str, Any] | None = None,
     ):
         """
         Initialize a tool schema.
@@ -77,6 +78,7 @@ class ToolSchema:
                     "filesystem": bool, # Accesses filesystem
                     "auto_approve": bool # Skip confirmation (for safe tools)
                 }
+            deterministic_routing: Optional metadata for non-LLM fallback routing.
         """
         self.name = name
         self.description = description
@@ -89,6 +91,7 @@ class ToolSchema:
             "filesystem": False,
             "auto_approve": True
         }
+        self.deterministic_routing = deterministic_routing or {}
     
     def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI function calling format."""
@@ -179,7 +182,8 @@ Parameters:
             description=data["description"],
             parameters=data.get("parameters", {"type": "object", "properties": {}}),
             script_path=script_path,
-            permissions=data.get("permissions", None)
+            permissions=data.get("permissions", None),
+            deterministic_routing=data.get("deterministic_routing", None),
         )
 
 
@@ -579,5 +583,4 @@ def reset_tool_registry():
         _tool_registry_instance.cleanup()
         _tool_registry_instance = None
         _tool_registry_mode = None
-
 

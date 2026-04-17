@@ -22,6 +22,19 @@
     "filesystem": true,
     "auto_approve": true
   },
+  "deterministic_routing": {
+    "provider_error_fallbacks": [
+      {
+        "type": "regex",
+        "error_kinds": ["safety", "permission"],
+        "pattern": "https?://(?:www\\.)?(?:youtube\\.com/watch\\?v=|youtu\\.be/)[^\\s<>)\\\"']+",
+        "arguments": {
+          "url": "$match"
+        },
+        "strip_trailing": ".,;]"
+      }
+    ]
+  },
   "test_input": {
     "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
   },

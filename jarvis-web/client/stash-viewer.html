@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stash Viewer - JARVIS</title>
+  <link rel="stylesheet" href="/css/variables.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/js/utils.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+    }
+
+    .stash-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stash-header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: rgba(18, 18, 26, 0.94);
+      border-bottom: 1px solid var(--border-primary);
+      backdrop-filter: blur(10px);
+    }
+
+    .stash-title {
+      min-width: 0;
+    }
+
+    .stash-title h1 {
+      margin: 0 0 4px;
+      font-size: var(--text-xl);
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .stash-ref {
+      color: var(--text-tertiary);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      overflow-wrap: anywhere;
+    }
+
+    .stash-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      flex-shrink: 0;
+    }
+
+    .stash-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid var(--border-secondary);
+      border-radius: var(--radius-md);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      text-decoration: none;
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: background var(--transition-fast), border-color var(--transition-fast);
+    }
+
+    .stash-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent-primary);
+    }
+
+    .stash-main {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: var(--space-lg) 0 var(--space-2xl);
+    }
+
+    .stash-status {
+      color: var(--text-secondary);
+      padding: var(--space-lg);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-md);
+      background: var(--bg-card);
+    }
+
+    .markdown-viewer,
+    .text-viewer {
+      background: var(--bg-card);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      overflow-x: auto;
+      line-height: 1.6;
+    }
+
+    .markdown-viewer h1,
+    .markdown-viewer h2,
+    .markdown-viewer h3 {
+      margin: 1.2em 0 0.45em;
+      color: var(--text-primary);
+      line-height: 1.25;
+    }
+
+    .markdown-viewer h1:first-child,
+    .markdown-viewer h2:first-child,
+    .markdown-viewer h3:first-child {
+      margin-top: 0;
+    }
+
+    .markdown-viewer p,
+    .markdown-viewer li {
+      color: var(--text-secondary);
+    }
+
+    .markdown-viewer a {
+      color: var(--text-link-chat);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      overflow-wrap: anywhere;
+    }
+
+    .markdown-viewer table {
+      width: 100%;
+      min-width: 560px;
+      margin: var(--space-md) 0;
+      border-collapse: collapse;
+      border: 1px solid var(--border-primary);
+      font-size: 0.95em;
+    }
+
+    .markdown-viewer th,
+    .markdown-viewer td {
+      padding: 8px 10px;
+      border: 1px solid var(--border-primary);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .markdown-viewer th {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    .markdown-viewer td {
+      color: var(--text-secondary);
+    }
+
+    .markdown-viewer blockquote {
+      margin: var(--space-md) 0;
+      padding: var(--space-sm) var(--space-md);
+      border-left: 3px solid var(--accent-primary);
+      background: rgba(99, 102, 241, 0.08);
+      color: var(--text-secondary);
+    }
+
+    .text-viewer {
+      white-space: pre-wrap;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+    }
+
+    .code-block {
+      margin: var(--space-md) 0;
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--bg-primary);
+    }
+
+    .code-block-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-primary);
+    }
+
+    .code-block-language {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      text-transform: lowercase;
+    }
+
+    .code-block-copy {
+      border: 1px solid var(--border-secondary);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border-radius: var(--radius-sm);
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+
+    .code-block pre {
+      margin: 0;
+      padding: var(--space-md);
+      overflow-x: auto;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      background: var(--bg-tertiary);
+      border-radius: var(--radius-sm);
+      padding: 2px 5px;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+    }
+
+    @media (max-width: 720px) {
+      .stash-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .stash-actions {
+        width: 100%;
+      }
+
+      .stash-btn {
+        flex: 1;
+      }
+
+      .stash-main {
+        width: min(100vw - 20px, 1120px);
+        padding-top: var(--space-sm);
+      }
+
+      .markdown-viewer,
+      .text-viewer {
+        padding: var(--space-md);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stash-shell">
+    <header class="stash-header">
+      <div class="stash-title">
+        <h1 id="stashTitle">Loading stash artifact...</h1>
+        <div class="stash-ref" id="stashRef"></div>
+      </div>
+      <div class="stash-actions">
+        <a class="stash-btn" id="rawLink" href="#" target="_blank" rel="noopener noreferrer">Raw</a>
+        <a class="stash-btn" id="downloadLink" href="#" download>Download</a>
+      </div>
+    </header>
+    <main class="stash-main">
+      <div class="stash-status" id="stashStatus">Loading...</div>
+      <article id="stashContent" hidden></article>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const titleEl = document.getElementById('stashTitle');
+      const refEl = document.getElementById('stashRef');
+      const statusEl = document.getElementById('stashStatus');
+      const contentEl = document.getElementById('stashContent');
+      const rawLink = document.getElementById('rawLink');
+      const downloadLink = document.getElementById('downloadLink');
+
+      function parsePath() {
+        const match = window.location.pathname.match(/^\/stash\/view\/([^/]+)\/([^/]+)$/);
+        if (!match) {
+          return null;
+        }
+        return {
+          spaceId: decodeURIComponent(match[1]),
+          fileId: decodeURIComponent(match[2]),
+        };
+      }
+
+      function isMarkdown(contentType, filename) {
+        return /markdown/i.test(contentType) || /\.md$/i.test(filename || '');
+      }
+
+      function isTextLike(contentType, filename) {
+        return (
+          /^text\//i.test(contentType)
+          || /(json|xml|csv|javascript)/i.test(contentType)
+          || /\.(txt|md|json|csv|log|srt)$/i.test(filename || '')
+        );
+      }
+
+      async function loadArtifact() {
+        const parsed = parsePath();
+        if (!parsed) {
+          throw new Error('Invalid stash viewer URL.');
+        }
+
+        const stashRef = `stash://${parsed.spaceId}/${parsed.fileId}`;
+        const rawUrl = `/api/stash/${encodeURIComponent(parsed.spaceId)}/${encodeURIComponent(parsed.fileId)}`;
+        rawLink.href = rawUrl;
+        downloadLink.href = rawUrl;
+        refEl.textContent = stashRef;
+
+        const response = await Utils.auth.fetch(rawUrl);
+        if (!response.ok) {
+          throw new Error(`Could not load stash artifact (${response.status}).`);
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        const filename = response.headers.get('x-stash-filename') || parsed.fileId;
+        titleEl.textContent = filename;
+        downloadLink.download = filename;
+        document.title = `${filename} - Stash Viewer`;
+
+        if (!isTextLike(contentType, filename)) {
+          statusEl.hidden = true;
+          contentEl.hidden = false;
+          contentEl.className = 'stash-status';
+          contentEl.innerHTML = `
+            <p>This stash artifact is not a text/markdown file.</p>
+            <p><a class="content-link" href="${rawUrl}" target="_blank" rel="noopener noreferrer">Open the raw file</a></p>
+          `;
+          return;
+        }
+
+        const text = await response.text();
+        statusEl.hidden = true;
+        contentEl.hidden = false;
+
+        if (isMarkdown(contentType, filename)) {
+          contentEl.className = 'markdown-viewer';
+          contentEl.innerHTML = Utils.parseMarkdown(text);
+        } else {
+          contentEl.className = 'text-viewer';
+          if (/json/i.test(contentType) || /\.json$/i.test(filename)) {
+            try {
+              contentEl.textContent = JSON.stringify(JSON.parse(text), null, 2);
+            } catch {
+              contentEl.textContent = text;
+            }
+          } else {
+            contentEl.textContent = text;
+          }
+        }
+      }
+
+      loadArtifact().catch((error) => {
+        titleEl.textContent = 'Could not load stash artifact';
+        statusEl.textContent = error.message || 'Unknown stash viewer error.';
+      });
+    })();
+  </script>
+</body>
+</html>
