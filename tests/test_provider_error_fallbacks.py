@@ -65,6 +65,20 @@ class ProviderErrorFallbackTests(unittest.TestCase):
             )
         )
 
+    def test_connectivity_howto_with_sdk_phrases_not_provider_error(self):
+        """Regression: long markdown answers may mention gateway timeout, rate limits, etc."""
+        prose = (
+            "## Internet Connectivity Check Strategies\n\n"
+            "Great idea—proactive connectivity checks prevent routing deadlocks. "
+            "Mention gateway timeout, TCP timeouts, and service unavailable patterns. "
+            "Avoid rate limits when polling. " * 6
+        )
+        self.assertGreater(len(prose), 400)
+        self.assertFalse(is_provider_error_text(prose))
+
+    def test_short_error_prefix_still_detected(self):
+        self.assertTrue(is_provider_error_text("Error: gateway timeout"))
+
     def test_xai_403_permission_and_safety_payload_is_detected(self):
         """Shape from xAI when routing fails with bio safety + permission wording."""
         raw = (

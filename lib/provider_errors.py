@@ -94,12 +94,30 @@ def _common_sdk_or_http_error_signals(lowered: str) -> bool:
     return False
 
 
+def _looks_like_markdown_answer(text: str) -> bool:
+    """
+    Long structured answers (how-tos, research) often mention phrases we otherwise treat as
+    SDK errors ('gateway timeout', 'rate limit', 'TCP timeouts'). Those are not errors.
+    """
+    if len(text) < 400:
+        return False
+    return (
+        text.startswith("##")
+        or text.startswith("# ")
+        or "\n## " in text
+        or text.startswith("###")
+    )
+
+
 def is_provider_error_text(text: str | None) -> bool:
     """Detect provider/API error text accidentally returned as normal model text."""
     if not text or not isinstance(text, str):
         return False
     value = text.strip()
     if not value:
+        return False
+
+    if _looks_like_markdown_answer(value):
         return False
 
     lowered = value.lower()
