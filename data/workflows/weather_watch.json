@@ -13,10 +13,10 @@
     "location": {
       "from": "env",
       "key": "JARVIS_DEFAULT_LOCATION",
-      "default": "Hillsboro, Oregon"
+      "default": ""
     },
     "forecast_days": 3,
-    "cold_threshold_f": 34,
+    "cold_threshold_f": 36,
     "freeze_threshold_f": 32,
     "heat_threshold_f": 95,
     "wind_threshold_mph": 25,
