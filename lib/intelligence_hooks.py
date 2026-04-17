@@ -16,6 +16,7 @@ Usage:
 """
 
 import os
+import re
 import sys
 import json
 import asyncio
@@ -514,7 +515,8 @@ def get_routing_insights(query: str) -> dict[str, Any]:
                     # PHASE 1: New fields
                     'constraint_type': i.get('constraint_type', 'positive'),
                     'avoided_tools': i.get('avoided_tools', []),
-                    'reasoning': i.get('reasoning', '')
+                    'reasoning': i.get('reasoning', ''),
+                    'preferred_tools': i.get('preferred_tools') or {},
                 }
                 for i in insights
             ],
@@ -534,6 +536,55 @@ def get_routing_insights(query: str) -> dict[str, Any]:
     except Exception as e:
         logger.warning(f"Failed to get routing insights: {e}")
         return {'tool_biases': {}, 'insights': [], 'confidence': 0.0}
+
+
+def _tool_names_known_to_db() -> set[str]:
+    """Names in tool_definitions (for matching insight text to tools)."""
+    try:
+        from memory_db import get_memory_db
+
+        db = get_memory_db()
+        rows = db.conn.execute("SELECT name FROM tool_definitions").fetchall()
+        return {row["name"] for row in rows}
+    except Exception:
+        return set()
+
+
+def _insight_ok_for_available_tools(insight: dict[str, Any], available_set: set[str]) -> bool:
+    """
+    Drop positive insights that recommend tools the user cannot call (blocked UI,
+    profile overlay, or not in DB as enabled).
+
+    Negative insights are kept (failure patterns may still be useful).
+    """
+    if insight.get("constraint_type", "positive") == "negative":
+        return True
+
+    pt = insight.get("preferred_tools") or {}
+    if isinstance(pt, dict):
+        for tool in pt:
+            if tool not in available_set:
+                return False
+
+    # Text scan: only for tool-like names (underscore or mcp_) so we do not treat the
+    # English word "weather" as the weather tool when preferred_tools is empty.
+    known = _tool_names_known_to_db()
+    unavailable = known - available_set
+    if not unavailable:
+        return True
+
+    parts = [
+        str(insight.get("description") or ""),
+        str(insight.get("applies_to") or ""),
+        str(insight.get("reasoning") or ""),
+    ]
+    text = " ".join(parts)
+    for name in sorted(unavailable, key=len, reverse=True):
+        if "_" not in name and not name.startswith("mcp"):
+            continue
+        if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE):
+            return False
+    return True
 
 
 def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[str] = None) -> str:
@@ -561,25 +612,9 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
     all_insights = insights['insights']
     if available_tools:
         available_set = set(available_tools)
-        
-        def insight_has_available_tools(insight):
-            """Check if insight references only available tools."""
-            # Check applies_to field (tool recommendations)
-            applies_to = insight.get('applies_to', '')
-            if applies_to:
-                # Simple heuristic: if any word in applies_to matches a tool name, check it
-                for tool in available_set:
-                    if tool in applies_to:
-                        return True
-                # If applies_to mentions specific tools but none are available, skip
-                # But if it's general advice (no tool names), keep it
-                for word in applies_to.split():
-                    if word.startswith('mcp_') or word.endswith('_tool') or '_' in word:
-                        # Looks like a tool name but not in available set
-                        return False
-            return True  # General advice, keep it
-        
-        all_insights = [i for i in all_insights if insight_has_available_tools(i)]
+        all_insights = [
+            i for i in all_insights if _insight_ok_for_available_tools(i, available_set)
+        ]
     
     # Separate positive and negative constraints
     positive_insights = [i for i in all_insights if i.get('constraint_type', 'positive') == 'positive']

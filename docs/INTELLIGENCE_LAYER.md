@@ -494,15 +494,23 @@ After editing `BLOCKED_TOOLS`, run `./bin/sync_tools.py cloud` (or `local`).
 
 #### Insight Filtering for Unavailable Tools
 
-When insights are formatted for the LLM prompt:
-1. Query `tool_definitions` for available tool names
-2. Filter out insights that recommend blocked/unavailable tools
-3. Filter tool_biases to only include available tools
+When insights are formatted for the LLM prompt, the orchestrator builds the **allowed tool set** as:
+
+1. `enabled = 1` rows in `tool_definitions` (same DB as Tool RAG)
+2. Minus **Web UI** blocked tools (`excluded_tools` from the chat request)
+3. Minus **`JARVIS_TOOL_PROFILE` overrides** where the value is `false`
+
+Then:
+
+1. **Positive** insights are dropped if **`preferred_tools`** references any tool not in that set
+2. Insight text is scanned only for **tool-like names** (contains `_` or starts with `mcp_`) so plain English words such as “weather” are not confused with the `weather` tool when `preferred_tools` is empty
+3. **Negative** insights are kept (failure patterns)
+4. **tool_biases** are filtered to allowed tools only
 
 This ensures:
-- **Cross-mode safety**: Cloud insights synced to local won't recommend cloud-only tools
-- **Profile support**: Different `BLOCKED_TOOLS` per mode creates effective tool profiles
-- **No wasted tokens**: LLM only sees relevant tool recommendations
+- **Cross-mode safety**: Cloud insights synced to local won't recommend cloud-only tools ( most are for both modes)
+- **Blocked + profiles**: Web UI blocks and profile overlays align with learned-strategy injection
+- **No wasted tokens**: LLM only sees recommendations for tools it can actually call
 
 ---
 

@@ -579,11 +579,18 @@ Mode: {self.mode}
             print("="*80 + "\n", file=sys.stderr)
         
         # Pre-fetch available tool names for insight filtering
-        # This ensures insights about blocked/unavailable tools aren't shown
+        # DB enabled=1 minus Web UI blocked tools minus profile overrides (false)
         try:
             from memory_db import get_memory_db
+            from tool_profiles import load_active_profile_overrides
+
             db = get_memory_db()
-            available_tool_names = db.get_enabled_tool_names() if hasattr(db, 'get_enabled_tool_names') else []
+            names = db.get_enabled_tool_names() if hasattr(db, 'get_enabled_tool_names') else []
+            excluded = set(excluded_tools or [])
+            for tname, en in load_active_profile_overrides().items():
+                if en is False:
+                    excluded.add(tname)
+            available_tool_names = [n for n in names if n not in excluded]
         except Exception:
             available_tool_names = []  # Fallback: no filtering
         
