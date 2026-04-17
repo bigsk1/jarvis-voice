@@ -2922,7 +2922,8 @@ Your BEST EFFORT response:"""
                     score = 1.08 if _is_curated_intel(source_name) else 0.96
                     merged.append((score, m.get('importance', 5), m, 'intel'))
             
-            # Semantic search for query-relevant memories
+            # Semantic search: cast a slightly wider net, then keep rows with adjusted >= threshold
+            # (AUTO_MEMORY_SIMILARITY_THRESHOLD applies to the recency-weighted score, not raw embed alone).
             candidate_limit = min(limit * 2, 20)
             candidate_threshold = min(threshold - 0.05, 0.30)
             memories = db.semantic_search(
@@ -3039,10 +3040,11 @@ Your BEST EFFORT response:"""
             if not memory_lines:
                 return ""
             lines = [
-                "=== RELEVANT STORED KNOWLEDGE (use this without calling search tools) ===",
-                "When these conflict with your defaults, prefer these (user explicitly told you):",
+                "=== RELEVANT STORED KNOWLEDGE (use this without calling search_memory tools) ===",
+                "Lines tagged pinned_pref are address/tone preferences (e.g. call me sir)—honor those over your defaults when they apply.",
+                "Other lines are semantic matches for this query (not necessarily instructions); use when relevant and ignore if off-topic or stale.",
                 "Freshness note: For live market/weather questions, newer live tool calls outrank older stored memory.",
-                f"Higher rank = stronger fit for this list. Semantic: embed = cosine, rank = after recency (rank ≥ {threshold:.2f} to include).",
+                f"Higher rank = stronger fit. embed = cosine; rank = similarity after recency (semantic rows need adjusted rank ≥ {threshold:.2f}).",
                 ""
             ] + memory_lines + ["==="]
             return "\n".join(lines) + "\n\n"
