@@ -62,8 +62,9 @@ logs/test/*.json
 tmp/
 tests/integration/logs
 tests/integration/logs/*
+# Tool profiles: only default.json is tracked; everything else is local
 skills/profiles/*
-!skills/profiles/.gitkeep
+!skills/profiles/default.json
 
 # ===== Backup & Temp Files =====
 *.bak
