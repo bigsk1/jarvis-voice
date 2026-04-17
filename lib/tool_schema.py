@@ -198,57 +198,90 @@ class ToolRegistry:
             skills_dir: Path to skills directory
             mcp_config_path: Path to MCP servers config (optional)
         """
+        import sys
+        from tool_profiles import (
+            describe_active_profile,
+            get_active_profile_name,
+            load_active_profile_overrides,
+            warn_missing_profile_file,
+        )
+
         self.skills_dir = Path(skills_dir)
         self.mcp_config_path = mcp_config_path
         self.tools: dict[str, ToolSchema] = {}
         self.mcp_clients: dict[str, Any] = {}
         self.mcp_manager = None
-        
+        self._registry_verbose = sys.stdout.isatty() and not os.environ.get("JARVIS_JSON_MODE")
+        self._profile_name = get_active_profile_name()
+        self._profile_overrides = load_active_profile_overrides()
+        warn_missing_profile_file()
+        if self._registry_verbose:
+            print(describe_active_profile(verbose=False))
+
         # Discover MCP tools FIRST (before local tools)
         if mcp_config_path and os.path.exists(mcp_config_path):
             self._discover_mcp_tools()
-        
+
         # Then discover local tools
         self._discover_tools()
+
+        # Profile can disable MCP tools (always registered with implicit base enabled)
+        self._remove_tools_disabled_by_profile()
     
+    def _remove_tools_disabled_by_profile(self) -> None:
+        """Drop tools explicitly set to false in the active profile (e.g. MCP tools)."""
+        removed: list[str] = []
+        for name in list(self.tools.keys()):
+            if self._profile_overrides.get(name) is False:
+                del self.tools[name]
+                removed.append(name)
+        if removed and self._registry_verbose:
+            for name in sorted(removed):
+                print(f"⊝ Skipping {name} (disabled by tool profile '{self._profile_name}')")
+
     def _discover_tools(self):
         """Auto-discover tools by finding .tool.json files."""
-        import sys
         from config_loader import get_config_value
-        
-        # Only print registration if stdout is a TTY and not in JSON mode
-        verbose = sys.stdout.isatty() and not os.environ.get('JARVIS_JSON_MODE')
-        
+        from tool_profiles import effective_enabled
+
+        verbose = self._registry_verbose
+
         # Check if OpenCode is enabled (legacy config support)
         opencode_enabled = get_config_value('OPENCODE_ENABLED', 'false').lower() == 'true'
-        
+
         # Sort tool files alphabetically by name for consistent ordering
         # Include root skills/ and subdirectories like auto-tools/
         tool_files = sorted(self.skills_dir.glob("*.tool.json"))
-        
+
         # Also include auto-tools subdirectory (auto-generated tools)
         auto_tools_dir = self.skills_dir / "auto-tools"
         if auto_tools_dir.exists():
             tool_files.extend(sorted(auto_tools_dir.glob("*.tool.json")))
-        
+
         for tool_file in tool_files:
             try:
-                # Read tool config to check if enabled
                 with open(tool_file, 'r') as f:
                     tool_config = json.load(f)
-                
-                # Check if tool is enabled (defaults to True for backward compatibility)
-                if not tool_config.get('enabled', True):
+
+                name = tool_config.get('name', tool_file.stem)
+                base_enabled = tool_config.get('enabled', True)
+                effective = effective_enabled(name, base_enabled, self._profile_overrides)
+
+                if not effective:
                     if verbose:
-                        print(f"⊝ Skipping {tool_config.get('name', tool_file.stem)} (disabled)")
+                        if name in self._profile_overrides and not self._profile_overrides[name]:
+                            reason = f"disabled by tool profile '{self._profile_name}'"
+                        else:
+                            reason = f"disabled in {tool_file.name}"
+                        print(f"⊝ Skipping {name} ({reason})")
                     continue
-                
+
                 # Legacy: Skip opencode tool if disabled in config
                 if tool_file.stem == 'opencode' and not opencode_enabled:
                     if verbose:
                         print(f"⊝ Skipping opencode tool (disabled in config)")
                     continue
-                
+
                 schema = ToolSchema.from_json_file(str(tool_file))
                 self.tools[schema.name] = schema
                 if verbose:

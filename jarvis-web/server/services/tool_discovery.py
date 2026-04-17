@@ -8,6 +8,20 @@ from pathlib import Path
 from ..config import SKILLS_PATH, JARVIS_ROOT, get_web_setting
 
 
+def _ensure_lib_path():
+    lib_path = JARVIS_ROOT / "lib"
+    if str(lib_path) not in sys.path:
+        sys.path.insert(0, str(lib_path))
+
+
+def _tool_profile_overrides():
+    """Load active profile overrides (same logic as ToolRegistry)."""
+    _ensure_lib_path()
+    from tool_profiles import load_active_profile_overrides
+
+    return load_active_profile_overrides()
+
+
 class ToolDiscoveryService:
     """Discovers and manages available Jarvis tools"""
     
@@ -19,26 +33,32 @@ class ToolDiscoveryService:
     def _load_tools(self):
         """Load all tool definitions from skills folder AND memory_db"""
         self.tools = {}
-        
+
         # Get blocked tools for web
         blocked_tools = set(get_web_setting('tools.blocked', []))
-        
+
+        profile_overrides = _tool_profile_overrides()
+        _ensure_lib_path()
+        from tool_profiles import effective_enabled
+
         # 1. Load local tools from skills/**/*.tool.json (including subdirectories like auto-tools/)
         if self.skills_path.exists():
             for tool_file in self.skills_path.glob('**/*.tool.json'):
                 try:
                     with open(tool_file, 'r') as f:
                         tool = json.load(f)
-                    
+
                     name = tool.get('name', tool_file.stem.replace('.tool', ''))
                     is_blocked = name in blocked_tools
-                    
-                    # Include all tools (enabled or blocked for visibility)
-                    if tool.get('enabled', True) or is_blocked:
+                    base_enabled = tool.get('enabled', True)
+                    effective = effective_enabled(name, base_enabled, profile_overrides)
+
+                    # Include all tools (effective enabled or blocked for visibility)
+                    if effective or is_blocked:
                         self.tools[name] = {
                             'name': name,
                             'description': tool.get('description', ''),
-                            'enabled': tool.get('enabled', True) and not is_blocked,
+                            'enabled': effective and not is_blocked,
                             'blocked': is_blocked,
                             'source': 'local',
                             'parameters': tool.get('parameters', {}),

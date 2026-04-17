@@ -1,8 +1,57 @@
 #!/usr/bin/env python3
 """
-Tool Management Utility
-Enable/disable tools and view tool status.
+Manage Jarvis tool definitions (skills/**/*.tool.json) and inspect profile overlays.
+
+Profile overlays (optional): set JARVIS_TOOL_PROFILE in config/local.env or cloud.env
+to the stem of skills/profiles/<name>.json. Only skills/profiles/default.json is tracked
+in git; add other JSON files locally. After changing a profile, restart services and run
+./bin/sync_tools.py local (or cloud). See skills/README.md (Tool profiles).
+
+Usage (run with -h / --help on this script or on a subcommand for full flags):
+
+  ./bin/manage-tools.py -h
+      Top-level help and command list.
+
+  ./bin/manage-tools.py list
+  ./bin/manage-tools.py list -v
+  ./bin/manage-tools.py list --verbose
+      List all tools with effective enabled/disabled (merges .tool.json + active profile).
+
+  ./bin/manage-tools.py enable <tool_name>
+  ./bin/manage-tools.py disable <tool_name>
+      Set "enabled" in the tool file (resolves name in skills/ and skills/auto-tools/).
+
+  ./bin/manage-tools.py enable-all
+      Set enabled true on every tool file (root + auto-tools).
+
+  ./bin/manage-tools.py init
+      Add missing "enabled": true to tool JSON (migration helper).
+
+  ./bin/manage-tools.py profile -h
+  ./bin/manage-tools.py profile list
+  ./bin/manage-tools.py profile show
+  ./bin/manage-tools.py profile export
+  ./bin/manage-tools.py profile export > /tmp/tool-state.json
+      Profile list/show/export (export: JSON of base vs effective enabled per tool).
+
+Environment:
+  JARVIS_TOOL_PROFILE       Active profile stem (default: default).
+  JARVIS_OVERRIDE_*         Web UI overrides for config keys (see lib/config_loader.py).
 """
+
+_EXAMPLES = """
+Examples:
+  ./bin/manage-tools.py list
+  ./bin/manage-tools.py list -v
+  ./bin/manage-tools.py disable weather
+  ./bin/manage-tools.py enable weather
+  ./bin/manage-tools.py enable-all
+  ./bin/manage-tools.py init
+  ./bin/manage-tools.py profile list
+  ./bin/manage-tools.py profile show
+  ./bin/manage-tools.py profile export > /tmp/tool-state.json
+"""
+
 import sys
 import json
 import argparse
@@ -21,28 +70,56 @@ def get_skills_dir() -> Path:
     return Path(__file__).parent.parent / "skills"
 
 
+def get_project_root() -> Path:
+    return Path(__file__).parent.parent
+
+
+def _ensure_lib_path():
+    lib = get_project_root() / "lib"
+    if str(lib) not in sys.path:
+        sys.path.insert(0, str(lib))
+
+
+def iter_tool_files(skills_dir: Path):
+    """All *.tool.json under skills/ and skills/auto-tools/."""
+    yield from sorted(skills_dir.glob("*.tool.json"))
+    auto = skills_dir / "auto-tools"
+    if auto.is_dir():
+        yield from sorted(auto.glob("*.tool.json"))
+
+
 def list_tools(verbose: bool = False) -> None:
     """List all tools and their enabled status."""
     skills_dir = get_skills_dir()
     tools = []
-    
-    for tool_file in sorted(skills_dir.glob("*.tool.json")):
+    _ensure_lib_path()
+    from tool_profiles import effective_enabled, get_active_profile_name, load_active_profile_overrides
+
+    profile_name = get_active_profile_name()
+    overrides = load_active_profile_overrides()
+
+    for tool_file in iter_tool_files(skills_dir):
         try:
             with open(tool_file, 'r') as f:
                 config = json.load(f)
             
-            enabled = config.get('enabled', True)  # Default to True for backward compatibility
-            status = f"{GREEN}✓ enabled{RESET}" if enabled else f"{RED}⊝ disabled{RESET}"
-            
+            base_enabled = config.get('enabled', True)  # Default to True for backward compatibility
+            name = config.get('name', tool_file.stem)
+            eff = effective_enabled(name, base_enabled, overrides)
+            status = f"{GREEN}✓ enabled{RESET}" if eff else f"{RED}⊝ disabled{RESET}"
             tools.append({
-                'name': config.get('name', tool_file.stem),
-                'enabled': enabled,
+                'name': name,
+                'enabled': eff,
+                'base_enabled': base_enabled,
                 'file': tool_file.name,
                 'description': config.get('description', 'No description')[:60]
             })
-            
+
             if verbose:
-                print(f"{status:20} {tools[-1]['name']:25} {tools[-1]['description']}")
+                extra = ""
+                if name in overrides and base_enabled != eff:
+                    extra = f" {YELLOW}(profile {profile_name}){RESET}"
+                print(f"{status:20} {tools[-1]['name']:25} {tools[-1]['description']}{extra}")
             else:
                 print(f"{status:20} {tools[-1]['name']}")
         except Exception as e:
@@ -51,17 +128,33 @@ def list_tools(verbose: bool = False) -> None:
     # Summary
     enabled_count = sum(1 for t in tools if t['enabled'])
     disabled_count = len(tools) - enabled_count
-    print(f"\n{BLUE}Total: {len(tools)} tools ({enabled_count} enabled, {disabled_count} disabled){RESET}")
+    print(
+        f"\n{BLUE}Total: {len(tools)} tools ({enabled_count} enabled, {disabled_count} disabled) — "
+        f"profile: {profile_name}{RESET}"
+    )
+
+
+def resolve_tool_file(skills_dir: Path, tool_name: str) -> Path | None:
+    """Find skills/**/<name>.tool.json by JSON ``name`` field (includes auto-tools/)."""
+    for tool_file in iter_tool_files(skills_dir):
+        try:
+            with open(tool_file, 'r') as f:
+                config = json.load(f)
+            if config.get('name', tool_file.stem) == tool_name:
+                return tool_file
+        except Exception:
+            continue
+    return None
 
 
 def enable_tool(tool_name: str) -> None:
     """Enable a tool."""
     skills_dir = get_skills_dir()
-    tool_file = skills_dir / f"{tool_name}.tool.json"
-    
-    if not tool_file.exists():
+    tool_file = resolve_tool_file(skills_dir, tool_name)
+    if tool_file is None:
+        alt = skills_dir / f"{tool_name}.tool.json"
         print(f"{RED}✗ Tool not found: {tool_name}{RESET}")
-        print(f"  Looking for: {tool_file}")
+        print(f"  Tried resolve by name and: {alt}")
         return
     
     try:
@@ -82,11 +175,11 @@ def enable_tool(tool_name: str) -> None:
 def disable_tool(tool_name: str) -> None:
     """Disable a tool."""
     skills_dir = get_skills_dir()
-    tool_file = skills_dir / f"{tool_name}.tool.json"
-    
-    if not tool_file.exists():
+    tool_file = resolve_tool_file(skills_dir, tool_name)
+    if tool_file is None:
+        alt = skills_dir / f"{tool_name}.tool.json"
         print(f"{RED}✗ Tool not found: {tool_name}{RESET}")
-        print(f"  Looking for: {tool_file}")
+        print(f"  Tried resolve by name and: {alt}")
         return
     
     try:
@@ -108,8 +201,8 @@ def enable_all_tools() -> None:
     """Enable all tools."""
     skills_dir = get_skills_dir()
     count = 0
-    
-    for tool_file in skills_dir.glob("*.tool.json"):
+
+    for tool_file in iter_tool_files(skills_dir):
         try:
             with open(tool_file, 'r') as f:
                 config = json.load(f)
@@ -130,8 +223,8 @@ def add_enabled_field() -> None:
     """Add 'enabled': true to all tools that don't have it."""
     skills_dir = get_skills_dir()
     count = 0
-    
-    for tool_file in skills_dir.glob("*.tool.json"):
+
+    for tool_file in iter_tool_files(skills_dir):
         try:
             with open(tool_file, 'r') as f:
                 config = json.load(f)
@@ -158,30 +251,75 @@ def add_enabled_field() -> None:
         print(f"\n{GREEN}✓ Updated {count} tool(s){RESET}")
 
 
+def cmd_profile_list() -> None:
+    """List JSON profiles under skills/profiles/."""
+    _ensure_lib_path()
+    from tool_profiles import get_active_profile_name, get_profiles_dir, list_profile_names
+
+    d = get_profiles_dir()
+    names = list_profile_names()
+    active = get_active_profile_name()
+    if not names:
+        print(f"{YELLOW}No profiles found under {d}{RESET}")
+        print("  Add skills/profiles/<name>.json (see skills/README.md, Tool profiles)")
+        return
+    for n in names:
+        mark = f" {GREEN}(active){RESET}" if n == active else ""
+        print(f"  {n}{mark}")
+
+
+def cmd_profile_show() -> None:
+    """Show active profile and override count."""
+    _ensure_lib_path()
+    from tool_profiles import (
+        describe_active_profile,
+        get_active_profile_name,
+        get_profiles_dir,
+        load_active_profile_overrides,
+    )
+
+    name = get_active_profile_name()
+    path = get_profiles_dir() / f"{name}.json"
+    ov = load_active_profile_overrides()
+    print(describe_active_profile(verbose=True))
+    print(f"  File: {path} ({'exists' if path.is_file() else 'missing — empty overrides'})")
+    if ov:
+        for k in sorted(ov.keys()):
+            state = 'on' if ov[k] else 'off'
+            print(f"    {k}: {state}")
+
+
+def cmd_profile_export() -> None:
+    """Print effective enabled map (base from .tool.json merged with profile) as JSON."""
+    _ensure_lib_path()
+    from tool_profiles import effective_enabled, get_active_profile_name, load_active_profile_overrides
+
+    skills_dir = get_skills_dir()
+    overrides = load_active_profile_overrides()
+    profile = get_active_profile_name()
+    out: dict[str, dict] = {"profile": profile, "tools": {}}
+    for tool_file in iter_tool_files(skills_dir):
+        try:
+            with open(tool_file, 'r') as f:
+                config = json.load(f)
+            name = config.get('name', tool_file.stem)
+            base = config.get('enabled', True)
+            out["tools"][name] = {
+                "file": str(tool_file.relative_to(get_project_root())),
+                "base_enabled": base,
+                "effective_enabled": effective_enabled(name, base, overrides),
+            }
+        except Exception as e:
+            out["tools"][tool_file.name] = {"error": str(e)}
+    print(json.dumps(out, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description='Manage Jarvis tools (enable/disable)',
+        description='Manage Jarvis tools (enable/disable) and profile overlays.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # List all tools
-  ./bin/manage-tools.py list
-  
-  # List with descriptions
-  ./bin/manage-tools.py list -v
-  
-  # Disable a tool
-  ./bin/manage-tools.py disable execute_bash
-  
-  # Enable a tool
-  ./bin/manage-tools.py enable execute_bash
-  
-  # Enable all tools
-  ./bin/manage-tools.py enable-all
-  
-  # Add 'enabled' field to all tools (migration)
-  ./bin/manage-tools.py init
-        """
+        epilog=_EXAMPLES
+        + "\nSee the module docstring at the top of this file for full usage and environment notes.\n",
     )
     
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
@@ -203,7 +341,13 @@ Examples:
     
     # Init command (add enabled field)
     subparsers.add_parser('init', help='Add enabled field to all tools')
-    
+
+    prof = subparsers.add_parser('profile', help='Tool profile overlays (skills/profiles/*.json)')
+    prof_sub = prof.add_subparsers(dest='profile_cmd', help='Profile command')
+    prof_sub.add_parser('list', help='List profile files and mark active (JARVIS_TOOL_PROFILE)')
+    prof_sub.add_parser('show', help='Show active profile and overrides')
+    prof_sub.add_parser('export', help='Export effective enabled state as JSON (stdout)')
+
     args = parser.parse_args()
     
     if not args.command:
@@ -220,6 +364,17 @@ Examples:
         enable_all_tools()
     elif args.command == 'init':
         add_enabled_field()
+    elif args.command == 'profile':
+        if not getattr(args, 'profile_cmd', None):
+            prof.print_help()
+            sys.exit(1)
+        pc = args.profile_cmd
+        if pc == 'list':
+            cmd_profile_list()
+        elif pc == 'show':
+            cmd_profile_show()
+        elif pc == 'export':
+            cmd_profile_export()
 
 
 if __name__ == '__main__':

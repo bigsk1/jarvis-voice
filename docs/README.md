@@ -33,7 +33,8 @@
 - **[opencode/OPENCODE.md](opencode/OPENCODE.md)** - Autonomous coding agent
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + **inter-tool calling patterns** ⭐ ENHANCED
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (deterministic pipelines, variable extraction, WebUI integration) ⭐ IMPLEMENTED
-- **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools
+- **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools in each `*.tool.json`
+- **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); only `default.json` is tracked in git — use for offline/minimal tool sets without editing every tool file. After changing profile: restart services, then `./bin/sync_tools.py local` or `cloud`
 - **[status-tool/README.md](status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🛒 **SerpApi Search Tool** (Amazon + engine-based SerpApi queries)
 
@@ -140,7 +141,8 @@
 | **TOOL_RAG_TROUBLESHOOTING.md** | Tool RAG debugging guide  |
 | **TEST_SCRIPT_TOOL_RAG_FIX.md** | Test script integration fixes  |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
-| **TOOL_MANAGEMENT.md** | Enable/disable tools |
+| **TOOL_MANAGEMENT.md** | Enable/disable tools in each `*.tool.json` |
+| **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |
 | **ERROR_RECOVERY.md** | Error handling and retries |

@@ -14,8 +14,36 @@ skills/
 │   ├── *.py
 │   ├── *.tool.json
 │   └── *.report.json # Build audit reports
-└── profiles/         # Tool sync profiles (cloud/local) Not fully added yet
+└── profiles/         # Tool profile overlays (only default.json is tracked in git)
 ```
+
+### Tool profiles (optional)
+
+Each profile is `skills/profiles/<name>.json` with `{"description": "...", "overrides": {"tool_name": false}}`. Keys in `overrides` win over the `enabled` flag in `*.tool.json`. Omit a tool to leave the file’s setting unchanged.
+
+Set **`JARVIS_TOOL_PROFILE`** in `config/local.env` or `config/cloud.env` to the profile **name** (stem of the file, default: `default`). Add any other profile files locally—they are gitignored except **`skills/profiles/default.json`**.
+
+After changing profile: restart Jarvis services, then run `./bin/sync_tools.py local` or `./bin/sync_tools.py cloud`. Inspect: `./bin/manage-tools.py profile show`.
+
+Example profile you can copy to `skills/profiles/<your_name>.json` and edit (file is gitignored except `default.json`):
+
+```json
+{
+  "description": "Short note for yourself (optional).",
+  "overrides": {
+    "weather": false,
+    "serpapi_search": false,
+    "mcp_fetch_fetch": false,
+    "mcp_brave_search_brave_web_search": false
+  }
+}
+```
+
+- Only tools listed under `overrides` are changed; every other tool still follows its `*.tool.json` `enabled` flag.
+- Use `true` to force-enable a tool that is disabled in the tool file (uncommon).
+- Discover exact tool names (including `mcp_*`): `./bin/manage-tools.py list` or `./bin/manage-tools.py profile export` while the tools you care about are registered.
+
+CLI reference: `./bin/manage-tools.py -h` and the usage block at the top of `bin/manage-tools.py`.
 
 ---
 

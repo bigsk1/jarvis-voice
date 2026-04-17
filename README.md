@@ -80,6 +80,7 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - Launch: `./bin/jarvis-intelligence`
 
 ### Tool System
+- **Tool profile overlays** (optional): JSON files under `skills/profiles/` merge with each tool’s `enabled` flag — set `JARVIS_TOOL_PROFILE` in `config/local.env` or `config/cloud.env` to the profile name (e.g. offline). After switching profile, restart services and run `./bin/sync_tools.py local` or `cloud`. CLI: `./bin/manage-tools.py -h`. Details and copy-paste example: [`skills/README.md`](skills/README.md) (section *Tool profiles*).
 - **Tool RAG System**: Dynamic tool retrieval - loads only relevant tools for each query
   - Scales to 100+ tools without context flooding
   - Vector-based semantic search for tool discovery

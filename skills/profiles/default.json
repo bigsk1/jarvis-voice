@@ -1,0 +1,4 @@
+{
+  "description": "No overrides — each tool's enabled flag comes only from skills/*.tool.json. Add other profiles as <name>.json in this folder (gitignored except this file); set JARVIS_TOOL_PROFILE.",
+  "overrides": {}
+}
