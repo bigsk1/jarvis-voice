@@ -22,7 +22,7 @@
       },
       "query": {
         "type": "string",
-        "description": "Search query. Supports quoted phrases, e.g. \"food license\" oregon"
+        "description": "Search query. Supports quoted phrases, e.g. \"chili youtube\" or \"food license\" oregon. Unquoted multi-word queries require every word to match (AND) by default so generic terms like youtube do not match every youtube.com bookmark. Omit query_mode to get that behavior; set query_mode to \"any\" only if you need OR matching (any single word)."
       },
       "tags": {
         "type": [
@@ -51,7 +51,7 @@
           "any",
           "all"
         ],
-        "description": "How to match terms/filters: any (default) or all."
+        "description": "How to combine search terms: omit for smart default (AND when multiple words/phrases; OR only for a single term). \"all\" = every term/phrase must match. \"any\" = match if any term matches (broad; use for deliberate OR searches)."
       },
       "sort_by": {
         "type": "string",

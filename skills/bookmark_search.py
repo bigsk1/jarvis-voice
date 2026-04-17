@@ -291,6 +291,12 @@ def match_query(
 ) -> tuple[bool, int]:
     """
     Match query terms/phrases and return (matched, score).
+
+    Terms match as substrings in title, URL, folder path, tags, keyword, and
+    domain. A term like \"youtube\" therefore matches the domain \"youtube.com\".
+    With query_mode \"any\" and multiple terms, only one term needs to match,
+    which can return unrelated YouTube links. Callers should default multi-word
+    queries to query_mode \"all\" (every term must match) unless OR is intended.
     """
     if not terms and not phrases:
         return True, 0
@@ -651,9 +657,6 @@ def main() -> None:
 
         limit = clamp_int(args.get("limit"), DEFAULT_LIMIT, 1, MAX_RESULTS)
         offset = clamp_int(args.get("offset"), 0, 0, 1_000_000)
-        query_mode = str(args.get("query_mode", "any")).strip().lower()
-        if query_mode not in {"any", "all"}:
-            query_mode = "any"
 
         sort_by = str(args.get("sort_by", "relevance")).strip().lower()
         if sort_by not in {"relevance", "recent", "title", "domain"}:
@@ -675,13 +678,24 @@ def main() -> None:
             folder_filters = parse_csv_list(args.get("folders"))
             domain_filters = parse_csv_list(args.get("domains"))
 
+            terms, phrases = parse_query(query)
+            raw_mode = args.get("query_mode")
+            if raw_mode is None or (isinstance(raw_mode, str) and not str(raw_mode).strip()):
+                # Multi-term queries default to AND: "any" + OR matched every youtube.com
+                # bookmark when one term was "youtube" (substring of youtube.com).
+                search_query_mode = "all" if (len(terms) + len(phrases) > 1) else "any"
+            else:
+                search_query_mode = str(raw_mode).strip().lower()
+                if search_query_mode not in {"any", "all"}:
+                    search_query_mode = "all" if (len(terms) + len(phrases) > 1) else "any"
+
             payload = search_bookmarks(
                 bookmarks=bookmarks,
                 query=query,
                 tag_filters=tag_filters,
                 folder_filters=folder_filters,
                 domain_filters=domain_filters,
-                query_mode=query_mode,
+                query_mode=search_query_mode,
                 sort_by=sort_by,
                 include_duplicates=include_duplicates,
                 limit=limit,
