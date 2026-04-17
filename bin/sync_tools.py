@@ -22,6 +22,9 @@ Usage:
         Regenerate embeddings for every tool (ignore content hash). Use after switching embedding
         model/dimensions or when debugging Tool RAG.
 
+Profile note: tools excluded by JARVIS_TOOL_PROFILE are not in the registry, so they never
+appear as "○ Unchanged" in the sync loop; they are disabled in the DB afterward if still enabled.
+
 See also: docs/SYNC_ARCHITECTURE.md, docs/DUAL_DATABASE_SYSTEM.md (tools are not copied by sync-memory-db).
 """
 import sys
@@ -74,7 +77,13 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False):
     syncing = total - len(blocked_tools)
     
     print(f"📝 Found {total} tools, syncing {syncing} (blocked: {len(blocked_tools)})...")
-    
+    if verbose:
+        print(
+            "   ℹ️  '○ Unchanged' / '✓ Synced' apply only to tools in the registry above. "
+            "Tools skipped by JARVIS_TOOL_PROFILE or disabled in *.tool.json are not listed here; "
+            "their DB rows are turned off in the step after this loop if they were still enabled."
+        )
+
     for tool_name, schema in registry.tools.items():
         # Skip blocked tools
         if tool_name in blocked_tools:
@@ -111,18 +120,36 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False):
             
         except Exception as e:
             print(f"  ❌ Failed to sync {tool_name}: {e}")
-    
+
+    # Preview DB rows that will be disabled (explains why profile-disabled tools never show as "Unchanged")
+    if verbose:
+        cur = db.conn.cursor()
+        db_enabled_rows = cur.execute(
+            "SELECT name FROM tool_definitions WHERE enabled = 1"
+        ).fetchall()
+        db_enabled_names = {row["name"] for row in db_enabled_rows}
+        stale_preview = sorted(db_enabled_names - active_tools)
+        if stale_preview:
+            print(
+                f"\n📌 Disabling {len(stale_preview)} tool(s) in DB (were enabled, not in current registry): "
+                f"{', '.join(stale_preview)}"
+            )
+        else:
+            print(
+                "\n📌 No DB rows to disable (no enabled tools in DB are missing from the current registry)."
+            )
+
     # Disable tools that are no longer in the registry
     # This handles tools that were removed or have enabled=false in their .tool.json
     disabled_count = _disable_stale_tools(db, active_tools, verbose)
-    
+
     print(f"\n✅ Processed {count}/{syncing} tools to vector DB.")
     if skipped_hash > 0 and not force_reembed:
         print(f"   Skipped embedding (unchanged hash): {skipped_hash}")
     if skipped > 0:
         print(f"   Skipped {skipped} blocked tools (configure via BLOCKED_TOOLS in .env).")
     if disabled_count > 0:
-        print(f"   Disabled {disabled_count} stale/removed tools.")
+        print(f"   Disabled {disabled_count} stale/removed tools in DB.")
     print("   Tools are now ready for dynamic retrieval.")
 
 

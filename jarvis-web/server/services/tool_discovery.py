@@ -83,15 +83,18 @@ class ToolDiscoveryService:
             for tool_name in all_db_tools:
                 # Only add if not already loaded from local files
                 if tool_name not in self.tools:
+                    # DB says enabled=1; still respect profile overrides (same as ToolRegistry)
+                    if not effective_enabled(tool_name, True, profile_overrides):
+                        continue
                     # Get tool details from db
                     tool_info = db.get_tool_info(tool_name) if hasattr(db, 'get_tool_info') else None
                     is_blocked = tool_name in blocked_tools
                     is_mcp = tool_name.startswith('mcp_')
-                    
+
                     description = ''
                     if tool_info and isinstance(tool_info, dict):
                         description = tool_info.get('description', '')
-                    
+
                     self.tools[tool_name] = {
                         'name': tool_name,
                         'description': description,
