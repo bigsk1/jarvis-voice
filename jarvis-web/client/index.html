@@ -5,20 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Jarvis Web UI</title>
   
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  
-  <!-- Styles -->
+  <!-- Self-hosted fonts (woff2) then theme tokens -->
+  <link rel="stylesheet" href="/css/fonts.css">
   <link rel="stylesheet" href="/css/variables.css">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/glow-refinements.css">
   
-  <!-- Socket.IO -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <!-- Socket.IO (local vendor; CDN fallback if /vendor missing) -->
+  <script src="/vendor/socket.io.min.js" onerror="this.removeAttribute('onerror');this.src='https://cdn.socket.io/4.7.2/socket.io.min.js'"></script>
   
-  <!-- Markdown parser (optional, for rich responses) -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Markdown (local vendor; CDN fallback) -->
+  <script src="/vendor/marked.min.js" onerror="this.removeAttribute('onerror');this.src='https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js'"></script>
   
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 </head>

@@ -1,8 +1,8 @@
 /**
  * Jarvis Web UI - Main Styles
+ *
+ * Typography: load /css/fonts.css before this file; @font-face uses /fonts/*.woff2.
  */
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* Reset */
 *, *::before, *::after {
