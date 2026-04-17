@@ -543,6 +543,7 @@ jarvis-canvas/
 │   │   │   ├── canvas.css         # Canvas pages + tree view
 │   │   │   ├── gallery.css        # Image gallery
 │   │   │   └── video-gallery.css  # Video gallery
+│   │   ├── stash-viewer.html      # Markdown/text viewer for stash artifacts
 │   │   └── js/
 │   │       ├── canvas.js          # Canvas pages + tree builder
 │   │       ├── gallery.js         # Image gallery logic
@@ -564,7 +565,7 @@ jarvis-canvas/
         ├── pages.py               # /api/pages/*
         ├── gallery.py             # /api/gallery/images/*
         ├── video_gallery.py       # /api/gallery/videos/*
-        ├── stash.py               # /api/stash/*
+        ├── stash.py               # /api/stash/*, /stash/view/<space>/<file>
         └── views.py               # / and /gallery, /video-gallery
 ```
 
@@ -592,7 +593,20 @@ Canvas pages can include stash-hosted images:
 ![Uploaded Image](stash://space_xxx/file_id)
 ```
 
-The canvas server resolves `stash://` URLs to API endpoints at render time. Pinning a page pins its stash references to prevent TTL expiration.
+The canvas server resolves `stash://` URLs to **API** endpoints at render time (`GET /api/stash/<space_id>/<file_id>`). Pinning a page pins its stash references to prevent TTL expiration.
+
+### Stash viewer (transcripts and text artifacts)
+
+Jarvis Web UI (port `5001`) and **Canvas** (default `8890`) both expose a read-only **stash viewer** for Markdown and text files in stash:
+
+| | |
+|--|--|
+| **URL** | `/stash/view/<space_id>/<file_id>` (same host as the app you are using) |
+| **Raw file** | `GET /api/stash/<space_id>/<file_id>` (used by the viewer and for binary download) |
+
+On Canvas, `jarvis-canvas/client/static/js/canvas.js` rewrites stash references when rendering page markdown: **links and prose** point at `/stash/view/...` so you can open transcripts in the viewer; **Markdown images** stay on `/api/stash/...` so images and other binaries still load correctly. The client also normalizes common LLM glitches (e.g. stray `%60`, broken inline-code backticks around paths) so transcript lines stay readable and clickable.
+
+Implementation: `jarvis-canvas/server/routes/stash.py` (route + file serving), `jarvis-canvas/client/static/stash-viewer.html`. Cross-cutting design notes: `docs/STASH_SYSTEM.md` (*Stash viewer (Jarvis Web UI)* and Canvas note).
 
 ---
 
@@ -620,11 +634,12 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 
 ---
 
-**Version:** 2.2
-**Last Updated:** 2026-04-07
+**Version:** 2.3
+**Last Updated:** 2026-04-17
 
 ### Changelog
 
+- **v2.3** (Apr 2026): Stash viewer on Canvas (`/stash/view/...`), markdown pipeline for viewer vs `/api/stash` for media, pin sync recognizes viewer/API paths; see *Stash viewer* under Stash Integration
 - **v2.2** (Apr 2026): Explicit `image_url` support for page create/update plus inline `Image: https://...` auto-conversion so Amazon/product pages can reliably save with embedded images
 - **v2.1** (Feb 2026): Hierarchical tree view sidebar, breadcrumb titles, LLM title summarization for research workflow, smart folder segment detection, hash-based polling
 - **v2.0** (Feb 2026): Modular architecture refactor (monolith to Flask blueprints) + Video Gallery

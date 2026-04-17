@@ -45,13 +45,151 @@ marked.setOptions({
 });
 
 /**
- * Resolve stash:// URLs to API endpoints
- * Converts: stash://space_id/file_id -> /api/stash/space_id/file_id
+ * Remove trailing junk that LLMs attach to stash file ids (e.g. %60 = encoded backtick `,
+ * fullwidth ％60, or %2560). No lookahead: keep patterns simple so this always runs.
+ */
+function stripBogusTrailingStashFileSuffixes(content) {
+    if (!content) return content;
+    const junk = '(?:%2560|%60|％60|`)+'; // ％ = U+FF05 fullwidth percent
+    let out = content;
+    const wipe = (re) => {
+        out = out.replace(re, '$1');
+    };
+    wipe(new RegExp(`(\\/stash\\/view\\/space_[^/\\s]+\\/f_[a-zA-Z0-9_]+)${junk}`, 'gi'));
+    wipe(new RegExp(`(\\/api\\/stash\\/space_[^/\\s]+\\/f_[a-zA-Z0-9_]+)${junk}`, 'gi'));
+    wipe(new RegExp(`(stash:\\/\\/space_[^/\\s]+\\/f_[a-zA-Z0-9_]+)${junk}`, 'gi'));
+    return out;
+}
+
+/** Strip bogus suffix before encodeURIComponent so %60 is not turned into %2560. */
+function cleanStashFileIdSegment(raw) {
+    if (raw == null || raw === '') {
+        return raw;
+    }
+    return String(raw).replace(/(?:%2560|%60|％60|`)+$/gi, '');
+}
+
+/**
+ * LLMs often open inline code with ` before /stash/view/... but omit the closing ` before "(".
+ * Insert the closing backtick so the path is valid inline code (then unwrapStashViewerPathsFromInlineCode can linkify).
+ */
+function insertMissingClosingBacktickBeforeParenAfterStashPath(content) {
+    if (!content) return content;
+    return content.replace(
+        /(`)(\s*\/stash\/view\/space_[^/\s]+\/f_[a-zA-Z0-9_]+)(\s+)(\()/g,
+        '$1$2`$3$4'
+    );
+}
+
+/**
+ * Inline code that is only a stash viewer path -> markdown link (clickable in Canvas; not monospace-only).
+ */
+function unwrapStashViewerPathsFromInlineCode(content) {
+    if (!content) return content;
+    return content.replace(
+        /`\s*(\/stash\/view\/space_[^/\s`]+\/f_[a-zA-Z0-9_]+)\s*`/g,
+        '[$1]($1)'
+    );
+}
+
+/**
+ * Repair LLM/workflow glitches:
+ * - Closing ] URL-encoded as %5D so markdown never formed a link.
+ * - Trailing %60 / fullwidth ％60 / ` — see stripBogusTrailingStashFileSuffixes (runs first).
+ */
+function normalizeMangledStashLinks(content) {
+    if (!content) return content;
+    let out = content;
+    out = out.replace(
+        /\[\s*(\/stash\/view\/space_[^/\s]+\/f_[a-zA-Z0-9_]+)\s*%5[Dd]\s*\(\s*stash%3A%2F%2F[^)]+\)/gi,
+        (_, path) => `[${path}](${path})`
+    );
+    out = out.replace(
+        /\[\s*(\/stash\/view\/space_[^/\s]+\/f_[a-zA-Z0-9_]+)\s*\]\(\s*stash:\/\/[^)]+\)/gi,
+        (_, path) => `[${path}](${path})`
+    );
+    out = out.replace(
+        /(\/stash\/view\/space_[^/\s]+\/f_[a-zA-Z0-9_]+)%5[Dd](?=[\s.,;:!?)\]]|$)/gi,
+        '$1'
+    );
+    return out;
+}
+
+/**
+ * Turn bare /stash/view/space_.../f_... into markdown links (marked does not autolink relative paths).
+ * Skips URLs already inside ![...]() or [...]().
+ */
+function linkifyBareStashViewerPaths(content) {
+    if (!content) return content;
+    const protectedChunks = [];
+    const tok = (i) => `\x00CANVAS_MD_${i}\x00`;
+    let out = content;
+    out = out.replace(/!\[[^\]]*\]\([^)]+\)/g, (m) => {
+        protectedChunks.push(m);
+        return tok(protectedChunks.length - 1);
+    });
+    out = out.replace(/(?<!\!)\[[^\]]*\]\([^)]+\)/g, (m) => {
+        protectedChunks.push(m);
+        return tok(protectedChunks.length - 1);
+    });
+    out = out.replace(/(\/stash\/view\/space_[^/\s]+\/f_[a-zA-Z0-9_]+)/g, (full) => `[${full}](${full})`);
+    protectedChunks.forEach((chunk, i) => {
+        out = out.split(tok(i)).join(chunk);
+    });
+    return out;
+}
+
+/**
+ * Resolve stash references for Canvas rendering:
+ * - Markdown images ![alt](stash://...) stay on /api/stash/... (binary-friendly).
+ * - Links, prose, and /api/stash/... paths use /stash/view/... (readable viewer on this host).
  */
 function resolveStashUrls(content) {
     if (!content) return content;
-    // Match stash:// URLs in markdown image/link syntax and raw URLs
-    return content.replace(/stash:\/\/([^)\s"']+)/g, '/api/stash/$1');
+
+    const placeholders = [];
+
+    // 1) stash:// in image syntax -> API URL (same origin as Canvas galleries)
+    let out = content.replace(
+        /!\[([^\]]*)\]\(stash:\/\/([^)\s]+)\)/g,
+        (match, alt, pathPart) => {
+            const slash = pathPart.indexOf('/');
+            if (slash <= 0) return match;
+            const spaceId = cleanStashFileIdSegment(pathPart.slice(0, slash));
+            const fileId = cleanStashFileIdSegment(pathPart.slice(slash + 1));
+            return `![${alt}](/api/stash/${encodeURIComponent(spaceId)}/${encodeURIComponent(fileId)})`;
+        }
+    );
+
+    // 2) Protect ![...](/api/stash/space/file) so we do not rewrite image src to the viewer
+    out = out.replace(/!\[([^\]]*)\]\(\/api\/stash\/[^/]+\/[^)]+\)/g, (match) => {
+        const idx = placeholders.length;
+        placeholders.push(match);
+        return `__CANVAS_STASH_IMG_${idx}__`;
+    });
+
+    // 3) Remaining stash:// (links and plain text) -> viewer
+    out = out.replace(/stash:\/\/([^)\s"']+)/g, (full, pathPart) => {
+        const slash = pathPart.indexOf('/');
+        if (slash <= 0) return full;
+        const spaceId = cleanStashFileIdSegment(pathPart.slice(0, slash));
+        const fileId = cleanStashFileIdSegment(pathPart.slice(slash + 1));
+        return `/stash/view/${encodeURIComponent(spaceId)}/${encodeURIComponent(fileId)}`;
+    });
+
+    // 4) Prose / markdown links that used /api/stash/... -> viewer
+    out = out.replace(/\/api\/stash\/([^/\s)]+)\/([^/\s)]+)/g, (full, spaceId, fileId) => {
+        const sid = cleanStashFileIdSegment(spaceId);
+        const fid = cleanStashFileIdSegment(fileId);
+        return `/stash/view/${encodeURIComponent(sid)}/${encodeURIComponent(fid)}`;
+    });
+
+    // 5) Restore image markdown
+    placeholders.forEach((original, idx) => {
+        out = out.split(`__CANVAS_STASH_IMG_${idx}__`).join(original);
+    });
+
+    return out;
 }
 
 /**
@@ -67,8 +205,14 @@ function preserveSingleTildes(content) {
  * Render markdown with stash URL resolution
  */
 function renderMarkdown(content) {
-    // First resolve stash URLs, then parse markdown
-    const resolved = preserveSingleTildes(resolveStashUrls(content));
+    let resolved = stripBogusTrailingStashFileSuffixes(content || '');
+    resolved = insertMissingClosingBacktickBeforeParenAfterStashPath(resolved);
+    resolved = normalizeMangledStashLinks(resolved);
+    resolved = resolveStashUrls(resolved);
+    resolved = stripBogusTrailingStashFileSuffixes(resolved);
+    resolved = unwrapStashViewerPathsFromInlineCode(resolved);
+    resolved = linkifyBareStashViewerPaths(resolved);
+    resolved = preserveSingleTildes(resolved);
     return DOMPurify.sanitize(marked.parse(resolved));
 }
 

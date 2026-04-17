@@ -2,7 +2,7 @@
 
 > **Status**: ✅ Implemented (v2.14)  
 > **Purpose**: Generic artifact storage layer for the Jarvis ecosystem  
-> **Updated**: 2026-01-21 - Added `stash.remember` action with LLM summarization + PDF extraction
+> **Updated**: 2026-04-17 - Documented Jarvis Web **stash viewer** (`/stash/view/...`)
 
 ---
 
@@ -124,6 +124,25 @@ data/stash/
 - `stored_name`: Actual filename on disk (sanitized)
 
 For v1, `file_id == stored_name` is acceptable, but the schema supports decoupling later.
+
+### Stash viewer (Jarvis Web UI)
+
+The main chat UI can link to a **read-only viewer** for text and Markdown artifacts stored in stash. It is implemented as a standalone page in the Jarvis Web server (not the in-chat transcript renderer).
+
+| Item | Detail |
+|------|--------|
+| **URL** | `/stash/view/<space_id>/<file_id>` — `space_id` and `file_id` are URL-encoded path segments matching the stash URI `stash://<space_id>/<file_id>`. |
+| **Raw API** | `GET /api/stash/<space_id>/<file_id>` — same artifact; used for download and “raw” open. |
+| **Auth** | Uses the same session as the Web UI (`Utils.auth.fetch`); unauthenticated requests fail like other protected API routes. |
+| **Markdown** | Content typed as Markdown (or `.md` filename) is rendered with the shared Markdown parser. |
+| **Other text** | Plain text, JSON (pretty-printed when valid JSON), CSV, logs, etc. are shown in a monospace-friendly viewer. |
+| **Binary / non-text** | The page explains that the file is not text and links to the raw URL instead of rendering bytes. |
+
+Implementation reference: `jarvis-web/server/app.py` (route `serve_stash_viewer`), `jarvis-web/client/stash-viewer.html`.
+
+**Jarvis Canvas** serves the same path pattern on the Canvas port (default `8890`): `jarvis-canvas/server/routes/stash.py` (`stash_viewer_page`) and `jarvis-canvas/client/static/stash-viewer.html`. Canvas page rendering (`jarvis-canvas/client/static/js/canvas.js`) rewrites `stash://` links and `/api/stash/<space>/<file>` references to `/stash/view/...` for reading, while Markdown **images** keep `/api/stash/...` so images and other binaries still load.
+
+Example (Web UI): `http://127.0.0.1:5001/stash/view/space_20260417_001005_3e95a321/f_431faadfb3e9` — on Canvas, use port `8890` with the same path.
 
 ---
 

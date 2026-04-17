@@ -41,15 +41,20 @@ def extract_stash_space_ids(content: str) -> set:
     if not content:
         return set()
     
-    # Match stash://space_id/anything patterns
-    pattern = r'stash://([^/\s\)"\']+)'
-    matches = re.findall(pattern, content)
-    
-    # Normalize space IDs (handle date format variations)
-    normalized = set()
-    for space_id in matches:
-        normalized.add(normalize_space_id(space_id))
-    
+    normalized: set[str] = set()
+
+    # stash://space_id/... — capture first path segment (space id)
+    for m in re.finditer(r"stash://([^/\s\)\"\'\]]+)", content):
+        normalized.add(normalize_space_id(m.group(1)))
+
+    # /stash/view/<space_id>/<file_id>/
+    for m in re.finditer(r"/stash/view/(space_[^/?\s]+)/", content):
+        normalized.add(normalize_space_id(m.group(1)))
+
+    # /api/stash/<space_id>/<file_id> (artifact fetch, not meta routes like /api/stash/stats)
+    for m in re.finditer(r"/api/stash/(space_[^/?\s]+)/", content):
+        normalized.add(normalize_space_id(m.group(1)))
+
     return normalized
 
 

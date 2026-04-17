@@ -3,12 +3,28 @@ Jarvis Canvas - Stash file serving routes
 """
 import json
 import mimetypes
-from flask import Blueprint, send_file, abort
+from pathlib import Path
+
+from flask import Blueprint, send_file, send_from_directory, abort
 
 from config import STASH_DIR
 from server.utils import normalize_space_id
 
 stash_bp = Blueprint('stash', __name__)
+
+_JARVIS_CANVAS_ROOT = Path(__file__).resolve().parent.parent.parent
+_CLIENT_STATIC = _JARVIS_CANVAS_ROOT / "client" / "static"
+
+
+@stash_bp.route("/stash/view/<space_id>/<file_id>")
+def stash_viewer_page(space_id, file_id):
+    """Same-origin Markdown/text viewer for stash artifacts (matches Jarvis Web UI behavior).
+
+    Flask injects ``space_id`` and ``file_id`` from the URL; the HTML reads the path from
+    ``window.location`` instead, but the parameter names must match the route variables.
+    """
+    assert space_id and file_id
+    return send_from_directory(_CLIENT_STATIC, "stash-viewer.html")
 
 
 @stash_bp.route('/api/stash/<space_id>/<file_id>')

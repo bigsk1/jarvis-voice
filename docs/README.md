@@ -313,6 +313,13 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-17:**
+- ✅ **Stash viewer (Web UI)** — Dedicated page at `/stash/view/<space_id>/<file_id>` renders Markdown and text stash artifacts (JSON pretty-print, etc.); non-text artifacts link to raw `GET /api/stash/...`. Documented in `docs/STASH_SYSTEM.md` (see *Stash viewer (Jarvis Web UI)*).
+- ✅ **Tool profile overlays** — `JARVIS_TOOL_PROFILE` selects JSON overlays under `skills/profiles/` so dev / MCP-minimal / full tool sets share one codebase; see `skills/README.md` (*Tool profiles*) and `bin/manage-tools.py profile …`.
+- ✅ **Learned insights + profiles** — Learned-insight injection respects Web UI block settings and the active tool profile so hidden tools do not surface as “insights” when they are not available.
+- ✅ **`sync_tools` + profiles** — `bin/sync_tools.py` surfaces profile-related behavior more clearly when aligning the tools DB with a profile.
+- ✅ **Provider error vs. long Markdown answers** — Connectivity or troubleshooting answers that mention phrases like “gateway timeout” in prose are less likely to be misclassified as provider failures; short explicit error lines are still detected (`lib/provider_errors.py`, tests in `tests/test_provider_error_fallbacks.py`).
+
 **2026-04-16:**
 - ✅ **Web thread context + gap timing** — Prior turns sent to the orchestrator omit the in-flight user message so the current request is not duplicated; optional per-message timestamps support resumed-thread hints. Context may include local time plus relative gap when the anchor is unambiguous (`orchestrator_v2._format_conversation_context`, `jarvis-web` conversation builder). ISO parsing for those timestamps uses `lib/time_utils.safe_iso_to_local_datetime`.
 - ✅ **Tool RAG docs** — `docs/TOOL_RAG_STRATEGY.md` explains stripped query vs full-routing embedding (`TOOL_SIMILARITY_THRESHOLD` vs `TOOL_SIMILARITY_THRESHOLD_FULL`) and why web `=== RECENT CONVERSATION CONTEXT ===` does not use the HISTORY+`Instructions:` strip. Router comments clarify that only `find_tools()` embeddings use the optional strip; the routing LLM still sees the full transcript.
