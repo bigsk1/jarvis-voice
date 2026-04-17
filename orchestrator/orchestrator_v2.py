@@ -2614,8 +2614,10 @@ Your BEST EFFORT response:"""
     def _tool_context_max_chars(self, tool_name: str) -> int:
         """Return the LLM-context preview budget for a tool result."""
         lowered = (tool_name or "").lower()
+        if "bookmark" in lowered:
+            return 4500
         if "search" in lowered or "fetch" in lowered:
-            return 3000
+            return 4000
         if tool_name == "status_recap":
             return 4000
         return 2000
@@ -2660,6 +2662,44 @@ Your BEST EFFORT response:"""
             rank = 3
         return (rank, len(key), key)
 
+    # URL-like dict keys: keep full URLs in previews (240 was cutting long querystrings;
+    # models then echoed "truncated" even though the web UI still had complete JSON.)
+    _PREVIEW_LONG_STRING_KEYS = frozenset(
+        {
+            "content",
+            "markdown",
+            "html",
+            "raw_html",
+            "raw_text",
+            "body",
+            "transcript",
+        }
+    )
+    _PREVIEW_URLISH_STRING_KEYS = frozenset(
+        {
+            "url",
+            "href",
+            "canonical_url",
+            "permalink",
+            "short_url",
+            "image_url",
+            "thumbnail_url",
+            "video_url",
+            "source_url",
+            "link_url",
+            "audio_url",
+            "embed_url",
+        }
+    )
+
+    def _preview_string_limit(self, parent_key: str) -> int:
+        pk = parent_key or ""
+        if pk in self._PREVIEW_LONG_STRING_KEYS:
+            return 600
+        if pk in self._PREVIEW_URLISH_STRING_KEYS or pk.endswith("_url"):
+            return 2048
+        return 240
+
     def _build_preview_value(
         self,
         value: Any,
@@ -2672,7 +2712,7 @@ Your BEST EFFORT response:"""
             return value
 
         if isinstance(value, str):
-            text_limit = 600 if parent_key in {"content", "markdown", "html", "raw_html", "raw_text", "body", "transcript"} else 240
+            text_limit = self._preview_string_limit(parent_key)
             return self._truncate_preview_text(value, text_limit)
 
         if depth >= max_depth:
@@ -2682,7 +2722,8 @@ Your BEST EFFORT response:"""
         if isinstance(value, list):
             if not value:
                 return []
-            item_limit = 3 if parent_key in {"results", "top_results", "items", "matches", "documents", "pages", "outputs"} else 4
+            # Search/list tools: show a few more rows so bookmark/SERP previews are usable.
+            item_limit = 5 if parent_key in {"results", "top_results", "items", "matches", "documents", "pages", "outputs"} else 4
             preview_items = [
                 self._build_preview_value(item, parent_key=parent_key, depth=depth + 1, max_depth=max_depth)
                 for item in value[:item_limit]
