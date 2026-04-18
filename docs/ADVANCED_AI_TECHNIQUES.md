@@ -8,18 +8,19 @@
 
 1. [Overview & Philosophy](#overview--philosophy)
 2. [Design Note: Runtime-Aware Context Gating](#design-note-runtime-aware-context-gating)
-3. [Phase 3: Self-Evolving Prompts](#phase-3-self-evolving-prompts)
-4. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
-5. [Phase 5: Parallel Subagents](#phase-5-parallel-subagents)
-6. [Phase 6: Self-Play Optimization](#phase-6-self-play-optimization)
-7. [Phase 7: Versioned Prompts & Rollback](#phase-7-versioned-prompts--rollback)
-8. [Implementation Priority](#implementation-priority)
-9. [Safety & Guardrails](#safety--guardrails)
-10. [Implementation Status](#implementation-status)
-11. [🚨 Reality Check: Why Nothing Evolves](#-reality-check-why-nothing-evolves-feb-2026)
-12. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
-13. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
-14. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
+3. [Design Note: Presentation Artifact Learning](#design-note-presentation-artifact-learning)
+4. [Phase 3: Self-Evolving Prompts](#phase-3-self-evolving-prompts)
+5. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
+6. [Phase 5: Parallel Subagents](#phase-5-parallel-subagents)
+7. [Phase 6: Self-Play Optimization](#phase-6-self-play-optimization)
+8. [Phase 7: Versioned Prompts & Rollback](#phase-7-versioned-prompts--rollback)
+9. [Implementation Priority](#implementation-priority)
+10. [Safety & Guardrails](#safety--guardrails)
+11. [Implementation Status](#implementation-status)
+12. [🚨 Reality Check: Why Nothing Evolves](#-reality-check-why-nothing-evolves-feb-2026)
+13. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
+14. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
+15. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
 
 ---
 
@@ -296,6 +297,61 @@ Initial practical behavior:
 - Annotate allowed disabled-tool memories as historical/debug context.
 
 This closes the “disabled capability leaks into auto-memory context” gap without stripping useful project history.
+
+---
+
+## Design Note: Presentation Artifact Learning
+
+### Problem
+
+Jarvis often runs in `auto` or `casual` response style, where spoken/display output is intentionally short. That is correct for voice and quick UI interactions, but it can conflict with user requests that need a structured multi-item result.
+
+Example:
+
+```text
+User: find golf driving ranges near me and provide locations and hours
+```
+
+A short spoken answer can summarize the top result, but the useful deliverable may be a complete table: name, address, hours, source URL, rating, notes, and missing fields. If the LLM only speaks a compressed answer, feedback may mark the turn as incomplete even when the first search tool was reasonable.
+
+### Desired Learning Shape
+
+Reflection should separate two kinds of correction:
+
+| Correction Type | Example Lesson |
+|-----------------|----------------|
+| Evidence/tool correction | Do not state addresses or hours unless the tool result returned them or a follow-up source verified them. |
+| Presentation/artifact correction | In short response styles, use a brief spoken summary plus an available artifact tool for the full structured details. |
+
+The second lesson should only be learned when an artifact tool was actually available to the original LLM. Otherwise reflection will overgeneralize from tools it could not call.
+
+### Artifact Tool Rule
+
+When all of these are true:
+
+- `response_style` is `auto` or `casual`
+- the user asks for multiple items or multiple fields per item
+- the result needs more detail than a voice-friendly answer can comfortably carry
+- an artifact tool such as `canvas` or `stash` is in `available_tools`
+
+then reflection may learn:
+
+```text
+Use the spoken response for a concise summary, and save the full structured result to canvas/stash.
+```
+
+It should not learn “always use canvas” for every local search. The better trigger is:
+
+```text
+short response style + multi-item/multi-field deliverable + artifact tool available
+```
+
+### Practical Notes
+
+- Keep `canvas` and `stash` in `GHOST_TOOLS` when they are core runtime capabilities.
+- Record `response_style`, `qa_word_limit`, and `multi_turn_word_limit` in experience context so reflection can distinguish short-answer constraints from poor answer quality.
+- Reflection should still prefer verification first when fields are missing. Artifacts are for presentation/storage, not a substitute for evidence.
+- If an artifact is created, feedback should not penalize short speech for omitting every detail; the user can review the saved page/file.
 
 ---
 

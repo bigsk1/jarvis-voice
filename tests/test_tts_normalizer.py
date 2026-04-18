@@ -31,6 +31,20 @@ class TtsNormalizerTests(unittest.TestCase):
         self.assertNotIn("www.example.org", normalized)
         self.assertNotIn("Sources:", normalized)
 
+    def test_default_normalizer_removes_parenthesized_bare_url_examples(self):
+        normalized = normalize_tts_text(
+            "Preview limited; full details like exact hours in Yelp results "
+            "(e.g., yelp.com/search?find_desc=golf+driving+ranges&find_loc=Hillsboro). "
+            "Need more specifics?"
+        )
+
+        self.assertEqual(
+            normalized,
+            "Preview limited; full details like exact hours in Yelp results. Need more specifics?"
+        )
+        self.assertNotIn("yelp.com", normalized)
+        self.assertNotIn("for example", normalized)
+
     def test_default_normalizer_strips_emoji_for_tts(self):
         normalized = normalize_tts_text(
             "Done. Great work \U0001F389 and thanks \U0001F64F. Robot \U0001F916 skull \U0001F480 flag \U0001F1FA\U0001F1F8."

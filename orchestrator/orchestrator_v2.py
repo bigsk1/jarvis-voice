@@ -105,6 +105,19 @@ def _sanitize_error_for_speech(error) -> str:
 class Orchestrator:
     """Main orchestration with LLM-based routing, error recovery, and retry logic."""
 
+    _TRACE_SENSITIVE_KEY_PARTS = (
+        "api_key",
+        "apikey",
+        "authorization",
+        "auth",
+        "bearer",
+        "cookie",
+        "password",
+        "secret",
+        "session",
+        "token",
+    )
+
     @staticmethod
     def _has_usage_data(usage: dict | None) -> bool:
         """Return True when usage contains meaningful token, cache, cost, or native-tool info."""
@@ -122,6 +135,73 @@ class Orchestrator:
         if any((usage.get(key) or 0) > 0 for key in numeric_keys):
             return True
         return bool(usage.get("server_side_tools"))
+
+    @classmethod
+    def _sanitize_tool_trace_value(
+        cls,
+        value: Any,
+        *,
+        depth: int = 0,
+        max_depth: int = 3,
+        max_string: int = 300,
+        max_items: int = 20,
+    ) -> Any:
+        """Keep trace arguments useful for reflection while avoiding secrets/bloat."""
+        if depth > max_depth:
+            return "[max depth]"
+
+        if isinstance(value, dict):
+            sanitized: dict[str, Any] = {}
+            for index, (key, item) in enumerate(value.items()):
+                if index >= max_items:
+                    sanitized["__truncated__"] = f"{len(value) - max_items} more item(s)"
+                    break
+                key_str = str(key)
+                lowered = key_str.lower()
+                if any(part in lowered for part in cls._TRACE_SENSITIVE_KEY_PARTS):
+                    sanitized[key_str] = "[redacted]"
+                else:
+                    sanitized[key_str] = cls._sanitize_tool_trace_value(
+                        item,
+                        depth=depth + 1,
+                        max_depth=max_depth,
+                        max_string=max_string,
+                        max_items=max_items,
+                    )
+            return sanitized
+
+        if isinstance(value, list):
+            items = [
+                cls._sanitize_tool_trace_value(
+                    item,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    max_string=max_string,
+                    max_items=max_items,
+                )
+                for item in value[:max_items]
+            ]
+            if len(value) > max_items:
+                items.append(f"[truncated {len(value) - max_items} more item(s)]")
+            return items
+
+        if isinstance(value, tuple):
+            return cls._sanitize_tool_trace_value(
+                list(value),
+                depth=depth,
+                max_depth=max_depth,
+                max_string=max_string,
+                max_items=max_items,
+            )
+
+        if isinstance(value, str):
+            return value if len(value) <= max_string else value[: max_string - 15].rstrip() + "... [truncated]"
+
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+
+        text = str(value)
+        return text if len(text) <= max_string else text[: max_string - 15].rstrip() + "... [truncated]"
     
     def __init__(self, mode='cloud', provider_override=None, model_override=None):
         """
@@ -489,7 +569,14 @@ Mode: {self.mode}
                     update_experience_from_feedback(
                         experience_id=experience_id,
                         feedback_rating=rating,
-                        feedback_summary=feedback.get('summary')
+                        feedback_summary=feedback.get('summary'),
+                        feedback_details={
+                            'positive': feedback.get('positive', ''),
+                            'issues': feedback.get('issues', []),
+                            'suggestions': feedback.get('suggestions', []),
+                            'tool_ratings': feedback.get('tool_ratings', {}),
+                            'analysis': feedback.get('analysis', ''),
+                        }
                     )
                 except Exception as e:
                     if sys.stdout.isatty():
@@ -915,6 +1002,7 @@ Mode: {self.mode}
                 tool_trace.append({
                     "tool": tool_name,
                     "ok": bool(result.get("ok")) if isinstance(result, dict) else False,
+                    "arguments": self._sanitize_tool_trace_value(arguments),
                     "duration_ms": tool_duration_ms,
                     "error": str(result.get("error", ""))[:500] if isinstance(result, dict) and result.get("error") else None,
                     "speech": str(result.get("speech", ""))[:500] if isinstance(result, dict) else "",
@@ -1170,7 +1258,10 @@ Mode: {self.mode}
                     "tools_used": tools_used,
                     "data": accumulated_data,
                     "tool_trace": tool_trace,
-                    "available_tools": available_tools  # Tools LLM could choose from
+                    "available_tools": available_tools,  # Tools LLM could choose from
+                    "response_style": response_style,
+                    "qa_word_limit": int(get_config_value('JARVIS_QA_WORD_LIMIT', '150')),
+                    "multi_turn_word_limit": int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '150')),
                 }
                 
                 # Add token info to response if available (cloud only)
@@ -3416,7 +3507,14 @@ Mode: {mode}
             updated = update_experience_from_feedback(
                 experience_id=experience_id,
                 feedback_rating=rating,
-                feedback_summary=feedback.get('summary')
+                feedback_summary=feedback.get('summary'),
+                feedback_details={
+                    'positive': feedback.get('positive', ''),
+                    'issues': feedback.get('issues', []),
+                    'suggestions': feedback.get('suggestions', []),
+                    'tool_ratings': feedback.get('tool_ratings', {}),
+                    'analysis': feedback.get('analysis', ''),
+                }
             )
             if updated and rating <= 2 and not json_only:
                 print(f"🔄 Intelligence corrected: experience {experience_id} marked as FAILURE (rating {rating})")

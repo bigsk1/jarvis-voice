@@ -4268,7 +4268,15 @@ Mode: {mode}
                     update_experience_from_feedback(
                         experience_id=int(experience_id),
                         feedback_rating=rating,
-                        feedback_summary=summary
+                        feedback_summary=summary,
+                        feedback_details={
+                            'positive': positive,
+                            'issues': issues,
+                            'suggestions': suggestions,
+                            'tool_ratings': tool_ratings,
+                            'analysis': analysis,
+                            'completion_guard_status': completion_guard_context.get('status', 'none')
+                        }
                     )
                 except Exception as bridge_err:
                     print(f"[FEEDBACK] Failed to update intelligence from feedback: {bridge_err}")

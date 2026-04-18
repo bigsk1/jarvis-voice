@@ -175,17 +175,26 @@ def record_interaction(
         tool_results_str = json.dumps(tool_results, default=str)
         if len(tool_results_str) > 5000:
             tool_results_str = tool_results_str[:5000] + "... [truncated]"
+
+        tool_trace = result.get('tool_trace') or []
+        tool_trace_str = json.dumps(tool_trace, default=str)
+        if len(tool_trace_str) > 5000:
+            tool_trace_str = tool_trace_str[:5000] + "... [truncated]"
         
         # Context summary with full data
         context = {
             'tools_available': len(tools_used) > 0,
             'multi_turn': len(tools_used) > 1,
             'timestamp': datetime.now().isoformat(),
+            'response_style': result.get('response_style'),
+            'qa_word_limit': result.get('qa_word_limit'),
+            'multi_turn_word_limit': result.get('multi_turn_word_limit'),
             # Include both the raw answer and the final spoken/display form.
             'llm_response': raw_llm_response,  # backward-compatible key used by reflection prompt
             'raw_llm_response': raw_llm_response,
             'final_speech': final_speech,
             'tool_results': tool_results_str,
+            'tool_trace': tool_trace_str,
             'server_side_tools': server_side_tools,
             'provider_native_tools_used': native_tool_labels,
             # CRITICAL: What tools the LLM could have chosen from
@@ -215,20 +224,23 @@ def record_interaction(
 def update_experience_from_feedback(
     experience_id: int,
     feedback_rating: int,
-    feedback_summary: str = None
+    feedback_summary: str = None,
+    feedback_details: dict[str, Any] | None = None
 ) -> bool:
     """
     Update experience outcome based on feedback rating.
     
     This is the FEEDBACK → INTELLIGENCE BRIDGE:
-    - Rating 4-5: Confirm success (no change needed)
+    - Rating 4-5: Mark user satisfaction when no hard guard failure exists
     - Rating 1-2: Mark as failure (retroactive correction)
-    - Rating 3: Leave as-is (ambiguous)
+    - Rating 3: Leave outcome as-is (ambiguous)
+    - All ratings: Store compact feedback metadata in raw_data for reflection
     
     Args:
         experience_id: The experience to update
         feedback_rating: Rating from feedback system (1-5)
         feedback_summary: Optional summary from feedback
+        feedback_details: Optional structured feedback payload
     
     Returns:
         True if updated, False otherwise
@@ -239,35 +251,132 @@ def update_experience_from_feedback(
     intel = _get_intel()
     if not intel:
         return False
-    
-    # Only correct on clear failure (rating 1-2)
-    # Rating 3 is ambiguous, 4-5 confirms success
-    if feedback_rating >= 3:
-        logger.debug(f"Experience {experience_id}: rating {feedback_rating} confirms/leaves success")
-        return True  # No correction needed
+
+    try:
+        rating = int(feedback_rating)
+    except Exception:
+        logger.debug(f"Experience {experience_id}: invalid feedback rating {feedback_rating!r}")
+        return False
+
+    if rating < 1 or rating > 5:
+        logger.debug(f"Experience {experience_id}: feedback rating out of range: {rating}")
+        return False
+
+    def compact_value(value: Any, text_limit: int = 1200) -> Any:
+        """Keep feedback metadata useful for reflection without bloating raw_data."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value[:text_limit]
+        if isinstance(value, dict):
+            compacted = {}
+            for index, (key, item) in enumerate(value.items()):
+                if index >= 20:
+                    compacted["..."] = f"truncated {len(value) - index} more key(s)"
+                    break
+                compacted[str(key)[:80]] = compact_value(item, text_limit=500)
+            return compacted
+        if isinstance(value, list):
+            compacted = [compact_value(item, text_limit=500) for item in value[:10]]
+            if len(value) > 10:
+                compacted.append(f"... truncated {len(value) - 10} more item(s)")
+            return compacted
+        return value
     
     try:
-        # Retroactively mark as failure
         cursor = intel.conn.cursor()
         cursor.execute("""
-            UPDATE experiences 
-            SET outcome_success = 0, 
-                user_satisfied = 0
+            SELECT outcome_success, user_satisfied, had_to_retry, raw_data
+            FROM experiences
             WHERE id = ?
         """, (experience_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        raw_data = {}
+        if row['raw_data']:
+            try:
+                raw_data = json.loads(row['raw_data'])
+            except Exception:
+                raw_data = {}
+
+        feedback_details = feedback_details or {}
+        summary = feedback_summary or feedback_details.get('summary') or ''
+        feedback_record = raw_data.get('feedback', {})
+        if not isinstance(feedback_record, dict):
+            feedback_record = {}
+
+        previous_latest = feedback_record.get('latest')
+        history = feedback_record.get('history', [])
+        if not isinstance(history, list):
+            history = []
+        if isinstance(previous_latest, dict):
+            history.append(previous_latest)
+
+        latest_feedback = {
+            'rating': rating,
+            'summary': compact_value(summary, text_limit=1500) or '',
+            'updated_at': datetime.now().isoformat(),
+            'source': 'feedback',
+        }
+        for key in ('positive', 'issues', 'suggestions', 'tool_ratings', 'analysis', 'completion_guard_status'):
+            if key in feedback_details and feedback_details.get(key) not in (None, '', [], {}):
+                latest_feedback[key] = compact_value(feedback_details.get(key))
+
+        feedback_record['latest'] = latest_feedback
+        feedback_record['history'] = history[-4:]
+        raw_data['feedback'] = feedback_record
+
+        outcome_success = int(row['outcome_success']) if row['outcome_success'] is not None else 1
+        user_satisfied = int(row['user_satisfied']) if row['user_satisfied'] is not None else 0
+        had_to_retry = int(row['had_to_retry']) if row['had_to_retry'] is not None else 0
+
+        guard_status = (
+            raw_data.get('completion_guard', {}).get('status', '')
+            if isinstance(raw_data.get('completion_guard'), dict)
+            else ''
+        )
+        hard_guard_failure = guard_status in {'unresolved', 'ticket_created', 'error'}
+
+        if rating <= 2:
+            outcome_success = 0
+            user_satisfied = 0
+            had_to_retry = 1
+        elif rating >= 4 and not hard_guard_failure:
+            user_satisfied = 1
+
+        cursor.execute("""
+            UPDATE experiences
+            SET outcome_success = ?,
+                user_satisfied = ?,
+                had_to_retry = ?,
+                raw_data = ?
+            WHERE id = ?
+        """, (
+            outcome_success,
+            user_satisfied,
+            had_to_retry,
+            json.dumps(raw_data),
+            experience_id
+        ))
         intel.conn.commit()
         
         rows_updated = cursor.rowcount
         if rows_updated > 0:
-            logger.info(f"Experience {experience_id}: corrected to FAILURE based on rating {feedback_rating}")
+            if rating <= 2:
+                logger.info(f"Experience {experience_id}: corrected to FAILURE based on rating {rating}")
+            else:
+                logger.debug(f"Experience {experience_id}: stored feedback rating {rating}")
             
             # Increase priority in reflection queue (failures are valuable learning)
-            cursor.execute("""
-                UPDATE reflection_queue 
-                SET priority = MAX(priority, 0.8)
-                WHERE experience_id = ?
-            """, (experience_id,))
-            intel.conn.commit()
+            if rating <= 2:
+                cursor.execute("""
+                    UPDATE reflection_queue
+                    SET priority = MAX(priority, 0.8)
+                    WHERE experience_id = ?
+                """, (experience_id,))
+                intel.conn.commit()
             
         return rows_updated > 0
         

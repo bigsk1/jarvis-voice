@@ -21,10 +21,10 @@
 - **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
 - **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
 - **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization** ⭐ ENHANCED)
-- **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (learns from interactions, positive/negative constraints!) ⭐ ENHANCED
+- **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (tool traces, feedback metadata, Completion Guard outcomes, positive/negative constraints) ⭐ ENHANCED
 - **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results)
 - **[api/IMAGES.md](api/IMAGES.md)** - 🖼️ **Cloudflare CDN Upload** (permanent image hosting, multi-agent sharing, metadata tracking)  
-- **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions) 
+- **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions, intelligence outcome updates)
 - **[COMPLETION_GUARD.md](COMPLETION_GUARD.md)** - 🛡️ **Completion Guard** (same-runtime repair loop, completion check, escalation tickets) 🆕
 - **[tools/scheduled-tasks/scheduled-tasks.md](tools/scheduled-tasks/scheduled-tasks.md)** - ⏱️ **Scheduled Tasks** (implemented foundation for recurring queries, workflows, parser, API, and runner) 🆕
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
@@ -312,6 +312,24 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-04-18:**
+- ✅ **Intelligence feedback metadata bridge**
+  - Feedback now stores compact QA context on the linked experience (`raw_data.feedback.latest`) instead of only flipping low-rated outcomes
+  - Low ratings still downgrade the experience and raise reflection priority; high ratings can mark satisfaction without erasing Completion Guard repair/failure metadata
+  - Reflection prompts now see feedback rating, summary, issues, analysis, and Completion Guard status together
+- ✅ **Reflection tool trace + argument recovery**
+  - Experiences now preserve sanitized per-tool attempt traces with arguments, failures, and recovery path
+  - Reflection can learn reusable tool-argument lessons and insight scoring no longer rewards a preferred tool that failed before recovery
+- ✅ **Presentation artifact learning**
+  - Experiences record response style and word limits so reflection can recognize short `auto`/`casual` answers
+  - When `canvas`/`stash` are available, reflection may learn “brief spoken summary + full structured artifact” for multi-item, multi-field requests
+  - Added `docs/ADVANCED_AI_TECHNIQUES.md` design note for presentation artifact learning
+- ✅ **TTS URL-example cleanup**
+  - TTS normalizer now removes parenthesized bare URL examples such as `(e.g., yelp.com/search?find_desc=...)` from spoken output
+  - Added regression coverage in `tests/test_tts_normalizer.py`
+- ✅ **Intelligence docs refresh**
+  - Updated `docs/INTELLIGENCE_LAYER.md` and `docs/FEEDBACK_SYSTEM.md` for Completion Guard + feedback coordination, tool traces, and presentation-context reflection
 
 **2026-04-17:**
 - ✅ **Stash viewer (Web UI)** — Dedicated page at `/stash/view/<space_id>/<file_id>` renders Markdown and text stash artifacts (JSON pretty-print, etc.); non-text artifacts link to raw `GET /api/stash/...`. Documented in `docs/STASH_SYSTEM.md` (see *Stash viewer (Jarvis Web UI)*).
@@ -1497,6 +1515,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-04-14  
-**Latest:** Response-style documentation refresh, auto-mode threshold tuning, and Tool RAG typo-hint retrieval improvements  
+**Last Updated:** 2026-04-18
+**Latest:** Intelligence feedback metadata bridge, reflection tool traces, presentation artifact learning, and TTS URL-example cleanup
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

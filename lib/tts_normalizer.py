@@ -196,6 +196,12 @@ def _strip_visual_noise(text: str) -> str:
     text = re.sub(r'(?im)^\s*Sources?:\s*.*$', '', text)
     text = re.sub(r'(?i)\s+Sources?:\s*[^.\n]*(?:\.)?', '', text)
     text = re.sub(
+        r'\(\s*(?:e\.g\.,?\s*)?(?:https?://|www\.|(?:[a-z0-9-]+\.)+[a-z]{2,})(?:/[^\s)]*)?\s*\)',
+        '',
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
         r'(?i)\s*(?:Post|Tweet|Thread|Status|Message)\s+ID:\s*[A-Za-z0-9_-]{6,}\.?',
         '',
         text,

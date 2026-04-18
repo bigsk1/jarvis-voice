@@ -763,9 +763,21 @@ class IntelligenceLayer:
         corrected_tools_used = context_data.get('corrected_tools_used', [])
         corrected_tool_results = context_data.get('corrected_tool_results', '[Not captured]')
         tool_results = context_data.get('tool_results', '[Not captured]')
+        tool_trace = context_data.get('tool_trace', '[Not captured]')
         server_side_tools = context_data.get('server_side_tools', {})
         provider_native_tools_used = context_data.get('provider_native_tools_used', [])
         completion_guard = raw_data.get('completion_guard', {})
+        feedback_record = raw_data.get('feedback', {})
+        latest_feedback = (
+            feedback_record.get('latest', {})
+            if isinstance(feedback_record, dict)
+            else {}
+        )
+        if not isinstance(latest_feedback, dict):
+            latest_feedback = {}
+        response_style = context_data.get('response_style') or '[Not captured]'
+        qa_word_limit = context_data.get('qa_word_limit') or '[Not captured]'
+        multi_turn_word_limit = context_data.get('multi_turn_word_limit') or '[Not captured]'
         
         # CRITICAL: What tools were AVAILABLE to the LLM (from Tool RAG + ghost tools)
         available_tools = context_data.get('available_tools', [])
@@ -784,6 +796,8 @@ class IntelligenceLayer:
         tools_used_list = json.loads(exp['tools_used']) if exp['tools_used'] else []
         provider_native_tools_str = ', '.join(provider_native_tools_used) if provider_native_tools_used else '(none captured)'
         server_side_tools_str = json.dumps(server_side_tools) if server_side_tools else '(none captured)'
+        artifact_tools = [tool for tool in ('canvas', 'stash') if tool in available_tools]
+        artifact_tools_str = ', '.join(artifact_tools) if artifact_tools else '(none available)'
         
         # Identify tools that were available but NOT used (for reflection analysis)
         unused_tools = [t for t in available_tools if t not in tools_used_list] if available_tools else []
@@ -810,6 +824,9 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 **Tool Results** (what the tools returned):
 {tool_results[:1500] if tool_results != '[Not captured]' else '[Not available]'}
 
+**Tool Attempt Trace** (attempted tools, sanitized arguments, failures, and recovery):
+{tool_trace[:2000] if tool_trace != '[Not captured]' else '[Not available]'}
+
 **LLM Response** (what was said to the user):
 {llm_response[:1000] if llm_response != '[Not captured]' else '[Not available]'}
 
@@ -830,6 +847,18 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 - Note: {completion_guard.get('note', '') or '(none)'}
 - Metadata: {json.dumps(completion_guard.get('metadata', {}))[:800] if completion_guard else '(none)'}
 
+**Feedback Outcome**:
+- Rating: {latest_feedback.get('rating', 'none')}
+- Summary: {latest_feedback.get('summary', '') or '(none)'}
+- Issues: {json.dumps(latest_feedback.get('issues', []), default=str)[:800] if latest_feedback else '(none)'}
+- Analysis: {latest_feedback.get('analysis', '')[:800] if latest_feedback.get('analysis') else '(none)'}
+
+**Presentation Context**:
+- Response Style: {response_style}
+- Q&A Word Limit: {qa_word_limit}
+- Multi-Turn Word Limit: {multi_turn_word_limit}
+- Artifact Tools Available: {artifact_tools_str}
+
 **Provider-Native Tool Metadata**:
 {server_side_tools_str}
 
@@ -843,6 +872,11 @@ CRITICAL EVALUATION:
 7. Provider-native tools are metadata-only evidence paths, not normal Jarvis tool choices. If provider-native tools are listed, do NOT infer "zero-tool hallucination" from an empty tools_used list alone.
 8. Do NOT create preferred_tool/avoided_tool insights that tell Jarvis to prefer or avoid provider-native tools such as native:x_search or native:code_interpreter.
 9. If provider-native web/X search was part of the successful evidence path, and the lesson is about search targeting or freshness, set preferred_tool to null unless a normal Jarvis tool was clearly the decisive improvement.
+10. If Tool Attempt Trace shows a failed tool call that was later corrected, extract the reusable payload/argument lesson.
+11. Prefer global argument-shape lessons when they apply across tools, e.g. "tool argument values must be concrete values, not JSON schema objects."
+12. Keep insight_summary short; put exact argument-shape details in why_or_why_not/reasoning when needed.
+13. If Feedback Outcome has a low rating or concrete issue summary, treat that as direct evidence about why the settled answer was unsatisfactory.
+14. If response style is auto/casual and the user asks for multi-item or multi-field details, consider whether an available artifact tool (canvas/stash) should have been used for the full structured output while the spoken response stayed brief. Only recommend artifact tools that appear in Artifact Tools Available.
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
@@ -851,6 +885,7 @@ TOOL CATEGORIES (for understanding what tools do):
 - **UTILITY TOOLS** (simple tasks): get_time, crypto_price, list_reminders, list_alerts
 - **SEARCH TOOLS** (web search): mcp_brave_search_*, mcp_duckduckgo_*
 - **BUILD TOOLS** (create projects): opencode
+- **ARTIFACT TOOLS** (save structured/detail-heavy output): canvas, stash
 - **PROVIDER-NATIVE TOOLS** (metadata only, not Jarvis routing choices): native:x_search, native:web_search, native:code_interpreter
 
 SYSTEM RULES THE LLM SHOULD HAVE FOLLOWED:
@@ -872,6 +907,11 @@ TOOL FAILURE RECOVERY (important for generation tools):
 - Provider API limitations are NOT fixable by retrying with different params (e.g., xAI video editing cannot change duration)
 - Pattern: tool fails/unexpected → retry same tool = BAD. Tool fails/unexpected → search_memory for limitations → inform user = GOOD.
 - If multiple turns were used on the SAME generation tool → first_tool_optimal may be true but the RECOVERY STRATEGY was wrong
+
+TOOL ARGUMENT RECOVERY (important for smaller/local models):
+- If a failed attempt used schema-shaped values like {{"type": "string"}} instead of concrete user values, create a negative global insight.
+- If a later attempt succeeded with corrected arguments, learn the argument convention that made it work.
+- Do not store user-specific values as the rule; store the reusable procedure.
 
 RESULT-BASED EVALUATION (most important):
 - 1 tool used + good result = likely optimal first choice

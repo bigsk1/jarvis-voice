@@ -34,7 +34,7 @@ This creates a feedback loop for continuous improvement without manual debugging
 - **Catches issues humans miss** - Like the truncated insight we found ("co" cutoff)
 - **Self-documenting** - Issues are logged with timestamps for later review
 - **Actionable feedback** - Specific suggestions, not vague complaints
-- **Corrects Intelligence DB** - Low ratings (1-2) retroactively mark experiences as failures
+- **Updates Intelligence DB** - All ratings attach compact feedback metadata to the linked experience; low ratings (1-2) retroactively mark experiences as failures
 
 ---
 
@@ -90,6 +90,7 @@ When Completion Guard is enabled in Jarvis Web, **explicit async feedback waits 
 - **Settled states**: `tighten_only` is treated like a basically accepted answer with minor wording cleanup, not a failed repair. `expired` and `superseded` are neutral manual prompt settlements, not user dissatisfaction.
 - **Random feedback**: `FEEDBACK_RANDOM_ENABLED` / `FEEDBACK_RANDOM_CHANCE` can sample normal orchestrator runs. Jarvis Web temporarily disables orchestrator-side random feedback while Completion Guard is enabled so random pre-collection does not race guard settlement.
 - **Logs**: Each feedback JSONL record includes top-level `completion_guard` (or `{"status": "none"}`).
+- **Intelligence bridge**: Feedback also stores `raw_data.feedback.latest` on the linked experience, preserving the rating, summary, issues, tool ratings, analysis, and guard status for future reflection.
 - **Reference**: [Completion Guard](./COMPLETION_GUARD.md).
 
 ---
@@ -665,9 +666,9 @@ $ ./orchestrator/orchestrator_v2.py cloud "What's the current price of Bitcoin?"
 
 ---
 
-## Feedback → Intelligence Bridge (NEW - 2025-12-13)
+## Feedback → Intelligence Bridge (Enhanced 2026-04-18)
 
-Feedback ratings now **automatically correct** the Intelligence Layer's experience records.
+Feedback ratings now **automatically enrich and correct** the Intelligence Layer's experience records.
 
 ### The Problem (Before)
 
@@ -690,27 +691,70 @@ Feedback: Rating 2/5 ("Action requested but no tools called")
                 ↓
 Intelligence DB: outcome_success = False ← CORRECTED!
                  user_satisfied = False
+                 had_to_retry = True
                  reflection_priority = 0.8 (high)
+                 raw_data.feedback.latest = {rating, summary, issues...}
 ```
 
 ### How It Works
 
 1. **Experience recorded** with default `outcome_success = True`
 2. **Feedback collected** with rating 1-5
-3. **If rating ≤ 2**: `update_experience_from_feedback()` corrects:
+3. **All ratings**: `update_experience_from_feedback()` stores compact feedback metadata under `raw_data.feedback.latest`
+4. **If rating ≤ 2**: it corrects:
    - `outcome_success = False`
    - `user_satisfied = False`
+   - `had_to_retry = True`
    - Bumps reflection queue priority to 0.8
+5. **If rating ≥ 4**: it may mark `user_satisfied = True` unless Completion Guard already recorded a hard failure (`unresolved`, `ticket_created`, `error`)
 
 ### Rating → Correction Logic
 
 | Rating | Action | Rationale |
 |--------|--------|-----------|
-| 5 | No change | Perfect execution |
-| 4 | No change | Minor issues, still success |
-| 3 | No change | Ambiguous - leave as-is |
-| 2 | **CORRECT** | Significant issues = failure |
-| 1 | **CORRECT** | Major problems = failure |
+| 5 | Store feedback; mark satisfied when safe | Perfect execution |
+| 4 | Store feedback; mark satisfied when safe | Minor issues, still success |
+| 3 | Store feedback; leave outcome as-is | Ambiguous |
+| 2 | **Store + correct** | Significant issues = failure |
+| 1 | **Store + correct** | Major problems = failure |
+
+### Stored Experience Metadata
+
+The feedback JSONL remains the full audit log. The intelligence DB stores a compact copy on the linked experience so reflection can see why the turn was graded poorly:
+
+```json
+{
+  "feedback": {
+    "latest": {
+      "rating": 2,
+      "summary": "Relevant tool, but the answer missed requested hours and inferred an address.",
+      "issues": [
+        {
+          "category": "other",
+          "description": "The response did not satisfy the requested fields."
+        }
+      ],
+      "tool_ratings": {
+        "serpapi_yelp_search": {"rating": 3}
+      },
+      "completion_guard_status": "auto_accepted",
+      "updated_at": "2026-04-18T04:30:34"
+    },
+    "history": []
+  }
+}
+```
+
+If multiple feedback runs touch the same experience, the prior `latest` entry rolls into a short `history` list.
+
+### Completion Guard Interaction
+
+Completion Guard and feedback update the **same experience row** but different metadata blocks:
+
+- Completion Guard writes `raw_data.completion_guard`
+- Feedback writes `raw_data.feedback`
+
+Low feedback can downgrade an `auto_accepted` / `tighten_only` settled answer if the QA reviewer finds a real miss. High feedback does not erase repaired/failed guard history, so reflection can still learn that the first pass needed recovery.
 
 ### Why Default to Success?
 
@@ -740,7 +784,7 @@ WHERE id = 338;
 
 1. **Aggregate analysis** - Pattern detection across many feedback entries
 2. **Auto-fix suggestions** - Generate patches for tool descriptions
-3. ~~**Integration with intelligence layer**~~ ✅ DONE - Feedback now corrects experiences
+3. ~~**Integration with intelligence layer**~~ ✅ DONE - Feedback now corrects experiences and stores feedback context for reflection
 4. ~~**Completion Guard alignment**~~ ✅ DONE - Web feedback passes guard context; experiences also updated from guard outcomes (see [INTELLIGENCE_LAYER.md](./INTELLIGENCE_LAYER.md))
 5. **Slack/Discord alerts** - Notify on low ratings
 

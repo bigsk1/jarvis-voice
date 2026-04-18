@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete  
 **Created**: 2025-11-27  
-**Updated**: 2026-04-17 (Completion Guard neutral manual settlement; feedback alignment)
+**Updated**: 2026-04-18 (feedback metadata in experiences; tool traces; presentation artifact learning)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
 
 ## Overview
@@ -100,19 +100,20 @@ Fields that track insight health are now **actively updated**:
 - `consecutive_failures` - Rapid decay trigger ✅ Updated automatically
 - `last_outcome` - Most recent result (`helpful`/`not_helpful`) ✅ Updated automatically
 
-### 5. Feedback → Intelligence Bridge (NEW - 2025-12-13)
+### 5. Feedback → Intelligence Bridge (Enhanced 2026-04-18)
 
-The feedback system now **retroactively corrects** experience outcomes based on LLM grading:
+The feedback system now **retroactively enriches and corrects** experience outcomes based on LLM grading:
 
 ```
 Flow:
 1. Experience recorded with outcome_success = True (default)
 2. Feedback LLM grades the interaction (rating 1-5)
-3. If rating ≤ 2: Experience CORRECTED to outcome_success = False
-4. Reflection queue priority bumped to 0.8 (high) for failures
+3. All ratings store compact feedback metadata in raw_data.feedback.latest
+4. If rating ≤ 2: Experience CORRECTED to outcome_success = False
+5. Reflection queue priority bumped to 0.8 (high) for failures
 
 Rating Logic:
-- Rating 4-5 → Confirms success (no change)
+- Rating 4-5 → Marks user_satisfied when no hard Completion Guard failure exists
 - Rating 3   → Ambiguous (left as-is)
 - Rating 1-2 → FAILURE (retroactively corrected)
 ```
@@ -122,7 +123,31 @@ Rating Logic:
 - The LLM hallucinated information
 - The task wasn't actually completed
 
-Now the feedback system (the nuanced judge with full context) makes the final call on success/failure.
+Now the feedback system (the nuanced judge with full context) makes the final call on success/failure and preserves the QA reason for reflection.
+
+Feedback is stored alongside, not instead of, Completion Guard metadata:
+
+```json
+{
+  "feedback": {
+    "latest": {
+      "rating": 2,
+      "summary": "The answer did not provide requested locations and hours.",
+      "issues": [{"category": "other", "description": "Missing requested fields"}],
+      "tool_ratings": {"serpapi_yelp_search": {"rating": 3}},
+      "completion_guard_status": "auto_accepted",
+      "updated_at": "2026-04-18T04:30:34"
+    },
+    "history": []
+  }
+}
+```
+
+The bridge is conservative around Completion Guard:
+
+- Low feedback (`1-2`) can still downgrade a settled answer to failed.
+- High feedback (`4-5`) can mark satisfaction but does not erase `had_to_retry`, repaired status, or Completion Guard notes.
+- Hard guard outcomes (`unresolved`, `ticket_created`, `error`) are not softened by later high feedback.
 
 ### 6. Completion Guard → Intelligence Bridge (2026)
 
@@ -135,7 +160,56 @@ When Jarvis Web runs [Completion Guard](./COMPLETION_GUARD.md), outcomes are wri
 
 Explicit feedback collection in Web UI is **gated** until guard settlement so grades align with this record. Orchestrator-side random feedback sampling is temporarily disabled while Web Completion Guard is active to avoid pre-collected random feedback racing the guard state. See also [FEEDBACK_SYSTEM.md](./FEEDBACK_SYSTEM.md).
 
-### 7. Provider-Native Tool Metadata in Reflection (2026-04-04)
+### 7. Tool Trace + Argument Recovery in Reflection (2026-04-18)
+
+Experience context now stores a sanitized `tool_trace` so reflection can inspect attempted tool calls, not just final tool names.
+
+Captured per attempt:
+
+- tool name
+- sanitized arguments
+- success/failure
+- duration
+- short error/speech preview
+
+Sensitive keys such as `api_key`, `authorization`, `password`, `secret`, and `token` are redacted before storage. Long strings and large lists/dicts are truncated.
+
+This lets reflection learn reusable lessons such as:
+
+```text
+Tool argument values must be concrete user/query values, not JSON schema objects like {"type": "string"}.
+```
+
+It also improves insight scoring: a positive insight that recommends a tool is not counted as helpful when that preferred tool failed and a later tool recovered the task.
+
+### 8. Presentation Artifact Learning (2026-04-18)
+
+Experience context now records response presentation metadata:
+
+- `response_style`
+- `qa_word_limit`
+- `multi_turn_word_limit`
+- artifact tools available to the original LLM (`canvas`, `stash` when present)
+
+Reflection uses this to separate evidence failures from presentation failures.
+
+Example:
+
+```text
+User asks for multiple places with locations and hours.
+Response style is auto/casual.
+Artifact tool canvas is available.
+```
+
+Reflection may learn:
+
+```text
+Use the spoken response for a concise summary and save full structured details to canvas/stash.
+```
+
+Guardrail: reflection may only recommend artifact tools that were actually available to the original route. This avoids learning “use canvas” from experiences where `canvas` was not in Tool RAG/ghost tools.
+
+### 9. Provider-Native Tool Metadata in Reflection (2026-04-04)
 
 When providers use native server-side tools such as xAI `x_search` / `web_search` or native code execution, the intelligence layer now treats that as **evidence metadata**, not as Jarvis routing behavior.
 
@@ -260,9 +334,9 @@ All logged to `logs/intelligence/intelligence-YYYY-MM-DD.jsonl`:
 ```
 USER QUERY → Check Insights → Route & Execute → Record Experience → Reflect (async)
                                                       ↑
-                                            Feedback Rating ≤ 2?
+                                            Feedback / Completion Guard updates?
                                                       ↓
-                                            Correct to FAILURE
+                                            Attach metadata and correct outcome when needed
 ```
 
 ### Detailed Flow: Python vs LLM Calls
