@@ -117,6 +117,11 @@
             <select id="expToolFilter" class="filter-select" style="width: 100%; margin-top: var(--space-xs);">
               <option value="">All Tools</option>
             </select>
+
+            <span class="filter-label" style="margin-top: var(--space-md);">Completion Guard</span>
+            <select id="expCompletionGuardFilter" class="filter-select" style="width: 100%; margin-top: var(--space-xs);">
+              <option value="">All CG Statuses</option>
+            </select>
           </div>
           
           <!-- Feedback Filters -->
@@ -217,6 +222,7 @@
                 <option value="date">📅 Date</option>
                 <option value="turns">🔄 Turns</option>
                 <option value="tools">🛠️ Tool Count</option>
+                <option value="completion_guard">🛡️ Completion Guard</option>
               </select>
             </div>
             <div class="sort-selector" id="insightSortContainer" style="display: none;">
@@ -401,4 +407,3 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
-

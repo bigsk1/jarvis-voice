@@ -575,6 +575,30 @@ body {
   font-weight: 500;
 }
 
+.completion-guard-mini {
+  font-size: var(--text-xs);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--info);
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  white-space: nowrap;
+}
+
+.completion-guard-mini.repaired,
+.completion-guard-mini.ticket_created {
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.completion-guard-mini.expired,
+.completion-guard-mini.superseded {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
 /* Insight card */
 .insight-card .card-header {
   display: flex;
@@ -745,6 +769,10 @@ body {
   text-align: center;
 }
 
+.stat-card-wide {
+  grid-column: span 2;
+}
+
 .stat-value {
   font-size: var(--text-2xl);
   font-weight: 700;
@@ -768,6 +796,30 @@ body {
 
 .stat-trend.down {
   color: var(--error);
+}
+
+.stat-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs) var(--space-sm);
+  margin-top: var(--space-md);
+  text-align: left;
+}
+
+.stat-breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 4px 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  border-top: 1px solid var(--border);
+}
+
+.stat-breakdown-row strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
 }
 
 /* Tool performance table */
@@ -946,6 +998,43 @@ body {
   line-height: 1.4;
   display: block;
   resize: vertical;
+}
+
+.timestamp-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.35;
+}
+
+.timestamp-utc {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.completion-guard-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.completion-guard-note {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.detail-block.json-detail {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.45;
 }
 
 .detail-block.scrollable::-webkit-scrollbar {
@@ -1326,6 +1415,10 @@ textarea.form-input {
   
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .stat-card-wide {
+    grid-column: span 1;
   }
   
   .mode-selector select {

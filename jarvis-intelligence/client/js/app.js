@@ -6,9 +6,10 @@
 let currentTab = 'experiences';
 let currentFilter = 'all';
 let currentConfidenceFilter = null;
-let currentExpSort = 'date';  // date, turns, tools
+let currentExpSort = 'date';  // date, turns, tools, completion_guard
 let currentExpToolFilter = null;  // null = all, specific tool name
 let currentExpToolCountFilter = 'all';  // all, none, single, multi
+let currentExpCompletionGuardFilter = null;  // null = all, otherwise specific CG status
 let currentInsightSort = 'applied';  // applied, preferred, avoided, confidence, updated
 let currentFeedbackDays = 7;  // 7, 30, 90
 let currentFeedbackRating = 'all';  // all, issues (1-3), good (4-5)
@@ -84,13 +85,7 @@ function setupEventListeners() {
   // Experience sort selector
   document.getElementById('expSortSelect')?.addEventListener('change', (e) => {
     currentExpSort = e.target.value;
-    experiencesData = sortExperiences(applyToolCountFilter([...allExperiencesData]));
-    if (currentExpToolFilter) {
-      experiencesData = experiencesData.filter(exp => {
-        const tools = Array.isArray(exp.tools_used) ? exp.tools_used : [];
-        return tools.includes(currentExpToolFilter);
-      });
-    }
+    experiencesData = sortExperiences(applyExperienceFilters([...allExperiencesData]));
     renderExperiences();
   });
   
@@ -128,6 +123,12 @@ function setupEventListeners() {
   // Experience tool filter
   document.getElementById('expToolFilter')?.addEventListener('change', (e) => {
     currentExpToolFilter = e.target.value || null;
+    loadExperiences();
+  });
+
+  // Experience Completion Guard status filter
+  document.getElementById('expCompletionGuardFilter')?.addEventListener('change', (e) => {
+    currentExpCompletionGuardFilter = e.target.value || null;
     loadExperiences();
   });
   
@@ -236,6 +237,7 @@ async function loadAllExperiencesForCounts() {
     
     // Update tool filter dropdown
     updateToolFilterDropdown();
+    updateCompletionGuardFilterDropdown();
   } catch (error) {
     console.error('Failed to load experience counts:', error);
   }
@@ -301,16 +303,8 @@ async function loadExperiences() {
     allExperiencesData = result.experiences || [];
     experiencesData = [...allExperiencesData];
     
-    // Apply tool count filter
-    experiencesData = applyToolCountFilter(experiencesData);
-    
-    // Apply specific tool filter
-    if (currentExpToolFilter) {
-      experiencesData = experiencesData.filter(exp => {
-        const tools = Array.isArray(exp.tools_used) ? exp.tools_used : [];
-        return tools.includes(currentExpToolFilter);
-      });
-    }
+    // Apply sidebar filters
+    experiencesData = applyExperienceFilters(experiencesData);
     
     // Apply sorting
     experiencesData = sortExperiences(experiencesData);
@@ -318,10 +312,36 @@ async function loadExperiences() {
     renderExperiences();
     updateExperienceCounts();
     updateToolFilterDropdown();
+    updateCompletionGuardFilterDropdown();
   } catch (error) {
     showToast(`Failed to load experiences: ${error.message}`, 'error');
     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-title">Failed to load</div></div>';
   }
+}
+
+function applyExperienceFilters(data) {
+  let filtered = [...data];
+
+  if (currentFilter === 'success') {
+    filtered = filtered.filter(exp => exp.outcome_success);
+  } else if (currentFilter === 'failed') {
+    filtered = filtered.filter(exp => !exp.outcome_success);
+  }
+
+  filtered = applyToolCountFilter(filtered);
+
+  if (currentExpToolFilter) {
+    filtered = filtered.filter(exp => {
+      const tools = Array.isArray(exp.tools_used) ? exp.tools_used : [];
+      return tools.includes(currentExpToolFilter);
+    });
+  }
+
+  if (currentExpCompletionGuardFilter) {
+    filtered = filtered.filter(exp => getCompletionGuardStatus(exp) === currentExpCompletionGuardFilter);
+  }
+
+  return filtered;
 }
 
 function applyToolCountFilter(data) {
@@ -356,9 +376,15 @@ function sortExperiences(data) {
         const bTools = Array.isArray(b.tools_used) ? b.tools_used.length : 0;
         return bTools - aTools;
       });
+    case 'completion_guard':
+      return [...data].sort((a, b) => {
+        const rankDelta = getCompletionGuardSortRank(a) - getCompletionGuardSortRank(b);
+        if (rankDelta !== 0) return rankDelta;
+        return parseStoredUtcDate(b.timestamp) - parseStoredUtcDate(a.timestamp);
+      });
     case 'date':
     default:
-      return [...data].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      return [...data].sort((a, b) => parseStoredUtcDate(b.timestamp) - parseStoredUtcDate(a.timestamp));
   }
 }
 
@@ -380,6 +406,27 @@ function updateToolFilterDropdown() {
   
   select.innerHTML = '<option value="">All Tools</option>' +
     sortedTools.map(t => `<option value="${escapeHtml(t)}"${currentValue === t ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('');
+}
+
+function updateCompletionGuardFilterDropdown() {
+  const select = document.getElementById('expCompletionGuardFilter');
+  if (!select) return;
+
+  const counts = new Map();
+  allExperiencesData.forEach(exp => {
+    const status = getCompletionGuardStatus(exp);
+    counts.set(status, (counts.get(status) || 0) + 1);
+  });
+
+  const currentValue = select.value;
+  const statuses = [...counts.keys()].sort((a, b) => getCompletionGuardStatusRank(a) - getCompletionGuardStatusRank(b));
+
+  select.innerHTML = '<option value="">All CG Statuses</option>' +
+    statuses.map(status => {
+      const label = status === 'none' ? 'No Completion Guard' : getCompletionGuardStatusLabel(status);
+      const count = counts.get(status) || 0;
+      return `<option value="${escapeHtml(status)}"${currentValue === status ? ' selected' : ''}>${escapeHtml(label)} (${count})</option>`;
+    }).join('');
 }
 
 async function loadInsights() {
@@ -457,7 +504,7 @@ function sortInsights(data) {
     case 'confidence':
       return [...data].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
     case 'updated':
-      return [...data].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+      return [...data].sort((a, b) => parseStoredUtcDate(b.updated_at || b.created_at) - parseStoredUtcDate(a.updated_at || a.created_at));
     case 'helpful':
       return [...data].sort((a, b) => (b.times_helpful || 0) - (a.times_helpful || 0));
     case 'applied':
@@ -744,8 +791,10 @@ function renderExperienceCard(exp) {
   const statusClass = exp.outcome_success ? 'success' : 'failed';
   const statusText = exp.outcome_success ? '✅ Success' : '❌ Failed';
   const hasEmbedding = exp.has_embedding ? '🔗' : '⚠️';
-  const timestamp = formatDate(exp.timestamp);
+  const timestamp = formatRecordTimestamp(exp, 'timestamp');
+  const timestampTitle = formatRecordTimestampTitle(exp, 'timestamp');
   const turns = exp.turns_taken || 1;
+  const completionGuardBadge = renderCompletionGuardBadge(exp.completion_guard);
   
   // Tool count badge
   let toolBadge = '';
@@ -779,9 +828,10 @@ function renderExperienceCard(exp) {
       ` : ''}
       <div class="card-footer">
         <div class="card-meta">
-          <span>🕐 ${timestamp}</span>
+          <span title="${escapeHtml(timestampTitle)}">🕐 ${timestamp}</span>
           ${turnsBadge}
           ${toolBadge}
+          ${completionGuardBadge}
         </div>
         <div class="card-actions">
           <button class="btn btn-icon btn-small" title="View Details">👁️</button>
@@ -824,8 +874,12 @@ function renderInsightCard(insight) {
   const confTier = getConfidenceTier(confidence);
   const confLabel = getConfidenceLabel(confidence);
   const hasEmbedding = insight.has_embedding ? '🔗' : '⚠️';
-  const createdDate = formatDate(insight.created_at);
-  const updatedDate = insight.updated_at ? formatDate(insight.updated_at) : null;
+  const createdDate = formatRecordTimestamp(insight, 'created_at');
+  const updatedDate = insight.updated_at ? formatRecordTimestamp(insight, 'updated_at') : null;
+  const timestampTitle = [
+    `Created: ${formatRecordTimestampTitle(insight, 'created_at')}`,
+    updatedDate ? `Updated: ${formatRecordTimestampTitle(insight, 'updated_at')}` : null
+  ].filter(Boolean).join('\n');
   
   // Show updated date if different from created date, otherwise show created
   const displayDate = updatedDate && updatedDate !== createdDate 
@@ -842,7 +896,7 @@ function renderInsightCard(insight) {
         <div class="insight-description">${escapeHtml(truncate(insight.description, 200))}</div>
         <span class="constraint-badge ${constraint}">${constraintLabel}</span>
       </div>
-      <div class="insight-timestamp" title="Created: ${createdDate}${updatedDate ? ', Updated: ' + updatedDate : ''}">
+      <div class="insight-timestamp" title="${escapeHtml(timestampTitle)}">
         📅 ${displayDate}
       </div>
       ${insight.applies_to_pattern ? `
@@ -1148,6 +1202,8 @@ function renderStats(stats, toolPerformance) {
         <div class="stat-value">${stats.db_size_mb || 0} MB</div>
         <div class="stat-label">Database Size</div>
       </div>
+
+      ${renderCompletionGuardStats(stats.completion_guard)}
     </div>
     
     <!-- Tool Performance Table -->
@@ -1237,6 +1293,32 @@ function renderStats(stats, toolPerformance) {
   });
 }
 
+function renderCompletionGuardStats(completionGuardStats) {
+  const total = completionGuardStats?.total || 0;
+  if (!total) return '';
+
+  const byStatus = completionGuardStats.by_status || {};
+  const statusRows = Object.entries(byStatus)
+    .sort(([a], [b]) => getCompletionGuardStatusRank(a) - getCompletionGuardStatusRank(b))
+    .map(([status, count]) => `
+      <div class="stat-breakdown-row">
+        <span>${escapeHtml(getCompletionGuardStatusLabel(status))}</span>
+        <strong>${count}</strong>
+      </div>
+    `).join('');
+
+  return `
+    <div class="stat-card stat-card-wide">
+      <div class="stat-value" style="color: var(--warning);">${completionGuardStats.repaired || 0}</div>
+      <div class="stat-label">Completion Guard Repairs</div>
+      <div class="stat-trend">Lifetime CG total: ${total}</div>
+      <div class="stat-breakdown">
+        ${statusRows}
+      </div>
+    </div>
+  `;
+}
+
 // ============================================================================
 // Modal Handlers
 // ============================================================================
@@ -1259,6 +1341,8 @@ async function viewExperience(id) {
     
     const tools = Array.isArray(exp.tools_used) ? exp.tools_used : [];
     const toolSequence = Array.isArray(exp.tool_sequence) ? exp.tool_sequence : [];
+    const completionGuard = exp.completion_guard || exp.raw_data?.completion_guard;
+    const rawData = exp.raw_data;
     
     body.innerHTML = `
       <div class="experience-detail-scroll">
@@ -1293,7 +1377,7 @@ async function viewExperience(id) {
           </div>
           <div>
             <div class="form-label">Timestamp</div>
-            <span>${formatDate(exp.timestamp)}</span>
+            ${renderTimestampStack(exp, 'timestamp')}
           </div>
           <div>
             <div class="form-label">Experience ID</div>
@@ -1338,11 +1422,27 @@ async function viewExperience(id) {
             </div>
           </div>
         ` : ''}
+
+        ${completionGuard ? `
+          <div style="margin-bottom: var(--space-md);">
+            <div class="form-label">Completion Guard</div>
+            ${renderCompletionGuardSummary(completionGuard)}
+            ${renderJsonDetailBlock(completionGuard, 'completion-guard-json')}
+          </div>
+        ` : ''}
+
+        ${rawData ? `
+          <div style="margin-bottom: var(--space-md);">
+            <div class="form-label">Raw Stored Data</div>
+            ${renderJsonDetailBlock(rawData, 'raw-data-json')}
+          </div>
+        ` : ''}
       </div>
       
       <div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border); display: flex; gap: var(--space-sm);">
         <button type="button" class="btn btn-small btn-secondary" onclick="copyExperienceJSON()">📋 Copy JSON</button>
         <button type="button" class="btn btn-small btn-secondary" onclick="copyContextSummary()">📄 Copy Context</button>
+        <button type="button" class="btn btn-small btn-secondary" onclick="copyRawExperienceData()">🧾 Copy Raw</button>
       </div>
     `;
   } catch (error) {
@@ -1409,6 +1509,18 @@ window.copyContextSummary = function() {
   });
 };
 
+window.copyRawExperienceData = function() {
+  if (!currentExperienceData?.raw_data) {
+    showToast('No raw data available', 'error');
+    return;
+  }
+  copyToClipboard(JSON.stringify(currentExperienceData.raw_data, null, 2)).then(() => {
+    showToast('Copied raw experience data to clipboard', 'success');
+  }).catch(err => {
+    showToast('Failed to copy: ' + err.message, 'error');
+  });
+};
+
 async function viewInsight(id) {
   selectedInsightId = id;
   const modal = document.getElementById('insightModal');
@@ -1443,6 +1555,20 @@ async function viewInsight(id) {
           <div class="form-label">Has Embedding</div>
           <span>${insight.has_embedding ? '✅ Yes' : '⚠️ No'}</span>
         </div>
+        <div>
+          <div class="form-label">Created</div>
+          ${renderTimestampStack(insight, 'created_at')}
+        </div>
+        <div>
+          <div class="form-label">Updated</div>
+          ${renderTimestampStack(insight, 'updated_at')}
+        </div>
+        ${insight.last_applied ? `
+          <div>
+            <div class="form-label">Last Applied</div>
+            ${renderTimestampStack(insight, 'last_applied')}
+          </div>
+        ` : ''}
         <div>
           <div class="form-label">Preferred Tools</div>
           <span>${insight.preferred_tools ? `<code>${escapeHtml(insight.preferred_tools)}</code>` : '-'}</span>
@@ -1651,6 +1777,7 @@ function switchTab(tab) {
     currentExpSort = 'date';
     currentExpToolFilter = null;
     currentExpToolCountFilter = 'all';
+    currentExpCompletionGuardFilter = null;
   }
   
   // Reset insight-specific filters when switching away
@@ -1701,6 +1828,9 @@ function switchTab(tab) {
   // Reset tool filter
   const toolFilter = document.getElementById('expToolFilter');
   if (toolFilter) toolFilter.value = '';
+
+  const completionGuardFilter = document.getElementById('expCompletionGuardFilter');
+  if (completionGuardFilter) completionGuardFilter.value = '';
   
   // Update search placeholder
   const searchInput = document.getElementById('searchInput');
@@ -1768,7 +1898,7 @@ async function handleSearch(e) {
   if (currentTab === 'experiences') {
     try {
       const result = await api.searchExperiences(query);
-      experiencesData = result.experiences || [];
+      experiencesData = sortExperiences(applyExperienceFilters(result.experiences || []));
       renderExperiences();
     } catch (error) {
       showToast(`Search failed: ${error.message}`, 'error');
@@ -1956,10 +2086,103 @@ function showToast(message, type = 'info') {
   }, 4000);
 }
 
+function parseStoredUtcDate(dateStr) {
+  if (!dateStr) return null;
+  const text = String(dateStr).trim();
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
+  return new Date(hasTimezone ? text : `${text}Z`);
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return 'Unknown';
-  const date = new Date(dateStr);
+  const date = parseStoredUtcDate(dateStr);
+  if (!date || Number.isNaN(date.getTime())) return String(dateStr);
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatRecordTimestamp(record, field) {
+  return record?.[`${field}_local_display`] || formatDate(record?.[field]);
+}
+
+function formatRecordTimestampTitle(record, field) {
+  if (!record) return 'Unknown';
+  const local = record[`${field}_local_display`] || formatDate(record[field]);
+  const utc = record[`${field}_utc_display`] || record[`${field}_utc`] || record[field];
+  return `Local: ${local}\nUTC: ${utc}`;
+}
+
+function renderTimestampStack(record, field) {
+  const local = formatRecordTimestamp(record, field);
+  const utc = record?.[`${field}_utc_display`] || record?.[`${field}_utc`] || record?.[field] || 'Unknown';
+  return `
+    <div class="timestamp-stack" title="${escapeHtml(formatRecordTimestampTitle(record, field))}">
+      <span>${escapeHtml(local)}</span>
+      <span class="timestamp-utc">${escapeHtml(utc)}</span>
+    </div>
+  `;
+}
+
+function renderCompletionGuardBadge(completionGuard) {
+  const status = completionGuard?.status;
+  if (!status) return '';
+  const safeStatus = String(status).replace(/[^a-z0-9_-]/gi, '').toLowerCase();
+  return `<span class="completion-guard-mini ${safeStatus}" title="Completion Guard: ${escapeHtml(status)}">${escapeHtml(getCompletionGuardStatusLabel(status, true))}</span>`;
+}
+
+function getCompletionGuardStatus(exp) {
+  return exp?.completion_guard?.status || exp?.raw_data?.completion_guard?.status || 'none';
+}
+
+function getCompletionGuardStatusLabel(status, compact = false) {
+  const labels = {
+    accepted: compact ? 'CG accepted' : 'Accepted',
+    auto_accepted: compact ? 'CG auto' : 'Auto Accepted',
+    repaired: compact ? 'CG repaired' : 'Repaired',
+    ticket_created: compact ? 'CG ticket' : 'Ticket Created',
+    cancelled: compact ? 'CG cancelled' : 'Cancelled',
+    tighten_only: compact ? 'CG tightened' : 'Tighten Only',
+    expired: compact ? 'CG expired' : 'Expired',
+    superseded: compact ? 'CG superseded' : 'Superseded',
+    none: compact ? 'No CG' : 'No Completion Guard'
+  };
+  return labels[status] || (compact ? `CG ${status}` : status);
+}
+
+function getCompletionGuardStatusRank(status) {
+  const ranks = {
+    repaired: 0,
+    ticket_created: 1,
+    tighten_only: 2,
+    cancelled: 3,
+    expired: 4,
+    superseded: 5,
+    accepted: 6,
+    auto_accepted: 7,
+    none: 8
+  };
+  return ranks[status] ?? 9;
+}
+
+function getCompletionGuardSortRank(exp) {
+  return getCompletionGuardStatusRank(getCompletionGuardStatus(exp));
+}
+
+function renderCompletionGuardSummary(completionGuard) {
+  const status = completionGuard?.status || 'unknown';
+  const note = completionGuard?.note || '';
+  const updatedAt = completionGuard?.updated_at || completionGuard?.metadata?.settled_at || '';
+  return `
+    <div class="completion-guard-summary">
+      <span class="completion-guard-mini ${escapeHtml(String(status).replace(/[^a-z0-9_-]/gi, '').toLowerCase())}">${escapeHtml(status)}</span>
+      ${updatedAt ? `<span class="timestamp-utc">${escapeHtml(updatedAt)}</span>` : ''}
+      ${note ? `<div class="completion-guard-note">${escapeHtml(note)}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderJsonDetailBlock(value, className = '') {
+  const text = JSON.stringify(value, null, 2);
+  return `<pre class="detail-block json-detail ${className}">${escapeHtml(text)}</pre>`;
 }
 
 function truncate(str, length) {

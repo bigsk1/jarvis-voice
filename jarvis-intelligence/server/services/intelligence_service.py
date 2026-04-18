@@ -5,12 +5,15 @@ Handles both cloud and local databases
 import sqlite3
 import json
 import os
+import sys
 from pathlib import Path
-from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 DATA_PATH = JARVIS_ROOT / 'data'
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+
+from time_utils import utc_string_display_fields
 
 # Database paths
 DB_PATHS = {
@@ -50,6 +53,60 @@ class IntelligenceService:
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _add_time_display(self, item: Dict[str, Any], fields: List[str]) -> Dict[str, Any]:
+        """Attach configured-local and UTC display fields for stored UTC strings."""
+        for field in fields:
+            value = item.get(field)
+            if not value:
+                continue
+            try:
+                display = utc_string_display_fields(str(value))
+            except Exception:
+                continue
+            item[f'{field}_utc'] = display['utc']
+            item[f'{field}_utc_display'] = display['utc_display']
+            item[f'{field}_local'] = display['local']
+            item[f'{field}_local_display'] = display['local_display']
+            item[f'{field}_timezone'] = display['timezone']
+        return item
+
+    @staticmethod
+    def _parse_json_value(value: Any, default: Any = None) -> Any:
+        """Parse a JSON DB field without failing the whole response."""
+        if value in (None, ''):
+            return default
+        if isinstance(value, (dict, list)):
+            return value
+        try:
+            return json.loads(value)
+        except Exception:
+            return default if default is not None else value
+
+    def _hydrate_experience(self, row: sqlite3.Row, include_raw: bool = False) -> Dict[str, Any]:
+        """Convert an experience row into API shape."""
+        exp = dict(row)
+        exp['tools_used'] = self._parse_json_value(exp.get('tools_used'), exp.get('tools_used'))
+        exp['tool_sequence'] = self._parse_json_value(exp.get('tool_sequence'), exp.get('tool_sequence'))
+
+        raw_data = self._parse_json_value(exp.get('raw_data'), {})
+        if isinstance(raw_data, dict):
+            exp['completion_guard'] = raw_data.get('completion_guard')
+            if include_raw:
+                exp['raw_data'] = raw_data
+            else:
+                exp.pop('raw_data', None)
+        elif include_raw:
+            exp['raw_data'] = raw_data
+        else:
+            exp.pop('raw_data', None)
+
+        return self._add_time_display(exp, ['timestamp'])
+
+    def _hydrate_insight(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert an insight row into API shape."""
+        insight = dict(row)
+        return self._add_time_display(insight, ['created_at', 'updated_at', 'last_applied'])
     
     # =========================================================================
     # Experiences Operations
@@ -74,30 +131,15 @@ class IntelligenceService:
                 SELECT id, timestamp, query, context_summary, tools_used, 
                        tool_sequence, turns_taken, final_tool,
                        outcome_success, user_satisfied, error_occurred,
+                       raw_data,
                        CASE WHEN query_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
                 FROM experiences
                 {where_clause}
                 ORDER BY timestamp DESC
                 LIMIT ? OFFSET ?
             """, (*params, limit, offset)).fetchall()
-            
-            experiences = []
-            for row in results:
-                exp = dict(row)
-                # Parse JSON fields
-                if exp.get('tools_used'):
-                    try:
-                        exp['tools_used'] = json.loads(exp['tools_used'])
-                    except:
-                        pass
-                if exp.get('tool_sequence'):
-                    try:
-                        exp['tool_sequence'] = json.loads(exp['tool_sequence'])
-                    except:
-                        pass
-                experiences.append(exp)
-            
-            return experiences
+
+            return [self._hydrate_experience(row, include_raw=False) for row in results]
         finally:
             conn.close()
     
@@ -111,25 +153,14 @@ class IntelligenceService:
                 SELECT id, timestamp, query, context_summary, tools_used, 
                        tool_sequence, turns_taken, final_tool,
                        outcome_success, user_satisfied, error_occurred,
-                       had_to_retry, had_to_clarify,
+                       had_to_retry, had_to_clarify, raw_data,
                        CASE WHEN query_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
                 FROM experiences
                 WHERE id = ?
             """, (experience_id,)).fetchone()
             
             if result:
-                exp = dict(result)
-                if exp.get('tools_used'):
-                    try:
-                        exp['tools_used'] = json.loads(exp['tools_used'])
-                    except:
-                        pass
-                if exp.get('tool_sequence'):
-                    try:
-                        exp['tool_sequence'] = json.loads(exp['tool_sequence'])
-                    except:
-                        pass
-                return exp
+                return self._hydrate_experience(result, include_raw=True)
             return None
         finally:
             conn.close()
@@ -144,29 +175,15 @@ class IntelligenceService:
                 SELECT id, timestamp, query, context_summary, tools_used, 
                        tool_sequence, turns_taken, final_tool,
                        outcome_success, user_satisfied, error_occurred,
+                       raw_data,
                        CASE WHEN query_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
                 FROM experiences
                 WHERE query LIKE ? OR context_summary LIKE ? OR tools_used LIKE ?
                 ORDER BY timestamp DESC
                 LIMIT ?
             """, (f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
-            
-            experiences = []
-            for row in results:
-                exp = dict(row)
-                if exp.get('tools_used'):
-                    try:
-                        exp['tools_used'] = json.loads(exp['tools_used'])
-                    except:
-                        pass
-                if exp.get('tool_sequence'):
-                    try:
-                        exp['tool_sequence'] = json.loads(exp['tool_sequence'])
-                    except:
-                        pass
-                experiences.append(exp)
-            
-            return experiences
+
+            return [self._hydrate_experience(row, include_raw=False) for row in results]
         finally:
             conn.close()
     
@@ -254,7 +271,7 @@ class IntelligenceService:
                 LIMIT ? OFFSET ?
             """, (*params, limit, offset)).fetchall()
             
-            return [dict(row) for row in results]
+            return [self._hydrate_insight(row) for row in results]
         finally:
             conn.close()
     
@@ -275,7 +292,7 @@ class IntelligenceService:
                 WHERE id = ?
             """, (insight_id,)).fetchone()
             
-            return dict(result) if result else None
+            return self._hydrate_insight(result) if result else None
         finally:
             conn.close()
     
@@ -298,7 +315,7 @@ class IntelligenceService:
                 LIMIT ?
             """, (f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
             
-            return [dict(row) for row in results]
+            return [self._hydrate_insight(row) for row in results]
         finally:
             conn.close()
     
@@ -521,6 +538,23 @@ class IntelligenceService:
                 except:
                     pass
             top_tools = sorted(tool_usage.items(), key=lambda x: x[1], reverse=True)[:10]
+
+            # Completion Guard lifetime stats
+            completion_guard_counts: dict[str, int] = {}
+            completion_guard_rows = cursor.execute("""
+                SELECT raw_data
+                FROM experiences
+                WHERE raw_data IS NOT NULL
+            """).fetchall()
+            for row in completion_guard_rows:
+                try:
+                    raw_data = json.loads(row['raw_data'])
+                    status = ((raw_data.get('completion_guard') or {}).get('status'))
+                    if status:
+                        completion_guard_counts[status] = completion_guard_counts.get(status, 0) + 1
+                except Exception:
+                    pass
+            completion_guard_total = sum(completion_guard_counts.values())
             
             # Database size
             db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
@@ -554,6 +588,14 @@ class IntelligenceService:
                 'meta_knowledge': {
                     'total': meta_count,
                     'blind_spots': blind_spots
+                },
+                'completion_guard': {
+                    'total': completion_guard_total,
+                    'repaired': completion_guard_counts.get('repaired', 0),
+                    'ticket_created': completion_guard_counts.get('ticket_created', 0),
+                    'expired': completion_guard_counts.get('expired', 0),
+                    'superseded': completion_guard_counts.get('superseded', 0),
+                    'by_status': dict(sorted(completion_guard_counts.items(), key=lambda item: item[0]))
                 },
                 'top_tools': [{'name': t[0], 'count': t[1]} for t in top_tools],
                 'db_size_bytes': db_size,
@@ -631,4 +673,3 @@ class IntelligenceService:
             return sorted(result, key=lambda x: x['net_score'], reverse=True)
         finally:
             conn.close()
-

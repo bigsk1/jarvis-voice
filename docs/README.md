@@ -509,6 +509,11 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Repair responses no longer create duplicate Completion Guard cards in chat
   - Completion Guard card now renders persisted `accepted`, `repaired`, `cancelled`, `ticket_created`, `expired`, and `superseded` states correctly
   - Manual guard cards now show a countdown and settle stale prompts neutrally when they expire or are superseded by continued chat
+- ✅ **Intelligence Dashboard: Completion Guard visibility**
+  - Experience and insight timestamps now show configured-local time while preserving UTC context
+  - Experience details expose Completion Guard metadata and full stored raw experience JSON
+  - Experiences can be sorted and filtered by Completion Guard status
+  - Stats now include an optional lifetime Completion Guard summary with repaired count and status breakdown
 - ✅ **Completion Guard: final learning model**
   - Internal repair prompts no longer create standalone learning experiences
   - Successful repairs fold corrected answer, corrected tools, and corrected tool results back into the original experience

@@ -72,11 +72,12 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
 ![jarvis-intellegince](docs/images/jarvis-intellegince.png)
 
 - **Intelligence Dashboard** at localhost:5003
-  - Sort experiences by date, turns, tool count
-  - Filter by success/fail, tool count, specific tool
+  - Sort experiences by date, turns, tool count, Completion Guard status
+  - Filter by success/fail, tool count, specific tool, Completion Guard status
+  - Experience details show configured-local + UTC time, Completion Guard metadata, and stored raw JSON
   - Sort insights by applied, helpful, preferred/avoided tools
   - 5-tier confidence filtering (Elite/High/Good/Medium/Low)
-  - Tool performance showing all tools with prefer/avoid stats
+  - Tool performance plus optional lifetime Completion Guard repaired/status totals
   - Launch: `./bin/jarvis-intelligence`
 
 ### Tool System
@@ -1646,12 +1647,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - `@daily` - Daily briefing (time, weather, reminders, crypto)
   - Prompts now inject BEFORE user message for better LLM context
 - ✅ **Intelligence Dashboard** - Visual dashboard for self-learning
-  - Experience sorting (date, turns, tool count) & filtering (success/fail, tool count, specific tool)
+  - Experience sorting (date, turns, tool count, Completion Guard status) & filtering (success/fail, tool count, specific tool, Completion Guard status)
+  - Experience details show configured-local + UTC timestamps, Completion Guard metadata, and stored raw JSON
   - Insight sorting (times applied, helpful, preferred/avoided tools, confidence, updated)
   - 5-tier confidence filtering: Elite (96%+), High (85-95%), Good (75-84%), Medium (50-74%), Low (0-49%)
   - Differentiated confidence bars: green shades for DO, red/orange for DON'T
   - Tool visibility on cards: shows preferred (👍) and avoided (👎) tools inline
   - Tool performance table showing ALL tools with prefer/avoid counts and net score
+  - Stats include optional lifetime Completion Guard repaired/status totals
   - Mobile responsive at ≤730px: hamburger menu, slide-out sidebar
   - Launch: `./bin/jarvis-intelligence` (localhost:5003)
 - ✅ **Memory Browser UI** - Web interface for memory management

@@ -77,6 +77,26 @@ def format_utc_z(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def format_display_datetime(dt: datetime) -> str:
+    """Format an aware datetime for compact human display with timezone."""
+    text = dt.strftime("%Y-%m-%d %I:%M %p %Z")
+    return text.replace(" 0", " ", 1)
+
+
+def utc_string_display_fields(value: str, tz: ZoneInfo | None = None) -> dict[str, str]:
+    """Return local and UTC display fields for a stored UTC timestamp string."""
+    tz = tz or get_app_timezone()
+    utc_dt = parse_utc_timestamp(value)
+    local_dt = utc_dt.astimezone(tz)
+    return {
+        "utc": format_utc_z(utc_dt),
+        "utc_display": format_display_datetime(utc_dt),
+        "local": local_dt.isoformat(),
+        "local_display": format_display_datetime(local_dt),
+        "timezone": getattr(tz, "key", str(tz)),
+    }
+
+
 def to_local_from_utc_string(value: str, tz: ZoneInfo | None = None) -> datetime:
     """Convert a stored UTC string into an aware local datetime."""
     tz = tz or get_app_timezone()

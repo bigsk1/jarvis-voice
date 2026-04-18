@@ -23,12 +23,15 @@ http://localhost:5003
 
 ### 📝 Experiences Tab
 - View all recorded interactions
-- **Sort by**: Date, Turns (complexity), Tool Count
+- **Sort by**: Date, Turns (complexity), Tool Count, Completion Guard status
 - **Filter by outcome**: All, Success, Failed
 - **Filter by tool count**: All, No Tools (🚫), Single Tool (1️⃣), Multi-Tool (🔢)
 - **Filter by specific tool**: Dropdown of all tools used
+- **Filter by Completion Guard status**: Accepted, auto-accepted, repaired, ticketed, expired, superseded, or no guard
 - Search experiences by query text
 - View tool sequences and turn counts
+- View configured-local time plus UTC time for stored UTC timestamps
+- Inspect Completion Guard metadata and full stored raw experience JSON in the detail modal
 - Enhanced cards show tool count badges and turn indicators
 - Delete experiences or re-embed after edits
 
@@ -46,6 +49,7 @@ http://localhost:5003
   - 🔴 Low (0-49%)
 - **Differentiated confidence bars**: Green shades for positive, red/orange for negative constraints
 - **Tool visibility**: Cards show preferred (👍) and avoided (👎) tools inline
+- Insight timestamps display in the configured local timezone, with UTC shown in detail views
 - Edit insight descriptions and patterns
 - Re-embed after edits
 
@@ -63,6 +67,7 @@ http://localhost:5003
 - Insight counts by constraint type
 - Confidence distribution
 - Application stats (times applied, helpfulness)
+- Optional lifetime Completion Guard summary, including repaired count and status breakdown when guard history exists
 - **Tool performance table** - Shows ALL tools (prefer vs avoid counts, net score)
 - Maintenance actions (decay, anomaly, meta-cognition)
 
@@ -245,4 +250,3 @@ See `docs/INTELLIGENCE_LAYER.md` for complete documentation.
 **Port**: 5003  
 **Dependencies**: Flask, Flask-CORS  
 **Related**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
-
