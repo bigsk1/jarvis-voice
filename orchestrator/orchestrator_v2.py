@@ -611,6 +611,7 @@ Mode: {self.mode}
         conversation_context = retry_state.get("conversation_context") or []
         tools_used = retry_state.get("tools_used") or []
         accumulated_data = retry_state.get("accumulated_data") or {}
+        tool_trace = retry_state.get("tool_trace") or []
         seen_successful_tool_calls = retry_state.get("seen_successful_tool_calls") or set()
         blocked_duplicate_calls = retry_state.get("blocked_duplicate_calls") or {}
         tool_call_counts = retry_state.get("tool_call_counts") or {}
@@ -911,6 +912,13 @@ Mode: {self.mode}
                 tool_start_time = time.time()
                 result = self.executor.execute(tool_name, arguments)
                 tool_duration_ms = int((time.time() - tool_start_time) * 1000)
+                tool_trace.append({
+                    "tool": tool_name,
+                    "ok": bool(result.get("ok")) if isinstance(result, dict) else False,
+                    "duration_ms": tool_duration_ms,
+                    "error": str(result.get("error", ""))[:500] if isinstance(result, dict) and result.get("error") else None,
+                    "speech": str(result.get("speech", ""))[:500] if isinstance(result, dict) else "",
+                })
                 
                 # Stop background updates after tool completes
                 if tool_name == 'opencode':
@@ -1066,6 +1074,7 @@ Mode: {self.mode}
                                 "total_usage": total_usage,
                                 "first_thinking": first_thinking,
                                 "available_tools": available_tools,
+                                "tool_trace": tool_trace,
                             }
                         )
                     
@@ -1094,6 +1103,7 @@ Mode: {self.mode}
                         "tool_name": tool_name,
                         "tool_args": arguments,
                         "tools_used": tools_used or [tool_name],
+                        "tool_trace": tool_trace,
                         "retries": retry_count
                     }
             
@@ -1159,6 +1169,7 @@ Mode: {self.mode}
                     "ok": True,
                     "tools_used": tools_used,
                     "data": accumulated_data,
+                    "tool_trace": tool_trace,
                     "available_tools": available_tools  # Tools LLM could choose from
                 }
                 
@@ -1234,6 +1245,7 @@ Mode: {self.mode}
             "ok": True,
             "tools_used": tools_used,
             "data": accumulated_data,
+            "tool_trace": tool_trace,
             "max_turns_reached": True,
             "usage": total_usage if self._has_usage_data(total_usage) else None,
             "server_side_tools": total_usage.get("server_side_tools", {})

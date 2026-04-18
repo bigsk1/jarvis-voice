@@ -724,7 +724,8 @@ def track_insight_outcomes(
             was_helpful = _evaluate_insight_helpfulness(
                 insight=insight,
                 tools_used=tools_used,
-                outcome_success=outcome_success
+                outcome_success=outcome_success,
+                result=result,
             )
             
             # Record the usage (handles FastAPI and standalone)
@@ -749,7 +750,8 @@ def track_insight_outcomes(
 def _evaluate_insight_helpfulness(
     insight: dict[str, Any],
     tools_used: list[str],
-    outcome_success: bool
+    outcome_success: bool,
+    result: dict[str, Any] | None = None,
 ) -> bool:
     """
     Evaluate whether an insight was helpful for this interaction.
@@ -773,6 +775,7 @@ def _evaluate_insight_helpfulness(
     """
     constraint_type = insight.get('constraint_type', 'positive')
     avoided_tools = insight.get('avoided_tools', [])
+    preferred_tools = insight.get('preferred_tools', {})
     
     # Parse avoided_tools if it's a string
     if isinstance(avoided_tools, str):
@@ -801,10 +804,64 @@ def _evaluate_insight_helpfulness(
                 # The advice was correct (should have avoided) → helpful
                 return True
     else:
-        # Positive constraint: "prefer these tools"
-        # For simplicity, just use outcome success
-        # Future enhancement: check if preferred_tools were actually used
+        # Positive constraint: "prefer these tools".
+        #
+        # Historically this used final outcome only. That over-credited broad
+        # insights in multi-tool recoveries: a preferred tool could fail, a later
+        # tool could repair the answer, and the original insight still looked
+        # perfectly helpful. Use the optional tool_trace when available to catch
+        # that "success after detour" case without changing long-horizon decay.
+        preferred_tool_names = _extract_preferred_tool_names(preferred_tools)
+        if preferred_tool_names:
+            if _preferred_tool_had_trace_failure(preferred_tool_names, result):
+                return False
+            if not any(tool in tools_used for tool in preferred_tool_names):
+                return False
         return outcome_success
+
+
+def _extract_preferred_tool_names(preferred_tools: Any) -> list[str]:
+    """Normalize preferred_tools metadata into a list of tool names."""
+    if not preferred_tools:
+        return []
+
+    if isinstance(preferred_tools, str):
+        try:
+            preferred_tools = json.loads(preferred_tools)
+        except Exception:
+            return [preferred_tools] if preferred_tools.strip() else []
+
+    if isinstance(preferred_tools, dict):
+        return [str(name) for name in preferred_tools.keys() if str(name).strip()]
+
+    if isinstance(preferred_tools, list):
+        return [str(name) for name in preferred_tools if str(name).strip()]
+
+    return []
+
+
+def _preferred_tool_had_trace_failure(
+    preferred_tool_names: list[str],
+    result: dict[str, Any] | None,
+) -> bool:
+    """Return True when any preferred tool had a failed attempt in tool_trace."""
+    if not isinstance(result, dict):
+        return False
+
+    preferred = set(preferred_tool_names)
+    tool_trace = result.get('tool_trace') or []
+    if not isinstance(tool_trace, list):
+        return False
+
+    for entry in tool_trace:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get('tool') not in preferred:
+            continue
+        if entry.get('ok') is False:
+            return True
+
+    return False
 
 
 # ============================================

@@ -18,7 +18,7 @@ fake_numpy = types.ModuleType("numpy")
 fake_numpy.ndarray = list
 sys.modules.setdefault("numpy", fake_numpy)
 
-from intelligence_hooks import normalize_server_side_tools_for_reflection
+from intelligence_hooks import _evaluate_insight_helpfulness, normalize_server_side_tools_for_reflection
 from intelligence import should_suppress_preferred_tool_for_native_search
 
 
@@ -61,6 +61,69 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
 
         self.assertFalse(
             should_suppress_preferred_tool_for_native_search(reflection, experience)
+        )
+
+    def test_positive_insight_requires_preferred_tool_usage_when_present(self):
+        insight = {
+            "constraint_type": "positive",
+            "preferred_tools": {"mcp_brave_search_brave_news_search": 1.0},
+        }
+
+        self.assertFalse(
+            _evaluate_insight_helpfulness(
+                insight,
+                tools_used=["mcp_brave_search_brave_web_search"],
+                outcome_success=True,
+                result={"ok": True},
+            )
+        )
+
+    def test_positive_insight_success_with_preferred_tool_is_helpful(self):
+        insight = {
+            "constraint_type": "positive",
+            "preferred_tools": {"mcp_brave_search_brave_web_search": 1.0},
+        }
+
+        self.assertTrue(
+            _evaluate_insight_helpfulness(
+                insight,
+                tools_used=["mcp_brave_search_brave_web_search"],
+                outcome_success=True,
+                result={
+                    "ok": True,
+                    "tool_trace": [
+                        {"tool": "mcp_brave_search_brave_web_search", "ok": True},
+                    ],
+                },
+            )
+        )
+
+    def test_positive_insight_with_preferred_tool_failure_is_not_helpful_after_recovery(self):
+        insight = {
+            "constraint_type": "positive",
+            "preferred_tools": {"mcp_brave_search_brave_news_search": 1.0},
+        }
+
+        self.assertFalse(
+            _evaluate_insight_helpfulness(
+                insight,
+                tools_used=[
+                    "mcp_brave_search_brave_news_search",
+                    "mcp_brave_search_brave_web_search",
+                ],
+                outcome_success=True,
+                result={
+                    "ok": True,
+                    "tool_trace": [
+                        {
+                            "tool": "mcp_brave_search_brave_news_search",
+                            "ok": False,
+                            "error": "Invalid arguments for tool brave_news_search",
+                        },
+                        {"tool": "mcp_brave_search_brave_web_search", "ok": True},
+                    ],
+                },
+            )
         )
 
 
