@@ -1042,6 +1042,13 @@ body {
   border-left-color: rgba(59, 130, 246, 0.7);
 }
 
+.completion-guard-card.expired {
+  border-color: var(--border-primary);
+  border-left-color: var(--text-muted);
+  background: var(--bg-tertiary);
+  opacity: 0.78;
+}
+
 .completion-guard-header {
   display: flex;
   align-items: center;
@@ -1059,6 +1066,14 @@ body {
 .completion-guard-status {
   font-size: var(--text-xs);
   color: var(--text-secondary);
+}
+
+.completion-guard-timer {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .completion-guard-body {

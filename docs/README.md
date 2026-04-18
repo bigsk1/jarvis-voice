@@ -490,7 +490,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Added real `auto` mode that audits the raw final answer in the background and only auto-repairs when a deterministic repair score crosses a configurable threshold
   - Added `JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD` plus Web UI override support for the threshold
   - Manual `Yes` is now persisted instead of being client-only, so accepted outcomes survive reload/export
-  - Completion Guard outcomes now update the recorded intelligence experience (`accepted`, `auto_accepted`, `repaired`, `ticket_created`)
+  - Completion Guard outcomes now update the recorded intelligence experience (`accepted`, `auto_accepted`, `repaired`, `ticket_created`; `expired`/`superseded` as neutral metadata)
   - Reflection prompts now see Completion Guard notes/metadata so future insights can learn from repaired and ticketed runs
 - ✅ **Completion Guard: manual repair loop** - Phase 2 manual repair flow now works in Jarvis Web
   - Inline `Completed correctly?` card runs one bounded repair pass on `No`
@@ -507,14 +507,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Completion Guard: Web UI polish**
   - Stop button now cleanly cancels in-flight repair orchestrators
   - Repair responses no longer create duplicate Completion Guard cards in chat
-  - Completion Guard card now renders persisted `accepted`, `repaired`, `cancelled`, and `ticket_created` states correctly
+  - Completion Guard card now renders persisted `accepted`, `repaired`, `cancelled`, `ticket_created`, `expired`, and `superseded` states correctly
+  - Manual guard cards now show a countdown and settle stale prompts neutrally when they expire or are superseded by continued chat
 - ✅ **Completion Guard: final learning model**
   - Internal repair prompts no longer create standalone learning experiences
   - Successful repairs fold corrected answer, corrected tools, and corrected tool results back into the original experience
   - Reflections now compare the original failed path against the repaired path to learn a better first-pass strategy
 - ✅ **Completion Guard + Feedback coordination**
-  - In Jarvis Web, feedback is now deferred until Completion Guard reaches a settled state
+  - In Jarvis Web, explicit feedback is now deferred until Completion Guard reaches a settled state
   - Feedback grades the settled outcome instead of a temporary pre-repair answer
+  - Web disables orchestrator-side random feedback sampling while Completion Guard is active so random pre-collection does not race settlement
   - Feedback prompts now receive Completion Guard metadata and update the linked experience record
   - Original message card updates to `Repaired` / `Unresolved` / `Ticket created`
   - Internal repair-response messages no longer render their own empty Completion Guard card

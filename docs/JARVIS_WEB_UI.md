@@ -136,7 +136,8 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Feedback toggle** | ✅ | 📊 button to enable LLM feedback analysis |
 | **`--feedback` inline** | ✅ | Type `--feedback` in message to trigger |
 | **Feedback card** | ✅ | Purple tool card shows rating, summary, issues |
-| **Feedback gating** | ✅ | When Completion Guard is active, feedback waits for the settled outcome before grading |
+| **Feedback gating** | ✅ | Explicit Web feedback waits for Completion Guard settlement before grading |
+| **Random feedback coordination** | ✅ | Orchestrator random feedback can emit cards normally, but is disabled while Web Completion Guard is active |
 | **Expand/collapse** | ✅ | Click header to toggle details |
 | **Toast notification** | ✅ | 6-second toast with rating summary |
 | **Always logged** | ✅ | Manual feedback always saved to logs |
@@ -146,6 +147,8 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Feature | Status | Details |
 |---------|--------|---------|
 | **Completion Guard card** | ✅ | Inline `Completed correctly?` card on assistant responses |
+| **Manual prompt countdown** | ✅ | Active manual cards show a small countdown and default to 10 minutes |
+| **Stale prompt settlement** | ✅ | Expired cards settle as `expired`; older unanswered cards settle as `superseded` when the conversation continues |
 | **Manual repair pass** | ✅ | Clicking `No` runs one bounded repair pass |
 | **Repair status updates** | ✅ | Repair emits normal Jarvis thinking/status/tool events |
 | **Repair tickets** | ✅ | Unresolved failures write markdown tickets to `logs/completion-guard/` |
@@ -158,7 +161,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Repair cancel support** | ✅ | Stop button now cleanly cancels an in-flight repair pass |
 | **Auto threshold override** | ✅ | AI Config exposes per-mode threshold override for auto mode |
 | **Accepted state persistence** | ✅ | Clicking `Yes` now persists to conversation history and exports |
-| **Intelligence bridge** | ✅ | Accepted/repaired/ticketed/cancelled outcomes feed back into reflection data |
+| **Intelligence bridge** | ✅ | Accepted/repaired/ticketed/cancelled outcomes feed back into reflection data; expired/superseded settle neutrally |
 | **Corrected-path learning** | ✅ | Repaired answers, tools, and tool results are folded back into the original experience for reflections |
 | **Feedback-aware settlement** | ✅ | Final web feedback runs on the settled Completion Guard outcome and includes CG metadata in grading |
 | **Provider-split auto evaluator** | ✅ | Auto eval can run on a different provider/model than the main chat response |
@@ -1231,6 +1234,8 @@ Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 1. **📊 Toggle Button** - Click the feedback button (next to ✨ Enhance) to enable for all messages
 2. **`--feedback` Inline** - Add `--feedback` anywhere in your message
 
+Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_ENABLED=true` and `FEEDBACK_RANDOM_CHANCE` is greater than zero. Jarvis Web displays pre-collected random feedback as the normal purple card when Completion Guard is not active; while Completion Guard is active, Web disables the orchestrator random path so only explicit feedback waits behind guard settlement.
+
 **What Happens:**
 1. Your query processes normally (tool calls, response)
 2. After response, async feedback collection starts
@@ -1254,7 +1259,7 @@ Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 
 **Always Logged:**
 - Manual feedback is ALWAYS logged to `logs/feedback/feedback-YYYY-MM-DD.jsonl`
-- Unlike random feedback which only logs issues (rating < 5)
+- Random feedback samples are also logged when collected; current feedback logging writes one JSONL entry per completed feedback run
 
 **Use Cases:**
 - Verify tool selection is correct
@@ -1549,3 +1554,4 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.10: Completion Guard eval provider/model overrides, cloud/local Ollama model separation in AI Config, and Ollama cloud auto-eval JSON compatibility fixes - April 3, 2026*  
 *v2.11: Duplicate-tool recovery status, explicit large-result truncation metadata, and retry-state-preserving tool-card behavior - April 10, 2026*  
 *v2.12: Dedicated `/logs` browser with auth protection, folder search, YAML-style JSONL rendering, markdown viewing, and mobile drill-down - April 12, 2026*
+*v2.13: Completion Guard manual countdown, expired/superseded neutral settlement, and random-feedback coordination docs - April 17, 2026*

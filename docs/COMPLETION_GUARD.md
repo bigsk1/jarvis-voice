@@ -120,9 +120,11 @@ Implemented now:
 - Completion Guard metadata included in conversation exports when available
 - Accepted states are now persisted instead of being client-only
 - Accepted/repaired/ticketed/cancelled outcomes are fed back into the recorded intelligence experience and reflection prompt
+- Expired/superseded manual cards also update the linked experience with neutral Completion Guard metadata
 - Successful repairs now fold the corrected answer, corrected tools, and corrected tool results back into the original experience record
 - Internal repair runs no longer create separate first-class learning experiences
-- In Jarvis Web, manual/auto feedback is now gated behind Completion Guard settlement so feedback grades the settled result instead of a mid-repair snapshot
+- In Jarvis Web, explicit feedback runs are gated behind Completion Guard settlement so feedback grades the settled result instead of a mid-repair snapshot
+- Orchestrator-side random feedback sampling is disabled while Web Completion Guard is active, preventing pre-collected random feedback from racing manual/auto guard settlement
 - Feedback prompts now receive Completion Guard metadata and the async web feedback path updates the linked experience record
 - Rewrite-only tighten passes do not fold a corrected path back into the original experience as if they were a true operational fix
 - The auto evaluator can use a different provider/model than the main chat model; by default it follows `JARVIS_COMPLETION_GUARD_EVAL_PROVIDER` then `FEEDBACK_PROVIDER`
@@ -135,11 +137,16 @@ Implemented now:
   - cloud models use plain JSON mode instead of full schema mode
   - cloud JSON eval calls get a larger `num_predict` budget so internal reasoning does not consume the whole response budget
   - if a cloud model still returns empty `message.content`, the provider can fall back to `message.thinking` as a compatibility safety net
+- Manual Completion Guard cards are intentionally current-turn UI:
+  - unanswered manual prompts expire after `JARVIS_COMPLETION_GUARD_MANUAL_TTL_SECONDS` seconds (default: 600)
+  - the Web UI shows a small countdown on active manual cards
+  - when the user continues the same conversation before answering, older pending manual prompts settle as `superseded`
+  - if a mobile/PWA reconnect leaves a stale card visible, submitting it now resolves as `expired` instead of surfacing a hard error
 
 Not implemented yet:
 
 - true same-in-flight orchestrator continuation
-- persistence of unanswered manual cards across refresh
+- persistence/re-hydration of still-active unanswered manual cards across refresh
 - dashboard/reporting for Completion Guard outcomes
 
 ## Effective evidence (grounding bundle)
@@ -285,7 +292,7 @@ In Jarvis Web, feedback should not race Completion Guard.
 Current behavior:
 
 - if Completion Guard is not active for the response, feedback can run immediately
-- if Completion Guard is active, feedback is deferred until the response settles as:
+- if Completion Guard is active, explicit Web feedback (`📊` toggle or `--feedback`) is deferred until the response settles as:
   - `accepted`
   - `auto_accepted`
   - `tighten_only`
@@ -293,6 +300,9 @@ Current behavior:
   - `unresolved`
   - `ticket_created`
   - `cancelled`
+  - `expired`
+  - `superseded`
+- random feedback sampling (`FEEDBACK_RANDOM_ENABLED` / `FEEDBACK_RANDOM_CHANCE`) can pre-collect feedback in normal orchestrator runs, but Jarvis Web temporarily disables that random path while Completion Guard is enabled so guard settlement remains the single coordination point
 
 This prevents feedback from grading a temporary first-pass answer that is about to be repaired.
 
@@ -302,6 +312,7 @@ When feedback finally runs, it receives Completion Guard context so it can:
 - treat `tighten_only` like a basically accepted answer with minor wording cleanup
 - grade the repaired answer as the settled result when repair succeeds
 - understand that `ticket_created` means the system recognized a failure but could not fully recover
+- treat `expired` and `superseded` as neutral manual prompt settlement, not user dissatisfaction
 
 ## Outcome Meanings
 
@@ -346,6 +357,18 @@ The auto-evaluator **prompt** still asks the judge to prefer JSON **`tighten_onl
 ### `cancelled`
 
 - Repair was started but stopped before settlement
+
+### `expired`
+
+- A manual prompt timed out, or a stale mobile/PWA card was submitted after the session context was gone
+- The card becomes inactive and is persisted as neutral Completion Guard metadata
+- This is not treated as user dissatisfaction, failure, or retry by itself
+
+### `superseded`
+
+- The user continued the conversation before answering the manual prompt
+- The older card becomes inactive and is persisted as neutral Completion Guard metadata
+- This is not treated as user dissatisfaction, failure, or retry by itself
 
 ```mermaid
 
@@ -578,6 +601,7 @@ JARVIS_COMPLETION_GUARD_REQUIRE_USER_CONFIRM=true
 JARVIS_COMPLETION_GUARD_TICKET_ON_FAIL=true
 JARVIS_COMPLETION_GUARD_TICKET_DIR=logs/completion-guard
 JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT=true
+JARVIS_COMPLETION_GUARD_MANUAL_TTL_SECONDS=600
 JARVIS_COMPLETION_GUARD_INCLUDE_QA=true
 JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS=true
 COMPLETION_GUARD_EXCLUDED_TOOLS=phone_call,send_email,create_reminder,create_alert
@@ -836,7 +860,7 @@ Recommended websocket events:
   "message_id": "msg_123",
   "conversation_id": "ea584146",
   "mode": "manual",
-  "expires_in_ms": 5000,
+  "expires_in_ms": 600000,
   "can_add_note": true
 }
 ```
@@ -958,7 +982,8 @@ That state object is what allows same-runtime continuation instead of a syntheti
 - [x] Trigger repair automatically above a threshold
 - [x] Feed accepted/repaired/ticketed outcomes into intelligence analysis
 - [x] Effective evidence bundle + native-tool epoch + similar-answer tighten classification (see [Effective evidence](#effective-evidence-grounding-bundle))
-- [ ] Persist unanswered manual Completion Guard prompts across refresh
+- [x] Expire/supersede stale unanswered manual Completion Guard prompts
+- [ ] Persist/re-hydrate still-active unanswered manual Completion Guard prompts across refresh
 - [ ] Add issue clustering and recurring-failure reporting
 
 ## Repair Evaluation Heuristics

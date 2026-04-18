@@ -84,10 +84,11 @@ This creates a feedback loop for continuous improvement without manual debugging
 
 ### Completion Guard (Web UI, 2026)
 
-When Completion Guard is enabled in Jarvis Web, **async feedback waits until the turn is settled** (user accepted the answer, auto-evaluation passed, `tighten_only` settled, repair finished, or a ticket was created). The feedback LLM then grades the **final** response and tool picture—not a mid-repair snapshot.
+When Completion Guard is enabled in Jarvis Web, **explicit async feedback waits until the turn is settled** (user accepted the answer, auto-evaluation passed, `tighten_only` settled, repair finished, a ticket was created, or the manual prompt expired/was superseded). The feedback LLM then grades the **final** response and tool picture—not a mid-repair snapshot.
 
 - **Prompt**: `lib/feedback.py` injects a `=== COMPLETION GUARD ===` block (`completion_guard_context`). Instructions tell the grader to treat it as recovery context, not as an automatic penalty.
-- **Settled states**: `tighten_only` is treated like a basically accepted answer with minor wording cleanup, not a failed repair.
+- **Settled states**: `tighten_only` is treated like a basically accepted answer with minor wording cleanup, not a failed repair. `expired` and `superseded` are neutral manual prompt settlements, not user dissatisfaction.
+- **Random feedback**: `FEEDBACK_RANDOM_ENABLED` / `FEEDBACK_RANDOM_CHANCE` can sample normal orchestrator runs. Jarvis Web temporarily disables orchestrator-side random feedback while Completion Guard is enabled so random pre-collection does not race guard settlement.
 - **Logs**: Each feedback JSONL record includes top-level `completion_guard` (or `{"status": "none"}`).
 - **Reference**: [Completion Guard](./COMPLETION_GUARD.md).
 
@@ -134,7 +135,18 @@ Toast notification (6 seconds)
 
 **Logged** - Each completed feedback run appends one line to `logs/feedback/` (all ratings). Toggle vs `--feedback` only control *whether* feedback runs, not whether a successful run is written.
 
-### Method 2: `--feedback` Flag (CLI)
+### Method 2: Random Feedback Sampling
+
+Random feedback can run during normal orchestrator usage when enabled:
+
+```bash
+FEEDBACK_RANDOM_ENABLED=true
+FEEDBACK_RANDOM_CHANCE=0.05
+```
+
+In Jarvis Web, random feedback can be pre-collected and emitted as the normal feedback card when Completion Guard is not active for that turn. When Completion Guard is enabled, Web temporarily disables the orchestrator random path and only explicit Web feedback (`📊` toggle or `--feedback`) is coordinated behind guard settlement.
+
+### Method 3: `--feedback` Flag (CLI)
 
 Add `--feedback` to any orchestrator command:
 
@@ -152,7 +164,7 @@ Add `--feedback` to any orchestrator command:
 - Spot-checking after changes
 - One-off testing
 
-### Method 2: `bin/jarvis-feedback` (Dedicated Tool)
+### Method 4: `bin/jarvis-feedback` (Dedicated Tool)
 
 Standalone tool with multiple commands:
 
@@ -436,7 +448,7 @@ One JSON object per line (JSONL):
 
 ### When Logs Are Written
 
-- **Current behavior**: Each successful feedback collection appends **one JSON line** to the day’s file (`feedback-YYYY-MM-DD.jsonl`), regardless of rating. Failed collections still write an error-shaped entry.
+- **Current behavior**: Each successful feedback collection appends **one JSON line** to the day’s file (`feedback-YYYY-MM-DD.jsonl`), regardless of rating or trigger source (manual, inline flag, batch, or random sample). Failed collections still write an error-shaped entry.
 - **`JARVIS_FEEDBACK_ALWAYS_LOG`**: Legacy hook set temporarily in the Web UI feedback path; `FeedbackCollector` always appends a line and does not gate on this variable.
 
 ---

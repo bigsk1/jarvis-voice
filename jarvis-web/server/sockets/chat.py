@@ -35,6 +35,8 @@ _FOLLOWUP_EVIDENCE_MAX_CANDIDATES = 12
 _FOLLOWUP_SUMMARY_MAX_CHARS = 5000
 # Repair pass: same tools + very similar prose → tighten_only (hedging), not "new evidence".
 _CG_TIGHTEN_ONLY_ANSWER_SIMILARITY_THRESHOLD = 0.88
+# Manual prompts are meant to check the current answer, not become durable tasks.
+_CG_MANUAL_PROMPT_TTL_SECONDS_DEFAULT = 10 * 60
 
 _FOLLOWUP_DATA_SKIP_KEYS = frozenset({
     'usage',
@@ -104,6 +106,16 @@ class ChatHandler:
                 item.strip() for item in str(excluded_tools_raw).split(',')
                 if item and item.strip()
             )
+        try:
+            manual_prompt_ttl_seconds = int(
+                get_config_value(
+                    'JARVIS_COMPLETION_GUARD_MANUAL_TTL_SECONDS',
+                    str(_CG_MANUAL_PROMPT_TTL_SECONDS_DEFAULT),
+                )
+                or _CG_MANUAL_PROMPT_TTL_SECONDS_DEFAULT
+            )
+        except (TypeError, ValueError):
+            manual_prompt_ttl_seconds = _CG_MANUAL_PROMPT_TTL_SECONDS_DEFAULT
 
         return {
             'enabled': enabled if enabled is not None else self._parse_bool(get_config_value('JARVIS_COMPLETION_GUARD_ENABLED', 'false')),
@@ -115,6 +127,7 @@ class ChatHandler:
             'auto_threshold': float(auto_threshold if auto_threshold is not None else get_config_value('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70')),
             'eval_provider': eval_provider or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'ollama' if mode == 'local' else 'openai'),
             'eval_model': eval_model or get_config_value('JARVIS_COMPLETION_GUARD_EVAL_MODEL', ''),
+            'manual_prompt_ttl_seconds': max(0, manual_prompt_ttl_seconds),
             'excluded_tools': sorted(excluded_tools),
         }
 
@@ -149,8 +162,12 @@ class ChatHandler:
         """Keep a small per-session record so a later 'No' can create a useful ticket."""
         session = self.sessions.setdefault(session_id, {})
         records = session.setdefault('completion_guard_records', {})
+        record['timestamp'] = float(record.get('timestamp') or time.time())
         record.setdefault('status', 'pending')
         record.setdefault('repair_attempts', 0)
+        ttl_seconds = int(record.get('completion_guard', {}).get('manual_prompt_ttl_seconds') or 0)
+        if record.get('completion_guard_prompt') and ttl_seconds > 0:
+            record.setdefault('expires_at', record['timestamp'] + ttl_seconds)
         records[message_id] = record
 
         # Keep recent records bounded per session.
@@ -162,6 +179,14 @@ class ChatHandler:
     def _get_completion_guard_record(self, session_id: str, message_id: str) -> dict | None:
         """Fetch a stored Completion Guard record for this web session."""
         return self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id)
+
+    @staticmethod
+    def _completion_guard_record_expired(record: dict) -> bool:
+        expires_at = record.get('expires_at')
+        try:
+            return bool(expires_at and time.time() >= float(expires_at))
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def _response_has_visual_sources(text: str) -> bool:
@@ -342,6 +367,102 @@ class ChatHandler:
             record.get('provider'),
             record.get('model'),
             self._build_completion_guard_feedback_context(record, completion_guard_status)
+        )
+
+    def _settle_pending_completion_guard(
+        self,
+        session_id: str,
+        record: dict,
+        status: str,
+        reason: str = '',
+        note: str = '',
+    ) -> bool:
+        """Settle an unanswered manual guard without running a repair pass."""
+        if not record or record.get('status') != 'pending':
+            return False
+
+        record['status'] = status
+        record['user_note'] = note or record.get('user_note', '')
+        record['settled_reason'] = reason
+        record['settled_at'] = datetime.now().isoformat()
+
+        message_id = record.get('message_id')
+        conversation_id = record.get('conversation_id')
+        try:
+            from ..services.conversation_store import get_conversation_store
+            store = get_conversation_store()
+            store.update_message_data_by_web_message_id(
+                conversation_id,
+                message_id,
+                {
+                    '_completion_guard': {
+                        'status': status,
+                        'note': record.get('user_note', ''),
+                        'reason': reason,
+                        'settled_at': record.get('settled_at'),
+                    }
+                },
+            )
+        except Exception as e:
+            print(f"[COMPLETION_GUARD] Failed to persist {status} state: {e}")
+
+        self.socketio.emit('completion_guard:updated', {
+            'message_id': message_id,
+            'conversation_id': conversation_id,
+            'status': status,
+            'note': record.get('user_note', ''),
+            'reason': reason,
+        }, room=session_id)
+
+        self._update_completion_guard_experience(
+            record,
+            status,
+            note=record.get('user_note', ''),
+            extra={
+                'reason': reason,
+                'settled_at': record.get('settled_at'),
+            },
+        )
+
+        self._start_feedback_async(
+            session_id,
+            message_id,
+            message_id,
+            record,
+            self._build_feedback_result_from_record(record),
+            record.get('tools_used', []),
+            status,
+        )
+        return True
+
+    def _supersede_pending_completion_guards(self, session_id: str, conversation_id: str) -> None:
+        """Mark older unanswered manual guard prompts inactive when the user continues chatting."""
+        records = self.sessions.get(session_id, {}).get('completion_guard_records', {})
+        for record in list(records.values()):
+            if record.get('conversation_id') != conversation_id:
+                continue
+            if not record.get('completion_guard_prompt'):
+                continue
+            self._settle_pending_completion_guard(
+                session_id,
+                record,
+                'superseded',
+                'conversation_continued',
+            )
+
+    def _expire_completion_guard_prompt_later(self, session_id: str, message_id: str, ttl_seconds: int) -> None:
+        """Expire an unanswered manual prompt after its TTL."""
+        if ttl_seconds <= 0:
+            return
+        self.socketio.sleep(ttl_seconds)
+        record = self._get_completion_guard_record(session_id, message_id)
+        if not record:
+            return
+        self._settle_pending_completion_guard(
+            session_id,
+            record,
+            'expired',
+            'manual_prompt_timeout',
         )
 
     @staticmethod
@@ -2053,6 +2174,8 @@ Previous structured data:
                     'conversation_id': conversation_id,
                     'title': conv['title']
                 })
+
+            self._supersede_pending_completion_guards(session_id, conversation_id)
             
             # Save user message (include image URL, file info, and prompt info if present)
             user_msg_data = {}
@@ -2105,11 +2228,30 @@ Previous structured data:
             records = session.get('completion_guard_records', {})
             record = records.get(message_id)
 
-            if not message_id or not record:
+            if not message_id:
                 emit('completion_guard:error', {
                     'message_id': message_id,
-                    'error': 'Completion Guard context expired or was not found.'
+                    'error': 'Completion Guard message id was missing.'
                 })
+                return
+
+            if not record:
+                emit('completion_guard:updated', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'status': 'expired',
+                    'reason': 'missing_session_context'
+                })
+                return
+
+            if record.get('status') == 'pending' and self._completion_guard_record_expired(record):
+                self._settle_pending_completion_guard(
+                    session_id,
+                    record,
+                    'expired',
+                    'manual_prompt_timeout',
+                    note,
+                )
                 return
 
             if accepted is True:
@@ -3861,6 +4003,11 @@ Previous structured data:
                 response_data['experience_id'] = result['experience_id']
 
             completion_guard_prompt = (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
+            completion_guard_expires_in_ms = (
+                int(completion_guard_config.get('manual_prompt_ttl_seconds', 0) * 1000)
+                if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0
+                else None
+            )
             completion_guard_auto_eval = (
                 (not is_workflow)
                 and result.get('ok', True)
@@ -3892,7 +4039,8 @@ Previous structured data:
                 'available_tools': result.get('available_tools', []),
                 'intelligence_context': result.get('intelligence_context', ''),
                 'feedback_requested': bool(request_feedback and result.get('ok', True)),
-                'feedback_state': 'pending' if defer_feedback_until_completion_guard else 'idle'
+                'feedback_state': 'pending' if defer_feedback_until_completion_guard else 'idle',
+                'completion_guard_prompt': bool(completion_guard_prompt),
             })
             
             self.socketio.emit('chat:response', {
@@ -3912,9 +4060,18 @@ Previous structured data:
                     'enabled': completion_guard_config.get('enabled', False),
                     'mode': completion_guard_config.get('mode', 'off'),
                     'ticket_on_fail': completion_guard_config.get('ticket_on_fail', True),
-                    'prompt_user': completion_guard_prompt
+                    'prompt_user': completion_guard_prompt,
+                    'expires_in_ms': completion_guard_expires_in_ms,
                 }
             }, room=session_id)
+
+            if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0:
+                self.socketio.start_background_task(
+                    self._expire_completion_guard_prompt_later,
+                    session_id,
+                    message_id,
+                    int(completion_guard_config.get('manual_prompt_ttl_seconds', 0)),
+                )
 
             if completion_guard_auto_eval:
                 self.socketio.start_background_task(

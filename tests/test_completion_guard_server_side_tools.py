@@ -28,6 +28,14 @@ sys.modules.setdefault("flask", fake_flask)
 from server.sockets.chat import ChatHandler
 
 
+class _FakeSocketIO:
+    def __init__(self):
+        self.emitted = []
+
+    def emit(self, event, payload, **kwargs):
+        self.emitted.append((event, payload, kwargs))
+
+
 class CompletionGuardServerSideToolsTests(unittest.TestCase):
     def test_completion_guard_location_context_uses_default_location(self):
         with patch("config_loader.load_config"), patch(
@@ -158,6 +166,51 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             "answer_similarity": 0.5,
         }
         self.assertFalse(ChatHandler._completion_guard_tighten_instead_of_substantive_repair(delta))
+
+    def test_manual_prompt_records_get_expiry(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        handler.sessions = {"sid": {"completion_guard_records": {}}}
+
+        handler._remember_completion_guard_record("sid", "msg1", {
+            "timestamp": 100.0,
+            "message_id": "msg1",
+            "conversation_id": "conv1",
+            "completion_guard_prompt": True,
+            "completion_guard": {"manual_prompt_ttl_seconds": 30},
+        })
+
+        record = handler.sessions["sid"]["completion_guard_records"]["msg1"]
+        self.assertEqual(record["expires_at"], 130.0)
+
+        with patch("server.sockets.chat.time.time", return_value=129.0):
+            self.assertFalse(ChatHandler._completion_guard_record_expired(record))
+        with patch("server.sockets.chat.time.time", return_value=130.0):
+            self.assertTrue(ChatHandler._completion_guard_record_expired(record))
+
+    def test_supersede_pending_manual_prompt_when_conversation_continues(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        handler.socketio = _FakeSocketIO()
+        handler.sessions = {
+            "sid": {
+                "completion_guard_records": {
+                    "msg1": {
+                        "status": "pending",
+                        "message_id": "msg1",
+                        "conversation_id": "conv1",
+                        "completion_guard_prompt": True,
+                        "feedback_requested": False,
+                    }
+                }
+            }
+        }
+
+        handler._supersede_pending_completion_guards("sid", "conv1")
+
+        record = handler.sessions["sid"]["completion_guard_records"]["msg1"]
+        self.assertEqual(record["status"], "superseded")
+        self.assertEqual(record["settled_reason"], "conversation_continued")
+        self.assertEqual(handler.socketio.emitted[0][0], "completion_guard:updated")
+        self.assertEqual(handler.socketio.emitted[0][1]["status"], "superseded")
 
 
 if __name__ == "__main__":

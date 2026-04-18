@@ -1165,15 +1165,18 @@ class ChatUI {
     });
 
     socket.on('completionGuardError', (data) => {
+      const staleContext = /expired|not found|missing_session_context/i.test(data?.error || '');
       this._handleCompletionGuardTerminalUi({
         ...data,
-        status: 'error'
+        status: staleContext ? 'expired' : 'error'
       });
       this._updateCompletionGuardCard({
         ...data,
-        status: 'error'
+        status: staleContext ? 'expired' : 'error'
       });
-      Utils.toast(data.error || 'Completion Guard failed', 'error', 4000);
+      if (!staleContext) {
+        Utils.toast(data.error || 'Completion Guard failed', 'error', 4000);
+      }
     });
   }
 
@@ -2095,6 +2098,7 @@ class ChatUI {
     
     // Hide autocomplete
     this._hideAutocomplete();
+    this._expirePendingCompletionGuardCards();
     
     // Parse workflows and prompts
     const parsed = window.commandSystem.parseInput(rawMessage);
@@ -2920,6 +2924,94 @@ class ChatUI {
     return false;
   }
 
+  _markCompletionGuardCardInactive(card, status, reason = '') {
+    if (!card) return;
+
+    const statusEl = card.querySelector('.completion-guard-status');
+    const timerEl = card.querySelector('.completion-guard-timer');
+    const yesBtn = card.querySelector('.completion-guard-yes');
+    const noBtn = card.querySelector('.completion-guard-no');
+    const noteInput = card.querySelector('.completion-guard-note-input');
+    const body = card.querySelector('.completion-guard-body');
+    const isExpired = status === 'expired';
+    const statusText = isExpired ? 'Expired' : 'Skipped';
+    const summaryText = isExpired
+      ? 'This manual check is no longer active because the session changed or the prompt timed out.'
+      : 'This manual check was skipped because you continued the conversation.';
+
+    card.classList.remove('submitting');
+    card.classList.add('expired');
+    card.dataset.guardStatus = status;
+    if (reason) card.dataset.guardReason = reason;
+    if (statusEl) statusEl.textContent = statusText;
+    if (timerEl) timerEl.remove();
+    if (yesBtn) yesBtn.disabled = true;
+    if (noBtn) noBtn.disabled = true;
+    if (noteInput) noteInput.disabled = true;
+    if (body) {
+      body.innerHTML = `<div class="completion-guard-summary">${Utils.escapeHtml(summaryText)}</div>`;
+    }
+  }
+
+  _expirePendingCompletionGuardCards() {
+    const cards = this.messagesContainer.querySelectorAll('.completion-guard-card');
+    cards.forEach((card) => {
+      if (card.classList.contains('resolved') || card.classList.contains('submitting') || card.classList.contains('expired')) {
+        return;
+      }
+      if (!card.querySelector('.completion-guard-yes') && !card.querySelector('.completion-guard-no')) {
+        return;
+      }
+      this._markCompletionGuardCardInactive(card, 'superseded', 'conversation_continued');
+    });
+  }
+
+  _formatCompletionGuardRemaining(ms) {
+    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  _startCompletionGuardCountdown(card, expiresInMs) {
+    if (!card || expiresInMs <= 0) return;
+
+    const statusEl = card.querySelector('.completion-guard-status');
+    if (!statusEl) return;
+
+    let timerEl = card.querySelector('.completion-guard-timer');
+    if (!timerEl) {
+      timerEl = document.createElement('span');
+      timerEl.className = 'completion-guard-timer';
+      statusEl.insertAdjacentElement('afterend', timerEl);
+    }
+
+    const expiresAt = Date.now() + expiresInMs;
+    card.dataset.expiresAt = String(expiresAt);
+    const updateTimer = () => {
+      if (!card.isConnected) return false;
+      if (card.classList.contains('resolved') || card.classList.contains('submitting') || card.classList.contains('expired')) {
+        return false;
+      }
+
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        this._markCompletionGuardCardInactive(card, 'expired', 'manual_prompt_timeout');
+        return false;
+      }
+
+      timerEl.textContent = `${this._formatCompletionGuardRemaining(remaining)} left`;
+      return true;
+    };
+
+    updateTimer();
+    const intervalId = window.setInterval(() => {
+      if (!updateTimer()) {
+        window.clearInterval(intervalId);
+      }
+    }, 1000);
+  }
+
   _getCompletionGuardState(data, toolsUsed = []) {
     const innerData = data.data || data || {};
     const persisted = innerData._completion_guard || data._completion_guard || null;
@@ -2991,6 +3083,14 @@ class ChatUI {
         statusText = 'Noted';
         summaryText = 'Saved your completion note.';
         extraClass = ' resolved';
+      } else if (persistedStatus === 'expired') {
+        statusText = 'Expired';
+        summaryText = 'This manual check is no longer active because the session changed or the prompt timed out.';
+        extraClass = ' expired';
+      } else if (persistedStatus === 'superseded') {
+        statusText = 'Skipped';
+        summaryText = 'This manual check was skipped because you continued the conversation.';
+        extraClass = ' expired';
       }
 
       card.className += extraClass;
@@ -3033,6 +3133,7 @@ class ChatUI {
     const noteInput = card.querySelector('.completion-guard-note-input');
     const statusEl = card.querySelector('.completion-guard-status');
     const summaryEl = card.querySelector('.completion-guard-summary');
+    const expiresInMs = Number(state.live?.expires_in_ms || 0);
 
     yesBtn?.addEventListener('click', () => {
       yesBtn.disabled = true;
@@ -3070,6 +3171,8 @@ class ChatUI {
     });
 
     messageEl.appendChild(card);
+
+    this._startCompletionGuardCountdown(card, expiresInMs);
   }
 
   _ensureCompletionGuardCard(messageId, conversationId = '') {
@@ -3138,6 +3241,11 @@ class ChatUI {
         ${ticketPath ? `<div class="completion-guard-ticket">Ticket: <code>${Utils.escapeHtml(ticketPath)}</code></div>` : ''}
       `;
     };
+
+    if (data.status === 'expired' || data.status === 'superseded') {
+      this._markCompletionGuardCardInactive(card, data.status, data.reason || '');
+      return;
+    }
 
     if (data.status === 'accepted') {
       card.classList.remove('submitting');

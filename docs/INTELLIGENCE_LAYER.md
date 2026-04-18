@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete  
 **Created**: 2025-11-27  
-**Updated**: 2026-03-30 (Completion Guard → experience updates; feedback alignment)  
+**Updated**: 2026-04-17 (Completion Guard neutral manual settlement; feedback alignment)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
 
 ## Overview
@@ -131,8 +131,9 @@ When Jarvis Web runs [Completion Guard](./COMPLETION_GUARD.md), outcomes are wri
 - **`accepted` / `auto_accepted`**: treat the user as satisfied with the settled answer.
 - **`repaired`**: count as eventual success with `had_to_retry` and fold corrected speech, tools, and tool results into `raw_data` for reflection (compare first pass vs fix); bumps reflection queue priority (0.85).
 - **`unresolved` / `ticket_created` / `error`**: mark failure for learning; higher reflection priority (0.95). **`cancelled`** uses a medium bump (0.7).
+- **`expired` / `superseded`**: record neutral manual prompt settlement metadata on the original experience without changing success, satisfaction, retry flags, or reflection priority.
 
-Feedback collection in Web UI is **gated** until guard settlement so grades align with this record. See also [FEEDBACK_SYSTEM.md](./FEEDBACK_SYSTEM.md).
+Explicit feedback collection in Web UI is **gated** until guard settlement so grades align with this record. Orchestrator-side random feedback sampling is temporarily disabled while Web Completion Guard is active to avoid pre-collected random feedback racing the guard state. See also [FEEDBACK_SYSTEM.md](./FEEDBACK_SYSTEM.md).
 
 ### 7. Provider-Native Tool Metadata in Reflection (2026-04-04)
 
@@ -636,6 +637,7 @@ self._record_learning_experience(transcript, tools_used, response, conversation_
 from intelligence_hooks import (
     record_interaction,      # Record an experience, returns experience_id
     update_experience_from_feedback,  # Correct experience based on feedback rating
+    update_experience_from_completion_guard,  # Attach guard status/repair metadata
     get_routing_insights,    # Get insights for a query
     format_insights_for_prompt,  # Format for LLM context
     trigger_reflection,      # Process pending reflections

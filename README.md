@@ -1445,9 +1445,9 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 **Completed (March 2026):**
 - ✅ **Completion Guard** — Post-answer “was this actually done?” control loop (Jarvis Web) ⭐ MAJOR
-  - Manual (Yes/No card) and auto modes with structured scoring + threshold (`JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD`, AI Config overrides)
+  - Manual (Yes/No card with countdown) and auto modes with structured scoring + threshold (`JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD`, AI Config overrides)
   - One bounded repair pass in the same session; optional markdown tickets under `logs/completion-guard/`
-  - **Feedback + Intelligence**: async Web feedback waits for guard settlement; outcomes update the same experience via `update_experience_from_completion_guard` (repair folds corrected answer/tools into learning)
+  - **Feedback + Intelligence**: explicit async Web feedback waits for guard settlement; outcomes update the same experience via `update_experience_from_completion_guard` (repair folds corrected answer/tools into learning; expired/superseded manual prompts settle neutrally)
   - See: [`docs/COMPLETION_GUARD.md`](docs/COMPLETION_GUARD.md), [`docs/FEEDBACK_SYSTEM.md`](docs/FEEDBACK_SYSTEM.md), [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
 - ✅ **Web UI polish & controls**
   - Per-session overrides for Q&A word limit, multi-turn limit, response style (with changelog/version bumps on release)

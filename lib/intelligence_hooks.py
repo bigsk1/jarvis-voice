@@ -290,6 +290,7 @@ def update_experience_from_completion_guard(
     - tighten_only means Completion Guard only found wording cleanup, not a true operational fix
     - repaired marks the experience as eventually successful but suboptimal
     - unresolved / ticket_created mark it as a failure worth reflecting on
+    - expired / superseded are neutral manual prompt settlements
     """
     if experience_id < 0:
         return False
