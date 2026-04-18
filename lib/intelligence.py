@@ -160,13 +160,21 @@ class IntelligenceLogger:
             "prompt_length": len(prompt)
         })
     
-    def log_reflection_response(self, exp_id: int, response: dict[str, Any], provider: str, model: str):
+    def log_reflection_response(
+        self,
+        exp_id: int,
+        response: dict[str, Any],
+        provider: str,
+        model: str,
+        usage_info: dict[str, Any] | None = None
+    ):
         """Log the reflection response from LLM."""
         self.log("reflection_response", {
             "experience_id": exp_id,
             "provider": provider,
             "model": model,
-            "response": response
+            "response": response,
+            "usage_info": usage_info or {}
         })
     
     def log_insight_created(self, insight_id: int, constraint_type: str, description: str, confidence: float):
@@ -461,6 +469,12 @@ class IntelligenceLayer:
             ("avoided_tools", "TEXT"),
             ("generalizability", "TEXT DEFAULT 'medium'"),
             ("reasoning", "TEXT"),
+            ("reflection_provider", "TEXT"),
+            ("reflection_model", "TEXT"),
+            ("reflection_input_tokens", "INTEGER DEFAULT 0"),
+            ("reflection_output_tokens", "INTEGER DEFAULT 0"),
+            ("reflection_total_tokens", "INTEGER DEFAULT 0"),
+            ("reflection_cost_usd", "REAL DEFAULT 0"),
             ("last_outcome", "TEXT"),
             ("times_failed", "INTEGER DEFAULT 0"),
             ("consecutive_failures", "INTEGER DEFAULT 0"),
@@ -1017,7 +1031,11 @@ Example for FACTUAL (should NOT be stored here):
         intel_log.log_reflection_prompt(experience_id, reflection_prompt)
         
         # Use sequential thinking MCP if available, otherwise direct LLM
-        reflection = await self._think_deeply(reflection_prompt, use_sequential_thinking)
+        reflection = await self._think_deeply(
+            reflection_prompt,
+            use_sequential_thinking,
+            experience_id=experience_id
+        )
         
         if reflection:
             # Store the insight
@@ -1036,7 +1054,8 @@ Example for FACTUAL (should NOT be stored here):
     async def _think_deeply(
         self,
         prompt: str,
-        use_sequential_thinking: bool = True
+        use_sequential_thinking: bool = True,
+        experience_id: int | None = None
     ) -> dict[str, Any] | None:
         """
         Use sequential thinking MCP or direct LLM for deep reflection.
@@ -1049,7 +1068,7 @@ Example for FACTUAL (should NOT be stored here):
                     return reflection
             
             # Fallback to direct LLM call
-            return await self._direct_llm_reflection(prompt)
+            return await self._direct_llm_reflection(prompt, experience_id=experience_id)
             
         except Exception as e:
             logger.error(f"Reflection failed: {e}")
@@ -1081,7 +1100,11 @@ Example for FACTUAL (should NOT be stored here):
         #     logger.warning(f"Sequential thinking unavailable: {e}")
         # return None
     
-    async def _direct_llm_reflection(self, prompt: str) -> dict[str, Any] | None:
+    async def _direct_llm_reflection(
+        self,
+        prompt: str,
+        experience_id: int | None = None
+    ) -> dict[str, Any] | None:
         """Direct LLM call for reflection when sequential thinking unavailable."""
         try:
             from llm_provider import create_provider
@@ -1124,20 +1147,42 @@ Example for FACTUAL (should NOT be stored here):
             
             # Get model name for logging
             model_name = getattr(provider, 'model', 'unknown')
-            
-            response = provider.chat(
-                prompt,
-                system_prompt="You are a self-reflective AI analyzing your own behavior to learn and improve. Output valid JSON only, no markdown formatting."
+            system_prompt = (
+                "You are a self-reflective AI analyzing your own behavior to learn and improve. "
+                "Output valid JSON only, no markdown formatting."
             )
+            usage_info = None
+
+            try:
+                response, tool_call, usage_info, _thinking = provider.chat_with_tools(
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=[],
+                    system_prompt=system_prompt,
+                    enable_thinking=False
+                )
+                if tool_call:
+                    response = json.dumps({
+                        "is_procedural": False,
+                        "knowledge_type": "factual",
+                        "insight_summary": "Reflection unexpectedly requested a tool instead of returning an insight."
+                    })
+            except Exception as e:
+                logger.debug(f"Usage-aware reflection call failed, falling back to chat(): {e}")
+                response = provider.chat(prompt, system_prompt=system_prompt)
             
             parsed = self._parse_reflection_output(response)
+            if parsed:
+                parsed['_reflection_usage'] = usage_info or {}
+                parsed['_reflection_provider'] = provider_type
+                parsed['_reflection_model'] = model_name
             
             # Log the reflection response
             get_intel_logger().log_reflection_response(
-                exp_id=0,  # We don't have exp_id here, will be associated via timestamp
+                exp_id=experience_id or 0,
                 response=parsed or {"raw": str(response)[:500]},
                 provider=provider_type,
-                model=model_name
+                model=model_name,
+                usage_info=usage_info
             )
             
             return parsed
@@ -1206,6 +1251,28 @@ Example for FACTUAL (should NOT be stored here):
         insight_text = reflection.get('insight_summary', reflection.get('rule', reflection.get('pattern', '')))
         if not insight_text:
             return 0
+
+        usage_info = reflection.get('_reflection_usage') or {}
+        if not isinstance(usage_info, dict):
+            usage_info = {}
+        reflection_provider = reflection.get('_reflection_provider', '')
+        reflection_model = reflection.get('_reflection_model', '')
+        reflection_input_tokens = int(usage_info.get('input_tokens') or 0)
+        reflection_output_tokens = int(usage_info.get('output_tokens') or 0)
+        reflection_total_tokens = int(
+            usage_info.get('total_tokens')
+            or (reflection_input_tokens + reflection_output_tokens)
+            or 0
+        )
+        reflection_cost_raw = usage_info.get('cost_usd')
+        try:
+            reflection_cost_usd = (
+                float(reflection_cost_raw)
+                if reflection_cost_raw not in (None, '')
+                else 0.0
+            )
+        except (TypeError, ValueError):
+            reflection_cost_usd = 0.0
         
         # Extract constraint type
         constraint_type = reflection.get('constraint_type', 'positive')
@@ -1237,13 +1304,25 @@ Example for FACTUAL (should NOT be stored here):
                     evidence_count = evidence_count + 1,
                     updated_at = CURRENT_TIMESTAMP,
                     reasoning = ?,
-                    generalizability = ?
+                    generalizability = ?,
+                    reflection_provider = ?,
+                    reflection_model = ?,
+                    reflection_input_tokens = COALESCE(reflection_input_tokens, 0) + ?,
+                    reflection_output_tokens = COALESCE(reflection_output_tokens, 0) + ?,
+                    reflection_total_tokens = COALESCE(reflection_total_tokens, 0) + ?,
+                    reflection_cost_usd = COALESCE(reflection_cost_usd, 0) + ?
                 WHERE id = ?
             """, (
                 new_confidence,
                 min(1.0, existing['strength'] + 0.1),
                 reflection.get('why_or_why_not', ''),
                 generalizability,
+                reflection_provider,
+                reflection_model,
+                reflection_input_tokens,
+                reflection_output_tokens,
+                reflection_total_tokens,
+                reflection_cost_usd,
                 existing['id']
             ))
             
@@ -1295,8 +1374,11 @@ Example for FACTUAL (should NOT be stored here):
                     applies_to_pattern, pattern_embedding,
                     preferred_tools, avoided_tools,
                     generalizability, reasoning,
+                    reflection_provider, reflection_model,
+                    reflection_input_tokens, reflection_output_tokens,
+                    reflection_total_tokens, reflection_cost_usd,
                     confidence, evidence_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 insight_type,
                 insight_text,
@@ -1309,6 +1391,12 @@ Example for FACTUAL (should NOT be stored here):
                 json.dumps(avoided_tools),
                 generalizability,
                 reasoning,
+                reflection_provider,
+                reflection_model,
+                reflection_input_tokens,
+                reflection_output_tokens,
+                reflection_total_tokens,
+                reflection_cost_usd,
                 reflection.get('confidence', 0.5),
                 1
             ))

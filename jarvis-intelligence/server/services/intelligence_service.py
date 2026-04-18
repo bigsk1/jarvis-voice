@@ -47,12 +47,41 @@ class IntelligenceService:
     def __init__(self, mode: str = 'cloud'):
         self.mode = mode
         self.db_path = get_db_path(mode)
+        self._ensure_insight_usage_columns()
     
     def _get_conn(self) -> sqlite3.Connection:
         """Get a new connection"""
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _ensure_insight_usage_columns(self) -> None:
+        """Keep UI reads compatible with DBs created before reflection usage tracking."""
+        conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        try:
+            cursor = conn.cursor()
+            table_exists = cursor.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'insights'"
+            ).fetchone()
+            if not table_exists:
+                return
+
+            cursor.execute("PRAGMA table_info(insights)")
+            existing_columns = {row[1] for row in cursor.fetchall()}
+            new_columns = [
+                ("reflection_provider", "TEXT"),
+                ("reflection_model", "TEXT"),
+                ("reflection_input_tokens", "INTEGER DEFAULT 0"),
+                ("reflection_output_tokens", "INTEGER DEFAULT 0"),
+                ("reflection_total_tokens", "INTEGER DEFAULT 0"),
+                ("reflection_cost_usd", "REAL DEFAULT 0"),
+            ]
+            for col_name, col_def in new_columns:
+                if col_name not in existing_columns:
+                    cursor.execute(f"ALTER TABLE insights ADD COLUMN {col_name} {col_def}")
+            conn.commit()
+        finally:
+            conn.close()
 
     def _add_time_display(self, item: Dict[str, Any], fields: List[str]) -> Dict[str, Any]:
         """Attach configured-local and UTC display fields for stored UTC strings."""
@@ -264,6 +293,9 @@ class IntelligenceService:
                        times_applied, times_helpful, times_failed, consecutive_failures,
                        last_applied, last_outcome,
                        preferred_tools, avoided_tools, generalizability,
+                       reflection_provider, reflection_model,
+                       reflection_input_tokens, reflection_output_tokens,
+                       reflection_total_tokens, reflection_cost_usd,
                        CASE WHEN insight_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
                 FROM insights
                 {where_sql}
@@ -287,6 +319,9 @@ class IntelligenceService:
                        times_applied, times_helpful, times_failed, consecutive_failures,
                        last_applied, last_outcome, preferred_tools, avoided_tools,
                        generalizability,
+                       reflection_provider, reflection_model,
+                       reflection_input_tokens, reflection_output_tokens,
+                       reflection_total_tokens, reflection_cost_usd,
                        CASE WHEN insight_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
                 FROM insights
                 WHERE id = ?
@@ -307,6 +342,9 @@ class IntelligenceService:
                        constraint_type, applies_to_pattern, confidence, evidence_count,
                        times_applied, times_helpful, times_failed,
                        preferred_tools, avoided_tools,
+                       reflection_provider, reflection_model,
+                       reflection_input_tokens, reflection_output_tokens,
+                       reflection_total_tokens, reflection_cost_usd,
                        CASE WHEN insight_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
                 FROM insights
                 WHERE description LIKE ? OR applies_to_pattern LIKE ? 

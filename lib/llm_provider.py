@@ -113,13 +113,16 @@ class OpenAIProvider(LLMProvider):
         full_messages.extend(messages)
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=full_messages,
-                tools=tools,
-                tool_choice="auto"
-            )
-            
+            request_params = {
+                "model": self.model,
+                "messages": full_messages,
+            }
+            if tools:
+                request_params["tools"] = tools
+                request_params["tool_choice"] = "auto"
+
+            response = self.client.chat.completions.create(**request_params)
+
             message = response.choices[0].message
             
             # Extract usage info
@@ -281,8 +284,9 @@ class AnthropicProvider(LLMProvider):
                 "max_tokens": base_max_tokens,
                 "system": system_blocks,
                 "messages": messages,
-                "tools": tools_with_cache
             }
+            if tools_with_cache:
+                api_params["tools"] = tools_with_cache
             
             # Add extra headers if any (reserved for future provider requirements)
             if extra_headers:

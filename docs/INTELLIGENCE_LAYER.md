@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete  
 **Created**: 2025-11-27  
-**Updated**: 2026-04-18 (feedback metadata in experiences; tool traces; presentation artifact learning)
+**Updated**: 2026-04-18 (feedback metadata; tool traces; presentation artifact learning; reflection usage tracking)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
 
 ## Overview
@@ -216,6 +216,21 @@ When providers use native server-side tools such as xAI `x_search` / `web_search
 - Reflection can see provider-native tool usage so it does **not** misread an empty `tools_used` list as a zero-tool hallucination.
 - Completion Guard also treats those native tools as real evidence during audits.
 - These native provider tools are **not** converted into `preferred_tool` / `avoided_tool` insights, so Jarvis does not start preferring provider-specific internals over normal Jarvis tools.
+
+### 10. Reflection Usage Tracking (2026-04-18)
+
+Reflection LLM calls now preserve their own observability metadata on generated insights:
+
+- `reflection_provider`
+- `reflection_model`
+- `reflection_input_tokens`
+- `reflection_output_tokens`
+- `reflection_total_tokens`
+- `reflection_cost_usd`
+
+The Intelligence UI shows a compact badge on insight cards, for example `35,303 tok $0.0071`, and the insight detail modal shows the input/output token split. Existing insights keep zero/blank values until they are created or updated by a new reflection run.
+
+**Cumulative vs. latest semantics**: insights can be updated by many reflection runs over time, so the token and cost columns are *additive* — every new reflection that updates an insight adds its own tokens and cost onto the running totals. The `reflection_provider` and `reflection_model` columns, by contrast, are overwritten on each update and reflect only the most recent reflection run. The UI labels this explicitly as "Lifetime Reflection Cost / Tokens" and "Last Reflection Provider" so the card badge (`🧾 5,391 tok $0.0012`) is understood as a lifetime rollup, not the cost of the most recent run.
 
 ---
 

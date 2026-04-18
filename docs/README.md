@@ -321,6 +321,10 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Reflection tool trace + argument recovery**
   - Experiences now preserve sanitized per-tool attempt traces with arguments, failures, and recovery path
   - Reflection can learn reusable tool-argument lessons and insight scoring no longer rewards a preferred tool that failed before recovery
+- ✅ **Reflection token/cost visibility**
+  - Generated insights now store the reflection provider/model plus input/output/total tokens and estimated cost
+  - Token and cost columns accumulate across every reflection update for the insight; provider/model reflect only the most recent run
+  - Intelligence UI insight cards show a compact reflection usage badge labeled as lifetime usage, with full token split in the detail modal
 - ✅ **Presentation artifact learning**
   - Experiences record response style and word limits so reflection can recognize short `auto`/`casual` answers
   - When `canvas`/`stash` are available, reflection may learn “brief spoken summary + full structured artifact” for multi-item, multi-field requests

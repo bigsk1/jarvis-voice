@@ -10,7 +10,7 @@ let currentExpSort = 'date';  // date, turns, tools, completion_guard
 let currentExpToolFilter = null;  // null = all, specific tool name
 let currentExpToolCountFilter = 'all';  // all, none, single, multi
 let currentExpCompletionGuardFilter = null;  // null = all, otherwise specific CG status
-let currentInsightSort = 'applied';  // applied, preferred, avoided, confidence, updated
+let currentInsightSort = 'updated';  // updated, applied, preferred, avoided, confidence, helpful
 let currentFeedbackDays = 7;  // 7, 30, 90
 let currentFeedbackRating = 'all';  // all, issues (1-3), good (4-5)
 let experiencesData = [];
@@ -503,13 +503,13 @@ function sortInsights(data) {
       });
     case 'confidence':
       return [...data].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
-    case 'updated':
-      return [...data].sort((a, b) => parseStoredUtcDate(b.updated_at || b.created_at) - parseStoredUtcDate(a.updated_at || a.created_at));
     case 'helpful':
       return [...data].sort((a, b) => (b.times_helpful || 0) - (a.times_helpful || 0));
     case 'applied':
-    default:
       return [...data].sort((a, b) => (b.times_applied || 0) - (a.times_applied || 0));
+    case 'updated':
+    default:
+      return [...data].sort((a, b) => parseStoredUtcDate(b.updated_at || b.created_at) - parseStoredUtcDate(a.updated_at || a.created_at));
   }
 }
 
@@ -880,6 +880,7 @@ function renderInsightCard(insight) {
     `Created: ${formatRecordTimestampTitle(insight, 'created_at')}`,
     updatedDate ? `Updated: ${formatRecordTimestampTitle(insight, 'updated_at')}` : null
   ].filter(Boolean).join('\n');
+  const reflectionUsage = formatReflectionUsage(insight, true);
   
   // Show updated date if different from created date, otherwise show created
   const displayDate = updatedDate && updatedDate !== createdDate 
@@ -930,6 +931,7 @@ function renderInsightCard(insight) {
           <span title="Times applied">🔄 ${insight.times_applied || 0}</span>
           <span title="Times helpful">✅ ${insight.times_helpful || 0}</span>
           <span title="Times failed">❌ ${insight.times_failed || 0}</span>
+          ${reflectionUsage ? `<span title="Lifetime reflection cost across all updates: ${escapeHtml(formatReflectionUsage(insight))} · Last run: ${escapeHtml(formatReflectionProvider(insight))}">🧾 ${escapeHtml(reflectionUsage)}</span>` : ''}
         </div>
         <div class="card-actions">
           <button class="btn btn-icon btn-small" title="Edit">✏️</button>
@@ -937,6 +939,30 @@ function renderInsightCard(insight) {
       </div>
     </div>
   `;
+}
+
+function getReflectionTotalTokens(insight) {
+  return Number(insight?.reflection_total_tokens || 0);
+}
+
+function formatReflectionCost(cost) {
+  const numeric = Number(cost || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '$0';
+  return numeric < 0.01 ? `$${numeric.toFixed(4)}` : `$${numeric.toFixed(2)}`;
+}
+
+function formatReflectionUsage(insight, compact = false) {
+  const totalTokens = getReflectionTotalTokens(insight);
+  if (!totalTokens) return '';
+  const tokenText = `${totalTokens.toLocaleString()} ${compact ? 'tok' : 'tokens'}`;
+  const costText = formatReflectionCost(insight.reflection_cost_usd);
+  return compact ? `${tokenText} ${costText}` : `${tokenText} (${costText})`;
+}
+
+function formatReflectionProvider(insight) {
+  const provider = insight?.reflection_provider || 'unknown';
+  const model = insight?.reflection_model || 'unknown';
+  return `${provider} / ${model}`;
 }
 
 // Parse tools field (can be JSON string, object with scores, or array of names)
@@ -1569,6 +1595,22 @@ async function viewInsight(id) {
             ${renderTimestampStack(insight, 'last_applied')}
           </div>
         ` : ''}
+        ${getReflectionTotalTokens(insight) > 0 ? `
+          <div>
+            <div class="form-label" title="Cumulative across every reflection that created or updated this insight">Lifetime Reflection Cost</div>
+            <span>${escapeHtml(formatReflectionUsage(insight))}</span>
+          </div>
+          <div>
+            <div class="form-label" title="Provider/model from the most recent reflection update (earlier updates may have used different models)">Last Reflection Provider</div>
+            <span>${escapeHtml(formatReflectionProvider(insight))}</span>
+          </div>
+          <div>
+            <div class="form-label" title="Cumulative input/output tokens across all reflections on this insight">Lifetime Reflection Tokens</div>
+            <span title="Input: ${Number(insight.reflection_input_tokens || 0).toLocaleString()} | Output: ${Number(insight.reflection_output_tokens || 0).toLocaleString()}">
+              ${Number(insight.reflection_input_tokens || 0).toLocaleString()} in / ${Number(insight.reflection_output_tokens || 0).toLocaleString()} out
+            </span>
+          </div>
+        ` : ''}
         <div>
           <div class="form-label">Preferred Tools</div>
           <span>${insight.preferred_tools ? `<code>${escapeHtml(insight.preferred_tools)}</code>` : '-'}</span>
@@ -1782,7 +1824,7 @@ function switchTab(tab) {
   
   // Reset insight-specific filters when switching away
   if (tab !== 'insights') {
-    currentInsightSort = 'applied';
+    currentInsightSort = 'updated';
   }
   
   // Update tab buttons (both desktop and mobile)
@@ -1823,7 +1865,7 @@ function switchTab(tab) {
   if (expSortSelect) expSortSelect.value = 'date';
   
   const insightSortSelect = document.getElementById('insightSortSelect');
-  if (insightSortSelect) insightSortSelect.value = 'applied';
+  if (insightSortSelect) insightSortSelect.value = 'updated';
   
   // Reset tool filter
   const toolFilter = document.getElementById('expToolFilter');
