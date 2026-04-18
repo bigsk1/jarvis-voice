@@ -1,0 +1,109 @@
+{
+  "enabled": true,
+  "name": "brave_llm_context",
+  "description": "Retrieve Brave LLM Context: pre-extracted, relevance-scored web content for grounding AI answers. Use for current facts, research, technical questions, and RAG-style web grounding when snippets/source chunks are more useful than plain search links. This is not Brave Answers and does not generate the final answer itself.",
+  "script": "brave_llm_context.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search query to ground with Brave LLM Context. Required. Max 400 chars / 50 words."
+      },
+      "country": {
+        "type": "string",
+        "description": "Two-letter country code for results. Default: US."
+      },
+      "search_lang": {
+        "type": "string",
+        "description": "Search language code. Default: en."
+      },
+      "count": {
+        "type": "integer",
+        "description": "Maximum search results Brave should consider before extracting context. Range 1-50. Default: 20."
+      },
+      "freshness": {
+        "type": "string",
+        "enum": ["pd", "pw", "pm", "py"],
+        "description": "Optional freshness filter: pd=24h, pw=7d, pm=31d, py=365d. For custom ranges, use freshness_range."
+      },
+      "freshness_range": {
+        "type": "string",
+        "description": "Optional custom date range in YYYY-MM-DDtoYYYY-MM-DD format. Use instead of freshness for specific date windows."
+      },
+      "maximum_number_of_urls": {
+        "type": "integer",
+        "description": "Maximum URLs returned in context. Range 1-50. Default: 8 for this Jarvis tool."
+      },
+      "maximum_number_of_tokens": {
+        "type": "integer",
+        "description": "Approximate maximum context tokens. Range 1024-32768. Default: 8192."
+      },
+      "maximum_number_of_snippets": {
+        "type": "integer",
+        "description": "Maximum snippets across all URLs. Range 1-100. Default: 30."
+      },
+      "maximum_number_of_tokens_per_url": {
+        "type": "integer",
+        "description": "Maximum tokens per URL. Range 512-8192. Default: 4096."
+      },
+      "maximum_number_of_snippets_per_url": {
+        "type": "integer",
+        "description": "Maximum snippets per URL. Range 1-100. Default: 10."
+      },
+      "context_threshold_mode": {
+        "type": "string",
+        "enum": ["strict", "balanced", "lenient", "disabled"],
+        "description": "Relevance filtering mode. Use strict for precision, balanced by default, lenient for broad recall."
+      },
+      "enable_local": {
+        "type": "boolean",
+        "description": "Force local recall. Usually omit and provide location headers only for local queries."
+      },
+      "loc_city": {
+        "type": "string",
+        "description": "Optional location city header for local/near-me queries."
+      },
+      "loc_state": {
+        "type": "string",
+        "description": "Optional state/region code header, e.g. OR or CA."
+      },
+      "loc_state_name": {
+        "type": "string",
+        "description": "Optional state/region name header, e.g. Oregon."
+      },
+      "loc_country": {
+        "type": "string",
+        "description": "Optional country code header, e.g. US."
+      },
+      "loc_postal_code": {
+        "type": "string",
+        "description": "Optional postal code header."
+      },
+      "loc_lat": {
+        "type": "number",
+        "description": "Optional latitude for local queries."
+      },
+      "loc_long": {
+        "type": "number",
+        "description": "Optional longitude for local queries."
+      },
+      "goggles": {
+        "type": "string",
+        "description": "Optional Brave Goggles URL or inline definition to customize source ranking."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "If true, include the full raw Brave response in data.raw. Default false to keep context compact."
+      }
+    },
+    "required": ["query"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

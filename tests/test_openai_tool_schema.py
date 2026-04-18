@@ -13,6 +13,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from lib.tool_schema import ToolSchema, _sanitize_schema_for_openai
 
@@ -43,6 +44,45 @@ class OpenAIToolSchemaTests(unittest.TestCase):
         params = _sanitize_schema_for_openai({"properties": {"x": {"type": "string"}}}, is_root=True)
         self.assertEqual(params["type"], "object")
         self.assertIn("properties", params)
+
+    def test_collapses_simple_anyof_consts_to_enum(self):
+        params = _sanitize_schema_for_openai({
+            "type": "object",
+            "properties": {
+                "safesearch": {
+                    "anyOf": [
+                        {"type": "string", "const": "off"},
+                        {"type": "string", "const": "moderate"},
+                        {"type": "string", "const": "strict"},
+                    ]
+                }
+            }
+        }, is_root=True)
+
+        prop = params["properties"]["safesearch"]
+        self.assertEqual(prop["type"], "string")
+        self.assertEqual(prop["enum"], ["off", "moderate", "strict"])
+        self.assertNotIn("anyOf", prop)
+
+    def test_preserves_type_for_anyof_with_generic_branch(self):
+        params = _sanitize_schema_for_openai({
+            "type": "object",
+            "properties": {
+                "freshness": {
+                    "description": "Date freshness shortcut or date range.",
+                    "anyOf": [
+                        {"type": "string", "const": "pd"},
+                        {"type": "string", "const": "pw"},
+                        {"type": "string"},
+                    ]
+                }
+            }
+        }, is_root=True)
+
+        prop = params["properties"]["freshness"]
+        self.assertEqual(prop["type"], "string")
+        self.assertNotIn("enum", prop)
+        self.assertNotIn("anyOf", prop)
 
 
 if __name__ == "__main__":

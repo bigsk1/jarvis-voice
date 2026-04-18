@@ -14,6 +14,80 @@ from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 _logger = logging.getLogger(__name__)
 
 
+def _json_type_for_const(value: Any) -> str | None:
+    """Infer a JSON Schema primitive type for a const value."""
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if value is None:
+        return "null"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return None
+
+
+def _collapse_simple_combinator(variants: Any) -> dict[str, Any]:
+    """
+    Convert simple anyOf/oneOf const/type unions into OpenAI-safe schema pieces.
+
+    OpenAI rejects JSON Schema combinators, but many MCP schemas use them only
+    to express "one of these string constants" or "a string matching one of
+    these known shortcuts or a free-form date range". Preserve that signal
+    instead of dropping the constraint entirely.
+    """
+    if not isinstance(variants, list):
+        return {}
+
+    types: set[str] = set()
+    enum_values: list[Any] = []
+    has_generic_branch = False
+
+    for variant in variants:
+        if not isinstance(variant, dict):
+            continue
+
+        variant_type = variant.get("type")
+
+        if "const" in variant:
+            const_value = variant["const"]
+            inferred_type = variant_type or _json_type_for_const(const_value)
+            if inferred_type:
+                types.add(inferred_type)
+            if const_value not in enum_values:
+                enum_values.append(const_value)
+            continue
+
+        if isinstance(variant.get("enum"), list):
+            if variant_type:
+                types.add(variant_type)
+            for enum_value in variant["enum"]:
+                inferred_type = variant_type or _json_type_for_const(enum_value)
+                if inferred_type:
+                    types.add(inferred_type)
+                if enum_value not in enum_values:
+                    enum_values.append(enum_value)
+            continue
+
+        if variant_type:
+            types.add(variant_type)
+            has_generic_branch = True
+
+    if len(types) != 1:
+        return {}
+
+    collapsed: dict[str, Any] = {"type": next(iter(types))}
+    if enum_values and not has_generic_branch:
+        collapsed["enum"] = enum_values
+    return collapsed
+
+
 def _sanitize_schema_for_openai(schema: Any, *, is_root: bool = False) -> Any:
     """
     Strip JSON Schema features that OpenAI function calling rejects.
@@ -31,12 +105,20 @@ def _sanitize_schema_for_openai(schema: Any, *, is_root: bool = False) -> Any:
         return schema
 
     unsupported_keys = {
-        "allOf", "anyOf", "oneOf", "not",
+        "allOf", "not",
         "if", "then", "else", "dependentSchemas"
     }
 
     sanitized: dict[str, Any] = {}
     for key, value in schema.items():
+        if key in {"anyOf", "oneOf"}:
+            for collapsed_key, collapsed_value in _collapse_simple_combinator(value).items():
+                sanitized.setdefault(collapsed_key, collapsed_value)
+            continue
+        if key == "const":
+            sanitized.setdefault("enum", [value])
+            sanitized.setdefault("type", _json_type_for_const(value) or "string")
+            continue
         if key in unsupported_keys:
             continue
         if is_root and key == "enum":
@@ -616,4 +698,3 @@ def reset_tool_registry():
         _tool_registry_instance.cleanup()
         _tool_registry_instance = None
         _tool_registry_mode = None
-
