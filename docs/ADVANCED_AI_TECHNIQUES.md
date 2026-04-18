@@ -7,18 +7,19 @@
 ## 📋 Table of Contents
 
 1. [Overview & Philosophy](#overview--philosophy)
-2. [Phase 3: Self-Evolving Prompts](#phase-3-self-evolving-prompts)
-3. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
-4. [Phase 5: Parallel Subagents](#phase-5-parallel-subagents)
-5. [Phase 6: Self-Play Optimization](#phase-6-self-play-optimization)
-6. [Phase 7: Versioned Prompts & Rollback](#phase-7-versioned-prompts--rollback)
-7. [Implementation Priority](#implementation-priority)
-8. [Safety & Guardrails](#safety--guardrails)
-9. [Implementation Status](#implementation-status)
-10. [🚨 Reality Check: Why Nothing Evolves](#-reality-check-why-nothing-evolves-feb-2026)
-11. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
-12. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
-13. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
+2. [Design Note: Runtime-Aware Context Gating](#design-note-runtime-aware-context-gating)
+3. [Phase 3: Self-Evolving Prompts](#phase-3-self-evolving-prompts)
+4. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
+5. [Phase 5: Parallel Subagents](#phase-5-parallel-subagents)
+6. [Phase 6: Self-Play Optimization](#phase-6-self-play-optimization)
+7. [Phase 7: Versioned Prompts & Rollback](#phase-7-versioned-prompts--rollback)
+8. [Implementation Priority](#implementation-priority)
+9. [Safety & Guardrails](#safety--guardrails)
+10. [Implementation Status](#implementation-status)
+11. [🚨 Reality Check: Why Nothing Evolves](#-reality-check-why-nothing-evolves-feb-2026)
+12. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
+13. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
+14. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
 
 ---
 
@@ -73,6 +74,228 @@ cat logs/evolution/system_prompt_suggestions.md
 | Meta-Cognition | ✅ Built | Detects learning blind spots |
 | Tool RAG | ✅ Built | Dynamic tool retrieval |
 | OpenCode Subagents | ✅ Available | `~/.config/opencode/agent/*.md` |
+
+---
+
+## Design Note: Runtime-Aware Context Gating
+
+### Problem
+
+Jarvis now has multiple ways to remove a tool from the current runtime:
+
+- `enabled: false` in a `skills/*.tool.json` file
+- active tool profiles such as `skills/profiles/offline.json`
+- per-mode sync state after `./bin/sync_tools.py <mode>`
+- Web UI or request-level excluded tools
+
+Learned insight injection already receives the current `available_tools` list, so positive strategies that recommend unavailable tools can be filtered. Auto-memory injection is different: it retrieves factual memories and intel notes before the LLM sees the request. Some of those memories may mention unavailable tools even when they are not tool recommendations.
+
+Example:
+
+- `samantha` tool is disabled.
+- A user says they are working on Jarvis.
+- Auto-memory finds `intel/samantha.md` or old Samantha integration notes because the text is semantically related and intel sources get a boost.
+- The memory is true, but it can still make the assistant act like Samantha is currently operational.
+
+The important distinction:
+
+```text
+memory truth != runtime capability
+```
+
+### Why Not Toggle Memories On/Off?
+
+Do not globally mark memories as disabled just because a tool is disabled.
+
+Reasons:
+
+- The memory may still be historically useful.
+- A disabled tool can be the subject of conversation, debugging, or migration work.
+- Tool profiles are runtime overlays; memories are durable facts.
+- A future profile may re-enable the tool, and bulk mutating memory state would create cleanup problems.
+- Intel files can contain mixed content: some lines are operational instructions, others are architecture notes, history, or warnings.
+
+Better model:
+
+```text
+keep memories factual
+gate whether they become prompt context for this turn
+```
+
+### Candidate Classification
+
+Auto-memory should eventually classify each candidate memory into one of these buckets before injection:
+
+| Bucket | Meaning | Default Behavior |
+|--------|---------|------------------|
+| `pinned_preference` | Addressing, tone, language, stable user preference | Always allow unless explicitly forgotten |
+| `general_fact` | Personal/project/history fact not requiring a tool | Allow when relevant |
+| `about_disabled_tool` | Mentions a disabled tool but is historical or explanatory | Demote or annotate; allow for explicit tool-history/debug queries |
+| `requires_disabled_tool` | Would cause the model to use, recommend, or assume a disabled tool works | Suppress unless user explicitly asks about that disabled tool |
+| `disabled_tool_warning` | Explains why not to use a disabled/broken tool | Allow, and possibly boost |
+
+This avoids a blunt text filter. A memory that says “Samantha integration existed” is not the same as “Use Samantha for this task.”
+
+### Runtime Inputs
+
+The auto-memory layer should receive:
+
+- `available_tool_names`: already computed in `orchestrator_v2.process()`
+- known tool names from `tool_definitions`
+- active profile overrides from `tool_profiles`
+- request-level excluded tools
+- optional blocked tools from Web UI settings
+
+Then it can compute:
+
+```text
+unavailable_tools = known_tools - available_tool_names
+```
+
+That set should inform ranking and injection, not mutate memory rows.
+
+### Metadata-First Design
+
+Long-term, memories and intel-derived rows should support lightweight metadata:
+
+```json
+{
+  "related_tools": ["samantha"],
+  "requires_enabled_tools": ["samantha"],
+  "context_role": "history|instruction|warning|capability|preference",
+  "runtime_scope": "always|when_tool_available|when_explicitly_asked"
+}
+```
+
+Suggested meanings:
+
+- `related_tools`: the memory talks about these tools, but may still be useful if they are disabled.
+- `requires_enabled_tools`: suppress if any listed tool is unavailable unless the user explicitly asks about that tool.
+- `context_role=warning`: safe to show even if the tool is disabled.
+- `context_role=capability`: risky to show when the tool is disabled because it implies current ability.
+- `runtime_scope=when_explicitly_asked`: show only when the user directly mentions the topic/tool.
+
+### Conservative Text Fallback
+
+Not all old memories have metadata. A fallback can still help, but should be conservative:
+
+- Match exact known tool names only, not broad English words.
+- Use source paths as hints, e.g. `intel/samantha.md`.
+- Treat `source=intel/<tool>.md` as `about_disabled_tool`, not automatically `requires_disabled_tool`.
+- Do not filter pinned preferences through tool matching.
+- Prefer demotion/annotation over deletion.
+
+Example rule:
+
+```text
+if candidate mentions disabled tool:
+  if metadata.requires_enabled_tools intersects disabled tools:
+    suppress unless explicit user mention
+  elif source/path strongly tied to disabled tool:
+    demote unless explicit user mention
+  elif candidate is a warning/limitation:
+    allow
+```
+
+### Explicit User Intent Exception
+
+If the user explicitly asks about a disabled tool, related memories should be allowed because they are the topic:
+
+- “Why is Samantha disabled?”
+- “What did Samantha used to do?”
+- “Help me migrate Samantha notes.”
+- “What broke with the Samantha heartbeat?”
+
+In that case, the prompt should annotate the memory block:
+
+```text
+Note: Some retrieved memories mention tools that are currently unavailable. Treat them as history or debugging context, not active capabilities.
+```
+
+For unrelated queries, those same memories should be suppressed or demoted so the model does not casually offer the disabled capability.
+
+### Intel Boost Interaction
+
+Intel rows currently get extra retrieval strength because curated project knowledge is often valuable. This is good, but a disabled tool should add a counterweight:
+
+```text
+final_score = semantic_score + intel_boost - disabled_tool_demotion
+```
+
+Suggested starting behavior:
+
+- `requires_disabled_tool`: suppress
+- `about_disabled_tool`: subtract 0.20 from rank
+- `disabled_tool_warning`: no demotion, maybe small boost
+- explicit user mention of tool: no demotion, add unavailable-tool annotation
+
+This keeps `intel/samantha.md` from appearing in ordinary Jarvis-app chat while still allowing it in Samantha-specific troubleshooting.
+
+### Prompt Annotation Option
+
+A softer alternative is to keep the memory but label it:
+
+```text
+- Samantha integration note ... (related_tool=samantha, tool_status=disabled, use_as=historical_context)
+```
+
+This is safer than silent injection, but it still spends context tokens and relies on the model obeying the label. It is best for explicit disabled-tool discussions, not general chat.
+
+### Proposed Config
+
+```bash
+# Profile-aware auto-memory filtering
+AUTO_MEMORY_FILTER_DISABLED_TOOLS=true
+
+# If true, suppress memories that appear to require disabled tools.
+# If false, annotate/demote instead.
+AUTO_MEMORY_DISABLED_TOOL_STRICT=true
+
+# Optional: allow historical memories about disabled tools only when user names the tool.
+AUTO_MEMORY_DISABLED_TOOL_REQUIRE_EXPLICIT=true
+```
+
+Start with one real flag (`AUTO_MEMORY_FILTER_DISABLED_TOOLS=true`) and keep the others as design options until behavior is proven.
+
+### Implementation Sketch
+
+1. Pass `available_tool_names` into `_get_relevant_memories(transcript, available_tools=None)`.
+2. Build `unavailable_tools` from `tool_definitions`.
+3. Add helper: `_classify_memory_runtime_fit(memory, unavailable_tools, transcript)`.
+4. Apply classification after candidate retrieval but before final sort/top-N selection.
+5. Record debug metadata when filtering happens:
+
+```json
+{
+  "event": "auto_memory_filtered",
+  "memory_key": "What Samantha Can Do note",
+  "related_tool": "samantha",
+  "classification": "about_disabled_tool",
+  "action": "demoted",
+  "active_profile": "offline"
+}
+```
+
+### Open Questions
+
+- Should `intel/<tool>.md` automatically imply `related_tools=[tool]`, or should ingestion write that metadata?
+- Should old `user_conversation` memories be backfilled with `related_tools` when they mention exact tool names?
+- Should disabled-tool memories be visible in the Intelligence UI with a small “runtime gated” hint?
+- Should guard behavior differ for local/offline profiles versus a tool disabled directly in `.tool.json`?
+
+### Recommendation
+
+Implement a metadata-first, runtime-only filter. Do not edit memory enabled state when profiles change.
+
+Initial practical behavior:
+
+- Always allow pinned preferences.
+- Suppress memories with `requires_enabled_tools` that are unavailable.
+- Demote exact-name/source matches for disabled tools.
+- Allow disabled-tool memories when the user explicitly asks about that tool.
+- Annotate allowed disabled-tool memories as historical/debug context.
+
+This closes the “disabled capability leaks into auto-memory context” gap without stripping useful project history.
 
 ---
 
@@ -1500,4 +1723,3 @@ Output what the user NEEDS to know, not everything you CAN fetch.
 **Document Version:** 2.0  
 **Last Updated:** 2026-02-02  
 **Status:** Phases 3, 4, 7 built but underutilized. Phases 8-10 brainstorming.
-
