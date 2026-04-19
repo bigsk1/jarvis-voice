@@ -428,6 +428,7 @@ jarvis-voice/
 │   ├── calculator.py         # Advanced math
 │   ├── weather.py            # Weather forecasts
 │   ├── crawl_url.py          # Web crawling (Crawl4AI)
+│   ├── supa_crawl_knowledge.py  # Supa-Crawl-Chat indexed corpus (read-only API)
 │   ├── screenshot_url.py     # Website screenshots
 │   ├── upload_cloudflare.py  # Cloudflare R2/CDN upload
 │   ├── remember.py / recall.py / forget.py  # Memory tools
@@ -779,6 +780,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `youtube_video` - **YouTube download**: Download videos or audio-only via yt-dlp, save to stash
 - `bookmark_search` - **Firefox bookmarks**: Search bookmark export (HTML) by keyword, tags, folders, domains (`*` in Web UI)
 - `crawl_url` - **Web scraping**: Crawl4AI to extract markdown from any webpage (stealth mode, JS wait)
+- `supa_crawl_knowledge` - **Supa-Crawl-Chat corpus**: read-only search and site/page inspection over your self-hosted Supabase/pgvector index (configure `SUPA_CRAWL_CHAT_URL`; optional API auth via `SUPA_API_KEY` / `SUPA_API_KEY_STYLE`)
 - `brave_llm_context` - **Brave LLM Context API**: compact source snippets for LLM grounding (retrieval/context, not a final-answer generator)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 - `serpapi_search` - **SerpApi search**: Engine-based search (Amazon listings, Amazon product ASIN lookup, and other SerpApi engines)

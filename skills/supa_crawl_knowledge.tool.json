@@ -1,0 +1,114 @@
+{
+  "enabled": true,
+  "name": "supa_crawl_knowledge",
+  "description": "Search and inspect the persistent Supa-Crawl-Chat knowledge base (Supabase/pgvector). Use for semantic search over already-crawled sites, listing indexed sites, crawl status, stored pages/chunks, and corpus health. Complements crawl_url (live pages) and brave_search_llm_context (web). Brave-augmented RAG chat lives in Supa-Crawl-Chat's own /api/chat UI, not here—this tool only calls read-only HTTP APIs. Does not start crawls or mutate data.",
+  "script": "supa_crawl_knowledge.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "list_sites",
+          "site",
+          "site_status",
+          "site_pages",
+          "page",
+          "page_chunks",
+          "health",
+          "crawl_activity"
+        ],
+        "description": "Operation: search (default), list_sites, site (metadata for one site), site_status, site_pages, page, page_chunks, health (corpus stats), crawl_activity (all sites + job summary).",
+        "default": "search"
+      },
+      "query": {
+        "type": "string",
+        "description": "Search query for action=search."
+      },
+      "threshold": {
+        "type": "number",
+        "description": "Similarity threshold for semantic search, 0-1. Lower broadens results. Default 0.3.",
+        "default": 0.3
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Max results: search up to 100; list_sites cap of sites returned up to 100; site_pages up to 1000.",
+        "default": 10
+      },
+      "text_only": {
+        "type": "boolean",
+        "description": "For action=search, keyword/text search instead of embeddings.",
+        "default": false
+      },
+      "site_id": {
+        "type": "integer",
+        "description": "Filter search by site, or required for site/site_status/site_pages."
+      },
+      "site_name": {
+        "type": "string",
+        "description": "For action=search: optional site name or URL substring filter (API query param site_name)."
+      },
+      "after": {
+        "type": "string",
+        "description": "For action=search: ISO datetime; only results with crawled_at after this when metadata exists."
+      },
+      "include_search_content": {
+        "type": "boolean",
+        "description": "For action=search: include full text content per hit (larger payload). Default false.",
+        "default": false
+      },
+      "search_content_chars": {
+        "type": "integer",
+        "description": "For action=search with include_search_content: max characters per result (API default 2000, max 20000 here).",
+        "default": 2000
+      },
+      "dedupe": {
+        "type": "boolean",
+        "description": "For action=search: one best hit per source URL (API default true).",
+        "default": true
+      },
+      "page_id": {
+        "type": "integer",
+        "description": "Required for page/page_chunks."
+      },
+      "include_chunks": {
+        "type": "boolean",
+        "description": "For list_sites/site_pages, include chunk rows in listing.",
+        "default": false
+      },
+      "pages_offset": {
+        "type": "integer",
+        "description": "For site_pages: pagination offset.",
+        "default": 0
+      },
+      "include_pages_content": {
+        "type": "boolean",
+        "description": "For site_pages: include page body in list (larger). Default false.",
+        "default": false
+      },
+      "pages_list_content_chars": {
+        "type": "integer",
+        "description": "For site_pages with include_pages_content: trim each page body (API max 20000).",
+        "default": 1000
+      },
+      "content_chars": {
+        "type": "integer",
+        "description": "For page/page_chunks: max content characters per item. Default 8000 for page, 4000 for chunks. Max 20000.",
+        "default": 8000
+      },
+      "base_url": {
+        "type": "string",
+        "description": "Override Supa-Crawl-Chat base URL. Otherwise SUPA_CRAWL_CHAT_URL or http://localhost:8001."
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}
