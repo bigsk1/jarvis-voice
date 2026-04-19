@@ -72,6 +72,9 @@
   - `screenshot_url` - Full-page capture + vision AI analysis
   - Bypasses anti-bot measures via screenshot + vision
   - Deep crawling, LLM extraction, PDF generation (future)
+- **[tools/supa_crawl_knowledge/README.md](tools/supa_crawl_knowledge/README.md)** - 📚 **Supa-Crawl-Knowledge Tool**
+  - Read-only access to your Supa-Crawl-Chat corpus
+  - Search, site/page inspection, page chunks, auth examples, and multi-tool follow-up prompts
 
 ### System Architecture
 - **Tool system** - Located in `skills/` directory with JSON schemas

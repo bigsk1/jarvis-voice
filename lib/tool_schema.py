@@ -259,9 +259,22 @@ Parameters:
         script_name = data.get("script", f"{data['name']}.py")
         script_path = str(schema_dir / script_name)
         
+        raw_description = data.get("description") or ""
+        complementary = data.get("complementary_tools") or data.get("pairs_well_with")
+        description = raw_description
+        if complementary and isinstance(complementary, list):
+            names = [str(x).strip() for x in complementary if str(x).strip()]
+            if names:
+                description = (
+                    f"{raw_description}\n\n"
+                    "Follow-up tools when the user wants hits saved, summarized, or packaged "
+                    "(only call those that exist in the active tool list / profile): "
+                    f"{', '.join(names)}."
+                )
+
         return cls(
             name=data["name"],
-            description=data["description"],
+            description=description,
             parameters=data.get("parameters", {"type": "object", "properties": {}}),
             script_path=script_path,
             permissions=data.get("permissions", None),
