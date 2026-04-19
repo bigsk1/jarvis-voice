@@ -99,7 +99,7 @@
       },
       "pages_list_content_chars": {
         "type": "integer",
-        "description": "For site_pages with include_pages_content=true: trim each page body (API default 10K, max 20000).",
+        "description": "For site_pages with include_pages_content=true: max characters per listed page body (same role as search_content_chars for search full mode; API default 10K, max 20000).",
         "default": 10000
       },
       "content_chars": {
