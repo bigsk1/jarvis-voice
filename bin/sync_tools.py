@@ -11,6 +11,8 @@ Handles:
 - Skipping unchanged tools via embedding_input_hash (unless --force)
 
 Usage:
+    source "$HOME/jarvis-venv/bin/activate"
+
     ./bin/sync_tools.py cloud
         Update data/jarvis_memory.db tool_definitions (OpenAI-class embeddings for cloud mode).
 
@@ -32,8 +34,51 @@ import os
 import json
 from pathlib import Path
 
-# Add lib to path
+# Add lib to path early so the venv guard can use shared path helpers while
+# still running before dependency-sensitive Tool RAG imports.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from paths import get_user_home
+
+
+def _ensure_jarvis_venv() -> None:
+    """
+    Refuse to run outside the Jarvis virtual environment.
+
+    Tool embeddings are dependency-sensitive: running this script with system
+    Python can create hash-matched fallback embeddings that future syncs skip.
+    Fail early so a bad interpreter cannot poison Tool RAG state.
+    """
+    expected_venv = Path(
+        os.environ.get("JARVIS_VENV", str(get_user_home() / "jarvis-venv"))
+    ).expanduser().resolve()
+
+    active_venv = os.environ.get("VIRTUAL_ENV")
+    executable_path = Path(sys.executable).expanduser().resolve()
+    prefix_path = Path(sys.prefix).expanduser().resolve()
+
+    in_expected_venv = prefix_path == expected_venv or executable_path.is_relative_to(expected_venv)
+
+    if in_expected_venv:
+        return
+
+    print("❌ Refusing to sync Tool RAG outside the Jarvis virtual environment.", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Why: running sync_tools.py with system Python can generate fallback", file=sys.stderr)
+    print("embeddings, then embedding_input_hash can make later syncs skip the bad row.", file=sys.stderr)
+    print("", file=sys.stderr)
+    print(f"Expected venv: {expected_venv}", file=sys.stderr)
+    print(f"Active VIRTUAL_ENV: {active_venv or '(not set)'}", file=sys.stderr)
+    print(f"Python executable: {sys.executable}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Run:", file=sys.stderr)
+    print('  source "$HOME/jarvis-venv/bin/activate"', file=sys.stderr)
+    print('  # or, if JARVIS_VENV is customized: source "$JARVIS_VENV/bin/activate"', file=sys.stderr)
+    print("  ./bin/sync_tools.py cloud   # or local", file=sys.stderr)
+    sys.exit(2)
+
+
+_ensure_jarvis_venv()
+
 from tool_schema import ToolRegistry
 from memory_db import get_memory_db
 from config_loader import load_config
@@ -213,4 +258,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
