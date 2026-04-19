@@ -5,6 +5,10 @@ Jarvis Skill: Supa-Crawl-Chat Knowledge
 Read-only access to a Supa-Crawl-Chat API instance. This is intentionally
 separate from crawl_url: crawl_url fetches live pages, while this searches and
 inspects the persistent Supabase/pgvector corpus maintained by Supa-Crawl-Chat.
+
+Chunk lists: use action page_chunks, which calls GET /api/pages/{page_id}/chunks
+(all chunk rows for that parent page).
+
 See: https://github.com/bigsk1/supa-crawl-chat
 """
 from __future__ import annotations
@@ -29,6 +33,12 @@ MAX_LIST_SITES_RETURN = 100
 MAX_CONTENT_CHARS = 20_000
 # Search can request up to 50k per result server-side; cap for LLM payloads.
 MAX_SEARCH_CONTENT_CHARS = 20_000
+# API defaults for full-body truncation (aligned with Supa-Crawl-Chat).
+DEFAULT_SEARCH_CONTENT_CHARS = 10_000
+DEFAULT_PAGES_LIST_CONTENT_CHARS = 10_000
+# Leading markdown preview when include_content=false (API preview_chars, 0–5000).
+DEFAULT_PREVIEW_CHARS = 500
+MAX_PREVIEW_CHARS = 5000
 
 
 def supa_api_headers() -> dict[str, str]:
@@ -114,6 +124,7 @@ def compact_result(
     max_snippet_chars: int = 1200,
     max_summary_chars: int = 1500,
     max_content_chars: int | None = None,
+    max_preview_chars: int | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": result.get("id"),
@@ -133,6 +144,13 @@ def compact_result(
         "summary": trim_text(result.get("summary"), max_summary_chars),
         "metadata": compact_metadata(result.get("metadata")),
     }
+    preview = result.get("content_preview")
+    if preview is not None:
+        lim = max_preview_chars if max_preview_chars is not None else MAX_PREVIEW_CHARS
+        if lim <= 0:
+            out["content_preview"] = ""
+        else:
+            out["content_preview"] = trim_text(preview, lim)
     if max_content_chars is not None and result.get("content") is not None:
         out["content"] = trim_text(result.get("content"), max_content_chars)
     return out
@@ -172,9 +190,15 @@ def action_search(base_url: str, input_data: dict[str, Any]) -> tuple[str, dict[
     include_content = parse_bool(input_data.get("include_search_content"), False)
     search_content_chars = parse_int(
         input_data.get("search_content_chars"),
-        2000,
+        DEFAULT_SEARCH_CONTENT_CHARS,
         minimum=0,
         maximum=MAX_SEARCH_CONTENT_CHARS,
+    )
+    search_preview_chars = parse_int(
+        input_data.get("search_preview_chars"),
+        DEFAULT_PREVIEW_CHARS,
+        minimum=0,
+        maximum=MAX_PREVIEW_CHARS,
     )
     dedupe = parse_bool(input_data.get("dedupe"), True)
 
@@ -188,6 +212,7 @@ def action_search(base_url: str, input_data: dict[str, Any]) -> tuple[str, dict[
         "after": after,
         "include_content": include_content,
         "content_chars": search_content_chars,
+        "preview_chars": search_preview_chars,
         "dedupe": dedupe,
     }
 
@@ -197,6 +222,7 @@ def action_search(base_url: str, input_data: dict[str, Any]) -> tuple[str, dict[
         compact_result(
             item,
             max_content_chars=search_content_chars if include_content else None,
+            max_preview_chars=search_preview_chars if not include_content else MAX_PREVIEW_CHARS,
         )
         for item in payload.get("results", [])
     ]
@@ -254,9 +280,15 @@ def action_site_pages(base_url: str, input_data: dict[str, Any]) -> tuple[str, d
     include_content = parse_bool(input_data.get("include_pages_content"), False)
     list_content_chars = parse_int(
         input_data.get("pages_list_content_chars"),
-        1000,
+        DEFAULT_PAGES_LIST_CONTENT_CHARS,
         minimum=0,
         maximum=20_000,
+    )
+    pages_preview_chars = parse_int(
+        input_data.get("pages_preview_chars"),
+        DEFAULT_PREVIEW_CHARS,
+        minimum=0,
+        maximum=MAX_PREVIEW_CHARS,
     )
     payload = request_json(base_url, f"/api/sites/{site_id}/pages", {
         "include_chunks": include_chunks,
@@ -264,11 +296,12 @@ def action_site_pages(base_url: str, input_data: dict[str, Any]) -> tuple[str, d
         "offset": offset,
         "include_content": include_content,
         "content_chars": list_content_chars,
+        "preview_chars": pages_preview_chars,
     })
     pages = payload.get("pages", [])
     if not include_content:
         for p in pages:
-            if isinstance(p, dict) and "content" in p:
+            if isinstance(p, dict):
                 p.pop("content", None)
     else:
         for p in pages:

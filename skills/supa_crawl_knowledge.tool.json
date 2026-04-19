@@ -19,7 +19,7 @@
           "health",
           "crawl_activity"
         ],
-        "description": "Operation: search (default), list_sites, site (metadata for one site), site_status, site_pages, page, page_chunks, health (corpus stats), crawl_activity (all sites + job summary).",
+        "description": "Operation: search (default), list_sites, site (metadata for one site), site_status, site_pages, page, page_chunks (GET /api/pages/{page_id}/chunks — all chunk rows for that page), health (corpus stats), crawl_activity (all sites + job summary).",
         "default": "search"
       },
       "query": {
@@ -55,13 +55,18 @@
       },
       "include_search_content": {
         "type": "boolean",
-        "description": "For action=search: include full text content per hit (larger payload). Default false.",
+        "description": "For action=search: include full body per hit (larger). When false, results include content_preview (leading markdown) instead.",
         "default": false
+      },
+      "search_preview_chars": {
+        "type": "integer",
+        "description": "For action=search when include_search_content=false only: API preview_chars for content_preview (leading markdown, 0–5000). For longer inline snippets without full body, raise this (e.g. 1000). When include_search_content=true, use search_content_chars instead—preview_chars is not the main control.",
+        "default": 500
       },
       "search_content_chars": {
         "type": "integer",
-        "description": "For action=search with include_search_content: max characters per result (API default 2000, max 20000 here).",
-        "default": 2000
+        "description": "For action=search when include_search_content=true: max characters of full content per hit (default 10K, max 20000).",
+        "default": 10000
       },
       "dedupe": {
         "type": "boolean",
@@ -70,7 +75,7 @@
       },
       "page_id": {
         "type": "integer",
-        "description": "Required for page/page_chunks."
+        "description": "Required for page or page_chunks. action=page always works for that row's stored body. action=page_chunks lists child chunk rows for a parent page—if search returns a chunk hit (is_chunk true), use parent_id as page_id for page_chunks, not the chunk row's id (chunk rows often return 0 children)."
       },
       "include_chunks": {
         "type": "boolean",
@@ -84,13 +89,18 @@
       },
       "include_pages_content": {
         "type": "boolean",
-        "description": "For site_pages: include page body in list (larger). Default false.",
+        "description": "For site_pages: include full page body in list (larger). When false, each row has content_preview (leading markdown) without loading full bodies.",
         "default": false
+      },
+      "pages_preview_chars": {
+        "type": "integer",
+        "description": "For site_pages when include_pages_content=false: API preview_chars for content_preview (0–5000, default 500).",
+        "default": 500
       },
       "pages_list_content_chars": {
         "type": "integer",
-        "description": "For site_pages with include_pages_content: trim each page body (API max 20000).",
-        "default": 1000
+        "description": "For site_pages with include_pages_content=true: trim each page body (API default 10K, max 20000).",
+        "default": 10000
       },
       "content_chars": {
         "type": "integer",

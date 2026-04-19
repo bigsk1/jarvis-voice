@@ -2822,6 +2822,10 @@ Previous structured data:
             'docker_control': ['container', 'status'],
             'ssh_remote': ['host'],
             'status_recap': ['stash_ref', 'canvas_id'],
+            'supa_crawl_knowledge': [
+                'action', 'query', 'site_id', 'page_id', 'base_url', 'count',
+                'site_name', 'threshold', 'dedupe',
+            ],
         }
         
         for key, value in data.items():
@@ -3022,7 +3026,13 @@ Previous structured data:
                 not extracted.get('candidates')
                 and key not in ('serpapi_search', 'serpapi_youtube_search', 'serpapi_yelp_search')
             ):
-                results = value.get('results') or value.get('top_results') or value.get('items')
+                results = (
+                    value.get('results')
+                    or value.get('top_results')
+                    or value.get('items')
+                    or value.get('pages')
+                    or value.get('chunks')
+                )
                 if isinstance(results, list) and results:
                     first = results[0] if isinstance(results[0], dict) else {}
                     if isinstance(first, dict):
