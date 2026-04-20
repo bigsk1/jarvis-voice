@@ -299,6 +299,17 @@ async function loadScheduledTasks() {
 // Rendering
 // =========================================================================
 
+/**
+ * Intel ingest stores per-file MD5 fingerprints (keys intel_hash_*.md) with no embedding on purpose.
+ * They must not show "missing embedding" warnings or Re-embed — not a semantic memory row.
+ */
+function isIntelIngestHashRecord(memory) {
+  if (!memory) return false;
+  const cat = (memory.category || '').toLowerCase();
+  const key = memory.key || '';
+  return cat === 'system' && key.startsWith('intel_hash_');
+}
+
 function renderMemories() {
   const container = document.getElementById('memoryList');
   
@@ -347,11 +358,15 @@ function renderMemoryCard(memory) {
           <span title="Importance"><span class="importance-badge ${importanceClass}">${memory.importance}</span></span>
           <span title="Size: ${valueLength} chars">${sizeIndicator}</span>
           <span title="Updated">${updatedDate}</span>
-          ${memory.has_embedding ? '<span title="Has embedding - semantic search enabled">🔮</span>' : '<span title="No embedding - keyword search only">⚪</span>'}
+          ${memory.has_embedding
+            ? '<span title="Has embedding - semantic search enabled">🔮</span>'
+            : isIntelIngestHashRecord(memory)
+              ? '<span title="Intel ingest file hash (not embedded by design)">📌</span>'
+              : '<span title="No embedding - keyword search only">⚪</span>'}
           ${healthStatus.icon ? `<span title="${healthStatus.message}">${healthStatus.icon}</span>` : ''}
         </div>
         <div class="memory-actions">
-          ${!memory.has_embedding ? `<button class="btn btn-icon" onclick="event.stopPropagation(); reembedMemory(${memory.id})" title="Generate embedding">🔮</button>` : ''}
+          ${!memory.has_embedding && !isIntelIngestHashRecord(memory) ? `<button class="btn btn-icon" onclick="event.stopPropagation(); reembedMemory(${memory.id})" title="Generate embedding">🔮</button>` : ''}
           <button class="btn btn-icon" onclick="event.stopPropagation(); editMemory(${memory.id})" title="Edit">✏️</button>
           <button class="btn btn-icon" onclick="event.stopPropagation(); confirmDeleteMemory(${memory.id})" title="Delete">🗑️</button>
         </div>
@@ -1098,7 +1113,13 @@ async function viewMemory(id) {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-sm);">
           <div><strong>Importance:</strong> ${memory.importance}/10</div>
           <div><strong>Size:</strong> ${valueLength} chars</div>
-          <div><strong>Embedding:</strong> ${memory.has_embedding ? '✅ Yes' : '❌ No'}</div>
+          <div><strong>Embedding:</strong> ${
+            memory.has_embedding
+              ? '✅ Yes'
+              : isIntelIngestHashRecord(memory)
+                ? '➖ Skipped (intel file fingerprint)'
+                : '❌ No'
+          }</div>
           <div><strong>Source:</strong> ${escapeHtml(memory.source || 'Unknown')}</div>
         </div>
       </div>
@@ -1113,15 +1134,21 @@ async function viewMemory(id) {
         <div class="code-block">${JSON.stringify(memory.metadata, null, 2)}</div>
       </div>
       ` : ''}
-      ${!memory.has_embedding ? `
+      ${!memory.has_embedding && !isIntelIngestHashRecord(memory) ? `
       <div class="form-group" style="background: var(--warning-bg); padding: var(--space-md); border-radius: var(--radius-md); border-left: 3px solid var(--warning);">
         <strong>⚠️ No Embedding</strong><br>
         This memory won't appear in semantic search. Click "🔮 Re-embed" to generate an embedding.
       </div>
       ` : ''}
+      ${!memory.has_embedding && isIntelIngestHashRecord(memory) ? `
+      <div class="form-group" style="background: var(--bg-tertiary); padding: var(--space-md); border-radius: var(--radius-md); border-left: 3px solid var(--border-secondary);">
+        <strong>Intel ingest fingerprint</strong><br>
+        This row stores the MD5 of an intel file so re-ingest can skip unchanged files. It is not meant to be embedded or appear in semantic search.
+      </div>
+      ` : ''}
       <div class="form-group" style="margin-top: var(--space-lg); display: flex; flex-wrap: wrap; gap: var(--space-sm);">
         <button class="btn btn-primary" onclick="editMemory(${memory.id}); closeAllModals();">✏️ Edit</button>
-        <button class="btn btn-secondary" onclick="reembedMemory(${memory.id});" title="Re-generate embedding for semantic search">🔮 Re-embed</button>
+        ${!isIntelIngestHashRecord(memory) ? `<button class="btn btn-secondary" onclick="reembedMemory(${memory.id});" title="Re-generate embedding for semantic search">🔮 Re-embed</button>` : ''}
         <button class="btn btn-danger" onclick="confirmDeleteMemory(${memory.id}); closeAllModals();">🗑️ Delete</button>
       </div>
     `;

@@ -2721,7 +2721,6 @@ Your BEST EFFORT response:"""
 
         return "\n".join(context_parts)
 
-    # TODO: What other tools need to be added to this list?
     def _tool_context_max_chars(self, tool_name: str) -> int:
         """Return the LLM-context preview budget for a tool result."""
         lowered = (tool_name or "").lower()
@@ -2729,11 +2728,16 @@ Your BEST EFFORT response:"""
             return 4500
         if "search" in lowered or "fetch" in lowered:
             return 4000
+        # No "search" in name but same class of payload as search-tier tools.
+        if tool_name == "semantic_recall" or tool_name == "crawl_url":
+            return 4000
         if tool_name == "status_recap":
             return 4000
         # Supa-Crawl-Chat corpus: structured search/pages/chunks; budget between search-tier and raw defaults.
         if tool_name == "supa_crawl_knowledge" or "supa_crawl" in lowered:
             return 6500
+        if tool_name == "brave_llm_context":
+            return 4000
         return 2000
 
     def _truncate_preview_text(self, value: Any, max_chars: int) -> str:
