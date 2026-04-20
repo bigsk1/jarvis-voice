@@ -77,6 +77,68 @@ class CommandSystem {
     const q = query.toLowerCase();
     return lowered.startsWith(q) || lowered.split(/[_-]/).some(part => part.startsWith(q));
   }
+
+  getTool(name) {
+    const tool = this.tools?.[name];
+    if (!tool || tool.blocked || tool.enabled === false) return null;
+    return tool;
+  }
+
+  getAmbientToolSuggestions(text, selectedNames = [], limit = 3) {
+    const cleanText = (text || '').trim();
+    if (cleanText.length < 8) return [];
+
+    const selected = new Set(selectedNames || []);
+    const stopwords = new Set([
+      'about', 'after', 'again', 'also', 'and', 'are', 'can', 'could', 'for',
+      'from', 'have', 'help', 'how', 'into', 'just', 'like', 'make', 'need',
+      'please', 'show', 'that', 'the', 'this', 'use', 'want', 'what', 'when',
+      'where', 'with', 'would', 'you'
+    ]);
+    const normalized = cleanText.toLowerCase();
+    const tokens = [...new Set((normalized.match(/[a-z0-9]{3,}/g) || [])
+      .filter(token => !stopwords.has(token)))];
+    if (tokens.length === 0) return [];
+
+    return Object.entries(this.tools || {})
+      .filter(([name, tool]) => !selected.has(name) && tool && tool.enabled !== false && !tool.blocked)
+      .map(([name, tool]) => {
+        const nameLower = name.toLowerCase();
+        const nameWords = nameLower.split(/[_-]+/).filter(Boolean);
+        const description = (tool.description || '').toLowerCase();
+        const source = (tool.source || '').toLowerCase();
+        const haystack = `${nameWords.join(' ')} ${description} ${source}`;
+        let score = 0;
+
+        if (normalized.includes(nameLower)) score += 12;
+        for (const word of nameWords) {
+          if (word.length >= 3 && normalized.includes(word)) score += 4;
+        }
+
+        for (const token of tokens) {
+          if (nameWords.some(word => word.startsWith(token) || token.startsWith(word))) {
+            score += 4;
+          } else if (description.includes(token)) {
+            score += 2;
+          } else if (haystack.includes(token)) {
+            score += 1;
+          }
+        }
+
+        return {
+          type: 'tool',
+          name,
+          prefix: '#',
+          icon: tool.source === 'mcp' ? '🔌' : '🛠️',
+          description: tool.description || `Prefer ${name} for this request`,
+          source: tool.source || 'local',
+          score
+        };
+      })
+      .filter(item => item.score >= 3)
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+      .slice(0, limit);
+  }
   
   /**
    * Get autocomplete suggestions for input
@@ -333,6 +395,9 @@ class ChatUI {
     this.autocompleteEl = null;
     this.selectedSuggestionIndex = -1;
     this.autocompleteContext = null;
+    this.toolHintsContainer = document.getElementById('toolHintsContainer');
+    this.ambientToolSuggestionsEl = document.getElementById('ambientToolSuggestions');
+    this.selectedToolHints = [];
     
     // Token/cost tracking state
     this.tokenCounterEl = document.getElementById('tokenCounter');
@@ -352,6 +417,8 @@ class ChatUI {
     this._setupFileConversion();
     this._setupAutocomplete();
     this._setupEnhanceButton();
+    this._renderToolHintChips();
+    this._hideAmbientToolSuggestions();
     this.refreshContextWindow();  // Get actual context window for current model
   }
   
@@ -506,6 +573,7 @@ class ChatUI {
     this.inputField.addEventListener('input', () => {
       Utils.autoResize(this.inputField);
       this._checkAutocomplete();
+      this._updateAmbientToolSuggestions();
     });
   }
   
@@ -548,6 +616,130 @@ class ChatUI {
     
     console.log('[Chat] ✨ Enhance button ready');
   }
+
+  _combineToolHints(inlineHints = []) {
+    const combined = [];
+    for (const name of [...this.selectedToolHints, ...(inlineHints || [])]) {
+      if (combined.length >= window.commandSystem.maxToolHints) break;
+      if (combined.includes(name)) continue;
+      if (!window.commandSystem.getTool(name)) continue;
+      combined.push(name);
+    }
+    return combined;
+  }
+
+  _escapeAttr(value) {
+    return Utils.escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  _addToolHint(name, options = {}) {
+    if (!name || !window.commandSystem.getTool(name)) return false;
+    if (this.selectedToolHints.includes(name)) {
+      if (options.focus !== false) this.inputField.focus();
+      return true;
+    }
+    if (this.selectedToolHints.length >= window.commandSystem.maxToolHints) {
+      Utils.toast(`Tool hints are capped at ${window.commandSystem.maxToolHints}`, 'info');
+      return false;
+    }
+
+    this.selectedToolHints.push(name);
+    this._renderToolHintChips();
+    this._updateAmbientToolSuggestions();
+    if (options.focus !== false) this.inputField.focus();
+    return true;
+  }
+
+  _removeToolHint(name) {
+    this.selectedToolHints = this.selectedToolHints.filter(item => item !== name);
+    this._renderToolHintChips();
+    this._updateAmbientToolSuggestions();
+    this.inputField.focus();
+  }
+
+  _renderToolHintChips() {
+    if (!this.toolHintsContainer) return;
+
+    if (this.selectedToolHints.length === 0) {
+      this.toolHintsContainer.innerHTML = '';
+      this.toolHintsContainer.style.display = 'none';
+      return;
+    }
+
+    const chips = this.selectedToolHints.map(name => `
+      <span class="tool-hint-chip" title="Prefer ${this._escapeAttr(name)} for this request">
+        <span class="tool-hint-name">#${Utils.escapeHtml(name)}</span>
+        <button type="button" class="tool-hint-remove" data-tool="${this._escapeAttr(name)}" title="Remove #${this._escapeAttr(name)}">x</button>
+      </span>
+    `).join('');
+
+    this.toolHintsContainer.innerHTML = `
+      <span class="tool-hint-label">Tool hints</span>
+      ${chips}
+    `;
+    this.toolHintsContainer.style.display = 'flex';
+
+    this.toolHintsContainer.querySelectorAll('.tool-hint-remove').forEach(button => {
+      button.addEventListener('click', () => this._removeToolHint(button.dataset.tool));
+    });
+  }
+
+  _hideAmbientToolSuggestions() {
+    if (!this.ambientToolSuggestionsEl) return;
+    this.ambientToolSuggestionsEl.innerHTML = '';
+    this.ambientToolSuggestionsEl.style.display = 'none';
+  }
+
+  _updateAmbientToolSuggestions() {
+    if (!this.ambientToolSuggestionsEl) return;
+    if (this.isProcessing) {
+      this._hideAmbientToolSuggestions();
+      return;
+    }
+    if (this.autocompleteEl && this.autocompleteEl.style.display !== 'none') {
+      this._hideAmbientToolSuggestions();
+      return;
+    }
+
+    const input = this.inputField.value || '';
+    const trimmed = input.trim();
+    if (trimmed.length < 8 || /^[\/@*]/.test(trimmed)) {
+      this._hideAmbientToolSuggestions();
+      return;
+    }
+
+    const cursor = this.inputField.selectionStart ?? input.length;
+    const activeToolToken = input.slice(0, cursor).match(/(^|\s)#([A-Za-z0-9_-]*)$/);
+    if (activeToolToken) {
+      this._hideAmbientToolSuggestions();
+      return;
+    }
+
+    const parsed = window.commandSystem.parseInput(input);
+    const selectedNames = this._combineToolHints(parsed.toolHints || []);
+    const suggestionText = parsed.message || trimmed;
+    const suggestions = window.commandSystem.getAmbientToolSuggestions(suggestionText, selectedNames, 3);
+    if (suggestions.length === 0) {
+      this._hideAmbientToolSuggestions();
+      return;
+    }
+
+    this.ambientToolSuggestionsEl.innerHTML = `
+      <span class="ambient-suggestion-label">Suggested tools</span>
+      ${suggestions.map(tool => `
+        <button type="button" class="ambient-tool-chip" data-tool="${this._escapeAttr(tool.name)}" title="Add #${this._escapeAttr(tool.name)}">
+          #${Utils.escapeHtml(tool.name)}
+        </button>
+      `).join('')}
+    `;
+    this.ambientToolSuggestionsEl.style.display = 'flex';
+
+    this.ambientToolSuggestionsEl.querySelectorAll('.ambient-tool-chip').forEach(button => {
+      button.addEventListener('click', () => {
+        this._addToolHint(button.dataset.tool);
+      });
+    });
+  }
   
   /**
    * ✨ Enhance the current input with AI
@@ -568,7 +760,7 @@ class ChatUI {
     }
 
     const parsedInput = window.commandSystem.parseInput(input);
-    const toolHints = parsedInput.toolHints || [];
+    const toolHints = this._combineToolHints(parsedInput.toolHints || []);
     const inputToEnhance = parsedInput.message || input;
 
     if (!inputToEnhance) {
@@ -594,12 +786,13 @@ class ChatUI {
       const data = await response.json();
       
       if (data.ok && data.enhanced) {
-        const preservedToolHints = toolHints.length > 0
-          ? `${toolHints.map(name => `#${name}`).join(' ')} `
-          : '';
-        // Replace input with enhanced version
-        this.inputField.value = `${preservedToolHints}${data.enhanced}`;
+        this.selectedToolHints = toolHints;
+        this._renderToolHintChips();
+
+        // Replace input with enhanced clean task text. Tool hints stay as chips.
+        this.inputField.value = data.enhanced;
         Utils.autoResize(this.inputField);
+        this._updateAmbientToolSuggestions();
         
         // Show success feedback
         Utils.toast('✨ Prompt enhanced!', 'success', 2000);
@@ -684,6 +877,7 @@ class ChatUI {
    */
   _showAutocomplete(suggestions) {
     this.selectedSuggestionIndex = -1;
+    this._hideAmbientToolSuggestions();
     
     const html = suggestions.map((s, i) => {
       // Build tooltip content for workflows
@@ -841,13 +1035,14 @@ class ChatUI {
       const { start, end } = this.autocompleteContext;
       const before = currentVal.slice(0, start);
       const after = currentVal.slice(end);
-      const insert = `#${name} `;
-      this.inputField.value = `${before}${insert}${after.replace(/^\s+/, '')}`;
-      const cursor = before.length + insert.length;
+      this.inputField.value = `${before}${after.replace(/^\s+/, '')}`.replace(/[ \t]{2,}/g, ' ');
+      const cursor = Math.min(before.length, this.inputField.value.length);
+      this._addToolHint(name, { focus: false });
       this.inputField.focus();
       this.inputField.setSelectionRange(cursor, cursor);
       Utils.autoResize(this.inputField);
       this._hideAutocomplete();
+      this._updateAmbientToolSuggestions();
       return;
     }
     
@@ -2211,9 +2406,10 @@ class ChatUI {
     let rawMessage = this.inputField.value.trim();
     const hasImage = this.attachedImage !== null;
     const hasFile = this.attachedFile !== null;
+    const hasSelectedToolHints = this.selectedToolHints.length > 0;
     
     // Need either message, image, or file
-    if (!rawMessage && !hasImage && !hasFile) return;
+    if (!rawMessage && !hasImage && !hasFile && !hasSelectedToolHints) return;
     if (this.isProcessing) return;
     
     // Check for --feedback flag in message
@@ -2234,7 +2430,8 @@ class ChatUI {
     
     // Parse workflows, prompts, and tool hints
     const parsed = window.commandSystem.parseInput(rawMessage);
-    if (!parsed.message && parsed.toolHints && parsed.toolHints.length > 0 && !hasImage && !hasFile) {
+    const toolHints = this._combineToolHints(parsed.toolHints || []);
+    if (!parsed.message && toolHints.length > 0 && !hasImage && !hasFile) {
       Utils.toast('Add a task after the tool hint', 'info');
       return;
     }
@@ -2242,8 +2439,12 @@ class ChatUI {
     // Build display message (show original with decorations, show feedback badge if enabled)
     let displayMessage = this.inputField.value.trim();  // Use original for display
     let activeBadge = '';
-    if (parsed.workflow || parsed.prompt || (parsed.toolHints && parsed.toolHints.length > 0)) {
-      activeBadge = window.commandSystem.getActiveDisplay(parsed);
+    const displayParsed = {
+      ...parsed,
+      toolHints
+    };
+    if (displayParsed.workflow || displayParsed.prompt || toolHints.length > 0) {
+      activeBadge = window.commandSystem.getActiveDisplay(displayParsed);
     }
     if (requestFeedback) {
       activeBadge += (activeBadge ? ' ' : '') + '<span class="badge badge-feedback">📊</span>';
@@ -2260,6 +2461,9 @@ class ChatUI {
     
     // Clear input
     this.inputField.value = '';
+    this.selectedToolHints = [];
+    this._renderToolHintChips();
+    this._hideAmbientToolSuggestions();
     Utils.autoResize(this.inputField);
     
     // Send via socket (include image data, prompt metadata, and feedback request)
@@ -2271,7 +2475,7 @@ class ChatUI {
     window.jarvisSocket.sendMessage(parsed.message, this.attachedImage, {
       system_instruction: parsed.instruction,
       prompt_name: parsed.prompt,
-      tool_hints: parsed.toolHints || []
+      tool_hints: toolHints
     }, requestFeedback, this.attachedFile);
     
     // Clear attachments after sending

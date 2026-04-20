@@ -156,12 +156,14 @@
               <button class="remove-image-btn" id="removeFileBtn" title="Remove file">&times;</button>
             </div>
           </div>
+          <div class="tool-hints-container" id="toolHintsContainer" style="display: none;"></div>
+          <div class="ambient-tool-suggestions" id="ambientToolSuggestions" style="display: none;"></div>
           
           <div class="chat-input-wrapper">
             <textarea 
               class="chat-input" 
               id="chatInput" 
-              placeholder="Use # for tool hints / for workflows and @ for prompts..."
+              placeholder="# tool hints / workflows and @ prompts"
               rows="1"
             ></textarea>
             <div class="input-actions">
@@ -926,7 +928,7 @@
                 <option value="square">Square (1:1)</option>
                 <option value="landscape">Landscape (16:9)</option>
                 <option value="portrait">Portrait (9:16)</option>
-                <option value="wide">Wide (21:9)</option>
+                <option value="wide">Wide / cinematic (16:9)</option>
                 <option value="4:3">4:3</option>
                 <option value="3:4">3:4</option>
                 <option value="3:2">3:2</option>

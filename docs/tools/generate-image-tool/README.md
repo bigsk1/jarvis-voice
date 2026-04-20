@@ -41,7 +41,7 @@ Image generation and editing tool for Jarvis. Supports text-to-image and image-t
 - Model: `grok-imagine-image` (configurable via `XAI_IMAGE_MODEL`)
 - Fast and cheap
 - Batch generation: 1-10 images per request (text-to-image only)
-- Aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 2:1, 1:2, 19.5:9, 9:19.5, 20:9, 9:20
+- Aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 19.5:9, 9:19.5. The `wide` alias maps to 16:9 because xAI rejects 21:9.
 - Generation API: `POST /v1/images/generations` (JSON body, base64 or URL response)
 - Editing API: `POST /v1/images/edits` -- separate endpoint from generation. The generations endpoint ignores images even if you pass one. Editing forces `n=1`.
 

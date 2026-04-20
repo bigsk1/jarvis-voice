@@ -43,6 +43,8 @@ GEMINI_ASPECT_RATIOS = {
     "landscape": "16:9",
     "portrait": "9:16",
     "wide": "21:9",
+    "cinematic": "16:9",
+    "widescreen": "16:9",
     "tall": "9:16",
     "4:3": "4:3",
     "3:4": "3:4",
@@ -64,6 +66,8 @@ OPENAI_SIZES = {
     "landscape": "1536x1024",
     "portrait": "1024x1536",
     "wide": "1536x1024",      # No ultra-wide, use landscape
+    "cinematic": "1536x1024",
+    "widescreen": "1536x1024",
     "tall": "1024x1536",
     "4:3": "1536x1024",       # Approximate
     "3:4": "1024x1536",       # Approximate
@@ -94,15 +98,24 @@ XAI_ASPECT_RATIOS = {
     "square": "1:1",
     "landscape": "16:9",
     "portrait": "9:16",
-    "wide": "21:9",
-    "tall": "9:21",
+    # xAI currently rejects 21:9. Treat "wide/cinematic" as standard widescreen.
+    "wide": "16:9",
+    "cinematic": "16:9",
+    "widescreen": "16:9",
+    "tall": "9:16",
     "4:3": "4:3",
     "3:4": "3:4",
     "2:3": "2:3",
     "3:2": "3:2",
+    "4:5": "3:4",
+    "5:4": "4:3",
     "16:9": "16:9",
     "9:16": "9:16",
-    "1:1": "1:1"
+    "1:1": "1:1",
+    "21:9": "16:9",
+    "9:21": "9:16",
+    "19.5:9": "19.5:9",
+    "9:19.5": "9:19.5"
 }
 
 # Shared image sizes
@@ -211,7 +224,8 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
         full_prompt += f". Do not include: {negative_prompt}"
     
     # Map aspect ratio
-    ar = XAI_ASPECT_RATIOS.get(aspect_ratio, XAI_ASPECT_RATIOS.get(aspect_ratio, "1:1"))
+    aspect_key = str(aspect_ratio or "square").strip().lower()
+    ar = XAI_ASPECT_RATIOS.get(aspect_key, "1:1")
     
     # Validate n (1-10), force n=1 when editing
     if reference_image:
@@ -349,7 +363,8 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
         full_prompt += f"\n\nUse this real-time data for accuracy:\n{context_data}"
     
     # Get aspect ratio
-    ar = GEMINI_ASPECT_RATIOS.get(aspect_ratio, GEMINI_ASPECT_RATIOS.get(aspect_ratio, "1:1"))
+    aspect_key = str(aspect_ratio or "square").strip().lower()
+    ar = GEMINI_ASPECT_RATIOS.get(aspect_key, "1:1")
     
     # Validate image size
     size = image_size.upper() if image_size.upper() in IMAGE_SIZES else "2K"
@@ -508,7 +523,8 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         full_prompt += f". Do not include: {negative_prompt}"
     
     # Map aspect ratio to OpenAI size
-    size = OPENAI_SIZES.get(aspect_ratio, OPENAI_SIZES.get(aspect_ratio, "1024x1024"))
+    aspect_key = str(aspect_ratio or "square").strip().lower()
+    size = OPENAI_SIZES.get(aspect_key, "1024x1024")
     
     # Map quality (handle both 1K/2K/4K and low/medium/high)
     quality_setting = OPENAI_QUALITY_MAP.get(quality.upper() if quality else "2K", 

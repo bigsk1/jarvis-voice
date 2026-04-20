@@ -1044,6 +1044,43 @@ This: Uses research methodology → Gathers comprehensive info → Saves to Canv
 
 ---
 
+### #Tool Hints
+
+Type a standalone `#` anywhere in the chat input to browse enabled, non-blocked tools. Tool hints are soft preferences for the current request; they do not force the route and they can be ignored when another tool is a better fit.
+
+Examples:
+
+```text
+#weather will it rain tonight?
+#crypto_price ethereum
+#supa_crawl_knowledge #canvas research this and save the useful parts
+```
+
+**Behavior:**
+- `#` autocomplete uses `/api/tools?summary=true&include_blocked=false`, so the list reflects enabled tools, web-blocked tools, MCP/database tools, and active tool profiles.
+- Unlike `/workflow` and `@prompt`, tool hints can appear more than once and can be inserted anywhere as standalone tokens.
+- Selecting a tool from `#` autocomplete turns it into a removable chip above the input. The raw `#partial` token is removed from the textarea so the task stays readable.
+- Typed or pasted `#tool_name` tokens still work as a plain-text fallback. The UI removes recognized tokens from the clean user query and sends canonical tool names as metadata.
+- Ambient tool suggestions may appear while typing a normal request. These are optional suggested chips based on the current text and the enabled tool registry; clicking one adds it as a selected tool hint.
+- Ambient suggestions are not `GHOST_TOOLS`. Ghost tools are environment/config tools included in tool RAG automatically; ambient suggestions are visible user choices and are only sent if clicked.
+- The server validates hints again, dedupes them, caps them at 5, and injects a compact context block:
+
+```text
+[CONTEXT - Tool preference for this request]
+
+Selected tool hints: crypto_price.
+Treat these as preferences, not requirements. Prefer them if they fit the task; ignore them if they do not fit; use additional tools naturally when needed.
+
+[END CONTEXT]
+
+User's request: ethereum
+```
+
+**Enhance compatibility:**
+The ✨ Enhance button preserves tool hints by enhancing only the clean task text, then keeping the selected hints as chips beside the rewritten input.
+
+---
+
 ### ✨ Enhance with AI
 
 The **✨ button** next to the chat input transforms rough input into an optimal prompt.
@@ -1072,6 +1109,7 @@ Replaces input field text
 - Does NOT go through orchestrator (no tool execution)
 - Only enhances text - the SEND goes through full orchestrator
 - Won't enhance if input starts with `/` or `@` (those are explicit)
+- Preserves `#tool` hints by stripping them before enhancement and keeping selected hints as chips afterward
 
 **API Endpoint:** `POST /api/enhance-prompt`
 
@@ -1341,7 +1379,8 @@ Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_EN
 - [x] **Safe URL downloads** - Uses stash_helper's safe_download + sanitize_filename
 - [x] **Slash commands** - `/canvas`, `/search`, `/recall`, `/detailed`, etc. 
 - [x] **@prompts system** - `@research`, `@quick`, `@compare`, etc. 
-- [x] **Command autocomplete** - Type `/` or `@` for suggestions 
+- [x] **#tool hints** - Soft per-request tool preferences with chips, full autocomplete, and ambient suggestions
+- [x] **Command autocomplete** - Type `/`, `@`, or standalone `#` for suggestions
 - [x] **✨ Enhance with AI** - Transform rough input into optimal prompts 
 - [x] **Tool exclusion** - Commands can exclude tools to force native search 
 - [x] **Canvas command** - `/canvas` researches + saves to Canvas viewer
@@ -1556,3 +1595,5 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.11: Duplicate-tool recovery status, explicit large-result truncation metadata, and retry-state-preserving tool-card behavior - April 10, 2026*  
 *v2.12: Dedicated `/logs` browser with auth protection, folder search, YAML-style JSONL rendering, markdown viewing, and mobile drill-down - April 12, 2026*
 *v2.13: Completion Guard manual countdown, expired/superseded neutral settlement, and random-feedback coordination docs - April 17, 2026*
+*v2.14: `#tool` hints for soft per-request tool preference, full enabled-tool autocomplete, server validation, and ✨ Enhance preservation - April 20, 2026*
+*v2.15: Tool hint chips and ambient tool suggestions for optional per-request tool preferences - April 20, 2026*

@@ -21,8 +21,8 @@
       },
       "aspect_ratio": {
         "type": "string",
-        "enum": ["square", "landscape", "portrait", "wide", "4:3", "3:4", "2:3", "3:2", "4:5", "5:4"],
-        "description": "Image shape: 'square' (1:1), 'landscape' (16:9), 'portrait' (9:16), 'wide' (21:9/cinematic), or exact ratios. OpenAI maps to closest size."
+        "enum": ["square", "landscape", "portrait", "wide", "1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2", "4:5", "5:4"],
+        "description": "Image shape: 'square' (1:1), 'landscape'/'wide' (16:9 cinematic), 'portrait' (9:16), or exact ratios. Do not use 21:9; xAI rejects it. OpenAI maps to closest size."
       },
       "image_size": {
         "type": "string",
