@@ -77,6 +77,46 @@ class ChatHandler:
             return value
         return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
+    @staticmethod
+    def _sanitize_tool_hints(raw_hints, max_hints: int = 5) -> list[str]:
+        """Validate #tool hints against enabled, non-blocked tools."""
+        if not isinstance(raw_hints, list):
+            return []
+
+        try:
+            from ..services.tool_discovery import get_tool_service
+            service = get_tool_service()
+            allowed = {
+                t.get('name')
+                for t in service.get_tools(include_blocked=False)
+                if t.get('name') and t.get('enabled', True) and not t.get('blocked')
+            }
+        except Exception as exc:
+            print(f"[CHAT] Failed to validate tool hints: {exc}")
+            return []
+
+        hints = []
+        for item in raw_hints:
+            if not isinstance(item, str):
+                continue
+            name = item.strip()
+            if name in allowed and name not in hints:
+                hints.append(name)
+            if len(hints) >= max_hints:
+                break
+        return hints
+
+    @staticmethod
+    def _format_tool_hint_context(tool_hints: list[str]) -> str:
+        names = ', '.join(tool_hints)
+        return (
+            "[CONTEXT - Tool preference for this request]\n\n"
+            f"Selected tool hints: {names}.\n"
+            "Treat these as preferences, not requirements. Prefer them if they fit the task; "
+            "ignore them if they do not fit; use additional tools naturally when needed.\n\n"
+            "[END CONTEXT]"
+        )
+
     def _get_completion_guard_config(self, mode: str) -> dict:
         """Get effective Completion Guard settings for the current mode."""
         from ..config import load_web_config, load_jarvis_config
@@ -2143,7 +2183,8 @@ Previous structured data:
             # Prompt metadata from @prompt system (workflows are handled by orchestrator)
             prompt_meta = {
                 'system_instruction': data.get('system_instruction'),
-                'prompt_name': data.get('prompt_name')
+                'prompt_name': data.get('prompt_name'),
+                'tool_hints': self._sanitize_tool_hints(data.get('tool_hints'))
             }
             
             if not message and not image_data and not file_context:
@@ -2185,6 +2226,8 @@ Previous structured data:
                 user_msg_data['attached_file'] = file_context.get('name')
             if prompt_meta.get('prompt_name'):
                 user_msg_data['prompt'] = prompt_meta['prompt_name']
+            if prompt_meta.get('tool_hints'):
+                user_msg_data['tool_hints'] = prompt_meta['tool_hints']
             store.add_message(conversation_id, 'user', message, data=user_msg_data if user_msg_data else None)
             
             # Update session
@@ -3442,8 +3485,9 @@ Previous structured data:
         original_user_message = message
         prompt_meta = prompt_meta or {}
         prompt_info = f", prompt={prompt_meta.get('prompt_name')}" if prompt_meta.get('prompt_name') else ""
+        hint_info = f", tool_hints={prompt_meta.get('tool_hints')}" if prompt_meta.get('tool_hints') else ""
         feedback_info = f", request_feedback={request_feedback}" if request_feedback else ""
-        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{prompt_info}{feedback_info})")
+        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{prompt_info}{hint_info}{feedback_info})")
         
         try:
             completion_guard_config = self._get_completion_guard_config(mode)
@@ -3787,13 +3831,24 @@ Previous structured data:
             from ..config import get_web_setting
             blocked_tools = list(get_web_setting('tools.blocked', []))
             
-            # Build enhanced message with @prompt instructions if present
+            # Build enhanced message with @prompt instructions and #tool hints if present
             enhanced_message = message
             system_instruction = prompt_meta.get('system_instruction')
+            tool_hints = prompt_meta.get('tool_hints') or []
+            context_blocks = []
             
             if system_instruction:
                 print(f"[CHAT] Prepending prompt instruction ({len(system_instruction)} chars)")
-                enhanced_message = f"[CONTEXT - Use these guidelines for the request below]\n\n{system_instruction}\n\n[END CONTEXT]\n\nUser's request: {message}"
+                context_blocks.append(
+                    f"[CONTEXT - Use these guidelines for the request below]\n\n"
+                    f"{system_instruction}\n\n"
+                    f"[END CONTEXT]"
+                )
+            if tool_hints:
+                print(f"[CHAT] Prepending tool hints: {tool_hints}")
+                context_blocks.append(self._format_tool_hint_context(tool_hints))
+            if context_blocks:
+                enhanced_message = "\n\n".join(context_blocks) + f"\n\nUser's request: {message}"
             
             # Process the query with conversation context, excluded tools, and forced overrides
             override_info = f", tool_overrides={list(tool_overrides.keys())}" if tool_overrides else ""

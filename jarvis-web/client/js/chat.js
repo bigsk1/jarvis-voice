@@ -10,6 +10,8 @@ class CommandSystem {
   constructor() {
     this.prompts = {};     // @prompt registry
     this.workflows = {};   // /workflow registry (multi-tool pipelines)
+    this.tools = {};       // #tool hint registry
+    this.maxToolHints = 5;
     this.loaded = false;
     this._loadRegistry();
   }
@@ -19,10 +21,11 @@ class CommandSystem {
    */
   async _loadRegistry() {
     try {
-      // Load prompts and workflows in parallel
-      const [promptsRes, workflowsRes] = await Promise.all([
+      // Load prompts, workflows, and enabled tools in parallel
+      const [promptsRes, workflowsRes, toolsRes] = await Promise.all([
         fetch('/api/prompts'),
-        fetch('/api/workflows')
+        fetch('/api/workflows'),
+        fetch('/api/tools?summary=true&include_blocked=false')
       ]);
       
       if (promptsRes.ok) {
@@ -34,13 +37,45 @@ class CommandSystem {
         const data = await workflowsRes.json();
         this.workflows = data.workflows || {};
       }
+
+      if (toolsRes.ok) {
+        const data = await toolsRes.json();
+        this._setToolsFromList(data.tools || []);
+      }
       
       this.loaded = true;
       console.log('[Commands] Loaded:', Object.keys(this.prompts).length, 'prompts,',
-                  Object.keys(this.workflows || {}).length, 'workflows');
+                  Object.keys(this.workflows || {}).length, 'workflows,',
+                  Object.keys(this.tools || {}).length, 'tools');
     } catch (err) {
       console.warn('[Commands] Failed to load registry:', err);
     }
+  }
+
+  _setToolsFromList(tools) {
+    this.tools = {};
+    for (const tool of tools || []) {
+      if (!tool || !tool.name || tool.blocked || tool.enabled === false) continue;
+      this.tools[tool.name] = tool;
+    }
+  }
+
+  async refreshTools() {
+    try {
+      const res = await fetch('/api/tools?summary=true&include_blocked=false');
+      if (!res.ok) return;
+      const data = await res.json();
+      this._setToolsFromList(data.tools || []);
+    } catch (err) {
+      console.warn('[Commands] Failed to refresh tools:', err);
+    }
+  }
+
+  _toolMatchesQuery(name, query) {
+    if (!query) return true;
+    const lowered = name.toLowerCase();
+    const q = query.toLowerCase();
+    return lowered.startsWith(q) || lowered.split(/[_-]/).some(part => part.startsWith(q));
   }
   
   /**
@@ -118,11 +153,31 @@ class CommandSystem {
         }
       }
     }
+
+    // Check for #tool hint prefix
+    if (input.startsWith('#')) {
+      const query = input.slice(1).toLowerCase();
+      for (const [name, tool] of Object.entries(this.tools || {})) {
+        if (this._toolMatchesQuery(name, query)) {
+          suggestions.push({
+            type: 'tool',
+            name: name,
+            prefix: '#',
+            icon: tool.source === 'mcp' ? '🔌' : '🛠️',
+            description: tool.description || `Prefer ${name} for this request`,
+            source: tool.source || 'local'
+          });
+        }
+      }
+    }
     
-    // Sort alphabetically by name and limit to 30 suggestions
-    return suggestions
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(0, 30);
+    const sorted = suggestions.sort((a, b) => a.name.localeCompare(b.name));
+    // Tool hints are intentionally scrollable: the user should be able to browse
+    // every currently enabled tool, while prompts/workflows stay compact.
+    if (input.startsWith('#')) {
+      return sorted;
+    }
+    return sorted.slice(0, 30);
   }
   
   /**
@@ -134,6 +189,7 @@ class CommandSystem {
     const result = {
       prompt: null,
       workflow: null,
+      toolHints: [],
       message: input,
       instruction: null
     };
@@ -179,6 +235,19 @@ class CommandSystem {
         result.instruction = prompt.content || '';
       }
     }
+
+    // Extract standalone #tool_name hints from the remaining message.
+    // Unknown hashtags are left alone so normal prose is not accidentally removed.
+    const hints = [];
+    result.message = result.message.replace(/(^|\s)#([A-Za-z0-9_-]+)(?=\s|$)/g, (full, leading, name) => {
+      const tool = this.tools[name];
+      if (!tool || tool.blocked || tool.enabled === false) return full;
+      if (!hints.includes(name) && hints.length < this.maxToolHints) {
+        hints.push(name);
+      }
+      return leading;
+    }).replace(/\s{2,}/g, ' ').trim();
+    result.toolHints = hints;
     
     return result;
   }
@@ -195,6 +264,9 @@ class CommandSystem {
     }
     if (parsed.prompt) {
       parts.push(`@${parsed.prompt} 📝`);
+    }
+    if (parsed.toolHints && parsed.toolHints.length > 0) {
+      parts.push(parsed.toolHints.map(name => `#${name}`).join(' ') + ' 🛠️');
     }
     return parts.join(' + ');
   }
@@ -260,6 +332,7 @@ class ChatUI {
     // Autocomplete state
     this.autocompleteEl = null;
     this.selectedSuggestionIndex = -1;
+    this.autocompleteContext = null;
     
     // Token/cost tracking state
     this.tokenCounterEl = document.getElementById('tokenCounter');
@@ -493,6 +566,15 @@ class ChatUI {
       Utils.toast('Remove the /, @, or * prefix first to enhance', 'info');
       return;
     }
+
+    const parsedInput = window.commandSystem.parseInput(input);
+    const toolHints = parsedInput.toolHints || [];
+    const inputToEnhance = parsedInput.message || input;
+
+    if (!inputToEnhance) {
+      Utils.toast('Add a task after the tool hint before enhancing', 'info');
+      return;
+    }
     
     // Show loading state
     this.enhanceBtn.classList.add('enhancing');
@@ -506,14 +588,17 @@ class ChatUI {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ input })
+        body: JSON.stringify({ input: inputToEnhance })
       });
       
       const data = await response.json();
       
       if (data.ok && data.enhanced) {
+        const preservedToolHints = toolHints.length > 0
+          ? `${toolHints.map(name => `#${name}`).join(' ')} `
+          : '';
         // Replace input with enhanced version
-        this.inputField.value = data.enhanced;
+        this.inputField.value = `${preservedToolHints}${data.enhanced}`;
         Utils.autoResize(this.inputField);
         
         // Show success feedback
@@ -544,11 +629,27 @@ class ChatUI {
    */
   _checkAutocomplete() {
     const input = this.inputField.value;
+    const cursor = this.inputField.selectionStart ?? input.length;
+    this.autocompleteContext = null;
+
+    // Tool hints can appear anywhere as standalone #tool tokens.
+    const toolToken = input.slice(0, cursor).match(/(^|\s)#([A-Za-z0-9_-]*)$/);
+    if (toolToken) {
+      const query = toolToken[2] || '';
+      const start = cursor - query.length - 1;
+      const suggestions = window.commandSystem.getSuggestions(`#${query}`);
+      if (suggestions.length > 0) {
+        this.autocompleteContext = { type: 'tool', start, end: cursor };
+        this._showAutocomplete(suggestions);
+        return;
+      }
+    }
     
     // Case 1: Start with / and no space yet (typing workflow)
     if (input.startsWith('/') && !input.includes(' ')) {
       const suggestions = window.commandSystem.getSuggestions(input);
       if (suggestions.length > 0) {
+        this.autocompleteContext = { type: 'workflow', start: 0, end: input.length };
         this._showAutocomplete(suggestions);
         return;
       }
@@ -558,6 +659,7 @@ class ChatUI {
     if (input.startsWith('@') && !input.includes(' ')) {
       const suggestions = window.commandSystem.getSuggestions(input);
       if (suggestions.length > 0) {
+        this.autocompleteContext = { type: 'prompt', start: 0, end: input.length };
         this._showAutocomplete(suggestions);
         return;
       }
@@ -567,6 +669,7 @@ class ChatUI {
     if (input.startsWith('*') && !input.includes(' ')) {
       const suggestions = window.commandSystem.getSuggestions(input);
       if (suggestions.length > 0) {
+        this.autocompleteContext = { type: 'workflow', start: 0, end: input.length };
         this._showAutocomplete(suggestions);
         return;
       }
@@ -615,6 +718,19 @@ class ChatUI {
           </div>
         `;
       }
+      else if (s.type === 'tool') {
+        tooltipHtml = `
+          <div class="workflow-tooltip tool-tooltip">
+            <div class="tooltip-header">${s.name}</div>
+            <div class="tooltip-steps">
+              <div class="tooltip-step">
+                <span class="tooltip-step-num">${s.source === 'mcp' ? 'MCP' : 'Tool'}</span>
+                <span class="tooltip-step-desc">${Utils.escapeHtml(s.description || '')}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
       
       const displayPrefix = s.prefix || (s.type === 'prompt' ? '@' : '/');
       return `
@@ -639,7 +755,7 @@ class ChatUI {
       item.addEventListener('mouseenter', (e) => {
         this._highlightSuggestion(parseInt(item.dataset.index));
         // Position tooltip BELOW the row so it doesn't cover the command
-        const tooltip = item.querySelector('.workflow-tooltip, .prompt-tooltip');
+        const tooltip = item.querySelector('.workflow-tooltip, .prompt-tooltip, .tool-tooltip');
         if (tooltip) {
           const rect = item.getBoundingClientRect();
           tooltip.style.display = 'block';
@@ -659,7 +775,7 @@ class ChatUI {
         }
       });
       item.addEventListener('mouseleave', () => {
-        const tooltip = item.querySelector('.workflow-tooltip, .prompt-tooltip');
+        const tooltip = item.querySelector('.workflow-tooltip, .prompt-tooltip, .tool-tooltip');
         if (tooltip) {
           tooltip.style.display = 'none';
         }
@@ -674,6 +790,7 @@ class ChatUI {
     if (this.autocompleteEl) {
       this.autocompleteEl.style.display = 'none';
       this.selectedSuggestionIndex = -1;
+      this.autocompleteContext = null;
     }
   }
   
@@ -718,6 +835,21 @@ class ChatUI {
     const type = item.dataset.type;
     const name = item.dataset.name;
     const prefix = item.dataset.prefix || (type === 'prompt' ? '@' : '/');
+
+    if (type === 'tool' && this.autocompleteContext) {
+      const currentVal = this.inputField.value;
+      const { start, end } = this.autocompleteContext;
+      const before = currentVal.slice(0, start);
+      const after = currentVal.slice(end);
+      const insert = `#${name} `;
+      this.inputField.value = `${before}${insert}${after.replace(/^\s+/, '')}`;
+      const cursor = before.length + insert.length;
+      this.inputField.focus();
+      this.inputField.setSelectionRange(cursor, cursor);
+      Utils.autoResize(this.inputField);
+      this._hideAutocomplete();
+      return;
+    }
     
     // Replace entire input with selected workflow/prompt + space
     // For * bookmarks: preserve query after * if user already typed it (e.g. *docker -> *docker )
@@ -2100,13 +2232,17 @@ class ChatUI {
     this._hideAutocomplete();
     this._expirePendingCompletionGuardCards();
     
-    // Parse workflows and prompts
+    // Parse workflows, prompts, and tool hints
     const parsed = window.commandSystem.parseInput(rawMessage);
+    if (!parsed.message && parsed.toolHints && parsed.toolHints.length > 0 && !hasImage && !hasFile) {
+      Utils.toast('Add a task after the tool hint', 'info');
+      return;
+    }
     
     // Build display message (show original with decorations, show feedback badge if enabled)
     let displayMessage = this.inputField.value.trim();  // Use original for display
     let activeBadge = '';
-    if (parsed.workflow || parsed.prompt) {
+    if (parsed.workflow || parsed.prompt || (parsed.toolHints && parsed.toolHints.length > 0)) {
       activeBadge = window.commandSystem.getActiveDisplay(parsed);
     }
     if (requestFeedback) {
@@ -2132,9 +2268,10 @@ class ChatUI {
     this.pendingTools = {};
     
     // Pass parsed data to socket (workflows are handled by orchestrator via /trigger)
-    window.jarvisSocket.sendMessage(parsed.message || rawMessage, this.attachedImage, {
+    window.jarvisSocket.sendMessage(parsed.message, this.attachedImage, {
       system_instruction: parsed.instruction,
-      prompt_name: parsed.prompt
+      prompt_name: parsed.prompt,
+      tool_hints: parsed.toolHints || []
     }, requestFeedback, this.attachedFile);
     
     // Clear attachments after sending

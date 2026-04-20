@@ -109,6 +109,7 @@ class JarvisApp {
       
       // Reload tools list
       await this._loadToolsList();
+      await window.commandSystem?.refreshTools?.();
       
       // Update token counter context window for new mode
       if (window.chatUI) {
@@ -2380,6 +2381,7 @@ class JarvisApp {
         Utils.toast(`Blocked: ${toolName}`, 'success');
         this._loadBlockedTools();
         this._loadToolsList();  // Refresh tools list
+        window.commandSystem?.refreshTools?.();
       }
     } catch (err) {
       Utils.toast(`Error: ${err.message}`, 'error');
@@ -2406,6 +2408,7 @@ class JarvisApp {
       Utils.toast(`Unblocked: ${toolName}`, 'success');
       this._loadBlockedTools();
       this._loadToolsList();  // Refresh tools list
+      window.commandSystem?.refreshTools?.();
     } catch (err) {
       Utils.toast(`Error: ${err.message}`, 'error');
     }

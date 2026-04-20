@@ -103,7 +103,8 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 |---------|--------|---------|
 | **Slash commands** | ✅ | `/canvas`, `/search`, `/recall`, etc. - modify behavior |
 | **@prompts** | ✅ | `@research`, `@quick`, `@compare` - inject methodologies |
-| **Command autocomplete** | ✅ | Type `/` or `@` to see suggestions |
+| **#tool hints** | ✅ | `#weather`, `#youtube_transcript`, etc. - softly prefer one or more tools |
+| **Command autocomplete** | ✅ | Type `/`, `@`, or standalone `#` to see suggestions |
 | **✨ Enhance with AI** | ✅ | Magic button transforms rough input into optimal prompt |
 | **Tool exclusion** | ✅ | Commands can exclude tools (force native search) |
 

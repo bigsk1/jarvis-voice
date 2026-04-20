@@ -3945,6 +3945,15 @@ body {
   color: var(--accent-secondary, #9b59b6);
 }
 
+.tool-tooltip .tooltip-header {
+  color: var(--success, #22c55e);
+}
+
+.tool-tooltip .tooltip-step-num {
+  color: var(--success, #22c55e);
+  min-width: 32px;
+}
+
 /* Command badge in user messages */
 .command-badge {
   display: inline-flex;

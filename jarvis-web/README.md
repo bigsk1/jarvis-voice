@@ -52,6 +52,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Tools Browser** - View all available tools with descriptions
 - **Workflows System** - `/workflows` for deterministic multi-tool pipelines
 - **Prompts System** - `@prompts` with Markdown templates
+- **Tool Hints** - `#tool_name` softly prefers one or more enabled tools for a request
 - **✨ Prompt Enhancement** - AI-powered prompt optimization
 
 ### 🎨 UI/UX
@@ -274,6 +275,10 @@ Review the following code for:
 - Best practices
 - Potential bugs
 ```
+
+### Tool Hints
+
+Type a standalone `#` anywhere in the chat input to autocomplete enabled, non-blocked tools. Selected hints are removed from the visible request sent to Jarvis and injected as soft preferences, so `#weather #create_reminder remind me if it rains tonight` nudges Tool RAG without forcing a route.
 
 ## Keyboard Shortcuts
 
