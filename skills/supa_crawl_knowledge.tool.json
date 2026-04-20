@@ -8,7 +8,7 @@
     "manage_intel",
     "canvas"
   ],
-  "description": "Search and inspect the persistent Supa-Crawl-Chat knowledge base (Supabase/pgvector). Use for semantic search over already-crawled sites, listing indexed sites, crawl status, stored pages/chunks, and corpus health. Complements crawl_url (live pages) and brave_search_llm_context (web). Brave-augmented RAG chat lives in Supa-Crawl-Chat's own /api/chat UI, not here—this tool only calls read-only HTTP APIs. Does not start crawls or mutate data.",
+  "description": "Search and inspect the persistent Supa-Crawl-Chat knowledge base (Supabase/pgvector). Use for semantic search over already-crawled sites, listing indexed sites, crawl status, stored pages/chunks, and corpus health. Complements crawl_url (live pages) and brave_search_llm_context (web). This tool only calls read-only HTTP APIs. Does not start crawls or mutate data.",
   "script": "supa_crawl_knowledge.py",
   "parameters": {
     "type": "object",

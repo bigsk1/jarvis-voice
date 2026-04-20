@@ -13,6 +13,7 @@ import hashlib
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from intel_content import normalize_intel_content
 from memory_db import MemoryDB
 
 
@@ -47,6 +48,7 @@ def extract_facts_from_content(content: str, filename: str) -> list[dict[str, st
     
     Returns list of facts: [{"key": "...", "value": "...", "category": "..."}]
     """
+    content, _ = normalize_intel_content(content)
     facts = []
     lines = content.split('\n')
     

@@ -83,6 +83,12 @@ This file contains knowledge about Jarvis tools, provider limitations, common fa
 - Sync mode waits for call completion. Async mode returns immediately and the user checks later.
 - Call status can be checked with a follow-up call. This is a legitimate multi-call pattern.
 
+## Supa-Crawl-Knowledge and `supa_crawl_knowledge.md`
+
+- `supa_crawl_knowledge` with `action=list_sites` and `limit=100` returns the full crawled-site list in `data.sites` when `returned` matches `count`.
+- When the user asks to update `jarvis-intel/supa_crawl_knowledge.md` with **all** sites (for auto-context / memory ranking), you must: (1) `list_sites`, (2) `manage_intel` `update` with markdown that includes **every** site row—never a partial preview or a note to use the tool instead of listing them in the file.
+- Recommended columns: id, site name, pages, seed URL. Duplicates in display names can exist (e.g. two "Selfh St" with different URLs); keep both rows.
+
 ## Memory and Search Tools
 
 - search_memory: Best for keyword lookups. Uses FTS5 with BM25 ranking. Has the deepest fallback chain (FTS5 then AND then OR then LIKE).

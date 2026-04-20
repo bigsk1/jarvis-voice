@@ -2824,7 +2824,7 @@ Previous structured data:
             'status_recap': ['stash_ref', 'canvas_id'],
             'supa_crawl_knowledge': [
                 'action', 'query', 'site_id', 'page_id', 'base_url', 'count',
-                'site_name', 'threshold', 'dedupe',
+                'returned', 'sites', 'site_name', 'threshold', 'dedupe',
             ],
         }
         

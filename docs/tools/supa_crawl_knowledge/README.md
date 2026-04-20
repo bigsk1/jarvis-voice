@@ -43,6 +43,10 @@ If Jarvis finds something worth keeping, it can follow up with other tools:
 - `manage_intel` / `ingest_intel` for curated notes
 - `canvas` for a readable page in the Web UI
 
+### Refreshing `jarvis-intel/supa_crawl_knowledge.md`
+
+When the user wants **all** crawled sites saved into that intel file (full inventory for auto-context), Jarvis should call `action=list_sites` with `limit=100`, then `manage_intel` `update` with markdown that lists **every** entry in `data.sites`. Partial lists or “use the tool for the rest” in place of the full table fails the request. See `jarvis-intel/jarvis-tool-knowledge.md` (Supa-Crawl-Knowledge section).
+
 ## Config
 
 Set the API base URL in your env:

@@ -19,10 +19,12 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 INTEL_DIR = PROJECT_ROOT / "jarvis-intel"
 SKILLS_DIR = PROJECT_ROOT / "skills"
 
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+from intel_content import normalize_intel_content
+
 
 def get_db():
     """Get memory database instance for checking ingestion status"""
-    sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
     from memory_db import MemoryDB
     return MemoryDB()
 
@@ -268,8 +270,9 @@ async def create_intel_file(data: IntelCreate):
                 detail=f"File '{filename}' already exists. Use PUT to update."
             )
         
-        # Write file
-        filepath.write_text(data.content, encoding='utf-8')
+        # Normalize escaped multiline text from LLM/tool output before writing.
+        content, _ = normalize_intel_content(data.content)
+        filepath.write_text(content, encoding='utf-8')
         
         # Optionally ingest
         if data.auto_ingest:
@@ -331,8 +334,9 @@ async def update_intel_file(filename: str, data: IntelUpdate):
         if not filepath.exists():
             raise HTTPException(status_code=404, detail=f"File '{filename}' not found")
         
-        # Update file
-        filepath.write_text(data.content, encoding='utf-8')
+        # Normalize escaped multiline text from LLM/tool output before writing.
+        content, _ = normalize_intel_content(data.content)
+        filepath.write_text(content, encoding='utf-8')
         
         # Optionally re-ingest
         if data.auto_ingest:

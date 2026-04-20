@@ -6,7 +6,7 @@ Allows Jarvis to programmatically create, read, update, and delete intel files.
 
 Input: {
     "action": "create|read|update|delete|list",
-    "path": "relative/path/in/jarvis-intel/file.md",
+    "path": "flat filename in jarvis-intel/file.md",
     "content": "file content",
     "auto_ingest": true  # Auto-run ingest_intel after changes
 }
@@ -22,6 +22,7 @@ import subprocess
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from intel_content import normalize_intel_content
 from memory_db import MemoryDB
 
 
@@ -62,6 +63,7 @@ def validate_path(path: str, intel_dir: Path) -> Path:
 def create_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any]:
     """Create a new intel file."""
     file_path = validate_path(path, intel_dir)
+    content, content_normalized = normalize_intel_content(content)
     
     # Add .md extension if missing
     if not file_path.suffix:
@@ -80,7 +82,8 @@ def create_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
     return {
         "file": str(file_path.relative_to(intel_dir)),
         "size_bytes": len(content),
-        "created": True
+        "created": True,
+        "content_normalized": content_normalized
     }
 
 
@@ -104,6 +107,7 @@ def read_intel_file(intel_dir: Path, path: str) -> dict[str, Any]:
 def update_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any]:
     """Update an existing intel file."""
     file_path = validate_path(path, intel_dir)
+    content, content_normalized = normalize_intel_content(content)
     
     # Add .md extension if missing
     if not file_path.suffix:
@@ -118,7 +122,8 @@ def update_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
     return {
         "file": str(file_path.relative_to(intel_dir)),
         "size_bytes": len(content),
-        "updated": True
+        "updated": True,
+        "content_normalized": content_normalized
     }
 
 
@@ -127,6 +132,7 @@ def append_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
     from datetime import datetime
     
     file_path = validate_path(path, intel_dir)
+    content, content_normalized = normalize_intel_content(content)
     
     # Add .md extension if missing
     if not file_path.suffix:
@@ -156,7 +162,8 @@ def append_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
         "file": str(file_path.relative_to(intel_dir)),
         "size_bytes": new_size,
         "appended_bytes": len(content),
-        "appended": True
+        "appended": True,
+        "content_normalized": content_normalized
     }
 
 
