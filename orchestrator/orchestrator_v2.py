@@ -2725,9 +2725,12 @@ Your BEST EFFORT response:"""
         """Return the LLM-context preview budget for a tool result."""
         lowered = (tool_name or "").lower()
         if "bookmark" in lowered:
-            return 4500
+            return 5000
         if "search" in lowered or "fetch" in lowered:
-            return 4000
+            return 6000
+        # All SerpAPI tools (e.g. serpapi_youtube has no "search" in the name but returns large JSON).
+        if lowered.startswith("serpapi_"):
+            return 6000
         # No "search" in name but same class of payload as search-tier tools.
         if tool_name == "semantic_recall" or tool_name == "crawl_url":
             return 4000
@@ -2738,7 +2741,7 @@ Your BEST EFFORT response:"""
             return 6500
         if tool_name == "brave_llm_context":
             return 4000
-        return 2000
+        return 2500
 
     def _truncate_preview_text(self, value: Any, max_chars: int) -> str:
         """Truncate preview text without changing the original stored result."""

@@ -32,7 +32,7 @@ _FOLLOWUP_DEFAULT_MAX_CANDIDATES = 5
 _FOLLOWUP_EVIDENCE_MAX_CANDIDATES = 12
 # Keep abstractive summaries available for follow-up turns without dragging
 # whole transcript-sized artifacts through every router prompt.
-_FOLLOWUP_SUMMARY_MAX_CHARS = 5000
+_FOLLOWUP_SUMMARY_MAX_CHARS = 6000
 # Repair pass: same tools + very similar prose → tighten_only (hedging), not "new evidence".
 _CG_TIGHTEN_ONLY_ANSWER_SIMILARITY_THRESHOLD = 0.88
 # Manual prompts are meant to check the current answer, not become durable tasks.
