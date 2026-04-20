@@ -776,6 +776,7 @@ body {
 
 .chat-input::placeholder {
   color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .input-actions {
