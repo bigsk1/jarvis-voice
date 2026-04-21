@@ -340,7 +340,7 @@ INTELLIGENCE_DECAY_INTERVAL_DAYS=14    # Minimum days between decay runs
 ```
 
 **What it does**:
-- Checks each insight's `last_applied` timestamp
+- Checks each insight's newest activity timestamp: `last_applied`, `updated_at`, latest `insight_evidence.created_at`, or `created_at`
 - If unused >7 days: `confidence *= DECAY_RATE`
 - If has failures: extra decay `confidence *= 0.9^consecutive_failures`
 - If successful (>80% helpful): slight boost
@@ -982,6 +982,9 @@ Results
 ./bin/run-intelligence-maintenance.py --anomaly
 ./bin/run-intelligence-maintenance.py --meta
 
+# Preview decay changes without writing updates
+./bin/run-intelligence-maintenance.py --decay --dry-run
+
 # Specify mode
 ./bin/run-intelligence-maintenance.py --mode local --watch
 
@@ -1000,6 +1003,9 @@ curl -X POST http://localhost:8880/api/intelligence/maintenance/all
 curl -X POST http://localhost:8880/api/intelligence/maintenance/decay
 curl -X POST http://localhost:8880/api/intelligence/maintenance/anomaly
 curl -X POST http://localhost:8880/api/intelligence/maintenance/meta-cognition
+
+# Preview decay without writing updates
+curl -X POST 'http://localhost:8880/api/intelligence/maintenance/decay?dry_run=true'
 
 # View meta-knowledge findings
 curl http://localhost:8880/api/intelligence/meta-knowledge
@@ -1022,16 +1028,19 @@ curl http://localhost:8880/api/intelligence/meta-knowledge
    If yes: SKIP (unless --force)
 
 2. For each insight:
-   a. If last_applied > 7 days ago:
+   a. Calculate newest activity timestamp:
+      max(last_applied, updated_at, latest evidence, created_at)
+
+   b. If newest activity > 7 days ago:
       confidence *= DECAY_RATE  (default 0.95 = 5% decay)
    
-   b. If consecutive_failures > 0:
+   c. If consecutive_failures > 0:
       confidence *= 0.9 ^ consecutive_failures
    
-   c. If helpful_ratio > 80%:
+   d. If helpful_ratio > 80%:
       confidence *= 1.02  (2% boost)
    
-   d. If confidence < 0.15:
+   e. If confidence < 0.15:
       DELETE insight (pruned)
 
 3. Record run timestamp in meta_knowledge table
@@ -1522,10 +1531,11 @@ Full REST API for intelligence management:
 | `/api/intelligence/reflect` | POST | Trigger reflection manually |
 | `/api/intelligence/evaluate` | GET | Meta-cognition evaluation |
 | `/api/intelligence/meta-knowledge` | GET | View meta_knowledge findings |
-| `/api/intelligence/maintenance/decay` | POST | Run decay job |
+| `/api/intelligence/maintenance/decay?dry_run=true` | POST | Preview decay job without writes |
+| `/api/intelligence/maintenance/decay` | POST | Run decay job (`force=true` optional) |
 | `/api/intelligence/maintenance/anomaly` | POST | Run anomaly detection |
 | `/api/intelligence/maintenance/meta-cognition` | POST | Run meta-cognition |
-| `/api/intelligence/maintenance/all` | POST | Run all maintenance jobs |
+| `/api/intelligence/maintenance/all` | POST | Run all maintenance jobs (`dry_run=true` previews decay and skips anomaly/meta writes) |
 
 ### Sample REST API Calls
 
@@ -1809,7 +1819,7 @@ Day 56:  Decay runs → 0.73 × 0.95² = 0.66
 ...eventually drops below threshold and gets pruned!
 ```
 
-**Why it happens**: The decay formula `confidence *= DECAY_RATE^(days/7)` is based on time since last use, not success rate. The maintenance boost (1.02×) cannot outpace the decay (0.9025×) for rarely-used insights.
+**Why it happens**: The decay formula `confidence *= DECAY_RATE^(days/7)` is based on time since newest activity, not success rate. New reflection merges and evidence rows refresh activity, so a newly reinforced older insight should not decay just because its original `created_at` is old. The maintenance boost (1.02×) cannot outpace the decay (0.9025×) for insights that are both rarely used and not recently reinforced.
 
 **Current design philosophy**: 
 - Frequently used + helpful = valuable → stays high

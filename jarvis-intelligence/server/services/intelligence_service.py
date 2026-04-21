@@ -373,8 +373,11 @@ class IntelligenceService:
         cursor = conn.cursor()
         
         try:
-            # Also remove from reflection queue
+            # Also unlink related audit/queue rows so provenance does not point
+            # at a deleted experience.
             cursor.execute("DELETE FROM reflection_queue WHERE experience_id = ?", (experience_id,))
+            cursor.execute("UPDATE insight_evidence SET experience_id = NULL WHERE experience_id = ?", (experience_id,))
+            cursor.execute("UPDATE insights SET source_experience_id = NULL WHERE source_experience_id = ?", (experience_id,))
             cursor.execute("DELETE FROM experiences WHERE id = ?", (experience_id,))
             conn.commit()
             return cursor.rowcount > 0

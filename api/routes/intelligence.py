@@ -451,7 +451,7 @@ async def evaluate_learning_endpoint():
 # ============================================
 
 @router.post("/maintenance/decay")
-async def run_decay_job_endpoint():
+async def run_decay_job_endpoint(force: bool = False, dry_run: bool = False):
     """Run the confidence decay job.
     
     Reduces confidence of stale/unused insights.
@@ -464,7 +464,7 @@ async def run_decay_job_endpoint():
         if not intel:
             return {"status": "error", "error": "Intelligence layer not available"}
         
-        result = await intel.run_decay_job()
+        result = await intel.run_decay_job(force=force, dry_run=dry_run)
         
         return {
             "status": "ok",
@@ -530,7 +530,7 @@ async def run_meta_cognition_endpoint():
 
 
 @router.post("/maintenance/all")
-async def run_all_maintenance_endpoint():
+async def run_all_maintenance_endpoint(force: bool = False, dry_run: bool = False):
     """Run all maintenance jobs (decay, anomaly, meta-cognition)."""
     try:
         from intelligence import get_intelligence_layer
@@ -539,7 +539,7 @@ async def run_all_maintenance_endpoint():
         if not intel:
             return {"status": "error", "error": "Intelligence layer not available"}
         
-        result = await intel.run_all_maintenance()
+        result = await intel.run_all_maintenance(force=force, dry_run=dry_run)
         
         return {
             "status": "ok",
@@ -591,4 +591,3 @@ async def get_meta_knowledge():
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
-

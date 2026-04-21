@@ -1058,7 +1058,7 @@ def evaluate_learning() -> dict[str, Any]:
 # MAINTENANCE JOBS
 # ============================================
 
-def run_decay_job(force: bool = False) -> dict[str, Any]:
+def run_decay_job(force: bool = False, dry_run: bool = False) -> dict[str, Any]:
     """
     Run the confidence decay job.
     
@@ -1069,6 +1069,7 @@ def run_decay_job(force: bool = False) -> dict[str, Any]:
     
     Args:
         force: If True, bypass minimum interval check (use with caution!)
+        dry_run: If True, calculate changes without writing to the database
     
     Returns:
         Stats about decayed/pruned insights
@@ -1078,7 +1079,7 @@ def run_decay_job(force: bool = False) -> dict[str, Any]:
         return {'status': 'unavailable'}
     
     try:
-        return _run_async(intel.run_decay_job(force=force))
+        return _run_async(intel.run_decay_job(force=force, dry_run=dry_run))
     except Exception as e:
         logger.warning(f"Decay job failed: {e}")
         return {'status': 'error', 'error': str(e)}
@@ -1128,12 +1129,13 @@ def run_meta_cognition() -> dict[str, Any]:
         return {'status': 'error', 'error': str(e)}
 
 
-def run_all_maintenance(force: bool = False) -> dict[str, Any]:
+def run_all_maintenance(force: bool = False, dry_run: bool = False) -> dict[str, Any]:
     """
     Run all maintenance jobs (decay, anomaly, meta-cognition).
     
     Args:
         force: If True, bypass minimum interval check for decay job
+        dry_run: If True, calculate decay changes without writing decay updates
     
     Returns:
         Combined results from all jobs
@@ -1143,7 +1145,7 @@ def run_all_maintenance(force: bool = False) -> dict[str, Any]:
         return {'status': 'unavailable'}
     
     try:
-        return _run_async(intel.run_all_maintenance(force=force))
+        return _run_async(intel.run_all_maintenance(force=force, dry_run=dry_run))
     except Exception as e:
         logger.warning(f"Maintenance failed: {e}")
         return {'status': 'error', 'error': str(e)}

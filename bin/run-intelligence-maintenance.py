@@ -10,6 +10,7 @@ Manually trigger maintenance jobs:
 Usage:
     ./bin/run-intelligence-maintenance.py              # Run all jobs
     ./bin/run-intelligence-maintenance.py --decay      # Run decay only
+    ./bin/run-intelligence-maintenance.py --decay --dry-run  # Preview decay only
     ./bin/run-intelligence-maintenance.py --anomaly    # Run anomaly detection only
     ./bin/run-intelligence-maintenance.py --meta       # Run meta-cognition only
     ./bin/run-intelligence-maintenance.py --watch      # Run all and show logs
@@ -32,6 +33,7 @@ def main():
     parser.add_argument('--anomaly', action='store_true', help='Run anomaly detection only')
     parser.add_argument('--meta', action='store_true', help='Run meta-cognition only')
     parser.add_argument('--force', action='store_true', help='Force run even if within minimum interval (use with caution!)')
+    parser.add_argument('--dry-run', action='store_true', help='Preview decay changes without writing decay updates')
     parser.add_argument('--watch', action='store_true', help='Show recent log entries after running')
     parser.add_argument('--mode', choices=['cloud', 'local'], default='cloud', help='Mode to run in')
     args = parser.parse_args()
@@ -57,19 +59,27 @@ def main():
     if args.force:
         print("⚠️  FORCE MODE: Bypassing minimum interval checks!")
         print()
+
+    if args.dry_run:
+        print("DRY RUN: Decay changes will be calculated without writing updates.")
+        if args.anomaly or args.meta:
+            print("Note: --dry-run only applies to decay; anomaly/meta jobs will still write maintenance findings.")
+        elif not args.decay:
+            print("Note: --dry-run with all maintenance skips anomaly/meta write jobs.")
+        print()
     
     if args.decay:
         print("Running decay job...")
-        results['decay'] = run_decay_job(force=args.force)
+        results['decay'] = run_decay_job(force=args.force, dry_run=args.dry_run)
     elif args.anomaly:
         print("Running anomaly detection...")
-        results['anomaly'] = run_anomaly_detection()
+        results['anomalies'] = run_anomaly_detection()
     elif args.meta:
         print("Running meta-cognition...")
         results['meta_cognition'] = run_meta_cognition()
     else:
         print("Running ALL maintenance jobs...")
-        results = run_all_maintenance(force=args.force)
+        results = run_all_maintenance(force=args.force, dry_run=args.dry_run)
     
     print()
     print("=" * 60)
@@ -87,7 +97,8 @@ def main():
                 print(f"   Next eligible: {decay.get('next_eligible', 'Unknown')}")
                 print("   (Use --force to bypass)")
             elif decay.get('status') != 'error':
-                print("\n📉 DECAY JOB:")
+                dry_label = " (DRY RUN)" if decay.get('dry_run') else ""
+                print(f"\n📉 DECAY JOB:{dry_label}")
                 print(f"   Insights checked: {decay.get('total_checked', 0)}")
                 print(f"   Decayed: {decay.get('decayed', 0)}")
                 print(f"   Boosted: {decay.get('boosted', 0)}")
@@ -100,7 +111,9 @@ def main():
     
     if 'anomalies' in results:
         anomalies = results['anomalies']
-        if isinstance(anomalies, dict) and anomalies.get('status') != 'error':
+        if isinstance(anomalies, dict) and anomalies.get('status') == 'skipped_dry_run':
+            print("\n🔍 ANOMALY DETECTION: ⏭️  SKIPPED (dry run)")
+        elif isinstance(anomalies, dict) and anomalies.get('status') != 'error':
             print("\n🔍 ANOMALY DETECTION:")
             print(f"   Baseline avg turns: {anomalies.get('baseline_avg_turns', 'N/A')}")
             print(f"   Baseline std dev: {anomalies.get('baseline_std_dev', 'N/A')}")
@@ -113,7 +126,9 @@ def main():
     
     if 'meta_cognition' in results:
         meta = results['meta_cognition']
-        if isinstance(meta, dict) and meta.get('status') != 'error':
+        if isinstance(meta, dict) and meta.get('status') == 'skipped_dry_run':
+            print("\n🧠 META-COGNITION: ⏭️  SKIPPED (dry run)")
+        elif isinstance(meta, dict) and meta.get('status') != 'error':
             print("\n🧠 META-COGNITION:")
             print(f"   Findings: {meta.get('findings_count', 0)}")
             if meta.get('quality_stats'):
@@ -186,4 +201,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

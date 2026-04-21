@@ -50,6 +50,8 @@ def run_decay_job():
     """Run confidence decay job"""
     try:
         mode = request.args.get('mode', 'cloud')
+        force = request.args.get('force', 'false').lower() in ('true', '1', 'yes', 'on')
+        dry_run = request.args.get('dry_run', 'false').lower() in ('true', '1', 'yes', 'on')
         
         from config_loader import load_config
         load_config(mode)
@@ -61,7 +63,7 @@ def run_decay_job():
             intel = get_intelligence_layer()
             if not intel:
                 return {'error': 'Intelligence layer not available'}
-            return await intel.run_decay_job()
+            return await intel.run_decay_job(force=force, dry_run=dry_run)
         
         result = asyncio.run(do_decay())
         
@@ -137,6 +139,8 @@ def run_all_maintenance():
     """Run all maintenance jobs"""
     try:
         mode = request.args.get('mode', 'cloud')
+        force = request.args.get('force', 'false').lower() in ('true', '1', 'yes', 'on')
+        dry_run = request.args.get('dry_run', 'false').lower() in ('true', '1', 'yes', 'on')
         
         from config_loader import load_config
         load_config(mode)
@@ -148,7 +152,7 @@ def run_all_maintenance():
             intel = get_intelligence_layer()
             if not intel:
                 return {'error': 'Intelligence layer not available'}
-            return await intel.run_all_maintenance()
+            return await intel.run_all_maintenance(force=force, dry_run=dry_run)
         
         result = asyncio.run(do_all())
         
@@ -199,4 +203,3 @@ def check_health():
         return jsonify({'ok': False, 'error': 'Health check timed out'}), 500
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-

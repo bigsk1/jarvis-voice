@@ -159,6 +159,18 @@ class IntelligenceCleanup:
                     DELETE FROM reflection_queue 
                     WHERE experience_id IN ({placeholders})
                 """, exp_ids)
+
+                cursor.execute(f"""
+                    UPDATE insight_evidence
+                    SET experience_id = NULL
+                    WHERE experience_id IN ({placeholders})
+                """, exp_ids)
+
+                cursor.execute(f"""
+                    UPDATE insights
+                    SET source_experience_id = NULL
+                    WHERE source_experience_id IN ({placeholders})
+                """, exp_ids)
                 
                 # Delete experiences
                 cursor.execute(f"""
@@ -193,6 +205,13 @@ class IntelligenceCleanup:
         print("    (confidence < 0.2 OR consecutive_failures >= 3)")
         
         if not self.dry_run:
+            cursor.execute("""
+                DELETE FROM insight_evidence
+                WHERE insight_id IN (
+                    SELECT id FROM insights
+                    WHERE confidence < 0.2 OR consecutive_failures >= 3
+                )
+            """)
             cursor.execute("""
                 DELETE FROM insights 
                 WHERE confidence < 0.2 OR consecutive_failures >= 3
@@ -379,4 +398,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-
