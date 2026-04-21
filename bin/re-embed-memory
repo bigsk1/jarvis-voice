@@ -64,6 +64,7 @@ def main():
     cursor = conn.cursor()
     
     # Get the memory
+    # TODO: Metadata isn't being returned here, we should add it or is it skipped or added upstream?
     cursor.execute("""
         SELECT id, category, key, value, importance, source 
         FROM knowledge_base WHERE id = ?
