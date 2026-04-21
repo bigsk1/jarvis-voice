@@ -117,6 +117,8 @@ Important caveat:
 
 Auto memory injection and Tool RAG are not tool calls, so they do not appear in `logs/tools/tool-calls-*.jsonl`.
 
+When `TOOL_RAG_TRACE_ENABLED=true`, Tool RAG selection itself is logged separately in `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`. Those trace rows show the compact retrieval query, `signal_source`, active similarity threshold, final tools sent to the LLM, ranked near misses, and rough schema token estimates.
+
 When runtime fallback happens there, Jarvis now emits warning lines such as:
 - `[SEMANTIC_SEARCH] Fallback embeddings used for query: ...`
 - `[TOOL_SEARCH] Fallback embeddings used for query: ...`

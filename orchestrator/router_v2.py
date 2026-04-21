@@ -6,6 +6,8 @@ Uses native tool calling from OpenAI/Anthropic/Ollama to intelligently route req
 import os
 import sys
 import re
+import json
+from dataclasses import dataclass, field
 from typing import Any
 from pathlib import Path
 from datetime import datetime
@@ -13,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value, get_float
+from config_loader import load_config, get_config_value, get_float, get_int, get_bool
 from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
 from tool_schema import ToolRegistry
@@ -21,13 +23,513 @@ from llm_provider import create_provider
 from provider_errors import classify_provider_error, friendly_provider_error, is_provider_error_text
 
 
-def _tool_rag_similarity_threshold(transcript: str, tool_search_query: str) -> float:
+@dataclass
+class ToolRetrievalSignals:
+    """Compact Tool RAG query plus structured tool-name signals."""
+
+    query: str
+    source: str
+    positive_tools: set[str] = field(default_factory=set)
+    negative_tools: set[str] = field(default_factory=set)
+    conflicted_tools: set[str] = field(default_factory=set)
+    notes: list[str] = field(default_factory=list)
+
+
+_REQUEST_BOUNDARY_MARKERS = (
+    "\n\nTools executed so far:",
+    "\nTools executed so far:",
+    "\n\n===PREVIOUS ATTEMPT FAILED",
+    "\n===PREVIOUS ATTEMPT FAILED",
+    "\n\nUse ONLY one of these exact tool names",
+    "\nUse ONLY one of these exact tool names",
+    "\n\nBased on the above results",
+    "\nBased on the above results",
+    "\n\nFRESHNESS RULES",
+    "\nFRESHNESS RULES",
+    "\n\nDUPLICATE TOOL GUARD:",
+    "\nDUPLICATE TOOL GUARD:",
+)
+
+_FULL_PROMPT_MARKERS = (
+    "=== LEARNED STRATEGIES",
+    "=== TOOL PREFERENCES",
+    "=== RELEVANT STORED KNOWLEDGE",
+    "=== RECENT CONVERSATION CONTEXT",
+    "=== RECENT CONVERSATION HISTORY",
+    "[CONTEXT - Tool preference",
+    "Original user request:",
+    "Tools executed so far:",
+    "[Turn ",
+)
+
+_MEMORY_TOOL_SIGNAL_POSITIVE_MARKERS = (
+    "always use",
+    "prefer",
+    "preferred",
+    "should use",
+    "use ",
+    "route to",
+    "optimal",
+    "start with",
+)
+
+_MEMORY_TOOL_SIGNAL_NEGATIVE_MARKERS = (
+    "do not use",
+    "don't use",
+    "never use",
+    "avoid",
+    "failed",
+    "failure",
+    "wrong",
+    "bad path",
+)
+
+
+def _cap_tool_rag_text(text: str, max_chars: int | None = None) -> str:
+    """Keep fallback Tool RAG embedding text small and stable."""
+    limit = max_chars if max_chars is not None else get_int("TOOL_RAG_CONTEXT_QUERY_MAX_CHARS", 500)
+    limit = max(80, int(limit or 500))
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 16].rstrip() + " ... [truncated]"
+
+
+def _truncate_at_first_marker(text: str, markers: tuple[str, ...] = _REQUEST_BOUNDARY_MARKERS) -> str:
+    """Trim a captured request before subsequent tool/result instruction blocks."""
+    if not text:
+        return ""
+    stops = [idx for marker in markers if (idx := text.find(marker)) >= 0]
+    if stops:
+        text = text[: min(stops)]
+    return text.strip()
+
+
+def _extract_trailing_request_after_context(text: str) -> str | None:
+    """
+    Pull the final plain request paragraph after prepended intelligence/memory blocks.
+
+    In normal cloud/web routing, learned insights and auto-memory are prepended
+    directly before the raw request without a "Current request:" label. Embedding
+    the whole thing is noisy; the trailing user paragraph is usually the best
+    retrieval query.
+    """
+    if not text or not any(marker in text for marker in _FULL_PROMPT_MARKERS):
+        return None
+
+    candidate = _truncate_at_first_marker(text)
+    lines = candidate.splitlines()
+    end = len(lines)
+    while end > 0 and not lines[end - 1].strip():
+        end -= 1
+    if end <= 0:
+        return None
+
+    start = end
+    while start > 0:
+        line = lines[start - 1].strip()
+        if not line:
+            break
+        if line.startswith("==="):
+            break
+        start -= 1
+
+    tail = "\n".join(lines[start:end]).strip()
+    if not tail:
+        return None
+
+    first = tail.lstrip()
+    context_prefixes = (
+        "✅", "❌", "→", "- ", "(", "Freshness note:", "Higher rank =",
+        "Lines tagged ", "Other lines are ", "Context timing:",
+    )
+    if first.startswith(context_prefixes):
+        return None
+    return tail
+
+
+def _extract_current_tool_request(transcript: str) -> tuple[str | None, str]:
+    """
+    Extract the current user request from Jarvis routing prompts.
+
+    The LLM still receives the full prompt. This is only for Tool RAG embeddings,
+    where long learned-strategy, memory, and prior-result prose can drown the
+    current task in vector space.
+    """
+    text = transcript or ""
+
+    # Web UI prompt wrapper: [CONTEXT - Tool preference] ... User's request: ...
+    marker = "User's request:"
+    idx = text.rfind(marker)
+    if idx >= 0:
+        request = _truncate_at_first_marker(text[idx + len(marker):])
+        if request:
+            return request, "user_request"
+
+    # Web conversation context wrapper: ... Current request: ...
+    marker = "Current request:"
+    idx = text.rfind(marker)
+    if idx >= 0:
+        request = _truncate_at_first_marker(text[idx + len(marker):])
+        if request:
+            return request, "current_request"
+
+    # Legacy auto-context wrapper used by CLI/wake-word mode.
+    if "=== RECENT CONVERSATION HISTORY ===" in text and "Instructions:" in text:
+        before_instructions = text.split("Instructions:", 1)[0]
+        lines = before_instructions.split("\n")
+        for line in reversed(lines):
+            line = line.strip()
+            if line and not line.startswith("[") and not line.startswith("User:") and \
+               not line.startswith("Assistant:") and not line.startswith("Tools used:") and \
+               not line.startswith("Status:") and not line.startswith("===") and \
+               not line.startswith("Last ") and not line.startswith("Model:") and \
+               not line.startswith("Cost:") and "conversation(s)" not in line:
+                return line, "legacy_history_strip"
+
+    # Multi-turn tool context can wrap the original request without the Web UI
+    # Current request marker. Use it only if no richer marker was available.
+    marker = "Original user request:"
+    idx = text.rfind(marker)
+    if idx >= 0:
+        request = _truncate_at_first_marker(text[idx + len(marker):])
+        if request:
+            trailing = _extract_trailing_request_after_context(request)
+            if trailing:
+                return trailing, "original_user_request_tail"
+            return request, "original_user_request"
+
+    trailing = _extract_trailing_request_after_context(text)
+    if trailing:
+        return trailing, "trailing_request"
+
+    return None, "unparsed"
+
+
+def _parse_enabled_tool_names(raw: str, enabled_tool_names: set[str]) -> set[str]:
+    """Extract exact registered tool names from a line of text."""
+    if not raw or not enabled_tool_names:
+        return set()
+    names: set[str] = set()
+    for match in re.finditer(r"\b[A-Za-z][A-Za-z0-9_]{1,120}\b", raw):
+        name = match.group(0)
+        if name in enabled_tool_names:
+            names.add(name)
+    return names
+
+
+def _extract_memory_tool_signals(transcript: str, enabled_tool_names: set[str]) -> tuple[set[str], set[str]]:
+    """
+    Optionally classify exact tool names in auto-memory/intel context.
+
+    This is intentionally gated by TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED because
+    memory prose can be noisy. When enabled, only exact enabled tool names with a
+    nearby positive/negative cue become structured signals.
+    """
+    positives: set[str] = set()
+    negatives: set[str] = set()
+    if not enabled_tool_names or not get_bool("TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED", False):
+        return positives, negatives
+
+    sections = re.findall(
+        r"=== RELEVANT STORED KNOWLEDGE.*?(?:\n===|$)",
+        transcript or "",
+        flags=re.DOTALL,
+    )
+    if not sections:
+        return positives, negatives
+
+    for section in sections:
+        lowered = section.lower()
+        for name in enabled_tool_names:
+            pattern = rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])"
+            for match in re.finditer(pattern, section):
+                start = max(0, match.start() - 120)
+                end = min(len(section), match.end() + 120)
+                window = lowered[start:end]
+                if any(marker in window for marker in _MEMORY_TOOL_SIGNAL_POSITIVE_MARKERS):
+                    positives.add(name)
+                if any(marker in window for marker in _MEMORY_TOOL_SIGNAL_NEGATIVE_MARKERS):
+                    negatives.add(name)
+
+    return positives, negatives
+
+
+def build_tool_retrieval_signals(
+    transcript: str,
+    enabled_tool_names: list[str] | set[str] | None = None,
+) -> ToolRetrievalSignals:
+    """
+    Build a compact Tool RAG query and structured exact tool-name signals.
+
+    Learned strategies, auto-memory, and recent context still go to the routing
+    LLM in full. Tool RAG gets a smaller task-shaped query plus explicit
+    positive/negative tool names so long context cannot distort top-K ranking.
+    """
+    enabled_set = set(enabled_tool_names or [])
+    positive_tools: set[str] = set()
+    negative_tools: set[str] = set()
+    notes: list[str] = []
+    text = transcript or ""
+
+    for line in text.splitlines():
+        if "Selected tool hints:" in line:
+            positive_tools.update(_parse_enabled_tool_names(line.split("Selected tool hints:", 1)[1], enabled_set))
+            continue
+
+        prefer_match = re.search(
+            r"\bPREFER:\s*([A-Za-z][A-Za-z0-9_]{1,120})(?:\s*\(\+?([0-9]+(?:\.[0-9]+)?)\))?",
+            line,
+        )
+        if prefer_match:
+            min_bias = get_float("TOOL_RAG_MIN_LEARNED_PREFER_BIAS", 0.40)
+            bias_raw = prefer_match.group(2)
+            bias_ok = True
+            if bias_raw is not None:
+                try:
+                    bias_ok = float(bias_raw) >= min_bias
+                except ValueError:
+                    bias_ok = True
+            if bias_ok:
+                positive_tools.update(_parse_enabled_tool_names(prefer_match.group(1), enabled_set))
+            else:
+                notes.append(f"skipped_low_bias_prefer={prefer_match.group(1)}:{bias_raw}")
+
+        avoid_match = re.search(r"\bAVOID:\s*([A-Za-z][A-Za-z0-9_]{1,120})", line)
+        if avoid_match:
+            negative_tools.update(_parse_enabled_tool_names(avoid_match.group(1), enabled_set))
+
+        do_not_match = re.search(r"\bDO NOT use:\s*(.+)$", line, flags=re.IGNORECASE)
+        if do_not_match:
+            negative_tools.update(_parse_enabled_tool_names(do_not_match.group(1), enabled_set))
+
+    mem_positive, mem_negative = _extract_memory_tool_signals(text, enabled_set)
+    positive_tools.update(mem_positive)
+    negative_tools.update(mem_negative)
+
+    conflicted = positive_tools & negative_tools
+    if conflicted:
+        # Conflicting intelligence happens in practice. Neutralize it instead
+        # of force-adding or force-removing the same tool.
+        positive_tools -= conflicted
+        negative_tools -= conflicted
+        notes.append(f"conflicted_tools={','.join(sorted(conflicted))}")
+
+    if not get_bool("TOOL_RAG_COMPACT_QUERY_ENABLED", True):
+        return ToolRetrievalSignals(
+            query=text,
+            source="full_prompt_disabled",
+            positive_tools=positive_tools,
+            negative_tools=negative_tools,
+            conflicted_tools=conflicted,
+            notes=notes,
+        )
+
+    request, source = _extract_current_tool_request(text)
+    if request:
+        query = _cap_tool_rag_text(request, get_int("TOOL_RAG_CURRENT_QUERY_MAX_CHARS", 1200))
+        return ToolRetrievalSignals(
+            query=query,
+            source=source,
+            positive_tools=positive_tools,
+            negative_tools=negative_tools,
+            conflicted_tools=conflicted,
+            notes=notes,
+        )
+
+    if not any(marker in text for marker in _FULL_PROMPT_MARKERS):
+        return ToolRetrievalSignals(
+            query=_cap_tool_rag_text(text, get_int("TOOL_RAG_CURRENT_QUERY_MAX_CHARS", 1200)),
+            source="raw_request",
+            positive_tools=positive_tools,
+            negative_tools=negative_tools,
+            conflicted_tools=conflicted,
+            notes=notes,
+        )
+
+    return ToolRetrievalSignals(
+        query=_cap_tool_rag_text(text, get_int("TOOL_RAG_CONTEXT_QUERY_MAX_CHARS", 500)),
+        source="full_fallback",
+        positive_tools=positive_tools,
+        negative_tools=negative_tools,
+        conflicted_tools=conflicted,
+        notes=notes,
+    )
+
+
+def merge_tool_signal_names(
+    initial_names: list[str],
+    signals: ToolRetrievalSignals,
+    enabled_tool_names: list[str] | set[str],
+    ghost_tools: list[str] | set[str] | None = None,
+    excluded_tools: list[str] | set[str] | None = None,
+) -> tuple[list[str], dict[str, list[str]]]:
+    """Apply structured positive/negative tool signals to a retrieved name list."""
+    enabled_set = set(enabled_tool_names or [])
+    ghost_set = set(ghost_tools or [])
+    excluded_set = set(excluded_tools or [])
+    append_positive = get_bool("TOOL_RAG_APPEND_POSITIVE_SIGNALS", True)
+    exclude_negative = get_bool("TOOL_RAG_EXCLUDE_NEGATIVE_SIGNALS", True)
+
+    positive = {
+        name for name in signals.positive_tools
+        if name in enabled_set and name not in excluded_set
+    }
+    negative = {
+        name for name in signals.negative_tools
+        if name in enabled_set and name not in excluded_set
+    }
+    conflicted = positive & negative
+    positive -= conflicted
+    negative -= conflicted
+
+    names: list[str] = []
+    for name in initial_names:
+        if name in excluded_set:
+            continue
+        if exclude_negative and name in negative and name not in ghost_set:
+            continue
+        if name not in names:
+            names.append(name)
+
+    appended: list[str] = []
+    if append_positive:
+        for name in sorted(positive):
+            if name not in names:
+                names.append(name)
+                appended.append(name)
+
+    return names, {
+        "positive": sorted(positive),
+        "negative": sorted(negative),
+        "conflicted": sorted(set(signals.conflicted_tools) | conflicted),
+        "appended": appended,
+    }
+
+
+def _log_tool_rag_trace(
+    *,
+    mode: str,
+    provider: str,
+    model: str,
+    transcript: str,
+    query: str,
+    threshold: float,
+    retrieval_limit: int,
+    signal_source: str,
+    signal_meta: dict[str, list[str]],
+    signal_notes: list[str],
+    ranked_tools: list[dict[str, Any]],
+    final_tools: list[str],
+    ghost_tools: list[str],
+    excluded_tools: list[str],
+    tool_schema_chars: int | None = None,
+    tool_schema_est_tokens: int | None = None,
+    tool_schema_top: list[dict[str, Any]] | None = None,
+) -> None:
+    """Write optional Tool RAG retrieval traces for live routing debugging."""
+    if not get_bool("TOOL_RAG_TRACE_ENABLED", True):
+        return
+    try:
+        project_root = Path(__file__).parent.parent.resolve()
+        log_dir = project_root / "logs" / "tool-rag"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        today = datetime.now().strftime("%Y-%m-%d")
+        log_file = log_dir / f"tool-rag-{today}.jsonl"
+        max_ranked = max(5, get_int("TOOL_RAG_TRACE_TOP_N", 25))
+        max_query_chars = max(80, get_int("TOOL_RAG_TRACE_QUERY_CHARS", 1200))
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "mode": mode,
+            "provider": provider,
+            "model": model,
+            "signal_source": signal_source,
+            "similarity_threshold": threshold,
+            "retrieval_limit": retrieval_limit,
+            "query": _cap_tool_rag_text(query, max_query_chars),
+            "query_chars": len(query or ""),
+            "full_transcript_chars": len(transcript or ""),
+            "full_transcript_embedding": query == transcript,
+            "signal_meta": signal_meta,
+            "signal_notes": signal_notes,
+            "ghost_tools": ghost_tools,
+            "excluded_tools": excluded_tools,
+            "ranked_tools": [
+                {
+                    "rank": idx + 1,
+                    "name": tool.get("name"),
+                    "similarity": round(float(tool.get("similarity") or 0.0), 6),
+                    "in_final_tools": tool.get("name") in final_tools,
+                }
+                for idx, tool in enumerate(ranked_tools[:max_ranked])
+            ],
+            "final_tools": final_tools,
+            "final_tool_count": len(final_tools),
+            "tool_schema_chars": tool_schema_chars,
+            "tool_schema_est_tokens": tool_schema_est_tokens,
+            "tool_schema_top": tool_schema_top or [],
+        }
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+    except Exception as exc:
+        if os.environ.get("JARVIS_DEBUG"):
+            print(f"DEBUG: Failed to log Tool RAG trace: {exc}", file=sys.stderr)
+
+
+def _estimate_tool_schema_payload(tools: list[dict[str, Any]]) -> dict[str, Any]:
+    """Estimate chars/tokens for the exact tool schemas sent to the provider."""
+    try:
+        serialized = json.dumps(tools, default=str, separators=(",", ":"))
+    except Exception:
+        serialized = str(tools)
+    per_tool: list[dict[str, Any]] = []
+    for tool in tools:
+        name = None
+        if isinstance(tool, dict):
+            if "function" in tool and isinstance(tool.get("function"), dict):
+                name = tool["function"].get("name")
+            else:
+                name = tool.get("name")
+        try:
+            tool_serialized = json.dumps(tool, default=str, separators=(",", ":"))
+        except Exception:
+            tool_serialized = str(tool)
+        chars = len(tool_serialized)
+        per_tool.append({
+            "name": name or "unknown",
+            "chars": chars,
+            "est_tokens": max(1, round(chars / 4)),
+        })
+    per_tool.sort(key=lambda item: item["chars"], reverse=True)
+    chars = len(serialized)
+    return {
+        "chars": chars,
+        "est_tokens": max(1, round(chars / 4)) if chars else 0,
+        "top": per_tool[: max(1, get_int("TOOL_RAG_TRACE_SCHEMA_TOP_N", 10))],
+    }
+
+
+def _tool_rag_similarity_threshold(
+    transcript: str,
+    tool_search_query: str,
+    signal_source: str | None = None,
+) -> float:
     """
     When the full routing string is embedded for Tool RAG (no strip to a short user line),
     optionally use TOOL_SIMILARITY_THRESHOLD_FULL; if unset or empty, use TOOL_SIMILARITY_THRESHOLD
     for both paths.
     """
     base = get_float('TOOL_SIMILARITY_THRESHOLD', 0.0)
+    if signal_source:
+        if not signal_source.startswith("full"):
+            return base
+        raw = get_config_value('TOOL_SIMILARITY_THRESHOLD_FULL', None)
+        if raw is None or str(raw).strip() == '':
+            return base
+        try:
+            return float(raw)
+        except (ValueError, TypeError):
+            return base
     if tool_search_query != transcript:
         return base
     raw = get_config_value('TOOL_SIMILARITY_THRESHOLD_FULL', None)
@@ -686,29 +1188,17 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         # Cloud models (Claude/GPT) can handle more choices
         retrieval_limit = 5 if self.mode == 'local' else 15
         
-        # 2. Extract the actual user query for Tool RAG embeddings only (optional strip).
-        # Auto-context adds === RECENT CONVERSATION HISTORY === ... Instructions:; embedding the
-        # full blob dilutes similarity. Learned strategies / prefs stay on the full transcript
-        # for the routing LLM; only find_tools() uses tool_search_query when strip runs.
-        tool_search_query = transcript
-        if "=== RECENT CONVERSATION HISTORY ===" in transcript and "Instructions:" in transcript:
-            # The actual query is between the last conversation exchange and "Instructions:"
-            # Find it by working backwards from "Instructions:"
-            before_instructions = transcript.split("Instructions:")[0]
-            lines = before_instructions.split('\n')
-            # Work backwards to find the first non-empty line that's not part of the context metadata
-            for line in reversed(lines):
-                line = line.strip()
-                if line and not line.startswith('[') and not line.startswith('User:') and \
-                   not line.startswith('Assistant:') and not line.startswith('Tools used:') and \
-                   not line.startswith('Status:') and not line.startswith('===') and \
-                   not line.startswith('Last ') and not line.startswith('Model:') and \
-                   not line.startswith('Cost:') and 'conversation(s)' not in line:
-                    # This is the user query
-                    tool_search_query = line
-                    break
-        
-        tool_sim_threshold = _tool_rag_similarity_threshold(transcript, tool_search_query)
+        # 2. Build a Tool RAG retrieval view. The routing LLM still receives the
+        # full transcript, but embeddings use a compact task-shaped query plus
+        # structured exact tool signals from hints/intelligence.
+        enabled_tool_names = list(self.registry.tools.keys())
+        tool_signals = build_tool_retrieval_signals(transcript, enabled_tool_names)
+        tool_search_query = tool_signals.query
+        tool_sim_threshold = _tool_rag_similarity_threshold(
+            transcript,
+            tool_search_query,
+            tool_signals.source,
+        )
         
         # 3. Find relevant tools using vector search
         # This returns ToolSchema objects for the top matches + ghost tools
@@ -718,6 +1208,25 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             similarity_threshold=tool_sim_threshold,
             typo_hint_source=typo_hint_source,
         )
+        ranked_tool_trace: list[dict[str, Any]] = []
+        if get_bool("TOOL_RAG_TRACE_ENABLED", True):
+            try:
+                from memory_db import get_memory_db
+                from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
+
+                db = get_memory_db()
+                try:
+                    rag_trace_query, _ = expand_tool_rag_query_for_typo_hints(
+                        tool_search_query,
+                        enabled_tool_names,
+                        hint_source=typo_hint_source,
+                    )
+                    ranked_tool_trace = db.search_tools(rag_trace_query, limit=100, threshold=0.0)
+                finally:
+                    db.close()
+            except Exception as trace_error:
+                if os.environ.get("JARVIS_DEBUG"):
+                    print(f"DEBUG: Tool RAG rank trace unavailable: {trace_error}", file=sys.stderr)
         
         # Filter out excluded tools (e.g., tools blocked for web mode)
         if self._excluded_tools:
@@ -740,6 +1249,23 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         from config_loader import get_config_value
         ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations')
         ghost_list = [t.strip() for t in ghost_tools_str.split(',')]
+
+        initial_tool_names = [t.name for t in relevant_tools]
+        merged_tool_names, signal_meta = merge_tool_signal_names(
+            initial_tool_names,
+            tool_signals,
+            enabled_tool_names,
+            ghost_tools=ghost_list,
+            excluded_tools=self._excluded_tools,
+        )
+        if merged_tool_names != initial_tool_names:
+            by_name = {t.name: t for t in relevant_tools}
+            merged_tools = []
+            for name in merged_tool_names:
+                tool = by_name.get(name) or self.registry.get_tool(name)
+                if tool:
+                    merged_tools.append(tool)
+            relevant_tools = merged_tools
         
         tool_names = [t.name for t in relevant_tools]
         retrieved = [name for name in tool_names if name not in ghost_list]
@@ -759,8 +1285,12 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         logger.info(f"[TOOL_RAG] Tool search query: {tool_search_query}")
         logger.info(
             f"[TOOL_RAG] similarity_threshold={tool_sim_threshold:.4f} "
-            f"(full_transcript_embedding={tool_search_query == transcript})"
+            f"(source={tool_signals.source}, full_transcript_embedding={tool_search_query == transcript})"
         )
+        if signal_meta.get("positive") or signal_meta.get("negative") or signal_meta.get("conflicted"):
+            logger.info(f"[TOOL_RAG] signal_meta={signal_meta}")
+        if tool_signals.notes:
+            logger.info(f"[TOOL_RAG] signal_notes={tool_signals.notes}")
         logger.info(f"[TOOL_RAG] Retrieved {len(retrieved)} tools: {retrieved}")
         logger.info(f"[TOOL_RAG] Ghost tools: {ghosts}")
         logger.info(f"[TOOL_RAG] Total tools sent to LLM: {len(tool_names)}")
@@ -774,6 +1304,26 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         # For Ollama, convert to Anthropic-like format (simpler)
         if hasattr(self.provider, '__class__') and 'Ollama' in self.provider.__class__.__name__:
             tools = [t.to_anthropic_format() for t in relevant_tools]
+        schema_payload = _estimate_tool_schema_payload(tools)
+        _log_tool_rag_trace(
+            mode=self.mode,
+            provider=getattr(self, "provider_type", "unknown"),
+            model=getattr(self, "model_name", "unknown"),
+            transcript=transcript,
+            query=tool_search_query,
+            threshold=tool_sim_threshold,
+            retrieval_limit=retrieval_limit,
+            signal_source=tool_signals.source,
+            signal_meta=signal_meta,
+            signal_notes=tool_signals.notes,
+            ranked_tools=ranked_tool_trace,
+            final_tools=tool_names,
+            ghost_tools=ghost_list,
+            excluded_tools=self._excluded_tools,
+            tool_schema_chars=schema_payload["chars"],
+            tool_schema_est_tokens=schema_payload["est_tokens"],
+            tool_schema_top=schema_payload["top"],
+        )
         
         # Send to LLM
         messages = [{"role": "user", "content": transcript}]

@@ -11,7 +11,7 @@ Typo RAG: In production, expand_tool_rag_query_for_typo_hints gets hint_source=r
 text (token scan is user-only). Regime 1 below now uses the same user query as the
 hint source, so the plain-query debug view is much closer to live routing behavior.
 
-Script-only options (no app code changes):
+Script-only options:
   --stripped-threshold / --full-threshold — two cutoffs for two embedding regimes
   --synthetic-full — also embed a built-in synthetic "full transcript" wrapping your query
   --full-transcript-file — embed file contents as the "full" regime (real captured prompt)
@@ -34,9 +34,15 @@ import sys
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "orchestrator"))
 from config_loader import load_config, get_config_value, get_float
 from memory_db import get_memory_db
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
+from router_v2 import (
+    build_tool_retrieval_signals,
+    merge_tool_signal_names,
+    _tool_rag_similarity_threshold,
+)
 
 
 def _enabled_tool_names_from_db(db) -> list[str]:
@@ -97,6 +103,95 @@ def _run_search(
     return db.search_tools(query, limit=limit_top, threshold=0.0)
 
 
+def _production_initial_names(
+    retrieved_tools: list[dict],
+    ghost_tools: list[str],
+    enabled_tool_names: list[str],
+) -> list[str]:
+    enabled = set(enabled_tool_names)
+    names: list[str] = []
+    for ghost in ghost_tools:
+        if ghost in enabled and ghost not in names:
+            names.append(ghost)
+    for tool in retrieved_tools:
+        name = tool["name"]
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def _print_production_block(
+    title: str,
+    transcript: str,
+    hint_source: str,
+    db,
+    retrieval_limit: int,
+    ghost_tools: list[str],
+    enabled_tool_names: list[str],
+    threshold_override: float | None = None,
+) -> None:
+    signals = build_tool_retrieval_signals(transcript, enabled_tool_names)
+    threshold = (
+        threshold_override
+        if threshold_override is not None
+        else _tool_rag_similarity_threshold(transcript, signals.query, signals.source)
+    )
+    rag_query, typo_hints = expand_tool_rag_query_for_typo_hints(
+        signals.query,
+        enabled_tool_names,
+        hint_source=hint_source,
+    )
+    all_tools = _run_search(db, rag_query, 100)
+    retrieved_tools = db.search_tools(rag_query, limit=retrieval_limit, threshold=threshold)
+    initial_names = _production_initial_names(retrieved_tools, ghost_tools, enabled_tool_names)
+    final_names, signal_meta = merge_tool_signal_names(
+        initial_names,
+        signals,
+        enabled_tool_names,
+        ghost_tools=ghost_tools,
+    )
+    score_by_name = {tool["name"]: tool.get("similarity", 0.0) for tool in all_tools}
+
+    print(title)
+    print(f"   Signal source: {signals.source}")
+    print(f"   Embedding input length: {len(rag_query)} chars")
+    print(f"   Threshold: {threshold}")
+    print(f"   Compact query: {signals.query[:500]}")
+    if typo_hints:
+        print(f"   Typo RAG hints: {typo_hints}")
+    if signal_meta.get("positive") or signal_meta.get("negative") or signal_meta.get("conflicted"):
+        print(f"   Signal meta: {signal_meta}")
+    if signals.notes:
+        print(f"   Signal notes: {signals.notes}")
+    print()
+    print(f"🔎 Vector Search Results (Top 20) — pass threshold ≥ {threshold}:")
+    print(f"   {'Rank':<6} {'Score':<8} {'Tool Name':<40} {'Pass?':<10}")
+    print(f"   {'-'*6} {'-'*8} {'-'*40} {'-'*10}")
+    for i, tool in enumerate(all_tools[:20], 1):
+        name = tool["name"]
+        score = tool["similarity"]
+        passed = "✅ YES" if score >= threshold else "❌ NO"
+        ghost_marker = "👻" if name in ghost_tools else "  "
+        print(f"   {i:<6} {score:<8.4f} {ghost_marker} {name:<38} {passed}")
+    print()
+    print("📚 Production-style tool list (ghost first, semantic top-K, then positive signals):")
+    print(f"   Total tool list size: {len(final_names)}")
+    print(f"   Retrieved before signal merge: {len(initial_names)}")
+    for i, name in enumerate(final_names, 1):
+        tags: list[str] = []
+        if name in ghost_tools:
+            tags.append("ghost")
+        if name in signal_meta.get("appended", []):
+            tags.append("appended")
+        elif name in [tool["name"] for tool in retrieved_tools]:
+            tags.append("retrieved")
+        score = score_by_name.get(name)
+        score_text = f"score={score:.4f}" if score is not None else "score=n/a"
+        tag_text = f" ({', '.join(tags)})" if tags else ""
+        print(f"   {i:>2}. {name}{tag_text} {score_text}")
+    print()
+
+
 def _print_block(
     title: str,
     query: str,
@@ -121,11 +216,14 @@ def _print_block(
         print(f"   {i:<6} {score:<8.4f} {ghost_marker} {name:<38} {passed}")
     print()
     retrieved_names = [t["name"] for t in retrieved_tools]
-    final_names = list(retrieved_names)
+    final_names: list[str] = []
     for ghost in ghost_tools:
         if ghost not in final_names:
             final_names.append(ghost)
-    print(f"📚 Tools that would be sent (retrieved ∩ threshold, then ghost merge):")
+    for name in retrieved_names:
+        if name not in final_names:
+            final_names.append(name)
+    print(f"📚 Legacy tool list approximation (ghost first, then retrieved ∩ threshold):")
     print(f"   Total tool list size: {len(final_names)}")
     print(f"   Retrieved (above threshold): {len(retrieved_names)}")
     print(f"   Retrieved Tools:")
@@ -158,9 +256,18 @@ def debug_tool_rag(
     )
     ghost_tools = [t.strip() for t in ghost_tools_str.split(",")]
     env_threshold = get_float("TOOL_SIMILARITY_THRESHOLD", 0.0)
+    full_env_raw = get_config_value("TOOL_SIMILARITY_THRESHOLD_FULL", None)
+    try:
+        env_full_threshold = (
+            env_threshold
+            if full_env_raw is None or str(full_env_raw).strip() == ""
+            else float(full_env_raw)
+        )
+    except (TypeError, ValueError):
+        env_full_threshold = env_threshold
 
     st = stripped_threshold if stripped_threshold is not None else env_threshold
-    ft = full_threshold if full_threshold is not None else env_threshold
+    ft = full_threshold if full_threshold is not None else env_full_threshold
 
     retrieval_limit = 5 if mode == "local" else 15
     db = get_memory_db()
@@ -185,6 +292,7 @@ def debug_tool_rag(
         print("📋 Configuration:")
         print(f"   Ghost Tools: {', '.join(ghost_tools)}")
         print(f"   TOOL_SIMILARITY_THRESHOLD (env): {env_threshold}")
+        print(f"   TOOL_SIMILARITY_THRESHOLD_FULL (env/effective): {env_full_threshold}")
         print(f"   --stripped-threshold (regime 1): {st}")
         if synthetic_full or full_transcript_file:
             print(f"   --full-threshold (regime 2): {ft}")
@@ -201,6 +309,17 @@ def debug_tool_rag(
             plain_retrieved,
         )
 
+        _print_production_block(
+            "=== Production-style retrieval: plain query ===",
+            query,
+            query,
+            db,
+            retrieval_limit,
+            ghost_tools,
+            tool_names,
+            threshold_override=st,
+        )
+
         full_query: str | None = None
         if full_transcript_file:
             with open(full_transcript_file, encoding="utf-8", errors="replace") as f:
@@ -214,6 +333,16 @@ def debug_tool_rag(
                 _run_search(db, full_query, 100),
                 db.search_tools(full_query, limit=retrieval_limit, threshold=ft),
             )
+            _print_production_block(
+                f"=== Production-style retrieval: full transcript from file ({full_transcript_file}) ===",
+                full_query,
+                query,
+                db,
+                retrieval_limit,
+                ghost_tools,
+                tool_names,
+                threshold_override=None,
+            )
         elif synthetic_full:
             full_query = build_synthetic_full_transcript(query)
             _print_block(
@@ -225,16 +354,27 @@ def debug_tool_rag(
                 _run_search(db, full_query, 100),
                 db.search_tools(full_query, limit=retrieval_limit, threshold=ft),
             )
+            _print_production_block(
+                "=== Production-style retrieval: synthetic full transcript ===",
+                full_query,
+                query,
+                db,
+                retrieval_limit,
+                ghost_tools,
+                tool_names,
+                threshold_override=None,
+            )
 
         if synthetic_full or full_transcript_file:
             print("💡 Notes:")
             print("   - Regime 1 scores match a plain user string (like default debug).")
             print("   - Regime 2 scores use a long string; distribution often differs — tune --full-threshold separately.")
+            print("   - Production-style blocks use router_v2's compact query + structured signal merge.")
             if synthetic_full and not full_transcript_file:
                 print("   - Synthetic template is approximate; paste a real prompt with --full-transcript-file for fidelity.")
             print()
-            print("   Theory: production may apply one threshold to both paths today; two thresholds in-app would")
-            print("   mirror this experiment — this script tests that idea without changing the codebase.")
+            print("   Current behavior: compact/current-request retrieval uses TOOL_SIMILARITY_THRESHOLD;")
+            print("   only true full-fallback retrieval uses TOOL_SIMILARITY_THRESHOLD_FULL.")
         else:
             print("💡 Tip: add --synthetic-full [--stripped-threshold A --full-threshold B] to compare two regimes,")
             print("   or --full-transcript-file PATH to embed a captured orchestrator prompt.")
@@ -253,7 +393,9 @@ Examples:
   %(prog)s cloud "What is the price of Bitcoin?" --synthetic-full --stripped-threshold 0.24 --full-threshold 0.20
   %(prog)s local "Hi" --full-transcript-file /tmp/prompt.txt --stripped-threshold 0.24 --full-threshold 0.18
 
-If --stripped-threshold / --full-threshold are omitted, both regimes use TOOL_SIMILARITY_THRESHOLD from env.
+If --stripped-threshold is omitted, regime 1 uses TOOL_SIMILARITY_THRESHOLD.
+If --full-threshold is omitted, regime 2 uses TOOL_SIMILARITY_THRESHOLD_FULL when set,
+otherwise TOOL_SIMILARITY_THRESHOLD.
 """,
     )
     p.add_argument("mode", choices=["cloud", "local"], help="Config profile to load")
@@ -272,7 +414,7 @@ If --stripped-threshold / --full-threshold are omitted, both regimes use TOOL_SI
         type=float,
         default=None,
         metavar="FLOAT",
-        help="Min cosine similarity for regime 2 (synthetic or file full transcript). Default: same as env.",
+        help="Min cosine similarity for regime 2. Default: TOOL_SIMILARITY_THRESHOLD_FULL if set, else base threshold.",
     )
     p.add_argument(
         "--synthetic-full",

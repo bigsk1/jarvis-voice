@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_int, get_float, get_config_value
-from time_utils import safe_iso_to_local_datetime
+from time_utils import safe_iso_to_local_datetime, parse_utc_timestamp, now_utc
 from memory_db import get_memory_db
 from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import apply_prompt_override_sections
@@ -2569,7 +2569,7 @@ Your BEST EFFORT response:"""
         Returns:
             Enhanced query with recent conversation context (if any relevant)
         """
-        from datetime import timedelta
+        from datetime import timedelta, timezone
         
         try:
             db = get_memory_db()
@@ -2581,21 +2581,27 @@ Your BEST EFFORT response:"""
                 return current_query
             
             # Filter by time window (only include recent conversations)
-            cutoff = datetime.now() - timedelta(minutes=self.auto_context_minutes)
+            cutoff = now_utc() - timedelta(minutes=self.auto_context_minutes)
             
             relevant = []
             for conv in recent:
                 # Parse timestamp (handle both string and datetime)
                 ts_str = conv.get('timestamp', '')
                 if isinstance(ts_str, str):
-                    # Try parsing ISO format
+                    # Conversation timestamps are stored by SQLite CURRENT_TIMESTAMP
+                    # as naive UTC strings. Parse them as UTC before comparing with
+                    # the configured short-term context window.
                     try:
-                        ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                        ts = parse_utc_timestamp(ts_str)
                     except:
                         # Skip if can't parse
                         continue
                 elif hasattr(ts_str, 'timestamp'):
                     ts = ts_str
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    else:
+                        ts = ts.astimezone(timezone.utc)
                 else:
                     continue
                 
@@ -2656,13 +2662,7 @@ Your BEST EFFORT response:"""
             context_parts.append("Instructions:")
             context_parts.append("- Use the conversation history to provide context-aware responses")
             context_parts.append("- Reference previous topics naturally when relevant")
-            context_parts.append("- Learn from failed attempts (check_tool_logs if needed)")
-            context_parts.append("- Catch contradictions and continue multi-step workflows seamlessly")
-            context_parts.append("- If you need more history, call get_recent_conversations tool")
-            context_parts.append("- Learn from failed attempts (check_tool_logs if needed)")
-            context_parts.append("- Catch contradictions (\"You just said X, now saying Y?\")")
             context_parts.append("- Continue multi-step workflows seamlessly")
-            context_parts.append("- If context window is too short, you can call get_recent_conversations tool for more history")
             
             return "\n".join(context_parts)
             

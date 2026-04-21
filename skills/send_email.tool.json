@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "send_email",
-  "description": "Send an email to a contact, optionally with file attachments from stash. Use when user says 'email', 'send email to', 'email me that image', etc. Contacts looked up by name (e.g., 'Andrew', 'Mom', 'Boss') from contacts.json. SUPPORTS ATTACHMENTS: Use 'attachment' parameter with stash ref (stash://space_xxx/file) or file path to attach images, PDFs, etc. Gracefully handles expired stash (7-day TTL) with fallback to generated_images/. IMPORTANT: Always compose email body with context - who is sending and why.",
+  "description": "Send an email to a contact, optionally with file attachments from stash. Use when user says 'email', 'send email to', 'email me that image', 'send email', etc. Contacts looked up by name (e.g., 'Andrew', 'Mom', 'Boss') from contacts.json. SUPPORTS ATTACHMENTS: Use 'attachment' parameter with stash ref (stash://space_xxx/file) or file path to attach images, PDFs, etc. Gracefully handles expired stash (7-day TTL) with fallback to generated_images/. IMPORTANT: Always compose email body with context - who is sending and why.",
   "script": "send_email.py",
   "parameters": {
     "type": "object",

@@ -175,7 +175,7 @@ graph TB
 
 ### Tool RAG System (Dynamic Tool Retrieval)
 
-Jarvis uses **Tool RAG** (Retrieval Augmented Generation for Tools) to dynamically load only relevant tools for each query, enabling infinite scalability.
+Jarvis uses **Tool RAG** (Retrieval Augmented Generation for Tools) to dynamically load only relevant tools for each query, enabling infinite scalability. The routing LLM still sees the full prompt; Tool RAG embeds a compact current-request signal plus structured tool hints so long memory/intel blocks do not dilute retrieval.
 
 ```mermaid
 graph TB
@@ -260,20 +260,28 @@ graph TB
 GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time"
 ```
 
-**Similarity Thresholds** (filter retrieved tools before top-K):
+**Similarity Thresholds and compact retrieval** (filter retrieved tools before top-K):
 ```bash
 # In config/cloud.env or config/local.env
-TOOL_SIMILARITY_THRESHOLD=0.0       # Base threshold
-TOOL_SIMILARITY_THRESHOLD_FULL=0.0  # Optional: used when Tool RAG embeds the full routing prompt
+TOOL_SIMILARITY_THRESHOLD=0.23      # Base threshold for compact/current request queries
+TOOL_SIMILARITY_THRESHOLD_FULL=0.40 # Optional: stricter threshold for true full_fallback
 
 # If TOOL_SIMILARITY_THRESHOLD_FULL is unset/blank:
-# - full-prompt and stripped-query paths both use TOOL_SIMILARITY_THRESHOLD
+# - full_fallback and compact paths both use TOOL_SIMILARITY_THRESHOLD
 #
 # Practical tuning notes:
-# - Cloud mode: TOOL_SIMILARITY_THRESHOLD_FULL around 0.40 is a good starting point
-#   when long prompts are inflating retrieval and filling the 15-tool cap.
+# - Cloud mode: TOOL_SIMILARITY_THRESHOLD_FULL around 0.40 is a good safety net
+#   when no clean current request can be extracted.
 # - Local/Gemma mode: 0.35-0.45 often behaves like a no-op because scores skew higher
 #   and local only retrieves 5 tools; leave FULL unset unless you tune it separately.
+
+TOOL_RAG_COMPACT_QUERY_ENABLED=true
+TOOL_RAG_CURRENT_QUERY_MAX_CHARS=1200
+TOOL_RAG_CONTEXT_QUERY_MAX_CHARS=500
+TOOL_RAG_APPEND_POSITIVE_SIGNALS=true
+TOOL_RAG_EXCLUDE_NEGATIVE_SIGNALS=true
+TOOL_RAG_MIN_LEARNED_PREFER_BIAS=0.40
+TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED=false
 ```
 
 **Sync Tool Definitions** (required after adding/modifying tools):
@@ -298,11 +306,21 @@ source ~/jarvis-venv/bin/activate
   --full-threshold 0.40
 
 # Shows:
-# - Similarity scores for all tools
-# - Which tools pass the base vs full-prompt threshold
-# - Ghost tools vs. retrieved tools
+# - Production-style signal_source and compact query
+# - Similarity scores and active threshold
+# - Ghost tools, exact positive/negative signals, and final tools
 # - Recommendations for tuning
 ```
+
+**Live Tool RAG Trace Logs**:
+```bash
+TOOL_RAG_TRACE_ENABLED=true
+TOOL_RAG_TRACE_TOP_N=25
+TOOL_RAG_TRACE_QUERY_CHARS=1200
+TOOL_RAG_TRACE_SCHEMA_TOP_N=10
+```
+
+Writes `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl` with `signal_source`, `similarity_threshold`, `ranked_tools`, `final_tools`, `final_tool_count`, and rough schema size estimates (`tool_schema_chars`, `tool_schema_est_tokens`, `tool_schema_top`).
 
 ### Tool Registry & Enable/Disable
 

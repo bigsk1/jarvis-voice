@@ -104,6 +104,8 @@ Text-to-Speech (OpenAI TTS / Kokoro)
 You hear: "Webhook sent successfully to your server. Status 200."
 ```
 
+Tool availability is selected just before the router LLM call by Tool RAG. Local mode retrieves top 5 semantic tools and cloud mode retrieves top 15, then ghost tools and exact positive tool signals are merged in. For live debugging of which tools were made available, enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; see `docs/TOOL_RAG_STRATEGY.md`.
+
 ## Provider Comparison
 
 | Provider | Tool Calling | Speed | Cost | Privacy |

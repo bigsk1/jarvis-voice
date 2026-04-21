@@ -13,7 +13,7 @@ Previously, `ToolRegistry` loaded **ALL** enabled tools into the LLM's system pr
 -   **Cloud Models (Claude/GPT-4)**: High cost, potential confusion with similar tools.
 -   **Local Models (Ollama)**: **CRITICAL FAILURE POINT**. Small context windows (8k-32k) get filled with tool definitions, leaving no room for conversation history or reasoning.
 
-**Solution**: Treat "Tools" like "Memories". Store them in a vector database and only retrieve the top 3-5 most relevant tools for the current query.
+**Solution**: Treat "Tools" like "Memories". Store them in a vector database and only retrieve the most relevant tools for the current request, then merge in a small always-available ghost set and any exact tool preferences that survived guardrails.
 
 ---
 
@@ -23,13 +23,17 @@ We leveraged the existing `MemoryDB` infrastructure to store tool definitions as
 
 ```mermaid
 graph TD
-    A[User Query] --> B[Router]
-    B --> C{Tool RAG}
-    C -- Query Embedding --> D[Memory DB]
-    D -- Top-K Tools --> C
-    C -- Selected Tools + Ghost Tools --> E[LLM System Prompt]
-    E --> F[LLM Decision]
+    A[Full User Prompt] --> B[Router]
+    B --> C[Build Compact Retrieval Signals]
+    C --> D{Tool RAG}
+    D -- Compact Query Embedding --> E[Memory DB]
+    E -- Ranked Tools --> D
+    D -- Ranked Tools + Ghost Tools + Exact Positive Signals --> F[LLM System Prompt]
+    A --> F
+    F --> G[LLM Decision]
 ```
+
+The important split: the routing LLM still sees the full prompt, including learned strategies, memory context, recent conversation, and tool results. Tool RAG usually embeds a much smaller request-focused query so long memory/intel blocks do not dilute tool similarity.
 
 ---
 
@@ -97,23 +101,36 @@ source ~/jarvis-venv/bin/activate
 ```
 
 ### B. Router Logic (`orchestrator/router_v2.py`)
--   **Local Mode**: Retrieves top **5** tools (Strict context limit).
--   **Cloud Mode**: Retrieves top **15** tools (Broader context).
+-   **Local Mode**: Retrieves top **5** semantic tools, then adds ghost tools and exact positive signals.
+-   **Cloud Mode**: Retrieves top **15** semantic tools, then adds ghost tools and exact positive signals.
+-   **Ghost tools**: Always appended so core memory/log/time/artifact tools remain available even when similarity search misses.
+-   **Positive tool signals**: UI-selected hints and high-confidence learned `PREFER: tool (+score)` lines can append an enabled non-ghost tool even if vector search missed it.
+-   **Negative tool signals**: `DO NOT use: tool` / `AVOID: tool` style signals can exclude non-ghost tools from the semantic result. If the same tool is both preferred and avoided in the same structured signal set, the conflict is neutralized.
+-   **Memory/intel tool-name signals**: Exact-match extraction from general memory/intel prose is experimental and disabled by default because that prose is noisier than explicit learned strategy lines.
 -   **Threshold selection**:
-    - `TOOL_SIMILARITY_THRESHOLD` is the base cutoff.
-    - `TOOL_SIMILARITY_THRESHOLD_FULL` is used only when Tool RAG embeds the full routing prompt (`tool_search_query == transcript`).
+    - `TOOL_SIMILARITY_THRESHOLD` is the base cutoff for compact/current/raw/original-tail/trailing request queries.
+    - `TOOL_SIMILARITY_THRESHOLD_FULL` is used only for true `full_fallback`, even when that fallback string is capped before embedding.
     - If `TOOL_SIMILARITY_THRESHOLD_FULL` is unset or blank, both paths use `TOOL_SIMILARITY_THRESHOLD`.
 
 ### C. Dual-threshold tuning
 
-Long routing prompts can inflate similarity scores and cause Tool RAG to hit the retrieval cap with weak matches. To counter that, Jarvis supports an optional stricter cutoff for the full-prompt path.
+Long routing prompts can inflate similarity scores and cause Tool RAG to hit the retrieval cap with weak matches. Jarvis now avoids that in the normal path by building compact retrieval signals. The stricter full threshold still matters as a safety net when no clean current request can be extracted.
 
 ```bash
-# Base threshold used for stripped/short query retrieval
+# Base threshold used for compact/current/raw/trailing/original-tail query retrieval
 TOOL_SIMILARITY_THRESHOLD=0.23
 
-# Optional stricter cutoff when the full routing string is embedded
+# Optional stricter cutoff only for true full_fallback
 TOOL_SIMILARITY_THRESHOLD_FULL=0.40
+
+# Compact retrieval keeps the rich prompt for the LLM but embeds a smaller query
+TOOL_RAG_COMPACT_QUERY_ENABLED=true
+TOOL_RAG_CURRENT_QUERY_MAX_CHARS=1200
+TOOL_RAG_CONTEXT_QUERY_MAX_CHARS=500
+TOOL_RAG_APPEND_POSITIVE_SIGNALS=true
+TOOL_RAG_EXCLUDE_NEGATIVE_SIGNALS=true
+TOOL_RAG_MIN_LEARNED_PREFER_BIAS=0.40
+TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED=false
 ```
 
 **Observed behavior (`2026-04-12`):**
@@ -121,7 +138,41 @@ TOOL_SIMILARITY_THRESHOLD_FULL=0.40
 -   **Local / Gemma mode**: `0.35`-`0.45` often had little effect because local only retrieves 5 tools and long-prompt similarities skewed much higher. Local needed much higher values before behavior changed, and those changes were cliff-like.
 -   **Practical read**: keep cloud and local tuning separate. A cloud-friendly full threshold does not automatically transfer to local.
 
-### D. Debugging with real prompts
+### D. Retrieval Signal Sources
+
+When `TOOL_RAG_COMPACT_QUERY_ENABLED=true`, the router tries to extract a clean current request from the full routing prompt before embedding. The source label is logged as `signal_source` in Tool RAG traces.
+
+| `signal_source` | What it means | Normal threshold |
+| --- | --- | --- |
+| `user_request` | Extracted from an explicit `User's request:` marker, commonly used in web tool-hint contexts. | `TOOL_SIMILARITY_THRESHOLD` |
+| `current_request` | Extracted from `Current request:` in web conversation context. | `TOOL_SIMILARITY_THRESHOLD` |
+| `legacy_history_strip` | Extracted from the older `=== RECENT CONVERSATION HISTORY ===` plus `Instructions:` auto-context shape. This is the path to watch when testing `AUTO_CONTEXT_ENABLED=true` in CLI/TUI flows. | `TOOL_SIMILARITY_THRESHOLD` |
+| `trailing_request` | No explicit request marker was found, but the prompt has prepended learned/memory context followed by a plain current user request at the end. Tool RAG embeds that trailing user request. | `TOOL_SIMILARITY_THRESHOLD` |
+| `original_user_request_tail` | A later tool-routing turn wrapped the original prompt as `Original user request:`. The extractor strips the wrapper and prepended context, then embeds the final plain user request from that original prompt. | `TOOL_SIMILARITY_THRESHOLD` |
+| `original_user_request` | The `Original user request:` wrapper was found, but no cleaner tail could be isolated. | `TOOL_SIMILARITY_THRESHOLD` |
+| `raw_request` | The transcript was already a simple request without known context wrappers. | `TOOL_SIMILARITY_THRESHOLD` |
+| `full_fallback` | No reliable request shape was found. Tool RAG embeds a capped fallback string using `TOOL_RAG_CONTEXT_QUERY_MAX_CHARS`. | `TOOL_SIMILARITY_THRESHOLD_FULL` |
+
+Example live trace pattern:
+
+```text
+03:22:46 signal_source=trailing_request
+03:22:59 signal_source=original_user_request_tail
+```
+
+That usually means two separate routing turns for one user task. The first route selected a tool from the current request. After the tool result came back, the next route received a larger turn input containing `Original user request:` plus prior tool context, so the extractor reported `original_user_request_tail`. The LLM did not see two different tool lists at the same moment; it saw the result of each route at its own step.
+
+Do not expect every `logs/llm-calls-*.jsonl` row to contain `User's request:`. That marker appears only when a prompt/tool-hint wrapper explicitly added it, such as Web UI prompt metadata, selected tool hints, or CLI `--prompt` context. A normal web request with learned strategies prepended can look like:
+
+```text
+=== LEARNED STRATEGIES (WHAT TO DO) ===
+...
+can you find the best breakfast around me?
+```
+
+In that case the LLM-call log correctly stores the full routing prompt, while the Tool RAG trace should show `signal_source=trailing_request`, `query=can you find the best breakfast around me?`, and `full_transcript_embedding=false`.
+
+### E. Debugging with real prompts
 
 Use `bin/debug_tool_rag.py` to compare the plain user string against a real captured full prompt:
 
@@ -134,16 +185,16 @@ source ~/jarvis-venv/bin/activate
   --full-threshold 0.40
 ```
 
-This is the most reliable way to tune `TOOL_SIMILARITY_THRESHOLD_FULL`, because synthetic long prompts can be harsher than production.
+The script now includes production-style retrieval blocks that show the compact signal source, threshold, structured notes, ghost merge, and final tool list. This is the closest offline view of what the router will make available to the LLM.
 
-### E. Typo hints (embedding query only)
+### F. Typo hints (embedding query only)
 
 `lib/tool_rag_typo_hints.py` runs inside `ToolRegistry.find_tools()` **before** `MemoryDB.search_tools()`.
 
 Production behavior:
 - the orchestrator/router pass `typo_hint_source=<raw user request>`
 - typo/segment scanning is done only on that user text
-- the **full** Tool-RAG embedding query is still embedded as normal
+- the selected Tool RAG retrieval query is still embedded as normal; typo hints only append canonical tool names to that query
 - any resolved canonical tool names are appended only to the embedding string
 
 This avoids scanning:
@@ -171,22 +222,57 @@ Debugging note:
 
 Disable with `TOOL_RAG_TYPO_ENABLED=false`.
 
-### F. Web UI vs auto-context: who uses which threshold
+### G. Web UI, Auto-Context, And Thresholds
 
-The two env vars are **not** split by “CLI vs web” or “one tool vs many tools.” They track **one technical distinction**: did the router shorten the string before embedding, or did it embed the whole routing prompt?
+The two threshold env vars are not split by "CLI vs web" or "one tool vs many tools." They track the shape of the string embedded for Tool RAG.
 
 **`TOOL_SIMILARITY_THRESHOLD` (e.g. 0.23)**  
-Used when `tool_search_query` is **different from** the full `transcript` because the router **stripped** the blob down to a short line. That only happens when the incoming text matches the **auto-context** shape: it contains `=== RECENT CONVERSATION HISTORY ===` (from memory DB injection in the orchestrator) **and** `Instructions:`. The strip walks backward from `Instructions:` to find the real user line. That path is what older voice/CLI-style flows used; anything that still sends this exact shape gets the short query and the base threshold.
+Used when Tool RAG has a clean compact request signal: `user_request`, `current_request`, `legacy_history_strip`, `trailing_request`, `original_user_request_tail`, `original_user_request`, or `raw_request`.
 
 **`TOOL_SIMILARITY_THRESHOLD_FULL` (e.g. 0.40)**  
-Used when **no** strip ran, so `tool_search_query` equals the **entire** routing string. Long prompts dilute the embedding, so similarities skew higher; a stricter cutoff trims weak tools and saves tokens. Typical **web chat** requests look like `=== RECENT CONVERSATION CONTEXT ===` … `Current request:` — different header, no `Instructions:` block, so the HISTORY strip **does not** run. **Every** such turn (first message or tenth, one tool round or four) uses the **full** path until you add a separate strip for the web shape.
+Used only when Tool RAG cannot isolate a reliable current request and falls back to `full_fallback`. That remains true even though the fallback string is capped by `TOOL_RAG_CONTEXT_QUERY_MAX_CHARS`; it is still semantically the "full prompt fallback" path.
 
-So in plain terms:
+Current expectations:
+- **Web UI**: Usually emits `user_request`, `current_request`, `trailing_request`, or `original_user_request_tail`, depending on whether it is the first route or a later tool-result route.
+- **CLI/TUI with `AUTO_CONTEXT_ENABLED=true`**: May emit `legacy_history_strip` when `_build_conversation_context()` prepends `=== RECENT CONVERSATION HISTORY ===` and `Instructions:`. That should keep the embedding close to the current user line instead of the whole auto-context block.
+- **Fallback**: If logs show `signal_source=full_fallback`, check `similarity_threshold`; it should show the `TOOL_SIMILARITY_THRESHOLD_FULL` value when that env var is set.
 
-- **Base threshold** = “we embedded a short user line.”
-- **Full threshold** = “we embedded the whole thing.”
+Auto-context test recipe:
+1. Set `AUTO_CONTEXT_ENABLED=true` and `TOOL_RAG_TRACE_ENABLED=true`.
+2. Run a CLI/TUI query after at least one recent conversation row exists inside `AUTO_CONTEXT_MINUTES`.
+3. Inspect the newest `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl` row.
+4. Expected good path: `signal_source=legacy_history_strip`, `compact_query` is the current user line, and `similarity_threshold` is `TOOL_SIMILARITY_THRESHOLD`.
+5. If it shows `full_fallback`, the auto-context wrapper shape changed or no clean request line was found.
 
-Web UI is usually on the **full** path, not because it is “multi-tool only,” but because the transcript never matched the HISTORY+`Instructions:` heuristic. If you tune both numbers, treat them as **embedding-shape A vs B**, not as product surface labels.
+### H. Live Trace Logs
+
+Enable Tool RAG tracing while tuning:
+
+```bash
+TOOL_RAG_TRACE_ENABLED=true
+TOOL_RAG_TRACE_TOP_N=25
+TOOL_RAG_TRACE_QUERY_CHARS=1200
+TOOL_RAG_TRACE_SCHEMA_TOP_N=10
+```
+
+Traces are written to:
+
+```text
+logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl
+```
+
+Useful fields:
+- `signal_source`: Which extraction path was used.
+- `similarity_threshold`: The threshold active for that route.
+- `retrieval_limit`: `5` local or `15` cloud before ghost/positive-signal merge.
+- `compact_query`: The query embedded for retrieval, capped for log readability.
+- `ranked_tools`: Similarity-ranked candidates from the trace search.
+- `final_tools` / `final_tool_count`: The actual tool names made available to the LLM after merging ghost tools and structured signals.
+- `tool_schema_chars` / `tool_schema_est_tokens`: Rough size of the schemas sent to the LLM. Token estimate is `chars / 4`, useful for tuning but not an exact provider bill.
+- `tool_schema_top`: Largest schema contributors in the final tool list.
+- `positive_tool_signals`, `negative_tool_signals`, and `excluded_tools`: Why exact signals changed the final list.
+
+Tracing intentionally runs an extra ranking search so the log can show near misses and scores. Leave it on while tuning live behavior, then disable it if the extra embedding call or JSONL noise is not useful.
 
 ---
 

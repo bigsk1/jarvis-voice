@@ -143,6 +143,8 @@ def _discover_tools(self):
 
 ## Token Count Impact
 
+In current Tool RAG runtime, token impact is best measured from the final tool list rather than from all enabled tools. Enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; each trace includes `final_tool_count`, `tool_schema_chars`, `tool_schema_est_tokens`, and `tool_schema_top` so you can see which schemas actually reached the LLM.
+
 ### Example Reduction (Ollama qwen3-vl)
 
 **All 17 tools + 2 MCP servers:**
@@ -704,4 +706,3 @@ ls -la /tmp/playwright-output/
 - **Allowed origins:** Restrict to trusted domains in production
 - **Storage state:** Mount read-only (`/host/state:/state:ro`)
 - **Isolated mode:** Use `--isolated` for untrusted URLs
-
