@@ -15,7 +15,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from webui_auth import is_auth_enabled, get_token_from_request, verify_token
 from flask_error_logger import setup_error_logging
-from config_loader import load_config
+from config_loader import get_config_value, load_config
 
 
 def create_app(mode='cloud'):
@@ -104,15 +104,18 @@ def run_server(host='0.0.0.0', port=8890, mode='cloud', debug=False):
                       if f.is_file() and f.suffix.lower() in ('.mp4', '.webm', '.mov')]) if GENERATED_VIDEOS_DIR.exists() else 0
     
     auth_status = "ENABLED" if is_auth_enabled() else "DISABLED"
+    public_url = (get_config_value("CANVAS_PUBLIC_URL", f"http://localhost:{port}") or f"http://localhost:{port}").strip().rstrip("/")
+    gallery_url = f"{public_url}/gallery"
+    video_gallery_url = f"{public_url}/video-gallery"
     
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║                    🎨 Jarvis Canvas                            ║
 ║         Visual Knowledge Viewer + Media Galleries              ║
 ╠═══════════════════════════════════════════════════════════════╣
-║  Canvas:        http://localhost:{port:<5}                      ║
-║  Image Gallery: http://localhost:{port}/gallery                 ║
-║  Video Gallery: http://localhost:{port}/video-gallery           ║
+║  Canvas:        {public_url:<42} ║
+║  Image Gallery: {gallery_url:<42} ║
+║  Video Gallery: {video_gallery_url:<42} ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  Mode: {mode.upper():<7} | Auth: {auth_status:<8}                          ║
 ║  Pages: {page_count:<5}  |  Images: {image_count:<5}  |  Videos: {video_count:<5}          ║

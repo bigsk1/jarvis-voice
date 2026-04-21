@@ -8,6 +8,14 @@ let currentPage = null;
 let editingPage = null;
 let currentSearchQuery = '';
 
+function getInitialPageIdFromLocation() {
+    const match = window.location.pathname.match(/^\/(page_[A-Za-z0-9_-]+)$/);
+    if (match) return match[1];
+
+    const params = new URLSearchParams(window.location.search);
+    return params.get('page') || params.get('page_id') || null;
+}
+
 // =========================================================================
 // Sidebar Toggle (Mobile)
 // =========================================================================
@@ -353,6 +361,11 @@ async function fetchPages() {
         if (pages.length === 0) {
             showEmptyState();
         } else if (!currentPage) {
+            const initialPageId = getInitialPageIdFromLocation();
+            if (initialPageId && pages.some(page => page.id === initialPageId)) {
+                selectPage(initialPageId);
+                return;
+            }
             const visiblePages = getFilteredPages();
             selectPage((visiblePages[0] || pages[0]).id);
         }

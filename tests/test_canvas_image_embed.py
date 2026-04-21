@@ -63,10 +63,42 @@ def test_embed_image_markdown_extracts_multiline_image_label():
     assert "Price: $22.50" in result
 
 
+def test_canvas_page_url_uses_public_url(monkeypatch):
+    def fake_config(key, default=None):
+        values = {
+            "CANVAS_INTERNAL_URL": "http://localhost:8890",
+            "CANVAS_PUBLIC_URL": "http://192.168.70.228:8890/",
+        }
+        return values.get(key, default)
+
+    monkeypatch.setattr(canvas_module, "get_config_value", fake_config)
+
+    assert canvas_module.get_canvas_internal_url() == "http://localhost:8890"
+    assert canvas_module.get_canvas_public_url() == "http://192.168.70.228:8890"
+    assert (
+        canvas_module.get_canvas_page_url("page_20260331_121401")
+        == "http://192.168.70.228:8890/page_20260331_121401"
+    )
+
+
+def test_canvas_public_url_falls_back_when_blank(monkeypatch):
+    def fake_config(key, default=None):
+        values = {
+            "CANVAS_INTERNAL_URL": "http://localhost:8890/",
+            "CANVAS_PUBLIC_URL": "   ",
+        }
+        return values.get(key, default)
+
+    monkeypatch.setattr(canvas_module, "get_config_value", fake_config)
+
+    assert canvas_module.get_canvas_public_url() == "http://localhost:8890"
+
+
 def test_create_page_updates_existing_page_with_same_title():
     original_health = canvas_module.check_canvas_health
     original_api = canvas_module.api_request
     original_save = canvas_module.save_to_memory
+    original_config = canvas_module.get_config_value
 
     calls = []
 
@@ -95,10 +127,18 @@ def test_create_page_updates_existing_page_with_same_title():
             }
         raise AssertionError(f"Unexpected API call: {method} {endpoint}")
 
+    def fake_config(key, default=None):
+        values = {
+            "CANVAS_INTERNAL_URL": "http://localhost:8890",
+            "CANVAS_PUBLIC_URL": "http://canvas.lan:8890/",
+        }
+        return values.get(key, default)
+
     try:
         canvas_module.check_canvas_health = fake_health
         canvas_module.api_request = fake_api
         canvas_module.save_to_memory = lambda page: None
+        canvas_module.get_config_value = fake_config
 
         result = create_page(
             "Godzilla Sleep Pajama Pants (B0DT78LB7Z)",
@@ -109,8 +149,11 @@ def test_create_page_updates_existing_page_with_same_title():
         canvas_module.check_canvas_health = original_health
         canvas_module.api_request = original_api
         canvas_module.save_to_memory = original_save
+        canvas_module.get_config_value = original_config
 
     assert result["ok"] is True
     assert result["data"]["page_id"] == "page_existing"
+    assert result["data"]["url"] == "http://canvas.lan:8890/page_existing"
+    assert result["data"]["base_url"] == "http://canvas.lan:8890"
     assert result["data"]["updated_existing"] is True
     assert not any(method == "POST" and endpoint == "/pages" for method, endpoint, _ in calls)

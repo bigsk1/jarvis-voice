@@ -27,6 +27,8 @@ A visual viewer for rich content that Jarvis populates. Think of it as a persona
 
 Navigate to: `http://localhost:8890`
 
+If Canvas is running on a headless Jarvis server, set `CANVAS_PUBLIC_URL` to the LAN URL you open from laptops/desktops, for example `http://192.168.70.228:8890`. The tool still talks to Canvas through `CANVAS_INTERNAL_URL`, which can remain `http://localhost:8890` on the Jarvis host.
+
 ### 3. Ask Jarvis to Save Content
 
 ```
@@ -73,7 +75,14 @@ Canvas pages support embedded images. Jarvis can now pass an explicit `image_url
 
 ### Environment Variables
 
-None required. Canvas uses defaults.
+Canvas works with defaults, but headless/LAN installs should set the public URL so generated Canvas links are clickable from other machines.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CANVAS_INTERNAL_URL` | `http://localhost:8890` | Server-side URL used by the Canvas tool for `/api` calls from the Jarvis host |
+| `CANVAS_PUBLIC_URL` | `http://localhost:8890` | Browser-facing URL returned in tool responses and memory, e.g. `http://192.168.70.228:8890` |
+
+Canvas page links use `CANVAS_PUBLIC_URL/{page_id}`, for example `http://192.168.70.228:8890/page_20260331_121401`. The Canvas UI serves direct `/page_...` links and selects that page after login.
 
 ---
 

@@ -22,11 +22,10 @@ from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
+from config_loader import get_config_value, load_config
 
 # Constants
-CANVAS_URL = "http://localhost:8890"
-CANVAS_API = f"{CANVAS_URL}/api"
+CANVAS_INTERNAL_URL_DEFAULT = "http://localhost:8890"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANVAS_DIR = os.path.join(PROJECT_ROOT, "data", "canvas")
 
@@ -36,6 +35,37 @@ _BARE_SOURCE_HOST_PATH = re.compile(
     r"(?<!://)(?<![@\w/\-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:/[^\s\],;)<>\"\']*)?)",
     re.IGNORECASE,
 )
+
+
+def _clean_base_url(value: str | None, default: str) -> str:
+    """Normalize configured Canvas URLs without leaving a trailing slash."""
+    cleaned = (value or "").strip().rstrip("/")
+    return cleaned or default.strip().rstrip("/")
+
+
+def get_canvas_internal_url() -> str:
+    """URL used by server-side tools to talk to Canvas on the Jarvis host."""
+    return _clean_base_url(
+        get_config_value("CANVAS_INTERNAL_URL", CANVAS_INTERNAL_URL_DEFAULT),
+        CANVAS_INTERNAL_URL_DEFAULT,
+    )
+
+
+def get_canvas_public_url() -> str:
+    """Browser-facing Canvas URL shown to users and stored in memory."""
+    internal_url = get_canvas_internal_url()
+    return _clean_base_url(
+        get_config_value("CANVAS_PUBLIC_URL", internal_url),
+        internal_url,
+    )
+
+
+def get_canvas_page_url(page_id: str | None) -> str:
+    """Browser-facing direct URL for a Canvas page."""
+    base = get_canvas_public_url()
+    if not page_id:
+        return base
+    return f"{base}/{page_id}"
 
 
 def _normalize_bare_urls_in_sources_sections(content: str) -> str:
@@ -204,7 +234,7 @@ def check_canvas_health() -> bool:
     """Check if canvas server is running."""
     try:
         import urllib.request
-        req = urllib.request.Request(f"{CANVAS_API}/health", method='GET')
+        req = urllib.request.Request(f"{get_canvas_internal_url()}/api/health", method='GET')
         with urllib.request.urlopen(req, timeout=2) as resp:
             return resp.status == 200
     except Exception:
@@ -216,7 +246,7 @@ def api_request(method: str, endpoint: str, data: dict | None = None) -> dict[st
     import urllib.request
     import urllib.error
     
-    url = f"{CANVAS_API}{endpoint}"
+    url = f"{get_canvas_internal_url()}/api{endpoint}"
     
     req = urllib.request.Request(url, method=method)
     req.add_header('Content-Type', 'application/json')
@@ -247,13 +277,15 @@ def save_to_memory(page: dict[str, Any]) -> None:
         # Create a memory entry for this canvas page
         key = f"canvas_page_{page['id']}"
         tags = page.get('tags', [])
-        value = f"Canvas page '{page['title']}' - {', '.join(tags)}. View at {CANVAS_URL}"
+        page_url = get_canvas_page_url(page.get('id'))
+        value = f"Canvas page '{page['title']}' - {', '.join(tags)}. View at {page_url}"
         
         # Build metadata
         metadata = {
             "page_id": page['id'],
             "tags": tags,
-            "url": CANVAS_URL,
+            "url": page_url,
+            "base_url": get_canvas_public_url(),
             "created": page.get('created'),
             "source_query": page.get('source_query')
         }
@@ -328,7 +360,8 @@ def create_page(title: str, content: str, tags: list[str] = None,
             update_result["data"] = {
                 "page_id": data.get("id", existing_page['id']),
                 "title": data.get("title", title),
-                "url": CANVAS_URL,
+                "url": get_canvas_page_url(data.get("id", existing_page['id'])),
+                "base_url": get_canvas_public_url(),
                 "tags": data.get("tags", tags or []),
                 "updated_existing": True,
             }
@@ -360,7 +393,8 @@ def create_page(title: str, content: str, tags: list[str] = None,
         "data": {
             "page_id": result['id'],
             "title": result['title'],
-            "url": CANVAS_URL,
+            "url": get_canvas_page_url(result['id']),
+            "base_url": get_canvas_public_url(),
             "tags": result.get('tags', [])
         }
     }
@@ -487,7 +521,7 @@ def list_pages(limit: int = 10) -> dict[str, Any]:
         "data": {
             "pages": page_list,
             "count": len(pages),
-            "url": CANVAS_URL
+            "url": get_canvas_public_url()
         }
     }
 
@@ -501,14 +535,14 @@ def open_canvas() -> dict[str, Any]:
         return {
             "ok": False,
             "error": "Canvas server not running",
-            "speech": "Canvas isn't running. Start it with the jarvis-canvas command, then visit localhost 8890."
+            "speech": "Canvas isn't running. Start it with the jarvis-canvas command, then open the Canvas URL."
         }
     
     return {
         "ok": True,
-        "speech": f"Canvas is running at localhost 8890.",
+        "speech": f"Canvas is running at {get_canvas_public_url()}.",
         "data": {
-            "url": CANVAS_URL,
+            "url": get_canvas_public_url(),
             "status": "running"
         }
     }

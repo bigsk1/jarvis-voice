@@ -14,6 +14,12 @@ def index():
     return render_template('canvas.html')
 
 
+@views_bp.route('/page_<path:page_suffix>')
+def page_link(page_suffix):
+    """Serve the Canvas UI for direct page links like /page_YYYYMMDD_HHMMSS."""
+    return render_template('canvas.html')
+
+
 @views_bp.route('/favicon.ico')
 def favicon():
     """Serve favicon."""
