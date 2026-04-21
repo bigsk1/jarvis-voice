@@ -254,25 +254,150 @@ class IntelligenceService:
         evidence['supporting_tools'] = self._parse_json_value(evidence.get('supporting_tools'), [])
         evidence['reflection_json'] = self._parse_json_value(evidence.get('reflection_json'), evidence.get('reflection_json'))
         return self._add_time_display(evidence, ['created_at'])
+
+    @staticmethod
+    def _safe_json_array_expr(column: str) -> str:
+        return f"CASE WHEN {column} IS NOT NULL AND json_valid({column}) THEN {column} ELSE '[]' END"
+
+    @staticmethod
+    def _safe_json_object_expr(column: str) -> str:
+        return f"CASE WHEN {column} IS NOT NULL AND json_valid({column}) THEN {column} ELSE '{{}}' END"
+
+    @classmethod
+    def _experience_tool_count_expr(cls, alias: str = "e") -> str:
+        tools_json = cls._safe_json_array_expr(f"{alias}.tools_used")
+        return f"COALESCE(json_array_length({tools_json}), 0)"
+
+    @classmethod
+    def _experience_completion_guard_status_expr(cls, alias: str = "e") -> str:
+        raw_json = cls._safe_json_object_expr(f"{alias}.raw_data")
+        return (
+            "COALESCE(NULLIF("
+            f"json_extract({raw_json}, '$.completion_guard.status')"
+            ", ''), 'none')"
+        )
+
+    @classmethod
+    def _experience_where_sql(
+        cls,
+        *,
+        success_only: bool = None,
+        tool_count: str = None,
+        tool: str = None,
+        completion_guard_status: str = None,
+    ) -> tuple[str, list[Any]]:
+        where_clauses = []
+        params: list[Any] = []
+
+        if success_only is True:
+            where_clauses.append("e.outcome_success = 1")
+        elif success_only is False:
+            where_clauses.append("e.outcome_success = 0")
+
+        tool_count_expr = cls._experience_tool_count_expr("e")
+        if tool_count == "none":
+            where_clauses.append(f"{tool_count_expr} = 0")
+        elif tool_count == "single":
+            where_clauses.append(f"{tool_count_expr} = 1")
+        elif tool_count == "multi":
+            where_clauses.append(f"{tool_count_expr} > 1")
+
+        if tool:
+            tools_json = cls._safe_json_array_expr("e.tools_used")
+            where_clauses.append(f"EXISTS (SELECT 1 FROM json_each({tools_json}) WHERE value = ?)")
+            params.append(tool)
+
+        if completion_guard_status:
+            status_expr = cls._experience_completion_guard_status_expr("e")
+            where_clauses.append(f"{status_expr} = ?")
+            params.append(completion_guard_status)
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        return where_sql, params
+
+    @classmethod
+    def _experience_order_sql(cls, sort: str = "date") -> str:
+        tool_count_expr = cls._experience_tool_count_expr("e")
+        status_expr = cls._experience_completion_guard_status_expr("e")
+        completion_guard_rank = (
+            f"CASE {status_expr} "
+            "WHEN 'repaired' THEN 0 "
+            "WHEN 'ticket_created' THEN 1 "
+            "WHEN 'tighten_only' THEN 2 "
+            "WHEN 'cancelled' THEN 3 "
+            "WHEN 'expired' THEN 4 "
+            "WHEN 'superseded' THEN 5 "
+            "WHEN 'accepted' THEN 6 "
+            "WHEN 'auto_accepted' THEN 7 "
+            "WHEN 'none' THEN 8 "
+            "ELSE 9 END"
+        )
+        sort_map = {
+            "turns": "COALESCE(e.turns_taken, 1) DESC, e.timestamp DESC, e.id DESC",
+            "tools": f"{tool_count_expr} DESC, e.timestamp DESC, e.id DESC",
+            "completion_guard": f"{completion_guard_rank} ASC, e.timestamp DESC, e.id DESC",
+            "date": "e.timestamp DESC, e.id DESC",
+        }
+        return sort_map.get(sort, sort_map["date"])
+
+    @staticmethod
+    def _insight_confidence_bounds(tier: str | None) -> tuple[float | None, float | None]:
+        tiers = {
+            "elite": (0.96, None),
+            "high": (0.85, 0.96),
+            "good": (0.75, 0.85),
+            "medium": (0.50, 0.75),
+            "low": (None, 0.50),
+        }
+        return tiers.get(tier or "", (None, None))
+
+    @staticmethod
+    def _insight_order_sql(sort: str = "updated") -> str:
+        has_preferred = "CASE WHEN preferred_tools IS NOT NULL AND preferred_tools NOT IN ('', '{}', '[]', 'null') THEN 0 ELSE 1 END"
+        has_avoided = "CASE WHEN avoided_tools IS NOT NULL AND avoided_tools NOT IN ('', '{}', '[]', 'null') THEN 0 ELSE 1 END"
+        sort_map = {
+            "preferred": f"{has_preferred} ASC, confidence DESC, times_applied DESC, id DESC",
+            "avoided": f"{has_avoided} ASC, confidence DESC, times_applied DESC, id DESC",
+            "confidence": "confidence DESC, times_applied DESC, id DESC",
+            "helpful": "times_helpful DESC, confidence DESC, id DESC",
+            "applied": "times_applied DESC, confidence DESC, id DESC",
+            "updated": "COALESCE(updated_at, created_at) DESC, id DESC",
+        }
+        return sort_map.get(sort, sort_map["updated"])
     
     # =========================================================================
     # Experiences Operations
     # =========================================================================
     
-    def list_experiences(self, limit: int = 100, offset: int = 0,
-                        success_only: bool = None) -> List[Dict]:
+    def list_experiences(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        success_only: bool = None,
+        sort: str = "date",
+        tool_count: str = None,
+        tool: str = None,
+        completion_guard_status: str = None,
+    ) -> tuple[List[Dict], int]:
         """List experiences with optional filtering"""
         conn = self._get_conn()
         cursor = conn.cursor()
         
         try:
-            where_clause = ""
-            params = []
-            
-            if success_only is True:
-                where_clause = "WHERE outcome_success = 1"
-            elif success_only is False:
-                where_clause = "WHERE outcome_success = 0"
+            limit = max(1, min(int(limit), 200))
+            offset = max(0, int(offset))
+            where_sql, params = self._experience_where_sql(
+                success_only=success_only,
+                tool_count=tool_count,
+                tool=tool,
+                completion_guard_status=completion_guard_status,
+            )
+            order_sql = self._experience_order_sql(sort)
+            total = cursor.execute(f"""
+                SELECT COUNT(*)
+                FROM experiences e
+                {where_sql}
+            """, params).fetchone()[0]
             
             results = cursor.execute(f"""
                 SELECT id, timestamp, query, context_summary, tools_used, 
@@ -280,13 +405,63 @@ class IntelligenceService:
                        outcome_success, user_satisfied, error_occurred,
                        raw_data,
                        CASE WHEN query_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
-                FROM experiences
-                {where_clause}
-                ORDER BY timestamp DESC
+                FROM experiences e
+                {where_sql}
+                ORDER BY {order_sql}
                 LIMIT ? OFFSET ?
             """, (*params, limit, offset)).fetchall()
 
-            return [self._hydrate_experience(row, include_raw=False) for row in results]
+            return [self._hydrate_experience(row, include_raw=False) for row in results], total
+        finally:
+            conn.close()
+
+    def get_experience_summary(self) -> Dict[str, Any]:
+        """Return lightweight counts/facets for the Experiences sidebar."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        try:
+            tool_count_expr = self._experience_tool_count_expr("e")
+            status_expr = self._experience_completion_guard_status_expr("e")
+            tools_json = self._safe_json_array_expr("e.tools_used")
+
+            total = cursor.execute("SELECT COUNT(*) FROM experiences").fetchone()[0]
+            success = cursor.execute("SELECT COUNT(*) FROM experiences WHERE outcome_success = 1").fetchone()[0]
+            no_tools = cursor.execute(f"SELECT COUNT(*) FROM experiences e WHERE {tool_count_expr} = 0").fetchone()[0]
+            single_tool = cursor.execute(f"SELECT COUNT(*) FROM experiences e WHERE {tool_count_expr} = 1").fetchone()[0]
+            multi_tool = cursor.execute(f"SELECT COUNT(*) FROM experiences e WHERE {tool_count_expr} > 1").fetchone()[0]
+
+            tool_rows = cursor.execute(f"""
+                SELECT value AS tool, COUNT(*) AS count
+                FROM experiences e, json_each({tools_json})
+                WHERE value IS NOT NULL AND value != ''
+                GROUP BY value
+                ORDER BY value ASC
+            """).fetchall()
+
+            completion_guard_rows = cursor.execute(f"""
+                SELECT {status_expr} AS status, COUNT(*) AS count
+                FROM experiences e
+                GROUP BY status
+                ORDER BY status ASC
+            """).fetchall()
+
+            return {
+                "total": total,
+                "success": success,
+                "failed": total - success,
+                "tool_count": {
+                    "all": total,
+                    "none": no_tools,
+                    "single": single_tool,
+                    "multi": multi_tool,
+                },
+                "tools": [{"name": row["tool"], "count": row["count"]} for row in tool_rows],
+                "completion_guard": {
+                    row["status"] or "none": row["count"]
+                    for row in completion_guard_rows
+                },
+            }
         finally:
             conn.close()
     
@@ -312,21 +487,22 @@ class IntelligenceService:
         finally:
             conn.close()
     
-    def search_experiences(self, query: str, limit: int = 50) -> List[Dict]:
+    def search_experiences(self, query: str, limit: int = 50, sort: str = "date") -> List[Dict]:
         """Search experiences by query text"""
         conn = self._get_conn()
         cursor = conn.cursor()
         
         try:
+            order_sql = self._experience_order_sql(sort)
             results = cursor.execute("""
                 SELECT id, timestamp, query, context_summary, tools_used, 
                        tool_sequence, turns_taken, final_tool,
                        outcome_success, user_satisfied, error_occurred,
                        raw_data,
                        CASE WHEN query_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
-                FROM experiences
-                WHERE query LIKE ? OR context_summary LIKE ? OR tools_used LIKE ?
-                ORDER BY timestamp DESC
+                FROM experiences e
+                WHERE e.query LIKE ? OR e.context_summary LIKE ? OR e.tools_used LIKE ?
+                ORDER BY """ + order_sql + """
                 LIMIT ?
             """, (f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
 
@@ -388,13 +564,22 @@ class IntelligenceService:
     # Insights Operations
     # =========================================================================
     
-    def list_insights(self, limit: int = 100, offset: int = 0,
-                     constraint_type: str = None, min_confidence: float = None) -> List[Dict]:
+    def list_insights(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        constraint_type: str = None,
+        min_confidence: float = None,
+        confidence_tier: str = None,
+        sort: str = "updated",
+    ) -> tuple[List[Dict], int]:
         """List insights with optional filtering"""
         conn = self._get_conn()
         cursor = conn.cursor()
         
         try:
+            limit = max(1, min(int(limit), 200))
+            offset = max(0, int(offset))
             where_clauses = []
             params = []
             
@@ -405,8 +590,22 @@ class IntelligenceService:
             if min_confidence is not None:
                 where_clauses.append("confidence >= ?")
                 params.append(min_confidence)
+
+            confidence_min, confidence_max = self._insight_confidence_bounds(confidence_tier)
+            if confidence_min is not None:
+                where_clauses.append("confidence >= ?")
+                params.append(confidence_min)
+            if confidence_max is not None:
+                where_clauses.append("confidence < ?")
+                params.append(confidence_max)
             
             where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+            order_sql = self._insight_order_sql(sort)
+            total = cursor.execute(f"""
+                SELECT COUNT(*)
+                FROM insights
+                {where_sql}
+            """, params).fetchone()[0]
             
             results = cursor.execute(f"""
                 SELECT id, created_at, updated_at, insight_type, description,
@@ -424,11 +623,49 @@ class IntelligenceService:
                        CASE WHEN insight_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
                 FROM insights
                 {where_sql}
-                ORDER BY confidence DESC, times_applied DESC
+                ORDER BY {order_sql}
                 LIMIT ? OFFSET ?
             """, (*params, limit, offset)).fetchall()
             
-            return [self._hydrate_insight(row) for row in results]
+            return [self._hydrate_insight(row) for row in results], total
+        finally:
+            conn.close()
+
+    def get_insight_summary(self) -> Dict[str, Any]:
+        """Return lightweight counts/facets for the Insights sidebar."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        try:
+            total = cursor.execute("SELECT COUNT(*) FROM insights").fetchone()[0]
+            positive = cursor.execute("""
+                SELECT COUNT(*)
+                FROM insights
+                WHERE constraint_type = 'positive' OR constraint_type IS NULL
+            """).fetchone()[0]
+            negative = cursor.execute("""
+                SELECT COUNT(*)
+                FROM insights
+                WHERE constraint_type = 'negative'
+            """).fetchone()[0]
+            elite = cursor.execute("SELECT COUNT(*) FROM insights WHERE confidence >= 0.96").fetchone()[0]
+            high = cursor.execute("SELECT COUNT(*) FROM insights WHERE confidence >= 0.85 AND confidence < 0.96").fetchone()[0]
+            good = cursor.execute("SELECT COUNT(*) FROM insights WHERE confidence >= 0.75 AND confidence < 0.85").fetchone()[0]
+            medium = cursor.execute("SELECT COUNT(*) FROM insights WHERE confidence >= 0.50 AND confidence < 0.75").fetchone()[0]
+            low = cursor.execute("SELECT COUNT(*) FROM insights WHERE confidence < 0.50").fetchone()[0]
+
+            return {
+                "total": total,
+                "positive": positive,
+                "negative": negative,
+                "confidence": {
+                    "elite": elite,
+                    "high": high,
+                    "good": good,
+                    "medium": medium,
+                    "low": low,
+                },
+            }
         finally:
             conn.close()
     
@@ -464,12 +701,13 @@ class IntelligenceService:
         finally:
             conn.close()
     
-    def search_insights(self, query: str, limit: int = 50) -> List[Dict]:
+    def search_insights(self, query: str, limit: int = 50, sort: str = "updated") -> List[Dict]:
         """Search insights by description or pattern"""
         conn = self._get_conn()
         cursor = conn.cursor()
         
         try:
+            order_sql = self._insight_order_sql(sort)
             results = cursor.execute("""
                 SELECT id, created_at, updated_at, insight_type, description,
                        constraint_type, applies_to_pattern, confidence, evidence_count,
@@ -486,7 +724,7 @@ class IntelligenceService:
                 WHERE description LIKE ? OR applies_to_pattern LIKE ? 
                       OR preferred_tools LIKE ? OR avoided_tools LIKE ?
                       OR source_web_conversation_id LIKE ? OR source_query LIKE ?
-                ORDER BY confidence DESC
+                ORDER BY """ + order_sql + """
                 LIMIT ?
             """, (
                 f"%{query}%",

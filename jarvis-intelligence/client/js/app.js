@@ -23,6 +23,11 @@ let statsData = null;
 let selectedExperienceId = null;
 let selectedInsightId = null;
 let selectedFeedback = null;
+const LIST_PAGE_SIZE = 50;
+let experienceSummary = null;
+let insightSummary = null;
+let experiencePagination = { offset: 0, total: 0, hasMore: false, loading: false, observer: null };
+let insightPagination = { offset: 0, total: 0, hasMore: false, loading: false, observer: null };
 
 // ============================================================================
 // Initialization
@@ -50,7 +55,7 @@ function setupEventListeners() {
   document.getElementById('searchInput').addEventListener('input', debounce(handleSearch, 300));
   
   // Refresh button
-  document.getElementById('refreshBtn').addEventListener('click', () => loadCurrentTab());
+  document.getElementById('refreshBtn').addEventListener('click', () => refreshCurrentTab());
   
   // Filter items
   document.querySelectorAll('.filter-item[data-filter]').forEach(item => {
@@ -85,39 +90,21 @@ function setupEventListeners() {
   // Experience sort selector
   document.getElementById('expSortSelect')?.addEventListener('change', (e) => {
     currentExpSort = e.target.value;
-    experiencesData = sortExperiences(applyExperienceFilters([...allExperiencesData]));
-    renderExperiences();
+    if (getCurrentSearchQuery()) {
+      handleSearch({ target: document.getElementById('searchInput') });
+    } else {
+      loadExperiences();
+    }
   });
   
   // Insight sort selector
   document.getElementById('insightSortSelect')?.addEventListener('change', (e) => {
     currentInsightSort = e.target.value;
-    insightsData = sortInsights([...allInsightsData]);
-    // Reapply confidence filter
-    if (currentConfidenceFilter) {
-      switch (currentConfidenceFilter) {
-        case 'elite':
-          insightsData = insightsData.filter(i => i.confidence >= 0.96);
-          break;
-        case 'high':
-          insightsData = insightsData.filter(i => i.confidence >= 0.85 && i.confidence < 0.96);
-          break;
-        case 'good':
-          insightsData = insightsData.filter(i => i.confidence >= 0.75 && i.confidence < 0.85);
-          break;
-        case 'medium':
-          insightsData = insightsData.filter(i => i.confidence >= 0.50 && i.confidence < 0.75);
-          break;
-        case 'low':
-          insightsData = insightsData.filter(i => i.confidence < 0.50);
-          break;
-      }
+    if (getCurrentSearchQuery()) {
+      handleSearch({ target: document.getElementById('searchInput') });
+    } else {
+      loadInsights();
     }
-    // Reapply constraint filter
-    if (currentFilter !== 'all' && currentTab === 'insights') {
-      insightsData = insightsData.filter(i => (i.constraint_type || 'positive') === currentFilter);
-    }
-    renderInsights();
   });
   
   // Experience tool filter
@@ -199,43 +186,9 @@ async function loadInitialData() {
 
 async function loadAllExperiencesForCounts() {
   try {
-    const result = await api.listExperiences({ limit: 1000 });
-    const all = result.experiences || [];
-    allExperiencesData = all;  // Store for tool filter dropdown
-    
-    const success = all.filter(e => e.outcome_success).length;
-    const failed = all.filter(e => !e.outcome_success).length;
-    
-    // Tool count stats
-    const noTools = all.filter(e => {
-      const tools = Array.isArray(e.tools_used) ? e.tools_used : [];
-      return tools.length === 0;
-    }).length;
-    const singleTool = all.filter(e => {
-      const tools = Array.isArray(e.tools_used) ? e.tools_used : [];
-      return tools.length === 1;
-    }).length;
-    const multiTool = all.filter(e => {
-      const tools = Array.isArray(e.tools_used) ? e.tools_used : [];
-      return tools.length > 1;
-    }).length;
-    
-    document.getElementById('expAllCount').textContent = all.length;
-    document.getElementById('expSuccessCount').textContent = success;
-    document.getElementById('expFailedCount').textContent = failed;
-    
-    // Tool count stats
-    const toolAllEl = document.getElementById('expToolAllCount');
-    const toolNoneEl = document.getElementById('expToolNoneCount');
-    const toolSingleEl = document.getElementById('expToolSingleCount');
-    const toolMultiEl = document.getElementById('expToolMultiCount');
-    
-    if (toolAllEl) toolAllEl.textContent = all.length;
-    if (toolNoneEl) toolNoneEl.textContent = noTools;
-    if (toolSingleEl) toolSingleEl.textContent = singleTool;
-    if (toolMultiEl) toolMultiEl.textContent = multiTool;
-    
-    // Update tool filter dropdown
+    const result = await api.getExperienceSummary();
+    experienceSummary = result.summary || {};
+    updateExperienceCounts();
     updateToolFilterDropdown();
     updateCompletionGuardFilterDropdown();
   } catch (error) {
@@ -245,26 +198,9 @@ async function loadAllExperiencesForCounts() {
 
 async function loadAllInsightsForCounts() {
   try {
-    const result = await api.listInsights({ limit: 1000 });
-    const all = result.insights || [];
-    const positive = all.filter(i => (i.constraint_type || 'positive') === 'positive').length;
-    const negative = all.filter(i => i.constraint_type === 'negative').length;
-    
-    // 5-tier confidence counts
-    const eliteConf = all.filter(i => i.confidence >= 0.96).length;
-    const highConf = all.filter(i => i.confidence >= 0.85 && i.confidence < 0.96).length;
-    const goodConf = all.filter(i => i.confidence >= 0.75 && i.confidence < 0.85).length;
-    const medConf = all.filter(i => i.confidence >= 0.50 && i.confidence < 0.75).length;
-    const lowConf = all.filter(i => i.confidence < 0.50).length;
-    
-    document.getElementById('insightAllCount').textContent = all.length;
-    document.getElementById('insightPositiveCount').textContent = positive;
-    document.getElementById('insightNegativeCount').textContent = negative;
-    document.getElementById('confEliteCount').textContent = eliteConf;
-    document.getElementById('confHighCount').textContent = highConf;
-    document.getElementById('confGoodCount').textContent = goodConf;
-    document.getElementById('confMediumCount').textContent = medConf;
-    document.getElementById('confLowCount').textContent = lowConf;
+    const result = await api.getInsightSummary();
+    insightSummary = result.summary || {};
+    updateInsightCounts();
   } catch (error) {
     console.error('Failed to load insight counts:', error);
   }
@@ -290,24 +226,51 @@ async function loadCurrentTab() {
   }
 }
 
-async function loadExperiences() {
+async function refreshCurrentTab() {
+  if (currentTab === 'experiences') {
+    await loadAllExperiencesForCounts();
+  } else if (currentTab === 'insights') {
+    await loadAllInsightsForCounts();
+  }
+  await loadCurrentTab();
+}
+
+async function loadExperiences({ append = false } = {}) {
   const container = document.getElementById('experiencesList');
-  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  if (experiencePagination.loading) return;
+
+  if (!append) {
+    disconnectPaginationObserver(experiencePagination);
+    experiencePagination = { offset: 0, total: 0, hasMore: false, loading: false, observer: null };
+    experiencesData = [];
+    allExperiencesData = [];
+    container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  }
+
+  experiencePagination.loading = true;
   
   try {
     let successOnly = undefined;
     if (currentFilter === 'success') successOnly = true;
     else if (currentFilter === 'failed') successOnly = false;
     
-    const result = await api.listExperiences({ limit: 500, success_only: successOnly });
-    allExperiencesData = result.experiences || [];
-    experiencesData = [...allExperiencesData];
-    
-    // Apply sidebar filters
-    experiencesData = applyExperienceFilters(experiencesData);
-    
-    // Apply sorting
-    experiencesData = sortExperiences(experiencesData);
+    const options = {
+      limit: LIST_PAGE_SIZE,
+      offset: experiencePagination.offset,
+      success_only: successOnly,
+      sort: currentExpSort,
+    };
+    if (currentExpToolCountFilter !== 'all') options.tool_count = currentExpToolCountFilter;
+    if (currentExpToolFilter) options.tool = currentExpToolFilter;
+    if (currentExpCompletionGuardFilter) options.completion_guard_status = currentExpCompletionGuardFilter;
+
+    const result = await api.listExperiences(options);
+    const nextExperiences = result.experiences || [];
+    experiencesData = append ? [...experiencesData, ...nextExperiences] : nextExperiences;
+    allExperiencesData = experiencesData;
+    experiencePagination.offset = (result.offset || 0) + nextExperiences.length;
+    experiencePagination.total = result.total || experiencesData.length;
+    experiencePagination.hasMore = Boolean(result.has_more);
     
     renderExperiences();
     updateExperienceCounts();
@@ -316,6 +279,9 @@ async function loadExperiences() {
   } catch (error) {
     showToast(`Failed to load experiences: ${error.message}`, 'error');
     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-title">Failed to load</div></div>';
+  } finally {
+    experiencePagination.loading = false;
+    observeExperienceSentinel();
   }
 }
 
@@ -392,86 +358,77 @@ function updateToolFilterDropdown() {
   const select = document.getElementById('expToolFilter');
   if (!select) return;
   
-  // Gather all unique tools from experiences
-  const toolSet = new Set();
-  allExperiencesData.forEach(exp => {
-    const tools = Array.isArray(exp.tools_used) ? exp.tools_used : [];
-    tools.forEach(t => toolSet.add(t));
-  });
-  
-  const sortedTools = [...toolSet].sort();
-  
   // Preserve selection
   const currentValue = select.value;
+  const tools = Array.isArray(experienceSummary?.tools) ? experienceSummary.tools : [];
   
   select.innerHTML = '<option value="">All Tools</option>' +
-    sortedTools.map(t => `<option value="${escapeHtml(t)}"${currentValue === t ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('');
+    tools.map(tool => {
+      const name = tool.name || tool.tool || '';
+      const count = tool.count || 0;
+      return `<option value="${escapeHtml(name)}"${currentValue === name ? ' selected' : ''}>${escapeHtml(name)} (${count})</option>`;
+    }).join('');
 }
 
 function updateCompletionGuardFilterDropdown() {
   const select = document.getElementById('expCompletionGuardFilter');
   if (!select) return;
 
-  const counts = new Map();
-  allExperiencesData.forEach(exp => {
-    const status = getCompletionGuardStatus(exp);
-    counts.set(status, (counts.get(status) || 0) + 1);
-  });
-
   const currentValue = select.value;
-  const statuses = [...counts.keys()].sort((a, b) => getCompletionGuardStatusRank(a) - getCompletionGuardStatusRank(b));
+  const counts = experienceSummary?.completion_guard || {};
+  const statuses = Object.keys(counts).sort((a, b) => getCompletionGuardStatusRank(a) - getCompletionGuardStatusRank(b));
 
   select.innerHTML = '<option value="">All CG Statuses</option>' +
     statuses.map(status => {
       const label = status === 'none' ? 'No Completion Guard' : getCompletionGuardStatusLabel(status);
-      const count = counts.get(status) || 0;
+      const count = counts[status] || 0;
       return `<option value="${escapeHtml(status)}"${currentValue === status ? ' selected' : ''}>${escapeHtml(label)} (${count})</option>`;
     }).join('');
 }
 
-async function loadInsights() {
+async function loadInsights({ append = false } = {}) {
   const container = document.getElementById('insightsList');
-  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  if (insightPagination.loading) return;
+
+  if (!append) {
+    disconnectPaginationObserver(insightPagination);
+    insightPagination = { offset: 0, total: 0, hasMore: false, loading: false, observer: null };
+    insightsData = [];
+    allInsightsData = [];
+    container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  }
+
+  insightPagination.loading = true;
   
   try {
-    const options = { limit: 500 };  // Increased to get all insights for proper filtering
+    const options = {
+      limit: LIST_PAGE_SIZE,
+      offset: insightPagination.offset,
+      sort: currentInsightSort,
+    };
     if (currentFilter !== 'all' && currentTab === 'insights') {
       options.constraint_type = currentFilter;
     }
-    
-    const result = await api.listInsights(options);
-    allInsightsData = result.insights || [];
-    insightsData = [...allInsightsData];
-    
-    // Client-side filtering for 5-tier confidence
     if (currentConfidenceFilter) {
-      switch (currentConfidenceFilter) {
-        case 'elite':
-          insightsData = insightsData.filter(i => i.confidence >= 0.96);
-          break;
-        case 'high':
-          insightsData = insightsData.filter(i => i.confidence >= 0.85 && i.confidence < 0.96);
-          break;
-        case 'good':
-          insightsData = insightsData.filter(i => i.confidence >= 0.75 && i.confidence < 0.85);
-          break;
-        case 'medium':
-          insightsData = insightsData.filter(i => i.confidence >= 0.50 && i.confidence < 0.75);
-          break;
-        case 'low':
-          insightsData = insightsData.filter(i => i.confidence < 0.50);
-          break;
-      }
+      options.confidence_tier = currentConfidenceFilter;
     }
     
-    // Apply sorting
-    insightsData = sortInsights(insightsData);
+    const result = await api.listInsights(options);
+    const nextInsights = result.insights || [];
+    insightsData = append ? [...insightsData, ...nextInsights] : nextInsights;
+    allInsightsData = insightsData;
+    insightPagination.offset = (result.offset || 0) + nextInsights.length;
+    insightPagination.total = result.total || insightsData.length;
+    insightPagination.hasMore = Boolean(result.has_more);
     
     renderInsights();
     updateInsightCounts();
   } catch (error) {
     showToast(`Failed to load insights: ${error.message}`, 'error');
     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><div class="empty-state-title">Failed to load</div></div>';
+  } finally {
+    insightPagination.loading = false;
+    observeInsightSentinel();
   }
 }
 
@@ -778,6 +735,7 @@ function renderExperiences() {
     <div class="content-grid">
       ${experiencesData.map(exp => renderExperienceCard(exp)).join('')}
     </div>
+    ${renderPaginationFooter('experience', experiencesData.length, experiencePagination)}
   `;
   
   // Add click handlers
@@ -859,12 +817,69 @@ function renderInsights() {
     <div class="content-grid">
       ${insightsData.map(insight => renderInsightCard(insight)).join('')}
     </div>
+    ${renderPaginationFooter('insight', insightsData.length, insightPagination)}
   `;
   
   // Add click handlers
   container.querySelectorAll('.insight-card').forEach(card => {
     card.addEventListener('click', () => viewInsight(card.dataset.id));
   });
+}
+
+function renderPaginationFooter(kind, loadedCount, pagination) {
+  if (pagination.hasMore) {
+    return `
+      <div class="infinite-scroll-sentinel" id="${kind}ScrollSentinel">
+        <div class="spinner spinner-small"></div>
+      </div>
+    `;
+  }
+
+  if (loadedCount > 0) {
+    const total = pagination.total || loadedCount;
+    return `<div class="list-end-note">Showing ${loadedCount} of ${total}</div>`;
+  }
+
+  return '';
+}
+
+function disconnectPaginationObserver(pagination) {
+  if (pagination?.observer) {
+    pagination.observer.disconnect();
+    pagination.observer = null;
+  }
+}
+
+function observeExperienceSentinel() {
+  disconnectPaginationObserver(experiencePagination);
+  if (!experiencePagination.hasMore || experiencePagination.loading || currentTab !== 'experiences' || getCurrentSearchQuery()) return;
+
+  const root = document.getElementById('experiencesList');
+  const sentinel = document.getElementById('experienceScrollSentinel');
+  if (!root || !sentinel) return;
+
+  experiencePagination.observer = new IntersectionObserver((entries) => {
+    if (entries.some(entry => entry.isIntersecting)) {
+      loadExperiences({ append: true });
+    }
+  }, { root, rootMargin: '300px 0px', threshold: 0.01 });
+  experiencePagination.observer.observe(sentinel);
+}
+
+function observeInsightSentinel() {
+  disconnectPaginationObserver(insightPagination);
+  if (!insightPagination.hasMore || insightPagination.loading || currentTab !== 'insights' || getCurrentSearchQuery()) return;
+
+  const root = document.getElementById('insightsList');
+  const sentinel = document.getElementById('insightScrollSentinel');
+  if (!root || !sentinel) return;
+
+  insightPagination.observer = new IntersectionObserver((entries) => {
+    if (entries.some(entry => entry.isIntersecting)) {
+      loadInsights({ append: true });
+    }
+  }, { root, rootMargin: '300px 0px', threshold: 0.01 });
+  insightPagination.observer.observe(sentinel);
 }
 
 function renderInsightCard(insight) {
@@ -1705,6 +1720,7 @@ async function handleInsightSubmit(e) {
     }
     
     closeAllModals();
+    await loadAllInsightsForCounts();
     await loadInsights();
   } catch (error) {
     showToast(`Failed to update insight: ${error.message}`, 'error');
@@ -1718,6 +1734,7 @@ async function reembedCurrentExperience() {
     showToast('Re-embedding experience...', 'info');
     await api.reembedExperience(selectedExperienceId);
     showToast('Experience re-embedded successfully', 'success');
+    await loadAllExperiencesForCounts();
     await loadExperiences();
   } catch (error) {
     showToast(`Re-embed failed: ${error.message}`, 'error');
@@ -1733,6 +1750,7 @@ async function deleteCurrentExperience() {
     await api.deleteExperience(selectedExperienceId);
     showToast('Experience deleted', 'success');
     closeAllModals();
+    await loadAllExperiencesForCounts();
     await loadExperiences();
   } catch (error) {
     showToast(`Failed to delete: ${error.message}`, 'error');
@@ -1746,6 +1764,7 @@ async function reembedCurrentInsight() {
     showToast('Re-embedding insight...', 'info');
     await api.reembedInsight(selectedInsightId);
     showToast('Insight re-embedded successfully', 'success');
+    await loadAllInsightsForCounts();
     await loadInsights();
   } catch (error) {
     showToast(`Re-embed failed: ${error.message}`, 'error');
@@ -1761,6 +1780,7 @@ async function deleteCurrentInsight() {
     await api.deleteInsight(selectedInsightId);
     showToast('Insight deleted', 'success');
     closeAllModals();
+    await loadAllInsightsForCounts();
     await loadInsights();
   } catch (error) {
     showToast(`Failed to delete: ${error.message}`, 'error');
@@ -1995,17 +2015,23 @@ async function handleSearch(e) {
   }
   
   if (currentTab === 'experiences') {
+    disconnectPaginationObserver(experiencePagination);
+    experiencePagination = { offset: 0, total: 0, hasMore: false, loading: false, observer: null };
     try {
-      const result = await api.searchExperiences(query);
-      experiencesData = sortExperiences(applyExperienceFilters(result.experiences || []));
+      const result = await api.searchExperiences(query, 50, currentExpSort);
+      experiencesData = applyExperienceFilters(result.experiences || []);
+      allExperiencesData = experiencesData;
       renderExperiences();
     } catch (error) {
       showToast(`Search failed: ${error.message}`, 'error');
     }
   } else if (currentTab === 'insights') {
+    disconnectPaginationObserver(insightPagination);
+    insightPagination = { offset: 0, total: 0, hasMore: false, loading: false, observer: null };
     try {
-      const result = await api.searchInsights(query);
+      const result = await api.searchInsights(query, 50, currentInsightSort);
       insightsData = result.insights || [];
+      allInsightsData = insightsData;
       renderInsights();
     } catch (error) {
       showToast(`Search failed: ${error.message}`, 'error');
@@ -2066,25 +2092,12 @@ function filterFeedbackByQuery(entries, query) {
 // ============================================================================
 
 function updateExperienceCounts() {
-  // Use allExperiencesData for accurate total counts
-  const source = allExperiencesData.length > 0 ? allExperiencesData : experiencesData;
-  const all = source.length;
-  const success = source.filter(e => e.outcome_success).length;
-  const failed = source.filter(e => !e.outcome_success).length;
-  
-  // Tool count stats
-  const noTools = source.filter(e => {
-    const tools = Array.isArray(e.tools_used) ? e.tools_used : [];
-    return tools.length === 0;
-  }).length;
-  const singleTool = source.filter(e => {
-    const tools = Array.isArray(e.tools_used) ? e.tools_used : [];
-    return tools.length === 1;
-  }).length;
-  const multiTool = source.filter(e => {
-    const tools = Array.isArray(e.tools_used) ? e.tools_used : [];
-    return tools.length > 1;
-  }).length;
+  const all = experienceSummary?.total ?? allExperiencesData.length ?? experiencesData.length;
+  const success = experienceSummary?.success ?? allExperiencesData.filter(e => e.outcome_success).length;
+  const failed = experienceSummary?.failed ?? allExperiencesData.filter(e => !e.outcome_success).length;
+  const noTools = experienceSummary?.tool_count?.none ?? 0;
+  const singleTool = experienceSummary?.tool_count?.single ?? 0;
+  const multiTool = experienceSummary?.tool_count?.multi ?? 0;
   
   document.getElementById('expAllCount').textContent = all;
   document.getElementById('expSuccessCount').textContent = success;
@@ -2103,16 +2116,14 @@ function updateExperienceCounts() {
 }
 
 function updateInsightCounts() {
-  const all = insightsData.length;
-  const positive = insightsData.filter(i => (i.constraint_type || 'positive') === 'positive').length;
-  const negative = insightsData.filter(i => i.constraint_type === 'negative').length;
-  
-  // 5-tier confidence counts
-  const eliteConf = insightsData.filter(i => i.confidence >= 0.96).length;
-  const highConf = insightsData.filter(i => i.confidence >= 0.85 && i.confidence < 0.96).length;
-  const goodConf = insightsData.filter(i => i.confidence >= 0.75 && i.confidence < 0.85).length;
-  const medConf = insightsData.filter(i => i.confidence >= 0.50 && i.confidence < 0.75).length;
-  const lowConf = insightsData.filter(i => i.confidence < 0.50).length;
+  const all = insightSummary?.total ?? insightsData.length;
+  const positive = insightSummary?.positive ?? insightsData.filter(i => (i.constraint_type || 'positive') === 'positive').length;
+  const negative = insightSummary?.negative ?? insightsData.filter(i => i.constraint_type === 'negative').length;
+  const eliteConf = insightSummary?.confidence?.elite ?? 0;
+  const highConf = insightSummary?.confidence?.high ?? 0;
+  const goodConf = insightSummary?.confidence?.good ?? 0;
+  const medConf = insightSummary?.confidence?.medium ?? 0;
+  const lowConf = insightSummary?.confidence?.low ?? 0;
   
   document.getElementById('insightAllCount').textContent = all;
   document.getElementById('insightPositiveCount').textContent = positive;
@@ -2287,6 +2298,10 @@ function renderJsonDetailBlock(value, className = '') {
 function truncate(str, length) {
   if (!str) return '';
   return str.length > length ? str.substring(0, length) + '...' : str;
+}
+
+function getCurrentSearchQuery() {
+  return document.getElementById('searchInput')?.value.trim() || '';
 }
 
 function escapeHtml(str) {

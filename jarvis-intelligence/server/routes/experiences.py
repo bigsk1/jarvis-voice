@@ -29,20 +29,45 @@ def list_experiences():
         limit = request.args.get('limit', 100, type=int)
         offset = request.args.get('offset', 0, type=int)
         success_only = request.args.get('success_only')
+        sort = request.args.get('sort', 'date')
+        tool_count = request.args.get('tool_count')
+        tool = request.args.get('tool')
+        completion_guard_status = request.args.get('completion_guard_status')
         
         if success_only is not None:
             success_only = success_only.lower() == 'true'
         
-        experiences = service.list_experiences(
+        experiences, total = service.list_experiences(
             limit=limit,
             offset=offset,
-            success_only=success_only
+            success_only=success_only,
+            sort=sort,
+            tool_count=tool_count,
+            tool=tool,
+            completion_guard_status=completion_guard_status
         )
         
         return jsonify({
             'ok': True,
             'count': len(experiences),
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': offset + len(experiences) < total,
             'experiences': experiences
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@experiences_bp.route('/summary', methods=['GET'])
+def get_experience_summary():
+    """Get lightweight experience counts and facets."""
+    try:
+        service = get_service()
+        return jsonify({
+            'ok': True,
+            'summary': service.get_experience_summary()
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -73,11 +98,12 @@ def search_experiences():
         service = get_service()
         query = request.args.get('q', '')
         limit = request.args.get('limit', 50, type=int)
+        sort = request.args.get('sort', 'date')
         
         if not query:
             return jsonify({'ok': False, 'error': 'Query parameter q is required'}), 400
         
-        experiences = service.search_experiences(query, limit)
+        experiences = service.search_experiences(query, limit, sort=sort)
         
         return jsonify({
             'ok': True,
@@ -157,4 +183,3 @@ def reembed_experience(experience_id):
         return jsonify({'ok': False, 'error': 'Re-embed timed out'}), 500
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-

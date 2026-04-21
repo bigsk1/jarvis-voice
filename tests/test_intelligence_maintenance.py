@@ -3,6 +3,7 @@
 
 import asyncio
 import importlib.util
+import json
 import sqlite3
 import sys
 import tempfile
@@ -175,6 +176,72 @@ class IntelligenceMaintenanceTests(unittest.TestCase):
             self.assertIsNone(evidence["experience_id"])
             self.assertEqual(evidence["web_conversation_id"], "web-delete")
             self.assertIn("youtube", evidence["query"])
+
+    def test_ui_experience_list_sort_filters_and_summary_are_global(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            asyncio.run(
+                intel.record_experience(
+                    query="answer from memory",
+                    tools_used=[],
+                    outcome={"success": True, "turns": 1},
+                    context={},
+                )
+            )
+            asyncio.run(
+                intel.record_experience(
+                    query="current bitcoin price",
+                    tools_used=["crypto_price"],
+                    outcome={"success": True, "turns": 1},
+                    context={},
+                )
+            )
+            canvas_exp_id = asyncio.run(
+                intel.record_experience(
+                    query="current bitcoin price and canvas",
+                    tools_used=["crypto_price", "canvas"],
+                    outcome={"success": True, "turns": 3},
+                    context={},
+                )
+            )
+            raw_data = intel.conn.execute(
+                "SELECT raw_data FROM experiences WHERE id = ?",
+                (canvas_exp_id,),
+            ).fetchone()["raw_data"]
+            raw_data = json.loads(raw_data)
+            raw_data["completion_guard"] = {"status": "repaired"}
+            intel.conn.execute(
+                "UPDATE experiences SET raw_data = ? WHERE id = ?",
+                (json.dumps(raw_data), canvas_exp_id),
+            )
+            intel.conn.commit()
+            intel.close()
+
+            service_module = load_intelligence_service_module()
+            service_module.DB_PATHS["cloud"] = Path(tmpdir) / "intel.db"
+            service = service_module.IntelligenceService("cloud")
+
+            sorted_experiences, total = service.list_experiences(limit=1, sort="tools")
+            self.assertEqual(total, 3)
+            self.assertEqual(sorted_experiences[0]["id"], canvas_exp_id)
+
+            canvas_only, canvas_total = service.list_experiences(tool="canvas")
+            self.assertEqual(canvas_total, 1)
+            self.assertEqual(canvas_only[0]["id"], canvas_exp_id)
+
+            repaired, repaired_total = service.list_experiences(completion_guard_status="repaired")
+            self.assertEqual(repaired_total, 1)
+            self.assertEqual(repaired[0]["id"], canvas_exp_id)
+
+            summary = service.get_experience_summary()
+            self.assertEqual(summary["total"], 3)
+            self.assertEqual(summary["tool_count"]["none"], 1)
+            self.assertEqual(summary["tool_count"]["single"], 1)
+            self.assertEqual(summary["tool_count"]["multi"], 1)
+            self.assertEqual(summary["completion_guard"]["repaired"], 1)
+            tool_counts = {tool["name"]: tool["count"] for tool in summary["tools"]}
+            self.assertEqual(tool_counts["crypto_price"], 2)
+            self.assertEqual(tool_counts["canvas"], 1)
 
 
 if __name__ == "__main__":

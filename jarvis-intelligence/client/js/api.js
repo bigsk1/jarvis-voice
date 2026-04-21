@@ -56,17 +56,25 @@ class IntelligenceAPI {
     if (options.limit) params.set('limit', options.limit);
     if (options.offset) params.set('offset', options.offset);
     if (options.success_only !== undefined) params.set('success_only', options.success_only);
+    if (options.sort) params.set('sort', options.sort);
+    if (options.tool_count) params.set('tool_count', options.tool_count);
+    if (options.tool) params.set('tool', options.tool);
+    if (options.completion_guard_status) params.set('completion_guard_status', options.completion_guard_status);
     
     const query = params.toString();
     return this.fetch(`/api/experiences${query ? '?' + query : ''}`);
+  }
+
+  async getExperienceSummary() {
+    return this.fetch('/api/experiences/summary');
   }
   
   async getExperience(id) {
     return this.fetch(`/api/experiences/${id}`);
   }
   
-  async searchExperiences(query, limit = 50) {
-    return this.fetch(`/api/experiences/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+  async searchExperiences(query, limit = 50, sort = 'date') {
+    return this.fetch(`/api/experiences/search?q=${encodeURIComponent(query)}&limit=${limit}&sort=${encodeURIComponent(sort)}`);
   }
   
   async updateExperience(id, data) {
@@ -98,17 +106,23 @@ class IntelligenceAPI {
     if (options.offset) params.set('offset', options.offset);
     if (options.constraint_type) params.set('constraint_type', options.constraint_type);
     if (options.min_confidence) params.set('min_confidence', options.min_confidence);
+    if (options.confidence_tier) params.set('confidence_tier', options.confidence_tier);
+    if (options.sort) params.set('sort', options.sort);
     
     const query = params.toString();
     return this.fetch(`/api/insights${query ? '?' + query : ''}`);
+  }
+
+  async getInsightSummary() {
+    return this.fetch('/api/insights/summary');
   }
   
   async getInsight(id) {
     return this.fetch(`/api/insights/${id}`);
   }
   
-  async searchInsights(query, limit = 50) {
-    return this.fetch(`/api/insights/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+  async searchInsights(query, limit = 50, sort = 'updated') {
+    return this.fetch(`/api/insights/search?q=${encodeURIComponent(query)}&limit=${limit}&sort=${encodeURIComponent(sort)}`);
   }
   
   async updateInsight(id, data) {
@@ -219,4 +233,3 @@ class IntelligenceAPI {
 
 // Global API instance
 const api = new IntelligenceAPI();
-

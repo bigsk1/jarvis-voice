@@ -30,18 +30,39 @@ def list_insights():
         offset = request.args.get('offset', 0, type=int)
         constraint_type = request.args.get('constraint_type')
         min_confidence = request.args.get('min_confidence', type=float)
+        confidence_tier = request.args.get('confidence_tier')
+        sort = request.args.get('sort', 'updated')
         
-        insights = service.list_insights(
+        insights, total = service.list_insights(
             limit=limit,
             offset=offset,
             constraint_type=constraint_type,
-            min_confidence=min_confidence
+            min_confidence=min_confidence,
+            confidence_tier=confidence_tier,
+            sort=sort
         )
         
         return jsonify({
             'ok': True,
             'count': len(insights),
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': offset + len(insights) < total,
             'insights': insights
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@insights_bp.route('/summary', methods=['GET'])
+def get_insight_summary():
+    """Get lightweight insight counts and facets."""
+    try:
+        service = get_service()
+        return jsonify({
+            'ok': True,
+            'summary': service.get_insight_summary()
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -72,11 +93,12 @@ def search_insights():
         service = get_service()
         query = request.args.get('q', '')
         limit = request.args.get('limit', 50, type=int)
+        sort = request.args.get('sort', 'updated')
         
         if not query:
             return jsonify({'ok': False, 'error': 'Query parameter q is required'}), 400
         
-        insights = service.search_insights(query, limit)
+        insights = service.search_insights(query, limit, sort=sort)
         
         return jsonify({
             'ok': True,
@@ -173,4 +195,3 @@ def get_tool_performance():
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-
