@@ -484,12 +484,18 @@ class XAIProvider(LLMProvider):
         """Simple chat using xAI SDK with server-side tools."""
         try:
             from xai_sdk.chat import user, system as sys_msg
-            
-            # Create chat with xAI server-side tools (configurable)
-            chat = self.xai_client.chat.create(
-                model=self.model,
-                tools=self._build_xai_server_tools(),
-            )
+
+            create_kwargs: dict[str, Any] = {
+                "model": self.model,
+                "tools": self._build_xai_server_tools(),
+            }
+            if max_tokens:
+                create_kwargs["max_tokens"] = max_tokens
+            max_turns = self._xai_max_turns()
+            if max_turns:
+                create_kwargs["max_turns"] = max_turns
+
+            chat = self.xai_client.chat.create(**create_kwargs)
             
             # Add system prompt if provided
             if system_prompt:
@@ -505,6 +511,26 @@ class XAIProvider(LLMProvider):
         except Exception as e:
             print(f"xAI SDK error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
+
+    @staticmethod
+    def _xai_max_turns() -> int | None:
+        """Optional cap on server-side tool iterations (web_search + x_search loops).
+
+        Reads XAI_SERVER_SIDE_MAX_TOOL_TURNS from env. When unset or invalid,
+        returns None and xAI uses its server-side default. Set this to bound
+        cost/latency on very tool-heavy queries (e.g. ones that trigger many
+        web_search calls). Narrowly scoped to xAI's server-side Agent Tools
+        loop (web_search, x_search, code_execution); unrelated to the
+        orchestrator's MAX_TOOL_TURNS which bounds client-side tool iteration.
+        """
+        raw = os.environ.get('XAI_SERVER_SIDE_MAX_TOOL_TURNS', '').strip()
+        if not raw:
+            return None
+        try:
+            value = int(raw)
+            return value if value > 0 else None
+        except ValueError:
+            return None
     
     def chat_with_tools(
         self,
@@ -659,11 +685,15 @@ class XAIProvider(LLMProvider):
                 xai_tool = self._convert_tool_to_xai_sdk(tool)
                 xai_tools.append(xai_tool)
             
-            # Create chat with mixed tools
-            chat = self.xai_client.chat.create(
-                model=self.model,
-                tools=xai_tools,
-            )
+            create_kwargs: dict[str, Any] = {
+                "model": self.model,
+                "tools": xai_tools,
+            }
+            max_turns = self._xai_max_turns()
+            if max_turns:
+                create_kwargs["max_turns"] = max_turns
+
+            chat = self.xai_client.chat.create(**create_kwargs)
             
             # Add system prompt if provided
             if system_prompt:

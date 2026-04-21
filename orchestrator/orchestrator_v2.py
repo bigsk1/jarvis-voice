@@ -2382,15 +2382,26 @@ Your BEST EFFORT response:"""
                 )
             context_lines.append("")
         
-        for msg in recent:
+        # Per-message content caps. The most recent assistant turn often contains
+        # the conclusions or details the user is following up on, so give it more
+        # room than older turns. Older/other messages use a still-generous default
+        # (up from the previous blunt 500-char cap).
+        default_content_cap = 2000
+        latest_assistant_content_cap = 4000
+        last_assistant_idx = -1
+        for i, m in enumerate(recent):
+            if m.get('role') == 'assistant':
+                last_assistant_idx = i
+
+        for idx, msg in enumerate(recent):
             role = msg.get('role', 'user')
             content = msg.get('content', '')
             tools_used = msg.get('tools_used', [])
             tool_results = msg.get('tool_results', {})
-            
-            # Truncate long messages
-            if len(content) > 500:
-                content = content[:500] + "..."
+
+            cap = latest_assistant_content_cap if idx == last_assistant_idx else default_content_cap
+            if len(content) > cap:
+                content = content[:cap] + "... [truncated]"
             
             prefix = "User" if role == 'user' else "Jarvis"
             
