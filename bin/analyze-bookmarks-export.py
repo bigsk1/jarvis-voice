@@ -8,7 +8,7 @@ Reports:
   - Optional: raw count of <a href= lines for sanity check vs parser
 
 Usage:
-  source /home/boss/jarvis-venv/bin/activate
+  source ~/jarvis-venv/bin/activate
   ./bin/analyze-bookmarks-export.py
   ./bin/analyze-bookmarks-export.py /path/to/bookmarks.html
 

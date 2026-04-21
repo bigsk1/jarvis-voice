@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 # Models that support extended thinking
+# TODO: tie in with logic from model_catalog.py? we can add reasoning models to the catalog and then use that to determine if a model supports thinking
 THINKING_MODELS = {
     "anthropic": [
         "claude-sonnet-4-5-20250929",
         "claude-sonnet-4-20250514", 
-        "sonnet-4.5",
-        "sonnet-4"
+        "sonnet-4.5"
     ],
     "openai": [
         "o1",
@@ -30,6 +30,7 @@ THINKING_MODELS = {
     "ollama": [
         "qwen2.5-coder:32b-instruct-q4_K_M",  # Some Qwen models support thinking
         "qwen3.5:latest",  # Qwen3.5 reasoning model
+        "qwen3.6",
         "deepseek-r1",  # DeepSeek reasoning model
         "qwq"  # QwQ thinking model
     ]

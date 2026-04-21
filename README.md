@@ -1867,6 +1867,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.48.0 (April 2026)
+**Current Version:** v2.49.0 (April 2026)
 **Status:** Production Ready ✅  
 **Latest Features:** v2.48: Tool RAG hash skip + `sync_tools --force` + clearer embedding health labels + auto-memory hints + Tool RAG typo hints + SerpAPI YouTube + in-chat/canvas video embeds + Yelp + Completion Guard evidence tweaks + HTTP `LOCAL_PROXY2` / proxy logging + Spotify device fixes + Web UI chat title tooltips — plus Completion Guard ↔ intelligence, `/logs`, alerts & Weather Watch, TTS profiles, Canvas/SerpAPI work

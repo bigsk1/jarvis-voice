@@ -248,7 +248,7 @@ def test_extract_followup_data_preserves_text_summarizer_summary_and_refs():
                 "space_id": "space_20260417_000524_029bf796",
                 "source": "stash",
                 "characters_loaded": 13088,
-                "path": "/home/boss/should/not/be/prompted.md",
+                "path": "~/should/not/be/prompted.md",
             },
             "summary_meta": {
                 "summary_method": "llm",
