@@ -73,6 +73,22 @@ def add_if_present(target: dict[str, Any], key: str, value: Any) -> None:
     target[key] = value
 
 
+def normalize_goggles(value: Any) -> str:
+    """Return a Brave Goggles URL/inline definition, or empty string for plain keywords."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    lowered = text.lower()
+    if lowered.startswith(("https://", "http://")):
+        return text
+    # Inline Goggles definitions are structured rule text. Plain search phrases
+    # cause Brave's LLM Context API to reject the request with HTTP 422, so drop
+    # those and let the normal query/body do the ranking work.
+    if "\n" in text or text.startswith(("!", "$", "/")):
+        return text
+    return ""
+
+
 def trim_text(value: Any, limit: int = 900) -> str:
     text = str(value or "").strip()
     if len(text) <= limit:
@@ -166,7 +182,7 @@ def main() -> int:
     }
 
     add_if_present(body, "freshness", freshness)
-    add_if_present(body, "goggles", input_data.get("goggles"))
+    add_if_present(body, "goggles", normalize_goggles(input_data.get("goggles")))
     enable_local = as_bool_or_none(input_data.get("enable_local"))
     if enable_local is not None:
         body["enable_local"] = enable_local

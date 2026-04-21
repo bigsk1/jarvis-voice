@@ -713,6 +713,17 @@ def main():
             page_id = args.get('page_id')
             if not page_id:
                 raise ValueError("page_id is required for update action")
+            if not any(args.get(key) for key in ('title', 'content', 'tags', 'image_url', 'image_alt')):
+                return_result = {
+                    "ok": False,
+                    "error": "Canvas update requires content, title, tags, or an image to change.",
+                    "speech": (
+                        "I can't update Canvas without new content or metadata. "
+                        "Read the page first or pass the full updated content."
+                    ),
+                }
+                print(json.dumps(return_result))
+                sys.exit(1)
             
             result = update_page(
                 page_id,

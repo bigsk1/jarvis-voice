@@ -9,6 +9,8 @@ Run:
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -53,6 +55,48 @@ class OrchestratorUsagePassthroughTests(unittest.TestCase):
             "server_side_tools": {},
         }
         self.assertFalse(Orchestrator._has_usage_data(usage))
+
+    def test_log_conversation_metadata_includes_xai_native_search_usage(self):
+        handler = Orchestrator.__new__(Orchestrator)
+        handler.mode = "cloud"
+        handler.session_id = "session-1"
+        handler.web_conversation_id = "conv-1"
+        handler.router = SimpleNamespace(
+            provider_type="xai",
+            model_name="grok-4-1-fast-non-reasoning-latest",
+        )
+
+        captured = {}
+
+        class FakeDb:
+            def log_conversation(self, **kwargs):
+                captured.update(kwargs)
+
+            def close(self):
+                pass
+
+        token_info = {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "cost_usd": 0.01,
+            "server_side_tools": {"SERVER_SIDE_TOOL_WEB_SEARCH": 8},
+        }
+
+        with patch("orchestrator_v2.get_memory_db", return_value=FakeDb()):
+            handler._log_conversation(
+                "fresh movie search",
+                "found showtimes",
+                ["canvas"],
+                token_info=token_info,
+            )
+
+        metadata = captured["metadata"]
+        self.assertEqual(metadata["web_conversation_id"], "conv-1")
+        self.assertEqual(metadata["tool_count"], 1)
+        self.assertEqual(metadata["server_side_tools"], {"SERVER_SIDE_TOOL_WEB_SEARCH": 8})
+        self.assertEqual(metadata["server_side_tool_calls"], 8)
+        self.assertEqual(metadata["xai_search_calls"], 8)
+        self.assertEqual(metadata["xai_search_tools"], ["SERVER_SIDE_TOOL_WEB_SEARCH"])
 
 
 if __name__ == "__main__":

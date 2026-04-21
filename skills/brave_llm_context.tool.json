@@ -90,7 +90,7 @@
       },
       "goggles": {
         "type": "string",
-        "description": "Optional Brave Goggles URL or inline definition to customize source ranking."
+        "description": "Optional Brave Goggles URL or valid inline Goggles definition to customize source ranking. Do not pass ordinary search keywords here; put keywords in query."
       },
       "include_raw": {
         "type": "boolean",

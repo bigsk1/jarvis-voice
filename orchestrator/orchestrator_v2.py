@@ -102,6 +102,32 @@ def _sanitize_error_for_speech(error) -> str:
     return sanitized
 
 
+def _server_side_tool_call_count(server_side_tools: dict | None) -> int:
+    """Count provider-native tool calls from usage metadata."""
+    if not isinstance(server_side_tools, dict):
+        return 0
+    total = 0
+    for count in server_side_tools.values():
+        try:
+            total += max(0, int(count))
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def _has_client_side_search_tool_hint(text: str) -> bool:
+    """Detect UI tool hints that should be tested instead of provider-native search."""
+    if "[CONTEXT - Tool preference" not in (text or ""):
+        return False
+    hinted_search_tools = (
+        "brave_llm_context",
+        "mcp_brave_search_",
+        "serpapi_",
+        "crawl_url",
+    )
+    return any(tool in text for tool in hinted_search_tools)
+
+
 class Orchestrator:
     """Main orchestration with LLM-based routing, error recovery, and retry logic."""
 
@@ -691,9 +717,14 @@ Mode: {self.mode}
         learning_context, applied_insights = self._get_learning_insights(transcript, available_tool_names)
         if learning_context:
             enhanced_transcript = f"{learning_context}\n\n{enhanced_transcript}"
+        client_search_hint_active = _has_client_side_search_tool_hint(enhanced_transcript)
         
         # Multi-turn context tracking
         max_turns = get_int('MAX_TOOL_TURNS', 15)  # Configurable, default 15 for deep research
+        native_search_request_budget = get_int(
+            'XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST',
+            get_int('XAI_SERVER_SIDE_MAX_TOOL_TURNS', 0),
+        )
         retry_state = _retry_state or {}
         conversation_context = retry_state.get("conversation_context") or []
         tools_used = retry_state.get("tools_used") or []
@@ -777,10 +808,38 @@ Mode: {self.mode}
             # Route using LLM
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: About to route turn {turn_num}", file=sys.stderr)
+            native_search_used = _server_side_tool_call_count(total_usage.get("server_side_tools"))
+            native_search_remaining = (
+                native_search_request_budget - native_search_used
+                if native_search_request_budget > 0
+                else None
+            )
+            disable_server_side_tools = (
+                client_search_hint_active
+                or (native_search_remaining is not None and native_search_remaining <= 0)
+            )
+            if disable_server_side_tools:
+                reason = (
+                    "A client-side search tool was selected in the UI."
+                    if client_search_hint_active
+                    else "The provider-native search budget is exhausted."
+                )
+                turn_input = (
+                    "[NATIVE SEARCH DISABLED]\n"
+                    f"{reason} Use results already gathered, choose a client-side search tool, "
+                    "or answer directly.\n\n"
+                    f"{turn_input}"
+                )
             route = self.router.route(
                 turn_input,
                 excluded_tools=excluded_tools,
                 typo_hint_source=transcript,
+                disable_server_side_tools=disable_server_side_tools,
+                server_side_max_tool_turns=(
+                    native_search_remaining
+                    if native_search_remaining is not None and native_search_remaining > 0
+                    else None
+                ),
             )
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)
@@ -3288,6 +3347,13 @@ Your BEST EFFORT response:"""
             provider = metadata.get("provider", "")
             if token_info and provider in ["openai", "anthropic"]:
                 metadata.update(token_info)
+            if token_info and token_info.get("server_side_tools"):
+                server_side_tools = dict(token_info.get("server_side_tools") or {})
+                metadata["server_side_tools"] = server_side_tools
+                metadata["server_side_tool_calls"] = _server_side_tool_call_count(server_side_tools)
+                if provider == "xai":
+                    metadata["xai_search_calls"] = metadata["server_side_tool_calls"]
+                    metadata["xai_search_tools"] = list(server_side_tools.keys())
             
             # Add tool count
             metadata["tool_count"] = len(tools_used)

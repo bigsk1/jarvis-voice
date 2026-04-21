@@ -2,13 +2,13 @@
 """Regression tests for SerpApi follow-up context extraction."""
 
 import types
-import importlib.util
 from pathlib import Path
 import sys
 from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
 
 fake_socketio = types.ModuleType("flask_socketio")
 fake_socketio.emit = lambda *args, **kwargs: None
@@ -20,12 +20,8 @@ fake_flask = types.ModuleType("flask")
 fake_flask.request = object()
 sys.modules.setdefault("flask", fake_flask)
 
-CHAT_PATH = PROJECT_ROOT / "jarvis-web" / "server" / "sockets" / "chat.py"
-SPEC = importlib.util.spec_from_file_location("jarvis_web_chat", CHAT_PATH)
-MODULE = importlib.util.module_from_spec(SPEC)
-assert SPEC and SPEC.loader
-SPEC.loader.exec_module(MODULE)
-ChatHandler = MODULE.ChatHandler
+from server.sockets.chat import ChatHandler
+from server.services.followup_extractor import FOLLOWUP_SUMMARY_MAX_CHARS
 
 
 def _handler():
@@ -281,7 +277,7 @@ def test_extract_followup_data_preserves_text_summarizer_summary_and_refs():
 
 def test_extract_followup_data_truncates_text_summarizer_summary():
     handler = _handler()
-    long_summary = "A" * 6000
+    long_summary = "A" * 10000
     data = {
         "text_summarizer": {
             "summary": long_summary,
@@ -294,8 +290,137 @@ def test_extract_followup_data_truncates_text_summarizer_summary():
     summary = result["text_summarizer"]["summary"]
 
     assert len(summary) < len(long_summary)
+    assert len(summary) <= FOLLOWUP_SUMMARY_MAX_CHARS
     assert summary.endswith("...[summary truncated for follow-up context]")
     assert result["text_summarizer"]["stash_ref"] == "stash://space/file"
+
+
+def test_extract_followup_data_preserves_crawl_url_deduped_urls():
+    handler = _handler()
+    data = {
+        "crawl_url": {
+            "results": [
+                {
+                    "results": [
+                        {
+                            "url": "https://example.com/post",
+                            "title": "Example Post",
+                            "success": True,
+                            "markdown": "large content should not be retained",
+                        }
+                    ]
+                },
+                {
+                    "results": [
+                        {
+                            "url": "https://example.com/post",
+                            "title": "Example Post Duplicate",
+                            "success": True,
+                        },
+                        {
+                            "url": "https://example.com/other",
+                            "title": "Other Page",
+                            "success": False,
+                        },
+                    ]
+                },
+            ]
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    crawl = result["crawl_url"]
+
+    assert crawl["runs_count"] == 2
+    assert crawl["crawled_urls"] == [
+        {"url": "https://example.com/post", "title": "Example Post", "success": True},
+        {"url": "https://example.com/other", "title": "Other Page", "success": False},
+    ]
+    assert "markdown" not in crawl["crawled_urls"][0]
+
+
+def test_extract_followup_data_preserves_brave_urls_from_full_text():
+    handler = _handler()
+    data = {
+        "mcp_brave_search_brave_web_search": {
+            "results": [
+                {
+                    "full_text": (
+                        "Alpha https://alpha.example/a. "
+                        "Beta https://beta.example/b) "
+                        "Again https://alpha.example/a"
+                    )
+                },
+                {
+                    "full_text": "Gamma https://gamma.example/c, trailing punctuation included."
+                },
+            ]
+        }
+    }
+
+    result = handler._extract_followup_data(data, max_candidates=1)
+    brave = result["mcp_brave_search_brave_web_search"]
+
+    assert brave["runs_count"] == 2
+    assert brave["urls_seen"] == [
+        "https://alpha.example/a",
+        "https://beta.example/b",
+    ]
+
+
+def test_extract_followup_data_preserves_brave_urls_from_raw_text():
+    handler = _handler()
+    data = {
+        "mcp_brave_search_brave_news_search": {
+            "results": [
+                {
+                    "raw": [
+                        {
+                            "type": "text",
+                            "text": '{"url":"https://news.example/story","title":"Story"}',
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    brave = result["mcp_brave_search_brave_news_search"]
+
+    assert brave["runs_count"] == 1
+    assert brave["urls_seen"] == ["https://news.example/story"]
+
+
+def test_extract_followup_data_preserves_brave_llm_context_sources():
+    handler = _handler()
+    data = {
+        "brave_llm_context": {
+            "query": "Regal Hillsboro showtimes",
+            "grounding": {
+                "generic": [
+                    {
+                        "title": "Regal Movies On TV Showtimes",
+                        "url": "https://www.cinemaclock.com/movie-theaters/regal-movies-on-tv",
+                        "snippets": ["Current showtimes for Regal Movies On TV."],
+                    }
+                ],
+                "poi": {
+                    "name": "Regal Movies On TV",
+                    "url": "https://regmovies.com/theatres/regal-movies-on-tv-0855",
+                    "snippets": ["SW 2929 234th Avenue, Hillsboro OR."],
+                },
+            },
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    brave = result["brave_llm_context"]
+
+    assert brave["query"] == "Regal Hillsboro showtimes"
+    assert brave["sources_count"] == 2
+    assert brave["sources"][0]["title"] == "Regal Movies On TV Showtimes"
+    assert brave["sources"][1]["url"] == "https://regmovies.com/theatres/regal-movies-on-tv-0855"
 
 
 def test_compute_effective_evidence_tool_turn():

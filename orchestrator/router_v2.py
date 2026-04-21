@@ -651,6 +651,8 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         transcript: str,
         excluded_tools: list = None,
         typo_hint_source: str | None = None,
+        disable_server_side_tools: bool = False,
+        server_side_max_tool_turns: int | None = None,
     ) -> dict[str, Any]:
         """
         Use LLM to determine intent and route appropriately.
@@ -789,12 +791,27 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             import time
             llm_start_time = time.time()
             
-            text_response, tool_call, usage_info, thinking = self.provider.chat_with_tools(
-                messages=messages,
-                tools=tools,
-                system_prompt=self.system_prompt,
-                enable_thinking=enable_thinking
-            )
+            previous_enable_search = getattr(self.provider, "enable_search", None)
+            previous_max_tool_turns = os.environ.get("XAI_SERVER_SIDE_MAX_TOOL_TURNS")
+            if disable_server_side_tools and previous_enable_search is not None:
+                self.provider.enable_search = False
+            if server_side_max_tool_turns is not None:
+                os.environ["XAI_SERVER_SIDE_MAX_TOOL_TURNS"] = str(max(1, int(server_side_max_tool_turns)))
+            try:
+                text_response, tool_call, usage_info, thinking = self.provider.chat_with_tools(
+                    messages=messages,
+                    tools=tools,
+                    system_prompt=self.system_prompt,
+                    enable_thinking=enable_thinking
+                )
+            finally:
+                if previous_enable_search is not None:
+                    self.provider.enable_search = previous_enable_search
+                if server_side_max_tool_turns is not None:
+                    if previous_max_tool_turns is None:
+                        os.environ.pop("XAI_SERVER_SIDE_MAX_TOOL_TURNS", None)
+                    else:
+                        os.environ["XAI_SERVER_SIDE_MAX_TOOL_TURNS"] = previous_max_tool_turns
             
             llm_duration_ms = (time.time() - llm_start_time) * 1000
             provider_error = text_response if is_provider_error_text(text_response) else None
