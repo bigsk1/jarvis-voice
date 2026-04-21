@@ -605,7 +605,6 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 **Version**: 1.3 (Added code_execution + image/video understanding)
 
 **See Also**:
-- [AGENTS.md](../AGENTS.md) - Coding guidelines
 - [QUICKSTART.md](QUICKSTART.md) - Getting started
 - [MEMORY_SYSTEM.md](MEMORY_SYSTEM.md) - Memory features
 - [xAI Docs](https://docs.x.ai) - Official xAI documentation

@@ -623,8 +623,6 @@ source ~/jarvis-venv/bin/activate
 ./bin/build-tool --mode cloud build "Tool description here"
 ```
 
-### Option 2: Manual Development
-See `AGENTS.md` for full tool development guidelines.
 
 ### After Creating a Tool
 ```bash

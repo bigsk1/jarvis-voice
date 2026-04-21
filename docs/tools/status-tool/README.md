@@ -535,7 +535,6 @@ ls -la data/canvas/
 
 ## Related Documentation
 
-- [Tool Development](../AGENTS.md) - Tool creation guidelines
 - [Canvas System](../CANVAS_SYSTEM.md) - Canvas integration
 - [Stash System](../STASH_SYSTEM.md) - Stash storage
 - [Tool Builder](../TOOL_BUILDER.md) - Auto-generating tools

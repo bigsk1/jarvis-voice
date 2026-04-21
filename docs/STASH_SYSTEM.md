@@ -1451,7 +1451,6 @@ See: `docs/api/STASH.md` for full API documentation.
 
 - [Memory System](MEMORY_SYSTEM.md) - Long-term fact storage
 - [Canvas System](CANVAS_SYSTEM.md) - Human-facing research notes  
-- [Tool Development](../AGENTS.md) - Tool creation guidelines
 - [Tool Calling System](TOOL_CALLING_SYSTEM.md) - Inter-tool calling patterns ⭐ ENHANCED
 - [Stash API](api/STASH.md) - FastAPI documentation
 - [Canvas API](api/CANVAS.md) - FastAPI documentation
