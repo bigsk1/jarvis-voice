@@ -1434,6 +1434,12 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (April 2026):**
+- ✅ **Tool RAG extraction + tracing (v2.49)** — Compact current-request extraction keeps long memory/intelligence/history blocks out of the embedding query while the LLM still sees full context; live traces include signal source, thresholds, final tools, schema chars/tokens, and largest schema contributors; see `docs/TOOL_RAG_STRATEGY.md`
+- ✅ **Follow-up extraction refactor** — Follow-up data extraction lives in `jarvis-web/server/services/followup_extractor.py`; `crawl_url` and MCP Brave URL candidates are preserved for later turns; Completion Guard treats provider-native tools as evidence when evaluating no-client-tool follow-ups
+- ✅ **xAI native search guardrails** — Configurable xAI server-side/native tool caps prevent native search loops from multiplying across router turns; provider-native search usage is retained in conversation/intelligence metadata for audit
+- ✅ **Intelligence provenance + safe maintenance** — Insights keep source experience/web conversation, query, tool sequence, preferred sequence, supporting tools, and reflection token/cost metadata; intelligence DB sync preserves those fields; maintenance decay supports dry-run previews
+- ✅ **Intelligence Dashboard pagination** — Experiences/Insights use server-side sorted/filtered 50-row pages with automatic scroll loading and lightweight summary facets instead of eager 500/1000-row list loads
+- ✅ **Canvas public LAN links** — `CANVAS_INTERNAL_URL` stays local for tool/API calls while `CANVAS_PUBLIC_URL` controls user-facing links; direct `/page_...` URLs work after auth for headless LAN deployments
 - ✅ **Tool RAG & embeddings (v2.48)** — Unchanged tools skip re-embedding via stored content hash; `./bin/sync_tools.py <cloud|local> --force` for a full refresh; `./bin/check-embeddings-health.py` reports the effective vector backend (`openai` vs `ollama`) separately from the chat LLM; see `docs/SYNC_ARCHITECTURE.md`, `docs/DUAL_DATABASE_SYSTEM.md`, `docs/EMBEDDING_HEALTH_CHECKS.md`
 - ✅ **Jarvis Web UI `/logs`** — Auth-protected log browser: allowed extensions (`.jsonl`, `.log`, `.md`), stable folder navigation, folder search, YAML-style JSONL cards with modal expansion, markdown viewing, mobile drill-down
 - ✅ **Orchestrator: duplicate tools & follow-ups** — Repeated identical tool calls no longer end the turn immediately; bounded recovery with duplicate-guard context; better duplicate-prevention synthesis for transcript/stash-style answers; prior tool results carry `result_truncated` / char-count metadata; retries preserve tool cards and orchestrator state
@@ -1869,4 +1875,4 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.49.0 (April 2026)
 **Status:** Production Ready ✅  
-**Latest Features:** v2.48: Tool RAG hash skip + `sync_tools --force` + clearer embedding health labels + auto-memory hints + Tool RAG typo hints + SerpAPI YouTube + in-chat/canvas video embeds + Yelp + Completion Guard evidence tweaks + HTTP `LOCAL_PROXY2` / proxy logging + Spotify device fixes + Web UI chat title tooltips — plus Completion Guard ↔ intelligence, `/logs`, alerts & Weather Watch, TTS profiles, Canvas/SerpAPI work
+**Latest Features:** v2.49: compact Tool RAG retrieval + live schema-token traces, follow-up extraction service with `crawl_url`/Brave context, xAI native-search budget guardrails, intelligence provenance/sync/dry-run maintenance, Intelligence Dashboard infinite-scroll pagination, and Canvas LAN/public page links — plus v2.48 Tool RAG hash skip, Completion Guard ↔ intelligence, `/logs`, alerts & Weather Watch, TTS profiles, Canvas/SerpAPI work

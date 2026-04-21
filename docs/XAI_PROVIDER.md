@@ -270,11 +270,19 @@ XAI_MODEL="grok-4-1-fast-non-reasoning"
 # When false: Uses external tools (Brave Search) like before
 XAI_SEARCH=true
 
+# Native search / server-side tool budget (optional)
+# Leave unset to use xAI's default behavior. Set when you need a hard
+# cost/latency ceiling for tool-heavy tasks.
+# XAI_SERVER_SIDE_MAX_TOOL_TURNS=5
+# XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST=10
+
 # Alternative models:
 # XAI_MODEL="grok-4-1-fast-non-reasoning-latest"  # No reasoning
 # XAI_MODEL="grok-code-fast-1"                    # Code-optimized
 # XAI_MODEL="grok-4"                              # Premium (256K context)
 ```
+
+`XAI_SERVER_SIDE_MAX_TOOL_TURNS` caps xAI's internal server-side agent loop for a single `chat.sample()` call and is also used as Jarvis's total native-search budget for the user request unless `XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST` is set. This prevents native web/X search calls from multiplying across many Jarvis router turns while still allowing xAI to spend the budget adaptively on the synthesis turn that needs it.
 
 ### Testing
 
@@ -601,8 +609,8 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 
 ---
 
-**Last Updated**: 2026-01-24  
-**Version**: 1.3 (Added code_execution + image/video understanding)
+**Last Updated**: 2026-04-21
+**Version**: 1.4 (Added native server-side tool budget caps)
 
 **See Also**:
 - [QUICKSTART.md](QUICKSTART.md) - Getting started

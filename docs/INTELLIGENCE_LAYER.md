@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete  
 **Created**: 2025-11-27  
-**Updated**: 2026-04-18 (feedback metadata; tool traces; presentation artifact learning; reflection usage tracking)
+**Updated**: 2026-04-21 (provenance/evidence trails; sync-safe schema; dry-run maintenance; dashboard pagination)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
 
 ## Overview
@@ -270,6 +270,17 @@ Before interaction data is stored in the Intelligence DB or sent into reflection
 - secret-looking key/value pairs such as `api_key=...` or `Authorization: Bearer ...`
 
 Normal personal/contact data such as email addresses is not redacted by this layer because it can be legitimate task context. The Intelligence dashboard also redacts on read so older records are less likely to display credential material, but historical DB rows created before this redaction pass may still need a one-time scrub if they are known to contain secrets.
+
+### 13. Intelligence Dashboard Pagination (2026-04-21)
+
+The Intelligence Dashboard no longer loads large card lists eagerly on first paint.
+
+- Experiences and Insights are fetched in 50-row pages.
+- Infinite scroll loads the next page automatically when the user nears the bottom of the list.
+- Sidebar counts, tool facets, Completion Guard facets, and confidence buckets come from lightweight summary endpoints instead of fetching hundreds or thousands of records.
+- Sort and filter operations are applied server-side before pagination, so "Sort by tool count" or "Sort by confidence" means the full dataset, not only the cards currently in view.
+
+This keeps the default Experiences tab responsive as the intelligence DB grows while preserving detail-modal behavior: raw experience data is still fetched only when opening a single record.
 
 ---
 

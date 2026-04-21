@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
 > **Status**: MVP Complete (v2.12)  
-> **Last Updated**: April 12, 2026
+> **Last Updated**: April 21, 2026
 
 ---
 
@@ -604,7 +604,7 @@ User: summarize that transcript
 
 The `[tools: ...]` tag helps the LLM understand what tools were used. The `└─ data:` lines give the LLM actionable references (stash refs, IDs, providers) so follow-up requests like "email that", "edit that video", or "cancel that reminder" work across separate LLM API calls.
 
-**Follow-up data extraction** is defined in `jarvis-web/server/sockets/chat.py` → `_extract_followup_data()`. Only identifiers and references are extracted (not content) to keep token cost low. When adding a new tool that produces artifacts, files, or entity IDs, update the `FOLLOWUP_FIELDS` dict in that method. See the "New Tool Checklist" in `docs/TOOL_CALLING_SYSTEM.md`.
+**Follow-up data extraction** is defined in `jarvis-web/server/services/followup_extractor.py`. Only identifiers and references are extracted (not content) to keep token cost low. When adding a new tool that produces artifacts, files, URLs, or entity IDs, update `FOLLOWUP_FIELDS` or add a dedicated extraction branch there. `jarvis-web/server/sockets/chat.py` keeps small compatibility delegates for older tests and call sites. See the "New Tool Checklist" in `docs/TOOL_CALLING_SYSTEM.md`.
 
 See `docs/AUTO_CONTEXT_SYSTEM.md` for full details on CLI/TUI context.
 

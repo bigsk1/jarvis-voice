@@ -316,6 +316,32 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-21:**
+- ✅ **Tool RAG compact retrieval + live trace tuning**
+  - Tool retrieval now embeds a compact current-request signal instead of the whole routing prompt whenever possible, preventing learned strategies, auto-memory, and long recent-history blocks from diluting tool similarity.
+  - `TOOL_SIMILARITY_THRESHOLD` applies to compact/current/trailing request signals; `TOOL_SIMILARITY_THRESHOLD_FULL` applies only to true `full_fallback` routes.
+  - `logs/tool-rag/` traces now show `signal_source`, threshold, final tool list, `tool_schema_chars`, estimated schema tokens, and largest schema contributors for live tuning.
+- ✅ **Follow-up extraction refactor + richer web/search context**
+  - Follow-up data extraction moved out of `jarvis-web/server/sockets/chat.py` into pure service functions in `jarvis-web/server/services/followup_extractor.py`, while compatibility delegates keep older tests/docs references working.
+  - Added compact follow-up evidence for `crawl_url` nested results and MCP Brave web/news/local search URLs so later turns see prior crawled URLs/search candidates instead of re-searching blindly.
+  - Completion Guard and follow-up evidence paths now treat xAI/Anthropic native server-side tools as real grounding instead of “zero tools used.”
+- ✅ **xAI native search/tool budget guardrails**
+  - Added configurable caps for xAI server-side/native tool loops (`XAI_SERVER_SIDE_MAX_TOOL_TURNS`, optional per-request search budget) so provider-native search cannot multiply across every router turn.
+  - Conversation metadata can record provider-native search usage (`server_side_tools`) for auditability, even when no client-side Jarvis skill was called.
+- ✅ **Intelligence provenance, sync, and safe maintenance**
+  - Insights now retain provenance back to source experience / web conversation IDs, source query, source tool sequence, preferred tool sequence, supporting tools, and reflection provider/token/cost metadata.
+  - `bin/sync-intelligence-db.py` was updated for the new provenance/evidence schema so cloud ↔ local intelligence sync preserves the new audit trail.
+  - `bin/run-intelligence-maintenance.py --dry-run` plus Jarvis Dashboard support lets decay/anomaly/meta-cognition jobs be previewed safely before write operations.
+- ✅ **Intelligence Dashboard performance**
+  - Experiences and Insights now page in 50-row chunks with automatic infinite scroll instead of eager 500/1000-row list loads.
+  - Sidebar counts/facets use lightweight summary endpoints; sort/filter operations are applied server-side so sorting covers the full dataset before pagination.
+- ✅ **Canvas LAN/public links**
+  - Canvas now separates `CANVAS_INTERNAL_URL` (tool/API calls from the Jarvis host) from `CANVAS_PUBLIC_URL` (clickable links shown to users).
+  - Direct `/page_...` links serve the Canvas UI and select the page after auth, fixing headless-server LAN links such as `http://192.168.70.228:8890/page_...`.
+- ✅ **Auto-context and time handling cleanup**
+  - Auto-context freshness checks now use the shared `lib/time_utils.py` path instead of local timestamp patchwork.
+  - Auto-context instruction noise was reduced so CLI/TUI context remains useful without injecting unavailable-tool hints.
+
 **2026-04-18:**
 - ✅ **Intelligence feedback metadata bridge**
   - Feedback now stores compact QA context on the linked experience (`raw_data.feedback.latest`) instead of only flipping low-rated outcomes
@@ -1522,6 +1548,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-04-18
-**Latest:** Intelligence feedback metadata bridge, reflection tool traces, presentation artifact learning, and TTS URL-example cleanup
+**Last Updated:** 2026-04-21
+**Latest:** Compact Tool RAG retrieval/tracing, follow-up extractor service, xAI native-search budget caps, intelligence provenance/sync/dry-run maintenance, dashboard pagination, and Canvas public LAN links
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

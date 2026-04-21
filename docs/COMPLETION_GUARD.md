@@ -151,12 +151,12 @@ Not implemented yet:
 
 ## Effective evidence (grounding bundle)
 
-Jarvis’s normal chat turn sees **recent conversation history** plus compact **`tool_results`** extracted in `jarvis-web/server/sockets/chat.py` (`_extract_followup_data`). Completion Guard’s auto-evaluator, by default, sees a **single turn record** (query, raw response, speech, tools, `data`). Without alignment, a no-tool follow-up that reuses Yelp or search results can look like “zero grounding” to the judge.
+Jarvis’s normal chat turn sees **recent conversation history** plus compact **`tool_results`** extracted by `jarvis-web/server/services/followup_extractor.py`. Completion Guard’s auto-evaluator, by default, sees a **single turn record** (query, raw response, speech, tools, `data`). Without alignment, a no-tool follow-up that reuses Yelp or search results can look like “zero grounding” to the judge.
 
 **Effective evidence** fixes that on the **saved message**:
 
 - Stored at `data['_effective_evidence']` on each assistant message (version field `v: 1`).
-- **Tool turns** (non-empty `tools_used` or provider-native tools in `server_side_tools`): rebuild from structured `data` using `_extract_followup_data` with a higher candidate cap for ranked lists than the default follow-up context (e.g. top-N follow-ups). Native tools are recorded under `supporting_tool_results.native_tools` (raw `server_side_tools` plus normalized names) because that key is excluded from generic extraction.
+- **Tool turns** (non-empty `tools_used` or provider-native tools in `server_side_tools`): rebuild from structured `data` using `extract_followup_data()` with a higher candidate cap for ranked lists than the default follow-up context (e.g. top-N follow-ups). Native tools are recorded under `supporting_tool_results.native_tools` (raw `server_side_tools` plus normalized names) because that key is excluded from generic extraction.
 - **No-tool turns**: may **inherit** the nearest prior bundle from earlier assistant messages (bounded backscan) only when a **refinement heuristic** matches (e.g. “sorry”, “top 5”, “those results”). Short unrelated questions do **not** inherit, so stale Yelp/Amazon grounding is not copied onto a new task.
 - **Follow-up extraction** accepts **list-shaped** tool payloads (list of dicts) by normalizing to `results[]` without a per-tool allowlist.
 
@@ -166,7 +166,7 @@ The auto-eval prompt includes:
 - **Structured result data** (full `data`, truncated).
 - Rules that **native provider tools** are real usage; **`supporting_tool_results`** may ground an answer even when `tools_used` is empty on a refinement turn.
 
-Implementation reference: `ChatHandler._compute_effective_evidence`, `_extract_followup_data`, `_evaluate_completion_guard_auto` in `jarvis-web/server/sockets/chat.py`.
+Implementation reference: `ChatHandler._compute_effective_evidence` and `_evaluate_completion_guard_auto` in `jarvis-web/server/sockets/chat.py`, with extraction logic in `jarvis-web/server/services/followup_extractor.py`.
 
 ## Why Same Runtime Matters
 
