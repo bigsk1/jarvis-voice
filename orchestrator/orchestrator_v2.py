@@ -3305,11 +3305,19 @@ Your BEST EFFORT response:"""
 
         try:
             from intelligence_hooks import record_interaction, track_insight_outcomes
+
+            learning_result = result
+            if self.web_conversation_id or self.session_id:
+                learning_result = dict(result)
+                if self.web_conversation_id:
+                    learning_result["web_conversation_id"] = self.web_conversation_id
+                if self.session_id:
+                    learning_result["jarvis_session_id"] = self.session_id
             
             experience_id = record_interaction(
                 query=transcript,
                 tools_used=tools_used,
-                result=result,
+                result=learning_result,
                 conversation_context=conversation_context
             )
             
@@ -3318,7 +3326,7 @@ Your BEST EFFORT response:"""
                 track_insight_outcomes(
                     insights=applied_insights,
                     tools_used=tools_used,
-                    result=result
+                    result=learning_result
                 )
             
             return experience_id

@@ -26,6 +26,7 @@ from typing import Any
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
+from security_utils import redact_sensitive_data, redact_sensitive_text
 
 logger = logging.getLogger(__name__)
 
@@ -153,12 +154,12 @@ def record_interaction(
         # ============================================
         
         # Keep both the raw answer and the shorter spoken/display form.
-        raw_llm_response = result.get('raw_llm_response', '') or result.get('speech', '')
-        final_speech = result.get('speech', '')
+        raw_llm_response = redact_sensitive_text(result.get('raw_llm_response', '') or result.get('speech', ''))
+        final_speech = redact_sensitive_text(result.get('speech', ''))
 
         # Actual tool results (data returned by tools)
-        tool_results = result.get('data', {})
-        server_side_tools = result.get('server_side_tools') or {}
+        tool_results = redact_sensitive_data(result.get('data', {}))
+        server_side_tools = redact_sensitive_data(result.get('server_side_tools') or {})
         native_tool_labels = normalize_server_side_tools_for_reflection(server_side_tools)
         
         # Tools that were AVAILABLE to the LLM (from Tool RAG + ghost tools)
@@ -176,7 +177,7 @@ def record_interaction(
         if len(tool_results_str) > 5000:
             tool_results_str = tool_results_str[:5000] + "... [truncated]"
 
-        tool_trace = result.get('tool_trace') or []
+        tool_trace = redact_sensitive_data(result.get('tool_trace') or [])
         tool_trace_str = json.dumps(tool_trace, default=str)
         if len(tool_trace_str) > 5000:
             tool_trace_str = tool_trace_str[:5000] + "... [truncated]"
@@ -199,7 +200,9 @@ def record_interaction(
             'provider_native_tools_used': native_tool_labels,
             # CRITICAL: What tools the LLM could have chosen from
             'available_tools': available_tools,
-            'experience_id': result.get('experience_id')
+            'experience_id': result.get('experience_id'),
+            'web_conversation_id': result.get('web_conversation_id'),
+            'jarvis_session_id': result.get('jarvis_session_id'),
         }
         
         # Run async in sync context (handles FastAPI and standalone)
@@ -267,14 +270,15 @@ def update_experience_from_feedback(
         if value is None:
             return None
         if isinstance(value, str):
-            return value[:text_limit]
+            return redact_sensitive_text(value)[:text_limit]
         if isinstance(value, dict):
             compacted = {}
             for index, (key, item) in enumerate(value.items()):
                 if index >= 20:
                     compacted["..."] = f"truncated {len(value) - index} more key(s)"
                     break
-                compacted[str(key)[:80]] = compact_value(item, text_limit=500)
+                key_str = str(key)[:80]
+                compacted[key_str] = "[redacted]" if key_str and redact_sensitive_data({key_str: item}).get(key_str) == "[redacted]" else compact_value(item, text_limit=500)
             return compacted
         if isinstance(value, list):
             compacted = [compact_value(item, text_limit=500) for item in value[:10]]
@@ -301,8 +305,8 @@ def update_experience_from_feedback(
             except Exception:
                 raw_data = {}
 
-        feedback_details = feedback_details or {}
-        summary = feedback_summary or feedback_details.get('summary') or ''
+        feedback_details = redact_sensitive_data(feedback_details or {})
+        summary = redact_sensitive_text(feedback_summary or feedback_details.get('summary') or '')
         feedback_record = raw_data.get('feedback', {})
         if not isinstance(feedback_record, dict):
             feedback_record = {}
@@ -327,6 +331,7 @@ def update_experience_from_feedback(
         feedback_record['latest'] = latest_feedback
         feedback_record['history'] = history[-4:]
         raw_data['feedback'] = feedback_record
+        raw_data = redact_sensitive_data(raw_data)
 
         outcome_success = int(row['outcome_success']) if row['outcome_success'] is not None else 1
         user_satisfied = int(row['user_satisfied']) if row['user_satisfied'] is not None else 0
@@ -409,7 +414,8 @@ def update_experience_from_completion_guard(
         return False
 
     status = (status or '').strip().lower()
-    metadata = metadata or {}
+    note = redact_sensitive_text(note or '')
+    metadata = redact_sensitive_data(metadata or {})
 
     try:
         cursor = intel.conn.cursor()
@@ -431,6 +437,7 @@ def update_experience_from_completion_guard(
 
         completion_guard = raw_data.get('completion_guard', {})
         completion_guard.update({
+            'experience_id': experience_id,
             'status': status,
             'note': note or completion_guard.get('note', ''),
             'metadata': metadata,
@@ -441,6 +448,8 @@ def update_experience_from_completion_guard(
         # Fold the corrected solution back into the ORIGINAL experience so
         # reflection can compare "what failed first" vs "what actually fixed it".
         context = raw_data.setdefault('context', {})
+        if isinstance(context, dict) and context.get('experience_id') in (None, '', -1):
+            context['experience_id'] = experience_id
         repair_result = metadata.get('repair_result') or {}
         repair_data = metadata.get('repair_data') or {}
         operational_correction = bool(metadata.get('operational_correction'))
@@ -452,7 +461,7 @@ def update_experience_from_completion_guard(
                 or ''
             )
             if corrected_response:
-                context['corrected_llm_response'] = corrected_response[:2500]
+                context['corrected_llm_response'] = redact_sensitive_text(corrected_response)[:2500]
             corrected_tools = repair_result.get('tools_used') or []
             if corrected_tools:
                 context['corrected_tools_used'] = corrected_tools
@@ -460,7 +469,7 @@ def update_experience_from_completion_guard(
             if strategy_family:
                 context['repair_strategy_family'] = strategy_family
         if repair_data and operational_correction:
-            repair_data_str = json.dumps(repair_data, default=str)
+            repair_data_str = json.dumps(redact_sensitive_data(repair_data), default=str)
             if len(repair_data_str) > 5000:
                 repair_data_str = repair_data_str[:5000] + "... [truncated]"
             context['corrected_tool_results'] = repair_data_str
@@ -495,7 +504,7 @@ def update_experience_from_completion_guard(
             outcome_success,
             user_satisfied,
             had_to_retry,
-            json.dumps(raw_data),
+            json.dumps(redact_sensitive_data(raw_data)),
             experience_id
         ))
 
@@ -527,7 +536,7 @@ def update_experience_from_completion_guard(
                 "experience_id": experience_id,
                 "status": status,
                 "note": (note or "")[:300],
-                "metadata": metadata
+                "metadata": redact_sensitive_data(metadata)
             })
         except Exception:
             pass
@@ -627,6 +636,13 @@ def get_routing_insights(query: str) -> dict[str, Any]:
                     'avoided_tools': i.get('avoided_tools', []),
                     'reasoning': i.get('reasoning', ''),
                     'preferred_tools': i.get('preferred_tools') or {},
+                    'preferred_tool_sequence': i.get('preferred_tool_sequence') or [],
+                    'supporting_tools': i.get('supporting_tools') or [],
+                    'sequence_required': bool(i.get('sequence_required')),
+                    'trigger_signals': i.get('trigger_signals') or [],
+                    'primary_intent': i.get('primary_intent') or '',
+                    'source_experience_id': i.get('source_experience_id'),
+                    'source_web_conversation_id': i.get('source_web_conversation_id'),
                 }
                 for i in insights
             ],
@@ -741,6 +757,9 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
             lines.append(f"✅ {insight['description']}")
             if insight.get('applies_to'):
                 lines.append(f"   → Applies to: {insight['applies_to']}")
+            sequence = insight.get('preferred_tool_sequence') or []
+            if sequence and insight.get('sequence_required'):
+                lines.append(f"   → Required sequence: {' → '.join(sequence)}")
         lines.append("")
     
     # Negative constraints (what NOT to do) - LLMs respond strongly to explicit failures

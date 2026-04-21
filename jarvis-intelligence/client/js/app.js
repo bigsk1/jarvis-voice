@@ -890,6 +890,7 @@ function renderInsightCard(insight) {
   // Parse preferred/avoided tools
   const preferredTools = parseToolsField(insight.preferred_tools);
   const avoidedTools = parseToolsField(insight.avoided_tools);
+  const preferredSequence = parseToolsField(insight.preferred_tool_sequence);
   
   return `
     <div class="card insight-card" data-id="${insight.id}">
@@ -903,7 +904,7 @@ function renderInsightCard(insight) {
       ${insight.applies_to_pattern ? `
         <div class="insight-pattern">📎 ${escapeHtml(truncate(insight.applies_to_pattern, 100))}</div>
       ` : ''}
-      ${preferredTools.length > 0 || avoidedTools.length > 0 ? `
+      ${preferredTools.length > 0 || avoidedTools.length > 0 || preferredSequence.length > 0 ? `
         <div class="insight-tools">
           ${preferredTools.length > 0 ? `
             <div class="tool-group preferred">
@@ -917,6 +918,12 @@ function renderInsightCard(insight) {
               <span class="tool-group-label">👎 Avoid:</span>
               ${avoidedTools.slice(0, 3).map(t => `<span class="tool-tag avoided">${escapeHtml(t)}</span>`).join('')}
               ${avoidedTools.length > 3 ? `<span class="tool-tag">+${avoidedTools.length - 3}</span>` : ''}
+            </div>
+          ` : ''}
+          ${preferredSequence.length > 0 ? `
+            <div class="tool-group">
+              <span class="tool-group-label">Sequence:</span>
+              <span class="tool-tag">${escapeHtml(preferredSequence.join(' → '))}</span>
             </div>
           ` : ''}
         </div>
@@ -986,6 +993,11 @@ function parseToolsField(field) {
   } catch {
     return [];
   }
+}
+
+function renderToolSequenceField(field) {
+  const tools = parseToolsField(field);
+  return tools.length > 0 ? escapeHtml(tools.join(' → ')) : '-';
 }
 
 // Get confidence tier (5 tiers)
@@ -1557,6 +1569,7 @@ async function viewInsight(id) {
   try {
     const result = await api.getInsight(id);
     const insight = result.insight;
+    const evidence = Array.isArray(insight.evidence) ? insight.evidence : [];
     
     document.getElementById('insightDescription').value = insight.description || '';
     document.getElementById('insightPattern').value = insight.applies_to_pattern || '';
@@ -1619,6 +1632,50 @@ async function viewInsight(id) {
           <div class="form-label">Avoided Tools</div>
           <span>${insight.avoided_tools ? `<code>${escapeHtml(insight.avoided_tools)}</code>` : '-'}</span>
         </div>
+        <div>
+          <div class="form-label" title="Advisory sequence learned from reflection; not a mandatory workflow unless marked required">Preferred Sequence</div>
+          <span>${renderToolSequenceField(insight.preferred_tool_sequence)}</span>
+        </div>
+        <div>
+          <div class="form-label">Supporting Tools</div>
+          <span>${renderToolSequenceField(insight.supporting_tools)}</span>
+        </div>
+        <div>
+          <div class="form-label">Sequence Required</div>
+          <span>${insight.sequence_required ? 'Yes' : 'No'}</span>
+        </div>
+        <div>
+          <div class="form-label">Primary Intent</div>
+          <span>${insight.primary_intent ? escapeHtml(insight.primary_intent) : '-'}</span>
+        </div>
+        <div>
+          <div class="form-label">Source Experience</div>
+          <span>${insight.source_experience_id ? `#${escapeHtml(String(insight.source_experience_id))}` : '-'}</span>
+        </div>
+        <div>
+          <div class="form-label">Source Web Conversation</div>
+          <span>${insight.source_web_conversation_id ? `<code>${escapeHtml(insight.source_web_conversation_id)}</code>` : '-'}</span>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <div class="form-label">Source Tool Sequence</div>
+          <span>${renderToolSequenceField(insight.source_tool_sequence)}</span>
+        </div>
+        ${evidence.length > 0 ? `
+          <div style="grid-column: 1 / -1;">
+            <div class="form-label">Evidence Trail</div>
+            <div style="display: grid; gap: var(--space-xs);">
+              ${evidence.slice(0, 5).map(item => `
+                <div style="font-size: var(--text-sm); color: var(--text-secondary);">
+                  <code>#${escapeHtml(String(item.experience_id || '-'))}</code>
+                  ${item.web_conversation_id ? `web <code>${escapeHtml(item.web_conversation_id)}</code>` : ''}
+                  ${item.action ? ` ${escapeHtml(item.action)}` : ''}
+                  ${item.preferred_tool ? ` prefer <code>${escapeHtml(item.preferred_tool)}</code>` : ''}
+                  ${Array.isArray(item.tool_sequence) && item.tool_sequence.length ? ` via ${escapeHtml(item.tool_sequence.join(' → '))}` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   } catch (error) {

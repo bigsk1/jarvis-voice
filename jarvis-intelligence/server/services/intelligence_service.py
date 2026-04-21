@@ -14,6 +14,7 @@ DATA_PATH = JARVIS_ROOT / 'data'
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from time_utils import utc_string_display_fields
+from security_utils import redact_sensitive_data, redact_sensitive_text
 
 # Database paths
 DB_PATHS = {
@@ -69,16 +70,120 @@ class IntelligenceService:
             cursor.execute("PRAGMA table_info(insights)")
             existing_columns = {row[1] for row in cursor.fetchall()}
             new_columns = [
+                ("trigger_signals", "TEXT"),
+                ("primary_intent", "TEXT"),
+                ("preferred_tool_sequence", "TEXT"),
+                ("supporting_tools", "TEXT"),
+                ("sequence_required", "BOOLEAN DEFAULT 0"),
                 ("reflection_provider", "TEXT"),
                 ("reflection_model", "TEXT"),
                 ("reflection_input_tokens", "INTEGER DEFAULT 0"),
                 ("reflection_output_tokens", "INTEGER DEFAULT 0"),
                 ("reflection_total_tokens", "INTEGER DEFAULT 0"),
                 ("reflection_cost_usd", "REAL DEFAULT 0"),
+                ("source_experience_id", "INTEGER"),
+                ("source_web_conversation_id", "TEXT"),
+                ("source_query", "TEXT"),
+                ("source_tool_sequence", "TEXT"),
+                ("source_reflection_json", "TEXT"),
             ]
             for col_name, col_def in new_columns:
                 if col_name not in existing_columns:
                     cursor.execute(f"ALTER TABLE insights ADD COLUMN {col_name} {col_def}")
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS insight_evidence (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    insight_id INTEGER NOT NULL,
+                    experience_id INTEGER,
+                    web_conversation_id TEXT,
+                    query TEXT,
+                    tool_sequence TEXT,
+                    preferred_tool TEXT,
+                    avoided_tool TEXT,
+                    preferred_tool_sequence TEXT,
+                    supporting_tools TEXT,
+                    reflection_json TEXT,
+                    confidence REAL,
+                    confidence_delta REAL,
+                    action TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_evidence_insight ON insight_evidence(insight_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_evidence_experience ON insight_evidence(experience_id)")
+            cursor.execute("""
+                UPDATE insights
+                SET source_experience_id = COALESCE(
+                        source_experience_id,
+                        (
+                            SELECT e.experience_id
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.experience_id IS NOT NULL
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    ),
+                    source_web_conversation_id = COALESCE(
+                        NULLIF(source_web_conversation_id, ''),
+                        (
+                            SELECT e.web_conversation_id
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.web_conversation_id IS NOT NULL
+                              AND e.web_conversation_id != ''
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    ),
+                    source_query = COALESCE(
+                        NULLIF(source_query, ''),
+                        (
+                            SELECT e.query
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.query IS NOT NULL
+                              AND e.query != ''
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    ),
+                    source_tool_sequence = COALESCE(
+                        NULLIF(source_tool_sequence, ''),
+                        (
+                            SELECT e.tool_sequence
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.tool_sequence IS NOT NULL
+                              AND e.tool_sequence != ''
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    ),
+                    source_reflection_json = COALESCE(
+                        NULLIF(source_reflection_json, ''),
+                        (
+                            SELECT e.reflection_json
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.reflection_json IS NOT NULL
+                              AND e.reflection_json != ''
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    )
+                WHERE EXISTS (
+                    SELECT 1 FROM insight_evidence e WHERE e.insight_id = insights.id
+                )
+                  AND (
+                    source_experience_id IS NULL
+                    OR source_web_conversation_id IS NULL OR source_web_conversation_id = ''
+                    OR source_query IS NULL OR source_query = ''
+                    OR source_tool_sequence IS NULL OR source_tool_sequence = ''
+                    OR source_reflection_json IS NULL OR source_reflection_json = ''
+                  )
+            """)
             conn.commit()
         finally:
             conn.close()
@@ -115,10 +220,14 @@ class IntelligenceService:
     def _hydrate_experience(self, row: sqlite3.Row, include_raw: bool = False) -> Dict[str, Any]:
         """Convert an experience row into API shape."""
         exp = dict(row)
+        if exp.get('query'):
+            exp['query'] = redact_sensitive_text(str(exp['query']))
+        if exp.get('context_summary'):
+            exp['context_summary'] = redact_sensitive_text(str(exp['context_summary']))
         exp['tools_used'] = self._parse_json_value(exp.get('tools_used'), exp.get('tools_used'))
         exp['tool_sequence'] = self._parse_json_value(exp.get('tool_sequence'), exp.get('tool_sequence'))
 
-        raw_data = self._parse_json_value(exp.get('raw_data'), {})
+        raw_data = redact_sensitive_data(self._parse_json_value(exp.get('raw_data'), {}))
         if isinstance(raw_data, dict):
             exp['completion_guard'] = raw_data.get('completion_guard')
             if include_raw:
@@ -134,8 +243,17 @@ class IntelligenceService:
 
     def _hydrate_insight(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert an insight row into API shape."""
-        insight = dict(row)
+        insight = redact_sensitive_data(dict(row))
         return self._add_time_display(insight, ['created_at', 'updated_at', 'last_applied'])
+
+    def _hydrate_evidence(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert an insight evidence row into API shape."""
+        evidence = redact_sensitive_data(dict(row))
+        evidence['tool_sequence'] = self._parse_json_value(evidence.get('tool_sequence'), [])
+        evidence['preferred_tool_sequence'] = self._parse_json_value(evidence.get('preferred_tool_sequence'), [])
+        evidence['supporting_tools'] = self._parse_json_value(evidence.get('supporting_tools'), [])
+        evidence['reflection_json'] = self._parse_json_value(evidence.get('reflection_json'), evidence.get('reflection_json'))
+        return self._add_time_display(evidence, ['created_at'])
     
     # =========================================================================
     # Experiences Operations
@@ -293,6 +411,10 @@ class IntelligenceService:
                        times_applied, times_helpful, times_failed, consecutive_failures,
                        last_applied, last_outcome,
                        preferred_tools, avoided_tools, generalizability,
+                       preferred_tool_sequence, supporting_tools, sequence_required,
+                       trigger_signals, primary_intent,
+                       source_experience_id, source_web_conversation_id,
+                       source_query, source_tool_sequence,
                        reflection_provider, reflection_model,
                        reflection_input_tokens, reflection_output_tokens,
                        reflection_total_tokens, reflection_cost_usd,
@@ -319,6 +441,10 @@ class IntelligenceService:
                        times_applied, times_helpful, times_failed, consecutive_failures,
                        last_applied, last_outcome, preferred_tools, avoided_tools,
                        generalizability,
+                       preferred_tool_sequence, supporting_tools, sequence_required,
+                       trigger_signals, primary_intent,
+                       source_experience_id, source_web_conversation_id,
+                       source_query, source_tool_sequence, source_reflection_json,
                        reflection_provider, reflection_model,
                        reflection_input_tokens, reflection_output_tokens,
                        reflection_total_tokens, reflection_cost_usd,
@@ -327,7 +453,11 @@ class IntelligenceService:
                 WHERE id = ?
             """, (insight_id,)).fetchone()
             
-            return self._hydrate_insight(result) if result else None
+            if not result:
+                return None
+            insight = self._hydrate_insight(result)
+            insight['evidence'] = self.get_insight_evidence(insight_id)
+            return insight
         finally:
             conn.close()
     
@@ -342,6 +472,9 @@ class IntelligenceService:
                        constraint_type, applies_to_pattern, confidence, evidence_count,
                        times_applied, times_helpful, times_failed,
                        preferred_tools, avoided_tools,
+                       preferred_tool_sequence, supporting_tools, sequence_required,
+                       trigger_signals, primary_intent,
+                       source_experience_id, source_web_conversation_id,
                        reflection_provider, reflection_model,
                        reflection_input_tokens, reflection_output_tokens,
                        reflection_total_tokens, reflection_cost_usd,
@@ -349,11 +482,46 @@ class IntelligenceService:
                 FROM insights
                 WHERE description LIKE ? OR applies_to_pattern LIKE ? 
                       OR preferred_tools LIKE ? OR avoided_tools LIKE ?
+                      OR source_web_conversation_id LIKE ? OR source_query LIKE ?
                 ORDER BY confidence DESC
                 LIMIT ?
-            """, (f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
+            """, (
+                f"%{query}%",
+                f"%{query}%",
+                f"%{query}%",
+                f"%{query}%",
+                f"%{query}%",
+                f"%{query}%",
+                limit,
+            )).fetchall()
             
             return [self._hydrate_insight(row) for row in results]
+        finally:
+            conn.close()
+
+    def get_insight_evidence(self, insight_id: int, limit: int = 25) -> List[Dict]:
+        """List source experiences/reflections that created or reinforced an insight."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        try:
+            table_exists = cursor.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'insight_evidence'"
+            ).fetchone()
+            if not table_exists:
+                return []
+
+            rows = cursor.execute("""
+                SELECT id, insight_id, experience_id, web_conversation_id, query,
+                       tool_sequence, preferred_tool, avoided_tool,
+                       preferred_tool_sequence, supporting_tools, reflection_json,
+                       confidence, confidence_delta, action, created_at
+                FROM insight_evidence
+                WHERE insight_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+            """, (insight_id, limit)).fetchall()
+            return [self._hydrate_evidence(row) for row in rows]
         finally:
             conn.close()
     
@@ -400,6 +568,7 @@ class IntelligenceService:
         cursor = conn.cursor()
         
         try:
+            cursor.execute("DELETE FROM insight_evidence WHERE insight_id = ?", (insight_id,))
             cursor.execute("DELETE FROM insights WHERE id = ?", (insight_id,))
             conn.commit()
             return cursor.rowcount > 0

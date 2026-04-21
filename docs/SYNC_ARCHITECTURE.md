@@ -520,16 +520,19 @@ Routine startup syncs handle everything else.
 ## 4. Intelligence Database Sync (`sync-intelligence-db.py`)
 
 ### Purpose
-Synchronizes the **intelligence layer** (self-learning system) between cloud and local modes, including experiences, insights, and pending reflections.
+Synchronizes the **intelligence layer** (self-learning system) between cloud and local modes, including experiences, insights, insight evidence, and pending reflections.
 
 ### What it Syncs
 - ✅ **Experiences** - Raw interaction data (queries, tools used, outcomes)
 - ✅ **Insights** - Learned patterns (positive/negative constraints, tool preferences)
+- ✅ **Insight Evidence** - Audit trail linking insights back to source experiences/web conversations
 - ✅ **Reflection Queue** - Pending reflections awaiting processing
 - ✅ Regenerates all embeddings for target mode dimensions
 
 ### Important Behavior
 
+- **Default sync is additive merge**: source rows are copied only when they are missing in the target DB. Target-only learning is preserved, so running local for a while and later syncing cloud → local will not delete local-only insights or experiences.
+- **Use `--replace` for the old full-mirror behavior** when you intentionally want the target DB to match the source DB and discard target-only intelligence rows.
 - **Insight timestamps are preserved** during sync:
   - `created_at`
   - `updated_at`
@@ -553,8 +556,9 @@ Unlike provider-specific configurations, **learned insights are universal**:
 # 1. Copy text content (query, description, pattern)
 # 2. Regenerate embeddings with target mode's model
 query_embedding = get_embedding(query)  # 1536-dim (cloud) or 768-dim (local)
-# 3. Insert into target database with new IDs
-# 4. Remap pending reflection_queue rows to new experience IDs
+# 3. Reuse matching target rows or insert missing rows with new IDs
+# 4. Remap insight_evidence rows to target insight/experience IDs
+# 5. Remap pending reflection_queue rows to target experience IDs
 ```
 
 ### When to Run
@@ -569,6 +573,9 @@ query_embedding = get_embedding(query)  # 1536-dim (cloud) or 768-dim (local)
 
 # Preview what would sync
 ./bin/sync-intelligence-db.py --dry-run local
+
+# Replace target with source mirror, discarding target-only intelligence rows
+./bin/sync-intelligence-db.py --replace local
 
 # Reset (delete) intelligence DB
 ./bin/sync-intelligence-db.py --reset local

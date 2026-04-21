@@ -10,7 +10,7 @@ Provides reusable security functions for:
 
 import re
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from tts_normalizer import normalize_tts_text
 from paths import get_allowed_write_paths, get_protected_paths
@@ -22,6 +22,196 @@ logger = logging.getLogger(__name__)
 MAX_TRANSCRIPT_LENGTH = 10000
 MAX_MEMORY_VALUE_LENGTH = 10000
 MAX_URL_LENGTH = 2048
+
+SENSITIVE_VALUE_REPLACEMENT = "[redacted]"
+
+_SENSITIVE_KEY_EXACT = {
+    "api_key",
+    "apikey",
+    "x_api_key",
+    "xapikey",
+    "authorization",
+    "auth_header",
+    "bearer",
+    "cookie",
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "client_secret",
+    "clientsecret",
+    "private_key",
+    "privatekey",
+    "access_token",
+    "refresh_token",
+    "auth_token",
+    "session_id",
+    "sessionid",
+}
+
+_SENSITIVE_KEY_PARTS = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "bearer",
+    "cookie",
+    "password",
+    "passwd",
+    "client_secret",
+    "private_key",
+)
+
+_SECRET_TEXT_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # Private key blocks.
+    (
+        re.compile(
+            r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+            re.IGNORECASE | re.DOTALL,
+        ),
+        "-----BEGIN PRIVATE KEY-----[redacted]-----END PRIVATE KEY-----",
+    ),
+    # Authorization headers / bearer tokens.
+    (
+        re.compile(r"(?i)\b(Authorization\s*:\s*Bearer\s+)[A-Za-z0-9._~+/=-]{8,}"),
+        r"\1[redacted]",
+    ),
+    (
+        re.compile(r"(?i)\b(Bearer\s+)[A-Za-z0-9._~+/=-]{16,}"),
+        r"\1[redacted]",
+    ),
+    # Key/value assignments in prose, shell, JSON-ish, YAML-ish, or logs.
+    (
+        re.compile(
+            r"(?i)(\b(?:api[_-]?key|x-api-key|password|passwd|pwd|secret|client[_-]?secret|private[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|session[_-]?id)\b\s*[:=]\s*[\"']?)([^\"'\s,;}{]{4,})"
+        ),
+        r"\1[redacted]",
+    ),
+    (
+        re.compile(
+            r"(?i)([\"'](?:api[_-]?key|x-api-key|password|passwd|pwd|secret|client[_-]?secret|private[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|session[_-]?id)[\"']\s*:\s*[\"'])([^\"']+)([\"'])"
+        ),
+        r"\1[redacted]\3",
+    ),
+    # Natural language forms like "secret key 'dev-secret-123'".
+    (
+        re.compile(r"(?i)\b(secret\s+key\s+(?:is\s+)?[\"']?)([^\"'\s,;]{4,})"),
+        r"\1[redacted]",
+    ),
+    # Credentialed URLs.
+    (
+        re.compile(r"(?i)\b(https?://)([^/\s:@]+):([^@\s/]+)@"),
+        r"\1\2:[redacted]@",
+    ),
+    # Common provider/token formats.
+    (re.compile(r"\bsk-ant-[A-Za-z0-9_-]{16,}\b"), "sk-ant-[redacted]"),
+    (re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"), "sk-[redacted]"),
+    (re.compile(r"\bxai-[A-Za-z0-9_-]{20,}\b", re.IGNORECASE), "xai-[redacted]"),
+    (re.compile(r"\bghp_[A-Za-z0-9_]{20,}\b"), "ghp_[redacted]"),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "AKIA[redacted]"),
+    # JWTs.
+    (
+        re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+        "jwt-[redacted]",
+    ),
+]
+
+
+def _normalize_sensitive_key(key: str) -> str:
+    return re.sub(r"[^a-z0-9_]", "", key.lower().replace("-", "_"))
+
+
+def is_sensitive_key(key: str) -> bool:
+    """Return True when a mapping key is likely to contain a secret."""
+    normalized = _normalize_sensitive_key(str(key))
+    if not normalized:
+        return False
+
+    # Usage/cost metadata has token counts and should remain useful.
+    if normalized.endswith("tokens") or normalized in {
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cache_read_tokens",
+        "cache_creation_tokens",
+    }:
+        return False
+
+    if normalized in _SENSITIVE_KEY_EXACT:
+        return True
+    if normalized.endswith("_token") or normalized == "token":
+        return True
+    return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
+
+
+def redact_sensitive_text(text: str) -> str:
+    """
+    Redact secret-looking values from free text while preserving normal PII.
+
+    Email addresses, names, and ordinary URLs are intentionally left intact. This
+    function targets credentials that should not become permanent DB/log data.
+    """
+    if not isinstance(text, str) or not text:
+        return text
+
+    redacted = text
+    for pattern, replacement in _SECRET_TEXT_PATTERNS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
+
+
+def redact_sensitive_data(
+    value: Any,
+    *,
+    depth: int = 0,
+    max_depth: int = 8,
+    max_items: int = 200,
+) -> Any:
+    """
+    Recursively redact secret-like values from JSON-serializable structures.
+
+    This is intended for logs, reflection payloads, and Intelligence DB records.
+    It does not try to remove all personal data; it removes credential material.
+    """
+    if depth > max_depth:
+        return "[max depth]"
+
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for index, (key, item) in enumerate(value.items()):
+            if index >= max_items:
+                redacted["__truncated__"] = f"{len(value) - max_items} more item(s)"
+                break
+            key_str = str(key)
+            if is_sensitive_key(key_str):
+                redacted[key_str] = SENSITIVE_VALUE_REPLACEMENT
+            else:
+                redacted[key_str] = redact_sensitive_data(
+                    item,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    max_items=max_items,
+                )
+        return redacted
+
+    if isinstance(value, list):
+        items = [
+            redact_sensitive_data(item, depth=depth + 1, max_depth=max_depth, max_items=max_items)
+            for item in value[:max_items]
+        ]
+        if len(value) > max_items:
+            items.append(f"[truncated {len(value) - max_items} more item(s)]")
+        return items
+
+    if isinstance(value, tuple):
+        return tuple(
+            redact_sensitive_data(item, depth=depth + 1, max_depth=max_depth, max_items=max_items)
+            for item in value[:max_items]
+        )
+
+    if isinstance(value, str):
+        return redact_sensitive_text(value)
+
+    return value
 
 # Prompt injection detection patterns
 INJECTION_PATTERNS = [

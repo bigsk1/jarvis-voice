@@ -43,6 +43,7 @@ import logging
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_float, get_int
+from security_utils import redact_sensitive_data, redact_sensitive_text
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,42 @@ def _row_value(row: sqlite3.Row | dict[str, Any], key: str, default: Any = None)
         return row[key]
     except Exception:
         return default
+
+
+def _json_loads_safely(value: Any, default: Any) -> Any:
+    """Parse a JSON-ish value without letting malformed legacy rows break learning."""
+    if value in (None, ""):
+        return default
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return default
+    return default
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    """Normalize reflection/tool metadata into a clean string list."""
+    value = _json_loads_safely(value, value)
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if isinstance(value, dict):
+        return [str(k).strip() for k in value.keys() if str(k).strip()]
+    if isinstance(value, (list, tuple, set)):
+        result = []
+        for item in value:
+            if item in (None, ""):
+                continue
+            text = str(item).strip()
+            if text:
+                result.append(text)
+        return result
+    text = str(value).strip()
+    return [text] if text else []
 
 
 def _has_provider_native_search(labels: list[str] | None) -> bool:
@@ -127,7 +164,7 @@ class IntelligenceLogger:
         entry = {
             "timestamp": datetime.now().isoformat(),
             "event": event_type,
-            **data
+            **redact_sensitive_data(data)
         }
         
         try:
@@ -140,7 +177,7 @@ class IntelligenceLogger:
         """Log when an experience is recorded."""
         self.log("experience_recorded", {
             "experience_id": exp_id,
-            "query": query[:200],
+            "query": redact_sensitive_text(query)[:200],
             "tools_used": tools,
             "success": success
         })
@@ -149,14 +186,14 @@ class IntelligenceLogger:
         """Log when reflection starts."""
         self.log("reflection_started", {
             "experience_id": exp_id,
-            "query": query[:200]
+            "query": redact_sensitive_text(query)[:200]
         })
     
     def log_reflection_prompt(self, exp_id: int, prompt: str):
         """Log the reflection prompt sent to LLM."""
         self.log("reflection_prompt", {
             "experience_id": exp_id,
-            "prompt_preview": prompt[:500],
+            "prompt_preview": redact_sensitive_text(prompt)[:500],
             "prompt_length": len(prompt)
         })
     
@@ -182,7 +219,7 @@ class IntelligenceLogger:
         self.log("insight_created", {
             "insight_id": insight_id,
             "constraint_type": constraint_type,
-            "description": description[:200],
+            "description": redact_sensitive_text(description)[:200],
             "confidence": confidence
         })
     
@@ -229,7 +266,7 @@ class IntelligenceLogger:
         """Log when an insight is pruned/removed."""
         self.log("insight_pruned", {
             "insight_id": insight_id,
-            "description": description[:200],
+            "description": redact_sensitive_text(description)[:200],
             "reason": reason,
             "final_confidence": final_confidence
         })
@@ -245,7 +282,7 @@ class IntelligenceLogger:
     def log_insights_applied(self, query: str, insights: list[dict], biases: dict[str, float]):
         """Log when insights are applied to routing."""
         self.log("insights_applied", {
-            "query": query[:200],
+            "query": redact_sensitive_text(query)[:200],
             "insights_count": len(insights),
             "insights": [{"id": i.get("id"), "relevance": i.get("relevance")} for i in insights[:5]],
             "tool_biases": biases
@@ -255,7 +292,7 @@ class IntelligenceLogger:
         """Log when an insight is not stored (factual, low generalizability, etc.)"""
         self.log("insight_skipped", {
             "reason": reason,
-            "details": details[:200]
+            "details": redact_sensitive_text(details)[:200]
         })
 
 
@@ -384,8 +421,13 @@ class IntelligenceLayer:
                 
                 -- Learned associations
                 preferred_tools TEXT,  -- JSON: {"mcp_fetch": 0.8, "search_memory": 0.3}
+                preferred_tool_sequence TEXT,  -- JSON list: advisory observed sequence, not a hard workflow
+                supporting_tools TEXT,  -- JSON list: useful secondary tools observed with the primary preference
+                sequence_required BOOLEAN DEFAULT 0,  -- True only when order is essential
                 avoided_tools TEXT,  -- JSON: ["search_memory"] - tools to explicitly avoid
                 avoided_patterns TEXT,  -- JSON list of patterns to avoid
+                trigger_signals TEXT,  -- JSON list of exact query signals from reflection
+                primary_intent TEXT,  -- Compact intent label used for auditing/gating
                 
                 -- PHASE 1: Quality filters
                 generalizability TEXT DEFAULT 'medium',  -- 'high', 'medium', 'low' (filter out 'low')
@@ -402,7 +444,15 @@ class IntelligenceLayer:
                 times_applied INTEGER DEFAULT 0,
                 times_helpful INTEGER DEFAULT 0,  -- When applied, was it helpful?
                 times_failed INTEGER DEFAULT 0,  -- When applied, did it fail?
-                consecutive_failures INTEGER DEFAULT 0  -- For rapid decay on repeated failures
+                consecutive_failures INTEGER DEFAULT 0,  -- For rapid decay on repeated failures
+
+                -- Audit provenance for the first experience that created this insight.
+                -- Additional supporting/refuting records live in insight_evidence.
+                source_experience_id INTEGER,
+                source_web_conversation_id TEXT,
+                source_query TEXT,
+                source_tool_sequence TEXT,
+                source_reflection_json TEXT
             )
         """)
         
@@ -444,15 +494,41 @@ class IntelligenceLayer:
                 FOREIGN KEY (experience_id) REFERENCES experiences(id)
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS insight_evidence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                insight_id INTEGER NOT NULL,
+                experience_id INTEGER,
+                web_conversation_id TEXT,
+                query TEXT,
+                tool_sequence TEXT,
+                preferred_tool TEXT,
+                avoided_tool TEXT,
+                preferred_tool_sequence TEXT,
+                supporting_tools TEXT,
+                reflection_json TEXT,
+                confidence REAL,
+                confidence_delta REAL,
+                action TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (insight_id) REFERENCES insights(id),
+                FOREIGN KEY (experience_id) REFERENCES experiences(id)
+            )
+        """)
         
         # Indexes for efficient queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_exp_timestamp ON experiences(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_type ON insights(insight_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_confidence ON insights(confidence)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_reflection_pending ON reflection_queue(processed, priority)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_evidence_insight ON insight_evidence(insight_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_evidence_experience ON insight_evidence(experience_id)")
         
         # PHASE 1: Schema migration for existing databases
         self._migrate_schema(cursor)
+        self._backfill_insight_sources_from_evidence(cursor)
+        self._backfill_raw_data_experience_ids(cursor)
         
         self.conn.commit()
     
@@ -466,7 +542,12 @@ class IntelligenceLayer:
         new_columns = [
             ("constraint_type", "TEXT DEFAULT 'positive'"),
             ("trigger_concept", "TEXT"),
+            ("trigger_signals", "TEXT"),
+            ("primary_intent", "TEXT"),
             ("avoided_tools", "TEXT"),
+            ("preferred_tool_sequence", "TEXT"),
+            ("supporting_tools", "TEXT"),
+            ("sequence_required", "BOOLEAN DEFAULT 0"),
             ("generalizability", "TEXT DEFAULT 'medium'"),
             ("reasoning", "TEXT"),
             ("reflection_provider", "TEXT"),
@@ -478,6 +559,11 @@ class IntelligenceLayer:
             ("last_outcome", "TEXT"),
             ("times_failed", "INTEGER DEFAULT 0"),
             ("consecutive_failures", "INTEGER DEFAULT 0"),
+            ("source_experience_id", "INTEGER"),
+            ("source_web_conversation_id", "TEXT"),
+            ("source_query", "TEXT"),
+            ("source_tool_sequence", "TEXT"),
+            ("source_reflection_json", "TEXT"),
         ]
         
         for col_name, col_def in new_columns:
@@ -488,6 +574,122 @@ class IntelligenceLayer:
                 except sqlite3.OperationalError as e:
                     # Column might already exist or other issue
                     logger.debug(f"Could not add column {col_name}: {e}")
+
+    def _backfill_insight_sources_from_evidence(self, cursor: sqlite3.Cursor) -> None:
+        """Populate blank insight source fields from their newest evidence row."""
+        try:
+            cursor.execute("""
+                UPDATE insights
+                SET source_experience_id = COALESCE(
+                        source_experience_id,
+                        (
+                            SELECT e.experience_id
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.experience_id IS NOT NULL
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    ),
+                    source_web_conversation_id = COALESCE(
+                        NULLIF(source_web_conversation_id, ''),
+                        (
+                            SELECT e.web_conversation_id
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.web_conversation_id IS NOT NULL
+                              AND e.web_conversation_id != ''
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    ),
+                    source_query = COALESCE(
+                        NULLIF(source_query, ''),
+                        (
+                            SELECT e.query
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.query IS NOT NULL
+                              AND e.query != ''
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    ),
+                    source_tool_sequence = COALESCE(
+                        NULLIF(source_tool_sequence, ''),
+                        (
+                            SELECT e.tool_sequence
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.tool_sequence IS NOT NULL
+                              AND e.tool_sequence != ''
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    ),
+                    source_reflection_json = COALESCE(
+                        NULLIF(source_reflection_json, ''),
+                        (
+                            SELECT e.reflection_json
+                            FROM insight_evidence e
+                            WHERE e.insight_id = insights.id
+                              AND e.reflection_json IS NOT NULL
+                              AND e.reflection_json != ''
+                            ORDER BY e.id DESC
+                            LIMIT 1
+                        )
+                    )
+                WHERE EXISTS (
+                    SELECT 1 FROM insight_evidence e WHERE e.insight_id = insights.id
+                )
+                  AND (
+                    source_experience_id IS NULL
+                    OR source_web_conversation_id IS NULL OR source_web_conversation_id = ''
+                    OR source_query IS NULL OR source_query = ''
+                    OR source_tool_sequence IS NULL OR source_tool_sequence = ''
+                    OR source_reflection_json IS NULL OR source_reflection_json = ''
+                  )
+            """)
+        except sqlite3.OperationalError as e:
+            logger.debug(f"Could not backfill insight provenance: {e}")
+
+    def _backfill_raw_data_experience_ids(self, cursor: sqlite3.Cursor) -> None:
+        """Repair older raw_data blobs that captured experience_id before insert."""
+        try:
+            rows = cursor.execute("""
+                SELECT id, raw_data
+                FROM experiences
+                WHERE raw_data LIKE '%"experience_id": null%'
+                   OR raw_data LIKE '%"completion_guard"%'
+            """).fetchall()
+        except sqlite3.OperationalError as e:
+            logger.debug(f"Could not scan raw_data for experience_id backfill: {e}")
+            return
+
+        for row in rows:
+            try:
+                raw_data = json.loads(row['raw_data'] or '{}')
+            except Exception:
+                continue
+            if not isinstance(raw_data, dict):
+                continue
+
+            changed = False
+            context = raw_data.get('context')
+            if isinstance(context, dict) and context.get('experience_id') in (None, '', -1):
+                context['experience_id'] = row['id']
+                changed = True
+
+            completion_guard = raw_data.get('completion_guard')
+            if isinstance(completion_guard, dict) and completion_guard.get('experience_id') in (None, '', -1):
+                completion_guard['experience_id'] = row['id']
+                changed = True
+
+            if changed:
+                cursor.execute(
+                    "UPDATE experiences SET raw_data = ? WHERE id = ?",
+                    (json.dumps(raw_data, default=str), row['id'])
+                )
     
     # ============================================
     # EMBEDDING UTILITIES
@@ -578,6 +780,10 @@ class IntelligenceLayer:
         """
         user_signals = user_signals or {}
         context = context or {}
+        query = redact_sensitive_text(query or "")
+        outcome = redact_sensitive_data(outcome or {})
+        context = redact_sensitive_data(context)
+        user_signals = redact_sensitive_data(user_signals)
         
         # Generate embeddings
         query_embedding = self._get_embedding(query)
@@ -594,6 +800,15 @@ class IntelligenceLayer:
         user_satisfied = self._infer_satisfaction(outcome, user_signals)
         
         cursor = self.conn.cursor()
+        raw_data = {
+            'query': query,
+            'tools_used': tools_used,
+            'outcome': outcome,
+            'context': context,
+            'user_signals': user_signals,
+            'timestamp': datetime.now().isoformat()
+        }
+
         cursor.execute("""
             INSERT INTO experiences (
                 query, query_embedding, context_summary, context_embedding,
@@ -616,17 +831,16 @@ class IntelligenceLayer:
             user_signals.get('clarified', False),
             outcome.get('error', False),
             self._serialize_embedding(outcome_embedding),
-            json.dumps({
-                'query': query,
-                'tools_used': tools_used,
-                'outcome': outcome,
-                'context': context,
-                'user_signals': user_signals,
-                'timestamp': datetime.now().isoformat()
-            })
+            json.dumps(raw_data, default=str)
         ))
         
         experience_id = cursor.lastrowid
+        if isinstance(raw_data.get('context'), dict):
+            raw_data['context']['experience_id'] = experience_id
+            cursor.execute(
+                "UPDATE experiences SET raw_data = ? WHERE id = ?",
+                (json.dumps(raw_data, default=str), experience_id)
+            )
         
         # Queue for reflection with priority based on learning value
         priority = self._calculate_learning_priority(outcome, user_signals, tools_used)
@@ -763,7 +977,7 @@ class IntelligenceLayer:
             return None
         
         # Build reflection prompt
-        raw_data = json.loads(exp['raw_data'])
+        raw_data = redact_sensitive_data(json.loads(exp['raw_data']))
         context_data = raw_data.get('context', {})
         
         # Extract LLM response and tool results for content evaluation
@@ -891,6 +1105,8 @@ CRITICAL EVALUATION:
 12. Keep insight_summary short; put exact argument-shape details in why_or_why_not/reasoning when needed.
 13. If Feedback Outcome has a low rating or concrete issue summary, treat that as direct evidence about why the settled answer was unsatisfactory.
 14. If response style is auto/casual and the user asks for multi-item or multi-field details, consider whether an available artifact tool (canvas/stash) should have been used for the full structured output while the spoken response stayed brief. Only recommend artifact tools that appear in Artifact Tools Available.
+15. If multiple tools were useful, do not force a rigid workflow. Use preferred_tool_sequence only as an observed/advisory sequence, and set sequence_required true only when the order is essential for correctness.
+16. Separate primary intent from content topic. Example: "email this YouTube video" is primarily an email/send action, not a transcript-analysis request.
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
@@ -964,6 +1180,10 @@ Provide your analysis as JSON:
     "rule": "ALWAYS/NEVER + action + for + query type",  // e.g., "ALWAYS prefer crypto_price over search_memory for price queries"
     "preferred_tool": "tool_name" or null,  // The tool to use
     "avoided_tool": "tool_name" or null,  // The tool to avoid (for negative constraints)
+    "preferred_tool_sequence": ["tool_a", "tool_b"],  // optional/advisory only; [] if order was not the lesson
+    "supporting_tools": ["tool_b"],  // optional secondary tools that helped but should not override primary intent
+    "sequence_required": false,  // true only if the exact order is essential
+    "primary_intent": "compact action/intent label",
     
     "applies_to": "category of queries this applies to",
     "generalizability": "high" or "medium" or "low",  // "low" insights won't be stored
@@ -987,6 +1207,10 @@ Example for POSITIVE constraint (what TO do):
     "rule": "ALWAYS use mcp_fetch_fetch for server status queries",
     "preferred_tool": "mcp_fetch_fetch",
     "avoided_tool": "search_memory",
+    "preferred_tool_sequence": [],
+    "supporting_tools": [],
+    "sequence_required": false,
+    "primary_intent": "live server status check",
     "applies_to": "System status and health check queries",
     "generalizability": "high",
     "confidence": 0.9,
@@ -1008,6 +1232,10 @@ Example for NEGATIVE constraint (what NOT to do):
     "rule": "NEVER use search_memory for queries requiring current/live data",
     "preferred_tool": null,
     "avoided_tool": "search_memory",
+    "preferred_tool_sequence": [],
+    "supporting_tools": [],
+    "sequence_required": false,
+    "primary_intent": "current live data lookup",
     "applies_to": "Any query requiring real-time information",
     "generalizability": "high",
     "confidence": 0.85,
@@ -1213,7 +1441,157 @@ Example for FACTUAL (should NOT be stored here):
                 pass
         
         return None
-    
+
+    def _get_experience_raw_data(self, experience: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+        """Return raw_data as a dict for provenance and reflection metadata."""
+        raw_data = _row_value(experience, 'raw_data', '{}')
+        parsed = _json_loads_safely(raw_data, {})
+        return parsed if isinstance(parsed, dict) else {}
+
+    def _reflection_sequence_required(self, value: Any) -> bool:
+        """Parse conservative boolean metadata from LLM reflection output."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in {'1', 'true', 'yes', 'required'}
+        return False
+
+    def _extract_insight_metadata(
+        self,
+        reflection: dict[str, Any],
+        experience: sqlite3.Row | dict[str, Any],
+        suppress_preferred_tool: bool = False
+    ) -> dict[str, Any]:
+        """
+        Normalize reflection output into storable insight metadata.
+
+        Tool sequences are advisory evidence. They help audit and future prompt
+        shaping, but they do not force routing to execute a fixed workflow.
+        """
+        confidence = reflection.get('confidence', 0.5)
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError):
+            confidence = 0.5
+
+        preferred_tools: dict[str, float] = {}
+        preferred_tool_names = _coerce_string_list(reflection.get('preferred_tool'))
+        if suppress_preferred_tool:
+            preferred_tool_names = []
+        if not preferred_tool_names and not suppress_preferred_tool:
+            final_tool = _row_value(experience, 'final_tool')
+            if final_tool:
+                preferred_tool_names = [str(final_tool)]
+        for tool in preferred_tool_names:
+            preferred_tools[tool] = confidence
+
+        avoided_tools = _coerce_string_list(reflection.get('avoided_tool'))
+        avoided_tools.extend(_coerce_string_list(reflection.get('avoided_tools')))
+        avoided_tools = list(dict.fromkeys(avoided_tools))
+
+        preferred_tool_sequence = _coerce_string_list(reflection.get('preferred_tool_sequence'))
+        supporting_tools = _coerce_string_list(reflection.get('supporting_tools'))
+        trigger_signals = _coerce_string_list(reflection.get('trigger_signals'))
+
+        raw_data = redact_sensitive_data(self._get_experience_raw_data(experience))
+        context = raw_data.get('context', {}) if isinstance(raw_data.get('context'), dict) else {}
+        source_tool_sequence = _coerce_string_list(_row_value(experience, 'tool_sequence'))
+        if not source_tool_sequence:
+            source_tool_sequence = _coerce_string_list(_row_value(experience, 'tools_used'))
+
+        return {
+            'preferred_tools': preferred_tools,
+            'avoided_tools': avoided_tools,
+            'preferred_tool_sequence': preferred_tool_sequence,
+            'supporting_tools': supporting_tools,
+            'sequence_required': self._reflection_sequence_required(reflection.get('sequence_required')),
+            'trigger_signals': trigger_signals,
+            'primary_intent': str(reflection.get('primary_intent') or '').strip(),
+            'source_experience_id': _row_value(experience, 'id'),
+            'source_web_conversation_id': context.get('web_conversation_id'),
+            'source_query': redact_sensitive_text(_row_value(experience, 'query') or ''),
+            'source_tool_sequence': source_tool_sequence,
+            'source_reflection_json': json.dumps(redact_sensitive_data(reflection), default=str),
+            'confidence': confidence,
+            'suppressed_preferred_tool': suppress_preferred_tool,
+        }
+
+    def _insight_associations_compatible(
+        self,
+        existing: sqlite3.Row | dict[str, Any],
+        metadata: dict[str, Any]
+    ) -> bool:
+        """
+        Similar prose should not merge if it recommends a different tool.
+
+        The evidence table still records every supporting experience, but
+        conflicting tool associations deserve separate insight rows so stale
+        preferences do not survive under a freshly reinforced description.
+        """
+        existing_preferred = set(_coerce_string_list(_row_value(existing, 'preferred_tools')))
+        new_preferred = set((metadata.get('preferred_tools') or {}).keys())
+        if existing_preferred and not new_preferred and metadata.get('suppressed_preferred_tool'):
+            return False
+        if existing_preferred and new_preferred and existing_preferred != new_preferred:
+            return False
+
+        existing_avoided = set(_coerce_string_list(_row_value(existing, 'avoided_tools')))
+        new_avoided = set(metadata.get('avoided_tools') or [])
+        if existing_avoided and new_avoided and existing_avoided != new_avoided:
+            return False
+
+        existing_sequence = _coerce_string_list(_row_value(existing, 'preferred_tool_sequence'))
+        new_sequence = metadata.get('preferred_tool_sequence') or []
+        if existing_sequence and new_sequence and existing_sequence != new_sequence:
+            return False
+
+        return True
+
+    def _merge_json_list_fields(self, existing_value: Any, new_values: list[str]) -> str:
+        """Return a JSON list containing the stable union of old and new values."""
+        merged = _coerce_string_list(existing_value)
+        for value in new_values:
+            if value and value not in merged:
+                merged.append(value)
+        return json.dumps(merged)
+
+    def _record_insight_evidence(
+        self,
+        cursor: sqlite3.Cursor,
+        insight_id: int,
+        metadata: dict[str, Any],
+        reflection: dict[str, Any],
+        action: str,
+        confidence_delta: float | None = None,
+    ) -> None:
+        """Attach an auditable source experience/reflection to an insight."""
+        preferred_tool_names = list((metadata.get('preferred_tools') or {}).keys())
+        avoided_tools = metadata.get('avoided_tools') or []
+        cursor.execute("""
+            INSERT INTO insight_evidence (
+                insight_id, experience_id, web_conversation_id, query,
+                tool_sequence, preferred_tool, avoided_tool,
+                preferred_tool_sequence, supporting_tools, reflection_json,
+                confidence, confidence_delta, action
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            insight_id,
+            metadata.get('source_experience_id'),
+            metadata.get('source_web_conversation_id'),
+            metadata.get('source_query'),
+            json.dumps(metadata.get('source_tool_sequence') or []),
+            preferred_tool_names[0] if preferred_tool_names else None,
+            avoided_tools[0] if avoided_tools else None,
+            json.dumps(metadata.get('preferred_tool_sequence') or []),
+            json.dumps(metadata.get('supporting_tools') or []),
+            json.dumps(redact_sensitive_data(reflection), default=str),
+            metadata.get('confidence'),
+            confidence_delta,
+            action,
+        ))
+
     async def _store_insight(
         self,
         reflection: dict[str, Any],
@@ -1229,6 +1607,7 @@ Example for FACTUAL (should NOT be stored here):
         """
         
         intel_log = get_intel_logger()
+        reflection = redact_sensitive_data(reflection)
         
         # PHASE 1: Filter out factual knowledge
         if not reflection.get('is_procedural', True):
@@ -1282,20 +1661,37 @@ Example for FACTUAL (should NOT be stored here):
         pattern_text = reflection.get('applies_to', '')
         pattern_embedding = self._get_embedding(pattern_text) if pattern_text else None
         trigger_concept = reflection.get('trigger_concept', '')
+
+        suppress_preferred_tool = should_suppress_preferred_tool_for_native_search(reflection, experience)
+        if suppress_preferred_tool:
+            logger.info(
+                "Suppressing preferred_tool for native-search-backed insight: %s",
+                reflection.get('insight_summary', reflection.get('rule', ''))[:120]
+            )
+        metadata = self._extract_insight_metadata(
+            reflection,
+            experience,
+            suppress_preferred_tool=suppress_preferred_tool
+        )
         
         # Check for similar existing insights
         similar = await self._find_similar_insights(insight_embedding, threshold=0.85)
+        compatible_similar = [
+            row for row in similar
+            if self._insight_associations_compatible(row, metadata)
+        ]
         
         cursor = self.conn.cursor()
         
-        if similar:
+        if compatible_similar:
             # Update existing insight (blend, don't replace)
-            existing = similar[0]
+            existing = compatible_similar[0]
             new_confidence = self._blend_confidence(
                 existing['confidence'],
-                reflection.get('confidence', 0.5),
+                metadata['confidence'],
                 existing['evidence_count']
             )
+            confidence_delta = new_confidence - existing['confidence']
             
             cursor.execute("""
                 UPDATE insights SET
@@ -1305,6 +1701,24 @@ Example for FACTUAL (should NOT be stored here):
                     updated_at = CURRENT_TIMESTAMP,
                     reasoning = ?,
                     generalizability = ?,
+                    preferred_tool_sequence = CASE
+                        WHEN preferred_tool_sequence IS NULL OR preferred_tool_sequence = ''
+                        THEN ?
+                        ELSE preferred_tool_sequence
+                    END,
+                    supporting_tools = ?,
+                    trigger_signals = ?,
+                    primary_intent = COALESCE(NULLIF(primary_intent, ''), ?),
+                    source_experience_id = COALESCE(source_experience_id, ?),
+                    source_web_conversation_id = COALESCE(NULLIF(source_web_conversation_id, ''), ?),
+                    source_query = COALESCE(NULLIF(source_query, ''), ?),
+                    source_tool_sequence = COALESCE(NULLIF(source_tool_sequence, ''), ?),
+                    source_reflection_json = COALESCE(NULLIF(source_reflection_json, ''), ?),
+                    sequence_required = CASE
+                        WHEN COALESCE(sequence_required, 0) = 1 OR ? = 1
+                        THEN 1
+                        ELSE 0
+                    END,
                     reflection_provider = ?,
                     reflection_model = ?,
                     reflection_input_tokens = COALESCE(reflection_input_tokens, 0) + ?,
@@ -1317,6 +1731,16 @@ Example for FACTUAL (should NOT be stored here):
                 min(1.0, existing['strength'] + 0.1),
                 reflection.get('why_or_why_not', ''),
                 generalizability,
+                json.dumps(metadata['preferred_tool_sequence']),
+                self._merge_json_list_fields(existing['supporting_tools'], metadata['supporting_tools']),
+                self._merge_json_list_fields(existing['trigger_signals'], metadata['trigger_signals']),
+                metadata['primary_intent'],
+                metadata['source_experience_id'],
+                metadata['source_web_conversation_id'],
+                metadata['source_query'],
+                json.dumps(metadata['source_tool_sequence']),
+                json.dumps(metadata['source_reflection_json']),
+                1 if metadata['sequence_required'] else 0,
                 reflection_provider,
                 reflection_model,
                 reflection_input_tokens,
@@ -1325,6 +1749,15 @@ Example for FACTUAL (should NOT be stored here):
                 reflection_cost_usd,
                 existing['id']
             ))
+
+            self._record_insight_evidence(
+                cursor,
+                insight_id=existing['id'],
+                metadata=metadata,
+                reflection=reflection,
+                action='merged',
+                confidence_delta=confidence_delta
+            )
             
             self.conn.commit()
             logger.info(f"Updated existing insight #{existing['id']} (confidence: {new_confidence:.2f})")
@@ -1340,29 +1773,11 @@ Example for FACTUAL (should NOT be stored here):
         
         else:
             # Create new insight with PHASE 1 schema
-            preferred_tools = {}
-            avoided_tools = []
-            suppress_preferred_tool = should_suppress_preferred_tool_for_native_search(reflection, experience)
-            if suppress_preferred_tool:
+            if similar:
                 logger.info(
-                    "Suppressing preferred_tool for native-search-backed insight: %s",
-                    reflection.get('insight_summary', reflection.get('rule', ''))[:120]
+                    "Creating separate insight for similar text with different tool association: %s",
+                    insight_text[:120]
                 )
-            
-            # Extract preferred tool
-            preferred_tool = reflection.get('preferred_tool')
-            if suppress_preferred_tool:
-                preferred_tool = None
-            if preferred_tool:
-                preferred_tools[preferred_tool] = reflection.get('confidence', 0.5)
-            elif experience['final_tool'] and not suppress_preferred_tool:
-                # Fallback to final tool if not specified
-                preferred_tools[experience['final_tool']] = reflection.get('confidence', 0.5)
-            
-            # Extract avoided tool (for negative constraints)
-            avoided_tool = reflection.get('avoided_tool')
-            if avoided_tool:
-                avoided_tools.append(avoided_tool)
             
             insight_type = reflection.get('insight_type', 'tool_preference')
             reasoning = reflection.get('why_or_why_not', '')
@@ -1372,13 +1787,16 @@ Example for FACTUAL (should NOT be stored here):
                     insight_type, description, insight_embedding,
                     constraint_type, trigger_concept,
                     applies_to_pattern, pattern_embedding,
-                    preferred_tools, avoided_tools,
+                    preferred_tools, preferred_tool_sequence, supporting_tools,
+                    sequence_required, avoided_tools, trigger_signals, primary_intent,
                     generalizability, reasoning,
                     reflection_provider, reflection_model,
                     reflection_input_tokens, reflection_output_tokens,
                     reflection_total_tokens, reflection_cost_usd,
-                    confidence, evidence_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    confidence, evidence_count,
+                    source_experience_id, source_web_conversation_id,
+                    source_query, source_tool_sequence, source_reflection_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 insight_type,
                 insight_text,
@@ -1387,8 +1805,13 @@ Example for FACTUAL (should NOT be stored here):
                 trigger_concept,
                 pattern_text,
                 self._serialize_embedding(pattern_embedding),
-                json.dumps(preferred_tools),
-                json.dumps(avoided_tools),
+                json.dumps(metadata['preferred_tools']),
+                json.dumps(metadata['preferred_tool_sequence']),
+                json.dumps(metadata['supporting_tools']),
+                1 if metadata['sequence_required'] else 0,
+                json.dumps(metadata['avoided_tools']),
+                json.dumps(metadata['trigger_signals']),
+                metadata['primary_intent'],
                 generalizability,
                 reasoning,
                 reflection_provider,
@@ -1397,12 +1820,25 @@ Example for FACTUAL (should NOT be stored here):
                 reflection_output_tokens,
                 reflection_total_tokens,
                 reflection_cost_usd,
-                reflection.get('confidence', 0.5),
-                1
+                metadata['confidence'],
+                1,
+                metadata['source_experience_id'],
+                metadata['source_web_conversation_id'],
+                metadata['source_query'],
+                json.dumps(metadata['source_tool_sequence']),
+                metadata['source_reflection_json'],
             ))
             
-            self.conn.commit()
             insight_id = cursor.lastrowid
+            self._record_insight_evidence(
+                cursor,
+                insight_id=insight_id,
+                metadata=metadata,
+                reflection=reflection,
+                action='created',
+                confidence_delta=None
+            )
+            self.conn.commit()
             logger.info(f"Created new {constraint_type} insight #{insight_id}: {insight_text[:50]}...")
             
             # Log insight creation
@@ -1503,14 +1939,21 @@ Example for FACTUAL (should NOT be stored here):
                         'id': row['id'],
                         'insight': row['description'],
                         'applies_to': row['applies_to_pattern'],
-                        'preferred_tools': json.loads(row['preferred_tools'] or '{}'),
+                        'preferred_tools': _json_loads_safely(row['preferred_tools'], {}),
                         'confidence': row['confidence'],
                         'relevance': relevance,
                         'evidence_count': row['evidence_count'],
                         # PHASE 1: New fields
                         'constraint_type': row['constraint_type'] if 'constraint_type' in row.keys() else 'positive',
-                        'avoided_tools': json.loads(row['avoided_tools'] or '[]') if 'avoided_tools' in row.keys() else [],
+                        'avoided_tools': _json_loads_safely(row['avoided_tools'], []) if 'avoided_tools' in row.keys() else [],
                         'trigger_concept': row['trigger_concept'] if 'trigger_concept' in row.keys() else '',
+                        'trigger_signals': _json_loads_safely(row['trigger_signals'], []) if 'trigger_signals' in row.keys() else [],
+                        'primary_intent': row['primary_intent'] if 'primary_intent' in row.keys() else '',
+                        'preferred_tool_sequence': _json_loads_safely(row['preferred_tool_sequence'], []) if 'preferred_tool_sequence' in row.keys() else [],
+                        'supporting_tools': _json_loads_safely(row['supporting_tools'], []) if 'supporting_tools' in row.keys() else [],
+                        'sequence_required': bool(row['sequence_required']) if 'sequence_required' in row.keys() else False,
+                        'source_experience_id': row['source_experience_id'] if 'source_experience_id' in row.keys() else None,
+                        'source_web_conversation_id': row['source_web_conversation_id'] if 'source_web_conversation_id' in row.keys() else None,
                         'reasoning': row['reasoning'] if 'reasoning' in row.keys() else ''
                     }
                     relevant.append(insight_data)

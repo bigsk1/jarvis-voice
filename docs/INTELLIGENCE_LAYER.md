@@ -232,6 +232,45 @@ The Intelligence UI shows a compact badge on insight cards, for example `35,303 
 
 **Cumulative vs. latest semantics**: insights can be updated by many reflection runs over time, so the token and cost columns are *additive* — every new reflection that updates an insight adds its own tokens and cost onto the running totals. The `reflection_provider` and `reflection_model` columns, by contrast, are overwritten on each update and reflect only the most recent reflection run. The UI labels this explicitly as "Lifetime Reflection Cost / Tokens" and "Last Reflection Provider" so the card badge (`🧾 5,391 tok $0.0012`) is understood as a lifetime rollup, not the cost of the most recent run.
 
+### 11. Insight Provenance and Soft Tool Sequences (2026-04-21)
+
+Insights now keep an auditable link back to the experience that created them:
+
+- `source_experience_id`
+- `source_web_conversation_id`
+- `source_query`
+- `source_tool_sequence`
+- `source_reflection_json`
+
+Every create/update also writes an `insight_evidence` row. This gives the Intelligence UI an evidence trail so broad or stale lessons can be traced back to the originating interaction instead of hunting by timestamp.
+
+Multi-tool lessons can store:
+
+- `preferred_tool_sequence`
+- `supporting_tools`
+- `sequence_required`
+- `trigger_signals`
+- `primary_intent`
+
+Important: `preferred_tool_sequence` is **advisory evidence**, not a hard workflow contract. Reflection should set `sequence_required=true` only when the exact order is essential for correctness. Non-required sequences are stored for audit/UI visibility but are not injected into the live routing prompt. Normal routing and Tool RAG remain free to choose a different combination when the user's current intent is different.
+
+Similar insight text no longer merges automatically when the preferred/avoided tool association conflicts. The new reflection is stored as a separate insight so an old tool preference does not survive under a freshly reinforced but semantically different lesson.
+
+### 12. Secret Redaction for Intelligence Records (2026-04-21)
+
+Before interaction data is stored in the Intelligence DB or sent into reflection, Jarvis redacts credential-like material:
+
+- API keys
+- passwords
+- bearer tokens
+- cookies
+- private keys
+- JWTs
+- credentialed URLs
+- secret-looking key/value pairs such as `api_key=...` or `Authorization: Bearer ...`
+
+Normal personal/contact data such as email addresses is not redacted by this layer because it can be legitimate task context. The Intelligence dashboard also redacts on read so older records are less likely to display credential material, but historical DB rows created before this redaction pass may still need a one-time scrub if they are known to contain secrets.
+
 ---
 
 ## Phase 1.5 Features (Implemented 2025-11-28)
@@ -1108,11 +1147,14 @@ Output shows:
 ### Sync Intelligence Between Modes
 
 ```bash
-# Sync from cloud → local (regenerates 768-dim embeddings)
+# Merge cloud → local (regenerates 768-dim embeddings)
 ./bin/sync-intelligence-db.py local
 
-# Sync from local → cloud (regenerates 1536-dim embeddings)
+# Merge local → cloud (regenerates 1536-dim embeddings)
 ./bin/sync-intelligence-db.py cloud
+
+# Replace target with a source mirror, discarding target-only rows
+./bin/sync-intelligence-db.py --replace local
 
 # Reset a database (with backup)
 ./bin/sync-intelligence-db.py --reset cloud
@@ -1123,6 +1165,8 @@ Output shows:
 # Reset (delete) a database
 ./bin/sync-intelligence-db.py --reset local
 ```
+
+Default sync is additive: it copies missing source experiences, insights, insight evidence, and pending reflections while preserving target-only learning from the other mode. Use `--replace` only when you intentionally want the target intelligence DB to become a mirror of the source.
 
 Cloud learned: "Use crypto_price for price queries" (1536-dim embedding)
                           ↓
@@ -1262,6 +1306,11 @@ You can edit insights directly in SQLite (e.g., using SQLite Pro, DB Browser, or
 |-------|-----------|---------------|--------|
 | `preferred_tools` | ❌ No | ✅ Yes | Directly controls tool bias |
 | `avoided_tools` | ❌ No | ✅ Yes | Directly controls tool penalties |
+| `preferred_tool_sequence` | ❌ No | ✅ Yes | Advisory sequence shown for audit/context; not a hard route |
+| `supporting_tools` | ❌ No | ✅ Yes | Secondary tools that helped in source evidence |
+| `sequence_required` | ❌ No | ✅ Yes | Only true when the exact order is required |
+| `primary_intent` | ❌ No | ✅ Yes | Compact intent label for audit/gating |
+| `source_*` fields | ❌ No | ⚠️ Usually no | Provenance/audit trail from the originating experience |
 | `confidence` | ❌ No | ✅ Yes | Controls insight weight |
 | `reasoning` | ❌ No | ✅ Yes | Documentation only |
 | `description` | ✅ Yes (`insight_embedding`) | ⚠️ Re-embed | Affects duplicate detection |
