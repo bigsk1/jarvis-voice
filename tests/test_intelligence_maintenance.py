@@ -119,6 +119,43 @@ class IntelligenceMaintenanceTests(unittest.TestCase):
             self.assertAlmostEqual(row["confidence"], 0.8)
             self.assertEqual(maintenance_rows, 0)
 
+    def test_decay_caps_time_window_to_previous_decay_run(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            insight_id = self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=100),
+                updated_at=datetime.now() - timedelta(days=100),
+                confidence=0.8,
+            )
+            intel.conn.execute(
+                """
+                INSERT INTO meta_knowledge (
+                    meta_type, description, observation, conclusion, action_taken, confidence, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "decay_job_run",
+                    "Previous decay maintenance job executed",
+                    "Checked test insights",
+                    "Previous decay applied",
+                    "decay_applied",
+                    1.0,
+                    (datetime.now() - timedelta(days=14)).isoformat(),
+                ),
+            )
+            intel.conn.commit()
+
+            stats = asyncio.run(intel.run_decay_job(force=True))
+            confidence = intel.conn.execute(
+                "SELECT confidence FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone()["confidence"]
+
+            expected = 0.8 * (0.95 ** (14 / 7))
+            self.assertEqual(stats["decayed"], 1)
+            self.assertAlmostEqual(confidence, expected, places=4)
+
     def test_ui_delete_experience_unlinks_evidence_references(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             intel = self._make_intel(tmpdir)

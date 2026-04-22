@@ -2,6 +2,7 @@
 """Configuration loader for Jarvis Voice Assistant."""
 import os
 import sys
+import re
 from pathlib import Path
 
 
@@ -19,6 +20,19 @@ def _expand_env_value(value: str) -> str:
     if value.startswith("~"):
         value = os.path.expanduser(value)
     return value
+
+
+def _strip_inline_comment(value: str) -> str:
+    """Strip unquoted trailing comments from env values.
+
+    Keeps hashes inside quoted values or unquoted tokens such as API fragments,
+    while allowing common dotenv style values like ``FOO=30  # days``.
+    """
+    if not value:
+        return value
+    if value.startswith(('"', "'")):
+        return value
+    return re.sub(r"\s+#.*$", "", value).strip()
 
 
 def load_env_file(env_file):
@@ -39,7 +53,7 @@ def load_env_file(env_file):
             if '=' in line:
                 key, value = line.split('=', 1)
                 key = key.strip()
-                value = value.strip()
+                value = _strip_inline_comment(value.strip())
                 
                 # Remove quotes if present
                 if value.startswith('"') and value.endswith('"'):
@@ -129,4 +143,3 @@ def get_bool(key, default=False):
     """Get boolean config value."""
     value = get_config_value(key, str(default)).lower()
     return value in ('true', '1', 'yes', 'on')
-

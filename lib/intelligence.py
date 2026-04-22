@@ -44,6 +44,7 @@ import logging
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_float, get_int
 from security_utils import redact_sensitive_data, redact_sensitive_text
+from time_utils import now_utc
 
 logger = logging.getLogger(__name__)
 
@@ -2225,20 +2226,23 @@ Example for FACTUAL (should NOT be stored here):
             WHERE meta_type = 'decay_job_run'
         """)
         row = cursor.fetchone()
+        last_decay_run = None
 
         if row and row['last_run'] and not force:
-            last_run = self._parse_timestamp(row['last_run'])
-            if not last_run:
-                last_run = datetime.now()
-            days_since_run = (datetime.now() - last_run).days
+            last_decay_run = self._parse_timestamp(row['last_run'])
+            if not last_decay_run:
+                last_decay_run = datetime.now()
+            days_since_run = max(0, (now_utc().replace(tzinfo=None) - last_decay_run).days)
 
             if days_since_run < min_interval_days:
                 return {
                     'status': 'skipped',
                     'reason': f'Decay job already ran {days_since_run} days ago (minimum interval: {min_interval_days} days)',
                     'last_run': row['last_run'],
-                    'next_eligible': (last_run + timedelta(days=min_interval_days)).isoformat()
+                    'next_eligible': (last_decay_run + timedelta(days=min_interval_days)).isoformat()
                 }
+        elif row and row['last_run']:
+            last_decay_run = self._parse_timestamp(row['last_run'])
 
         # Get insights with tracking data
         cursor.execute("""
@@ -2265,12 +2269,12 @@ Example for FACTUAL (should NOT be stored here):
             'pruned': 0
         }
 
-        now = datetime.now()
+        now = now_utc().replace(tzinfo=None)
 
         for insight in insights:
             old_confidence = insight['confidence']
             new_confidence = old_confidence
-            reason = None
+            reasons = []
 
             # Calculate days since last application
             activity_candidates = [
@@ -2285,16 +2289,24 @@ Example for FACTUAL (should NOT be stored here):
             # Apply decay based on various factors
 
             # 1. Time-based decay (unused insights fade)
-            if days_since > 7:
-                decay_factor = self.decay_rate ** (days_since / 7)  # Compound decay per week
+            effective_decay_days = days_since
+            if last_decay_run:
+                # Confidence is already persisted after each decay run. Only apply
+                # the decay that accrued since the last run so stale insights do
+                # not get charged for their full age every maintenance cycle.
+                days_since_decay_run = max(0, (now - last_decay_run).days)
+                effective_decay_days = min(days_since, days_since_decay_run)
+
+            if effective_decay_days > 7:
+                decay_factor = self.decay_rate ** (effective_decay_days / 7)  # Compound decay per week
                 new_confidence *= decay_factor
-                reason = f"time_decay_{days_since}d"
+                reasons.append(f"time_decay_{effective_decay_days}d")
 
             # 2. Failure-based decay (failed insights decay faster)
             if insight['consecutive_failures'] and insight['consecutive_failures'] > 0:
                 failure_decay = 0.9 ** insight['consecutive_failures']
                 new_confidence *= failure_decay
-                reason = f"failure_decay_{insight['consecutive_failures']}_consecutive"
+                reasons.append(f"failure_decay_{insight['consecutive_failures']}_consecutive")
 
             # 3. Success rate boost (proven insights get slight boost)
             if insight['times_applied'] and insight['times_applied'] > 3:
@@ -2302,8 +2314,7 @@ Example for FACTUAL (should NOT be stored here):
                 if success_rate > 0.8:
                     # Slight boost for highly successful insights
                     new_confidence = min(1.0, new_confidence * 1.02)
-                    reason = f"success_boost_{success_rate:.0%}"
-                    stats['boosted'] += 1
+                    reasons.append(f"success_boost_{success_rate:.0%}")
 
             # Apply change if significant
             if abs(new_confidence - old_confidence) > 0.01:
@@ -2314,11 +2325,13 @@ Example for FACTUAL (should NOT be stored here):
 
                     intel_log.log_decay_applied(
                         insight['id'], old_confidence, new_confidence,
-                        days_since, reason or 'general_decay'
+                        days_since, '+'.join(reasons) or 'general_decay'
                     )
 
                 if new_confidence < old_confidence:
                     stats['decayed'] += 1
+                elif new_confidence > old_confidence:
+                    stats['boosted'] += 1
             else:
                 stats['unchanged'] += 1
 

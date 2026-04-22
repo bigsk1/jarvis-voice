@@ -1875,12 +1875,34 @@ Day 56:  Decay runs → 0.73 × 0.95² = 0.66
 - [x] **Comprehensive logging** - All events for Grafana visibility
 
 ### Phase 2 (Planned)
+- [ ] **Reflection gate / auto-processing mode** - Before running full reflection, classify whether an experience is worth learning from. Use cheap rules first, then optional low-cost LLM gating for ambiguous cases. Skip obvious non-learning experiences (`hello`, `thanks`, dev test messages, cancelled runs, duplicate low-value failures) while writing an auditable `reflection_skipped` event with `experience_id`, reason, confidence, and query preview.
 - [ ] **Implicit failure detection** - Detect when user rewords query within 60s
 - [ ] **Tool trashing detection** - When Tool A fails → Tool B succeeds, create negative constraint
 - [ ] ~~**The Reaper service** - Periodic pruning of low-confidence insights~~ ✅ (now in decay job)
 - [ ] **Conflict resolution** - When new insight contradicts old one
 - [ ] **Content attribution** - Track which tool's output actually answered the query
 - [ ] **User bias injection** - Allow user to specify tool preferences in config
+
+**Reflection gate config sketch**:
+
+```bash
+INTELLIGENCE_REFLECTION_GATE_ENABLED=true
+INTELLIGENCE_REFLECTION_GATE_MODE=rules_then_llm
+INTELLIGENCE_REFLECTION_GATE_LOG_SKIPS=true
+INTELLIGENCE_REFLECTION_GATE_MIN_QUERY_CHARS=12
+INTELLIGENCE_REFLECTION_AUTO_PROCESS=true
+```
+
+Example skip reasons:
+
+- `trivial_greeting`
+- `test_message`
+- `no_actionable_pattern`
+- `duplicate_low_value`
+- `tool_dev_failure`
+- `user_cancelled`
+- `insufficient_signal`
+- `private_or_sensitive`
 
 ### Phase 3 (User Profile Learning) 🧠
 - [ ] **User bias injection** - Config/file to specify tool preferences
