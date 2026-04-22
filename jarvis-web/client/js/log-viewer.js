@@ -34,6 +34,7 @@ class LogsViewerApp {
       loadMoreFilesBtn: document.getElementById('loadMoreFilesBtn'),
       selectedFileLabelBtn: document.getElementById('selectedFileLabelBtn'),
       selectedFileLabel: document.getElementById('selectedFileLabel'),
+      refreshContentBtn: document.getElementById('refreshContentBtn'),
       viewerSummary: document.getElementById('viewerSummary'),
       viewerContent: document.getElementById('viewerContent'),
       loadMoreContentBtn: document.getElementById('loadMoreContentBtn'),
@@ -72,6 +73,7 @@ class LogsViewerApp {
 
     this.elements.loadMoreFilesBtn.addEventListener('click', () => this.loadFiles(false));
     this.elements.loadMoreContentBtn.addEventListener('click', () => this.loadContent(false));
+    this.elements.refreshContentBtn.addEventListener('click', () => this.refreshCurrentContent());
     this.elements.backToFoldersBtn.addEventListener('click', () => this.setMobileStage('folders'));
     this.elements.backToFilesBtn.addEventListener('click', () => this.setMobileStage('files'));
     this.elements.selectedFileLabelBtn.addEventListener('click', () => this.openCurrentFileModal());
@@ -281,6 +283,10 @@ class LogsViewerApp {
     if (!filePath) {
       return;
     }
+    if (filePath === this.state.selectedFile) {
+      await this.refreshCurrentContent();
+      return;
+    }
     this.state.selectedFile = filePath;
     this.state.contentPath = filePath;
     this.state.contentOffset = 0;
@@ -293,6 +299,21 @@ class LogsViewerApp {
       this.setMobileStage('viewer');
     }
     await this.loadContent(true);
+  }
+
+  async refreshCurrentContent() {
+    if (!this.state.contentPath) {
+      return;
+    }
+    this.elements.refreshContentBtn.disabled = true;
+    this.elements.refreshContentBtn.classList.add('is-refreshing');
+    try {
+      await this.loadContent(true);
+      Utils.toast('Log refreshed', 'success', 1400);
+    } finally {
+      this.elements.refreshContentBtn.classList.remove('is-refreshing');
+      this.elements.refreshContentBtn.disabled = !this.state.contentPath;
+    }
   }
 
   async loadContent(reset = true) {
@@ -446,6 +467,7 @@ class LogsViewerApp {
     const isMarkdown = this.state.contentViewType === 'markdown' && !!this.state.contentPath;
     this.elements.selectedFileLabelBtn.disabled = !isMarkdown;
     this.elements.selectedFileLabelBtn.classList.toggle('is-clickable', isMarkdown);
+    this.elements.refreshContentBtn.disabled = !this.state.contentPath;
   }
 
   openCurrentFileModal() {

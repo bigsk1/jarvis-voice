@@ -786,6 +786,7 @@ function renderExperienceCard(exp) {
       ` : ''}
       <div class="card-footer">
         <div class="card-meta">
+          <span title="Experience ID">#${escapeHtml(String(exp.id))}</span>
           <span title="${escapeHtml(timestampTitle)}">🕐 ${timestamp}</span>
           ${turnsBadge}
           ${toolBadge}
@@ -1296,7 +1297,6 @@ function renderStats(stats, toolPerformance) {
       <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
         <button class="btn btn-secondary" id="runDecayBtn">📉 Run Decay</button>
         <button class="btn btn-secondary" id="runAnomalyBtn">🔍 Anomaly Detection</button>
-        <button class="btn btn-primary" id="runAllMaintenanceBtn">🔧 Run All</button>
       </div>
     </div>
     </div><!-- close content-list wrapper -->
@@ -1306,6 +1306,14 @@ function renderStats(stats, toolPerformance) {
   
   // Add maintenance button handlers
   document.getElementById('runDecayBtn')?.addEventListener('click', async () => {
+    const confirmed = confirm(
+      'Run intelligence decay now?\n\n'
+      + 'This can lower insight confidence and prune very low-confidence insights. '
+      + 'It should only be run after a DB backup or when you are intentionally doing maintenance.\n\n'
+      + 'Use the CLI/API dry-run first if you want a preview.'
+    );
+    if (!confirmed) return;
+
     showToast('Running decay job...', 'info');
     try {
       await api.runDecay();
@@ -1334,16 +1342,6 @@ function renderStats(stats, toolPerformance) {
     }
   });
   
-  document.getElementById('runAllMaintenanceBtn')?.addEventListener('click', async () => {
-    showToast('Running all maintenance jobs...', 'info');
-    try {
-      await api.runAllMaintenance();
-      showToast('All maintenance jobs completed', 'success');
-      await loadStats();
-    } catch (e) {
-      showToast(`Maintenance failed: ${e.message}`, 'error');
-    }
-  });
 }
 
 function renderCompletionGuardStats(completionGuardStats) {

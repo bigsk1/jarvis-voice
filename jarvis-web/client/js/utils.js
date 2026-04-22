@@ -4,6 +4,7 @@
 
 const Utils = {
   _markedConfigured: false,
+  _scrollAnimations: new WeakMap(),
 
   /**
    * Generate a unique ID
@@ -330,11 +331,54 @@ const Utils = {
   /**
    * Scroll element to bottom
    */
-  scrollToBottom(element, smooth = true) {
-    element.scrollTo({
-      top: element.scrollHeight,
-      behavior: smooth ? 'smooth' : 'auto'
-    });
+  scrollToBottom(element, smooth = true, options = {}) {
+    if (!element) return;
+
+    const getTarget = () => Math.max(0, element.scrollHeight - element.clientHeight);
+    const existingAnimation = this._scrollAnimations.get(element);
+    if (existingAnimation) {
+      cancelAnimationFrame(existingAnimation);
+      this._scrollAnimations.delete(element);
+    }
+
+    const target = getTarget();
+    if (!smooth || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      element.scrollTop = target;
+      return;
+    }
+
+    const start = element.scrollTop;
+    const distance = target - start;
+    if (Math.abs(distance) < 2) {
+      element.scrollTop = target;
+      return;
+    }
+
+    // Smooth scroll duration in milliseconds
+    const duration = options.duration
+      ?? Math.min(2200, Math.max(750, Math.abs(distance) * 0.8));
+    const startTime = performance.now();
+    const easeInOutQuart = (t) =>
+      t < 0.5
+        ? 8 * t * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 4) / 2;
+
+    const step = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const currentTarget = getTarget();
+
+      element.scrollTop = start + (currentTarget - start) * easeInOutQuart(progress);
+
+      if (progress < 1) {
+        this._scrollAnimations.set(element, requestAnimationFrame(step));
+      } else {
+        element.scrollTop = currentTarget;
+        this._scrollAnimations.delete(element);
+      }
+    };
+
+    this._scrollAnimations.set(element, requestAnimationFrame(step));
   },
 
   /**
