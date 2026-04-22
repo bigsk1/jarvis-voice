@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "create_reminder",
-  "description": "Create reminder(s) or calendar event(s) that sync to Google Calendar and trigger TTS notifications. Use when user says: 'remind me', 'set a reminder', 'add to calendar', 'schedule', 'create event', 'calendar event', etc. IMPORTANT: Supports bounded daily spans in a SINGLE call. Examples: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm', 'every day for 5 days at 2pm', 'every day the next 2 weeks at 5pm'. Do NOT split bounded daily requests into separate one-time plus recurring reminders unless the user explicitly asks for separate reminders. Also supports: 'in 30 minutes', 'tomorrow at 3pm', 'every Wednesday at 2pm' (weekly), 'every month on the 10th' (monthly), 'every day at 2pm' (daily recurring). Syncs to Google Calendar.",
+  "description": "Create reminder(s) that can trigger TTS notifications. Use when user says: 'remind me', 'set a reminder', 'add to calendar', 'schedule', 'create event', 'calendar event', etc. IMPORTANT: Supports bounded daily spans in a SINGLE call. Examples: 'next 5 days at 2pm', 'for the next 5 days at 2pm', '5 days in a row at 2pm', 'every day for 5 days at 2pm', 'every day the next 2 weeks at 5pm'. Do NOT split bounded daily requests into separate one-time plus recurring reminders unless the user explicitly asks for separate reminders. Also supports: 'in 30 minutes', 'tomorrow at 3pm', 'every Wednesday at 2pm' (weekly), 'every month on the 10th' (monthly), 'every day at 2pm' (daily recurring).",
   "script": "create_reminder.py",
   "parameters": {
     "type": "object",
