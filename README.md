@@ -13,7 +13,7 @@
 > Config details: [config/README.md](config/README.md)  
 > Web UI guide: [docs/JARVIS_WEB_UI.md](docs/JARVIS_WEB_UI.md)
 >
-> No promises, no formal support — sharing what I built. If you want to help cover API costs, consider donating.
+> No promises, no formal support
 
 ## What is Jarvis?
 
@@ -21,10 +21,14 @@ A self-hosted voice assistant with rag based tool calling, mcp support, memory a
 
 Routes queries through Q&A, single tools, multi-tool pipelines, or autonomous workflows — all with persistent memory. Run via voice, CLI, or Web UI. Cloud LLMs or fully local. 
 
-UI's include Chat, Canvas, Image Gallery, Video Gallery, Intellegence Dashboard, Memory Dashboard, full API, and more!
+UI's include Chat, Canvas, Image Gallery, Video Gallery, Intellegence Dashboard, Memory Dashboard, Logs viewer, full API and more!
 
-Deterministic = more reliable because the control flow is fixed by code.
+TUI = Terminal User Interface = Jarvis-dashboard a place to send commands to Jarvis in a centalized way.
+
+Deterministic = more reliable because the control flow is fixed by code and you can see the exact steps and tools that will be used.
 You decide the steps, tool, order, retries, timeouts, and validation—so runs are predictable and failures are contained.
+
+Profiles = different sets of tools and settings for different purposes. Example 100% offline no internet mode with local models, tts and tools that don't require the internet. Serving local fonts and js files from the repo.
 
 ![jarvis-info-graph](docs/images/jarvis-info-graph.jpeg)
 
@@ -46,6 +50,7 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - **Prompt hover tooltips**: Hover over `@` suggestions to see key points 
   - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
   - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
+  - **Tool Hints**: Start typing to get tool suggestions as you type or use #tool_name to add a tool to the request.
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export
   - **Completion Guard**: Manual `Completed correctly?` card plus auto-evaluator mode, one bounded repair pass, stop/cancel support for repair runs, follow-up tickets, workflow/fire-and-forget exclusions, exported metadata, and intelligence-layer corrected-path learning
@@ -58,12 +63,15 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
 
 ### Intelligence & Self-Learning
 - **Intelligence Layer**: Self-learning system that improves over time
-  - Learns from every interaction (what worked, what didn't)
+  - Records interactions and reflects on them into reusable procedural insights
   - **Positive constraints**: "Use mcp_fetch for server status checks"
   - **Negative constraints**: "Avoid search_memory for real-time data"
+  - **Tool provenance**: Source experience, web conversation ID, source tool sequence, and evidence trail for insight audits
+  - **Preferred sequences**: Stores advisory multi-tool sequences plus primary intent/supporting tools without forcing rigid workflows
   - Generalizability filtering (only stores reusable insights)
-  - **Insight tracking**: times_applied, times_helpful, times_failed
-  - **Decay job**: Auto-prunes stale/failed insights
+  - **Insight tracking**: times_applied, times_helpful, times_failed are updated when retrieved insights are later used
+  - **Reflection observability**: Lifetime reflection tokens/cost and last reflection provider/model on insight records
+  - **Decay job**: Interval-protected confidence decay with dry-run support; prunes very low-confidence stale/failed insights
   - **Anomaly detection**: Flags unusual experiences
   - **Meta-cognition**: Analyzes learning health
   - Separate databases for cloud/local (1536 vs 768 dimensions)
@@ -72,12 +80,15 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
 ![jarvis-intellegince](docs/images/jarvis-intellegince.png)
 
 - **Intelligence Dashboard** at localhost:5003
-  - Sort experiences by date, turns, tool count, Completion Guard status
+  - Server-side paginated experience/insight lists with scroll loading and lightweight summary counts
+  - Experience cards show IDs; sort by date, turns, tool count, Completion Guard status
   - Filter by success/fail, tool count, specific tool, Completion Guard status
   - Experience details show configured-local + UTC time, Completion Guard metadata, and stored raw JSON
   - Sort insights by applied, helpful, preferred/avoided tools
   - 5-tier confidence filtering (Elite/High/Good/Medium/Low)
+  - Insight details show preferred sequence, source experience/web conversation, evidence trail, and reflection cost/tokens
   - Tool performance plus optional lifetime Completion Guard repaired/status totals
+  - Maintenance actions include safer decay confirmation; CLI/API dry-run available for previews
   - Launch: `./bin/jarvis-intelligence`
 
 ### Tool System
@@ -149,7 +160,7 @@ You decide the steps, tool, order, retries, timeouts, and validation—so runs a
   - Custom webhook endpoints
   - OAuth2 handling and token refresh
   - See [`docs/n8n/docs/`](docs/n8n/docs/)
-- **Samantha Multi-Agent Integration**: Secondary AI assistant on remote VPS
+- **Samantha Multi-Agent Integration**: Secondary AI assistant on remote VPS (openclaw)
   - Real-time chat via `samantha` tool (OpenAI-compatible API)
   - Fire-and-forget webhooks for Discord/Telegram posting
   - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)
