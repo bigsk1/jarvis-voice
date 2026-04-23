@@ -75,7 +75,7 @@ WAV_A="$OUTDIR/tts/qa-local-$STAMP.wav"
 echo "$QUESTION" > "$TXT_Q"
 
 # --- Style/control: encourage short, ASCII-safe outputs
-SYSTEM_PROMPT="You are a role playing AI assistant called Jarvis. Reply in plain ASCII, no emoji, no markdown, no bullet points." # Keep it concise and rude: at most four short sentences (<= 100 words total)
+SYSTEM_PROMPT="You are a role playing AI assistant called Jarvis. Reply in plain ASCII, no emoji, no markdown, no bullet points."
 
 # --- Try OpenAI-compatible chat endpoint first (some Ollama builds expose this)
 REQ=$(jq -n --arg model "$OLLAMA_MODEL" \

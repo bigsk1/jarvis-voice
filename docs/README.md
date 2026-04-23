@@ -10,7 +10,7 @@
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
-- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, 10-15x cheaper!) ⭐ RECOMMENDED
+- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, native TTS, 10-15x cheaper!) ⭐ RECOMMENDED
 
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.10** (Completion Guard eval overrides, Ollama cloud judge fixes, tightened auto-repair behavior, server logs) ⭐ ENHANCED
@@ -315,6 +315,14 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-04-23:**
+- ✅ **xAI native TTS + expressive final-speech tags**
+  - Added first-class xAI TTS provider support across CLI, Web UI TTS, Voice API, and status playback paths using `TTS_PROVIDER=xai` and `XAI_API_KEY`.
+  - Added `XAI_TTS_STYLE_TAGS_ENABLED` so the final chat/speech path may use supported xAI delivery tags such as `[pause]`, `[laugh]`, `<soft>...</soft>`, `<whisper>...</whisper>`, and `<slow>...</slow>` when useful.
+  - Web UI chat display strips TTS-only tags while stored `speech` keeps the tagged version for playback; generated Web UI TTS stores `audio_url` on the message.
+  - Status updates can be voiced by xAI TTS, but the status LLM remains plain 5-8 word progress phrases unless a separate status-tag option is added later.
+  - See: [`docs/XAI_PROVIDER.md`](XAI_PROVIDER.md)
 
 **2026-04-21:**
 - ✅ **Tool RAG compact retrieval + live trace tuning**
@@ -1548,6 +1556,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-04-21
-**Latest:** Compact Tool RAG retrieval/tracing, follow-up extractor service, xAI native-search budget caps, intelligence provenance/sync/dry-run maintenance, dashboard pagination, and Canvas public LAN links
+**Last Updated:** 2026-04-23
+**Latest:** xAI native TTS with optional expressive final-speech tags, compact Tool RAG retrieval/tracing, follow-up extractor service, xAI native-search budget caps, intelligence provenance/sync/dry-run maintenance, dashboard pagination, and Canvas public LAN links
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

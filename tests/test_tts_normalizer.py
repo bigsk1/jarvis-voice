@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from security_utils import sanitize_for_speech
-from tts_normalizer import normalize_tts_text, validate_tts_profile
+from tts_normalizer import normalize_tts_text, strip_speech_tags_for_display, validate_tts_profile
 
 
 class TtsNormalizerTests(unittest.TestCase):
@@ -220,6 +220,31 @@ class TtsNormalizerTests(unittest.TestCase):
         self.assertIn("<slow><soft>Goodnight, sleep well.</soft></slow>", normalized)
         self.assertNotIn("<excited>", normalized)
         self.assertNotIn("less than", normalized)
+
+    def test_display_stripper_removes_tts_tags_without_recondensing_text(self):
+        display = strip_speech_tags_for_display(
+            "<soft>Okay, let's begin.</soft> [pause]\n\n"
+            "- <whisper>Secret item</whisper>\n"
+            "- <slow><emphasis>Important item</emphasis></slow>"
+        )
+
+        self.assertEqual(
+            display,
+            "Okay, let's begin.\n\n- Secret item\n- Important item"
+        )
+        self.assertNotIn("[pause]", display)
+        self.assertNotIn("<soft>", display)
+        self.assertNotIn("<whisper>", display)
+
+    def test_malformed_wrapping_speech_tag_is_repaired_for_xai_and_stripped_for_display(self):
+        sample = "That's hilarious [laugh] [slow>did you see that?</slow>"
+
+        speech = normalize_tts_text(sample, preserve_xai_tags=True)
+        display = strip_speech_tags_for_display(speech)
+
+        self.assertEqual(speech, "That's hilarious [laugh] <slow>did you see that?</slow>")
+        self.assertEqual(display, "That's hilarious did you see that?")
+        self.assertNotIn("[slow>", display)
 
     def test_validate_tts_profile_allows_known_profiles(self):
         self.assertEqual(validate_tts_profile("weather_watch"), "weather_watch")

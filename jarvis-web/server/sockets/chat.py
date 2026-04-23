@@ -275,6 +275,7 @@ class ChatHandler:
         - speech_text: what should be safe to send to TTS
         """
         from security_utils import sanitize_for_speech
+        from tts_normalizer import strip_speech_tags_for_display
 
         raw_response = result.get('raw_llm_response', '') or ''
         primary_speech = result.get('speech')
@@ -298,6 +299,8 @@ class ChatHandler:
             display_text = raw_response
         elif raw_response and self._should_prefer_raw_for_display(raw_response, primary_speech or ''):
             display_text = raw_response
+
+        display_text = strip_speech_tags_for_display(display_text or '')
 
         return display_text or '', speech_text or ''
 

@@ -100,11 +100,39 @@ def _strip_speech_tag_markup(text: str) -> str:
     return text
 
 
+def _repair_malformed_xai_speech_tags(text: str) -> str:
+    """Repair common LLM typos like [slow>text</slow> into <slow>text</slow>."""
+    if not text:
+        return text
+    known_wrapping = "|".join(re.escape(tag) for tag in sorted(XAI_WRAPPING_SPEECH_TAGS, key=len, reverse=True))
+    return re.sub(
+        rf'\[\s*(/?)\s*({known_wrapping})\s*>',
+        lambda m: f"<{'/' if m.group(1) else ''}{m.group(2).lower()}>",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
 def _restore_xai_speech_tags(text: str, protected: dict[str, str]) -> str:
     """Restore placeholders created by _protect_xai_speech_tags."""
     for token, tag in protected.items():
         text = text.replace(token, tag)
     return text
+
+
+def strip_speech_tags_for_display(text: str) -> str:
+    """Remove TTS-only speech tags while preserving visible words and layout."""
+    if not text:
+        return ""
+
+    text = _repair_malformed_xai_speech_tags(text)
+    text = _strip_speech_tag_markup(text)
+    text = re.sub(r'[ \t]+([,.;:!?])', r'\1', text)
+    text = re.sub(r'[ \t]{2,}', ' ', text)
+    text = re.sub(r'[ \t]+\n', '\n', text)
+    text = re.sub(r'(?m)^[ \t]+$', '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 DAY_ABBREVIATIONS = {
     "mon": "Monday",
@@ -469,6 +497,7 @@ def normalize_tts_text(
     if not text:
         return ""
 
+    text = _repair_malformed_xai_speech_tags(text)
     protected_tags: dict[str, str] = {}
     if preserve_xai_tags:
         text, protected_tags = _protect_xai_speech_tags(text)

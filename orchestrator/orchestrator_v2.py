@@ -1954,6 +1954,25 @@ Your response:"""
             prepend_sections=("qa_prepend",),
             append_sections=("qa_append",),
         )
+
+    def _xai_tts_style_tags_enabled(self) -> bool:
+        """Return True when final speech may include xAI TTS style tags."""
+        tts_provider = get_config_value('TTS_PROVIDER', '').strip().lower()
+        enabled = get_config_value('XAI_TTS_STYLE_TAGS_ENABLED', 'true').strip().lower()
+        return tts_provider == 'xai' and enabled in {'1', 'true', 'yes', 'on'}
+
+    def _xai_tts_style_tags_instruction(self) -> str:
+        """Small, final-speech-only instruction for xAI expressive TTS tags."""
+        if not self._xai_tts_style_tags_enabled():
+            return ""
+        return (
+            "\n\nxAI TTS is active. You may use a few supported TTS tags sparingly in the FINAL SPOKEN RESPONSE only "
+            "when they make delivery more natural: [pause], [long-pause], [laugh], [chuckle], [sigh], [breath], "
+            "<soft>...</soft>, <whisper>...</whisper>, <slow>...</slow>, <emphasis>...</emphasis>. "
+            "Use exact tag syntax: inline tags use square brackets like [pause]; wrapping tags use angle brackets like <slow>text</slow>. "
+            "Do not tag every sentence. Do not use tags in factual lists, code, URLs, filenames, IDs, prices, or data. "
+            "Keep the configured word limit; tags should not add extra content."
+        )
     
     def _format_auto_mode(self, user_query: str, tools_used: list, accumulated_data: dict, raw_response: str, turn_num: int) -> str:
         """
@@ -2090,6 +2109,7 @@ RULES:
 8. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only (e.g., "on Wikipedia")
 9. Simplify file paths (/home/user/...) to just the filename
 10. NEVER speak auto-generated filenames (e.g., "generated_modify_the_previous_20260209.png") - just say "saved" or "saved to stash"
+{self._xai_tts_style_tags_instruction()}
 
 EXAMPLES:
 Verbose: "Great! I've looked up ntfy. It's an open-source push notification service that lets you..."
@@ -2104,6 +2124,7 @@ Your condensed response:"""
                 context,
                 system_prompt=self._apply_qa_prompt_overrides(
                     f"Condense for voice output. MAX {qa_limit} words. Keep key info. No greetings/emojis."
+                    f"{self._xai_tts_style_tags_instruction()}"
                 ),
             )
             if not response or self._looks_like_provider_error_text(response):
@@ -2175,6 +2196,7 @@ RULES:
 7. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only
 8. Simplify file paths (/home/user/project/file.py) to just the filename (file.py)
 9. NEVER speak auto-generated filenames (e.g., "generated_modify_the_previous_20260209.png") - just say "saved" or "saved to stash"
+{self._xai_tts_style_tags_instruction()}
 
 GOOD: "Top 3 date night spots: Copper River, BJ's Brewhouse, Thirsty Lion. Tonight: 47°F clear."
 GOOD: "Image generated and saved to stash." (NOT "Image saved to stash://space_20260201_xxx/f_abc")
@@ -2186,6 +2208,7 @@ Your response:"""
                 context,
                 system_prompt=self._apply_qa_prompt_overrides(
                     f"Condense to MAX {multi_turn_limit} words. Preserve names, titles, and numbers exactly. No placeholders."
+                    f"{self._xai_tts_style_tags_instruction()}"
                 ),
             )
             if not response or self._looks_like_provider_error_text(response):
@@ -2236,6 +2259,7 @@ CRITICAL RULES:
 3. Don't apologize or say "couldn't find" - give the best answer you can
 4. If data is incomplete, answer what you CAN and note what's missing briefly
 5. NEVER say "hit limit" or mention tool counts
+{self._xai_tts_style_tags_instruction()}
 
 GOOD BEST-EFFORT EXAMPLES:
 - "Top movies at Regal Hillsboro: Wicked, Avatar Fire and Ash, Zootopia 2. Check fandango.com for exact showtimes."
@@ -2254,6 +2278,7 @@ Your BEST EFFORT response:"""
                 system_prompt=self._apply_qa_prompt_overrides(
                     f"You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. "
                     f"MAX {multi_turn_limit} words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc."
+                    f"{self._xai_tts_style_tags_instruction()}"
                 ),
             )
             if not response or self._looks_like_provider_error_text(response):

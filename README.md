@@ -215,12 +215,12 @@ Profiles = different sets of tools and settings for different purposes. Example 
 | Provider | Mode | Quality | Cost | Notes |
 |----------|------|---------|------|-------|
 | **ElevenLabs** | Cloud | Excellent | Paid | Best quality, expressive voices |
-| **xAI TTS** | Cloud | Good | Paid | Native xAI TTS using `XAI_API_KEY`; voices: eve, ara, rex, sal, leo |
+| **xAI TTS** | Cloud | Good | Paid | Native xAI TTS using `XAI_API_KEY`; voices: eve, ara, rex, sal, leo; optional expressive speech tags |
 | **Qwen3-TTS** | Both | Excellent | Free | 28 cloned voices (Jarvis, Samantha, etc.), local network |
 | **Kokoro** | Local | Good | Free | Lightweight, fast, Nicole+Sarah voices |
 | **OpenAI TTS** | Cloud | Good | Paid | alloy, echo, fable, onyx, nova, shimmer |
 
-Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. xAI TTS uses its native `/v1/tts` API; Qwen3-TTS uses an OpenAI-compatible API.
+Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. xAI TTS uses its native `/v1/tts` API and supports optional final-speech tags via `XAI_TTS_STYLE_TAGS_ENABLED`; Qwen3-TTS uses an OpenAI-compatible API.
 See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
 
 **Voice API** (`/api/voice/speak`): Supports per-request TTS provider/voice overrides for multi-agent voice identity.
@@ -324,7 +324,7 @@ Jarvis adapts its response style based on your environment and task complexity:
 # Set in config/cloud.env or config/local.env
 JARVIS_RESPONSE_STYLE="auto"    # Smart adaptive (recommended)
 JARVIS_RESPONSE_STYLE="casual"  # Always short (voice default)
-JARVIS_RESPONSE_STYLE="detailed" # Always verbose (CLI)
+JARVIS_RESPONSE_STYLE="detailed" # Always verbose (CLI) and full Web UI display (no tts)
 ```
 
 See full guide: [`docs/AUTO_MODE_EXPLAINED.md`](docs/AUTO_MODE_EXPLAINED.md)
@@ -1446,6 +1446,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ## 🎯 Roadmap
 
 **Completed (April 2026):**
+- ✅ **xAI native TTS + expressive final speech** — `TTS_PROVIDER=xai` uses xAI's native `/v1/tts` path across CLI/Web UI/Voice API/status playback; optional `XAI_TTS_STYLE_TAGS_ENABLED` lets final chat speech use supported tags while Web UI display strips TTS-only markup and stores generated `audio_url`
 - ✅ **Tool RAG extraction + tracing (v2.49)** — Compact current-request extraction keeps long memory/intelligence/history blocks out of the embedding query while the LLM still sees full context; live traces include signal source, thresholds, final tools, schema chars/tokens, and largest schema contributors; see `docs/TOOL_RAG_STRATEGY.md`
 - ✅ **Follow-up extraction refactor** — Follow-up data extraction lives in `jarvis-web/server/services/followup_extractor.py`; `crawl_url` and MCP Brave URL candidates are preserved for later turns; Completion Guard treats provider-native tools as evidence when evaluating no-client-tool follow-ups
 - ✅ **xAI native search guardrails** — Configurable xAI server-side/native tool caps prevent native search loops from multiplying across router turns; provider-native search usage is retained in conversation/intelligence metadata for audit
@@ -1887,4 +1888,4 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.49.0 (April 2026)
 **Status:** Production Ready ✅  
-**Latest Features:** v2.49: compact Tool RAG retrieval + live schema-token traces, follow-up extraction service with `crawl_url`/Brave context, xAI native-search budget guardrails, intelligence provenance/sync/dry-run maintenance, Intelligence Dashboard infinite-scroll pagination, and Canvas LAN/public page links — plus v2.48 Tool RAG hash skip, Completion Guard ↔ intelligence, `/logs`, alerts & Weather Watch, TTS profiles, Canvas/SerpAPI work
+**Latest Features:** v2.49: xAI native TTS with optional expressive final-speech tags, compact Tool RAG retrieval + live schema-token traces, follow-up extraction service with `crawl_url`/Brave context, xAI native-search budget guardrails, intelligence provenance/sync/dry-run maintenance, Intelligence Dashboard infinite-scroll pagination, and Canvas LAN/public page links — plus v2.48 Tool RAG hash skip, Completion Guard ↔ intelligence, `/logs`, alerts & Weather Watch, TTS profiles, Canvas/SerpAPI work

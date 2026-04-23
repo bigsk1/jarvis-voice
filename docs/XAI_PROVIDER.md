@@ -9,13 +9,14 @@
 1. [Why xAI Grok?](#why-xai-grok)
 2. [Pricing Comparison](#pricing-comparison)
 3. [Key Features](#key-features)
-4. [Configuration](#configuration)
-5. [Available Models](#available-models)
-6. [Automatic Caching](#automatic-caching)
-7. [Reasoning Mode](#reasoning-mode)
-8. [Performance Characteristics](#performance-characteristics)
-9. [Cost Examples](#cost-examples)
-10. [Migration Guide](#migration-guide)
+4. [xAI Text-to-Speech](#xai-text-to-speech)
+5. [Configuration](#configuration)
+6. [Available Models](#available-models)
+7. [Automatic Caching](#automatic-caching)
+8. [Reasoning Mode](#reasoning-mode)
+9. [Performance Characteristics](#performance-characteristics)
+10. [Cost Examples](#cost-examples)
+11. [Migration Guide](#migration-guide)
 
 ---
 
@@ -250,6 +251,52 @@ See [Video Generation Docs](video/README.md) for full details.
 
 ---
 
+## xAI Text-to-Speech
+
+Jarvis can use xAI's native TTS endpoint independently from the chat model provider:
+
+```bash
+TTS_PROVIDER=xai
+XAI_TTS_VOICE="rex"
+XAI_TTS_LANGUAGE="en"
+XAI_TTS_CODEC="mp3"
+XAI_TTS_SAMPLE_RATE="24000"
+XAI_TTS_BIT_RATE="128000"
+XAI_TTS_MAX_CHARS="5000"
+XAI_TTS_TIMEOUT="180"
+```
+
+This uses `XAI_API_KEY` and calls xAI's native `/v1/tts` endpoint. It does not reuse OpenAI TTS settings or `TTS_INSTRUCTIONS`.
+
+### Expressive Speech Tags
+
+xAI TTS supports inline and wrapping tags for delivery control. Jarvis can expose that ability to the final speech formatter:
+
+```bash
+XAI_TTS_STYLE_TAGS_ENABLED=true
+```
+
+When `TTS_PROVIDER=xai` and `XAI_TTS_STYLE_TAGS_ENABLED=true`, Jarvis tells the final response path that it may use a few supported tags sparingly in final speech, such as:
+
+```text
+Really? [laugh] That's incredible!
+<whisper>It is a secret.</whisper>
+<slow><soft>Goodnight, sleep well.</soft></slow>
+```
+
+Jarvis keeps this scoped carefully:
+
+- Tags are allowed only for final spoken answers, not tool arguments, URLs, code, filenames, IDs, prices, or structured factual data.
+- Web UI display text strips TTS-only tags so chat stays readable.
+- Stored message data keeps separate fields: clean visible `content`, tagged `speech`, and generated `audio_url` when Web UI TTS succeeds.
+- TTS normalization preserves supported xAI tags for speech and strips unsupported tags for other providers.
+
+### Status Updates
+
+Cloud status updates also play through xAI TTS when `TTS_PROVIDER=xai`; this includes the lightweight `bin/say-status.sh` path used during longer tasks.
+
+The status LLM does not currently receive the expressive speech-tag prompt. It still generates very short plain phrases, which keeps progress updates predictable and avoids cached status audio changing style unexpectedly. If status tags become useful later, add a separate toggle such as `XAI_STATUS_TTS_STYLE_TAGS_ENABLED` instead of reusing the final-answer setting.
+
 ## Configuration
 
 ### Setup (config/cloud.env)
@@ -275,6 +322,13 @@ XAI_SEARCH=true
 # cost/latency ceiling for tool-heavy tasks.
 # XAI_SERVER_SIDE_MAX_TOOL_TURNS=5
 # XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST=10
+
+# Optional native xAI TTS
+TTS_PROVIDER=xai
+XAI_TTS_VOICE="rex"
+XAI_TTS_MAX_CHARS="5000"
+XAI_TTS_TIMEOUT="180"
+XAI_TTS_STYLE_TAGS_ENABLED=true
 
 # Alternative models:
 # XAI_MODEL="grok-4-1-fast-non-reasoning-latest"  # No reasoning
@@ -599,6 +653,7 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 ✅ **Reasoning mode** at no extra cost  
 ✅ **Native function calling**  
 ✅ **Built-in live search** (XAI_SEARCH=true)   
+✅ **Native TTS with optional expressive speech tags**
 ✅ **Drop-in replacement** (no code changes)  
 
 **Monthly Savings**: $60-80 vs Claude, $25-35 vs GPT (for typical usage)
@@ -609,8 +664,8 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 
 ---
 
-**Last Updated**: 2026-04-21
-**Version**: 1.4 (Added native server-side tool budget caps)
+**Last Updated**: 2026-04-23
+**Version**: 1.5 (Added xAI TTS and expressive speech tag notes)
 
 **See Also**:
 - [QUICKSTART.md](QUICKSTART.md) - Getting started

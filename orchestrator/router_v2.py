@@ -1016,6 +1016,18 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
 
 """
         else:
+            xai_tts_style_tags_enabled = (
+                get_config_value('TTS_PROVIDER', '').strip().lower() == 'xai'
+                and get_config_value('XAI_TTS_STYLE_TAGS_ENABLED', 'true').strip().lower()
+                in {'1', 'true', 'yes', 'on'}
+            )
+            xai_tts_style_note = ""
+            if xai_tts_style_tags_enabled:
+                xai_tts_style_note = """
+- xAI TTS is active: you may use a few supported speech tags sparingly in the final spoken answer when they improve delivery: [pause], [long-pause], [laugh], [chuckle], [sigh], [breath], <soft>...</soft>, <whisper>...</whisper>, <slow>...</slow>, <emphasis>...</emphasis>
+- Use exact tag syntax: inline tags use square brackets like [pause]; wrapping tags use angle brackets like <slow>text</slow>
+- Speech tags are final-answer-only. Never put them in tool arguments, code, URLs, filenames, IDs, prices, data tables, or factual lists. Do not tag every sentence.
+"""
             style_note = f"""
 RESPONSE STYLE: {response_style.upper()}
 - Keep voice output concise using the CURRENT configured runtime limits
@@ -1023,6 +1035,7 @@ RESPONSE STYLE: {response_style.upper()}
 - Q&A/informational: up to {qa_word_limit} words max
 - Multi-turn summaries: up to {multi_turn_word_limit} words max
 - No URLs for speech unless critical
+{xai_tts_style_note}
 
 """
         
