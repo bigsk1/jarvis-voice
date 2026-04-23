@@ -199,7 +199,7 @@ STT_MODEL="gpt-4o-mini-transcribe"  # For openai provider
 OPENAI_API_KEY=your-openai-key
 
 # ===== Text-to-Speech (TTS) =====
-TTS_PROVIDER="elevenlabs"  # Options: "elevenlabs", "openai", "qwen3-tts"
+TTS_PROVIDER="elevenlabs"  # Options: "elevenlabs", "xai", "openai", "qwen3-tts"
 
 # If using ElevenLabs:
 ELEVENLABS_API_KEY=your-elevenlabs-key
@@ -208,6 +208,11 @@ ELEVENLABS_TTS_MODEL=eleven_v3
 
 # Or if using OpenAI TTS (uses OPENAI_API_KEY):
 # TTS_MODEL="gpt-4o-mini-tts"
+
+# Or if using xAI TTS (uses XAI_API_KEY):
+# TTS_PROVIDER="xai"
+# XAI_TTS_VOICE="eve"  # eve, ara, rex, sal, leo
+# XAI_TTS_LANGUAGE="en"
 
 # ===== Audio Devices (configure after Step 7) =====
 # Linux native:

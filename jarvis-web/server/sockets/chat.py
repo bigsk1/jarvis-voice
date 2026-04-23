@@ -281,7 +281,14 @@ class ChatHandler:
         display_text = primary_speech if primary_speech not in (None, '') else raw_response
 
         speech_source = primary_speech if primary_speech not in (None, '') else raw_response
-        speech_text = sanitize_for_speech(speech_source) if speech_source else ''
+        preserve_xai_tags = False
+        try:
+            from ..config import get_jarvis_setting
+            preserve_xai_tags = (get_jarvis_setting('TTS_PROVIDER', '') or '').strip().lower() == 'xai'
+        except Exception:
+            preserve_xai_tags = False
+
+        speech_text = sanitize_for_speech(speech_source, preserve_xai_tags=preserve_xai_tags) if speech_source else ''
         if speech_source and not speech_text:
             speech_text = tts_fallback
 
@@ -1908,6 +1915,13 @@ Previous structured data:
                         speech_text = prepared_speech
                         if speech_text:
                             audio_url = self._generate_tts(speech_text, mode=mode)
+                            if audio_url:
+                                save_data['audio_url'] = audio_url
+                                store.update_message_data_by_web_message_id(
+                                    conversation_id,
+                                    repair_message_id,
+                                    {'audio_url': audio_url}
+                                )
                 except Exception as tts_err:
                     print(f"[COMPLETION_GUARD] TTS generation failed: {tts_err}")
 
@@ -3655,6 +3669,17 @@ Previous structured data:
                     speech_text = prepared_speech
                     if speech_text:
                         audio_url = self._generate_tts(speech_text, mode=mode)
+                        if audio_url:
+                            try:
+                                from ..services.conversation_store import get_conversation_store
+                                store = get_conversation_store()
+                                store.update_message_data_by_web_message_id(
+                                    conversation_id,
+                                    message_id,
+                                    {'audio_url': audio_url}
+                                )
+                            except Exception as save_audio_err:
+                                print(f"[CHAT] Failed to save TTS audio URL: {save_audio_err}")
             except Exception as tts_err:
                 print(f"[CHAT] TTS generation failed: {tts_err}")
             
@@ -4041,6 +4066,8 @@ Mode: {mode}
                 audio_path = self._qwen3_tts(text, tts_dir, timestamp)
             elif provider == 'elevenlabs':
                 audio_path = self._elevenlabs_tts(text, tts_dir, timestamp)
+            elif provider == 'xai':
+                audio_path = self._xai_tts(text, tts_dir, timestamp)
             elif provider == 'openai':
                 audio_path = self._openai_tts(text, tts_dir, timestamp)
             else:
@@ -4194,6 +4221,62 @@ Mode: {mode}
         with open(output_path, 'wb') as f:
             f.write(response.content)
         
+        return output_path
+
+    def _xai_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:
+        """Generate TTS using xAI's native TTS API."""
+        import requests
+        from ..config import get_jarvis_setting
+
+        api_key = get_jarvis_setting('XAI_API_KEY', '')
+        voice_id = get_jarvis_setting('XAI_TTS_VOICE', 'eve')
+        language = get_jarvis_setting('XAI_TTS_LANGUAGE', 'en')
+        codec = get_jarvis_setting('XAI_TTS_CODEC', 'mp3').lower()
+        sample_rate = int(get_jarvis_setting('XAI_TTS_SAMPLE_RATE', '24000'))
+        bit_rate = int(get_jarvis_setting('XAI_TTS_BIT_RATE', '128000'))
+        max_chars = int(get_jarvis_setting('XAI_TTS_MAX_CHARS', '15000'))
+        timeout = int(get_jarvis_setting('XAI_TTS_TIMEOUT', '180'))
+
+        if not api_key:
+            print("[CHAT] XAI_API_KEY not configured")
+            return None
+
+        if len(text) > max_chars:
+            print(f"[CHAT TTS] Text truncated from {len(text)} to {max_chars} chars for xAI TTS")
+            text = text[:max_chars]
+
+        print(f"[CHAT TTS] xAI: voice={voice_id}, language={language}, codec={codec}, chars={len(text)}")
+
+        output_format = {
+            "codec": codec,
+            "sample_rate": sample_rate,
+        }
+        if codec == 'mp3':
+            output_format["bit_rate"] = bit_rate
+
+        payload = {
+            "text": text,
+            "voice_id": voice_id,
+            "language": language,
+            "output_format": output_format,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post("https://api.x.ai/v1/tts", json=payload, headers=headers, timeout=timeout)
+
+        if response.status_code != 200:
+            print(f"[CHAT] xAI TTS error: {response.status_code} - {response.text}")
+            return None
+
+        ext = 'mp3' if codec == 'mp3' else codec
+        output_path = output_dir / f"tts_{timestamp}.{ext}"
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
+
         return output_path
     
     def _openai_tts(self, text: str, output_dir: Path, timestamp: str) -> Path:

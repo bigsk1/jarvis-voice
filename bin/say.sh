@@ -1,5 +1,5 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Cloud TTS (OpenAI or ElevenLabs)
+# Jarvis Voice Assistant - Cloud TTS (OpenAI, ElevenLabs, xAI, or Qwen3-TTS)
 set -euo pipefail
 
 # Load configuration
@@ -134,6 +134,62 @@ elif [ "$TTS_PROVIDER" = "elevenlabs" ]; then
     # Convert mp3 to wav with proper format
     ffmpeg -hide_banner -loglevel error -i "$TEMP_MP3" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
     rm -f "$TEMP_MP3"
+
+elif [ "$TTS_PROVIDER" = "xai" ]; then
+    # ============================================================================
+    # xAI TTS
+    # ============================================================================
+    XAI_API_KEY="${XAI_API_KEY:-}"
+    XAI_TTS_VOICE="${XAI_TTS_VOICE_OVERRIDE:-${XAI_TTS_VOICE:-eve}}"
+    XAI_TTS_LANGUAGE="${XAI_TTS_LANGUAGE:-en}"
+    XAI_TTS_CODEC="${XAI_TTS_CODEC:-mp3}"
+    XAI_TTS_SAMPLE_RATE="${XAI_TTS_SAMPLE_RATE:-24000}"
+    XAI_TTS_BIT_RATE="${XAI_TTS_BIT_RATE:-128000}"
+    XAI_TTS_MAX_CHARS="${XAI_TTS_MAX_CHARS:-15000}"
+    XAI_TTS_TIMEOUT="${XAI_TTS_TIMEOUT:-180}"
+
+    if [ -z "$XAI_API_KEY" ]; then
+        echo "❌ XAI_API_KEY not set in cloud.env" >&2
+        exit 1
+    fi
+
+    XAI_TTS_TEXT="${TEXT:0:$XAI_TTS_MAX_CHARS}"
+
+    TTS_JSON=$(jq -n \
+      --arg text "$XAI_TTS_TEXT" \
+      --arg voice_id "$XAI_TTS_VOICE" \
+      --arg language "$XAI_TTS_LANGUAGE" \
+      --arg codec "$XAI_TTS_CODEC" \
+      --argjson sample_rate "$XAI_TTS_SAMPLE_RATE" \
+      --argjson bit_rate "$XAI_TTS_BIT_RATE" \
+      '{
+        text: $text,
+        voice_id: $voice_id,
+        language: $language,
+        output_format: (
+          {codec: $codec, sample_rate: $sample_rate}
+          + (if $codec == "mp3" then {bit_rate: $bit_rate} else {} end)
+        )
+      }')
+
+    TEMP_AUDIO="/tmp/jarvis-tts-$$.${XAI_TTS_CODEC}"
+    HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_AUDIO" \
+      --connect-timeout 15 \
+      --max-time "$XAI_TTS_TIMEOUT" \
+      -X POST "https://api.x.ai/v1/tts" \
+      -H "Authorization: Bearer $XAI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "$TTS_JSON")
+
+    if [ "$HTTP_CODE" != "200" ]; then
+        echo "❌ xAI TTS API error (HTTP $HTTP_CODE)" >&2
+        cat "$TEMP_AUDIO" >&2
+        rm -f "$TEMP_AUDIO"
+        exit 1
+    fi
+
+    ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
+    rm -f "$TEMP_AUDIO"
 
 else
     # ============================================================================

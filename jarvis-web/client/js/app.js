@@ -1394,6 +1394,7 @@ class JarvisApp {
         const effectiveCgEnabled = s.completion_guard?.enabled?.value ?? (c.JARVIS_COMPLETION_GUARD_ENABLED === 'true');
         const effectiveCgMode = s.completion_guard?.mode?.value || c.JARVIS_COMPLETION_GUARD_MODE;
         const effectiveCgThreshold = s.completion_guard?.auto_threshold?.value ?? c.JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD;
+        const ttsProvider = String(c.TTS_PROVIDER || '').toLowerCase();
         
         // Mode-specific model display
         const modelHtml = isLocal ? `
@@ -1419,6 +1420,73 @@ class JarvisApp {
             <span class="config-value">${c.OPENAI_MODEL || '(not set)'}</span>
           </div>
         `;
+
+        const audioProviderHtml = isLocal
+          ? (ttsProvider === 'qwen3-tts' ? `
+            <div class="config-item">
+              <span class="config-label">QWEN3_TTS_URL</span>
+              <span class="config-value">${c.QWEN3_TTS_URL || c.TTS_URL || '(not set)'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">QWEN3_TTS_VOICE</span>
+              <span class="config-value">${c.QWEN3_TTS_VOICE || c.TTS_VOICE || '(default)'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">QWEN3_TTS_FORMAT</span>
+              <span class="config-value">${c.QWEN3_TTS_FORMAT || 'mp3'}</span>
+            </div>
+          ` : `
+            <div class="config-item">
+              <span class="config-label">KOKORO_TTS_URL</span>
+              <span class="config-value">${c.KOKORO_TTS_URL || c.TTS_URL || '(not set)'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">KOKORO_TTS_VOICE</span>
+              <span class="config-value">${c.KOKORO_TTS_VOICE || c.TTS_VOICE || '(default)'}</span>
+            </div>
+          `)
+          : (ttsProvider === 'xai' ? `
+            <div class="config-item">
+              <span class="config-label">XAI_TTS_VOICE</span>
+              <span class="config-value">${c.XAI_TTS_VOICE || '(default)'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">XAI_TTS_LANGUAGE</span>
+              <span class="config-value">${c.XAI_TTS_LANGUAGE || 'en'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">XAI_TTS_CODEC</span>
+              <span class="config-value">${c.XAI_TTS_CODEC || 'mp3'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">XAI_TTS_TIMEOUT</span>
+              <span class="config-value">${c.XAI_TTS_TIMEOUT || '180'}s</span>
+            </div>
+          ` : ttsProvider === 'openai' ? `
+            <div class="config-item">
+              <span class="config-label">TTS_MODEL</span>
+              <span class="config-value">${c.TTS_MODEL || 'gpt-4o-mini-tts'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">VOICE</span>
+              <span class="config-value">${c.VOICE || '(default)'}</span>
+            </div>
+          ` : `
+            <div class="config-item">
+              <span class="config-label">ELEVENLABS_TTS_MODEL</span>
+              <span class="config-value">${c.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">ELEVENLABS_TTS_VOICE</span>
+              <span class="config-value">${c.ELEVENLABS_TTS_VOICE || '(default)'}</span>
+            </div>
+            ${ttsProvider === 'elevenlabs' ? `
+            <div class="config-item" id="elevenlabs-usage">
+              <span class="config-label">Usage</span>
+              <span class="config-value loading">Loading...</span>
+            </div>
+            ` : ''}
+          `);
         
         container.innerHTML = `
           <div class="config-section">
@@ -1469,34 +1537,12 @@ class JarvisApp {
           </div>
           
           <div class="config-section">
-            <div class="config-section-title">🔊 Audio (${isLocal ? 'Kokoro' : 'ElevenLabs'})</div>
+            <div class="config-section-title">🔊 Audio (${isLocal ? 'Local' : 'Cloud'})</div>
             <div class="config-item">
               <span class="config-label">TTS_PROVIDER</span>
               <span class="config-value">${c.TTS_PROVIDER}</span>
             </div>
-            ${isLocal ? `
-            <div class="config-item">
-              <span class="config-label">TTS_URL</span>
-              <span class="config-value">${c.TTS_URL || '(not set)'}</span>
-            </div>
-            <div class="config-item">
-              <span class="config-label">TTS_VOICE</span>
-              <span class="config-value">${c.TTS_VOICE || c.QWEN3_TTS_VOICE || '(default)'}</span>
-            </div>
-            ` : `
-            <div class="config-item">
-              <span class="config-label">ELEVENLABS_TTS_MODEL</span>
-              <span class="config-value">${c.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2'}</span>
-            </div>
-            <div class="config-item">
-              <span class="config-label">ELEVENLABS_TTS_VOICE</span>
-              <span class="config-value">${c.ELEVENLABS_TTS_VOICE || '(default)'}</span>
-            </div>
-            <div class="config-item" id="elevenlabs-usage">
-              <span class="config-label">Usage</span>
-              <span class="config-value loading">Loading...</span>
-            </div>
-            `}
+            ${audioProviderHtml}
             <div class="config-item">
               <span class="config-label">STATUS_UPDATES_ENABLED</span>
               <span class="config-value ${c.STATUS_UPDATES_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.STATUS_UPDATES_ENABLED}</span>

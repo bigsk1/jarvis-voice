@@ -215,11 +215,12 @@ Profiles = different sets of tools and settings for different purposes. Example 
 | Provider | Mode | Quality | Cost | Notes |
 |----------|------|---------|------|-------|
 | **ElevenLabs** | Cloud | Excellent | Paid | Best quality, expressive voices |
+| **xAI TTS** | Cloud | Good | Paid | Native xAI TTS using `XAI_API_KEY`; voices: eve, ara, rex, sal, leo |
 | **Qwen3-TTS** | Both | Excellent | Free | 28 cloned voices (Jarvis, Samantha, etc.), local network |
 | **Kokoro** | Local | Good | Free | Lightweight, fast, Nicole+Sarah voices |
 | **OpenAI TTS** | Cloud | Good | Paid | alloy, echo, fable, onyx, nova, shimmer |
 
-Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. Qwen3-TTS uses OpenAI-compatible API.
+Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. xAI TTS uses its native `/v1/tts` API; Qwen3-TTS uses an OpenAI-compatible API.
 See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
 
 **Voice API** (`/api/voice/speak`): Supports per-request TTS provider/voice overrides for multi-agent voice identity.

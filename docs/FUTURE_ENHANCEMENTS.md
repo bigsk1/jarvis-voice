@@ -17,7 +17,7 @@ Guiding principles:
 - **Printer upgrades**: compact mode + better formatting + image printing
 - **Tool blocklist**: `BLOCKED_TOOLS` support in tool sync + startup display filtering
 - **Native provider web search**: optional built-in search for xAI + Anthropic to reduce tool calls/loops
-- **TTS provider selection**: OpenAI or ElevenLabs (`TTS_PROVIDER`)
+- **TTS provider selection**: OpenAI, ElevenLabs, xAI, or Qwen3-TTS (`TTS_PROVIDER`)
 
 ---
 

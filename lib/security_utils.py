@@ -334,11 +334,11 @@ def sanitize_user_input(transcript: str, max_length: int = MAX_TRANSCRIPT_LENGTH
     return transcript, security_info
 
 
-def sanitize_for_speech(text: str) -> str:
+def sanitize_for_speech(text: str, *, preserve_xai_tags: bool = False) -> str:
     """
     Backward-compatible wrapper around the shared TTS normalizer.
     """
-    return normalize_tts_text(text)
+    return normalize_tts_text(text, preserve_xai_tags=preserve_xai_tags)
 
 
 def is_safe_url(url: str) -> bool:

@@ -1,11 +1,11 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Status Update TTS (Cloud - OpenAI or ElevenLabs)
+# Jarvis Voice Assistant - Status Update TTS (Cloud - OpenAI, ElevenLabs, xAI, or Qwen3-TTS)
 # Lightweight TTS for short status messages during long tasks
 # 
 # Features:
 # - Audio caching: Repeated phrases play instantly (no API call)
 # - Silence padding: Helps speakers wake up before speech
-# - Dual provider support: OpenAI or ElevenLabs
+# - Cloud provider support: OpenAI, ElevenLabs, xAI, or Qwen3-TTS
 # 
 # Usage: say-status.sh "message" [blocking]
 #   blocking: "true" (wait for playback) or "false" (background)
@@ -51,6 +51,9 @@ generate_cache_key() {
     elif [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
         # Include Qwen3-TTS settings in hash
         echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_FORMAT:-mp3}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    elif [ "$TTS_PROVIDER" = "xai" ]; then
+        # Include xAI TTS settings in hash
+        echo -n "${text}|xai|${XAI_TTS_VOICE:-eve}|${XAI_TTS_LANGUAGE:-en}|${XAI_TTS_CODEC:-mp3}|${XAI_TTS_SAMPLE_RATE:-24000}|${XAI_TTS_BIT_RATE:-128000}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
         # Include OpenAI settings in hash
         echo -n "${text}|openai|${VOICE}|${TTS_MODEL}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
@@ -175,6 +178,60 @@ else
         # Convert mp3 to wav
         ffmpeg -hide_banner -loglevel error -i "$TEMP_MP3" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
         rm -f "$TEMP_MP3"
+    elif [ "$TTS_PROVIDER" = "xai" ]; then
+        # ============================================================================
+        # xAI TTS
+        # ============================================================================
+        XAI_API_KEY="${XAI_API_KEY:-}"
+        XAI_TTS_VOICE="${XAI_TTS_VOICE:-eve}"
+        XAI_TTS_LANGUAGE="${XAI_TTS_LANGUAGE:-en}"
+        XAI_TTS_CODEC="${XAI_TTS_CODEC:-mp3}"
+        XAI_TTS_SAMPLE_RATE="${XAI_TTS_SAMPLE_RATE:-24000}"
+        XAI_TTS_BIT_RATE="${XAI_TTS_BIT_RATE:-128000}"
+        XAI_TTS_MAX_CHARS="${XAI_TTS_MAX_CHARS:-15000}"
+        XAI_TTS_TIMEOUT="${XAI_TTS_TIMEOUT:-180}"
+
+        if [ -z "$XAI_API_KEY" ]; then
+            echo "❌ XAI_API_KEY not set" >&2
+            exit 1
+        fi
+
+        XAI_TTS_TEXT="${TEXT:0:$XAI_TTS_MAX_CHARS}"
+
+        TTS_JSON=$(jq -n \
+          --arg text "$XAI_TTS_TEXT" \
+          --arg voice_id "$XAI_TTS_VOICE" \
+          --arg language "$XAI_TTS_LANGUAGE" \
+          --arg codec "$XAI_TTS_CODEC" \
+          --argjson sample_rate "$XAI_TTS_SAMPLE_RATE" \
+          --argjson bit_rate "$XAI_TTS_BIT_RATE" \
+          '{
+            text: $text,
+            voice_id: $voice_id,
+            language: $language,
+            output_format: (
+              {codec: $codec, sample_rate: $sample_rate}
+              + (if $codec == "mp3" then {bit_rate: $bit_rate} else {} end)
+            )
+          }')
+
+        TEMP_AUDIO="/tmp/jarvis-status-$$.${XAI_TTS_CODEC}"
+        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_AUDIO" \
+          --connect-timeout 15 \
+          --max-time "$XAI_TTS_TIMEOUT" \
+          -X POST "https://api.x.ai/v1/tts" \
+          -H "Authorization: Bearer $XAI_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$TTS_JSON")
+
+        if [ "$HTTP_CODE" != "200" ]; then
+            echo "⚠️ xAI TTS failed (HTTP $HTTP_CODE)" >&2
+            rm -f "$TEMP_AUDIO"
+            exit 1
+        fi
+
+        ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+        rm -f "$TEMP_AUDIO"
     else
         # ============================================================================
         # OPENAI TTS (default)

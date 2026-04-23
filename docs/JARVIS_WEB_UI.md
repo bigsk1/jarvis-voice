@@ -614,7 +614,7 @@ TTS provider is determined by the current mode's `.env` file:
 
 | Mode | Provider | Config |
 |------|----------|--------|
-| **Cloud** | ElevenLabs | `TTS_PROVIDER=elevenlabs` in cloud.env |
+| **Cloud** | ElevenLabs, xAI, or OpenAI | `TTS_PROVIDER=elevenlabs`, `xai`, or `openai` in cloud.env |
 | **Local** | Kokoro or Qwen3-TTS | `TTS_PROVIDER=kokoro` or `TTS_PROVIDER=qwen3-tts` + `TTS_URL` in local.env |
 
 ```python

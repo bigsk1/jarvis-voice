@@ -245,13 +245,23 @@ def get_system_config():
         config['TTS_URL'] = get_jarvis_setting('TTS_URL', '')
         config['TTS_VOICE'] = get_jarvis_setting('TTS_VOICE', '')
         # Kokoro doesn't have models, but Qwen3-TTS might
+        config['KOKORO_TTS_URL'] = get_jarvis_setting('KOKORO_TTS_URL', '')
+        config['KOKORO_TTS_VOICE'] = get_jarvis_setting('KOKORO_TTS_VOICE', '')
+        config['QWEN3_TTS_URL'] = get_jarvis_setting('QWEN3_TTS_URL', '')
         config['QWEN3_TTS_VOICE'] = get_jarvis_setting('QWEN3_TTS_VOICE', '')
+        config['QWEN3_TTS_FORMAT'] = get_jarvis_setting('QWEN3_TTS_FORMAT', 'mp3')
     else:
         config['XAI_MODEL'] = get_jarvis_setting('XAI_MODEL', '')
         config['ANTHROPIC_MODEL'] = get_jarvis_setting('ANTHROPIC_MODEL', '')
         config['OPENAI_MODEL'] = get_jarvis_setting('OPENAI_MODEL', '')
+        config['TTS_MODEL'] = get_jarvis_setting('TTS_MODEL', 'gpt-4o-mini-tts')
+        config['VOICE'] = get_jarvis_setting('VOICE', 'alloy')
         config['ELEVENLABS_TTS_VOICE'] = get_jarvis_setting('ELEVENLABS_TTS_VOICE', '')
         config['ELEVENLABS_TTS_MODEL'] = get_jarvis_setting('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2')
+        config['XAI_TTS_VOICE'] = get_jarvis_setting('XAI_TTS_VOICE', 'eve')
+        config['XAI_TTS_LANGUAGE'] = get_jarvis_setting('XAI_TTS_LANGUAGE', 'en')
+        config['XAI_TTS_CODEC'] = get_jarvis_setting('XAI_TTS_CODEC', 'mp3')
+        config['XAI_TTS_TIMEOUT'] = get_jarvis_setting('XAI_TTS_TIMEOUT', '180')
     
     return jsonify({
         'ok': True,
@@ -1097,15 +1107,11 @@ def text_to_speech():
     
     if not text:
         return jsonify({'ok': False, 'error': 'No text provided'}), 400
-    
-    from security_utils import sanitize_for_speech
-    text = sanitize_for_speech(text)
-    if not text:
-        text = "Done. I shared the details in chat."
-    
+
     try:
         import requests
         from datetime import datetime
+        from security_utils import sanitize_for_speech
         
         # Load config for specified mode (from client) or fall back to settings
         from ..config import load_jarvis_config, get_jarvis_setting
@@ -1118,6 +1124,10 @@ def text_to_speech():
         
         provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs')
         print(f"[TTS] Mode: {mode}, Provider: {provider}", flush=True)
+
+        text = sanitize_for_speech(text, preserve_xai_tags=provider == 'xai')
+        if not text:
+            text = "Done. I shared the details in chat."
         
         # Qwen3-TTS (OpenAI-compatible voice cloning on local network)
         if provider == 'qwen3-tts':
@@ -1185,14 +1195,23 @@ def text_to_speech():
         
         if provider == 'elevenlabs':
             audio_path = _generate_elevenlabs_tts(text, tts_dir, timestamp)
+        elif provider == 'xai':
+            audio_path = _generate_xai_tts(text, tts_dir, timestamp)
         else:
             audio_path = _generate_openai_tts(text, tts_dir, timestamp)
         
         if audio_path and audio_path.exists():
+            mimetype = {
+                '.mp3': 'audio/mpeg',
+                '.wav': 'audio/wav',
+                '.pcm': 'audio/pcm',
+                '.mulaw': 'audio/basic',
+                '.alaw': 'audio/alaw',
+            }.get(audio_path.suffix.lower(), 'application/octet-stream')
             return send_from_directory(
                 str(audio_path.parent),
                 audio_path.name,
-                mimetype='audio/mpeg'
+                mimetype=mimetype
             )
         else:
             return jsonify({'ok': False, 'error': 'TTS generation failed'}), 500
@@ -1271,6 +1290,61 @@ def _generate_elevenlabs_tts(text: str, output_dir: Path, timestamp: str) -> Pat
     return output_path
 
 
+def _generate_xai_tts(text: str, output_dir: Path, timestamp: str) -> Path:
+    """Generate TTS using xAI's native TTS API"""
+    import requests
+    from ..config import get_jarvis_setting
+
+    api_key = get_jarvis_setting('XAI_API_KEY', '')
+    voice_id = get_jarvis_setting('XAI_TTS_VOICE', 'eve')
+    language = get_jarvis_setting('XAI_TTS_LANGUAGE', 'en')
+    codec = get_jarvis_setting('XAI_TTS_CODEC', 'mp3').lower()
+    sample_rate = int(get_jarvis_setting('XAI_TTS_SAMPLE_RATE', '24000'))
+    bit_rate = int(get_jarvis_setting('XAI_TTS_BIT_RATE', '128000'))
+    max_chars = int(get_jarvis_setting('XAI_TTS_MAX_CHARS', '15000'))
+    timeout = int(get_jarvis_setting('XAI_TTS_TIMEOUT', '180'))
+
+    if not api_key:
+        raise ValueError('XAI_API_KEY not configured')
+
+    if len(text) > max_chars:
+        print(f"[API TTS] Text truncated from {len(text)} to {max_chars} chars for xAI TTS")
+        text = text[:max_chars]
+
+    print(f"[API TTS] xAI: voice={voice_id}, language={language}, codec={codec}, chars={len(text)}")
+
+    output_format = {
+        "codec": codec,
+        "sample_rate": sample_rate,
+    }
+    if codec == 'mp3':
+        output_format["bit_rate"] = bit_rate
+
+    payload = {
+        "text": text,
+        "voice_id": voice_id,
+        "language": language,
+        "output_format": output_format,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.post("https://api.x.ai/v1/tts", json=payload, headers=headers, timeout=timeout)
+
+    if response.status_code != 200:
+        raise ValueError(f"xAI TTS API error: {response.status_code} - {response.text}")
+
+    ext = 'mp3' if codec == 'mp3' else codec
+    output_path = output_dir / f"tts_{timestamp}.{ext}"
+    with open(output_path, 'wb') as f:
+        f.write(response.content)
+
+    return output_path
+
+
 def _generate_openai_tts(text: str, output_dir: Path, timestamp: str) -> Path:
     """Generate TTS using OpenAI API"""
     import requests
@@ -1317,7 +1391,7 @@ def serve_audio(filename):
         abort(404)
     
     # Check common audio extensions
-    allowed_extensions = {'.mp3', '.wav', '.ogg', '.m4a'}
+    allowed_extensions = {'.mp3', '.wav', '.ogg', '.m4a', '.pcm', '.mulaw', '.alaw'}
     ext = os.path.splitext(filename)[1].lower()
     if ext not in allowed_extensions:
         abort(404)

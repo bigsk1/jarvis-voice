@@ -39,7 +39,7 @@ Speak a message through local speakers with optional TTS provider/voice override
 |-------|------|----------|---------|-------------|
 | `message` | string | Yes | - | Text to speak |
 | `mode` | string | No | `cloud` | `cloud` or `local` (selects say.sh or say-local.sh) |
-| `tts_provider` | string | No | From env | Override TTS provider: `elevenlabs`, `qwen3-tts`, `openai`, `kokoro` |
+| `tts_provider` | string | No | From env | Override TTS provider: `elevenlabs`, `xai`, `qwen3-tts`, `openai`, `kokoro` |
 | `voice` | string | No | From env | Override voice (provider-specific) |
 | `profile` | string | No | none | Optional TTS normalization profile: `weather_watch`, `camera_alert`, `price_quote`, `timestamped` |
 
@@ -75,6 +75,7 @@ Simple announce endpoint (auto-detects mode). Easier for external integrations.
 | Provider | Env Var | Voice Env Var | Notes |
 |----------|---------|---------------|-------|
 | `elevenlabs` | `ELEVENLABS_API_KEY` | `ELEVENLABS_TTS_VOICE` | Best quality, paid |
+| `xai` | `XAI_API_KEY` | `XAI_TTS_VOICE` | Native xAI TTS; voices: eve, ara, rex, sal, leo |
 | `qwen3-tts` | `QWEN3_TTS_URL` | `QWEN3_TTS_VOICE` | Local network, 28 cloned voices, free |
 | `openai` | `OPENAI_API_KEY` | `VOICE` | alloy, echo, fable, onyx, nova, shimmer |
 | `kokoro` | `KOKORO_TTS_URL` | `KOKORO_TTS_VOICE` | Local, lightweight, free |
@@ -182,6 +183,7 @@ The override mechanism uses special environment variables that take precedence A
 - `TTS_PROVIDER_OVERRIDE` → overrides `TTS_PROVIDER` from env
 - `QWEN3_TTS_VOICE_OVERRIDE` → overrides `QWEN3_TTS_VOICE`
 - `ELEVENLABS_TTS_VOICE_OVERRIDE` → overrides `ELEVENLABS_TTS_VOICE`
+- `XAI_TTS_VOICE_OVERRIDE` → overrides `XAI_TTS_VOICE`
 - `OPENAI_VOICE_OVERRIDE` → overrides `VOICE`
 - `KOKORO_TTS_VOICE_OVERRIDE` → overrides `KOKORO_TTS_VOICE`
 

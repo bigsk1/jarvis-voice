@@ -190,6 +190,37 @@ class TtsNormalizerTests(unittest.TestCase):
         sample = "Sources: https://example.com 34°F [report](https://example.com)"
         self.assertEqual(sanitize_for_speech(sample), normalize_tts_text(sample))
 
+    def test_default_normalizer_strips_speech_tag_markup(self):
+        normalized = normalize_tts_text(
+            'Testing <excited>xAI tags</excited>. [pause] '
+            '<whisper>It is a secret.</whisper> <slow>right here</slow>.'
+        )
+
+        self.assertEqual(
+            normalized,
+            "Testing xAI tags. It is a secret. right here."
+        )
+        self.assertNotIn("less than", normalized)
+        self.assertNotIn("[pause]", normalized)
+        self.assertNotIn("<whisper>", normalized)
+
+    def test_xai_normalizer_preserves_supported_speech_tags(self):
+        normalized = normalize_tts_text(
+            'Testing <excited>xAI tags</excited>. [pause] '
+            '"Really? [laugh] That is incredible!" '
+            '<whisper>It is a secret.</whisper> '
+            '<slow><soft>Goodnight, sleep well.</soft></slow>',
+            preserve_xai_tags=True,
+        )
+
+        self.assertIn("Testing xAI tags.", normalized)
+        self.assertIn("[pause]", normalized)
+        self.assertIn("[laugh]", normalized)
+        self.assertIn("<whisper>It is a secret.</whisper>", normalized)
+        self.assertIn("<slow><soft>Goodnight, sleep well.</soft></slow>", normalized)
+        self.assertNotIn("<excited>", normalized)
+        self.assertNotIn("less than", normalized)
+
     def test_validate_tts_profile_allows_known_profiles(self):
         self.assertEqual(validate_tts_profile("weather_watch"), "weather_watch")
         self.assertEqual(validate_tts_profile("camera_alert"), "camera_alert")

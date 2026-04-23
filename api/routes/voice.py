@@ -19,7 +19,7 @@ class SpeakRequest(BaseModel):
     """Request to speak a message"""
     message: str
     mode: str = "cloud"  # cloud or local
-    tts_provider: Optional[str] = None  # Override: openai, elevenlabs, qwen3-tts, kokoro
+    tts_provider: Optional[str] = None  # Override: openai, elevenlabs, xai, qwen3-tts, kokoro
     voice: Optional[str] = None  # Override voice for the provider
     profile: Optional[str] = None  # Optional named TTS normalization profile
 
@@ -31,7 +31,7 @@ async def speak(request: SpeakRequest):
     Use this for urgent notifications or reminders.
     
     Optional overrides allow different voices/providers per request:
-    - tts_provider: openai, elevenlabs, qwen3-tts, kokoro
+    - tts_provider: openai, elevenlabs, xai, qwen3-tts, kokoro
     - voice: Provider-specific voice name (e.g., "Samantha" for qwen3-tts)
     
     Example for Samantha's voice:
@@ -49,7 +49,15 @@ async def speak(request: SpeakRequest):
             validated_profile = validate_tts_profile(request.profile)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        spoken_message = normalize_tts_text(request.message, profile=validated_profile)
+
+        env = os.environ.copy()
+        provider_used = request.tts_provider or env.get('TTS_PROVIDER', 'elevenlabs')
+        preserve_xai_tags = provider_used == 'xai'
+        spoken_message = normalize_tts_text(
+            request.message,
+            profile=validated_profile,
+            preserve_xai_tags=preserve_xai_tags,
+        )
         if not spoken_message:
             raise HTTPException(status_code=400, detail="Message was empty after TTS normalization")
 
@@ -67,8 +75,6 @@ async def speak(request: SpeakRequest):
         
         # Build environment with optional overrides
         # Use *_OVERRIDE env vars so they take precedence AFTER config is loaded
-        env = os.environ.copy()
-        provider_used = env.get('TTS_PROVIDER', 'elevenlabs')
         voice_used = None
         
         if request.tts_provider:
@@ -84,6 +90,8 @@ async def speak(request: SpeakRequest):
                 env['ELEVENLABS_TTS_VOICE_OVERRIDE'] = request.voice
             elif provider == 'openai':
                 env['OPENAI_VOICE_OVERRIDE'] = request.voice
+            elif provider == 'xai':
+                env['XAI_TTS_VOICE_OVERRIDE'] = request.voice
             elif provider == 'kokoro':
                 env['KOKORO_TTS_VOICE_OVERRIDE'] = request.voice
             voice_used = request.voice

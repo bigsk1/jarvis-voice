@@ -13,6 +13,39 @@ ALLOWED_TTS_PROFILES = {
     "timestamped",
 }
 
+XAI_INLINE_SPEECH_TAGS = {
+    "pause",
+    "long-pause",
+    "hum-tune",
+    "laugh",
+    "chuckle",
+    "giggle",
+    "cry",
+    "tsk",
+    "tongue-click",
+    "lip-smack",
+    "breath",
+    "inhale",
+    "exhale",
+    "sigh",
+}
+
+XAI_WRAPPING_SPEECH_TAGS = {
+    "soft",
+    "whisper",
+    "loud",
+    "build-intensity",
+    "decrease-intensity",
+    "higher-pitch",
+    "lower-pitch",
+    "slow",
+    "fast",
+    "sing-song",
+    "singing",
+    "laugh-speak",
+    "emphasis",
+}
+
 MONTH_ABBREVIATIONS = {
     "jan": "January",
     "feb": "February",
@@ -27,6 +60,51 @@ MONTH_ABBREVIATIONS = {
     "nov": "November",
     "dec": "December",
 }
+
+
+def _protect_xai_speech_tags(text: str) -> tuple[str, dict[str, str]]:
+    """Replace supported xAI speech tags with placeholders during cleanup."""
+    protected: dict[str, str] = {}
+
+    def store(tag: str) -> str:
+        key = f"@@JTTTAG{len(protected)}TOKEN@@"
+        protected[key] = tag
+        return key
+
+    def replace_inline(match: re.Match[str]) -> str:
+        tag = match.group(1).lower()
+        if tag in XAI_INLINE_SPEECH_TAGS:
+            return store(f"[{tag}]")
+        return match.group(0)
+
+    def replace_wrapping(match: re.Match[str]) -> str:
+        slash = "/" if match.group(1) else ""
+        tag = match.group(2).lower()
+        if tag in XAI_WRAPPING_SPEECH_TAGS:
+            return store(f"<{slash}{tag}>")
+        return match.group(0)
+
+    text = re.sub(r'\[([A-Za-z][A-Za-z-]*)\]', replace_inline, text)
+    text = re.sub(r'<\s*(/?)\s*([A-Za-z][A-Za-z-]*)\s*>', replace_wrapping, text)
+    return text, protected
+
+
+def _strip_speech_tag_markup(text: str) -> str:
+    """Remove TTS/speech tag markers that are unsupported by the active provider."""
+    known_inline = "|".join(re.escape(tag) for tag in sorted(XAI_INLINE_SPEECH_TAGS, key=len, reverse=True))
+    known_wrapping = "|".join(re.escape(tag) for tag in sorted(XAI_WRAPPING_SPEECH_TAGS, key=len, reverse=True))
+    text = re.sub(rf'\[(?:{known_inline})\]', '', text, flags=re.IGNORECASE)
+    text = re.sub(rf'<\s*/?\s*(?:{known_wrapping})\s*>', '', text, flags=re.IGNORECASE)
+    # Strip unknown XML/HTML-like tags while preserving their inner text.
+    text = re.sub(r'</?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^<>]*)?>', '', text)
+    return text
+
+
+def _restore_xai_speech_tags(text: str, protected: dict[str, str]) -> str:
+    """Restore placeholders created by _protect_xai_speech_tags."""
+    for token, tag in protected.items():
+        text = text.replace(token, tag)
+    return text
 
 DAY_ABBREVIATIONS = {
     "mon": "Monday",
@@ -381,13 +459,26 @@ def _normalize_whitespace(text: str) -> str:
     return text.strip()
 
 
-def normalize_tts_text(text: str, profile: str | None = None) -> str:
+def normalize_tts_text(
+    text: str,
+    profile: str | None = None,
+    *,
+    preserve_xai_tags: bool = False,
+) -> str:
     """Normalize text for natural, safe TTS playback (emoji stripped; UI may keep raw text)."""
     if not text:
         return ""
 
+    protected_tags: dict[str, str] = {}
+    if preserve_xai_tags:
+        text, protected_tags = _protect_xai_speech_tags(text)
+
+    text = _strip_speech_tag_markup(text)
     text = _strip_visual_noise(text)
+    text = _strip_speech_tag_markup(text)
     text = _normalize_common_speech_patterns(text)
     text = _normalize_general_currency(text)
     text = _apply_profile_rules(text, profile)
+    if protected_tags:
+        text = _restore_xai_speech_tags(text, protected_tags)
     return _normalize_whitespace(text)
