@@ -2274,6 +2274,8 @@ class JarvisApp {
       const qaWordLimitRaw = document.getElementById('setting-qa-word-limit').value.trim();
       const multiTurnWordLimitRaw = document.getElementById('setting-multi-turn-word-limit').value.trim();
       const completionGuardAutoThresholdRaw = document.getElementById('setting-completion-guard-auto-threshold').value.trim();
+      const ttsCheckbox = document.getElementById('setting-tts');
+      const responseStyleInput = document.getElementById('setting-response-style');
       const parseNullableBool = (value) => {
         if (value === '') return null;
         return value === 'true';
@@ -2281,14 +2283,14 @@ class JarvisApp {
 
       // Collect all settings
       const settings = {
-        tts_enabled: document.getElementById('setting-tts').checked,
+        tts_enabled: ttsCheckbox.checked,
         progress_events: document.getElementById('setting-progress-events').checked,
         llm_provider: document.getElementById('setting-llm-provider').value || null,
         llm_model: document.getElementById('setting-llm-model').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
         video_provider: document.getElementById('setting-video-provider').value || null,
         tts_provider: document.getElementById('setting-tts-provider').value || null,
-        response_style: document.getElementById('setting-response-style').value || null,
+        response_style: responseStyleInput.value || null,
         qa_word_limit: qaWordLimitRaw === '' ? null : parseInt(qaWordLimitRaw, 10),
         multi_turn_word_limit: multiTurnWordLimitRaw === '' ? null : parseInt(multiTurnWordLimitRaw, 10),
         completion_guard_enabled: parseNullableBool(document.getElementById('setting-completion-guard-enabled').value),
@@ -2304,6 +2306,23 @@ class JarvisApp {
         completion_guard_eval_model: document.getElementById('setting-completion-guard-eval-model').value || null,
         history_limit: parseInt(document.getElementById('setting-history-limit').value) || 20
       };
+
+      let saveToast = 'Settings saved!';
+      if (settings.tts_enabled) {
+        const defaultResponseStyle = this._settingsData?.response?.style?.default || 'auto';
+        if (settings.response_style === 'detailed') {
+          settings.tts_enabled = false;
+          ttsCheckbox.checked = false;
+          if (this.currentAudio) {
+            this.stopAudioPlayback();
+          }
+          saveToast = 'Detailed response style selected. TTS was disabled to avoid reading long responses aloud.';
+        } else if (!settings.response_style && defaultResponseStyle === 'detailed') {
+          settings.response_style = 'auto';
+          responseStyleInput.value = 'auto';
+          saveToast = 'TTS enabled. Response style switched from detailed to auto for speech-friendly answers.';
+        }
+      }
 
       if (settings.qa_word_limit !== null && (Number.isNaN(settings.qa_word_limit) || settings.qa_word_limit < 25 || settings.qa_word_limit > 300)) {
         Utils.toast('Q&A word limit must be between 25 and 300', 'warning');
@@ -2342,7 +2361,7 @@ class JarvisApp {
         }
         
         // Update audio setting
-        this.audioEnabled = document.getElementById('setting-tts').checked;
+        this.audioEnabled = settings.tts_enabled;
         Utils.storage.set('audioEnabled', this.audioEnabled);
         this._updateAudioButton();
         
@@ -2351,7 +2370,7 @@ class JarvisApp {
         Utils.storage.set('glowIntensity', this.glowIntensity);
         this._applyGlowIntensity();
         
-        Utils.toast('Settings saved!', 'success');
+        Utils.toast(saveToast, 'success');
         this.settingsModal.classList.remove('active');
         
         // Refresh token counter context window for new provider/model

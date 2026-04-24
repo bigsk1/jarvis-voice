@@ -654,6 +654,9 @@ class SettingsManager:
             if 'conversation' not in config:
                 config['conversation'] = {}
             config['conversation']['history_limit'] = int(overrides['history_limit'])
+
+        if config.get('audio', {}).get('tts_enabled') and mode_config.get('response_style') == 'detailed':
+            config['audio']['tts_enabled'] = False
         
         return save_web_config(config)
     
