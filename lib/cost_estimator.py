@@ -92,7 +92,7 @@ CACHE_PRICING = {
         # Cache hits can be 90%+ for repeated prompts
         # Example: grok-code-fast-1 is $0.02 cached vs $0.20 regular (90% discount)
         "cache_read": 0.02,  # 90% discount on cached tokens (10x cheaper!)
-        "cache_write_base": 0.20,  # Regular input cost for grok-4-fast models
+        "cache_write_base": 0.20,  # Regular input cost for the default Grok 4.1 Fast model
     }
 }
 
@@ -114,7 +114,7 @@ def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: i
         - Pricing as of November 2025
         - Sonnet 4.5 uses base tier pricing (≤200K tokens)
         - For prompts >200K tokens, actual costs may be higher
-        - xAI/Grok-4-fast models: $0.20 input / $0.50 output with 2M context!
+        - xAI pricing comes from the shared model catalog when available.
         - xAI pricing is extremely competitive (10-15x cheaper than Claude/GPT)
     """
     if provider not in PRICING:

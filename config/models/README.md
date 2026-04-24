@@ -15,7 +15,7 @@ config/models/<provider>/<model>/prompt_overrides.yaml
 Examples:
 - `config/models/openai/gpt-5.4-nano/prompt_overrides.yaml`
 - `config/models/ollama/qwen3/prompt_overrides.yaml`
-- `config/models/xai/grok-4-fast-reasoning/prompt_overrides.yaml`
+- `config/models/xai/grok-4.20-reasoning/prompt_overrides.yaml`
 
 Notes:
 - The extension is `.yaml` (not `.yml`) in this project.

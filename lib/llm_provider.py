@@ -394,7 +394,7 @@ class XAIProvider(LLMProvider):
     xAI (Grok) provider with hybrid SDK support.
     
     Features:
-    - 2M context window for grok-4-fast and grok-4-1-fast models
+    - 2M context window for current Grok 4.20 and Grok 4.1 Fast models
     - 256k context for grok-4 and grok-code-fast models
     - Extremely competitive pricing ($0.20 input / $0.50 output per 1M tokens)
     - Native function calling (OpenAI-compatible)

@@ -464,7 +464,7 @@ class ChatUI {
         if (selectedContext) {
           this.contextWindow = selectedContext;
         } else if (provider === 'xai') {
-          // grok-4-fast models have 2M context
+          // Current Grok 4.20 / 4.1 Fast models have 2M context.
           this.contextWindow = 2000000;
         } else if (provider === 'anthropic') {
           this.contextWindow = 200000;

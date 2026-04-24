@@ -36,6 +36,17 @@ def _context_label(tokens: int) -> str:
 CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     "xai": [
         {
+            "id": "grok-4.20-reasoning",
+            "name": "Grok 4.20 Reasoning",
+            "context_tokens": 2_000_000,
+            "pricing": {"input": 2.00, "output": 6.00, "cached": 0.20},
+            "aliases": [
+                "grok-4.20-reasoning-latest",
+                "grok-4-20-reasoning",
+                "grok-4-20-reasoning-latest",
+            ],
+        },
+        {
             "id": "grok-4.20-non-reasoning-latest",
             "name": "Grok 4.20 Non-Reasoning",
             "context_tokens": 2_000_000,
@@ -51,23 +62,11 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "aliases": ["grok-4-1-fast-non-reasoning", "grok-4-1-fast"],
         },
         {
-            "id": "grok-4-1-reasoning-latest",
-            "name": "Grok 4.1 Reasoning",
+            "id": "grok-4-1-fast-reasoning-latest",
+            "name": "Grok 4.1 Fast Reasoning",
             "context_tokens": 2_000_000,
             "pricing": {"input": 0.20, "output": 0.50},
-            "aliases": ["grok-4-1-fast-reasoning"],
-        },
-        {
-            "id": "grok-4-fast",
-            "name": "Grok 4 Fast",
-            "context_tokens": 2_000_000,
-            "pricing": {"input": 0.20, "output": 0.50},
-            "aliases": [
-                "grok-4-fast-reasoning",
-                "grok-4-fast-reasoning-latest",
-                "grok-4-fast-non-reasoning",
-                "grok-4-fast-non-reasoning-latest",
-            ],
+            "aliases": ["grok-4-1-fast-reasoning", "grok-4-1-reasoning-latest"],
         },
     ],
     "anthropic": [

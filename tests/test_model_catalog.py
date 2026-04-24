@@ -30,14 +30,31 @@ class ModelCatalogTests(unittest.TestCase):
         models = [entry["id"] for entry in get_provider_model_options("openai")]
         self.assertEqual(models[:4], ["gpt-5.4", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-chat-latest"])
 
-    def test_xai_fast_model_has_2m_context(self):
-        self.assertEqual(get_model_context_label("xai", "grok-4-fast"), "2M")
-        self.assertEqual(get_model_context_window("xai", "grok-4-fast"), 2_000_000)
+    def test_xai_options_match_current_catalog(self):
+        models = [entry["id"] for entry in get_provider_model_options("xai")]
+        self.assertEqual(
+            models[:2],
+            ["grok-4.20-reasoning", "grok-4.20-non-reasoning-latest"],
+        )
+        self.assertNotIn("grok-4-fast", models)
+        self.assertEqual(get_model_context_label("xai", "grok-4.20-reasoning"), "2M")
+        self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 2_000_000)
+
+    def test_xai_reasoning_option_uses_api_model_id(self):
+        models = [entry["id"] for entry in get_provider_model_options("xai")]
+        self.assertIn("grok-4-1-fast-reasoning-latest", models)
+        self.assertNotIn("grok-4-1-reasoning-latest", models)
+
+        metadata = get_model_metadata("xai", "grok-4-1-reasoning-latest")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["id"], "grok-4-1-fast-reasoning-latest")
 
     def test_grok_4_20_variant_resolves_with_pricing(self):
+        self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 2_000_000)
+        self.assertEqual(get_model_context_window("xai", "grok-4-20-reasoning-latest"), 2_000_000)
         self.assertEqual(get_model_context_window("xai", "grok-4.20-non-reasoning-latest"), 2_000_000)
         self.assertEqual(get_model_context_window("xai", "grok-4-20-non-reasoning"), 2_000_000)
-        pricing = get_model_pricing("xai", "grok-4.20-non-reasoning-latest")
+        pricing = get_model_pricing("xai", "grok-4.20-reasoning")
         self.assertIsNotNone(pricing)
         self.assertEqual(pricing["input"], 2.00)
         self.assertEqual(pricing["cached"], 0.20)
