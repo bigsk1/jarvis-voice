@@ -9,7 +9,11 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory, abort
 from ..services.log_explorer import get_log_explorer, LogExplorerError
 from ..services.tool_discovery import get_tool_service
-from ..services.settings_manager import get_settings_manager
+from ..services.settings_manager import (
+    CLOUD_TTS_PROVIDER_OPTIONS,
+    LOCAL_TTS_PROVIDER_OPTIONS,
+    get_settings_manager,
+)
 from ..config import get_web_setting, JARVIS_ROOT, reload_web_config
 from webui_auth import is_auth_enabled
 import sys
@@ -30,6 +34,23 @@ def _get_jarvis_version():
             return (JARVIS_ROOT / 'VERSION').read_text().strip()
         except Exception:
             return '0.0.0'
+
+
+def _apply_tts_provider_override(mode: str) -> str | None:
+    """Apply the per-mode Web UI TTS provider override to config lookups."""
+    from ..config import load_web_config
+
+    web_config = load_web_config()
+    mode_overrides = web_config.get(mode, {}) if isinstance(web_config, dict) else {}
+    tts_provider = mode_overrides.get('tts_provider')
+    allowed = LOCAL_TTS_PROVIDER_OPTIONS if mode == 'local' else CLOUD_TTS_PROVIDER_OPTIONS
+    if tts_provider not in (None, *allowed):
+        tts_provider = None
+    if tts_provider:
+        os.environ['JARVIS_OVERRIDE_TTS_PROVIDER'] = str(tts_provider)
+    else:
+        os.environ.pop('JARVIS_OVERRIDE_TTS_PROVIDER', None)
+    return tts_provider
 
 
 # Path to generated images
@@ -218,6 +239,7 @@ def get_system_config():
     # Use mode from query param or fall back to default
     mode = request.args.get('mode') or get_web_setting('defaults.mode', 'cloud')
     load_jarvis_config(mode)
+    _apply_tts_provider_override(mode)
     
     # Return key system settings (read-only, informational)
     config = {
@@ -230,7 +252,7 @@ def get_system_config():
         'SEMANTIC_SIMILARITY_THRESHOLD': get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'),
         
         # TTS/Audio (mode-specific)
-        'TTS_PROVIDER': get_jarvis_setting('TTS_PROVIDER', 'kokoro' if mode == 'local' else 'elevenlabs'),
+        'TTS_PROVIDER': get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if mode == 'local' else 'elevenlabs'),
         'STATUS_UPDATES_ENABLED': get_jarvis_setting('STATUS_UPDATES_ENABLED', 'true'),
         
         # Features
@@ -256,6 +278,9 @@ def get_system_config():
         config['OPENAI_MODEL'] = get_jarvis_setting('OPENAI_MODEL', '')
         config['TTS_MODEL'] = get_jarvis_setting('TTS_MODEL', 'gpt-4o-mini-tts')
         config['VOICE'] = get_jarvis_setting('VOICE', 'alloy')
+        config['QWEN3_TTS_URL'] = get_jarvis_setting('QWEN3_TTS_URL', '')
+        config['QWEN3_TTS_VOICE'] = get_jarvis_setting('QWEN3_TTS_VOICE', '')
+        config['QWEN3_TTS_FORMAT'] = get_jarvis_setting('QWEN3_TTS_FORMAT', 'mp3')
         config['ELEVENLABS_TTS_VOICE'] = get_jarvis_setting('ELEVENLABS_TTS_VOICE', '')
         config['ELEVENLABS_TTS_MODEL'] = get_jarvis_setting('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2')
         config['XAI_TTS_VOICE'] = get_jarvis_setting('XAI_TTS_VOICE', 'eve')
@@ -313,7 +338,7 @@ def update_web_settings():
         'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',
         'completion_guard_include_qa', 'completion_guard_include_tool_tasks',
         'completion_guard_auto_threshold', 'completion_guard_eval_provider', 'completion_guard_eval_model',
-        'tool_similarity', 'memory_similarity', 'tts_enabled'
+        'tts_provider', 'tool_similarity', 'memory_similarity', 'tts_enabled'
     ]):
         success = settings.save_web_overrides(data)
         # Force reload config cache so changes take effect immediately
@@ -387,8 +412,9 @@ def get_tts_usage():
     # Get mode from query param
     mode = request.args.get('mode', 'cloud')
     load_jarvis_config(mode)
+    _apply_tts_provider_override(mode)
     
-    tts_provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs' if mode == 'cloud' else 'kokoro')
+    tts_provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs' if mode == 'cloud' else 'qwen3-tts')
     
     # Only fetch for ElevenLabs
     if tts_provider != 'elevenlabs':
@@ -1121,8 +1147,9 @@ def text_to_speech():
         
         # Force reload config for the correct mode
         load_jarvis_config(mode)
+        _apply_tts_provider_override(mode)
         
-        provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs')
+        provider = get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if mode == 'local' else 'elevenlabs')
         print(f"[TTS] Mode: {mode}, Provider: {provider}", flush=True)
 
         text = sanitize_for_speech(text, preserve_xai_tags=provider == 'xai')

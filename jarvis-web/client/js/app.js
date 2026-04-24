@@ -1137,6 +1137,14 @@ class JarvisApp {
         const s = data.settings;
         this._settingsData = s;  // Cache for later use
         this._configureProviderSelectLabels();
+        this._filterSelectOptions(
+          document.getElementById('setting-llm-provider'),
+          s.llm?.provider?.options || []
+        );
+        this._filterSelectOptions(
+          document.getElementById('setting-tts-provider'),
+          s.tts?.provider?.options || []
+        );
         
         // Populate General settings
         document.getElementById('setting-mode').value = s.mode || 'cloud';
@@ -1196,6 +1204,16 @@ class JarvisApp {
         videoDefault.className = s.video?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
         if (s.video?.provider?.is_override) {
           videoDefault.textContent = `⚡ override: ${s.video.provider.value}`;
+        }
+
+        // Populate TTS Provider
+        const ttsSelect = document.getElementById('setting-tts-provider');
+        ttsSelect.value = s.tts?.provider?.is_override ? s.tts.provider.value : '';
+        const ttsDefault = document.getElementById('tts-provider-default');
+        ttsDefault.textContent = `(${envFile}: ${s.tts?.provider?.default || 'elevenlabs'})`;
+        ttsDefault.className = s.tts?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.tts?.provider?.is_override) {
+          ttsDefault.textContent = `⚡ override: ${s.tts.provider.value}`;
         }
 
         // Populate Response Style
@@ -1394,7 +1412,8 @@ class JarvisApp {
         const effectiveCgEnabled = s.completion_guard?.enabled?.value ?? (c.JARVIS_COMPLETION_GUARD_ENABLED === 'true');
         const effectiveCgMode = s.completion_guard?.mode?.value || c.JARVIS_COMPLETION_GUARD_MODE;
         const effectiveCgThreshold = s.completion_guard?.auto_threshold?.value ?? c.JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD;
-        const ttsProvider = String(c.TTS_PROVIDER || '').toLowerCase();
+        const effectiveTtsProvider = s.tts?.provider?.value || c.TTS_PROVIDER;
+        const ttsProvider = String(effectiveTtsProvider || '').toLowerCase();
         
         // Mode-specific model display
         const modelHtml = isLocal ? `
@@ -1421,8 +1440,8 @@ class JarvisApp {
           </div>
         `;
 
-        const audioProviderHtml = isLocal
-          ? (ttsProvider === 'qwen3-tts' ? `
+        const audioProviderHtml = ttsProvider === 'qwen3-tts'
+          ? `
             <div class="config-item">
               <span class="config-label">QWEN3_TTS_URL</span>
               <span class="config-value">${c.QWEN3_TTS_URL || c.TTS_URL || '(not set)'}</span>
@@ -1435,7 +1454,8 @@ class JarvisApp {
               <span class="config-label">QWEN3_TTS_FORMAT</span>
               <span class="config-value">${c.QWEN3_TTS_FORMAT || 'mp3'}</span>
             </div>
-          ` : `
+          `
+          : isLocal ? `
             <div class="config-item">
               <span class="config-label">KOKORO_TTS_URL</span>
               <span class="config-value">${c.KOKORO_TTS_URL || c.TTS_URL || '(not set)'}</span>
@@ -1444,8 +1464,8 @@ class JarvisApp {
               <span class="config-label">KOKORO_TTS_VOICE</span>
               <span class="config-value">${c.KOKORO_TTS_VOICE || c.TTS_VOICE || '(default)'}</span>
             </div>
-          `)
-          : (ttsProvider === 'xai' ? `
+          `
+          : ttsProvider === 'xai' ? `
             <div class="config-item">
               <span class="config-label">XAI_TTS_VOICE</span>
               <span class="config-value">${c.XAI_TTS_VOICE || '(default)'}</span>
@@ -1486,7 +1506,7 @@ class JarvisApp {
               <span class="config-value loading">Loading...</span>
             </div>
             ` : ''}
-          `);
+          `;
         
         container.innerHTML = `
           <div class="config-section">
@@ -1510,6 +1530,10 @@ class JarvisApp {
             <div class="config-item">
               <span class="config-label">CG Auto Threshold</span>
               <span class="config-value">${effectiveCgThreshold}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">TTS</span>
+              <span class="config-value">${effectiveTtsProvider}</span>
             </div>
           </div>
 
@@ -1540,7 +1564,7 @@ class JarvisApp {
             <div class="config-section-title">🔊 Audio (${isLocal ? 'Local' : 'Cloud'})</div>
             <div class="config-item">
               <span class="config-label">TTS_PROVIDER</span>
-              <span class="config-value">${c.TTS_PROVIDER}</span>
+              <span class="config-value">${effectiveTtsProvider}</span>
             </div>
             ${audioProviderHtml}
             <div class="config-item">
@@ -1623,7 +1647,7 @@ class JarvisApp {
         `;
         
         // Fetch ElevenLabs usage if in cloud mode
-        if (!isLocal && c.TTS_PROVIDER === 'elevenlabs') {
+        if (!isLocal && ttsProvider === 'elevenlabs') {
           this._loadElevenLabsUsage();
         }
       }
@@ -1790,6 +1814,17 @@ class JarvisApp {
     if (cgOllamaOption) {
       cgOllamaOption.textContent = isLocal ? 'Ollama (Local)' : 'Ollama (Cloud)';
     }
+  }
+
+  _filterSelectOptions(select, allowedValues = []) {
+    if (!select || !Array.isArray(allowedValues) || allowedValues.length === 0) return;
+    const allowed = new Set(allowedValues);
+    Array.from(select.options).forEach((option) => {
+      if (!option.value) return;
+      const hidden = !allowed.has(option.value);
+      option.hidden = hidden;
+      option.disabled = hidden;
+    });
   }
   
   /**
@@ -2252,6 +2287,7 @@ class JarvisApp {
         llm_model: document.getElementById('setting-llm-model').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
         video_provider: document.getElementById('setting-video-provider').value || null,
+        tts_provider: document.getElementById('setting-tts-provider').value || null,
         response_style: document.getElementById('setting-response-style').value || null,
         qa_word_limit: qaWordLimitRaw === '' ? null : parseInt(qaWordLimitRaw, 10),
         multi_turn_word_limit: multiTurnWordLimitRaw === '' ? null : parseInt(multiTurnWordLimitRaw, 10),

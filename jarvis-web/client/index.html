@@ -426,6 +426,21 @@
                 <option value="gemini">Google Gemini Veo ($0.15/s)</option>
               </select>
             </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                TTS Provider
+                <span class="setting-default" id="tts-provider-default"></span>
+              </label>
+              <select class="setting-input" id="setting-tts-provider">
+                <option value="">Use env default</option>
+                <option value="kokoro">Kokoro local TTS</option>
+                <option value="openai">OpenAI TTS</option>
+                <option value="elevenlabs">ElevenLabs TTS</option>
+                <option value="xai">xAI native TTS</option>
+                <option value="qwen3-tts">Qwen3-TTS local network server</option>
+              </select>
+              <span class="setting-desc">Chooses the voice synthesis service for this web mode.</span>
+            </div>
             <div class="setting-group" style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary);">
               <label class="setting-label">
                 Response Style

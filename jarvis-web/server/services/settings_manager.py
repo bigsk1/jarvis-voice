@@ -70,6 +70,17 @@ VIDEO_PROVIDERS = {
     'gemini': {'name': 'Google Gemini Veo', 'model': 'veo-3.1'}
 }
 
+TTS_PROVIDERS = {
+    'kokoro': {'name': 'Kokoro', 'description': 'Fast, local Kokoro TTS server'},
+    'openai': {'name': 'OpenAI', 'description': 'OpenAI TTS API ($15/1M chars)'},
+    'elevenlabs': {'name': 'ElevenLabs', 'description': 'ElevenLabs TTS API (best quality, paid)'},
+    'xai': {'name': 'xAI', 'description': 'xAI native TTS API (uses XAI_API_KEY)'},
+    'qwen3-tts': {'name': 'Qwen3-TTS', 'description': 'Local network Qwen3-TTS server (free, 28 cloned voices)'},
+}
+
+CLOUD_TTS_PROVIDER_OPTIONS = ['openai', 'elevenlabs', 'xai', 'qwen3-tts']
+LOCAL_TTS_PROVIDER_OPTIONS = ['kokoro', 'qwen3-tts']
+
 RESPONSE_STYLE_OPTIONS = {
     'casual': {'name': 'Casual', 'description': 'Short voice-friendly output'},
     'auto': {'name': 'Auto', 'description': 'Adaptive formatting based on tool/result type'},
@@ -128,6 +139,20 @@ class SettingsManager:
             {'id': current_model, 'name': f'{current_model} (custom)', 'context': context},
             *options,
         ]
+
+    def _get_llm_provider_options(self) -> list[str]:
+        """Return provider choices that make sense for the current mode."""
+        if self.mode == 'local':
+            return ['ollama']
+        options = get_catalog_providers()
+        return options if 'ollama' in options else [*options, 'ollama']
+
+    def _get_tts_provider_options(self, current_provider: str | None = None) -> list[str]:
+        """Return mode-specific TTS provider choices, preserving any active custom value."""
+        options = LOCAL_TTS_PROVIDER_OPTIONS if self.mode == 'local' else CLOUD_TTS_PROVIDER_OPTIONS
+        if current_provider and current_provider not in options:
+            return [current_provider, *options]
+        return options
     
     def _is_sensitive(self, key: str) -> bool:
         """Check if a setting key is sensitive"""
@@ -143,6 +168,7 @@ class SettingsManager:
             'LLM_MODEL': ('llm', 'model'),
             'IMAGE_TOOL_PROVIDER': ('image', 'provider'),
             'VIDEO_TOOL_PROVIDER': ('video', 'provider'),
+            'TTS_PROVIDER': ('tts', 'provider'),
             'JARVIS_RESPONSE_STYLE': ('response', 'style'),
             'JARVIS_QA_WORD_LIMIT': ('response', 'qa_word_limit'),
             'JARVIS_MULTI_TURN_WORD_LIMIT': ('response', 'multi_turn_word_limit'),
@@ -171,6 +197,7 @@ class SettingsManager:
         env_provider = get_jarvis_setting('LLM_PROVIDER', 'xai' if self.mode == 'cloud' else 'ollama')
         env_image_provider = get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
         env_video_provider = get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai')
+        env_tts_provider = get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if self.mode == 'local' else 'elevenlabs')
         env_response_style = get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto')
         env_qa_word_limit = int(get_jarvis_setting('JARVIS_QA_WORD_LIMIT', '75'))
         env_multi_turn_word_limit = int(get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
@@ -193,10 +220,21 @@ class SettingsManager:
         
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
+        llm_provider_options = self._get_llm_provider_options()
         web_provider = mode_overrides.get('llm_provider')
+        provider_invalid = False
+        if web_provider not in (None, *llm_provider_options):
+            web_provider = None
+            provider_invalid = True
         web_model = mode_overrides.get('llm_model')
+        if provider_invalid:
+            web_model = None
         web_image = mode_overrides.get('image_provider')
         web_video = mode_overrides.get('video_provider')
+        web_tts = mode_overrides.get('tts_provider')
+        tts_provider_options = self._get_tts_provider_options(env_tts_provider)
+        if web_tts not in (None, *tts_provider_options):
+            web_tts = None
         web_response_style = mode_overrides.get('response_style')
         web_qa_word_limit = mode_overrides.get('qa_word_limit')
         web_multi_turn_word_limit = mode_overrides.get('multi_turn_word_limit')
@@ -215,6 +253,7 @@ class SettingsManager:
         effective_model = web_model or self._get_env_provider_model(effective_provider)
         effective_image = web_image or env_image_provider
         effective_video = web_video or env_video_provider
+        effective_tts = web_tts or env_tts_provider
         effective_response_style = web_response_style or env_response_style
         effective_qa_word_limit = web_qa_word_limit if web_qa_word_limit is not None else env_qa_word_limit
         effective_multi_turn_word_limit = (
@@ -273,7 +312,7 @@ class SettingsManager:
                     'value': effective_provider,
                     'default': env_provider,
                     'is_override': web_provider is not None,
-                    'options': get_catalog_providers()
+                    'options': llm_provider_options
                 },
                 'model': {
                     'value': effective_model,
@@ -300,6 +339,16 @@ class SettingsManager:
                     'default': env_video_provider,
                     'is_override': web_video is not None,
                     'options': list(VIDEO_PROVIDERS.keys())
+                }
+            },
+
+            # TTS Settings
+            'tts': {
+                'provider': {
+                    'value': effective_tts,
+                    'default': env_tts_provider,
+                    'is_override': web_tts is not None,
+                    'options': self._get_tts_provider_options(effective_tts)
                 }
             },
 
@@ -402,12 +451,13 @@ class SettingsManager:
             
             # Other Jarvis settings
             'owner_name': get_jarvis_setting('OWNER_NAME', 'Boss'),
-            'tts_provider': get_jarvis_setting('TTS_PROVIDER', 'elevenlabs'),
+            'tts_provider': effective_tts,
             
             # Available models reference (with dynamic Ollama)
             'provider_models': self._get_provider_models(),
             'image_providers': IMAGE_PROVIDERS,
             'video_providers': VIDEO_PROVIDERS,
+            'tts_providers': TTS_PROVIDERS,
             'response_style_options': RESPONSE_STYLE_OPTIONS,
             
             # Blocked tools
@@ -516,7 +566,10 @@ class SettingsManager:
         
         # Handle LLM overrides (per-mode)
         if 'llm_provider' in overrides:
-            mode_config['llm_provider'] = overrides['llm_provider'] or None
+            value = overrides['llm_provider'] or None
+            if self.mode == 'local' and value not in (None, 'ollama'):
+                value = 'ollama'
+            mode_config['llm_provider'] = value
         
         if 'llm_model' in overrides:
             mode_config['llm_model'] = overrides['llm_model'] or None
@@ -528,6 +581,13 @@ class SettingsManager:
         # Handle video overrides (per-mode)
         if 'video_provider' in overrides:
             mode_config['video_provider'] = overrides['video_provider'] or None
+
+        # Handle TTS overrides (per-mode)
+        if 'tts_provider' in overrides:
+            value = overrides['tts_provider'] or None
+            if value not in (None, *self._get_tts_provider_options()):
+                value = None
+            mode_config['tts_provider'] = value
 
         if 'response_style' in overrides:
             mode_config['response_style'] = overrides['response_style'] or None
@@ -621,6 +681,7 @@ class SettingsManager:
             'llm_model': None,
             'image_provider': None,
             'video_provider': None,
+            'tts_provider': None,
             'response_style': None,
             'qa_word_limit': None,
             'multi_turn_word_limit': None,
@@ -629,7 +690,10 @@ class SettingsManager:
             'completion_guard_ticket_on_fail': None,
             'completion_guard_show_ui_prompt': None,
             'completion_guard_include_qa': None,
-            'completion_guard_include_tool_tasks': None
+            'completion_guard_include_tool_tasks': None,
+            'completion_guard_auto_threshold': None,
+            'completion_guard_eval_provider': None,
+            'completion_guard_eval_model': None
         }
         return save_web_config(config)
     

@@ -3127,6 +3127,7 @@ Previous structured data:
             
             # Get LLM overrides from web config (per-mode)
             from ..config import get_web_setting, load_web_config
+            from ..services.settings_manager import CLOUD_TTS_PROVIDER_OPTIONS, LOCAL_TTS_PROVIDER_OPTIONS
             web_config = load_web_config()
             mode_overrides = web_config.get(mode, {})
             provider_override = mode_overrides.get('llm_provider')
@@ -3140,6 +3141,10 @@ Previous structured data:
             # get_config_value() checks JARVIS_OVERRIDE_{key} before os.environ[key]
             image_provider_override = mode_overrides.get('image_provider')
             video_provider_override = mode_overrides.get('video_provider')
+            tts_provider_override = mode_overrides.get('tts_provider')
+            allowed_tts_providers = LOCAL_TTS_PROVIDER_OPTIONS if mode == 'local' else CLOUD_TTS_PROVIDER_OPTIONS
+            if tts_provider_override not in (None, *allowed_tts_providers):
+                tts_provider_override = None
             response_style_override = mode_overrides.get('response_style')
             qa_word_limit_override = mode_overrides.get('qa_word_limit')
             multi_turn_word_limit_override = mode_overrides.get('multi_turn_word_limit')
@@ -3154,6 +3159,11 @@ Previous structured data:
                 os.environ['JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER'] = video_provider_override
             else:
                 os.environ.pop('JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER', None)
+
+            if tts_provider_override:
+                os.environ['JARVIS_OVERRIDE_TTS_PROVIDER'] = tts_provider_override
+            else:
+                os.environ.pop('JARVIS_OVERRIDE_TTS_PROVIDER', None)
 
             if response_style_override:
                 os.environ['JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE'] = str(response_style_override)
@@ -3174,6 +3184,7 @@ Previous structured data:
                 "[CHAT] Provider overrides - "
                 f"image: {image_provider_override or '(env default)'}, "
                 f"video: {video_provider_override or '(env default)'}, "
+                f"tts: {tts_provider_override or '(env default)'}, "
                 f"response_style: {response_style_override or '(env default)'}, "
                 f"qa_limit: {qa_word_limit_override if qa_word_limit_override is not None else '(env default)'}, "
                 f"multi_turn_limit: {multi_turn_word_limit_override if multi_turn_word_limit_override is not None else '(env default)'}"
@@ -4046,7 +4057,7 @@ Mode: {mode}
             load_jarvis_config(current_mode)
             
             # Get provider FIRST - this determines which TTS to use
-            provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs' if current_mode == 'cloud' else 'kokoro')
+            provider = get_jarvis_setting('TTS_PROVIDER', 'elevenlabs' if current_mode == 'cloud' else 'qwen3-tts')
             print(f"[CHAT TTS] Mode: {current_mode}, Provider: {provider}")
             
             # Create output directory
