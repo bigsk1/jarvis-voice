@@ -59,7 +59,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     # --- Media generation ---
     'generate_video': ['provider', 'model', 'duration', 'aspect_ratio', 'resolution',
                        'video_id', 'video_url', 'generated_from', 'source_image'],
-    'generate_image': ['provider', 'model', 'size', 'style'],
+    'generate_image': [
+        'provider', 'model', 'aspect_ratio', 'image_size', 'size', 'quality',
+        'style', 'is_edit', 'mime_type', 'filename',
+    ],
     'generate_music': ['provider', 'model', 'duration'],
     # --- File/artifact producers ---
     'pdf_create': ['ref', 'name', 'size_bytes'],
@@ -215,6 +218,8 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         if key == 'stash' and value.get('stash_ref') and not any(
             marker in value for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name')
         ):
+            continue
+        if key == 'stash' and value.get('stash_ref') and value.get('tool_origin') == 'web_upload':
             continue
 
         extracted = {}
@@ -561,13 +566,24 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         data.get('stash')
         and isinstance(data['stash'], dict)
         and data['stash'].get('stash_ref')
-        and not any(marker in data['stash'] for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name'))
+        and (
+            data['stash'].get('tool_origin') == 'web_upload'
+            or not any(marker in data['stash'] for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name'))
+        )
     ):
         stash = data['stash']
         followup['uploaded_image'] = {
             'stash_ref': stash.get('stash_ref'),
-            'filename': stash.get('filename')
+            'space_id': stash.get('space_id'),
+            'file_id': stash.get('file_id'),
+            'filename': stash.get('filename'),
+            'mime_type': stash.get('mime_type'),
+            'action': stash.get('action'),
+            'tool_origin': stash.get('tool_origin'),
+            'has_vision_analysis': bool(stash.get('has_vision_analysis')),
         }
+        if stash.get('vision_analysis'):
+            followup['uploaded_image']['vision_analysis'] = stash.get('vision_analysis')
 
     # Extract error details (enables "what went wrong?" follow-ups)
     if data.get('_error') and isinstance(data['_error'], dict):

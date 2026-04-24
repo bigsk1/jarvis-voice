@@ -14,6 +14,7 @@ import sys
 import json
 import base64
 import requests
+import io
 from pathlib import Path
 from datetime import datetime
 
@@ -23,6 +24,11 @@ from config_loader import load_config, get_config_value
 from paths import get_local_file_tool_allowed_dirs
 from model_catalog import get_provider_fallback_model
 from ollama_utils import get_ollama_base_urls, request_ollama
+
+MAX_VISION_IMAGE_DIMENSION = 1568
+MAX_VISION_IMAGE_BYTES = 4 * 1024 * 1024
+JPEG_QUALITY_START = 88
+JPEG_QUALITY_MIN = 60
 
 
 def _debug(msg: str):
@@ -94,6 +100,21 @@ def analyze_image(
             "source": image_data.get('source_type'),
             "original_path": image,
         }
+
+        for field in (
+            'filename',
+            'mime_type',
+            'size_bytes',
+            'processed_size_bytes',
+            'original_width',
+            'original_height',
+            'processed_width',
+            'processed_height',
+            'resized_for_vision',
+            'recompressed_for_vision',
+        ):
+            if field in image_data:
+                response_data[field] = image_data[field]
         
         if stash_info:
             response_data["stash"] = stash_info
@@ -158,7 +179,7 @@ def _load_from_url(url: str) -> dict | None:
             _debug(f"[ANALYZE_IMAGE] URL content-type is not image: {content_type}")
             # Try anyway - some servers don't set correct content-type
         
-        image_data = base64.b64encode(image_bytes).decode('utf-8')
+        image_data, image_info = _prepare_image_for_vision(image_bytes, content_type)
         
         # Extract and sanitize filename from URL
         from urllib.parse import urlparse
@@ -171,7 +192,8 @@ def _load_from_url(url: str) -> dict | None:
             'source_type': 'url',
             'original_path': url,
             'filename': filename,
-            'size_bytes': len(image_bytes)
+            'size_bytes': len(image_bytes),
+            **image_info
         }
     except Exception as e:
         _debug(f"[ANALYZE_IMAGE] Failed to load URL {url}: {e}")
@@ -216,14 +238,17 @@ def _load_from_file(path: str) -> dict | None:
             return None
         
         with open(file_path, 'rb') as f:
-            image_data = base64.b64encode(f.read()).decode('utf-8')
+            image_bytes = f.read()
+        mime_type = _guess_mime_type(file_path)
+        image_data, image_info = _prepare_image_for_vision(image_bytes, mime_type)
         
         return {
             'base64': image_data,
             'source_type': 'file',
             'original_path': str(file_path),
             'filename': file_path.name,
-            'size_bytes': size
+            'size_bytes': size,
+            **image_info
         }
     except Exception as e:
         _debug(f"[ANALYZE_IMAGE] Failed to load file {path}: {e}")
@@ -281,7 +306,9 @@ def _load_from_stash(stash_ref: str) -> dict | None:
             return None
         
         with open(file_path, 'rb') as f:
-            image_data = base64.b64encode(f.read()).decode('utf-8')
+            image_bytes = f.read()
+        mime_type = file_meta.get('mime_type') or _guess_mime_type(file_path)
+        image_data, image_info = _prepare_image_for_vision(image_bytes, mime_type)
         
         return {
             'base64': image_data,
@@ -289,11 +316,98 @@ def _load_from_stash(stash_ref: str) -> dict | None:
             'original_path': stash_ref,
             'filename': stored_name,
             'size_bytes': file_path.stat().st_size,
-            'stash_meta': file_meta
+            'stash_meta': file_meta,
+            **image_info
         }
     except Exception as e:
         _debug(f"[ANALYZE_IMAGE] Failed to load from stash {stash_ref}: {e}")
         return None
+
+
+def _guess_mime_type(file_path: Path) -> str:
+    suffix = file_path.suffix.lower()
+    if suffix in ('.jpg', '.jpeg'):
+        return 'image/jpeg'
+    if suffix == '.png':
+        return 'image/png'
+    if suffix == '.webp':
+        return 'image/webp'
+    if suffix == '.gif':
+        return 'image/gif'
+    return 'image/jpeg'
+
+
+def _prepare_image_for_vision(image_bytes: bytes, mime_type: str = 'image/jpeg') -> tuple[str, dict]:
+    """
+    Convert images into a bounded JPEG payload for vision APIs.
+
+    Browser uploads are already resized on /api/upload-image, but follow-up
+    stash refs, URLs, and local files can be much larger. Keep the visual
+    content while avoiding provider payload limits.
+    """
+    from PIL import Image, ImageOps
+
+    original_bytes = len(image_bytes)
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            img = ImageOps.exif_transpose(img)
+            original_width, original_height = img.size
+            resized = False
+
+            if img.mode not in ('RGB', 'L'):
+                bg = Image.new('RGB', img.size, (255, 255, 255))
+                if 'A' in img.getbands():
+                    bg.paste(img, mask=img.getchannel('A'))
+                    img = bg
+                else:
+                    img = img.convert('RGB')
+            elif img.mode == 'L':
+                img = img.convert('RGB')
+
+            longest = max(img.size)
+            if longest > MAX_VISION_IMAGE_DIMENSION:
+                scale = MAX_VISION_IMAGE_DIMENSION / longest
+                new_size = (
+                    max(1, int(img.size[0] * scale)),
+                    max(1, int(img.size[1] * scale)),
+                )
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                resized = True
+
+            quality = JPEG_QUALITY_START
+            while True:
+                buffer = io.BytesIO()
+                img.save(buffer, format='JPEG', quality=quality, optimize=True)
+                processed_bytes = buffer.getvalue()
+                if len(processed_bytes) <= MAX_VISION_IMAGE_BYTES or quality <= JPEG_QUALITY_MIN:
+                    break
+                quality -= 8
+
+            if resized or len(processed_bytes) != original_bytes:
+                _debug(
+                    "[ANALYZE_IMAGE] Prepared image for vision: "
+                    f"{original_width}x{original_height}/{original_bytes} bytes -> "
+                    f"{img.size[0]}x{img.size[1]}/{len(processed_bytes)} bytes, quality={quality}"
+                )
+
+            return base64.b64encode(processed_bytes).decode('utf-8'), {
+                'mime_type': 'image/jpeg',
+                'original_width': original_width,
+                'original_height': original_height,
+                'processed_width': img.size[0],
+                'processed_height': img.size[1],
+                'processed_size_bytes': len(processed_bytes),
+                'resized_for_vision': resized,
+                'recompressed_for_vision': len(processed_bytes) != original_bytes,
+            }
+    except Exception as e:
+        _debug(f"[ANALYZE_IMAGE] PIL preprocessing failed, using original bytes: {e}")
+        return base64.b64encode(image_bytes).decode('utf-8'), {
+            'mime_type': mime_type or 'image/jpeg',
+            'processed_size_bytes': original_bytes,
+            'resized_for_vision': False,
+            'recompressed_for_vision': False,
+        }
 
 
 def _sanitize_vision_prompt(question: str) -> str:

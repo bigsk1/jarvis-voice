@@ -411,7 +411,7 @@
                 <option value="">Use env default</option>
                 <option value="xai">xAI Grok</option>
                 <option value="gemini">Google Gemini</option>
-                <option value="openai">OpenAI DALL-E</option>
+                <option value="openai">OpenAI GPT Image</option>
               </select>
             </div>
             <div class="setting-group">
@@ -932,7 +932,7 @@
               <label class="setting-label">Provider</label>
               <select class="setting-input" id="imgActionImageProvider">
                 <option value="gemini">Gemini (grounding)</option>
-                <option value="openai">OpenAI (best text)</option>
+                <option value="openai">OpenAI GPT Image</option>
                 <option value="xai">xAI (fast)</option>
               </select>
             </div>
@@ -985,7 +985,7 @@
                 <label class="setting-label">
                   <input type="checkbox" id="imgActionTransparent"> Transparent background
                 </label>
-                <span class="setting-desc">For logos, sprites, overlays (png/webp)</span>
+                <span class="setting-desc" id="imgActionTransparentDesc">For logos, sprites, overlays (png/webp; not supported by gpt-image-2)</span>
               </div>
               <div class="setting-group">
                 <label class="setting-label">Output Format</label>

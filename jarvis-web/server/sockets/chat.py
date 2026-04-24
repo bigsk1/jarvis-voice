@@ -4451,7 +4451,12 @@ Mode: {mode}
                 'file_id': file_id,
                 'stash_ref': stash_ref,
                 'path': str(dest_path),
-                'filename': dest_filename
+                'filename': dest_filename,
+                'mime_type': 'image/jpeg',
+                'action': image_data.get('action', 'upload'),
+                'tool_origin': 'web_upload',
+                'has_vision_analysis': has_vision,
+                'vision_analysis': vision_analysis[:500] if has_vision else ''
             }
             
         except Exception as e:

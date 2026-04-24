@@ -62,7 +62,7 @@ def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
 IMAGE_PROVIDERS = {
     'xai': {'name': 'xAI Grok', 'model': 'grok-imagine-image'},
     'gemini': {'name': 'Google Gemini', 'model': 'gemini-3.1-flash-image-preview'},
-    'openai': {'name': 'OpenAI DALL-E', 'model': 'gpt-image-1.5'}
+    'openai': {'name': 'OpenAI GPT Image', 'model': 'gpt-image-2'}
 }
 
 VIDEO_PROVIDERS = {

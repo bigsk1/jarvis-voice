@@ -17,7 +17,7 @@
       "provider": {
         "type": "string",
         "enum": ["gemini", "openai", "xai"],
-        "description": "Image provider: 'gemini' (default, grounding for real-time data), 'openai' (gpt-image-1, best text), 'xai' (grok-imagine, fast & cheap). Uses IMAGE_TOOL_PROVIDER from config if not specified."
+        "description": "Image provider: 'gemini' (default, grounding for real-time data), 'openai' (GPT Image, best text/instruction following), 'xai' (grok-imagine, fast & cheap). Uses IMAGE_TOOL_PROVIDER from config if not specified."
       },
       "aspect_ratio": {
         "type": "string",
@@ -27,7 +27,7 @@
       "image_size": {
         "type": "string",
         "enum": ["1K", "2K", "4K"],
-        "description": "Resolution/Quality: '1K' (fast/low), '2K' (default/medium), '4K' (best/high). For OpenAI, maps to quality setting."
+        "description": "Resolution/Quality: '1K' (fast/low), '2K' (default/medium), '4K' (best/high). For OpenAI gpt-image-2, also maps to larger size dimensions where supported."
       },
       "use_grounding": {
         "type": "boolean",
@@ -47,7 +47,7 @@
       },
       "transparent": {
         "type": "boolean",
-        "description": "OPENAI ONLY: Enable transparent background. Works with png/webp output. Great for logos, sprites, overlays."
+        "description": "OPENAI ONLY: Enable transparent background. Works with png/webp output on gpt-image-1.5/1/1-mini. gpt-image-2 does not currently support transparent backgrounds."
       },
       "output_format": {
         "type": "string",

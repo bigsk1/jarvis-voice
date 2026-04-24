@@ -452,7 +452,7 @@ IMAGE_TOOL_PROVIDER="gemini"
 GEMINI_IMAGE_MODEL="gemini-3-pro-image-preview"
 
 # OpenAI model (if using openai provider)
-OPENAI_IMAGE_MODEL="gpt-image-1.5"
+OPENAI_IMAGE_MODEL="gpt-image-2"
 
 # xAI model (if using xai provider)
 # XAI_IMAGE_MODEL="grok-imagine-image"  # default
@@ -464,11 +464,11 @@ You can override the provider per-request using the `provider` parameter.
 
 | Feature | Gemini | OpenAI | xAI |
 |---------|--------|--------|-----|
-| Model | gemini-2.0-flash-preview | gpt-image-1.5 | grok-imagine-image |
+| Model | gemini-2.0-flash-preview | gpt-image-2 | grok-imagine-image |
 | Image-to-image editing | ✅ | ✅ | ✅ |
 | Grounding (real-time data) | ✅ | ❌ | ❌ |
 | Text rendering | Good | Best | Good |
-| Transparent backgrounds | ❌ | ✅ | ❌ |
+| Transparent backgrounds | ❌ | ✅ on gpt-image-1.5/1/1-mini; not gpt-image-2 | ❌ |
 | Batch generation (n > 1) | ❌ | ❌ | ✅ (1-10 images) |
 | Quality parameter | ✅ (1K/2K/4K) | ✅ (low/med/high) | ❌ (not supported) |
 | Speed | Medium | Slow | Fast |

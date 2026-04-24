@@ -13,7 +13,7 @@ Features:
 
 Providers:
   - gemini: Google Gemini 3 Pro Image Preview (grounding support)
-  - openai: OpenAI gpt-image-1 (best text rendering, highest quality)
+  - openai: OpenAI GPT Image (best text rendering, highest quality)
   - xai: xAI Grok Imagine (fast, cheap, good quality)
 
 Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
@@ -58,7 +58,7 @@ GEMINI_ASPECT_RATIOS = {
 # Provider: OpenAI
 # =============================================================================
 OPENAI_API_BASE = "https://api.openai.com/v1/images/generations"
-DEFAULT_OPENAI_MODEL = "gpt-image-1.5"  # State of the art (Dec 2025)
+DEFAULT_OPENAI_MODEL = "gpt-image-2"  # State of the art (Apr 2026)
 
 # OpenAI size mappings (aspect ratio -> pixel dimensions)
 OPENAI_SIZES = {
@@ -76,6 +76,65 @@ OPENAI_SIZES = {
     "1:1": "1024x1024"
 }
 
+# gpt-image-2 supports flexible sizes that satisfy API constraints. Keep the
+# public 1K/2K/4K control and map it to useful dimensions per aspect ratio.
+OPENAI_IMAGE_2_SIZES = {
+    "1K": {
+        "square": "1024x1024",
+        "landscape": "1536x1024",
+        "portrait": "1024x1536",
+        "wide": "1536x864",
+        "cinematic": "1536x864",
+        "widescreen": "1536x864",
+        "tall": "864x1536",
+        "4:3": "1536x1152",
+        "3:4": "1152x1536",
+        "2:3": "1024x1536",
+        "3:2": "1536x1024",
+        "4:5": "1024x1280",
+        "5:4": "1280x1024",
+        "16:9": "1536x864",
+        "9:16": "864x1536",
+        "1:1": "1024x1024",
+    },
+    "2K": {
+        "square": "2048x2048",
+        "landscape": "2048x1152",
+        "portrait": "1152x2048",
+        "wide": "2048x1152",
+        "cinematic": "2048x1152",
+        "widescreen": "2048x1152",
+        "tall": "1152x2048",
+        "4:3": "2048x1536",
+        "3:4": "1536x2048",
+        "2:3": "1360x2048",
+        "3:2": "2048x1360",
+        "4:5": "1600x2000",
+        "5:4": "2000x1600",
+        "16:9": "2048x1152",
+        "9:16": "1152x2048",
+        "1:1": "2048x2048",
+    },
+    "4K": {
+        "square": "2048x2048",
+        "landscape": "3840x2160",
+        "portrait": "2160x3840",
+        "wide": "3840x2160",
+        "cinematic": "3840x2160",
+        "widescreen": "3840x2160",
+        "tall": "2160x3840",
+        "4:3": "3072x2304",
+        "3:4": "2304x3072",
+        "2:3": "2304x3456",
+        "3:2": "3456x2304",
+        "4:5": "2304x2880",
+        "5:4": "2880x2304",
+        "16:9": "3840x2160",
+        "9:16": "2160x3840",
+        "1:1": "2048x2048",
+    },
+}
+
 # OpenAI quality mappings
 OPENAI_QUALITY_MAP = {
     "1K": "low",
@@ -83,8 +142,28 @@ OPENAI_QUALITY_MAP = {
     "4K": "high",
     "low": "low",
     "medium": "medium",
-    "high": "high"
+    "high": "high",
+    "auto": "auto"
 }
+
+
+def _is_gpt_image_2(model_name: str) -> bool:
+    return str(model_name or "").startswith("gpt-image-2")
+
+
+def _resolve_openai_size(model_name: str, aspect_ratio: str, quality: str) -> str:
+    aspect_key = str(aspect_ratio or "square").strip().lower()
+    if _is_gpt_image_2(model_name):
+        requested = str(quality or "2K").strip()
+        size_key = {
+            "low": "1K",
+            "medium": "2K",
+            "high": "4K",
+        }.get(requested.lower(), requested.upper())
+        if size_key not in OPENAI_IMAGE_2_SIZES:
+            size_key = "2K"
+        return OPENAI_IMAGE_2_SIZES[size_key].get(aspect_key, OPENAI_IMAGE_2_SIZES[size_key]["square"])
+    return OPENAI_SIZES.get(aspect_key, "1024x1024")
 
 # =============================================================================
 # Provider: xAI Grok Imagine
@@ -492,7 +571,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
                           transparent: bool = False, output_format: str = "png",
                           reference_image: str = None) -> dict:
     """
-    Generate or edit an image using OpenAI gpt-image-1 API.
+    Generate or edit an image using OpenAI GPT Image API.
     
     For text-to-image: uses POST /v1/images/generations (JSON body).
     For image editing: uses POST /v1/images/edits (multipart/form-data).
@@ -522,13 +601,25 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
     if negative_prompt:
         full_prompt += f". Do not include: {negative_prompt}"
     
-    # Map aspect ratio to OpenAI size
-    aspect_key = str(aspect_ratio or "square").strip().lower()
-    size = OPENAI_SIZES.get(aspect_key, "1024x1024")
-    
     # Map quality (handle both 1K/2K/4K and low/medium/high)
     quality_setting = OPENAI_QUALITY_MAP.get(quality.upper() if quality else "2K", 
                                               OPENAI_QUALITY_MAP.get(quality.lower() if quality else "medium", "medium"))
+
+    # Map aspect ratio and requested size to OpenAI dimensions. gpt-image-2
+    # supports larger flexible sizes, while earlier models keep the legacy set.
+    size = _resolve_openai_size(model_name, aspect_ratio, quality)
+
+    if transparent and _is_gpt_image_2(model_name):
+        print("[generate_image] OpenAI gpt-image-2 does not support transparent backgrounds; using default background", file=sys.stderr)
+        transparent = False
+
+    endpoint_label = "edits" if reference_image else "generations"
+    print(
+        f"[generate_image] OpenAI request model={model_name}, endpoint={endpoint_label}, "
+        f"size={size}, quality={quality_setting}, format={output_format}, "
+        f"reference_image={'yes' if reference_image else 'no'}",
+        file=sys.stderr
+    )
     
     timeout = 180  # OpenAI can take up to 2 minutes for complex prompts
     
@@ -582,7 +673,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
             "n": 1
         }
         
-        # Handle transparent background
+        # Handle transparent background (gpt-image-2 does not support this)
         if transparent and output_format in ("png", "webp"):
             payload["background"] = "transparent"
         
@@ -927,6 +1018,7 @@ def main():
                         "filename": save_info.get('filename', ''),
                         "prompt": prompt[:200],
                         "provider": result.get('provider', 'gemini'),
+                        "model": result.get('model', ''),
                         "tags": ["image", "generated", "ai_created"],
                         "type": "image"
                     }

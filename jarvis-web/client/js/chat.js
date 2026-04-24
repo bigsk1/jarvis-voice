@@ -1714,6 +1714,20 @@ class ChatUI {
     if (geminiOpts) geminiOpts.style.display = provider === 'gemini' ? 'block' : 'none';
     if (openaiOpts) openaiOpts.style.display = provider === 'openai' ? 'block' : 'none';
     if (xaiOpts) xaiOpts.style.display = provider === 'xai' ? 'block' : 'none';
+
+    const openaiModel = window.jarvisApp?._settingsData?.image_providers?.openai?.model || 'gpt-image-2';
+    const transparent = document.getElementById('imgActionTransparent');
+    const transparentDesc = document.getElementById('imgActionTransparentDesc');
+    const supportsTransparent = !String(openaiModel).startsWith('gpt-image-2');
+    if (transparent) {
+      transparent.disabled = provider === 'openai' && !supportsTransparent;
+      if (transparent.disabled) transparent.checked = false;
+    }
+    if (transparentDesc) {
+      transparentDesc.textContent = supportsTransparent
+        ? 'For logos, sprites, overlays (png/webp)'
+        : `${openaiModel} does not support transparent backgrounds`;
+    }
   }
   
   /**
@@ -1791,7 +1805,8 @@ class ChatUI {
         const negPrompt = document.getElementById('imgActionNegPrompt')?.value?.trim();
         if (negPrompt) settings.negative_prompt = negPrompt;
       } else if (provider === 'openai') {
-        const transparent = document.getElementById('imgActionTransparent')?.checked;
+        const transparentInput = document.getElementById('imgActionTransparent');
+        const transparent = transparentInput?.checked && !transparentInput?.disabled;
         if (transparent) settings.transparent = true;
         const outputFormat = document.getElementById('imgActionOutputFormat')?.value;
         if (outputFormat) settings.output_format = outputFormat;

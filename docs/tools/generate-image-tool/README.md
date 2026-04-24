@@ -27,11 +27,11 @@ Image generation and editing tool for Jarvis. Supports text-to-image and image-t
 
 ### OpenAI
 
-- Model: `gpt-image-1.5` (configurable via `OPENAI_IMAGE_MODEL`)
+- Model: `gpt-image-2` (configurable via `OPENAI_IMAGE_MODEL`)
 - Best text rendering and instruction following
-- Sizes: 1024x1024, 1536x1024, 1024x1536
+- Sizes: legacy models use 1024x1024, 1536x1024, 1024x1536; `gpt-image-2` supports flexible 1K/2K/4K dimensions up to 3840px on the long edge
 - Quality: low, medium, high (mapped from 1K/2K/4K)
-- Transparent backgrounds (png/webp only)
+- Transparent backgrounds (png/webp only) on `gpt-image-1.5`, `gpt-image-1`, and `gpt-image-1-mini`; `gpt-image-2` does not currently support transparent backgrounds
 - Output formats: png, jpeg, webp
 - Generation API: `POST /v1/images/generations` (JSON body, base64 response)
 - Editing API: `POST /v1/images/edits` (multipart/form-data). Image bytes sent as a file field, prompt and other params as form fields. Supports `mask` for inpainting and `input_fidelity` (high/low).

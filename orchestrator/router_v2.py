@@ -255,6 +255,30 @@ def _extract_memory_tool_signals(transcript: str, enabled_tool_names: set[str]) 
     return positives, negatives
 
 
+def _current_request_needs_image_analysis(request: str) -> bool:
+    """Detect follow-up requests that need Jarvis vision over stash/local images."""
+    if not request:
+        return False
+    lowered = request.lower()
+    if not any(term in lowered for term in ("image", "photo", "picture", "upload", "uploaded")):
+        return False
+    return any(
+        phrase in lowered
+        for phrase in (
+            "look at",
+            "take a look",
+            "analyze",
+            "compare",
+            "review",
+            "let me know how",
+            "how it went",
+            "original uploaded",
+            "new image",
+            "generated image",
+        )
+    )
+
+
 def build_tool_retrieval_signals(
     transcript: str,
     enabled_tool_names: list[str] | set[str] | None = None,
@@ -327,6 +351,8 @@ def build_tool_retrieval_signals(
 
     request, source = _extract_current_tool_request(text)
     if request:
+        if "analyze_image" in enabled_set and _current_request_needs_image_analysis(request):
+            positive_tools.add("analyze_image")
         query = _cap_tool_rag_text(request, get_int("TOOL_RAG_CURRENT_QUERY_MAX_CHARS", 1200))
         return ToolRetrievalSignals(
             query=query,
@@ -895,6 +921,8 @@ CRITICAL EXAMPLES:
 **Image Re-Analysis (follow-up questions about uploaded image):**
 ❌ BAD: User corrects vision result or asks "look again" → analyze_image with image="1" or "image ID 1" (fails)
 ✅ GOOD: Use stash_ref from uploaded_image in context: analyze_image with image="stash://space_id/file_id"
+✅ GOOD: User asks to compare/review original upload vs generated image → call analyze_image on the uploaded_image stash_ref and generate_image stash_ref
+❌ BAD: Use provider-native/server-side image viewing for stash:// refs. Native image viewing cannot access local Jarvis stash files.
 
 **Intelligent Auto-Save (Critical for YOU CREATE/BUILD scenarios):**
 ❌ BAD: Build project with OpenCode → Build succeeds → Respond "Done" → DON'T save location/run command
@@ -1055,7 +1083,7 @@ RESPONSE STYLE: {response_style.upper()}
 
             if xai_image_understanding:
                 capabilities.append(
-                    "- NATIVE IMAGE UNDERSTANDING: Search can inspect images encountered during web/X browsing via xAI's native view_image capability"
+                    "- NATIVE IMAGE UNDERSTANDING: Search can inspect images encountered during web/X browsing via xAI's native view_image capability. For local Jarvis stash:// images, use analyze_image instead."
                 )
 
             if xai_video_understanding:

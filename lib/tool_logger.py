@@ -55,18 +55,48 @@ class ToolLogger:
             workflow_id: ID of the workflow (if executed as part of workflow)
             workflow_step: Step number within workflow (if applicable)
         """
+        result_summary = {
+            "ok": result.get("ok", False),
+            "speech": result.get("speech", "")[:200] if result.get("speech") else "",
+            "has_data": "data" in result,
+            "error": result.get("error", None)
+        }
+
+        data = result.get("data")
+        if isinstance(data, dict):
+            summary_keys = (
+                "provider",
+                "model",
+                "aspect_ratio",
+                "image_size",
+                "size",
+                "quality",
+                "is_edit",
+                "mime_type",
+                "stash_ref",
+                "filename",
+                "video_id",
+                "duration",
+                "resolution",
+            )
+            data_summary = {key: data[key] for key in summary_keys if key in data}
+            saved = data.get("saved")
+            if isinstance(saved, dict):
+                data_summary["saved"] = {
+                    key: saved[key]
+                    for key in ("stash_ref", "filename", "path", "url")
+                    if key in saved
+                }
+            if data_summary:
+                result_summary["data_summary"] = data_summary
+
         log_entry = {
             "timestamp": datetime.now().isoformat(),
             "mode": mode,
             "tool": tool_name,
             "arguments": arguments,
             "fallback_embeddings": result.get("fallback_embeddings"),
-            "result": {
-                "ok": result.get("ok", False),
-                "speech": result.get("speech", "")[:200] if result.get("speech") else "",
-                "has_data": "data" in result,
-                "error": result.get("error", None)
-            },
+            "result": result_summary,
             "duration_ms": round(duration_ms, 2),
             "user_query": user_query
         }
