@@ -2535,6 +2535,18 @@ class ChatUI {
   }
 
   /**
+   * Skip assistant-side inline rendering for source uploads that were only analyzed.
+   * Keep the stash metadata intact so follow-up turns can still re-use the image.
+   */
+  _shouldSkipAssistantInlineImage(item) {
+    return Boolean(
+      item
+      && item.tool_origin === 'web_upload'
+      && item.action === 'analyze'
+    );
+  }
+
+  /**
    * Add assistant message to chat
    */
   addAssistantMessage(text, toolsUsed = [], data = {}) {
@@ -2657,6 +2669,7 @@ class ChatUI {
       for (const [toolName, toolResult] of Object.entries(toolResultsData)) {
         if (toolsWithOwnImageDisplay.includes(toolName)) continue;
         if (!toolResult || typeof toolResult !== 'object') continue;
+        if (this._shouldSkipAssistantInlineImage(toolResult)) continue;
         const ref = toolResult.stash_ref || toolResult.ref;
         if (!ref) continue;
         const fn = toolResult.filename || toolResult.name || '';
