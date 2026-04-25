@@ -552,6 +552,55 @@ body {
 }
 
 /* Markdown tables in chat responses */
+.message-bubble .markdown-table-wrap {
+  max-width: 100%;
+  margin: var(--space-sm) 0 var(--space-md);
+}
+
+.message-bubble .markdown-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.message-bubble .markdown-table-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.message-bubble .markdown-table-scroll table {
+  width: max-content;
+  min-width: max(100%, 520px);
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.message-bubble .markdown-table-bar {
+  display: none;
+  height: 7px;
+  margin-top: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.message-bubble .markdown-table-wrap.is-scrollable .markdown-table-bar {
+  display: block;
+}
+
+.message-bubble .markdown-table-thumb {
+  height: 100%;
+  min-width: 28px;
+  border-radius: inherit;
+  background: rgba(148, 163, 184, 0.7);
+}
+
 .message-bubble table {
   width: 100%;
   min-width: 520px;

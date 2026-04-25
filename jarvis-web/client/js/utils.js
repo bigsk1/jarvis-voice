@@ -183,6 +183,116 @@ const Utils = {
   },
 
   /**
+   * Give markdown tables their own horizontal scroll area and a simple
+   * always-visible scrollbar below the table when the table overflows.
+   */
+  setupScrollableTables(root = document) {
+    const rootEl = root || document;
+    const tables = rootEl.querySelectorAll?.('.message-bubble table') || [];
+
+    tables.forEach((table) => {
+      if (table.closest('.markdown-table-scroll')) {
+        return;
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'markdown-table-wrap';
+
+      const scroll = document.createElement('div');
+      scroll.className = 'markdown-table-scroll';
+      scroll.setAttribute('role', 'region');
+      scroll.setAttribute('aria-label', 'Scrollable table');
+      scroll.tabIndex = 0;
+
+      const bar = document.createElement('div');
+      bar.className = 'markdown-table-bar';
+      bar.setAttribute('aria-hidden', 'true');
+
+      const thumb = document.createElement('div');
+      thumb.className = 'markdown-table-thumb';
+      bar.appendChild(thumb);
+
+      table.parentNode.insertBefore(wrap, table);
+      scroll.appendChild(table);
+      wrap.appendChild(scroll);
+      wrap.appendChild(bar);
+    });
+
+    const wrappers = rootEl.querySelectorAll?.('.markdown-table-wrap') || [];
+    wrappers.forEach((wrap) => {
+      const scroll = wrap.querySelector('.markdown-table-scroll');
+      const bar = wrap.querySelector('.markdown-table-bar');
+      const thumb = wrap.querySelector('.markdown-table-thumb');
+      if (!scroll || !bar || !thumb) {
+        return;
+      }
+
+      const updateState = () => {
+        const maxScroll = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+        const isScrollable = maxScroll > 1;
+        wrap.classList.toggle('is-scrollable', isScrollable);
+        if (!isScrollable) {
+          thumb.style.width = '';
+          thumb.style.transform = '';
+          return;
+        }
+
+        const barWidth = bar.clientWidth || scroll.clientWidth;
+        const thumbWidth = Math.max(28, Math.round((scroll.clientWidth / scroll.scrollWidth) * barWidth));
+        const maxThumbLeft = Math.max(0, barWidth - thumbWidth);
+        const thumbLeft = maxScroll > 0 ? (scroll.scrollLeft / maxScroll) * maxThumbLeft : 0;
+        thumb.style.width = `${thumbWidth}px`;
+        thumb.style.transform = `translateX(${thumbLeft}px)`;
+      };
+
+      if (!wrap.dataset.tableScrollSetup) {
+        wrap.dataset.tableScrollSetup = 'true';
+        scroll.addEventListener('scroll', updateState, { passive: true });
+
+        const setScrollFromClientX = (clientX) => {
+          const rect = bar.getBoundingClientRect();
+          const thumbWidth = thumb.offsetWidth || 28;
+          const maxThumbLeft = Math.max(1, rect.width - thumbWidth);
+          const targetThumbLeft = Math.min(
+            maxThumbLeft,
+            Math.max(0, clientX - rect.left - thumbWidth / 2)
+          );
+          const maxScroll = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+          scroll.scrollLeft = (targetThumbLeft / maxThumbLeft) * maxScroll;
+        };
+
+        let dragging = false;
+        bar.addEventListener('pointerdown', (event) => {
+          dragging = true;
+          bar.setPointerCapture?.(event.pointerId);
+          setScrollFromClientX(event.clientX);
+          event.preventDefault();
+        });
+        bar.addEventListener('pointermove', (event) => {
+          if (dragging) {
+            setScrollFromClientX(event.clientX);
+          }
+        });
+        const stopDragging = (event) => {
+          dragging = false;
+          bar.releasePointerCapture?.(event.pointerId);
+        };
+        bar.addEventListener('pointerup', stopDragging);
+        bar.addEventListener('pointercancel', stopDragging);
+
+        if (typeof ResizeObserver !== 'undefined') {
+          const resizeObserver = new ResizeObserver(updateState);
+          resizeObserver.observe(wrap);
+          resizeObserver.observe(scroll);
+        }
+      }
+
+      updateState();
+      setTimeout(updateState, 0);
+    });
+  },
+
+  /**
    * Convert simple tab/aligned text tables into GitHub-flavored Markdown tables.
    * LLMs often emit "Header<TAB>Header<TAB>Header" instead of pipe tables.
    */

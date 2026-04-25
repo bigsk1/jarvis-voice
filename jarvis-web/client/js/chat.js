@@ -3144,6 +3144,7 @@ class ChatUI {
     this._attachCompletionGuardCard(messageEl, data, toolsUsed);
     
     this.messagesContainer.appendChild(messageEl);
+    Utils.setupScrollableTables(messageEl);
     Utils.scrollToBottom(this.messagesContainer);
     
     // Clear pending tools
