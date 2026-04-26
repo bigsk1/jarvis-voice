@@ -84,7 +84,7 @@ class LLMLogger:
             
             "response": {
                 "type": "tool_call" if tool_call else ("text" if response_text else "error"),
-                "text_preview": response_text[:200] if response_text else None,
+                "text_preview": response_text[:400] if response_text else None,
                 "tool_name": tool_call.get("name") if tool_call else None,
                 "has_thinking": thinking is not None
             },
