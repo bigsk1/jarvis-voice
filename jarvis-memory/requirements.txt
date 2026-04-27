@@ -1,4 +1,4 @@
 # Jarvis Memory Browser dependencies
-flask>=2.0.0
-flask-cors>=3.0.0
-
+# Keep versions aligned with the root requirements.txt; list only this server's runtime deps.
+flask>=3.0.0
+flask-cors>=4.0.0
