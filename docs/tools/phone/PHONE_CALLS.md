@@ -73,7 +73,7 @@ VAPI_WAIT_FOR_CALL=true  # true=wait for result, false=async
 ### 4. Sync Tools
 
 ```bash
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 ---

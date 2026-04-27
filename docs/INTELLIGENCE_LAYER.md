@@ -630,7 +630,7 @@ BLOCKED_TOOLS="mcp_blinko_webSearch,mcp_blinko_webExtra"
 2. `enabled=false` in `.tool.json` → Skipped (local skills)
 3. MCP discovered / `enabled=true` → Synced normally
 
-After editing `BLOCKED_TOOLS`, run `./bin/sync_tools.py cloud` (or `local`).
+After editing `BLOCKED_TOOLS`, run `./bin/sync-tools.py cloud` (or `local`).
 
 #### Insight Filtering for Unavailable Tools
 

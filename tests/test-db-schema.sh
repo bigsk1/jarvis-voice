@@ -38,7 +38,7 @@ echo "Running: ./orchestrator/orchestrator_v2.py cloud 'hello'"
 ./orchestrator/orchestrator_v2.py cloud "hello" > /dev/null 2>&1
 
 # Sync tool definitions for Tool RAG
-./bin/sync_tools.py cloud > /dev/null 2>&1
+./bin/sync-tools.py cloud > /dev/null 2>&1
 
 echo "Checking schema..."
 COLUMNS=$(sqlite3 data/jarvis_memory.db "PRAGMA table_info(knowledge_base);" | cut -d'|' -f2)

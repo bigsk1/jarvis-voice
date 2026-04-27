@@ -11,7 +11,7 @@ source "$PROJECT_ROOT/lib/config_loader.sh"
 load_config "local"
 
 # Script paths
-STT_SCRIPT="$PROJECT_ROOT/bin/stt_local.py"
+STT_SCRIPT="$PROJECT_ROOT/bin/stt-local.py"
 SAY_SCRIPT="$PROJECT_ROOT/bin/say-local.sh"
 TTS_NORMALIZE="$PROJECT_ROOT/bin/tts-normalize.py"
 ORCHESTRATOR="$PROJECT_ROOT/orchestrator/orchestrator_v2.py"

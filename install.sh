@@ -221,7 +221,7 @@ Venv: `{venv}`
 2. **Audio devices** — Set `IN_DEV` and `OUT_DEV` in both env files. Hints below (typical ALSA `plughw:...` lines; servers often use `pulse` or `default`).
 3. **Re-run verify after edits**: `./verify-env.sh`
 4. **Tool DB sync** (after keys work):  
-   `source {venv}/bin/activate && cd {root} && ./bin/sync_tools.py cloud && ./bin/sync_tools.py local`
+   `source {venv}/bin/activate && cd {root} && ./bin/sync-tools.py cloud && ./bin/sync-tools.py local`
 5. **Smoke test**:  
    `./orchestrator/orchestrator_v2.py cloud "what time is it"`
 6. **Aliases (optional)**: `./update-aliases.sh` then `source ~/.bashrc`

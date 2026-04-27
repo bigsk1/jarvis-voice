@@ -86,7 +86,7 @@ Jarvis now has multiple ways to remove a tool from the current runtime:
 
 - `enabled: false` in a `skills/*.tool.json` file
 - active tool profiles such as `skills/profiles/offline.json`
-- per-mode sync state after `./bin/sync_tools.py <mode>`
+- per-mode sync state after `./bin/sync-tools.py <mode>`
 - Web UI or request-level excluded tools
 
 Learned insight injection already receives the current `available_tools` list, so positive strategies that recommend unavailable tools can be filtered. Auto-memory injection is different: it retrieves factual memories and intel notes before the LLM sees the request. Some of those memories may mention unavailable tools even when they are not tool recommendations.
@@ -636,17 +636,17 @@ Evolution improvements can be synced between cloud and local databases:
 # Sync cloud improvements to local (recommended)
 # Use stronger cloud models to evolve, then sync to local
 ./bin/sync-evolution-db.py local --update-files
-./bin/sync_tools.py local
+./bin/sync-tools.py local
 
 # Sync local to cloud (if needed)
 ./bin/sync-evolution-db.py cloud --update-files
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 **Recommended Workflow:**
 1. Run evolution with cloud mode (stronger LLMs for generation)
 2. Sync improvements to local: `./bin/sync-evolution-db.py local --update-files`
-3. Sync tool embeddings: `./bin/sync_tools.py local`
+3. Sync tool embeddings: `./bin/sync-tools.py local`
 
 ### Logging & Monitoring
 
@@ -718,7 +718,7 @@ When feedback repeatedly suggests a missing capability, the in-house Tool Builde
 
 1. **Consistent Gap Detection**: Requires 2+ feedback mentions of the same capability gap
 2. **In-House LLM Builder**: Uses existing providers (xAI, Anthropic, OpenAI, Ollama) - no OpenCode dependency
-3. **Separate Storage**: `skills/auto-tools/` directory (auto-discovered by sync_tools.py)
+3. **Separate Storage**: `skills/auto-tools/` directory (auto-discovered by sync-tools.py)
 4. **Report Cards**: Full traceability with `tool_name.report.json` linking to feedback IDs
 5. **Verification Pipeline**: Syntax check + import check + runtime test with sample input
 6. **Dependency Gating**: New packages → `skills/pending/` for human approval
@@ -777,7 +777,7 @@ Better, more accurate tool created!
 │             │                                                               │
 │             ▼                                                               │
 │  ┌──────────────────────┐                                                  │
-│  │  Deploy              │ skills/auto-tools/ + sync_tools.py               │
+│  │  Deploy              │ skills/auto-tools/ + sync-tools.py               │
 │  │  + Report Card       │ tool_name.report.json (traceability)             │
 │  └──────────────────────┘                                                  │
 │                                                                             │
@@ -820,7 +820,7 @@ logs/tool-builder/
 ./bin/build-tool list-auto
 
 # Sync after creation
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 ### Integration with Evolution

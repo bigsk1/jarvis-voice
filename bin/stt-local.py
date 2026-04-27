@@ -13,7 +13,7 @@ load_config('local')
 
 # Args: audio_path
 if len(sys.argv) < 2:
-    print("Usage: stt_local.py <audio.wav>", file=sys.stderr)
+    print("Usage: stt-local.py <audio.wav>", file=sys.stderr)
     sys.exit(1)
 
 audio_path = sys.argv[1]

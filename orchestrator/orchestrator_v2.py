@@ -131,6 +131,8 @@ def _has_client_side_search_tool_hint(text: str) -> bool:
 class Orchestrator:
     """Main orchestration with LLM-based routing, error recovery, and retry logic."""
 
+    DIRECT_SPEECH_TOOLS = {'status_recap', 'generate_music', 'phone_call', 'create_reminder'}
+
     _TRACE_SENSITIVE_KEY_PARTS = (
         "api_key",
         "apikey",
@@ -1261,11 +1263,10 @@ Mode: {self.mode}
                     self.status_updater.update(category='near_complete')
                 
                 # @TOOL_CONFIG: direct speech bypass — tools whose speech is used as-is (LLM won't reformat)
-                DIRECT_SPEECH_TOOLS = {'status_recap', 'generate_music', 'phone_call'}
                 last_tool = tools_used[-1] if tools_used else None
                 use_direct_speech = False
                 
-                if last_tool in DIRECT_SPEECH_TOOLS and conversation_context:
+                if last_tool in self.DIRECT_SPEECH_TOOLS and conversation_context:
                     # Use the tool's speech directly instead of LLM's reformulation
                     last_ctx = conversation_context[-1]
                     tool_speech = last_ctx.get("speech", "") or last_ctx.get("result", {}).get("speech", "")

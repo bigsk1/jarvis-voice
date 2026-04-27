@@ -5,7 +5,7 @@
 Jarvis uses a **three-tier sync system** to maintain consistency across cloud and local modes:
 
 1. **Memory Sync** (`sync-memory-db.py`) - Syncs memories between databases
-2. **Tool Sync** (`sync_tools.py`) - Syncs tool definitions for Tool RAG
+2. **Tool Sync** (`sync-tools.py`) - Syncs tool definitions for Tool RAG
 3. **Health Check** (`check-embeddings-health.py`) - Validates embedding dimensions
 
 This document explains how these systems work together and when they run.
@@ -26,7 +26,7 @@ Synchronizes **memories** (knowledge_base) and **conversations** between cloud a
 - ✅ Alerts (proactive system notifications)
 - ✅ Reminders
 - ✅ Scheduled tasks and recent scheduled-task runs
-- ❌ Tool definitions (synced separately by `sync_tools.py`)
+- ❌ Tool definitions (synced separately by `sync-tools.py`)
 
 ### Key Feature: Embedding Regeneration
 
@@ -101,7 +101,7 @@ This means a clean local rebuild can usually be repopulated with:
 
 ---
 
-## 2. Tool Definition Sync (`sync_tools.py`)
+## 2. Tool Definition Sync (`sync-tools.py`)
 
 ### Purpose
 Populates the `tool_definitions` table with all available tool schemas and their embeddings, enabling **Tool RAG** (dynamic tool retrieval).
@@ -152,10 +152,10 @@ db.upsert_tool(
 **Manually:**
 ```bash
 # Sync tools for cloud mode
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 
 # Sync tools for local mode
-./bin/sync_tools.py local
+./bin/sync-tools.py local
 ```
 
 ### Use Cases
@@ -163,41 +163,41 @@ db.upsert_tool(
 1. **After adding a new tool**: Make it discoverable
    ```bash
    # Created new skills/my_tool.py and my_tool.tool.json
-   ./bin/sync_tools.py cloud
+   ./bin/sync-tools.py cloud
    ```
 
 2. **After modifying tool description**: Update embeddings
    ```bash
    # Changed crypto_price.tool.json description
-   ./bin/sync_tools.py cloud
+   ./bin/sync-tools.py cloud
    ```
 
 3. **After adding MCP server**: Register new MCP tools
    ```bash
    # Added new MCP server to config
-   ./bin/sync_tools.py local
+   ./bin/sync-tools.py local
    ```
 
 4. **After fresh database creation**: Populate tool table
    ```bash
    # Created new database
-   ./bin/sync_tools.py cloud
+   ./bin/sync-tools.py cloud
    ```
 
 ### Implemented: content-hash skip
 
 **Behavior:** `MemoryDB.upsert_tool()` stores **`embedding_input_hash`** (SHA-256 of name, description, schema JSON, and enabled flag). On each sync, if the row already has a non-null embedding and the hash matches, the embedding step is **skipped** (no API / local embed call). New tools, missing embeddings, missing hash, or hash mismatch still embed as before.
 
-**Schema:** `tool_definitions.embedding_input_hash` is created on **new databases** (`MemoryDB._init_db`) and added to existing files via **`_ensure_column`** on open—same pattern as other additive migrations. Fresh clones that create the DB through `MemoryDB` (including `./bin/setup-memory-db.sh` for an empty file, `sync_tools.py`, and first service startup) get the column automatically.
+**Schema:** `tool_definitions.embedding_input_hash` is created on **new databases** (`MemoryDB._init_db`) and added to existing files via **`_ensure_column`** on open—same pattern as other additive migrations. Fresh clones that create the DB through `MemoryDB` (including `./bin/setup-memory-db.sh` for an empty file, `sync-tools.py`, and first service startup) get the column automatically.
 
 | Piece | Implementation |
 |--------|----------------|
 | **Fingerprint** | `_tool_definition_content_hash()` — UTF-8 payload with null separators so fields cannot alias. |
 | **Storage** | Column `embedding_input_hash TEXT` on `tool_definitions`. |
 | **Skip path** | If `embedding IS NOT NULL`, stored hash equals computed hash, and `force_reembed` is false → skip `get_embedding()` and reuse stored blob. |
-| **Always embed** | New row, null embedding, null/mismatched hash, or **`./bin/sync_tools.py cloud|local --force`** (`force_reembed=True`). |
+| **Always embed** | New row, null embedding, null/mismatched hash, or **`./bin/sync-tools.py cloud|local --force`** (`force_reembed=True`). |
 
-**Manual workflow unchanged:** Run `./bin/sync_tools.py cloud|local` after changing tools; use **`--force`** when you need a full re-embed (e.g. after switching embedding model/dimensions or debugging). Startup sync in `jarvis-services` / `jarvis-api` benefits from fewer redundant embedding calls when nothing changed.
+**Manual workflow unchanged:** Run `./bin/sync-tools.py cloud|local` after changing tools; use **`--force`** when you need a full re-embed (e.g. after switching embedding model/dimensions or debugging). Startup sync in `jarvis-services` / `jarvis-api` benefits from fewer redundant embedding calls when nothing changed.
 
 **Benefit skew:** **Cloud** embeddings save the most in cost and latency; **local** mode saves mainly time on large tool sets.
 
@@ -306,7 +306,7 @@ Validates that embeddings in the database match the expected dimensions for the 
                              ▼
               ┌──────────────────────────────┐
               │  2. TOOL DEFINITION SYNC     │
-              │  sync_tools.py               │
+              │  sync-tools.py               │
               │                              │
               │  • Discovers tools           │
               │  • Generates embeddings      │
@@ -419,7 +419,7 @@ rm -f data/jarvis_memory_local.db
 ./orchestrator/orchestrator_v2.py local "test query"
 
 # 3. Sync tools (populates tool embeddings)
-./bin/sync_tools.py local
+./bin/sync-tools.py local
 
 # 4. Health check (validate)
 ./bin/check-embeddings-health.py local || exit 1
@@ -591,7 +591,7 @@ Synchronizes active `prompt_versions` between cloud and local memory databases s
 ### What it Syncs
 - ✅ Active prompt versions from `prompt_versions`
 - ✅ Optional tool-description file refresh via `--update-files`
-- ❌ Does not regenerate tool embeddings by itself; run `sync_tools.py` after updating tool files when needed
+- ❌ Does not regenerate tool embeddings by itself; run `sync-tools.py` after updating tool files when needed
 
 ### Fresh-Install Behavior
 
@@ -677,7 +677,7 @@ Use `check-intelligence-health.py` to validate:
                              ▼
               ┌──────────────────────────────────┐
               │  2. TOOL DEFINITION SYNC         │
-              │  sync_tools.py                   │
+              │  sync-tools.py                   │
               │                                  │
               │  • Discovers tools               │
               │  • Generates embeddings          │
@@ -725,7 +725,7 @@ Note: Intelligence sync is MANUAL (run when switching modes)
 | Script | Syncs | Auto on Startup? | Regenerates Embeddings? |
 |--------|-------|------------------|------------------------|
 | `sync-memory-db.py` | Memories, conversations | ✅ Yes | ✅ Yes |
-| `sync_tools.py` | Tool definitions | ✅ Yes | ✅ Yes |
+| `sync-tools.py` | Tool definitions | ✅ Yes | ✅ Yes |
 | `sync-intelligence-db.py` | Experiences, insights, queue | ❌ Manual | ✅ Yes |
 | `check-embeddings-health.py` | N/A (validation only) | ✅ Yes | N/A |
 | `check-intelligence-health.py` | N/A (validation only) | ❌ Manual | N/A |

@@ -34,7 +34,7 @@
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + **inter-tool calling patterns** ⭐ ENHANCED
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (deterministic pipelines, variable extraction, WebUI integration) ⭐ IMPLEMENTED
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools in each `*.tool.json`
-- **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); only `default.json` is tracked in git — use for offline/minimal tool sets without editing every tool file. After changing profile: restart services, then `./bin/sync_tools.py local` or `cloud`
+- **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); only `default.json` is tracked in git — use for offline/minimal tool sets without editing every tool file. After changing profile: restart services, then `./bin/sync-tools.py local` or `cloud`
 - **[status-tool/README.md](status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🛒 **SerpApi Search Tool** (Amazon + engine-based SerpApi queries)
 
@@ -376,7 +376,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Stash viewer (Web UI)** — Dedicated page at `/stash/view/<space_id>/<file_id>` renders Markdown and text stash artifacts (JSON pretty-print, etc.); non-text artifacts link to raw `GET /api/stash/...`. Documented in `docs/STASH_SYSTEM.md` (see *Stash viewer (Jarvis Web UI)*).
 - ✅ **Tool profile overlays** — `JARVIS_TOOL_PROFILE` selects JSON overlays under `skills/profiles/` so dev / MCP-minimal / full tool sets share one codebase; see `skills/README.md` (*Tool profiles*) and `bin/manage-tools.py profile …`.
 - ✅ **Learned insights + profiles** — Learned-insight injection respects Web UI block settings and the active tool profile so hidden tools do not surface as “insights” when they are not available.
-- ✅ **`sync_tools` + profiles** — `bin/sync_tools.py` surfaces profile-related behavior more clearly when aligning the tools DB with a profile.
+- ✅ **`sync_tools` + profiles** — `bin/sync-tools.py` surfaces profile-related behavior more clearly when aligning the tools DB with a profile.
 - ✅ **Provider error vs. long Markdown answers** — Connectivity or troubleshooting answers that mention phrases like “gateway timeout” in prose are less likely to be misclassified as provider failures; short explicit error lines are still detected (`lib/provider_errors.py`, tests in `tests/test_provider_error_fallbacks.py`).
 
 **2026-04-16:**
@@ -1483,7 +1483,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: `docs/TOOL_RAG_STRATEGY.md`, `docs/TOOL_RAG_IMPLEMENTATION_SUMMARY.md`
 - ✅ **Enhanced error propagation** - LLM now receives full error details from failed tools for self-healing
 - ✅ **Test script Tool RAG integration** - All test scripts auto-sync tool embeddings after DB cleanup
-- ✅ **Tool RAG debugging utilities** - `debug_tool_rag.py` for comprehensive retrieval analysis
+- ✅ **Tool RAG debugging utilities** - `debug-tool-rag.py` for comprehensive retrieval analysis
   - Supports comparing stripped-query vs full-prompt retrieval when tuning `TOOL_SIMILARITY_THRESHOLD_FULL`
 
 **2025-11-21:**
@@ -1541,7 +1541,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Production routing now scans typo hints from the raw user request only, not the full Tool-RAG prompt
   - Debug tooling updated to reflect the live hinting path more closely
   - Config knobs added: `TOOL_RAG_TYPO_ENABLED`, `TOOL_RAG_TYPO_MAX_DISTANCE`, `TOOL_RAG_TYPO_MIN_TOKEN_LEN`, `TOOL_RAG_TYPO_MAX_HINTS`
-  - See: `docs/TOOL_RAG_STRATEGY.md`, `lib/tool_rag_typo_hints.py`, `bin/debug_tool_rag.py`
+  - See: `docs/TOOL_RAG_STRATEGY.md`, `lib/tool_rag_typo_hints.py`, `bin/debug-tool-rag.py`
 
 **2025-11-11:**
 - ✅ OpenCode integration complete

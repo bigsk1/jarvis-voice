@@ -71,7 +71,7 @@ def cmd_build(args):
                 print(f"   Verification: {'✅ Passed' if result.report_card.get('verification_passed') else '❌ Failed'}")
             print()
             print("🔄 Run sync to enable:")
-            print(f"   ./bin/sync_tools.py {args.mode}")
+            print(f"   ./bin/sync-tools.py {args.mode}")
         
         elif result.status == "pending_review":
             print(f"⏸️  Tool pending review: {result.tool_name}")
@@ -152,7 +152,7 @@ def cmd_approve(args):
             print(f"   Installed: {', '.join(needs_packages)}")
         print()
         print("🔄 Run sync to enable:")
-        print(f"   ./bin/sync_tools.py cloud")
+        print(f"   ./bin/sync-tools.py cloud")
     else:
         print(f"❌ Failed to approve: {tool_name}")
 

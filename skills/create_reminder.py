@@ -44,6 +44,35 @@ from time_utils import (
 )
 
 
+MONTH_NAME_TO_NUMBER = {
+    "january": 1,
+    "jan": 1,
+    "february": 2,
+    "feb": 2,
+    "march": 3,
+    "mar": 3,
+    "april": 4,
+    "apr": 4,
+    "may": 5,
+    "june": 6,
+    "jun": 6,
+    "july": 7,
+    "jul": 7,
+    "august": 8,
+    "aug": 8,
+    "september": 9,
+    "sep": 9,
+    "sept": 9,
+    "october": 10,
+    "oct": 10,
+    "november": 11,
+    "nov": 11,
+    "december": 12,
+    "dec": 12,
+}
+MONTH_NAME_PATTERN = "|".join(sorted(MONTH_NAME_TO_NUMBER.keys(), key=len, reverse=True))
+
+
 def sync_to_google_calendar(reminder_id: int, title: str, description: str, 
                             trigger_time_utc: datetime, recurrence_rule: str = None) -> dict:
     """Sync reminder to Google Calendar via n8n webhook.
@@ -263,6 +292,64 @@ def extract_time_from_expression(when: str, default_hour: int = 10):
     return default_hour, 0
 
 
+def _build_month_day_target(now: datetime, month: int, day: int, hour: int, minute: int, year: int | None = None) -> datetime:
+    """Build a local datetime for a month/day combination, rolling forward when needed."""
+    target_year = year if year is not None else now.year
+    target = now.replace(
+        year=target_year,
+        month=month,
+        day=1,
+        hour=hour,
+        minute=minute,
+        second=0,
+        microsecond=0,
+    )
+    target = replace_day_safe(target, day)
+
+    if year is None and target <= now:
+        target = target.replace(year=target.year + 1, month=month, day=1)
+        target = replace_day_safe(target, day)
+
+    return target
+
+
+def parse_absolute_date_expression(when: str, now: datetime, default_hour: int = 10):
+    """Parse one-time absolute date expressions like 'May 1st' or 'next month on the 1st'."""
+    hour, minute = extract_time_from_expression(when, default_hour)
+
+    next_month_match = re.search(
+        r'\bnext\s+month(?:\s+on)?\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\b',
+        when,
+        flags=re.IGNORECASE,
+    )
+    if next_month_match:
+        day = int(next_month_match.group(1))
+        if 1 <= day <= 31:
+            target = add_months_local(now, 1).replace(
+                day=1,
+                hour=hour,
+                minute=minute,
+                second=0,
+                microsecond=0,
+            )
+            return replace_day_safe(target, day)
+
+    month_day_match = re.search(
+        rf'\b(?:on\s+)?({MONTH_NAME_PATTERN})\s+(\d+)(?:st|nd|rd|th)?(?:,\s*|\s+)?(\d{{4}})?\b',
+        when,
+        flags=re.IGNORECASE,
+    )
+    if month_day_match:
+        month_name = month_day_match.group(1).lower()
+        day = int(month_day_match.group(2))
+        explicit_year = int(month_day_match.group(3)) if month_day_match.group(3) else None
+        month = MONTH_NAME_TO_NUMBER[month_name]
+        if 1 <= day <= 31:
+            return _build_month_day_target(now, month, day, hour, minute, explicit_year)
+
+    return None
+
+
 def parse_time_expression(when: str, default_hour: int = 10):
     """Parse natural time expressions into datetime.
     
@@ -428,6 +515,11 @@ def parse_time_expression(when: str, default_hour: int = 10):
         else:
             # Just "tomorrow" - default to 10am
             return tomorrow.replace(hour=default_hour, minute=0, second=0, microsecond=0), None
+
+    # Pattern: "May 1st at 6pm" or "next month on the 1st at 6pm" (one-time)
+    absolute_date = parse_absolute_date_expression(when, now, default_hour)
+    if absolute_date is not None:
+        return absolute_date, None
     
     # Pattern: "at 3pm" or "3pm" (one-time)
     time_match = re.search(r'(\d+)(?::(\d+))?\s*(am|pm)\b', when)

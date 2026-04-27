@@ -11,7 +11,7 @@
 After implementing Tool RAG (dynamic tool retrieval), test scripts that delete and recreate the database were failing because:
 
 1. **Tool definitions table was empty** - The `tool_definitions` table exists but has no data after a fresh database creation
-2. **No tool embeddings** - Without running `sync_tools.py`, the vector search returns 0 tools
+2. **No tool embeddings** - Without running `sync-tools.py`, the vector search returns 0 tools
 3. **LLM uses wrong tools** - Falls back to ghost tools only (e.g., using `get_time` instead of `crypto_price`)
 
 **Example failure:**
@@ -27,7 +27,7 @@ After implementing Tool RAG (dynamic tool retrieval), test scripts that delete a
 
 The Tool RAG system requires:
 1. `tool_definitions` table in database ✅ (auto-created by `memory_db.py`)
-2. Tool schemas + embeddings populated ❌ (requires manual `sync_tools.py`)
+2. Tool schemas + embeddings populated ❌ (requires manual `sync-tools.py`)
 
 Test scripts that use `rm data/jarvis_memory.db` were starting with an empty `tool_definitions` table, breaking Tool RAG.
 
@@ -63,7 +63,7 @@ Added automatic tool sync to all test scripts that clean databases:
 
 # CRITICAL: Sync tool definitions for Tool RAG
 echo "🔧 Syncing tool definitions..."
-./bin/sync_tools.py cloud > /dev/null 2>&1  # or 'local' for local mode
+./bin/sync-tools.py cloud > /dev/null 2>&1  # or 'local' for local mode
 echo "✅ Tool RAG ready"
 echo ""
 ```
@@ -94,9 +94,9 @@ Added new sections:
 3. **Tool RAG Troubleshooting** - Common issues and fixes
 
 Key additions:
-- When to run `sync_tools.py`
+- When to run `sync-tools.py`
 - How to verify tool embeddings exist
-- How to debug tool retrieval with `debug_tool_rag.py`
+- How to debug tool retrieval with `debug-tool-rag.py`
 - Which test scripts auto-sync vs. manual sync needed
 
 ---
@@ -135,7 +135,7 @@ Not run (requires multiple models), but sync logic verified
 ```bash
 rm data/jarvis_memory.db
 # YOU MUST RUN:
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 **If you see "0 tools retrieved" errors:**
@@ -144,7 +144,7 @@ rm data/jarvis_memory.db
 sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embedding IS NOT NULL;"
 
 # If result is 0, sync:
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 ### For Developers
@@ -162,7 +162,7 @@ rm data/jarvis_memory.db
 ./bin/setup-memory-db.sh > /dev/null 2>&1
 
 # SYNC TOOLS (CRITICAL)
-./bin/sync_tools.py cloud > /dev/null 2>&1
+./bin/sync-tools.py cloud > /dev/null 2>&1
 
 # Now run tests
 ./orchestrator/orchestrator_v2.py cloud "test query"

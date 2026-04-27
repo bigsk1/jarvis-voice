@@ -701,7 +701,7 @@ def speech_to_text():
     
     provider = get_jarvis_setting('STT_PROVIDER')
     if provider == 'faster-whisper':
-        # Local: use stt_local.py script
+        # Local: use stt-local.py script
         return transcribe_local(audio_path)
     else:
         # Cloud: OpenAI Whisper API

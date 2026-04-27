@@ -37,12 +37,12 @@ TOOL_SIMILARITY_THRESHOLD=0.0  # Disable threshold, use top-K only
 
 ---
 
-### 2. Debug Tool: `bin/debug_tool_rag.py`
+### 2. Debug Tool: `bin/debug-tool-rag.py`
 
 **Usage**:
 ```bash
-./bin/debug_tool_rag.py cloud "What should I eat for dinner?"
-./bin/debug_tool_rag.py local "Remind me to call mom"
+./bin/debug-tool-rag.py cloud "What should I eat for dinner?"
+./bin/debug-tool-rag.py local "Remind me to call mom"
 ```
 
 **Output**:
@@ -122,7 +122,7 @@ TOOL_SIMILARITY_THRESHOLD=0.0  # Rely on top-K only
 
 ### Monitor and Adjust
 1. Run queries and check logs
-2. Use `debug_tool_rag.py` to inspect scores
+2. Use `debug-tool-rag.py` to inspect scores
 3. If seeing too many irrelevant tools, raise threshold gradually:
    - `0.10` - Very permissive
    - `0.15` - Balanced (current default)
@@ -168,7 +168,7 @@ The LLM found your sushi preference ("favorite_food: The user loves sushi") but 
 
 1. **Ghost Tools Work**: They ensure critical tools (like `semantic_recall`) are ALWAYS available
 2. **Threshold is Optional**: Set to `0.0` to disable and rely on top-K limiting
-3. **Use Debug Tool**: `debug_tool_rag.py` shows exactly what's happening
+3. **Use Debug Tool**: `debug-tool-rag.py` shows exactly what's happening
 4. **Logs are Your Friend**: New logging shows similarity scores and retrieval decisions
 5. **Tool RAG is an Optimization**: It reduces context flooding while maintaining functionality
 
@@ -184,12 +184,12 @@ The LLM found your sushi preference ("favorite_food: The user loves sushi") but 
 2. **Re-sync tools** (already automated in startup scripts):
    ```bash
    source ~/jarvis-venv/bin/activate
-   ./bin/sync_tools.py cloud
+   ./bin/sync-tools.py cloud
    ```
 
 3. **Test with debug tool**:
    ```bash
-   ./bin/debug_tool_rag.py cloud "What should I eat for dinner?"
+   ./bin/debug-tool-rag.py cloud "What should I eat for dinner?"
    ```
 
 4. **Monitor logs** during normal usage and adjust threshold if needed

@@ -466,7 +466,7 @@ BLINKO_API_KEY="your-api-key-here"
 
 ```bash
 # Sync tool
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 
 # Test via CLI
 ./orchestrator/orchestrator_v2.py cloud "Save this to Blinko: Today I learned about Rust's ownership model. Key insight: borrowing prevents data races at compile time."

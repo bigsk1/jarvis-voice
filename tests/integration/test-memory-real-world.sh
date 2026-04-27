@@ -22,7 +22,7 @@ fi
 
 # CRITICAL: Sync tool definitions for Tool RAG
 echo "🔧 Syncing tool definitions..."
-./bin/sync_tools.py cloud > /dev/null 2>&1
+./bin/sync-tools.py cloud > /dev/null 2>&1
 echo "✅ Tool RAG ready"
 echo ""
 

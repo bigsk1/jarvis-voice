@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS tool_definitions (
 **Implementation Notes:**
 -   Embeddings are stored as binary blobs (Pickled python lists for OpenAI, or JSON for others).
 -   The system is robust enough to handle different serialization formats.
--   `embedding_input_hash` is populated by `MemoryDB.upsert_tool()` / `sync_tools.py`; existing DBs get the column via `ALTER TABLE` on open.
+-   `embedding_input_hash` is populated by `MemoryDB.upsert_tool()` / `sync-tools.py`; existing DBs get the column via `ALTER TABLE` on open.
 
 ---
 
@@ -85,7 +85,7 @@ These tools are **ALWAYS** available, ensuring basic functionality never fails e
 
 ## 5. Implementation Details
 
-### A. Sync Script (`bin/sync_tools.py`)
+### A. Sync Script (`bin/sync-tools.py`)
 **CRITICAL COMPONENT**: This script iterates through all local and MCP tools, generates embeddings, and saves them to the DB.
 
 **Usage**:
@@ -94,10 +94,10 @@ These tools are **ALWAYS** available, ensuring basic functionality never fails e
 source ~/jarvis-venv/bin/activate
 
 # Sync Cloud Tools (OpenAI Embeddings - 1536 dim)
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 
 # Sync Local Tools (Nomic Embeddings - 768 dim)
-./bin/sync_tools.py local
+./bin/sync-tools.py local
 ```
 
 ### B. Router Logic (`orchestrator/router_v2.py`)
@@ -174,12 +174,12 @@ In that case the LLM-call log correctly stores the full routing prompt, while th
 
 ### E. Debugging with real prompts
 
-Use `bin/debug_tool_rag.py` to compare the plain user string against a real captured full prompt:
+Use `bin/debug-tool-rag.py` to compare the plain user string against a real captured full prompt:
 
 ```bash
 source ~/jarvis-venv/bin/activate
 
-./bin/debug_tool_rag.py cloud "and Boston too" \
+./bin/debug-tool-rag.py cloud "and Boston too" \
   --full-transcript-file /tmp/captured_turn_input.txt \
   --stripped-threshold 0.23 \
   --full-threshold 0.40
@@ -218,7 +218,7 @@ Practical note:
 - this is now slightly broader than typo-only behavior because segment matching can intentionally help with common nouns, for example `bookmarks` nudging `bookmark_search`
 
 Debugging note:
-- `bin/debug_tool_rag.py` now uses the same typo-hint expansion path for regime 1, so the plain-query debug view is much closer to live routing behavior
+- `bin/debug-tool-rag.py` now uses the same typo-hint expansion path for regime 1, so the plain-query debug view is much closer to live routing behavior
 
 Disable with `TOOL_RAG_TYPO_ENABLED=false`.
 
@@ -279,7 +279,7 @@ Tracing intentionally runs an extra ranking search so the log can show near miss
 ## 6. Findings & troubleshooting
 
 ### Critical: Virtual Environment
-We discovered that running `sync_tools.py` outside the virtual environment resulted in **0 embeddings** because the `openai` package wasn't found. The script would fail silently (printing a warning) and store the tool *without* an embedding.
+We discovered that running `sync-tools.py` outside the virtual environment resulted in **0 embeddings** because the `openai` package wasn't found. The script would fail silently (printing a warning) and store the tool *without* an embedding.
 **Fix**: Always ensure `openai` is installed and venv is active when syncing.
 
 ### Critical: Serialization
@@ -299,7 +299,7 @@ sqlite3 data/jarvis_memory.db "SELECT count(*) FROM tool_definitions WHERE embed
 
 ## 7. Maintenance
 
-**When to run `sync_tools.py`?**
+**When to run `sync-tools.py`?**
 1.  **New Tool Added**: You create a new `my_tool.py` and `.json`.
 2.  **Description Changed**: You update the description in a `.tool.json` (this changes the embedding).
 3.  **MCP Config Changed**: You add/remove servers in `mcp-servers.json`.

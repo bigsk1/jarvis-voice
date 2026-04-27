@@ -108,7 +108,7 @@ The Tool Builder automatically creates new tools when:
 │  ┌──────────────────────┐                                          │
 │  │ Deploy to            │                                          │
 │  │ skills/auto-tools/   │                                          │
-│  │ + sync_tools.py      │                                          │
+│  │ + sync-tools.py      │                                          │
 │  │ + log success        │                                          │
 │  └──────────────────────┘                                          │
 │                                                                     │
@@ -164,7 +164,7 @@ Tools that need new packages go to `skills/pending/` for review:
 
 ```bash
 # Sync to enable new tools
-./bin/sync_tools.py cloud  # or local
+./bin/sync-tools.py cloud  # or local
 ```
 
 ---
@@ -673,7 +673,7 @@ sum(count_over_time({job="jarvis", log_type="tool_builder"} [24h]))
 ./bin/build-tool --mode cloud build "Convert text to uppercase or lowercase"
 
 # 4. Sync to enable
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 
 # 5. Verify it works
 ./orchestrator/orchestrator_v2.py cloud "convert hello to uppercase"
@@ -698,7 +698,7 @@ From `jarvis-dashboard`:
 
 ```bash
 # Sync to vector DB
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 ### Verification failed

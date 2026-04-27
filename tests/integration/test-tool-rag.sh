@@ -163,7 +163,7 @@ if [[ $FAILED -eq 0 ]]; then
 else
     echo -e "${RED}⚠️  Some tests failed${NC}"
     echo "   Check logs: logs/tools/tool-calls-2025-11-22.jsonl"
-    echo "   Debug with: ./bin/debug_tool_rag.py cloud \"your query\""
+    echo "   Debug with: ./bin/debug-tool-rag.py cloud \"your query\""
     exit 1
 fi
 

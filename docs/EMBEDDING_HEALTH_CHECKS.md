@@ -202,7 +202,7 @@ Knowledge Base:
      ./bin/sync-memory-db.py --from cloud --to local
   
   3. Tool embeddings are wrong - regenerate them:
-     ./bin/sync_tools.py local
+     ./bin/sync-tools.py local
 
 ⚠️  Semantic search will fail until embeddings are fixed!
 ```
@@ -221,7 +221,7 @@ Both `jarvis-services` and `jarvis-api` now run automatic health checks:
 
 **Startup sequence:**
 1. Sync memories between modes (`sync-memory-db.py`)
-2. Sync tool definitions (`sync_tools.py`)
+2. Sync tool definitions (`sync-tools.py`)
 3. **Health check embeddings** (`check-embeddings-health.py`)
 4. Start services/API
 
@@ -279,13 +279,13 @@ export LLM_PROVIDER="ollama"
 **Fix**: Re-sync tools for that mode. Use **`--force`** if you need every tool re-embedded (e.g. after a model change), not only changed definitions:
 ```bash
 # Local mode
-./bin/sync_tools.py local
+./bin/sync-tools.py local
 # or full re-embed:
-./bin/sync_tools.py local --force
+./bin/sync-tools.py local --force
 
 # Cloud mode
-./bin/sync_tools.py cloud
-./bin/sync_tools.py cloud --force
+./bin/sync-tools.py cloud
+./bin/sync-tools.py cloud --force
 
 # Verify fix
 ./bin/check-embeddings-health.py local
@@ -299,7 +299,7 @@ export LLM_PROVIDER="ollama"
 ./skills/ingest_intel.py '{"path":"jarvis-intel"}'
 
 # 2. Sync tools
-./bin/sync_tools.py local  # or cloud
+./bin/sync-tools.py local  # or cloud
 
 # 3. Verify health
 ./bin/check-embeddings-health.py local
@@ -318,7 +318,7 @@ rm -f data/jarvis_memory_local.db
 ./orchestrator/orchestrator_v2.py local "test query"
 
 # Sync tools (generates embeddings; add --force to re-embed every tool)
-./bin/sync_tools.py local
+./bin/sync-tools.py local
 
 # Health check
 ./bin/check-embeddings-health.py local || exit 1
@@ -410,7 +410,7 @@ In that case:
 **A**: You must regenerate ALL embeddings:
 1. Update config to new embedding model
 2. Run `sync-memory-db.py` to regenerate memory embeddings
-3. Run `./bin/sync_tools.py <cloud|local> --force` to regenerate **all** tool embeddings (normal sync may skip unchanged tools via `embedding_input_hash`)
+3. Run `./bin/sync-tools.py <cloud|local> --force` to regenerate **all** tool embeddings (normal sync may skip unchanged tools via `embedding_input_hash`)
 4. Run health check to verify
 
 ### Q: How often should I run health checks?

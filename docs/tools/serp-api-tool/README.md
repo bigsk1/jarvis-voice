@@ -33,8 +33,8 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 1. Add your key in env:
    - `SERP_API_KEY` in `config/cloud.env` and/or `config/local.env`
 2. Sync tools:
-   - `./bin/sync_tools.py cloud`
-   - `./bin/sync_tools.py local` (if you use local mode)
+   - `./bin/sync-tools.py cloud`
+   - `./bin/sync-tools.py local` (if you use local mode)
 
 ## What it returns
 

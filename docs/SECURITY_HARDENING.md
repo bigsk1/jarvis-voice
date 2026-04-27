@@ -249,7 +249,7 @@ except SecurityError as e:
 
 ### Fix 11: Shared TTS Normalization Layer ✅ IMPLEMENTED
 
-**Files:** `lib/tts_normalizer.py`, `lib/security_utils.py`, `api/routes/voice.py`, `api/managers/alert_manager.py`, `services/reminder_scheduler.py`, `services/follow_up_daemon.py`, `services/self_healing_daemon.py`, `bin/question-orchestrator.sh`, `bin/question-orchestrator-local.sh`, `bin/question-mic.sh`, `bin/question-local.sh`, `bin/wake_jarvis.py`, `bin/wake_jarvis_local.py`, `bin/tts-normalize.py`
+**Files:** `lib/tts_normalizer.py`, `lib/security_utils.py`, `api/routes/voice.py`, `api/managers/alert_manager.py`, `services/reminder_scheduler.py`, `services/follow_up_daemon.py`, `services/self_healing_daemon.py`, `bin/question-orchestrator.sh`, `bin/question-orchestrator-local.sh`, `bin/question-mic.sh`, `bin/question-local.sh`, `bin/wake-jarvis.py`, `bin/wake-jarvis-local.py`, `bin/tts-normalize.py`
 
 **Problem:**
 - Speech cleanup rules had started to drift across multiple runtime paths
@@ -284,7 +284,7 @@ except SecurityError as e:
 - Reminder speech via `services/reminder_scheduler.py`
 - Follow-up alert speech via `services/follow_up_daemon.py`
 - Self-healing daemon speech via `services/self_healing_daemon.py`
-- Wake-word greeting speech via `bin/wake_jarvis.py` and `bin/wake_jarvis_local.py`
+- Wake-word greeting speech via `bin/wake-jarvis.py` and `bin/wake-jarvis-local.py`
 - Shell question flows via `bin/question-orchestrator.sh`, `bin/question-orchestrator-local.sh`, `bin/question-mic.sh`, and `bin/question-local.sh`
 
 **Important boundary:**

@@ -397,7 +397,7 @@ bin/validate-system-prompt  # --mode cloud|local
 bin/evolve-prompts          # --mode cloud|local
 bin/run-intelligence-maintenance.py  # --mode cloud|local
 bin/check-embeddings-health.py       # mode arg
-bin/debug_tool_rag.py       # mode arg
+bin/debug-tool-rag.py       # mode arg
 tests/comprehensive_test.py # cloud|local|both
 tests/test_tool_similarity.py # --mode cloud|local
 ```

@@ -287,8 +287,8 @@ TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED=false
 **Sync Tool Definitions** (required after adding/modifying tools):
 ```bash
 # Sync tool embeddings to database
-./bin/sync_tools.py cloud  # For cloud mode
-./bin/sync_tools.py local  # For local mode
+./bin/sync-tools.py cloud  # For cloud mode
+./bin/sync-tools.py local  # For local mode
 ```
 
 **Debug Tool Retrieval**:
@@ -297,10 +297,10 @@ TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED=false
 source ~/jarvis-venv/bin/activate
 
 # See exactly what tools are retrieved for a query
-./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?"
+./bin/debug-tool-rag.py cloud "What is the price of Bitcoin?"
 
 # Compare a plain user string with a real full prompt captured from logs/debug
-./bin/debug_tool_rag.py cloud "and Boston too" \
+./bin/debug-tool-rag.py cloud "and Boston too" \
   --full-transcript-file /tmp/captured_turn_input.txt \
   --stripped-threshold 0.23 \
   --full-threshold 0.40
@@ -441,7 +441,7 @@ GHOST_TOOLS="search_memory,semantic_recall,remember,my_custom_tool"
 
 ```mermaid
 graph LR
-    AddTool[Add/Modify Tool] --> SyncScript[Run sync_tools.py]
+    AddTool[Add/Modify Tool] --> SyncScript[Run sync-tools.py]
     SyncScript --> LoadSchema[Load Tool Schema]
     LoadSchema --> GenEmbed[Generate Embedding]
     GenEmbed --> SaveDB[Save to tool_definitions]
@@ -463,8 +463,8 @@ graph LR
 
 **Manual Sync:**
 ```bash
-./bin/sync_tools.py cloud  # Syncs to jarvis_memory.db
-./bin/sync_tools.py local  # Syncs to jarvis_memory_local.db
+./bin/sync-tools.py cloud  # Syncs to jarvis_memory.db
+./bin/sync-tools.py local  # Syncs to jarvis_memory_local.db
 ```
 
 ---

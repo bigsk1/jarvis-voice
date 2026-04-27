@@ -92,7 +92,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
   - Launch: `./bin/jarvis-intelligence`
 
 ### Tool System
-- **Tool profile overlays** (optional): JSON files under `skills/profiles/` merge with each tool’s `enabled` flag — set `JARVIS_TOOL_PROFILE` in `config/local.env` or `config/cloud.env` to the profile name (e.g. offline). After switching profile, restart services and run `./bin/sync_tools.py local` or `cloud`. CLI: `./bin/manage-tools.py -h`. Details and copy-paste example: [`skills/README.md`](skills/README.md) (section *Tool profiles*).
+- **Tool profile overlays** (optional): JSON files under `skills/profiles/` merge with each tool’s `enabled` flag — set `JARVIS_TOOL_PROFILE` in `config/local.env` or `config/cloud.env` to the profile name (e.g. offline). After switching profile, restart services and run `./bin/sync-tools.py local` or `cloud`. CLI: `./bin/manage-tools.py -h`. Details and copy-paste example: [`skills/README.md`](skills/README.md) (section *Tool profiles*).
 - **Tool RAG System**: Dynamic tool retrieval - loads only relevant tools for each query
   - Scales to 100+ tools without context flooding
   - Vector-based semantic search for tool discovery
@@ -371,8 +371,8 @@ Key decision points:
 ```
 jarvis-voice/
 ├── bin/                      # Executable scripts & utilities (40+)
-│   ├── wake_jarvis.py        # Cloud wake word loop
-│   ├── wake_jarvis_local.py  # Local wake word loop
+│   ├── wake-jarvis.py        # Cloud wake word loop
+│   ├── wake-jarvis-local.py  # Local wake word loop
 │   ├── say.sh / say-local.sh # Text-to-speech
 │   ├── jarvis-api            # Proactive API server (port 8880)
 │   ├── jarvis-services       # Background services daemon
@@ -386,7 +386,7 @@ jarvis-voice/
 │   ├── evolve-prompts        # Prompt evolution system
 │   ├── manage-tools.py       # Enable/disable tools
 │   ├── sync-memory-db.py     # Manual database sync
-│   ├── sync_tools.py         # Tool RAG: sync tool embeddings with hashing
+│   ├── sync-tools.py         # Tool RAG: sync tool embeddings with hashing
 │   ├── cleanup-intelligence.py # Clean false-positive experiences
 │   ├── spotify-auth          # Spotify OAuth setup
 │   ├── memory                # Memory CLI tool
@@ -1414,8 +1414,8 @@ cp data/jarvis_memory_local.db data/jarvis_memory_local.db.backup
 ./bin/sync-memory-db.py --from cloud --to local  # Sync cloud → local
 
 # Tool RAG (tool_definitions) is per-mode and not copied by sync-memory-db — run separately:
-./bin/sync_tools.py cloud   # or: local
-./bin/sync_tools.py cloud --force   # re-embed every tool (e.g. after embedding model change)
+./bin/sync-tools.py cloud   # or: local
+./bin/sync-tools.py cloud --force   # re-embed every tool (e.g. after embedding model change)
 
 # Prompt evolution sync after using cloud/local prompt tuning
 ./bin/sync-evolution-db.py local                # Sync cloud prompt versions → local
@@ -1453,7 +1453,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Intelligence provenance + safe maintenance** — Insights keep source experience/web conversation, query, tool sequence, preferred sequence, supporting tools, and reflection token/cost metadata; intelligence DB sync preserves those fields; maintenance decay supports dry-run previews
 - ✅ **Intelligence Dashboard pagination** — Experiences/Insights use server-side sorted/filtered 50-row pages with automatic scroll loading and lightweight summary facets instead of eager 500/1000-row list loads
 - ✅ **Canvas public LAN links** — `CANVAS_INTERNAL_URL` stays local for tool/API calls while `CANVAS_PUBLIC_URL` controls user-facing links; direct `/page_...` URLs work after auth for headless LAN deployments
-- ✅ **Tool RAG & embeddings (v2.48)** — Unchanged tools skip re-embedding via stored content hash; `./bin/sync_tools.py <cloud|local> --force` for a full refresh; `./bin/check-embeddings-health.py` reports the effective vector backend (`openai` vs `ollama`) separately from the chat LLM; see `docs/SYNC_ARCHITECTURE.md`, `docs/DUAL_DATABASE_SYSTEM.md`, `docs/EMBEDDING_HEALTH_CHECKS.md`
+- ✅ **Tool RAG & embeddings (v2.48)** — Unchanged tools skip re-embedding via stored content hash; `./bin/sync-tools.py <cloud|local> --force` for a full refresh; `./bin/check-embeddings-health.py` reports the effective vector backend (`openai` vs `ollama`) separately from the chat LLM; see `docs/SYNC_ARCHITECTURE.md`, `docs/DUAL_DATABASE_SYSTEM.md`, `docs/EMBEDDING_HEALTH_CHECKS.md`
 - ✅ **Jarvis Web UI `/logs`** — Auth-protected log browser: allowed extensions (`.jsonl`, `.log`, `.md`), stable folder navigation, folder search, YAML-style JSONL cards with modal expansion, markdown viewing, mobile drill-down
 - ✅ **Orchestrator: duplicate tools & follow-ups** — Repeated identical tool calls no longer end the turn immediately; bounded recovery with duplicate-guard context; better duplicate-prevention synthesis for transcript/stash-style answers; prior tool results carry `result_truncated` / char-count metadata; retries preserve tool cards and orchestrator state
 - ✅ **Stash & model overrides** — Conversation follow-ups keep real `stash` tool payloads (not upload-only); model prompt overrides strip `-latest` / `-cloud` suffixes for folder matching

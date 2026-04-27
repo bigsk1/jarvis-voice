@@ -435,7 +435,7 @@ For reference, initial setup was:
 2. Add credentials to `config/cloud.env`
 3. Run `./bin/spotify-auth`
 4. Authorize in browser
-5. Sync tools: `./bin/sync_tools.py cloud`
+5. Sync tools: `./bin/sync-tools.py cloud`
 6. Export library: `./bin/spotify-export-library` (optional but recommended)
 7. Ingest: `python3 skills/ingest_intel.py`
 

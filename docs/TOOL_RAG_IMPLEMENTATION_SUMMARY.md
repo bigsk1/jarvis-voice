@@ -44,12 +44,12 @@ GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_c
 - `bin/jarvis-api`
 
 **Integration**:
-Both startup scripts now automatically run `sync_tools.py` to ensure tool embeddings are up-to-date:
+Both startup scripts now automatically run `sync-tools.py` to ensure tool embeddings are up-to-date:
 
 ```bash
 # Sync tool definitions to vector database
 echo -e "${BLUE}🔧 Syncing tool definitions...${NC}"
-python3 "$PROJECT_ROOT/bin/sync_tools.py" "$MODE" > /dev/null 2>&1
+python3 "$PROJECT_ROOT/bin/sync-tools.py" "$MODE" > /dev/null 2>&1
 echo -e "${GREEN}  ✅ Tool embeddings updated${NC}"
 ```
 
@@ -141,7 +141,7 @@ Response: "Bitcoin is $83,947"
 ### Key Components
 
 1. **Database**: `tool_definitions` table in `jarvis_memory.db` / `jarvis_memory_local.db`
-2. **Sync Script**: `bin/sync_tools.py` - Indexes tools with embeddings
+2. **Sync Script**: `bin/sync-tools.py` - Indexes tools with embeddings
 3. **Registry**: `lib/tool_schema.py` - `find_tools()` method performs vector search
 4. **Router**: `orchestrator/router_v2.py` - Dynamically loads tools before calling LLM
 
@@ -151,7 +151,7 @@ Response: "Bitcoin is $83,947"
 
 ### When to Re-Sync Tools
 
-Run `sync_tools.py` whenever:
+Run `sync-tools.py` whenever:
 1. **New Tool Added** - You create a new `.py` and `.tool.json`
 2. **Description Changed** - You update tool descriptions (changes embedding)
 3. **MCP Config Changed** - You add/remove MCP servers
@@ -159,8 +159,8 @@ Run `sync_tools.py` whenever:
 **Manual Sync**:
 ```bash
 source ~/jarvis-venv/bin/activate
-./bin/sync_tools.py cloud  # For cloud mode
-./bin/sync_tools.py local  # For local mode
+./bin/sync-tools.py cloud  # For cloud mode
+./bin/sync-tools.py local  # For local mode
 ```
 
 **Automatic Sync**:

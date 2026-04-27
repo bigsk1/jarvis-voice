@@ -21,9 +21,9 @@ Activate the project venv first (so real embeddings run; otherwise you may see f
   source ~/jarvis-venv/bin/activate
 
 Usage:
-  ./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?"
-  ./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?" --synthetic-full --stripped-threshold 0.24 --full-threshold 0.20
-  ./bin/debug_tool_rag.py local "Remember my wifi" --full-transcript-file /tmp/captured.txt --stripped-threshold 0.24 --full-threshold 0.18
+  ./bin/debug-tool-rag.py cloud "What is the price of Bitcoin?"
+  ./bin/debug-tool-rag.py cloud "What is the price of Bitcoin?" --synthetic-full --stripped-threshold 0.24 --full-threshold 0.20
+  ./bin/debug-tool-rag.py local "Remember my wifi" --full-transcript-file /tmp/captured.txt --stripped-threshold 0.24 --full-threshold 0.18
 """
 
 from __future__ import annotations

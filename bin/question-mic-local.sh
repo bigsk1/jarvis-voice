@@ -28,7 +28,7 @@ if [ "$BYTES" -lt 20000 ]; then
 fi
 
 # Transcribe locally
-TRANSCRIPT=$("$SCRIPT_DIR/stt_local.py" "$RAW_WAV" || true)
+TRANSCRIPT=$("$SCRIPT_DIR/stt-local.py" "$RAW_WAV" || true)
 if [ -z "$TRANSCRIPT" ]; then
   echo "❌ Local STT returned empty text." >&2
   exit 1

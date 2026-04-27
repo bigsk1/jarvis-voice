@@ -328,7 +328,7 @@ results = db.search_memory("your query")
 **Common causes**:
 - No data actually contains the terms (expected behavior)
 - Embeddings missing (semantic fails, FTS5 should catch)
-- FTS5 table not indexed (run `sync_tools.py`)
+- FTS5 table not indexed (run `sync-tools.py`)
 
 ### Q: Semantic search always falls back to FTS5?
 

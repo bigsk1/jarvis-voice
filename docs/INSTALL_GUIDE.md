@@ -409,8 +409,8 @@ source ~/jarvis-venv/bin/activate
 ./verify-env.sh
 
 # Sync tool embeddings after your keys/providers are configured
-./bin/sync_tools.py cloud
-./bin/sync_tools.py local
+./bin/sync-tools.py cloud
+./bin/sync-tools.py local
 
 # Test orchestrator
 ./orchestrator/orchestrator_v2.py cloud "what time is it"

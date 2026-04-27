@@ -336,8 +336,8 @@ skills/
   *.py / *.sh          - Tool implementations
   
 bin/
-  wake_jarvis.py               - Wake word loop (cloud) ✨ UPDATED
-  wake_jarvis_local.py         - Wake word loop (local) ✨ UPDATED
+  wake-jarvis.py               - Wake word loop (cloud) ✨ UPDATED
+  wake-jarvis-local.py         - Wake word loop (local) ✨ UPDATED
   question-orchestrator.sh     - Q&A with tools (cloud)
   question-orchestrator-local.sh - Q&A with tools (local)
 ```

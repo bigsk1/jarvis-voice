@@ -22,6 +22,36 @@ from skills.create_reminder import create_single_reminder, parse_time_expression
 
 
 class CreateReminderTests(unittest.TestCase):
+    def test_absolute_month_name_uses_future_month_day(self):
+        tz = ZoneInfo("America/Los_Angeles")
+        now = datetime(2026, 4, 26, 17, 59, 7, tzinfo=tz)
+
+        with patch("skills.create_reminder.now_local", return_value=now):
+            trigger_result, recurrence_rule = parse_time_expression("May 1st at 6pm")
+
+        self.assertIsNone(recurrence_rule)
+        self.assertEqual(trigger_result, datetime(2026, 5, 1, 18, 0, tzinfo=tz))
+
+    def test_next_month_on_day_is_supported(self):
+        tz = ZoneInfo("America/Los_Angeles")
+        now = datetime(2026, 4, 26, 17, 59, 7, tzinfo=tz)
+
+        with patch("skills.create_reminder.now_local", return_value=now):
+            trigger_result, recurrence_rule = parse_time_expression("next month on the 1st at 6pm")
+
+        self.assertIsNone(recurrence_rule)
+        self.assertEqual(trigger_result, datetime(2026, 5, 1, 18, 0, tzinfo=tz))
+
+    def test_month_name_rolls_forward_to_next_year_when_needed(self):
+        tz = ZoneInfo("America/Los_Angeles")
+        now = datetime(2026, 12, 20, 9, 0, tzinfo=tz)
+
+        with patch("skills.create_reminder.now_local", return_value=now):
+            trigger_result, recurrence_rule = parse_time_expression("January 5th at 9am")
+
+        self.assertIsNone(recurrence_rule)
+        self.assertEqual(trigger_result, datetime(2027, 1, 5, 9, 0, tzinfo=tz))
+
     def test_bounded_daily_weeks_includes_today_when_time_is_upcoming(self):
         tz = ZoneInfo("America/Los_Angeles")
         now = datetime(2026, 4, 3, 16, 0, tzinfo=tz)

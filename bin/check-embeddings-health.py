@@ -244,7 +244,7 @@ def print_health_report(health):
         
         if health['tool_issues']:
             print(f"{YELLOW}  3. Tool embeddings are wrong - regenerate them:{NC}")
-            print(f"     ./bin/sync_tools.py {mode}")
+            print(f"     ./bin/sync-tools.py {mode}")
         
         print()
         print(f"{RED}⚠️  Semantic search will fail until embeddings are fixed!{NC}")

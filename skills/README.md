@@ -23,7 +23,7 @@ Each profile is `skills/profiles/<name>.json` with `{"description": "...", "over
 
 Set **`JARVIS_TOOL_PROFILE`** in `config/local.env` or `config/cloud.env` to the profile **name** (stem of the file, default: `default`). Add any other profile files locally—they are gitignored except **`skills/profiles/default.json`**.
 
-After changing profile: restart Jarvis services, then run `./bin/sync_tools.py local` or `./bin/sync_tools.py cloud`. Inspect: `./bin/manage-tools.py profile show`.
+After changing profile: restart Jarvis services, then run `./bin/sync-tools.py local` or `./bin/sync-tools.py cloud`. Inspect: `./bin/manage-tools.py profile show`.
 
 Example profile you can copy to `skills/profiles/<your_name>.json` and edit (file is gitignored except `default.json`):
 
@@ -270,10 +270,10 @@ Each auto-tool includes a `.report.json` with build audit information.
 ### Sync Tools to LLM Context
 ```bash
 # Sync for cloud mode
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 
 # Sync for local mode
-./bin/sync_tools.py local
+./bin/sync-tools.py local
 ```
 
 ---
@@ -342,7 +342,7 @@ if __name__ == "__main__":
 **Make executable and sync:**
 ```bash
 chmod +x skills/mytool.py
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 ## Note 

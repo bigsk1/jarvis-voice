@@ -627,8 +627,8 @@ source ~/jarvis-venv/bin/activate
 ### After Creating a Tool
 ```bash
 # Sync to make tool visible to LLM
-./bin/sync_tools.py cloud
-./bin/sync_tools.py local
+./bin/sync-tools.py cloud
+./bin/sync-tools.py local
 
 # Test the tool
 ./orchestrator/orchestrator_v2.py cloud "Use [tool_name] to do X"

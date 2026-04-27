@@ -13,14 +13,14 @@ Handles:
 Usage:
     source "$HOME/jarvis-venv/bin/activate"
 
-    ./bin/sync_tools.py cloud
+    ./bin/sync-tools.py cloud
         Update data/jarvis_memory.db tool_definitions (OpenAI-class embeddings for cloud mode).
 
-    ./bin/sync_tools.py local
+    ./bin/sync-tools.py local
         Update data/jarvis_memory_local.db tool_definitions (Ollama embeddings for local mode).
 
-    ./bin/sync_tools.py cloud --force
-    ./bin/sync_tools.py local --force
+    ./bin/sync-tools.py cloud --force
+    ./bin/sync-tools.py local --force
         Regenerate embeddings for every tool (ignore content hash). Use after switching embedding
         model/dimensions or when debugging Tool RAG.
 
@@ -63,7 +63,7 @@ def _ensure_jarvis_venv() -> None:
 
     print("❌ Refusing to sync Tool RAG outside the Jarvis virtual environment.", file=sys.stderr)
     print("", file=sys.stderr)
-    print("Why: running sync_tools.py with system Python can generate fallback", file=sys.stderr)
+    print("Why: running sync-tools.py with system Python can generate fallback", file=sys.stderr)
     print("embeddings, then embedding_input_hash can make later syncs skip the bad row.", file=sys.stderr)
     print("", file=sys.stderr)
     print(f"Expected venv: {expected_venv}", file=sys.stderr)
@@ -73,7 +73,7 @@ def _ensure_jarvis_venv() -> None:
     print("Run:", file=sys.stderr)
     print('  source "$HOME/jarvis-venv/bin/activate"', file=sys.stderr)
     print('  # or, if JARVIS_VENV is customized: source "$JARVIS_VENV/bin/activate"', file=sys.stderr)
-    print("  ./bin/sync_tools.py cloud   # or local", file=sys.stderr)
+    print("  ./bin/sync-tools.py cloud   # or local", file=sys.stderr)
     sys.exit(2)
 
 
@@ -240,7 +240,7 @@ def _disable_stale_tools(db, active_tools: set, verbose: bool) -> int:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: sync_tools.py <mode> [--force]")
+        print("Usage: sync-tools.py <mode> [--force]")
         print("  mode: 'cloud' or 'local'")
         print("  --force: regenerate embeddings for every tool (ignore content hash)")
         sys.exit(1)
@@ -248,7 +248,7 @@ def main():
     args = [a for a in sys.argv[1:] if a != "--force"]
     force_reembed = "--force" in sys.argv[1:]
     if not args:
-        print("Usage: sync_tools.py <mode> [--force]")
+        print("Usage: sync-tools.py <mode> [--force]")
         sys.exit(1)
     mode = args[0]
     if mode not in ("cloud", "local"):

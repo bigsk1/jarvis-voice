@@ -26,7 +26,7 @@ fi
 
 # CRITICAL: Sync tool definitions to enable Tool RAG
 echo "🔧 Syncing tool definitions for Tool RAG..."
-./bin/sync_tools.py cloud > /dev/null 2>&1
+./bin/sync-tools.py cloud > /dev/null 2>&1
 echo "✅ Tool embeddings ready"
 echo ""
 

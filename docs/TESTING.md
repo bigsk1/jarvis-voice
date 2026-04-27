@@ -56,13 +56,13 @@ source ~/jarvis-venv/bin/activate
 
 ```bash
 # For cloud mode
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 
 # For local mode  
-./bin/sync_tools.py local
+./bin/sync-tools.py local
 
 # Or both
-./bin/sync_tools.py cloud && ./bin/sync_tools.py local
+./bin/sync-tools.py cloud && ./bin/sync-tools.py local
 ```
 
 **Why?** The Tool RAG system requires tool definitions to be indexed in the database with embeddings. Without this, the LLM cannot dynamically discover and use tools.
@@ -83,7 +83,7 @@ source ~/jarvis-venv/bin/activate
 
 **If you see "0 tools retrieved" errors**, run sync:
 ```bash
-./bin/sync_tools.py cloud  # or local
+./bin/sync-tools.py cloud  # or local
 ```
 
 ## Test Configuration
@@ -104,7 +104,7 @@ JARVIS_RESPONSE_STYLE="casual"    # Natural conversational responses (default)
 ./orchestrator/orchestrator_v2.py cloud "What time is it?"
 
 # Test MCP servers are loading
-./bin/wake_jarvis.py 2>&1 | head -30
+./bin/wake-jarvis.py 2>&1 | head -30
 # Should see: "✅ duckduckgo: 2 tools" and "✅ fetch: 1 tools"
 ```
 
@@ -527,7 +527,7 @@ sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embed
 # Should return: 32 (or your total tool count)
 
 # 2. If 0 or low, resync:
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 
 # 3. Test again
 ./orchestrator/orchestrator_v2.py cloud "What is the price of Bitcoin?"
@@ -542,7 +542,7 @@ sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embed
 ```bash
 # The table is created automatically on first MemoryDB connection
 # Just run sync:
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 ### Issue: Tests fail after database restore from backup
@@ -554,7 +554,7 @@ sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embed
 ```bash
 # Old backups don't have tool_definitions table
 # The table will be auto-created, but embeddings need sync:
-./bin/sync_tools.py cloud
+./bin/sync-tools.py cloud
 ```
 
 ## Known Issues & Workarounds
@@ -651,7 +651,7 @@ Use this for a comprehensive test run:
 ### Debug Tool Retrieval
 ```bash
 # See what tools are retrieved for a query
-./bin/debug_tool_rag.py cloud "What is the price of Bitcoin?"
+./bin/debug-tool-rag.py cloud "What is the price of Bitcoin?"
 
 # Expected output:
 # - Similarity scores for all tools
@@ -666,7 +666,7 @@ Use this for a comprehensive test run:
 sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embedding IS NOT NULL;"
 
 # Expected: 32 (or your total tool count)
-# If 0: Run ./bin/sync_tools.py cloud
+# If 0: Run ./bin/sync-tools.py cloud
 ```
 
 ### Multi-Turn Self-Healing Test

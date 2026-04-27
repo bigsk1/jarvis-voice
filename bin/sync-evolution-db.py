@@ -314,7 +314,7 @@ def main():
         print(f"\n🔍 Dry run complete - no changes made")
     else:
         print(f"\n✅ Sync complete!")
-        print(f"\n💡 Tip: Run ./bin/sync_tools.py {args.target} to update embeddings")
+        print(f"\n💡 Tip: Run ./bin/sync-tools.py {args.target} to update embeddings")
 
 
 if __name__ == "__main__":

@@ -688,7 +688,7 @@ Only output the JSON, nothing else."""
             print(f"✅ Updated {tool_name}.tool.json")
             
             # Sync tools to update embeddings
-            sync_script = os.path.join(os.path.dirname(__file__), '..', 'bin', 'sync_tools.py')
+            sync_script = os.path.join(os.path.dirname(__file__), '..', 'bin', 'sync-tools.py')
             if os.path.exists(sync_script):
                 import subprocess
                 subprocess.run([sys.executable, sync_script, self.mode], capture_output=True)

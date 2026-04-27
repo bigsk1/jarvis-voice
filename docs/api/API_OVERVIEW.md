@@ -1088,7 +1088,7 @@ print(f"Reminder created: {result['reminder_id']}")
 │  1. TERMINAL    │  │  2. WEB UI      │  │  3. PROACTIVE   │
 │     (Local)     │  │  (Browser)      │  │     (API)       │
 ├─────────────────┤  ├─────────────────┤  ├─────────────────┤
-│ wake_jarvis.py  │  │ port 5001       │  │ port 8880       │
+│ wake-jarvis.py  │  │ port 5001       │  │ port 8880       │
 │                 │  │                 │  │                 │
 │ "Hey Jarvis"    │  │ Chat + Tools    │  │ Webhooks ← NEW! │
 │ → Q&A + Tools   │  │ Type or speak   │  │                 │

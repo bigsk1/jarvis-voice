@@ -78,8 +78,8 @@ echo "✅ Audio directories created"
 # Create convenience aliases/symlinks
 echo ""
 echo "🔗 Creating convenience symlinks..."
-ln -sf "$PROJECT_ROOT/bin/wake_jarvis.py" "$PROJECT_ROOT/jarvis" 2>/dev/null || true
-ln -sf "$PROJECT_ROOT/bin/wake_jarvis_local.py" "$PROJECT_ROOT/jarvis-local" 2>/dev/null || true
+ln -sf "$PROJECT_ROOT/bin/wake-jarvis.py" "$PROJECT_ROOT/jarvis" 2>/dev/null || true
+ln -sf "$PROJECT_ROOT/bin/wake-jarvis-local.py" "$PROJECT_ROOT/jarvis-local" 2>/dev/null || true
 echo "✅ Symlinks created (./jarvis and ./jarvis-local)"
 
 # Git check (repo should already be cloned)

@@ -999,7 +999,7 @@ def speech_to_text():
         
         try:
             if provider == 'faster-whisper':
-                # Local: use faster-whisper via stt_local.py
+                # Local: use faster-whisper via stt-local.py
                 print(f"[STT] Using LOCAL faster-whisper...", flush=True)
                 transcript = _transcribe_local(tmp_path)
             else:
@@ -1073,8 +1073,8 @@ def _transcribe_local(audio_path: str) -> str:
     wav_path = _convert_to_wav(audio_path)
     
     try:
-        # Use the existing stt_local.py script
-        stt_script = JARVIS_ROOT / 'bin' / 'stt_local.py'
+        # Use the existing stt-local.py script
+        stt_script = JARVIS_ROOT / 'bin' / 'stt-local.py'
         
         result = subprocess.run(
             ['python3', str(stt_script), wav_path],
