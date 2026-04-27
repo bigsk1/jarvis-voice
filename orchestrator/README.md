@@ -15,8 +15,13 @@ User Query
     ↓
 ┌───────────────────────────────────────────────┐
 │              orchestrator_v2.py               │
-│  (main coordinator - handles all routing)     │
+│  (main coordinator / dispatch layer)          │
 └───────────────────────────────────────────────┘
+    ↓
+┌───────────────────┐     ┌─────────────────────┐
+│context_assembler.py│    │response_formatter.py│
+│(history + previews)│    │(final speech output)│
+└───────────────────┘     └─────────────────────┘
     ↓
 ┌───────────────────┐     ┌─────────────────────┐
 │  Workflow Check   │────→│  pipeline_executor  │
@@ -51,6 +56,7 @@ The primary orchestration script. Handles:
 - Multi-turn orchestration (chains tools automatically)
 - Intelligence layer integration
 - Cost tracking and logging
+- Delegation into helper modules for context assembly and response formatting
 
 ```bash
 # Usage
@@ -67,6 +73,20 @@ Analyzes user queries and determines:
 - Uses Tool RAG for dynamic tool discovery
 
 Returns routing decisions with tool selections and arguments.
+
+### `context_assembler.py` (Conversation Context Builder)
+Owns the context-prep logic that used to live inline in the orchestrator:
+- DB-backed auto-context assembly for CLI/TUI
+- Web `conversation_history` formatting
+- Multi-turn turn-context construction
+- Tool-result preview shaping for follow-up turns
+
+### `response_formatter.py` (Final Speech Formatter)
+Owns final answer shaping after the LLM/tool loop:
+- Direct tool-result condensation for short confirmations
+- Casual/auto/detailed speech formatting helpers
+- Multi-turn summary formatting
+- QA prompt override application for final-response synthesis
 
 ### `executor.py` (Tool Executor)
 Executes tools/skills from `skills/` and `skills/auto-tools/`:

@@ -139,7 +139,7 @@ JARVIS_RESPONSE_STYLE=auto ./orchestrator/orchestrator_v2.py cloud "query" --spe
 
 ## Technical Implementation
 
-### Code Flow (orchestrator_v2.py)
+### Code Flow (`orchestrator_v2.py` + `response_formatter.py`)
 
 ```
 raw_speech (LLM's verbose response with URLs, stash refs, etc.)
@@ -167,6 +167,10 @@ speech (final TTS output)
 | `_format_multi_turn_summary()` | casual, auto | `JARVIS_MULTI_TURN_WORD_LIMIT` | ✅ Yes |
 | `_format_auto_mode()` | auto only | varies | ✅ Mostly |
 | `_format_tool_speech()` | tool confirmations | 35 | ❌ No |
+
+Implementation note:
+- `orchestrator_v2.py` still decides which formatting path to use
+- `orchestrator/response_formatter.py` now owns the actual formatter implementations
 
 ### What Gets Stripped (casual/auto modes)
 

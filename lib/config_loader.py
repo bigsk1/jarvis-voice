@@ -5,6 +5,9 @@ import sys
 import re
 from pathlib import Path
 
+DEFAULT_JARVIS_QA_WORD_LIMIT = 75
+DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT = 75
+
 
 def _expand_env_value(value: str) -> str:
     """Expand ~ and $HOME / ${HOME} so seeded env files work on any Unix user.

@@ -15,33 +15,40 @@ from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_int, get_float, get_config_value
+from config_loader import (
+    load_config,
+    get_int,
+    get_float,
+    get_config_value,
+    DEFAULT_JARVIS_QA_WORD_LIMIT,
+    DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
+)
 from time_utils import safe_iso_to_local_datetime, parse_utc_timestamp, now_utc
 from memory_db import get_memory_db
 from model_catalog import get_provider_fallback_model
-from model_prompt_overrides import apply_prompt_override_sections
-from provider_errors import is_provider_error_text
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
 
 from router_v2 import LLMRouter
+from context_assembler import ContextAssembler
+from response_formatter import ResponseFormatter
 from executor import ToolExecutor
 from workflow_loader import WorkflowLoader
 from pipeline_executor import PipelineExecutor
 
 
 def _sanitize_error_for_speech(error) -> str:
-    """Convert error to speech-friendly format."""
+    """
+    Sanitize technical error messages for voice output.
+
+    Handles common HTTP/runtime failures, strips sensitive connection details,
+    and converts noisy internal exceptions into short speech-safe phrases.
+    """
     # Handle list input
     if isinstance(error, list):
         error = str(error[0]) if error else "Unknown error"
     error = str(error)
-    """
-    Sanitize technical error messages for voice output.
-    Removes URLs, IPs, session IDs, and simplifies to user-friendly messages.
-    """
-    import re
-    
+
     if not error:
         return "an unknown error occurred"
     
@@ -281,6 +288,24 @@ class Orchestrator:
         self.auto_context_enabled = get_config_value('AUTO_CONTEXT_ENABLED', 'true').lower() == 'true'
         self.auto_context_window = get_int('AUTO_CONTEXT_WINDOW', 3)
         self.auto_context_minutes = get_int('AUTO_CONTEXT_MINUTES', 10)
+        self.context_assembler = ContextAssembler(
+            timezone_obj=self.timezone,
+            auto_context_window=self.auto_context_window,
+            auto_context_minutes=self.auto_context_minutes,
+            safe_iso_to_local_datetime=self._safe_iso_to_local_datetime,
+            format_age_seconds=self._format_age_seconds,
+            format_gap_for_prompt=self._format_gap_for_prompt,
+            conversation_has_text_summary_for_ref=self._conversation_has_text_summary_for_ref,
+            stash_ref_from_result=self._stash_ref_from_result,
+            get_memory_db_fn=get_memory_db,
+            now_utc_fn=now_utc,
+            parse_utc_timestamp_fn=parse_utc_timestamp,
+        )
+        self.response_formatter = ResponseFormatter(
+            provider=self.router.provider,
+            prompt_override=getattr(self, "prompt_override", None),
+            extract_useful_data_fn=self._extract_useful_data,
+        )
         
         # Status updates for voice progress feedback
         self.status_updater = StatusUpdater(mode)
@@ -365,6 +390,51 @@ class Orchestrator:
     def _safe_iso_to_local_datetime(self, iso_text: str):
         """Parse ISO timestamp string and normalize to local timezone."""
         return safe_iso_to_local_datetime(iso_text, self.timezone)
+
+    def _get_context_assembler(self) -> ContextAssembler:
+        """Lazily build the context assembler for tests that bypass __init__ via __new__."""
+        assembler = getattr(self, "context_assembler", None)
+        if assembler is not None:
+            return assembler
+
+        if not hasattr(self, "timezone"):
+            self.timezone = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
+        if not hasattr(self, "auto_context_window"):
+            self.auto_context_window = get_int("AUTO_CONTEXT_WINDOW", 3)
+        if not hasattr(self, "auto_context_minutes"):
+            self.auto_context_minutes = get_int("AUTO_CONTEXT_MINUTES", 10)
+
+        assembler = ContextAssembler(
+            timezone_obj=self.timezone,
+            auto_context_window=self.auto_context_window,
+            auto_context_minutes=self.auto_context_minutes,
+            safe_iso_to_local_datetime=self._safe_iso_to_local_datetime,
+            format_age_seconds=self._format_age_seconds,
+            format_gap_for_prompt=self._format_gap_for_prompt,
+            conversation_has_text_summary_for_ref=self._conversation_has_text_summary_for_ref,
+            stash_ref_from_result=self._stash_ref_from_result,
+            get_memory_db_fn=get_memory_db,
+            now_utc_fn=now_utc,
+            parse_utc_timestamp_fn=parse_utc_timestamp,
+        )
+        self.context_assembler = assembler
+        return assembler
+
+    def _get_response_formatter(self) -> ResponseFormatter:
+        """Lazily build the response formatter for tests that bypass __init__ via __new__."""
+        formatter = getattr(self, "response_formatter", None)
+        if formatter is not None:
+            return formatter
+
+        provider = getattr(getattr(self, "router", None), "provider", None)
+        prompt_override = getattr(self, "prompt_override", None)
+        formatter = ResponseFormatter(
+            provider=provider,
+            prompt_override=prompt_override,
+            extract_useful_data_fn=self._extract_useful_data,
+        )
+        self.response_formatter = formatter
+        return formatter
 
     def _format_age_seconds(self, seconds: float | int | None) -> str:
         """Human-friendly age text."""
@@ -549,8 +619,8 @@ class Orchestrator:
             
             # Build config context
             response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
-            qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
-            multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+            qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)))
+            multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)))
             style_explanations = {
                 'casual': f'Short voice-friendly output. Tool confirmations stay at 35 words max, Q&A is capped at {qa_word_limit}, multi-turn summaries at {multi_turn_word_limit}.',
                 'auto': f'Smart mode. Search tools get condensed (no URLs), complex tools keep full details. Q&A cap is {qa_word_limit}, multi-turn cap is {multi_turn_word_limit}.',
@@ -1320,8 +1390,8 @@ Mode: {self.mode}
                     "tool_trace": tool_trace,
                     "available_tools": available_tools,  # Tools LLM could choose from
                     "response_style": response_style,
-                    "qa_word_limit": int(get_config_value('JARVIS_QA_WORD_LIMIT', '150')),
-                    "multi_turn_word_limit": int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '150')),
+                    "qa_word_limit": int(get_config_value('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT))),
+                    "multi_turn_word_limit": int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT))),
                 }
                 
                 # Add token info to response if available (cloud only)
@@ -1698,65 +1768,12 @@ Your synthesized response:"""
         Returns:
             Natural language response
         """
-        try:
-            # Extract relevant data
-            data = tool_result.get("data", {})
-            
-            # Build context for LLM
-            context = f"""User asked: "{user_query}"
-
-Tool executed: {tool_name}
-Tool result: {json.dumps(data, indent=2)}
-
-Create a short response for voice output (spoken through speakers).
-
-CRITICAL RULES:
-1. MAX 35 WORDS for tool confirmations
-2. Answer directly, no greetings or confirmations
-3. No emojis, no markdown, no numbered lists
-4. Don't say URLs unless critical
-5. If a tool failed and you are unable to resolve, say so and the reason why it failed.
-
-GOOD EXAMPLES:
-- "Bitcoin is $101,938, down 1% today"
-- "Found 3 webhook memories: URL, logger, and port"
-- "Time is 11:51 PM Wednesday"
-- "Server is up and running started on localhost port 5001"
-
-ERROR EXAMPLES:
-- "Webhook failed to send: 404 Not Found"
-- "Network error sending webhook: Connection timed out"
-- "Unable to create reminder: invalid time format"
-- "Server error: -> error message summarized"
-
-BAD EXAMPLES:
-- "Great! I've successfully looked up the time for you. It's currently 11:51 PM..."
-- "Perfect! The webhook has been sent and here's what happened..."
-
-Your response:"""
-            
-            # Get natural response from LLM (without tools)
-            text_response, _, _ = self.router.provider.chat_with_tools(
-                messages=[{"role": "user", "content": context}],
-                tools=[],  # No tools for response formatting
-                system_prompt="You are a voice assistant. Output a concise response, MAX 35 words. No greetings, no explanations."
-            )
-            
-            if text_response and not self._looks_like_provider_error_text(text_response):
-                return text_response
-            else:
-                return tool_result.get("speech", "Done")
-            
-        except Exception as e:
-            # Fallback to tool's built-in speech
-            if sys.stdout.isatty():
-                print(f"⚠️ Failed to format natural response: {e}", file=sys.stderr)
-            return tool_result.get("speech", "Completed")
+        return self._get_response_formatter().format_natural_response(user_query, tool_name, tool_result)
 
     @staticmethod
     def _looks_like_provider_error_text(text: str) -> bool:
         """Detect provider error strings accidentally returned as normal formatter output."""
-        return is_provider_error_text(text)
+        return ResponseFormatter.looks_like_provider_error_text(text)
 
     @staticmethod
     def _stash_ref_from_result(data: dict, arguments: dict | None = None) -> str:
@@ -1949,31 +1966,15 @@ Your response:"""
 
     def _apply_qa_prompt_overrides(self, base_prompt: str) -> str:
         """Apply model-specific QA overlays to synthesis-style prompts."""
-        return apply_prompt_override_sections(
-            base_prompt,
-            getattr(self, "prompt_override", None),
-            prepend_sections=("qa_prepend",),
-            append_sections=("qa_append",),
-        )
+        return self._get_response_formatter().apply_qa_prompt_overrides(base_prompt)
 
     def _xai_tts_style_tags_enabled(self) -> bool:
         """Return True when final speech may include xAI TTS style tags."""
-        tts_provider = get_config_value('TTS_PROVIDER', '').strip().lower()
-        enabled = get_config_value('XAI_TTS_STYLE_TAGS_ENABLED', 'true').strip().lower()
-        return tts_provider == 'xai' and enabled in {'1', 'true', 'yes', 'on'}
+        return self._get_response_formatter().xai_tts_style_tags_enabled()
 
     def _xai_tts_style_tags_instruction(self) -> str:
         """Small, final-speech-only instruction for xAI expressive TTS tags."""
-        if not self._xai_tts_style_tags_enabled():
-            return ""
-        return (
-            "\n\nxAI TTS is active. You may use a few supported TTS tags sparingly in the FINAL SPOKEN RESPONSE only "
-            "when they make delivery more natural: [pause], [long-pause], [laugh], [chuckle], [sigh], [breath], "
-            "<soft>...</soft>, <whisper>...</whisper>, <slow>...</slow>, <emphasis>...</emphasis>. "
-            "Use exact tag syntax: inline tags use square brackets like [pause]; wrapping tags use angle brackets like <slow>text</slow>. "
-            "Do not tag every sentence. Do not use tags in factual lists, code, URLs, filenames, IDs, prices, or data. "
-            "Keep the configured word limit; tags should not add extra content."
-        )
+        return self._get_response_formatter().xai_tts_style_tags_instruction()
     
     def _format_auto_mode(self, user_query: str, tools_used: list, accumulated_data: dict, raw_response: str, turn_num: int) -> str:
         """
@@ -2000,65 +2001,13 @@ Your response:"""
         Returns:
             Formatted response for TTS
         """
-        try:
-            # Multi-turn: always format (could be complex)
-            if turn_num > 0:
-                return self._format_multi_turn_summary(user_query, tools_used, accumulated_data, raw_response)
-            
-            # Single-turn: decide based on tool type
-            if not tools_used:
-                # Pure Q&A, no tools - keep short
-                return self._format_single_turn_casual(user_query, raw_response)
-            
-            tool_name = tools_used[0] if tools_used else ""
-            
-            # @TOOL_CONFIG: response formatting categories — controls how tool output is spoken
-            SEARCH_TOOLS = [
-                'search_memory', 'semantic_recall', 'recall', 'search_conversations',
-                'mcp_brave_search',  # Matches all brave search variants (web, local, news, image, video)
-                'mcp_fetch'  # Matches mcp_fetch_fetch
-            ]
-            SIMPLE_TOOLS = ['get_time', 'crypto_price', 'weather']
-            COMPLEX_TOOLS = ['opencode', 'execute_bash', 'send_webhook', 'api_call']
-            
-            # Search tools: Format for voice (remove URLs, summarize)
-            if any(search in tool_name.lower() for search in SEARCH_TOOLS):
-                # Format search results - remove URLs, keep key info
-                return self._format_single_turn_casual(user_query, raw_response)
-            
-            # Simple data tools: Already concise, keep as-is or condense slightly
-            elif any(simple in tool_name.lower() for simple in SIMPLE_TOOLS):
-                # If already short (<25 words), keep it
-                word_count = len(raw_response.split())
-                if word_count <= 25:
-                    return raw_response
-                # Otherwise condense
-                return self._format_single_turn_casual(user_query, raw_response)
-            
-            # Complex/build tools: Check if response is technical or simple
-            elif any(complex in tool_name.lower() for complex in COMPLEX_TOOLS):
-                # If response is very long (>75 words), it's probably detailed - keep detailed
-                word_count = len(raw_response.split())
-                if word_count > 75:
-                    # GAP: This bypasses _format_single_turn_casual(), so the DISPLAYED text may still
-                    # contain stash:// refs, long URLs, or noisy paths for long single-turn complex responses.
-                    # Standard TTS playback still normalizes final speech via sanitize_for_speech()/normalize_tts_text(),
-                    # so this is mainly a display/text cleanliness gap rather than a spoken-audio safety gap.
-                    # TODO: Consider lightweight post-processing here for display cleanliness without re-condensing.
-                    return raw_response  # Keep detailed for complex operations
-                else:
-                    # Short response for complex tool - condense it
-                    return self._format_single_turn_casual(user_query, raw_response)
-            
-            # Default: condensed formatting for voice
-            else:
-                return self._format_single_turn_casual(user_query, raw_response)
-                
-        except Exception as e:
-            if sys.stdout.isatty():
-                print(f"⚠️ Auto mode formatting failed: {e}", file=sys.stderr)
-            # Fallback to raw response
-            return raw_response
+        return self._get_response_formatter().format_auto_mode(
+            user_query,
+            tools_used,
+            accumulated_data,
+            raw_response,
+            turn_num,
+        )
     
     def _format_single_turn_casual(self, user_query: str, raw_response: str) -> str:
         """
@@ -2083,67 +2032,12 @@ Your response:"""
         Returns:
             Voice-friendly version (condensed, no stash refs/long URLs)
         """
-        qa_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
-        try:
-            # Get configurable word limit for Q&A (default 75)
-            
-            # If already within limit, return as-is
-            word_count = len(raw_response.split())
-            if word_count <= qa_limit:
-                return raw_response
-            
-            # Use LLM to condense verbose response
-            context = f"""User asked: "{user_query}"
-
-Your previous response: {raw_response}
-
-Condense this for voice output (MAX {qa_limit} words).
-
-RULES:
-1. Keep the core answer with key details
-2. Remove: greetings, emojis, markdown, numbered lists
-3. For informational queries, include enough context to be useful
-4. No URLs unless critical
-5. NEVER drop named entities - movie titles, restaurant names, product names, people's names MUST be preserved
-6. If user asked for specific items (top 3, best restaurants, etc.), include those by name
-7. NEVER speak stash:// references (e.g., stash://space_xxx/f_xxx) - just say "saved to stash" or "image saved"
-8. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only (e.g., "on Wikipedia")
-9. Simplify file paths (/home/user/...) to just the filename
-10. NEVER speak auto-generated filenames (e.g., "generated_modify_the_previous_20260209.png") - just say "saved" or "saved to stash"
-{self._xai_tts_style_tags_instruction()}
-
-EXAMPLES:
-Verbose: "Great! I've looked up ntfy. It's an open-source push notification service that lets you..."
-Condensed: "Ntfy is an open-source push notification service. Self-hosted setup needs TLS certs for iOS APNs. Without proper HTTPS, it falls back to battery-draining polling. Use Caddy or nginx for auto-TLS."
-
-BAD (drops entities): "Found several restaurants nearby including one Italian and one Thai option."
-GOOD (preserves entities): "Top restaurants nearby: Olive Garden for Italian, Thai Orchid for Thai, and Red Robin for burgers."
-
-Your condensed response:"""
-            
-            response = self.router.provider.chat(
-                context,
-                system_prompt=self._apply_qa_prompt_overrides(
-                    f"Condense for voice output. MAX {qa_limit} words. Keep key info. No greetings/emojis."
-                    f"{self._xai_tts_style_tags_instruction()}"
-                ),
-            )
-            if not response or self._looks_like_provider_error_text(response):
-                return raw_response
-            return response.strip()
-        except Exception as e:
-            # Fallback: truncate at limit
-            if sys.stdout.isatty():
-                print(f"⚠️ Failed to condense response: {e}", file=sys.stderr)
-            words = raw_response.split()
-            if len(words) > qa_limit:
-                return ' '.join(words[:qa_limit]) + '...'
-            return raw_response
+        return self._get_response_formatter().format_single_turn_casual(user_query, raw_response)
     
     def _format_multi_turn_summary(self, user_query: str, tools_used: list, accumulated_data: dict, llm_response: str) -> str:
         """
         Format multi-turn (multiple tools) results for voice output.
-        Uses JARVIS_MULTI_TURN_WORD_LIMIT (default: 50 words).
+        Uses JARVIS_MULTI_TURN_WORD_LIMIT (default: 75 words).
         
         Called when turn_num > 0 (task used multiple tools across multiple LLM turns).
         Summarizes ALL tool results together into a concise spoken summary.
@@ -2162,64 +2056,16 @@ Your condensed response:"""
             llm_response: LLM's final synthesized response
             
         Returns:
-            Concise voice-friendly summary (50 words max by default)
+            Concise voice-friendly summary bounded by
+            JARVIS_MULTI_TURN_WORD_LIMIT (using the shared config_loader baseline
+            when unset)
         """
-        multi_turn_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '75'))
-        try:
-            # Get configurable word limit for multi-turn (default 75)
-            
-            # Use LLM to create a concise voice summary
-            # Calculate dynamic truncation - more data for repeated tools (arrays)
-            has_arrays = any(isinstance(v, list) for v in accumulated_data.values())
-            max_chars = 2000 if has_arrays else 800
-            
-            # Include BOTH: LLM's synthesized response (has extracted names) AND raw tool data (has structured info)
-            # This ensures we don't lose either source of truth
-            context = f"""User asked: "{user_query}"
-
-Tools executed: {', '.join(tools_used)}
-
-LLM's detailed answer (USE NAMES FROM HERE):
-{llm_response[:1200]}
-
-Raw tool data (backup for numbers/details):
-{json.dumps(accumulated_data, indent=2)[:max_chars]}
-
-Condense into a voice-friendly summary (will be spoken aloud through speakers).
-
-RULES:
-1. MAX {multi_turn_limit} WORDS
-2. PRESERVE all named entities (restaurant names, movie titles, business names, people) - copy them exactly
-3. PRESERVE key numbers (prices, temperatures, percentages, ratings)
-4. No emojis, no markdown, no bullet points, no explanations of what tools did
-5. If user asked for "top 3" items, include all 3 by name
-6. NEVER speak stash:// references (e.g., stash://space_xxx/f_xxx) - just say "saved to stash" or "image generated"
-7. NEVER speak long URLs (>30 chars) - summarize as "link saved" or mention domain only
-8. Simplify file paths (/home/user/project/file.py) to just the filename (file.py)
-9. NEVER speak auto-generated filenames (e.g., "generated_modify_the_previous_20260209.png") - just say "saved" or "saved to stash"
-{self._xai_tts_style_tags_instruction()}
-
-GOOD: "Top 3 date night spots: Copper River, BJ's Brewhouse, Thirsty Lion. Tonight: 47°F clear."
-GOOD: "Image generated and saved to stash." (NOT "Image saved to stash://space_20260201_xxx/f_abc")
-BAD: "[Names from results]" or "Found 3 options" ← Never use placeholders!
-
-Your response:"""
-            
-            response = self.router.provider.chat(
-                context,
-                system_prompt=self._apply_qa_prompt_overrides(
-                    f"Condense to MAX {multi_turn_limit} words. Preserve names, titles, and numbers exactly. No placeholders."
-                    f"{self._xai_tts_style_tags_instruction()}"
-                ),
-            )
-            if not response or self._looks_like_provider_error_text(response):
-                return llm_response
-            return response.strip()
-        except Exception as e:
-            # Fallback to LLM's original response
-            if sys.stdout.isatty():
-                print(f"⚠️ Failed to format multi-turn summary: {e}", file=sys.stderr)
-            return llm_response
+        return self._get_response_formatter().format_multi_turn_summary(
+            user_query,
+            tools_used,
+            accumulated_data,
+            llm_response,
+        )
     
     def _format_max_turns_summary(self, user_query: str, tools_used: list, accumulated_data: dict, max_turns: int) -> str:
         """
@@ -2236,77 +2082,17 @@ Your response:"""
         Returns:
             Voice-friendly explanation of progress and next steps
         """
-        try:
-            # Align with JARVIS_MULTI_TURN_WORD_LIMIT (same as multi-turn summary condensation)
-            multi_turn_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '75'))
-
-            # Extract useful data from accumulated results (especially for search arrays)
-            extracted_data = self._extract_useful_data(accumulated_data)
-            
-            # Use LLM to create an intelligent progress summary
-            context = f"""User asked: "{user_query}"
-
-Tools executed ({len(tools_used)} actions): {', '.join(set(tools_used))}
-
-ALL GATHERED DATA (BEST EFFORT - use this to answer!):
-{extracted_data}
-
-IMPORTANT: The task hit a complexity limit after {max_turns} tool calls. 
-You MUST provide a BEST EFFORT answer using the data above.
-
-CRITICAL RULES:
-1. MAX {multi_turn_limit} WORDS - but ACTUALLY ANSWER the question!
-2. If you found ANY relevant info (movie titles, prices, names, etc.) - INCLUDE IT
-3. Don't apologize or say "couldn't find" - give the best answer you can
-4. If data is incomplete, answer what you CAN and note what's missing briefly
-5. NEVER say "hit limit" or mention tool counts
-{self._xai_tts_style_tags_instruction()}
-
-GOOD BEST-EFFORT EXAMPLES:
-- "Top movies at Regal Hillsboro: Wicked, Avatar Fire and Ash, Zootopia 2. Check fandango.com for exact showtimes."
-- "Bitcoin $90k, Solana $143, Ethereum $3k - all up 2-3% today"
-- "Found theaters: Regal Evergreen Parkway, AMC Progress Ridge. Current showtimes require checking their websites directly."
-
-BAD EXAMPLES (never do this):
-- "I searched 10 times but couldn't find..." (WRONG - use what you found!)
-- "Hit complexity limit after 10 tools..." (WRONG - don't mention technical limits!)
-- "Unable to find showtimes" (WRONG - at least mention the theaters/movies you DID find!)
-
-Your BEST EFFORT response:"""
-            
-            response = self.router.provider.chat(
-                context,
-                system_prompt=self._apply_qa_prompt_overrides(
-                    f"You are a voice assistant. Provide a BEST EFFORT answer using whatever data you have. "
-                    f"MAX {multi_turn_limit} words. ALWAYS include any useful info you found - movie titles, theater names, prices, etc."
-                    f"{self._xai_tts_style_tags_instruction()}"
-                ),
-            )
-            if not response or self._looks_like_provider_error_text(response):
-                extracted_preview = extracted_data.strip()
-                if extracted_preview:
-                    return extracted_preview[:400]
-                return f"Completed {len(tools_used)} actions. Please review the gathered results."
-            return response.strip()
-        except Exception as e:
-            # Fallback to simple message
-            if sys.stdout.isatty():
-                print(f"⚠️ Failed to format max turns summary: {e}", file=sys.stderr)
-            return f"Completed {len(tools_used)} actions but reached the complexity limit. Tools used: {', '.join(tools_used)}. Please review or let me know if you'd like me to continue."
+        return self._get_response_formatter().format_max_turns_summary(
+            user_query,
+            tools_used,
+            accumulated_data,
+            max_turns,
+        )
     
     # Fallback only: long stash reads should normally be condensed through text_summarizer first.
     def _excerpt_for_synthesis(self, text: str, max_chars: int = 8000) -> str:
         """Keep enough of long text artifacts for fallback synthesis without flooding the prompt."""
-        if not isinstance(text, str):
-            return ""
-        if len(text) <= max_chars:
-            return text
-        half = max_chars // 2
-        return (
-            text[:half].rstrip()
-            + "\n\n... [middle omitted for fallback synthesis] ...\n\n"
-            + text[-half:].lstrip()
-        )
+        return self._get_context_assembler().excerpt_for_synthesis(text, max_chars=max_chars)
 
     def _extract_useful_data(self, accumulated_data: dict) -> str:
         """
@@ -2319,110 +2105,10 @@ Your BEST EFFORT response:"""
         Returns:
             Formatted string of extracted useful data
         """
-        extracted_parts = []
-        
-        def _extract_dict_fields(record: dict, depth: int = 0) -> list[str]:
-            """
-            Extract useful fields from nested tool data structures.
-            Keeps output concise while preserving key entities and counts.
-            """
-            if not isinstance(record, dict) or depth > 2:
-                return []
-
-            info = []
-
-            useful_fields = [
-                'title', 'description', 'url', 'name', 'price',
-                'coin', 'price_usd', 'speech', 'summary', 'result', 'content',
-                'count', 'status', 'status_filter', 'source', 'severity',
-                'created_at', 'id'
-            ]
-            for field in useful_fields:
-                if field in record and record[field] not in (None, "", [], {}):
-                    info.append(f"{field}: {str(record[field])[:500]}")
-
-            # Capture important nested lists like alerts/reminders/tasks/events.
-            for list_key in ['alerts', 'reminders', 'items', 'results', 'tasks', 'events']:
-                nested_list = record.get(list_key)
-                if isinstance(nested_list, list) and nested_list:
-                    info.append(f"{list_key}_count: {len(nested_list)}")
-                    for nested in nested_list[:3]:
-                        if isinstance(nested, dict):
-                            title = nested.get('title') or nested.get('name') or nested.get('description')
-                            if title:
-                                info.append(f"{list_key}_item: {str(title)[:200]}")
-                            for nested_field in ['status', 'severity', 'source', 'created_at', 'id']:
-                                if nested_field in nested and nested[nested_field] not in (None, ""):
-                                    info.append(f"{list_key}_{nested_field}: {str(nested[nested_field])[:200]}")
-                        else:
-                            info.append(f"{list_key}_item: {str(nested)[:200]}")
-
-            # One-level nested dict extraction for common wrappers like data/report/payload.
-            for nested_key in ['data', 'report', 'payload']:
-                nested_dict = record.get(nested_key)
-                if isinstance(nested_dict, dict):
-                    info.extend(_extract_dict_fields(nested_dict, depth + 1)[:15])
-
-            return info
-
-        for tool_name, data in accumulated_data.items():
-            # Handle arrays (multiple calls to same tool)
-            if isinstance(data, list):
-                items = data
-            else:
-                items = [data]
-            
-            tool_info = []
-            for item in items:
-                if isinstance(item, dict):
-                    if tool_name == "text_summarizer" and isinstance(item.get("summary"), str):
-                        source = item.get("source") if isinstance(item.get("source"), dict) else {}
-                        source_label = source.get("stash_ref") or source.get("path") or "provided text"
-                        tool_info.append(f"source: {source_label}")
-                        tool_info.append(f"summary: {item.get('summary')}")
-                        summary_meta = item.get("summary_meta")
-                        if isinstance(summary_meta, dict):
-                            method = summary_meta.get("summary_method")
-                            llm_used = summary_meta.get("llm_used")
-                            if method:
-                                tool_info.append(f"summary_method: {method}, llm_used: {llm_used}")
-
-                    if tool_name == "stash" and isinstance(item.get("content"), str):
-                        name = item.get("name") or item.get("file_id") or "stash artifact"
-                        ref = self._stash_ref_from_result(item, {})
-                        content = item.get("content") or ""
-                        tool_info.append(f"name: {name}")
-                        if ref:
-                            tool_info.append(f"ref: {ref}")
-                        if ref and self._has_text_summarizer_summary_for_ref(accumulated_data, ref):
-                            tool_info.append("content_summary_available: see text_summarizer summary for this stash ref")
-                        else:
-                            tool_info.append(
-                                "content_excerpt: "
-                                + self._excerpt_for_synthesis(content, max_chars=8000)
-                            )
-
-                    # Extract search results (brave search, fetch)
-                    if 'raw' in item or 'full_text' in item:
-                        # Parse search results - extract titles and descriptions
-                        text = item.get('full_text', '')
-                        if text:
-                            # Extract first 2000 chars of each search result
-                            tool_info.append(text[:2000])
-
-                    # Extract specific and nested fields (alerts/reminders/etc.)
-                    tool_info.extend(_extract_dict_fields(item))
-                else:
-                    # Plain string/value
-                    tool_info.append(str(item)[:1000])
-            
-            if tool_info:
-                extracted_parts.append(f"\n=== {tool_name} ===")
-                extracted_parts.extend(tool_info[:5])  # Limit to 5 items per tool
-        
-        # Join and limit total size
-        result = "\n".join(extracted_parts)
-        return result[:10000]  # 10k chars should be enough for summary
+        return self._get_context_assembler().extract_useful_data(
+            accumulated_data,
+            has_text_summarizer_summary_for_ref=self._has_text_summarizer_summary_for_ref,
+        )
     
     def _format_conversation_context(self, current_query: str, history: list) -> str:
         """
@@ -2436,98 +2122,7 @@ Your BEST EFFORT response:"""
         Returns:
             Enhanced query with conversation context
         """
-        if not history:
-            return current_query
-        
-        # Use all messages passed - the caller (chat.py) already applies history_limit setting
-        # Don't truncate here to respect web UI's conversation.history_limit setting
-        recent = history
-        
-        context_lines = ["=== RECENT CONVERSATION CONTEXT ==="]
-        # Gap hints only when the anchor is unambiguous: use the chronologically last
-        # history message only. Skip if it has no timestamp, or if it is a user
-        # message (may duplicate the current transcript when history was not stripped).
-        last_msg = recent[-1]
-        last_role = last_msg.get("role", "user")
-        last_msg_dt = None
-        if last_role != "user":
-            last_msg_dt = self._safe_iso_to_local_datetime(last_msg.get("timestamp"))
-
-        now_local = datetime.now(self.timezone)
-        if last_msg_dt:
-            gap_seconds = int(max(0, (now_local - last_msg_dt).total_seconds()))
-            abs_local = last_msg_dt.strftime("%b %d, %Y %H:%M")
-            rel = self._format_gap_for_prompt(gap_seconds)
-            context_lines.append(
-                f"Context timing: latest prior message in this conversation was {abs_local} (local), about {rel} ago."
-            )
-            if gap_seconds >= 86400:
-                context_lines.append(
-                    "Resumed thread: treat earlier messages as historical context. If the new request clearly continues this thread and is not urgent or transactional, a brief welcome-back or picking-this-back-up acknowledgment is OK."
-                )
-            context_lines.append("")
-        
-        # Per-message content caps. The most recent assistant turn often contains
-        # the conclusions or details the user is following up on, so give it more
-        # room than older turns. Older/other messages use a still-generous default
-        # (up from the previous blunt 500-char cap).
-        default_content_cap = 2000
-        latest_assistant_content_cap = 4000
-        last_assistant_idx = -1
-        for i, m in enumerate(recent):
-            if m.get('role') == 'assistant':
-                last_assistant_idx = i
-
-        for idx, msg in enumerate(recent):
-            role = msg.get('role', 'user')
-            content = msg.get('content', '')
-            tools_used = msg.get('tools_used', [])
-            tool_results = msg.get('tool_results', {})
-
-            cap = latest_assistant_content_cap if idx == last_assistant_idx else default_content_cap
-            if len(content) > cap:
-                content = content[:cap] + "... [truncated]"
-            
-            prefix = "User" if role == 'user' else "Jarvis"
-            
-            # Include tools used for assistant messages (helps LLM know what was done)
-            if role == 'assistant' and tools_used:
-                # Dedupe tools (sometimes same tool called multiple times)
-                unique_tools = list(dict.fromkeys(tools_used))
-                tools_str = ", ".join(unique_tools)
-                context_lines.append(f"{prefix} [tools: {tools_str}]: {content}")
-                
-                # Include tool result data for follow-up capability
-                # This allows LLM to reference stash_refs, video_ids, providers for edits/remixes
-                if tool_results:
-                    for tool_name, result_data in tool_results.items():
-                        if isinstance(result_data, dict):
-                            # Format key fields concisely
-                            fields = []
-                            for k, v in result_data.items():
-                                if v:  # Skip None/empty values
-                                    fields.append(f"{k}={v}")
-                            if fields:
-                                context_lines.append(f"  └─ {tool_name} data: {', '.join(fields)}")
-            else:
-                context_lines.append(f"{prefix}: {content}")
-        
-        # If a previous message has uploaded_image with stash_ref, inject hint for follow-ups
-        # (LLM was passing "image ID 1" instead of stash_ref, causing analyze_image to fail)
-        for msg in recent:
-            tr = msg.get('tool_results', {}) or {}
-            ui = tr.get('uploaded_image', {}) if isinstance(tr, dict) else {}
-            stash_ref = ui.get('stash_ref') if isinstance(ui, dict) else None
-            if stash_ref and str(stash_ref).startswith('stash://'):
-                context_lines.append("")
-                context_lines.append("IMAGE RE-ANALYSIS: If the user asks to look again, correct, or re-identify the image: use analyze_image with image=\"" + str(stash_ref) + "\". Do NOT use '1', 'image ID 1', or attachment indices.")
-                break
-        
-        context_lines.append("=== END CONTEXT ===")
-        context_lines.append("")
-        context_lines.append(f"Current request: {current_query}")
-        
-        return "\n".join(context_lines)
+        return self._get_context_assembler().format_conversation_context(current_query, history)
     
     def _try_workflow(self, transcript: str) -> dict[str, Any] | None:
         """
@@ -2595,108 +2190,7 @@ Your BEST EFFORT response:"""
         Returns:
             Enhanced query with recent conversation context (if any relevant)
         """
-        from datetime import timedelta, timezone
-        
-        try:
-            db = get_memory_db()
-            
-            # Get recent conversations
-            recent = db.get_recent_conversations(limit=self.auto_context_window)
-            
-            if not recent:
-                return current_query
-            
-            # Filter by time window (only include recent conversations)
-            cutoff = now_utc() - timedelta(minutes=self.auto_context_minutes)
-            
-            relevant = []
-            for conv in recent:
-                # Parse timestamp (handle both string and datetime)
-                ts_str = conv.get('timestamp', '')
-                if isinstance(ts_str, str):
-                    # Conversation timestamps are stored by SQLite CURRENT_TIMESTAMP
-                    # as naive UTC strings. Parse them as UTC before comparing with
-                    # the configured short-term context window.
-                    try:
-                        ts = parse_utc_timestamp(ts_str)
-                    except:
-                        # Skip if can't parse
-                        continue
-                elif hasattr(ts_str, 'timestamp'):
-                    ts = ts_str
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=timezone.utc)
-                    else:
-                        ts = ts.astimezone(timezone.utc)
-                else:
-                    continue
-                
-                # Only include if within time window
-                if ts > cutoff:
-                    relevant.append(conv)
-            
-            # If no recent context within time window, just return current query
-            if not relevant:
-                return current_query
-            
-            # Build context block (oldest first for chronological order)
-            # Using simple plain text format (no Unicode boxes - saves tokens!)
-            context_parts = ["=== RECENT CONVERSATION HISTORY ==="]
-            context_parts.append(f"Last {len(relevant)} conversation(s) in past {self.auto_context_minutes} minutes")
-            context_parts.append("")
-            
-            for i, conv in enumerate(reversed(relevant), 1):  # Oldest first
-                context_parts.append(f"[Previous Exchange {i}]")
-                context_parts.append(f"User: {conv['user_query']}")
-                context_parts.append(f"Assistant: {conv['jarvis_response']}")
-                
-                # Include tools used (critical for self-learning)
-                tools_json = conv.get('tools_used')
-                if tools_json:
-                    try:
-                        tools_list = json.loads(tools_json) if isinstance(tools_json, str) else tools_json
-                        if tools_list:
-                            context_parts.append(f"Tools used: {', '.join(tools_list)}")
-                    except:
-                        pass
-                
-                # Flag failures (critical for learning from mistakes!)
-                success = conv.get('success', True)
-                if not success:
-                    context_parts.append("Status: FAILED - Task did not complete successfully")
-                    context_parts.append("Consider using check_tool_logs to understand why")
-                else:
-                    context_parts.append("Status: Success")
-                
-                # Include model/cost metadata if available (helps understand complexity)
-                metadata_json = conv.get('metadata')
-                if metadata_json:
-                    try:
-                        metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
-                        if metadata:
-                            model = metadata.get('model', 'unknown')
-                            tool_count = metadata.get('tool_count', 0)
-                            context_parts.append(f"Model: {model}, Tools called: {tool_count}")
-                    except:
-                        pass
-                
-                context_parts.append("")  # Blank line between conversations
-            
-            context_parts.append("=== CURRENT USER QUERY ===")
-            context_parts.append(current_query)
-            context_parts.append("")
-            context_parts.append("Instructions:")
-            context_parts.append("- Use the conversation history to provide context-aware responses")
-            context_parts.append("- Reference previous topics naturally when relevant")
-            context_parts.append("- Continue multi-step workflows seamlessly")
-            
-            return "\n".join(context_parts)
-            
-        except Exception as e:
-            # If context loading fails, gracefully degrade to just current query
-            if os.environ.get('JARVIS_DEBUG'):
-                print(f"DEBUG: Context loading failed: {e}", file=sys.stderr)
-            return current_query
+        return self._get_context_assembler().build_conversation_context(current_query)
     
     def _build_turn_context(self, original_query: str, conversation_context: list) -> str:
         """
@@ -2709,217 +2203,22 @@ Your BEST EFFORT response:"""
         Returns:
             Formatted context string for the LLM
         """
-        context_parts = [f"Original user request: {original_query}\n"]
-        context_parts.append("Tools executed so far:")
-        context_parts.append("Context note: some large tool payloads are intentionally truncated for context efficiency.")
-        context_parts.append("If ok=true, the tool completed successfully even when only a preview is shown.")
-        context_parts.append("Do not repeat the same tool just to recover omitted tail content; answer from the available result or choose a different tool if genuinely needed.")
-        now = datetime.now(self.timezone)
-        
-        for i, ctx in enumerate(conversation_context, 1):
-            tool_name = ctx["tool"]
-            result = ctx["result"]
-            meta = ctx.get("meta", {}) if isinstance(ctx, dict) else {}
-            executed_at_iso = meta.get("executed_at_iso")
-            executed_at_local = meta.get("executed_at_local")
-            ttl_seconds = meta.get("ttl_seconds")
-            source = meta.get("source", "tool")
-            authoritative = bool(meta.get("authoritative_live", False))
-            age_seconds = None
-            expires_in = None
-            dt_local = self._safe_iso_to_local_datetime(executed_at_iso)
-            if dt_local:
-                age_seconds = max(0, int((now - dt_local).total_seconds()))
-            if ttl_seconds is not None and age_seconds is not None:
-                expires_in = ttl_seconds - age_seconds
-            
-            # Smart summarization: prioritize error details
-            if not result.get("ok", True):
-                # For failures, include full error context
-                summary_parts = []
-                summary_parts.append(f"Status: FAILED")
-                if "error" in result:
-                    summary_parts.append(f"Error: {result['error']}")
-                if "data" in result and isinstance(result["data"], dict):
-                    # Include error details from data
-                    if "error" in result["data"]:
-                        summary_parts.append(f"Details: {result['data']['error']}")
-                    if "status_code" in result["data"]:
-                        summary_parts.append(f"Status Code: {result['data']['status_code']}")
-                result_summary = self._truncate_preview_text("\n   ".join(summary_parts), 1200)
-                result_chars_total = len(result_summary)
-                result_chars_shown = result_chars_total
-                result_truncated = False
-            else:
-                result_summary, result_chars_total, result_chars_shown, result_truncated = (
-                    self._build_llm_result_context_preview(tool_name, result)
-                )
-            
-            context_parts.append(f"\n{i}. {tool_name}")
-            context_parts.append(
-                "   Freshness: "
-                f"executed_at={executed_at_local or executed_at_iso or 'unknown'}, "
-                f"age={self._format_age_seconds(age_seconds)}, "
-                f"ttl={str(ttl_seconds) + 's' if ttl_seconds is not None else 'none'}, "
-                f"expires_in={self._format_age_seconds(expires_in) if expires_in is not None else 'n/a'}, "
-                f"source={source}, "
-                f"authoritative_live={authoritative}"
-            )
-            context_parts.append(
-                "   Result Meta: "
-                f"ok={result.get('ok', True)}, "
-                f"result_truncated={result_truncated}, "
-                f"result_chars_shown={result_chars_shown}, "
-                f"result_chars_total={result_chars_total}"
-            )
-            result_label = "Result Preview" if result_truncated else "Result"
-            context_parts.append(f"   {result_label}: {result_summary}")
-            if result_truncated and tool_name == "stash":
-                data = result.get("data", {}) if isinstance(result, dict) else {}
-                content = data.get("content") if isinstance(data, dict) else None
-                args = ctx.get("arguments", {}) if isinstance(ctx, dict) else {}
-                stash_ref = ""
-                if isinstance(data, dict):
-                    stash_ref = data.get("ref") or data.get("stash_ref") or ""
-                if not stash_ref and args.get("space_id") and args.get("file_id"):
-                    stash_ref = f"stash://{args.get('space_id')}/{args.get('file_id')}"
-                has_summary = self._conversation_has_text_summary_for_ref(conversation_context, stash_ref)
-                if isinstance(content, str) and len(content) > 2000 and stash_ref and not has_summary:
-                    context_parts.append(
-                        "   Long Text Hint: This stash.read already succeeded and the full text is stored in tool results. "
-                        "Do NOT call stash.read again for this same file. If you need a smaller working copy for analysis, "
-                        f"call text_summarizer with operation='summarize', num_sentences=12, stash_ref='{stash_ref}', then answer from that summary."
-                    )
-        
-        # Check if any tool requested news - prompt LLM to use native search
-        news_requested = False
-        for ctx in conversation_context:
-            result = ctx.get("result", {})
-            data = result.get("data", {})
-            # Check both top-level and nested report data
-            if data.get("news_requested") or data.get("report", {}).get("news_requested"):
-                news_requested = True
-                break
-        
-        context_parts.append("\n\nBased on the above results, determine if you need to:")
-        context_parts.append("1. Call another tool to complete the user's request")
-        context_parts.append("2. Respond directly to the user (task complete)")
-        context_parts.append("")
-        context_parts.append("FRESHNESS RULES (highest priority):")
-        context_parts.append("- Prefer the most recent authoritative_live tool result for live-data queries.")
-        context_parts.append("- If the latest live result is still within ttl/expires_in, DO NOT re-call the same tool unless user explicitly asked to refresh/recheck/update.")
-        # context_parts.append("- Do not re-issue the same tool with identical arguments after it already succeeded above (duplicate guard blocks it); use prior results, another tool, or Q&A.")
-        context_parts.append("- Treat stored memory/intel for price-like data as historical context, not live truth.")
-        context_parts.append("- For crypto/stock, ignore stale memories older than 60 minutes when a newer live tool result exists.")
-        
-        if news_requested:
-            context_parts.append("\n⚠️ NEWS REQUESTED: The user asked for news. Use your NATIVE SEARCH capability to get current news headlines. DO NOT call external search tools - use your built-in web search to find 3-5 relevant news headlines and include them in your response.")
-
-        return "\n".join(context_parts)
+        return self._get_context_assembler().build_turn_context(original_query, conversation_context)
 
     def _tool_context_max_chars(self, tool_name: str) -> int:
         """Return the LLM-context preview budget for a tool result."""
-        lowered = (tool_name or "").lower()
-        if "bookmark" in lowered:
-            return 5000
-        if "search" in lowered or "fetch" in lowered:
-            return 6000
-        # All SerpAPI tools (e.g. serpapi_youtube has no "search" in the name but returns large JSON).
-        if lowered.startswith("serpapi_"):
-            return 6000
-        # No "search" in name but same class of payload as search-tier tools.
-        if tool_name == "semantic_recall" or tool_name == "crawl_url":
-            return 4000
-        if tool_name == "status_recap":
-            return 4000
-        # Supa-Crawl-Chat corpus: structured search/pages/chunks; budget between search-tier and raw defaults.
-        if tool_name == "supa_crawl_knowledge" or "supa_crawl" in lowered:
-            return 6500
-        if tool_name == "brave_llm_context":
-            return 4000
-        return 2500
+        return self._get_context_assembler().tool_context_max_chars(tool_name)
 
     def _truncate_preview_text(self, value: Any, max_chars: int) -> str:
         """Truncate preview text without changing the original stored result."""
-        text = str(value)
-        if len(text) <= max_chars:
-            return text
-        suffix = "... [truncated]"
-        if max_chars <= len(suffix):
-            return suffix[:max_chars]
-        return text[: max_chars - len(suffix)] + suffix
+        return self._get_context_assembler().truncate_preview_text(value, max_chars)
 
     def _preview_key_rank(self, key: str, value: Any) -> tuple[int, int, str]:
         """Prioritize handles and compact scalar fields ahead of bulky payloads."""
-        critical_exact = {
-            "space_id", "file_id", "ref", "stash_ref", "md_stash_ref", "srt_stash_ref",
-            "memory_id", "conversation_id", "page_id", "video_id", "image_id", "asin",
-            "url", "top_url", "video_title", "title", "name", "engine", "query",
-            "query_effective", "results_count", "count", "status", "id"
-        }
-        bulky_keys = {
-            "content", "markdown", "html", "raw_html", "raw_text", "body",
-            "transcript", "results", "top_results", "items", "matches", "documents",
-            "pages", "outputs"
-        }
-        is_handle = (
-            key in critical_exact
-            or key.endswith(("_id", "_ref", "_url"))
-        )
-        is_scalar = value is None or isinstance(value, (str, int, float, bool))
-        is_bulky = key in bulky_keys
-
-        if is_handle:
-            rank = 0
-        elif is_scalar and not is_bulky:
-            rank = 1
-        elif not is_bulky:
-            rank = 2
-        else:
-            rank = 3
-        return (rank, len(key), key)
-
-    # URL-like dict keys: keep full URLs in previews (240 was cutting long querystrings;
-    # models then echoed "truncated" even though the web UI still had complete JSON.)
-    _PREVIEW_LONG_STRING_KEYS = frozenset(
-        {
-            "content",
-            "markdown",
-            "html",
-            "raw_html",
-            "raw_text",
-            "body",
-            "transcript",
-            # supa_crawl_knowledge / similar RAG hits
-            "content_preview",
-            "summary",
-            "snippet",
-        }
-    )
-    _PREVIEW_URLISH_STRING_KEYS = frozenset(
-        {
-            "url",
-            "href",
-            "canonical_url",
-            "permalink",
-            "short_url",
-            "image_url",
-            "thumbnail_url",
-            "video_url",
-            "source_url",
-            "link_url",
-            "audio_url",
-            "embed_url",
-        }
-    )
+        return self._get_context_assembler().preview_key_rank(key, value)
 
     def _preview_string_limit(self, parent_key: str) -> int:
-        pk = parent_key or ""
-        if pk in self._PREVIEW_LONG_STRING_KEYS:
-            return 600
-        if pk in self._PREVIEW_URLISH_STRING_KEYS or pk.endswith("_url"):
-            return 2048
-        return 240
+        return self._get_context_assembler().preview_string_limit(parent_key)
 
     def _build_preview_value(
         self,
@@ -2929,136 +2228,19 @@ Your BEST EFFORT response:"""
         max_depth: int = 3,
     ) -> Any:
         """Build a compact, JSON-safe preview for LLM context."""
-        if value is None or isinstance(value, (bool, int, float)):
-            return value
-
-        if isinstance(value, str):
-            text_limit = self._preview_string_limit(parent_key)
-            return self._truncate_preview_text(value, text_limit)
-
-        if depth >= max_depth:
-            compact = json.dumps(value, default=str, separators=(",", ":"))
-            return self._truncate_preview_text(compact, 240)
-
-        if isinstance(value, list):
-            if not value:
-                return []
-            # Search/list tools: show a few more rows so bookmark/SERP previews are usable.
-            item_limit = 5 if parent_key in {"results", "top_results", "items", "matches", "documents", "pages", "outputs"} else 4
-            preview_items = [
-                self._build_preview_value(item, parent_key=parent_key, depth=depth + 1, max_depth=max_depth)
-                for item in value[:item_limit]
-            ]
-            if len(value) <= item_limit:
-                return preview_items
-            return {
-                "total_items": len(value),
-                "items_preview": preview_items,
-            }
-
-        if isinstance(value, dict):
-            preview = {}
-            keys = sorted(value.keys(), key=lambda key: self._preview_key_rank(key, value.get(key)))
-            max_keys = 12
-            shown_keys = 0
-            for key in keys:
-                if shown_keys >= max_keys:
-                    break
-                preview[key] = self._build_preview_value(
-                    value.get(key),
-                    parent_key=key,
-                    depth=depth + 1,
-                    max_depth=max_depth,
-                )
-                shown_keys += 1
-            omitted = len(keys) - shown_keys
-            if omitted > 0:
-                preview["_omitted_keys"] = omitted
-            return preview
-
-        return self._truncate_preview_text(value, 240)
+        return self._get_context_assembler().build_preview_value(
+            value,
+            parent_key=parent_key,
+            depth=depth,
+            max_depth=max_depth,
+        )
 
     def _build_llm_result_context_preview(self, tool_name: str, result: dict[str, Any]) -> tuple[str, int, int, bool]:
         """
         Build a valid JSON preview for later LLM turns while keeping the full result untouched.
         Returns (preview_text, full_result_chars, preview_chars, preview_truncated).
         """
-        full_serialized = json.dumps(result, indent=2, default=str)
-        result_chars_total = len(full_serialized)
-        max_chars = self._tool_context_max_chars(tool_name)
-
-        if result_chars_total <= max_chars:
-            return full_serialized, result_chars_total, result_chars_total, False
-
-        data = result.get("data")
-        preview_payload: dict[str, Any] = {
-            "ok": result.get("ok", True),
-            "speech": self._truncate_preview_text(result.get("speech", ""), 400),
-            "llm_context_preview": {
-                "tool": tool_name,
-                "data_preview": self._build_preview_value(data, parent_key="data"),
-            },
-        }
-        if result.get("error"):
-            preview_payload["error"] = self._truncate_preview_text(result["error"], 300)
-
-        preview_serialized = json.dumps(preview_payload, indent=2, default=str)
-        if len(preview_serialized) <= max_chars:
-            return preview_serialized, result_chars_total, len(preview_serialized), True
-
-        preview_compact = json.dumps(preview_payload, separators=(",", ":"), default=str)
-        if len(preview_compact) <= max_chars:
-            return preview_compact, result_chars_total, len(preview_compact), True
-
-        fallback_payload = {
-            "ok": result.get("ok", True),
-            "speech": self._truncate_preview_text(result.get("speech", ""), 240),
-            "preview_notice": (
-                "Structured result preview trimmed to fit LLM context. "
-                "Use speech and lifted identifiers first; do not re-call the same tool just to recover omitted tail content."
-            ),
-            "llm_context_preview": {
-                "tool": tool_name,
-                "data_preview_text": "",
-            },
-        }
-        if result.get("error"):
-            fallback_payload["error"] = self._truncate_preview_text(result["error"], 200)
-
-        data_preview_text = json.dumps(
-            self._build_preview_value(data, parent_key="data"),
-            default=str,
-            separators=(",", ":"),
-        )
-        suffix = "... [truncated]"
-
-        base_serialized = json.dumps(fallback_payload, default=str, separators=(",", ":"))
-        if len(base_serialized) >= max_chars:
-            minimal_payload = {
-                "ok": result.get("ok", True),
-                "speech": self._truncate_preview_text(result.get("speech", ""), 120),
-                "preview_notice": "Result preview omitted to fit LLM context. Do not re-call the same tool just to recover omitted tail content.",
-            }
-            minimal_serialized = json.dumps(minimal_payload, default=str, separators=(",", ":"))
-            return minimal_serialized, result_chars_total, len(minimal_serialized), True
-
-        empty_preview_serialized = json.dumps(fallback_payload, default=str, separators=(",", ":"))
-        remaining = max_chars - len(empty_preview_serialized)
-        if remaining > len(suffix):
-            fallback_payload["llm_context_preview"]["data_preview_text"] = (
-                self._truncate_preview_text(data_preview_text, remaining)
-            )
-
-        fallback_serialized = json.dumps(fallback_payload, default=str, separators=(",", ":"))
-        if len(fallback_serialized) > max_chars:
-            allowed = max_chars - len(empty_preview_serialized)
-            if allowed > len(suffix):
-                fallback_payload["llm_context_preview"]["data_preview_text"] = data_preview_text[: allowed - len(suffix)] + suffix
-            else:
-                fallback_payload["llm_context_preview"]["data_preview_text"] = ""
-            fallback_serialized = json.dumps(fallback_payload, default=str, separators=(",", ":"))
-
-        return fallback_serialized, result_chars_total, len(fallback_serialized), True
+        return self._get_context_assembler().build_llm_result_context_preview(tool_name, result)
     
     def _get_relevant_memories(self, transcript: str) -> str:
         """
@@ -3580,8 +2762,8 @@ def main():
         
         # Build config context with EXPLANATIONS for style modes
         response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
-        qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
-        multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+        qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)))
+        multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)))
         
         # Explain what the style means so feedback LLM doesn't penalize correct behavior
         style_explanations = {

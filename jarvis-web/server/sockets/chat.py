@@ -22,6 +22,7 @@ from flask import request
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
+from config_loader import DEFAULT_JARVIS_QA_WORD_LIMIT, DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT
 
 from model_prompt_overrides import apply_prompt_override_sections, load_model_prompt_override
 from model_catalog import get_provider_fallback_model
@@ -3922,8 +3923,8 @@ Previous structured data:
             
             # Build config context
             response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'auto')
-            qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '75'))
-            multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+            qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)))
+            multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)))
             style_explanations = {
                 'casual': f'Short voice-friendly output. Tool confirmations stay at 35 words max, Q&A is capped at {qa_word_limit}, multi-turn summaries at {multi_turn_word_limit}.',
                 'auto': f'Smart mode. Search tools get condensed (no URLs), complex tools keep full details. Q&A cap is {qa_word_limit}, multi-turn cap is {multi_turn_word_limit}.',

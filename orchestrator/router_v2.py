@@ -15,7 +15,15 @@ from zoneinfo import ZoneInfo
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value, get_float, get_int, get_bool
+from config_loader import (
+    load_config,
+    get_config_value,
+    get_float,
+    get_int,
+    get_bool,
+    DEFAULT_JARVIS_QA_WORD_LIMIT,
+    DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
+)
 from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
 from tool_schema import ToolRegistry
@@ -1022,8 +1030,8 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
         
         # Get response style - this affects output formatting rules
         response_style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual').lower()
-        qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', '150'))
-        multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', '150'))
+        qa_word_limit = int(get_config_value('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)))
+        multi_turn_word_limit = int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)))
         tool_confirmation_limit = 35
         
         # Build style-aware prefix

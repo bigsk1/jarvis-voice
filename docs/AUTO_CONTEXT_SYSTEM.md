@@ -31,6 +31,10 @@ elif self.auto_context_enabled:
 
 **Web UI always passes `conversation_history`** from its JSON file, so the `AUTO_CONTEXT_*` settings are never used for web requests.
 
+Implementation note:
+- `orchestrator/orchestrator_v2.py` still decides which path to use
+- `orchestrator/context_assembler.py` now owns the actual context-building and formatting logic for both paths
+
 ### Practical Implications
 
 1. **If you only use Web UI**: Set `AUTO_CONTEXT_ENABLED=false` in `.env` - it won't affect anything
@@ -242,9 +246,14 @@ Jarvis: [Sees context: "Built tetris game"]
 
 ### Implementation Location
 
-**File:** `orchestrator/orchestrator_v2.py`
+**Routing entry point:** `orchestrator/orchestrator_v2.py`
 
-**Method:** `_build_conversation_context(current_query: str) -> str`
+**Actual context assembly:** `orchestrator/context_assembler.py`
+
+**Delegated methods exposed by orchestrator:**
+- `_build_conversation_context(current_query: str) -> str`
+- `_format_conversation_context(current_query: str, conversation_history: list) -> str`
+- `_build_turn_context(original_query: str, conversation_context: list) -> str`
 
 **Flow:**
 ```python
@@ -261,18 +270,20 @@ def process(self, transcript: str, ...):
     # 3. Execute tools...
 ```
 
+`orchestrator_v2.py` keeps these wrapper methods so older call sites and tests do not need to know about the helper module directly.
+
 ### Database Query
 
 ```python
-# Load recent conversations
+# Inside ContextAssembler.build_conversation_context(...)
 db = get_memory_db()
 recent = db.get_recent_conversations(limit=AUTO_CONTEXT_WINDOW)
 
-# Filter by time
-cutoff = datetime.now() - timedelta(minutes=AUTO_CONTEXT_MINUTES)
-relevant = [c for c in recent if c['timestamp'] > cutoff]
+# Filter by time window
+cutoff = now_utc() - timedelta(minutes=AUTO_CONTEXT_MINUTES)
+relevant = [c for c in recent if parse_utc_timestamp(c["timestamp"]) > cutoff]
 
-# Build context with:
+# Build formatted context with:
 # - user_query
 # - jarvis_response
 # - tools_used (JSON array)
@@ -558,4 +569,3 @@ AUTO_CONTEXT_MINUTES=10
 ```
 
 **This is the "sweet spot" between stateless simplicity and stateful complexity.**
-

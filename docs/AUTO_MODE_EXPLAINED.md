@@ -17,6 +17,7 @@ In the main orchestrator flow, Jarvis gets a `raw_speech` answer and then decide
 
 Source of truth:
 - `orchestrator/orchestrator_v2.py`
+- `orchestrator/response_formatter.py`
 - `orchestrator/router_v2.py`
 
 This means the same final formatting layer is applied whether the turn was:
@@ -90,7 +91,8 @@ Important note:
 ## Current Final-Speech Flow
 
 Implementation:
-- Response-style dispatch: `orchestrator/orchestrator_v2.py`
+- Response-style dispatch and direct-speech bypass selection: `orchestrator/orchestrator_v2.py`
+- Final speech formatting helpers: `orchestrator/response_formatter.py`
 - Voice prompt rules: `orchestrator/router_v2.py`
 
 High-level flow:
@@ -113,6 +115,10 @@ That is the easiest way to reason about tuning:
 - `casual` = always voice-formatted
 - `auto` = conditional voice formatting
 - `detailed` = keep the LLM answer
+
+Compatibility note:
+- `orchestrator_v2.py` still exposes wrapper methods like `_format_single_turn_casual()`
+- the real implementations now live in `response_formatter.py`
 
 ---
 

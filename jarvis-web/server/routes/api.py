@@ -14,7 +14,13 @@ from ..services.settings_manager import (
     LOCAL_TTS_PROVIDER_OPTIONS,
     get_settings_manager,
 )
-from ..config import get_web_setting, JARVIS_ROOT, reload_web_config
+from ..config import (
+    get_web_setting,
+    JARVIS_ROOT,
+    reload_web_config,
+    DEFAULT_JARVIS_QA_WORD_LIMIT,
+    DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
+)
 from webui_auth import is_auth_enabled
 import sys
 
@@ -298,8 +304,8 @@ def get_system_config():
             'IMAGE_TOOL_PROVIDER': get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),
             'VIDEO_TOOL_PROVIDER': get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai'),
             'JARVIS_RESPONSE_STYLE': get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto'),
-            'JARVIS_QA_WORD_LIMIT': get_jarvis_setting('JARVIS_QA_WORD_LIMIT', '75'),
-            'JARVIS_MULTI_TURN_WORD_LIMIT': get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', '50'),
+            'JARVIS_QA_WORD_LIMIT': get_jarvis_setting('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)),
+            'JARVIS_MULTI_TURN_WORD_LIMIT': get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)),
             'JARVIS_COMPLETION_GUARD_ENABLED': get_jarvis_setting('JARVIS_COMPLETION_GUARD_ENABLED', 'false'),
             'JARVIS_COMPLETION_GUARD_MODE': get_jarvis_setting('JARVIS_COMPLETION_GUARD_MODE', 'manual'),
             'JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD': get_jarvis_setting('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70'),

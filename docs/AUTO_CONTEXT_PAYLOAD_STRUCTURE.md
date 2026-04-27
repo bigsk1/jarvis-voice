@@ -18,6 +18,7 @@ This document shows **exactly** what gets sent to the LLM when auto-context is e
 │ 2. Orchestrator.process(transcript)                    │
 │    if auto_context_enabled:                            │
 │       enhanced = _build_conversation_context(transcript)│
+│    # delegates to ContextAssembler                     │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -250,45 +251,20 @@ When the LLM receives this, it sees:
 ## Code Location
 
 ### Where Context is Built:
-**File:** `orchestrator/orchestrator_v2.py`
+**Routing entry point:** `orchestrator/orchestrator_v2.py`
+
+**Actual implementation:** `orchestrator/context_assembler.py`
 
 ```python
 def _build_conversation_context(self, current_query: str) -> str:
-    """Build enhanced transcript with context."""
-    db = get_memory_db()
-    
-    # Get recent conversations
-    recent = db.get_recent_conversations(limit=self.auto_context_window)
-    
-    # Filter by time window
-    cutoff = datetime.now() - timedelta(minutes=self.auto_context_minutes)
-    relevant = [c for c in recent if c['timestamp'] > cutoff]
-    
-    # Build formatted context
-    context_parts = ["╔══════════════..."]
-    context_parts.append("║ RECENT CONVERSATION HISTORY...")
-    
-    for i, conv in enumerate(reversed(relevant), 1):
-        context_parts.append(f"─── Conversation #{i} ───")
-        context_parts.append(f"User asked: {conv['user_query']}")
-        context_parts.append(f"Jarvis replied: {conv['jarvis_response']}")
-        
-        if conv.get('tools_used'):
-            context_parts.append(f"Tools used: {tools}")
-        
-        if conv['success']:
-            context_parts.append("✅ STATUS: Success")
-        else:
-            context_parts.append("⚠️  STATUS: FAILED - Task did not complete successfully")
-            context_parts.append("   Consider: Using check_tool_logs to understand why")
-    
-    context_parts.append("╔══════════════...") 
-    context_parts.append("║ CURRENT USER QUERY...")
-    context_parts.append(current_query)
-    context_parts.append("\nINSTRUCTIONS:...")
-    
-    return "\n".join(context_parts)
+    # Orchestrator compatibility wrapper
+    return self._get_context_assembler().build_conversation_context(current_query)
 ```
+
+The helper module also owns:
+- web `conversation_history` formatting via `_format_conversation_context(...)`
+- multi-turn tool context assembly via `_build_turn_context(...)`
+- result preview shaping used when prior tool data is carried into the next turn
 
 ### Where Context is Injected:
 **File:** `orchestrator/orchestrator_v2.py`
@@ -379,4 +355,3 @@ AUTO_CONTEXT_MINUTES=10
 - `AUTO_CONTEXT_SYSTEM.md` - Feature overview
 - `CONVERSATION_STATE_ARCHITECTURE.md` - Architecture design
 - `MEMORY_SYSTEM.md` - Long-term memory tools
-

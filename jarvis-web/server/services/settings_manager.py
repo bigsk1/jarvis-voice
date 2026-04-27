@@ -5,7 +5,8 @@ Handles safe reading/writing of Jarvis settings with web overrides
 from typing import Any
 from ..config import (
     get_web_setting, save_web_config, load_web_config,
-    get_jarvis_setting, load_jarvis_config
+    get_jarvis_setting, load_jarvis_config,
+    DEFAULT_JARVIS_QA_WORD_LIMIT, DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
 )
 from model_catalog import (
     get_catalog_providers,
@@ -199,8 +200,8 @@ class SettingsManager:
         env_video_provider = get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai')
         env_tts_provider = get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if self.mode == 'local' else 'elevenlabs')
         env_response_style = get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto')
-        env_qa_word_limit = int(get_jarvis_setting('JARVIS_QA_WORD_LIMIT', '75'))
-        env_multi_turn_word_limit = int(get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', '50'))
+        env_qa_word_limit = int(get_jarvis_setting('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)))
+        env_multi_turn_word_limit = int(get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)))
         env_completion_guard_enabled = get_jarvis_setting('JARVIS_COMPLETION_GUARD_ENABLED', 'false').lower() == 'true'
         env_completion_guard_mode = get_jarvis_setting('JARVIS_COMPLETION_GUARD_MODE', 'manual')
         env_completion_guard_ticket_on_fail = get_jarvis_setting('JARVIS_COMPLETION_GUARD_TICKET_ON_FAIL', 'true').lower() == 'true'

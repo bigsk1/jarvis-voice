@@ -818,7 +818,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Before: "Animation adventure at Regal" (useless!)
   - After: "Shelter, Iron Lung, Avatar: Fire and Ash at Regal Evergreen"
   - Compression now sees BOTH LLM response (names) + raw data (numbers)
-  - Configurable via `JARVIS_MULTI_TURN_WORD_LIMIT` (default 50)
+  - Configurable via `JARVIS_MULTI_TURN_WORD_LIMIT` (default baseline 75)
 
 **2026-02-01:**
 - ✅ **Video Gallery UI** - Browse generated videos in jarvis-canvas 

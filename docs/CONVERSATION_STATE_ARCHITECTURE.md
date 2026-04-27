@@ -51,7 +51,7 @@ Understanding how Jarvis handles conversation state between interactions is crit
 ┌─────────────────────────────────────────────────┐
 │  Orchestrator (orchestrator_v2.py)              │
 │  - NEW Orchestrator() instance                  │
-│  - NO conversation history loaded               │
+│  - Chooses web-history vs DB auto-context path  │
 │  - Fresh LLM provider                           │
 └─────────────────────────────────────────────────┘
          │
@@ -78,7 +78,9 @@ Understanding how Jarvis handles conversation state between interactions is crit
 └─────────────────────────────────────────────────┘
 ```
 
-**Key Point:** Each cycle creates a new `Orchestrator()` instance, BUT auto-context loads recent conversations from database automatically (if enabled).
+**Key Point:** Each cycle creates a new `Orchestrator()` instance, but it can still reload recent context on demand:
+- `conversation_history` from the web app for web chats
+- DB-backed auto-context for CLI/TUI when `AUTO_CONTEXT_ENABLED=true`
 
 ---
 
@@ -231,7 +233,7 @@ AUTO_CONTEXT_MINUTES=10
 
 **How It Works:**
 
-1. **On each cycle**, orchestrator calls `_build_conversation_context()`
+1. **On each cycle**, orchestrator decides whether to use web history or DB auto-context
 2. **Loads recent conversations** from `memory_db.conversations` table
 3. **Filters by time** (only last N minutes)
 4. **Prepends to user query** as "RECENT CONVERSATION HISTORY"
@@ -240,7 +242,12 @@ AUTO_CONTEXT_MINUTES=10
 - **WebUI:** Passes `conversation_history` directly (client maintains state)
 - **Terminal:** Uses auto-context from database (server loads state)
 
-**Web thread block (`=== RECENT CONVERSATION CONTEXT ===`):** When the web app sends history, `jarvis-web/server/sockets/chat.py` builds prior turns without duplicating the **current** user message (already the live transcript). `orchestrator_v2._format_conversation_context` may add optional **gap timing** (local timestamp + relative time) when the anchor is unambiguous. This header is **not** the same as DB auto-context’s `=== RECENT CONVERSATION HISTORY ===`, but current Tool RAG compact extraction recognizes both web/current-request shapes and the older HISTORY + `Instructions:` auto-context shape. See `docs/TOOL_RAG_STRATEGY.md` for `signal_source` labels such as `current_request`, `trailing_request`, `original_user_request_tail`, and `legacy_history_strip`.
+**Web thread block (`=== RECENT CONVERSATION CONTEXT ===`):** When the web app sends history, `jarvis-web/server/sockets/chat.py` builds prior turns without duplicating the **current** user message (already the live transcript). `ContextAssembler.format_conversation_context(...)` may add optional **gap timing** (local timestamp + relative time) when the anchor is unambiguous. This header is **not** the same as DB auto-context’s `=== RECENT CONVERSATION HISTORY ===`, but current Tool RAG compact extraction recognizes both web/current-request shapes and the older HISTORY + `Instructions:` auto-context shape. See `docs/TOOL_RAG_STRATEGY.md` for `signal_source` labels such as `current_request`, `trailing_request`, `original_user_request_tail`, and `legacy_history_strip`.
+
+**Current ownership split:**
+- `orchestrator/orchestrator_v2.py` selects the context path and passes the enhanced transcript into routing
+- `orchestrator/context_assembler.py` owns context formatting, DB history assembly, turn-context construction, and preview shaping
+- `orchestrator/response_formatter.py` owns final speech condensation after the LLM/tool phase is done
 
 **Design Benefits:**
 - ✅ Context without server-side session state
