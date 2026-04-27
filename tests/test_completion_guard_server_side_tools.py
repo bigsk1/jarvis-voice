@@ -38,8 +38,8 @@ class _FakeSocketIO:
 
 class CompletionGuardServerSideToolsTests(unittest.TestCase):
     def test_completion_guard_location_context_uses_default_location(self):
-        with patch("config_loader.load_config"), patch(
-            "config_loader.get_config_value", return_value="Hillsboro, Oregon"
+        with patch("server.services.completion_guard.load_config"), patch(
+            "server.services.completion_guard.get_config_value", return_value="Hillsboro, Oregon"
         ):
             context = ChatHandler._get_completion_guard_location_context("cloud")
 
@@ -132,8 +132,8 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             "completion_guard": {},
         }
 
-        with patch("config_loader.load_config"), patch(
-            "config_loader.get_config_value", return_value="Hillsboro, Oregon"
+        with patch("server.services.completion_guard.load_config"), patch(
+            "server.services.completion_guard.get_config_value", return_value="Hillsboro, Oregon"
         ):
             parsed = handler._evaluate_completion_guard_auto(record)
 
