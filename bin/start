@@ -17,6 +17,7 @@
 #   jarvis-canvas       - Canvas viewer (port 8890)
 #   jarvis-memory       - Memory Browser UI (port 5002)
 #   jarvis-intelligence - Intelligence Dashboard (port 5003)
+#   jarvis-docs         - Docs Reader (port 5004)
 #
 # Notes:
 #   - API and Services both perform sync operations on startup
@@ -45,6 +46,7 @@ declare -A SESSIONS=(
     ["canvas"]="jarvis-canvas"
     ["memory"]="jarvis-memory"
     ["intelligence"]="jarvis-intelligence"
+    ["docs"]="jarvis-docs"
 )
 
 # Commands for each service
@@ -55,6 +57,7 @@ declare -A COMMANDS=(
     ["canvas"]="./bin/jarvis-canvas"
     ["memory"]="./bin/jarvis-memory"
     ["intelligence"]="./bin/jarvis-intelligence"
+    ["docs"]="./bin/jarvis-docs"
 )
 
 # Ports for health checks
@@ -65,6 +68,7 @@ declare -A PORTS=(
     ["canvas"]="8890"
     ["memory"]="5002"
     ["intelligence"]="5003"
+    ["docs"]="5004"
 )
 
 # Health check endpoints
@@ -74,6 +78,7 @@ declare -A HEALTH_ENDPOINTS=(
     ["canvas"]="/api/health"
     ["memory"]="/api/status"
     ["intelligence"]="/api/status"
+    ["docs"]="/api/status"
 )
 
 log() {
@@ -187,7 +192,7 @@ list_sessions() {
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    for name in api services web canvas memory intelligence; do
+    for name in api services web canvas memory intelligence docs; do
         local session=${SESSIONS[$name]}
         local port=${PORTS[$name]}
         local status=""
@@ -251,6 +256,7 @@ start_ui_only() {
     start_service "canvas"
     start_service "memory"
     start_service "intelligence"
+    start_service "docs"
     
     echo ""
     success "UI services started!"
@@ -259,6 +265,7 @@ start_ui_only() {
     echo "  Canvas:        http://localhost:8890"
     echo "  Memory:        http://localhost:5002"
     echo "  Intelligence:  http://localhost:5003"
+    echo "  Docs:          http://localhost:5004"
     echo ""
 }
 
@@ -274,6 +281,7 @@ start_no_api() {
     start_service "canvas"
     start_service "memory"
     start_service "intelligence"
+    start_service "docs"
     
     echo ""
     success "Services started (no API sync)!"
@@ -306,6 +314,7 @@ start_all() {
     start_service "canvas"
     start_service "memory"
     start_service "intelligence"
+    start_service "docs"
     
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
@@ -317,6 +326,7 @@ start_all() {
     echo "  Canvas:        http://localhost:8890"
     echo "  Memory:        http://localhost:5002"
     echo "  Intelligence:  http://localhost:5003"
+    echo "  Docs:          http://localhost:5004"
     echo ""
     echo "  Attach to any session:  tmux attach -t <session-name>"
     echo "  Check status:           ./bin/start --list"
@@ -330,7 +340,7 @@ show_help() {
     echo ""
     echo "Usage:"
     echo "  ./bin/start              Start all services (API first, wait for sync, then others)"
-    echo "  ./bin/start --ui-only    Start only UI services (web, canvas, memory)"
+    echo "  ./bin/start --ui-only    Start only UI services (web, canvas, memory, intelligence, docs)"
     echo "  ./bin/start --no-api     Start everything except API (skip sync wait)"
     echo "  ./bin/start --list       Show tmux session status"
     echo "  ./bin/start --stop       Stop all Jarvis sessions"
@@ -343,6 +353,7 @@ show_help() {
     echo "  jarvis-canvas       Canvas viewer (port 8890)"
     echo "  jarvis-memory       Memory Browser UI (port 5002)"
     echo "  jarvis-intelligence Intelligence Dashboard (port 5003)"
+    echo "  jarvis-docs         Docs Reader (port 5004)"
     echo ""
 }
 

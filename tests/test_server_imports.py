@@ -64,6 +64,7 @@ def main():
         PROJECT_ROOT / "jarvis-web" / "server" / "app.py",
         PROJECT_ROOT / "jarvis-intelligence" / "server" / "app.py",
         PROJECT_ROOT / "jarvis-memory" / "server" / "app.py",
+        PROJECT_ROOT / "jarvis-docs" / "server" / "app.py",
         PROJECT_ROOT / "jarvis-canvas" / "server" / "app.py",
         PROJECT_ROOT / "orchestrator" / "orchestrator_v2.py",
     ]

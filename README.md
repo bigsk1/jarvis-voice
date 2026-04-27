@@ -265,6 +265,11 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - FTS5 search, dual database (cloud/local), re-embed after edits
   - Mobile responsive: hamburger menu at ≤730px
   - Launch: `./bin/jarvis-memory`
+- **Docs Reader**: Dedicated markdown workspace for everything under `docs/` at localhost:5004
+  - Reader-first layout with global search across markdown files
+  - Section rail + document feed + rendered article canvas
+  - Optional in-place `.md` editing via `DOCS_UI_EDIT_ENABLED=true`
+  - Launch: `./bin/jarvis-docs`
 - **Canvas Viewer**: Visual knowledge display at localhost:8890
   - Jarvis saves research results, code snippets, comparisons
   - Beautiful dark UI with Markdown rendering
@@ -677,6 +682,7 @@ Start everything with one command using tmux sessions (make sure they are all se
 | `jarvis-canvas` | 8890 | Canvas & Gallery viewer |
 | `jarvis-memory` | 5002 | Memory Browser UI |
 | `jarvis-intelligence` | 5003 | Intelligence Dashboard |
+| `jarvis-docs` | 5004 | Markdown docs reader/editor for `docs/` |
 
 ```bash
 # Attach to any session to see logs

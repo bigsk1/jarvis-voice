@@ -1,0 +1,28 @@
+:root {
+  --bg-base: #0b0c10;
+  --bg-panel: rgba(18, 21, 27, 0.92);
+  --bg-panel-strong: #141821;
+  --bg-card: rgba(255, 255, 255, 0.03);
+  --bg-card-hover: rgba(255, 255, 255, 0.06);
+  --bg-accent-soft: rgba(94, 234, 212, 0.1);
+  --border: rgba(158, 173, 199, 0.16);
+  --border-strong: rgba(158, 173, 199, 0.28);
+  --text-primary: #f3f6fb;
+  --text-secondary: #a8b4c3;
+  --text-muted: #718097;
+  --accent-primary: #5eead4;
+  --accent-secondary: #38bdf8;
+  --accent-strong: #14b8a6;
+  --accent-glow: rgba(94, 234, 212, 0.18);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #f87171;
+  --shadow-xl: 0 28px 80px rgba(0, 0, 0, 0.42);
+  --shadow-md: 0 16px 36px rgba(0, 0, 0, 0.24);
+  --radius-xl: 24px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}

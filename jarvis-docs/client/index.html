@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0c10">
+  <title>Jarvis Docs</title>
+  <link rel="stylesheet" href="/css/fonts.css">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/docs.css">
+  <script src="/vendor/marked.min.js" onerror="this.removeAttribute('onerror');this.src='https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js'"></script>
+</head>
+<body>
+  <div class="docs-app">
+    <header class="docs-header">
+      <div class="header-copy">
+        <div class="eyebrow">Markdown reader</div>
+        <h1>Jarvis Docs</h1>
+        <p>Search, skim, and read everything under <code>docs/</code> without the file-browser feel.</p>
+      </div>
+
+      <div class="header-actions">
+        <label class="search-shell" for="globalSearchInput">
+          <span>Search</span>
+          <input id="globalSearchInput" type="search" placeholder="Title or content across docs">
+        </label>
+
+        <label class="sort-shell" for="sortSelect">
+          <span>Sort</span>
+          <select id="sortSelect">
+            <option value="recent">Recent</option>
+            <option value="name">Name</option>
+            <option value="oldest">Oldest</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <main class="docs-layout">
+      <aside class="library-panel" id="libraryPanel">
+        <div class="panel-section">
+          <div class="section-heading">
+            <h2>Library</h2>
+            <div class="section-heading-actions">
+              <span id="libraryCount" class="count-pill">0 docs</span>
+              <button id="closeLibraryBtn" class="panel-toggle-btn" type="button" title="Hide library">×</button>
+            </div>
+          </div>
+          <div id="folderRail" class="folder-rail">
+            <div class="loading-card">Loading sections…</div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-heading">
+            <h2>Documents</h2>
+            <span id="activeFolderLabel" class="subtle-label">All Docs</span>
+          </div>
+          <div id="documentFeed" class="document-feed">
+            <div class="loading-card">Loading documents…</div>
+          </div>
+          <button id="loadMoreBtn" class="load-more-btn" hidden>Load more</button>
+        </div>
+      </aside>
+
+      <section class="reader-panel">
+        <div class="reader-toolbar">
+          <div class="reader-toolbar-main">
+            <div class="reader-toolbar-toggles">
+              <button id="toggleLibraryBtn" class="panel-toggle-btn" type="button" title="Toggle library">Library</button>
+              <button id="toggleOutlineBtn" class="panel-toggle-btn" type="button" title="Toggle outline">Outline</button>
+            </div>
+            <div id="docPath" class="doc-path">Select a document</div>
+            <div id="docMeta" class="doc-meta">Markdown rendering, reader layout, and optional in-place editing.</div>
+          </div>
+
+          <div class="toolbar-actions">
+            <button id="refreshDocBtn" class="ghost-btn" disabled>Refresh</button>
+            <button id="editDocBtn" class="primary-btn" hidden>Edit</button>
+          </div>
+        </div>
+
+        <article class="reader-surface">
+          <div id="emptyReader" class="empty-reader">
+            <h2>Pick a doc to start reading</h2>
+            <p>Choose a document from the library and it will open here in the reading pane.</p>
+          </div>
+
+          <div id="readerView" class="reader-view" hidden>
+            <div id="renderedMarkdown" class="rendered-markdown"></div>
+          </div>
+
+          <div id="editorView" class="editor-view" hidden>
+            <div class="editor-header">
+              <div>
+                <h2>Edit Markdown</h2>
+                <p>Changes write back to the file inside <code>docs/</code>.</p>
+              </div>
+              <div class="toolbar-actions">
+                <button id="cancelEditBtn" class="ghost-btn">Cancel</button>
+                <button id="saveEditBtn" class="primary-btn">Save</button>
+              </div>
+            </div>
+            <textarea id="editorTextarea" spellcheck="false"></textarea>
+          </div>
+        </article>
+      </section>
+
+      <aside class="insight-panel" id="insightPanel">
+        <div class="panel-section">
+          <div class="section-heading">
+            <h2>Overview</h2>
+            <button id="closeOutlineBtn" class="panel-toggle-btn" type="button" title="Hide outline">×</button>
+          </div>
+          <div id="insightCards" class="insight-cards">
+            <div class="insight-card muted">
+              <span class="insight-label">Status</span>
+              <strong>Waiting</strong>
+              <p>Document stats and headings show up here once you open a file.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-heading">
+            <h2>Outline</h2>
+          </div>
+          <nav id="outlineNav" class="outline-nav">
+            <div class="outline-empty">Open a markdown file to jump by heading.</div>
+          </nav>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="/js/docs.js"></script>
+</body>
+</html>

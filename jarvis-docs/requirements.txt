@@ -1,0 +1,4 @@
+# Jarvis Docs dependencies
+# Keep versions aligned with the root requirements.txt; list only this server's runtime deps.
+flask>=3.0.0
+flask-cors>=4.0.0

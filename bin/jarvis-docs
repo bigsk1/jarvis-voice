@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""
+Jarvis Docs launcher
+Run the standalone docs reader for markdown files under docs/
+"""
+import sys
+from pathlib import Path
+
+
+SCRIPT_DIR = Path(__file__).parent.resolve()
+JARVIS_ROOT = SCRIPT_DIR.parent
+DOCS_ROOT = JARVIS_ROOT / 'jarvis-docs'
+
+sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+sys.path.insert(0, str(DOCS_ROOT))
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Jarvis Docs - Read and optionally edit markdown docs under docs/',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  jarvis-docs                    # Start on port 5004
+  jarvis-docs --port 8084        # Use custom port
+  jarvis-docs --debug            # Enable debug mode
+
+Editing:
+  DOCS_UI_EDIT_ENABLED=true jarvis-docs
+        """,
+    )
+    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
+    parser.add_argument('--port', type=int, default=5004, help='Port to bind to (default: 5004)')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+
+    args = parser.parse_args()
+
+    try:
+        from server.app import run_server
+        run_server(host=args.host, port=args.port, debug=args.debug)
+    except ImportError as exc:
+        print(f'Error importing jarvis-docs: {exc}')
+        print('\nMake sure dependencies are installed:')
+        print(f'  pip install -r {DOCS_ROOT}/requirements.txt')
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

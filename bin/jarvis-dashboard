@@ -111,7 +111,7 @@ COMMANDS: List[Command] = [
     
     # === 🔧 SERVICES ===
     Command("🚀 Start All Services", "./bin/start", "API→wait→services+UIs", "🔧 Services", interactive=True),
-    Command("🚀 Start UI Only", "./bin/start --ui-only", "Web+Canvas+Memory only", "🔧 Services", interactive=True),
+    Command("🚀 Start UI Only", "./bin/start --ui-only", "Web+Canvas+Memory+Intel+Docs", "🔧 Services", interactive=True),
     Command("📊 Service Status", "./bin/start --list", "Show all session status", "🔧 Services"),
     Command("🛑 Stop All Services", "./bin/start --stop", "Stop all tmux sessions", "🔧 Services"),
     Command("Start API (Cloud)", "./bin/jarvis-api", "API server - cloud mode", "🔧 Services", interactive=True),
@@ -200,6 +200,14 @@ COMMANDS: List[Command] = [
     Command("View Experiences", "sqlite3 data/jarvis_intelligence.db \"SELECT substr(query,1,40), tools_used, outcome_success FROM experiences ORDER BY id DESC LIMIT 10;\"", "Recent experiences", "🧠 Intelligence"),
     Command("Re-embed Insight", "echo '📝 To re-embed an insight after editing:' && echo '   ./bin/re-embed-insight <id>' && echo '   ./bin/re-embed-insight <id> local' && echo '' && echo 'Example: ./bin/re-embed-insight 42'", "Re-embed after edit", "🧠 Intelligence"),
     Command("Re-embed Experience", "echo '📝 To re-embed an experience after editing:' && echo '   ./bin/re-embed-experience <id>' && echo '   ./bin/re-embed-experience <id> local' && echo '' && echo 'Example: ./bin/re-embed-experience 42'", "Re-embed after edit", "🧠 Intelligence"),
+
+    # === 📚 DOCS ===
+    Command("Start Docs UI", "./bin/jarvis-docs", "Docs reader UI :5004", "📚 Docs", interactive=True),
+    Command("Start Docs UI (Edit)", "DOCS_UI_EDIT_ENABLED=true ./bin/jarvis-docs", "Docs UI with markdown editing enabled", "📚 Docs", interactive=True),
+    Command("Docs UI Health", "curl -sf http://localhost:5004/api/status | jq || echo '❌ Docs UI not running'", "Docs UI status", "📚 Docs"),
+    Command("Open Docs UI", "echo '🌐 Open http://localhost:5004 in browser'", "Docs reader URL", "📚 Docs"),
+    Command("Stop Docs UI", "tmux kill-session -t jarvis-docs 2>/dev/null && echo '✅ Stopped jarvis-docs' || echo 'ℹ️ jarvis-docs session not running'", "Stop docs tmux session", "📚 Docs"),
+    Command("Docs UI Logs", "tmux capture-pane -t jarvis-docs -p -S -120 2>/dev/null || echo '❌ jarvis-docs session not running'", "Recent docs UI session output", "📚 Docs"),
     
     # === 🧬 PROMPT EVOLUTION ===
     Command("Evolution Check", "./bin/evolve-prompts check", "Check prompts needing evolution", "🧬 Evolution"),
@@ -259,7 +267,7 @@ COMMANDS: List[Command] = [
     Command("Service JSONL (Today)", "tail -20 logs/services/*-$(date +%Y-%m-%d).jsonl 2>/dev/null | jq -c '{daemon:.daemon,event:.event,ts:.timestamp}' 2>/dev/null || echo 'No JSONL logs today'", "Today's structured service logs", "📋 Logs"),
     
     # === 📊 MONITORING ===
-    Command("Port Check", "echo '=== Jarvis Services ===' && for p in 8880 5001 5002 5003 8890 4096 3000; do ss -tlnp 2>/dev/null | grep -q \":$p \" && echo \"✅ :$p listening\" || echo \"❌ :$p not listening\"; done", "Check key ports (API/Web/Memory/Intel/Canvas/OpenCode/Grafana)", "📊 Monitor"),
+    Command("Port Check", "echo '=== Jarvis Services ===' && for p in 8880 5001 5002 5003 5004 8890 4096 3000; do ss -tlnp 2>/dev/null | grep -q \":$p \" && echo \"✅ :$p listening\" || echo \"❌ :$p not listening\"; done", "Check key ports (API/Web/Memory/Intel/Docs/Canvas/OpenCode/Grafana)", "📊 Monitor"),
     Command("API Metrics", "curl -s http://localhost:8880/metrics 2>/dev/null | head -50 || echo 'API not running'", "Prometheus metrics", "📊 Monitor"),
     Command("Open Grafana", "echo '🌐 Open http://localhost:3000 in browser'", "Grafana dashboard URL", "📊 Monitor"),
     Command("Monitor Status", "cd monitoring && ./manage.sh status", "Show running services", "📊 Monitor"),
@@ -616,6 +624,8 @@ class CommandRunner(App):
                 session_name = "jarvis-memory"  # Memory Browser UI
             elif "jarvis-intelligence" in cmd.command:
                 session_name = "jarvis-intelligence"  # Intelligence Dashboard
+            elif "jarvis-docs" in cmd.command:
+                session_name = "jarvis-docs"  # Docs reader UI
             else:
                 session_name = window_name  # Use window name as session name
             
