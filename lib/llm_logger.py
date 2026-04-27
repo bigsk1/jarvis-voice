@@ -44,6 +44,7 @@ class LLMLogger:
         duration_ms: float,
         mode: str = "cloud",
         user_query: str | None = None,
+        routing_provenance: dict[str, Any] | None = None,
         error: str | None = None
     ):
         """
@@ -71,6 +72,7 @@ class LLMLogger:
             "prompt_type": prompt_type,
             "user_query": user_query,
             "messages_count": len(messages),
+            "routing_provenance": routing_provenance,
             
             # Flatten usage fields for easier Loki/Grafana querying
             "input_tokens": usage_info.get("input_tokens") if usage_info else None,
@@ -92,6 +94,16 @@ class LLMLogger:
             "success": error is None,
             "error": error
         }
+        if routing_provenance:
+            auto_context = routing_provenance.get("auto_context", {})
+            memory = routing_provenance.get("memory_injection", {})
+            learning = routing_provenance.get("learning_insights", {})
+            log_entry["auto_context_applied"] = bool(auto_context.get("applied"))
+            log_entry["memory_injected"] = bool(memory.get("injected"))
+            log_entry["memory_candidate_count"] = int(memory.get("candidate_count") or 0)
+            log_entry["memory_injected_count"] = int(memory.get("injected_count") or 0)
+            log_entry["learning_insights_injected"] = bool(learning.get("injected"))
+            log_entry["learning_insight_count"] = int(learning.get("insight_count") or 0)
         
         # Write as JSON lines (one JSON object per line)
         with open(self.log_file, 'a') as f:

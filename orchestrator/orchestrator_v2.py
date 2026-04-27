@@ -746,12 +746,15 @@ Mode: {self.mode}
             return workflow_result
         
         # Auto-inject recent conversation context
+        auto_context_source = "none"
         if conversation_history:
             # Use provided conversation history (from web app)
             enhanced_transcript = self._format_conversation_context(transcript, conversation_history)
+            auto_context_source = "provided_history"
         elif self.auto_context_enabled:
             # Fall back to memory_db auto_context (terminal/TUI mode)
             enhanced_transcript = self._build_conversation_context(transcript)
+            auto_context_source = "auto_context"
         else:
             enhanced_transcript = transcript
         
@@ -781,7 +784,9 @@ Mode: {self.mode}
         
         # Auto-inject relevant memories (semantic search + recency weighting)
         # Works for CLI, WebUI, wake word - all go through orchestrator.process()
-        memory_context = self._get_relevant_memories(transcript)
+        memory_bundle = self._get_relevant_memories_bundle(transcript)
+        memory_context = memory_bundle.get("context", "")
+        memory_meta = memory_bundle.get("meta", {})
         if memory_context:
             enhanced_transcript = f"{memory_context}\n\n{enhanced_transcript}"
         
@@ -789,6 +794,27 @@ Mode: {self.mode}
         learning_context, applied_insights = self._get_learning_insights(transcript, available_tool_names)
         if learning_context:
             enhanced_transcript = f"{learning_context}\n\n{enhanced_transcript}"
+        combined_intelligence_context = "\n\n".join(
+            block.strip()
+            for block in [learning_context, memory_context]
+            if block and block.strip()
+        )
+        routing_provenance = {
+            "auto_context": {
+                "enabled": bool(self.auto_context_enabled),
+                "source": auto_context_source,
+                "applied": auto_context_source != "none" and enhanced_transcript != transcript,
+            },
+            "memory_injection": memory_meta,
+            "learning_insights": {
+                "injected": bool(learning_context),
+                "insight_count": len(applied_insights),
+                "insight_descriptions": [
+                    str(insight.get("description", ""))[:160]
+                    for insight in applied_insights[:5]
+                ],
+            },
+        }
         client_search_hint_active = _has_client_side_search_tool_hint(enhanced_transcript)
         
         # Multi-turn context tracking
@@ -907,6 +933,7 @@ Mode: {self.mode}
                 excluded_tools=excluded_tools,
                 typo_hint_source=transcript,
                 disable_server_side_tools=disable_server_side_tools,
+                routing_provenance=routing_provenance,
                 server_side_max_tool_turns=(
                     native_search_remaining
                     if native_search_remaining is not None and native_search_remaining > 0
@@ -1389,6 +1416,8 @@ Mode: {self.mode}
                     "data": accumulated_data,
                     "tool_trace": tool_trace,
                     "available_tools": available_tools,  # Tools LLM could choose from
+                    "intelligence_context": combined_intelligence_context,
+                    "routing_provenance": routing_provenance,
                     "response_style": response_style,
                     "qa_word_limit": int(get_config_value('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT))),
                     "multi_turn_word_limit": int(get_config_value('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT))),
@@ -2242,7 +2271,7 @@ Your synthesized response:"""
         """
         return self._get_context_assembler().build_llm_result_context_preview(tool_name, result)
     
-    def _get_relevant_memories(self, transcript: str) -> str:
+    def _get_relevant_memories_bundle(self, transcript: str) -> dict[str, Any]:
         """
         Fetch memories semantically relevant to the current query.
         Injected into context so LLM doesn't need to call search_memory/semantic_recall.
@@ -2253,8 +2282,20 @@ Your synthesized response:"""
         
         Works for CLI, WebUI, and wake word - all entry points use orchestrator.process().
         """
-        if get_config_value('AUTO_MEMORY_INJECTION_ENABLED', 'true').lower() != 'true':
-            return ""
+        enabled = get_config_value('AUTO_MEMORY_INJECTION_ENABLED', 'true').lower() == 'true'
+        if not enabled:
+            return {
+                "context": "",
+                "meta": {
+                    "enabled": False,
+                    "injected": False,
+                    "threshold": None,
+                    "limit": 0,
+                    "candidate_count": 0,
+                    "injected_count": 0,
+                    "top_candidates": [],
+                }
+            }
         try:
             db = get_memory_db()
             limit = get_int('AUTO_MEMORY_LIMIT', 8)
@@ -2335,14 +2376,14 @@ Your synthesized response:"""
                 similarity_threshold=candidate_threshold
             )
             
+            semantic_candidates = []
+
             # Apply recency weighting to semantic results
             now = datetime.now()
             for m in memories:
                 key = m.get('key', '')
                 if key and key in seen_keys:
                     continue
-                if key:
-                    seen_keys.add(key)
                 sim = m.get('similarity', 0)
                 importance = m.get('importance', 5)
                 recency_factor = 1.0
@@ -2374,15 +2415,53 @@ Your synthesized response:"""
                     adjusted += 0.05
                     if _is_curated_intel(source_name):
                         adjusted += 0.07
+                semantic_candidates.append({
+                    "key": key,
+                    "category": m.get("category", ""),
+                    "source": source_name,
+                    "bucket": 'intel' if _is_intel_source(source_name) else 'semantic',
+                    "score": round(float(adjusted or 0), 3),
+                    "similarity": round(float(sim or 0), 3),
+                })
                 if adjusted >= threshold:
+                    if key:
+                        seen_keys.add(key)
                     merged.append((adjusted, importance, m, 'intel' if _is_intel_source(source_name) else 'semantic'))
             
             # Sort by score desc, then importance desc; take top N
             merged.sort(key=lambda x: (x[0], x[1]), reverse=True)
             top = merged[:limit]
-            
+
+            top_candidates = []
+            for candidate in semantic_candidates[: min(max(limit, 3), 5)]:
+                top_candidates.append(candidate)
+            for rank_score, _, m, source in merged[: min(max(limit, 3), 5)]:
+                candidate = {
+                    "key": m.get("key", ""),
+                    "category": m.get("category", ""),
+                    "source": m.get("source", ""),
+                    "bucket": source,
+                    "score": round(float(rank_score or 0), 3),
+                    "similarity": round(float(m.get("similarity") or 0), 3),
+                }
+                if not any(existing.get("key") == candidate["key"] for existing in top_candidates):
+                    top_candidates.append(candidate)
+                if len(top_candidates) >= min(max(limit, 3), 5):
+                    break
+
             if not top:
-                return ""
+                return {
+                    "context": "",
+                    "meta": {
+                        "enabled": True,
+                        "injected": False,
+                        "threshold": threshold,
+                        "limit": limit,
+                        "candidate_count": len(semantic_candidates),
+                        "injected_count": 0,
+                        "top_candidates": top_candidates,
+                    }
+                }
             
             memory_lines = []
             price_like_query = any(
@@ -2441,7 +2520,18 @@ Your synthesized response:"""
                     f"{', staleness: ' + staleness_hint if staleness_hint else ''})"
                 )
             if not memory_lines:
-                return ""
+                return {
+                    "context": "",
+                    "meta": {
+                    "enabled": True,
+                    "injected": False,
+                    "threshold": threshold,
+                    "limit": limit,
+                    "candidate_count": len(semantic_candidates),
+                    "injected_count": 0,
+                    "top_candidates": top_candidates,
+                }
+            }
             lines = [
                 "=== RELEVANT STORED KNOWLEDGE (use this without calling search_memory tools) ===",
                 "Lines tagged pinned_pref are address/tone preferences (e.g. call me sir)—honor those over your defaults when they apply.",
@@ -2450,11 +2540,38 @@ Your synthesized response:"""
                 f"Higher rank = stronger fit. embed = cosine; rank = similarity after recency (semantic rows need adjusted rank ≥ {threshold:.2f}).",
                 ""
             ] + memory_lines + ["==="]
-            return "\n".join(lines) + "\n\n"
+            return {
+                "context": "\n".join(lines) + "\n\n",
+                "meta": {
+                    "enabled": True,
+                    "injected": True,
+                    "threshold": threshold,
+                    "limit": limit,
+                    "candidate_count": len(semantic_candidates),
+                    "injected_count": len(memory_lines),
+                    "top_candidates": top_candidates,
+                }
+            }
         except Exception as e:
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"⚠️ Auto-memory injection failed: {e}", file=sys.stderr)
-            return ""
+            return {
+                "context": "",
+                "meta": {
+                    "enabled": enabled,
+                    "injected": False,
+                    "threshold": None,
+                    "limit": 0,
+                    "candidate_count": 0,
+                    "injected_count": 0,
+                    "top_candidates": [],
+                    "error": str(e),
+                }
+            }
+
+    def _get_relevant_memories(self, transcript: str) -> str:
+        """Backward-compatible wrapper returning only the injected memory block."""
+        return self._get_relevant_memories_bundle(transcript).get("context", "")
     
     def _get_learning_insights(self, transcript: str, available_tools: list[str] = None) -> tuple[str, list[dict]]:
         """

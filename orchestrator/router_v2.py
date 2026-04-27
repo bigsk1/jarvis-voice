@@ -1203,6 +1203,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         excluded_tools: list = None,
         typo_hint_source: str | None = None,
         disable_server_side_tools: bool = False,
+        routing_provenance: dict[str, Any] | None = None,
         server_side_max_tool_turns: int | None = None,
     ) -> dict[str, Any]:
         """
@@ -1433,6 +1434,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     duration_ms=llm_duration_ms,
                     mode=self.mode,
                     user_query=transcript,
+                    routing_provenance=routing_provenance,
                     error=provider_error_info.raw_preview if provider_error_info else None
                 )
             except Exception as e:

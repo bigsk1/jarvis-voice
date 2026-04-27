@@ -7,6 +7,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
@@ -19,6 +20,64 @@ def _sqlite_utc(dt: datetime) -> str:
 
 
 class OrchestratorAutoContextTests(unittest.TestCase):
+    def test_auto_memory_meta_reports_candidates_when_none_are_injected(self):
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.timezone = ZoneInfo("America/Los_Angeles")
+        orch._safe_iso_to_local_datetime = lambda value: None
+
+        class FakeDb:
+            def get_addressing_preferences(self, limit):
+                return []
+
+            def fts_search(self, transcript, limit):
+                return []
+
+            def semantic_search(self, query, limit, similarity_threshold):
+                return [
+                    {
+                        "key": "gift_query_memory",
+                        "value": "animal gift idea notes",
+                        "category": "conversation",
+                        "source": "user_conversation",
+                        "similarity": 0.40,
+                        "importance": 5,
+                        "updated_at": _sqlite_utc(datetime.now(timezone.utc) - timedelta(days=20)),
+                    }
+                ]
+
+        def fake_get_config_value(key, default=None):
+            values = {
+                "AUTO_MEMORY_INJECTION_ENABLED": "true",
+                "AUTO_MEMORY_RECENCY_ENABLED": "true",
+            }
+            return values.get(key, default)
+
+        def fake_get_int(key, default=0):
+            values = {
+                "AUTO_MEMORY_LIMIT": 2,
+                "AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT": 0,
+            }
+            return values.get(key, default)
+
+        def fake_get_float(key, default=0.0):
+            values = {
+                "AUTO_MEMORY_SIMILARITY_THRESHOLD": 0.52,
+            }
+            return values.get(key, default)
+
+        with patch("orchestrator_v2.get_memory_db", return_value=FakeDb()), \
+             patch("orchestrator_v2.get_config_value", side_effect=fake_get_config_value), \
+             patch("orchestrator_v2.get_int", side_effect=fake_get_int), \
+             patch("orchestrator_v2.get_float", side_effect=fake_get_float):
+            bundle = orch._get_relevant_memories_bundle("animal birthday gift")
+
+        self.assertEqual(bundle["context"], "")
+        self.assertTrue(bundle["meta"]["enabled"])
+        self.assertFalse(bundle["meta"]["injected"])
+        self.assertEqual(bundle["meta"]["candidate_count"], 1)
+        self.assertEqual(bundle["meta"]["injected_count"], 0)
+        self.assertEqual(bundle["meta"]["top_candidates"][0]["key"], "gift_query_memory")
+
     def test_auto_context_instructions_are_compact_and_tool_agnostic(self):
         orch = Orchestrator.__new__(Orchestrator)
         orch.auto_context_window = 2
