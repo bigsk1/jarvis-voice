@@ -431,6 +431,16 @@ class ContextAssembler:
             )
             result_label = "Result Preview" if result_truncated else "Result"
             context_parts.append(f"   {result_label}: {result_summary}")
+            if tool_name == "tool_search":
+                discovery_data = result.get("data", {}) if isinstance(result, dict) else {}
+                selected_hints = discovery_data.get("selected_tool_hints", [])
+                if isinstance(selected_hints, list):
+                    exact_names = [str(name).strip() for name in selected_hints if str(name).strip()]
+                    if exact_names:
+                        context_parts.append(f"   Selected tool hints: {', '.join(exact_names)}.")
+                        context_parts.append(
+                            "   Discovery Hint: The exact tool names above are now eligible for direct calls on the next turn."
+                        )
             if result_truncated and tool_name == "stash":
                 data = result.get("data", {}) if isinstance(result, dict) else {}
                 content = data.get("content") if isinstance(data, dict) else None

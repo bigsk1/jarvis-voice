@@ -245,6 +245,7 @@ graph TB
 - 🎯 **Relevance**: Only loads tools semantically relevant to the query
 - 💰 **Efficiency**: Reduces token usage by 60-80% (local models especially benefit)
 - 👻 **Ghost Tools**: Core functionality always available (memory, logs, time)
+- 🔎 **Discovery Option**: `tool_search` can inspect enabled tools by summary first when the initial shortlist is not enough
 
 **Decision Types:**
 - **Single Tool**: Simple tasks (e.g., "What time is it?")
@@ -259,6 +260,8 @@ graph TB
 # In config/cloud.env or config/local.env
 GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time"
 ```
+
+`tool_search` is also always available, but it is injected as a mandatory ghost in code rather than configured through `GHOST_TOOLS`.
 
 **Similarity Thresholds and compact retrieval** (filter retrieved tools before top-K):
 ```bash
@@ -397,8 +400,8 @@ graph TB
    - `send_webhook` (similarity: 0.45) ✅
    - `get_time` (similarity: 0.12) ❌
    - ... (27 other tools filtered out)
-4. **Ghost Tools Added**: `search_memory`, `semantic_recall`, `remember`, `check_tool_logs`, `get_recent_conversations`, `get_time`
-5. **Final Context**: 9 tools sent to LLM (3 retrieved + 6 ghost)
+4. **Ghost Tools Added**: `search_memory`, `semantic_recall`, `remember`, `check_tool_logs`, `get_recent_conversations`, `get_time`, `tool_search`
+5. **Final Context**: 10 tools sent to LLM (3 retrieved + 7 ghost)
 6. **LLM Decision**: Selects `crypto_price` (highest relevance)
 
 ### Tool RAG vs. Traditional Approach
@@ -417,13 +420,16 @@ graph TB
 **What are Ghost Tools?**
 Tools that are ALWAYS available, regardless of the query. These ensure core functionality never fails.
 
-**Default Ghost Tools:**
+**Default Configurable Ghost Tools:**
 - `search_memory` - FTS5 keyword search
 - `semantic_recall` - AI embedding search  
 - `remember` - Save new memories
 - `check_tool_logs` - Debug failed tool calls
 - `get_recent_conversations` - Context from past interactions
 - `get_time` - Basic utility (often needed as context)
+
+**Mandatory Discovery Ghost Tool:**
+- `tool_search` - Search or browse non-ghost enabled tools by summary first, then follow exact tool-name hints on the next turn; exact inspection can still look up a ghost tool by name
 
 **Why Ghost Tools?**
 1. **Memory Access**: LLM must always be able to check/save memories
@@ -436,6 +442,8 @@ Tools that are ALWAYS available, regardless of the query. These ensure core func
 # In config/cloud.env or config/local.env
 GHOST_TOOLS="search_memory,semantic_recall,remember,my_custom_tool"
 ```
+
+`tool_search` does not need to be added to `GHOST_TOOLS`; it is hardcoded as always available.
 
 ### Tool Sync Workflow
 

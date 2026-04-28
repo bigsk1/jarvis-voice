@@ -31,7 +31,7 @@
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
 - **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - Modular webhook system (email, n8n, external APIs with auth)
 - **[opencode/OPENCODE.md](opencode/OPENCODE.md)** - Autonomous coding agent
-- **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + **inter-tool calling patterns** ⭐ ENHANCED
+- **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + **inter-tool calling patterns** + `tool_search` discovery flow ⭐ ENHANCED
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (deterministic pipelines, variable extraction, WebUI integration) ⭐ IMPLEMENTED
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools in each `*.tool.json`
 - **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); only `default.json` is tracked in git — use for offline/minimal tool sets without editing every tool file. After changing profile: restart services, then `./bin/sync-tools.py local` or `cloud`
@@ -144,6 +144,7 @@
 | **TOOL_RAG_TROUBLESHOOTING.md** | Tool RAG debugging guide  |
 | **TEST_SCRIPT_TOOL_RAG_FIX.md** | Test script integration fixes  |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
+| **TOOL_RAG_STRATEGY.md** | Tool retrieval, ghost tools, `tool_search` discovery, and compact query tuning |
 | **TOOL_MANAGEMENT.md** | Enable/disable tools in each `*.tool.json` |
 | **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |

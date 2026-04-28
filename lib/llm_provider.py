@@ -993,9 +993,11 @@ class OllamaProvider(LLMProvider):
         return (
             "TOOL CALL CONTRACT:\n"
             "- Use ONLY the exact tool/function names listed below.\n"
+            "- Tool names are snake_case; copy them exactly as shown.\n"
             "- Use ONLY argument keys defined for the selected tool.\n"
             "- Never invent aliases, wrappers, or API-style names such as get_*, *_api, or *_tool.\n"
-            "- If none of these tools exactly fit, do not call a tool.\n"
+            "- If you are unsure which tool fits and tool_search is listed, call tool_search first.\n"
+            "- If none of these tools exactly fit and tool_search is not listed, do not call a tool.\n"
             "- Required parameters are marked with *.\n\n"
             "Exact tool names and parameters:\n"
             f"{chr(10).join(tool_lines)}"
@@ -1196,8 +1198,10 @@ CRITICAL RULES:
 - NO newlines or extra whitespace
 - JUST the JSON: {{"tool": "name", "arguments": {{}}}}
 - The "tool" value must exactly match one of the listed tool names.
+- Tool names are snake_case; copy them exactly as listed.
 - Argument keys must exactly match that tool's schema.
 - Do not invent aliases like "get_crypto_price" or "crypto_api".
+- If you are unsure which tool fits and tool_search is listed, call tool_search first.
 - If not using a tool, respond in plain conversational text without any JSON.
 """
         

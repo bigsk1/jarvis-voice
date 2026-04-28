@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from security_utils import redact_sensitive_data, redact_sensitive_text
 
 logger = logging.getLogger(__name__)
+_INTELLIGENCE_EXCLUDED_TOOLS = {"tool_search"}
 
 
 def normalize_server_side_tools_for_reflection(server_side_tools: dict[str, Any] | None) -> list[str]:
@@ -136,6 +137,8 @@ def record_interaction(
         return -1
     
     try:
+        tools_used = [tool for tool in (tools_used or []) if tool not in _INTELLIGENCE_EXCLUDED_TOOLS]
+
         # Extract outcome signals
         outcome = {
             'success': result.get('ok', True),

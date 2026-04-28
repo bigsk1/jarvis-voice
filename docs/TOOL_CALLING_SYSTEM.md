@@ -54,9 +54,12 @@ jarvis
 | Tool | Command Examples | Permission Level |
 |------|-----------------|------------------|
 | **get_time** | "What time is it?", "Tell me the date" | ✅ Auto-approved |
+| **tool_search** | "Find the tool that can inspect logs", "Browse available tools" | ✅ Auto-approved |
 | **send_webhook** | "Send webhook to URL with data X" | ⚠️ Network |
 | **api_call** | "Call the API at github.com/users/X" | ⚠️ Network |
 | **execute_bash** | "Run the command uptime" | 🚨 Dangerous |
+
+`tool_search` is a summary-first discovery tool. In semantic and browse mode it focuses on non-ghost tools, because ghost tools are already visible every routing turn. Exact lookup can still inspect a ghost tool by name when needed.
 
 ### Example Commands
 
@@ -104,7 +107,7 @@ Text-to-Speech (OpenAI TTS / Kokoro)
 You hear: "Webhook sent successfully to your server. Status 200."
 ```
 
-Tool availability is selected just before the router LLM call by Tool RAG. Local mode retrieves top 5 semantic tools and cloud mode retrieves top 15, then ghost tools and exact positive tool signals are merged in. For live debugging of which tools were made available, enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; see `docs/TOOL_RAG_STRATEGY.md`.
+Tool availability is selected just before the router LLM call by Tool RAG. Local mode retrieves top 5 semantic tools and cloud mode retrieves top 15, then ghost tools and exact positive tool signals are merged in. `tool_search` is also always available as a mandatory ghost tool, so the model can discover enabled tools when the current shortlist is not enough. For live debugging of which tools were made available, enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; see `docs/TOOL_RAG_STRATEGY.md`.
 
 ## Provider Comparison
 

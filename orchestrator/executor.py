@@ -16,6 +16,7 @@ from typing import Any
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
 from tool_logger import get_logger
+from tool_search_runtime import search_tools_runtime
 
 
 class ToolExecutor:
@@ -49,6 +50,7 @@ class ToolExecutor:
         self.cancel_check = None
         self.jarvis_session_id = None
         self.web_conversation_id = None
+        self.excluded_tools: set[str] = set()
 
     def set_cancel_check(self, callback):
         """Set callback to check if the current tool execution should be cancelled."""
@@ -58,6 +60,10 @@ class ToolExecutor:
         """Set session metadata that should be propagated to tool subprocesses."""
         self.jarvis_session_id = jarvis_session_id
         self.web_conversation_id = web_conversation_id
+
+    def set_excluded_tools(self, excluded_tools: list[str] | None = None):
+        """Set request-scoped tools that must remain hidden from discovery."""
+        self.excluded_tools = {str(name).strip() for name in (excluded_tools or []) if str(name).strip()}
     
     def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False) -> dict[str, Any]:
         """
@@ -86,6 +92,9 @@ class ToolExecutor:
                 "speech": f"Tool {tool_name} not found",
                 "error": "Tool not found"
             }
+
+        if tool_name == "tool_search":
+            return self._execute_tool_search(tool_name, args)
         
         # Check permissions (unless explicitly skipped)
         if not skip_permission_check and tool_schema.requires_confirmation():
@@ -306,6 +315,27 @@ class ToolExecutor:
                 mode=self.mode
             )
             return output
+
+    def _execute_tool_search(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Run live tool discovery against the active registry."""
+        start_time = time.time()
+        result = search_tools_runtime(
+            registry=self.registry,
+            query=args.get("query", ""),
+            limit=args.get("limit", 8),
+            excluded_tools=self.excluded_tools,
+            tool_names=args.get("tool_names"),
+            include_schema=bool(args.get("include_schema")),
+        )
+        duration_ms = (time.time() - start_time) * 1000
+        self.logger.log_tool_call(
+            tool_name=tool_name,
+            arguments=args,
+            result=result,
+            duration_ms=duration_ms,
+            mode=self.mode
+        )
+        return result
     
     def _execute_mcp_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         """

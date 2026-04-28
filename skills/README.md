@@ -227,6 +227,7 @@ JSON object printed to stdout:
 ### Development
 | Tool | Description |
 |------|-------------|
+| `tool_search` | Discover enabled tools by summary first, then follow exact tool names |
 | `check_tool_logs` | View tool/workflow execution logs |
 | `check_opencode_sessions` | Monitor OpenCode progress |
 | `query_service_logs` | Check background service status |

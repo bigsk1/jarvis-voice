@@ -17,19 +17,26 @@ Successfully implemented Dynamic Tool Retrieval (Tool RAG) system for Jarvis Voi
 GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time"
 ```
 
+**Hardcoded Mandatory Ghost Tool**:
+- `tool_search` is always injected by the registry/router even if it is not listed in `GHOST_TOOLS`
+- This keeps discovery available without forcing every environment file to carry it
+
 **What are Ghost Tools?**
 - Core tools that are **ALWAYS** available to the LLM
 - Ensure basic functionality never fails (memory access, logging, time)
 - Prevent retrieval misses from breaking essential features
 - Fully configurable via environment variables
 
-**Default Ghost Tools**:
+**Default Configurable Ghost Tools**:
 1. `search_memory` - Keyword search in memories
 2. `semantic_recall` - Natural language memory search
 3. `remember` - Save new information
 4. `check_tool_logs` - Self-debugging (see what tools were called)
 5. `get_recent_conversations` - Context recall
 6. `get_time` - Basic utility
+
+**Mandatory Discovery Ghost Tool**:
+7. `tool_search` - Summary-first discovery across the live enabled tool set
 
 **Why These?**
 - **Memory tools** help LLM remember user preferences and past interactions
@@ -66,9 +73,9 @@ echo -e "${GREEN}  ✅ Tool embeddings updated${NC}"
 
 **New Output**:
 ```
-📚 Loaded 8 tools (2 retrieved + 6 ghost)
+📚 Loaded 9 tools (2 retrieved + 7 ghost)
    Retrieved: crypto_price, mcp_brave_search_brave_web_search
-   👻 Ghost: search_memory, semantic_recall, remember, check_tool_logs, get_recent_conversations, get_time
+   👻 Ghost: search_memory, semantic_recall, remember, check_tool_logs, get_recent_conversations, get_time, tool_search
 ```
 
 **Benefits**:
@@ -131,7 +138,7 @@ Retrieve Top-K Tools (5 for local, 15 for cloud)
     ↓
 Add Ghost Tools (if not already present)
     ↓
-LLM Receives: [crypto_price, search_memory, remember, get_time, ...]
+LLM Receives: [crypto_price, search_memory, remember, get_time, tool_search, ...]
     ↓
 LLM Executes: crypto_price
     ↓
@@ -175,6 +182,8 @@ Edit `config/cloud.env` or `config/local.env`:
 GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time,your_new_tool"
 ```
 
+`tool_search` does not need to be added here. It is hardcoded as a mandatory ghost tool.
+
 **Recommendations**:
 - Keep ghost tools minimal (6-10 max)
 - Include memory, logs, and time
@@ -186,9 +195,9 @@ GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_c
 
 ### Context Window Savings
 **Before**: 31 tools × ~500 tokens each = **15,500 tokens** per request
-**After**: 8 tools (2 retrieved + 6 ghost) × ~500 tokens = **4,000 tokens** per request
+**After**: 9 tools (2 retrieved + 7 ghost) × ~500 tokens = **4,500 tokens** per request
 
-**Savings**: ~11,500 tokens (75% reduction)
+**Savings**: ~11,000 tokens (71% reduction)
 
 ### Cost Reduction (Cloud Mode)
 - **xAI Grok**: $0.20 per 1M input tokens
@@ -208,8 +217,15 @@ GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_c
 1. **Confidence Scoring**: If LLM says "I don't have a tool", re-retrieve with broader search
 2. **Usage Analytics**: Track which tools are retrieved vs actually used
 3. **Dynamic Ghost Tools**: Auto-promote frequently-used tools to ghost status
-4. **Multi-Stage Retrieval**: First retrieve categories, then specific tools
+4. **Exact Hydration After `tool_search`**: If token pressure becomes the main concern, switch the turn after discovery to expose only ghost tools plus the selected exact tool names
 5. **Tool Clustering**: Group related tools for better organization
+
+### Current `tool_search` Notes
+- Discovery uses the same synced tool embedding index as normal Tool RAG, not a separate metadata store
+- Semantic and browse discovery skip ghost tools because those schemas are already visible to the model on every routing turn
+- Exact lookup can still inspect a ghost tool by name if the model explicitly asks for it
+- Discovery is wider than the normal router shortlist, but still bounded by a raw candidate pool
+- The next turn currently uses normal Tool RAG plus exact positive hints from `tool_search`; it is not true exact hydration yet
 
 ### Monitoring
 Watch these metrics:
@@ -240,4 +256,3 @@ The system is now optimized for:
 - **Reliability**: Ghost tools ensure core functionality never fails
 
 **Next Steps**: Monitor performance in production and adjust ghost tools/retrieval limits as needed.
-

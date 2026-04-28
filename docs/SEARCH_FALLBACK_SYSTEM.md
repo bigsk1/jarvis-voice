@@ -274,6 +274,7 @@ GHOST_TOOLS=search_memory,semantic_recall,remember,check_tool_logs,get_recent_co
 ```
 
 Memory tools (`search_memory`, `semantic_recall`) are ghost tools, always available to the LLM.
+`tool_search` is also always available, but it is injected as a mandatory ghost in code rather than configured through `GHOST_TOOLS`.
 
 ---
 
@@ -425,4 +426,3 @@ def fts_search(query, limit):
 - 🔄 **Automatic**: No manual query tuning required
 
 **Result**: Users always get relevant search results, regardless of how they phrase their queries!
-

@@ -1,0 +1,38 @@
+{
+  "enabled": true,
+  "name": "tool_search",
+  "description": "Discover enabled tools without exposing every full schema up front. Use this to search or browse live available tools, then pick exact tool names for the next step.",
+  "script": "tool_search.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Semantic search query describing the capability or task you want to find. Leave empty to browse available tools."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of matching tools to return. Defaults to 8 and is capped at 25."
+      },
+      "tool_names": {
+        "type": "array",
+        "description": "Optional exact tool names to inspect directly instead of doing semantic search.",
+        "items": {
+          "type": "string"
+        }
+      },
+      "include_schema": {
+        "type": "boolean",
+        "description": "When true, include the parameter schema for the returned tools."
+      }
+    },
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "network": false,
+    "filesystem": false,
+    "bash": false,
+    "auto_approve": true
+  }
+}

@@ -12,6 +12,16 @@ from typing import Any
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 
 _logger = logging.getLogger(__name__)
+_MANDATORY_GHOST_TOOLS = ("tool_search",)
+
+
+def _merged_ghost_tool_names(raw_value: str | None, available_names: set[str]) -> list[str]:
+    """Return configured ghost tools plus mandatory discovery helpers."""
+    names = [t.strip() for t in str(raw_value or "").split(",") if t.strip()]
+    for mandatory in _MANDATORY_GHOST_TOOLS:
+        if mandatory in available_names and mandatory not in names:
+            names.append(mandatory)
+    return names
 
 
 def _json_type_for_const(value: Any) -> str | None:
@@ -577,7 +587,7 @@ class ToolRegistry:
         # Get Core "Ghost" Tools from config (or use defaults)
         # These ensure basic functionality never fails
         ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember')
-        CORE_TOOLS = [t.strip() for t in ghost_tools_str.split(',')]
+        CORE_TOOLS = _merged_ghost_tool_names(ghost_tools_str, set(self.tools.keys()))
         
         if similarity_threshold is None:
             similarity_threshold = get_float('TOOL_SIMILARITY_THRESHOLD', 0.0)

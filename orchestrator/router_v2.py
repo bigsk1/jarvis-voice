@@ -26,7 +26,7 @@ from config_loader import (
 )
 from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
-from tool_schema import ToolRegistry
+from tool_schema import ToolRegistry, _merged_ghost_tool_names
 from llm_provider import create_provider
 from provider_errors import classify_provider_error, friendly_provider_error, is_provider_error_text
 
@@ -689,6 +689,13 @@ You can call MULTIPLE tools in sequence to complete complex tasks! After each to
 3. If complete, respond with Q&A intent to summarize results to the user
 4. If more work needed, call the next tool
 
+TOOL DISCOVERY AND NAMING (HIGH PRIORITY):
+- Use ONLY exact available tool names exactly as listed. Tool names are snake_case like search_docs, check_tool_logs, tool_search, or mcp_server_name_tool_name.
+- Never invent aliases, wrappers, camelCase, kebab-case, or API-style names.
+- If you are unsure which available tool fits best, or suspect a better tool exists outside the current shortlist, call tool_search first.
+- tool_search is for discovery only. After it returns matches, use the exact tool names it surfaced on the next turn.
+- If the correct tool is already clearly available and fits the request, you may call it directly instead of using tool_search.
+
 CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - Do NOT call the same tool multiple times unless explicitly needed
 - **Duplicate guard (this request)**: After a tool **succeeds**, the system **blocks** calling it again with the **same arguments**—use the result you already have, **a different tool**, or Q&A; never duplicate a success to "verify". Retrying after **failure**, user-requested refresh/recheck, or **different** args is fine.
@@ -1298,7 +1305,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         # Separate ghost tools from retrieved tools for visibility
         from config_loader import get_config_value
         ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations')
-        ghost_list = [t.strip() for t in ghost_tools_str.split(',')]
+        ghost_list = _merged_ghost_tool_names(ghost_tools_str, set(enabled_tool_names))
 
         initial_tool_names = [t.name for t in relevant_tools]
         merged_tool_names, signal_meta = merge_tool_signal_names(

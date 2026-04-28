@@ -735,6 +735,7 @@ Mode: {self.mode}
         
         # Store tool overrides for this request
         self._tool_overrides = tool_overrides or {}
+        self.executor.set_excluded_tools(excluded_tools or [])
         
         # Reset status updater for new task
         self.status_updater.reset()

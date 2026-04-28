@@ -80,6 +80,13 @@ These tools are **ALWAYS** available, ensuring basic functionality never fails e
 -   `check_tool_logs` (Self-debugging)
 -   `get_recent_conversations` (Context)
 -   `get_time` (Basic utility)
+-   `tool_search` (Summary-first discovery across the live enabled tool set)
+
+`tool_search` is special:
+-   it discovers tools from the **current live registry** rather than a second maintained metadata system
+-   it respects profile-disabled tools and request-scoped exclusions
+-   it returns **summaries first**, then surfaces exact tool-name hints so the next routing turn can make those exact tools eligible for direct use without exposing every full schema up front
+-   it is a mandatory ghost tool in code, so it does **not** need to be added to `GHOST_TOOLS` in env files
 
 ---
 
@@ -112,7 +119,27 @@ source ~/jarvis-venv/bin/activate
     - `TOOL_SIMILARITY_THRESHOLD_FULL` is used only for true `full_fallback`, even when that fallback string is capped before embedding.
     - If `TOOL_SIMILARITY_THRESHOLD_FULL` is unset or blank, both paths use `TOOL_SIMILARITY_THRESHOLD`.
 
-### C. Dual-threshold tuning
+### C. `tool_search` discovery mode
+
+`tool_search` intentionally reuses the same tool embedding index instead of maintaining a second discovery metadata system.
+
+Current behavior:
+-   semantic discovery queries use the live tool registry plus request exclusions
+-   semantic and browse discovery skip ghost tools that are already visible in the router prompt
+-   exact inspection still allows ghost tools by exact name, except `tool_search` itself
+-   discovery ranking uses a zero-threshold semantic pass with a wider raw candidate pool than normal routing
+-   results are summary-first by default, with optional schema expansion for exact tool-name inspection
+-   invalid `limit` values safely fall back to the default instead of failing the tool call
+
+Current caveats:
+-   discovery still depends on synced tool embeddings, so brand-new or changed tools need `./bin/sync-tools.py`
+-   discovery is wider than the normal router shortlist, but it is still bounded by a raw top-K pool
+-   the next routing turn still runs normal Tool RAG plus exact positive hints; it is **not** true exact hydration yet
+
+Possible future evolution:
+-   if token pressure becomes the main concern, a later optimization could switch the turn after `tool_search` into a true exact-hydration mode that exposes only ghost tools plus the selected exact tool names
+
+### D. Dual-threshold tuning
 
 Long routing prompts can inflate similarity scores and cause Tool RAG to hit the retrieval cap with weak matches. Jarvis now avoids that in the normal path by building compact retrieval signals. The stricter full threshold still matters as a safety net when no clean current request can be extracted.
 
@@ -138,7 +165,7 @@ TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED=false
 -   **Local / Gemma mode**: `0.35`-`0.45` often had little effect because local only retrieves 5 tools and long-prompt similarities skewed much higher. Local needed much higher values before behavior changed, and those changes were cliff-like.
 -   **Practical read**: keep cloud and local tuning separate. A cloud-friendly full threshold does not automatically transfer to local.
 
-### D. Retrieval Signal Sources
+### E. Retrieval Signal Sources
 
 When `TOOL_RAG_COMPACT_QUERY_ENABLED=true`, the router tries to extract a clean current request from the full routing prompt before embedding. The source label is logged as `signal_source` in Tool RAG traces.
 
@@ -172,7 +199,7 @@ can you find the best breakfast around me?
 
 In that case the LLM-call log correctly stores the full routing prompt, while the Tool RAG trace should show `signal_source=trailing_request`, `query=can you find the best breakfast around me?`, and `full_transcript_embedding=false`.
 
-### E. Debugging with real prompts
+### F. Debugging with real prompts
 
 Use `bin/debug-tool-rag.py` to compare the plain user string against a real captured full prompt:
 
@@ -187,7 +214,7 @@ source ~/jarvis-venv/bin/activate
 
 The script now includes production-style retrieval blocks that show the compact signal source, threshold, structured notes, ghost merge, and final tool list. This is the closest offline view of what the router will make available to the LLM.
 
-### F. Typo hints (embedding query only)
+### G. Typo hints (embedding query only)
 
 `lib/tool_rag_typo_hints.py` runs inside `ToolRegistry.find_tools()` **before** `MemoryDB.search_tools()`.
 
@@ -222,7 +249,7 @@ Debugging note:
 
 Disable with `TOOL_RAG_TYPO_ENABLED=false`.
 
-### G. Web UI, Auto-Context, And Thresholds
+### H. Web UI, Auto-Context, And Thresholds
 
 The two threshold env vars are not split by "CLI vs web" or "one tool vs many tools." They track the shape of the string embedded for Tool RAG.
 
@@ -244,7 +271,7 @@ Auto-context test recipe:
 4. Expected good path: `signal_source=legacy_history_strip`, `compact_query` is the current user line, and `similarity_threshold` is `TOOL_SIMILARITY_THRESHOLD`.
 5. If it shows `full_fallback`, the auto-context wrapper shape changed or no clean request line was found.
 
-### H. Live Trace Logs
+### I. Live Trace Logs
 
 Enable Tool RAG tracing while tuning:
 
