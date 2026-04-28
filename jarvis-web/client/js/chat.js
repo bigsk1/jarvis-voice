@@ -3067,6 +3067,32 @@ class ChatUI {
       }
     }
 
+    let chartHtml = '';
+    const cryptoChartResult = toolResultsData.crypto_chart;
+    const cryptoChartData = cryptoChartResult?.data?.series?.prices
+      ? cryptoChartResult.data
+      : (cryptoChartResult?.series?.prices ? cryptoChartResult : null);
+
+    if (cryptoChartData?.series?.prices?.length) {
+      const chartConfig = {
+        title: `${cryptoChartData.coin || 'Crypto'} ${cryptoChartData.range_label || 'chart'}`,
+        coin: cryptoChartData.coin,
+        coin_id: cryptoChartData.coin_id,
+        vs_currency: cryptoChartData.vs_currency,
+        days: cryptoChartData.days,
+        range_label: cryptoChartData.range_label,
+        current_price: cryptoChartData.current_price,
+        change_percent: cryptoChartData.change_percent,
+        points_returned: cryptoChartData.points_returned,
+        series: cryptoChartData.series
+      };
+      chartHtml = `
+        <div class="crypto-chart-embed" data-crypto-chart="${encodeURIComponent(JSON.stringify(chartConfig))}">
+          <div class="crypto-chart-loading">Loading chart…</div>
+        </div>
+      `;
+    }
+
     // Prefer the richer raw response for chat display when it is the same answer with
     // better visual structure. This keeps TTS concise while avoiding paragraph blobs.
     if (this._shouldPreferRawForDisplay(rawResponse, storedSpeech, text)) {
@@ -3127,6 +3153,7 @@ class ChatUI {
       ${videoHtml}
       ${youtubeEmbedsHtml}
       <div class="message-bubble">
+        ${chartHtml}
         ${parsedText}
         ${detailsHtml}
       </div>
@@ -3157,7 +3184,7 @@ class ChatUI {
     this._attachCompletionGuardCard(messageEl, data, toolsUsed);
     
     this.messagesContainer.appendChild(messageEl);
-    Utils.setupScrollableTables(messageEl);
+    Utils.hydrateRichContent(messageEl);
     Utils.scrollToBottom(this.messagesContainer);
     
     // Clear pending tools

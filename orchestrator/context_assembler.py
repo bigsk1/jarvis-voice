@@ -195,6 +195,14 @@ class ContextAssembler:
 
         recent = history
         context_lines = ["=== RECENT CONVERSATION CONTEXT ==="]
+        context_lines.append(
+            "Follow-up grounding rule: when a prior assistant turn includes structured tool_results, "
+            "treat those tool_results as the source of truth for follow-up actions, charts, edits, "
+            "canvas pages, and comparisons. Use the assistant's markdown/text only as a presentation summary."
+        )
+        context_lines.append(
+            "Do NOT reconstruct detailed artifacts from prior assistant prose when structured tool_results are available."
+        )
         last_msg = recent[-1]
         last_role = last_msg.get("role", "user")
         last_msg_dt = None
@@ -229,6 +237,9 @@ class ContextAssembler:
             tool_results = message.get("tool_results", {})
 
             cap = latest_assistant_content_cap if idx == last_assistant_idx else default_content_cap
+            if role == "assistant" and tool_results:
+                # Keep the display prose as a compact reminder only.
+                cap = min(cap, 1200)
             if len(content) > cap:
                 content = content[:cap] + "... [truncated]"
 
@@ -236,9 +247,10 @@ class ContextAssembler:
             if role == "assistant" and tools_used:
                 unique_tools = list(dict.fromkeys(tools_used))
                 tools_str = ", ".join(unique_tools)
-                context_lines.append(f"{prefix} [tools: {tools_str}]: {content}")
-
                 if tool_results:
+                    context_lines.append(f"{prefix} [tools: {tools_str}]")
+                    context_lines.append("  Structured follow-up data (source of truth):")
+
                     for tool_name, result_data in tool_results.items():
                         if isinstance(result_data, dict):
                             fields = []
@@ -247,6 +259,10 @@ class ContextAssembler:
                                     fields.append(f"{key}={value}")
                             if fields:
                                 context_lines.append(f"  └─ {tool_name} data: {', '.join(fields)}")
+                    if content:
+                        context_lines.append(f"  Display summary: {content}")
+                else:
+                    context_lines.append(f"{prefix} [tools: {tools_str}]: {content}")
             else:
                 context_lines.append(f"{prefix}: {content}")
 

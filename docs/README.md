@@ -316,6 +316,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-28:**
+- ✅ **`crypto_chart` tool + price chart API** - Native CoinGecko historical series for price, market cap, and volume
+  - Added `skills/crypto_chart.py` with chart-ready structured output and `skills/crypto_chart.tool.json`
+  - Added `GET /api/prices/crypto/{symbol}/chart` and docs in `docs/api/PRICES.md`
+- ✅ **Web UI + Canvas SVG crypto charts** - Local/offline-friendly chart rendering without a third-party chart library
+  - Web UI now renders `crypto_chart` tool results directly as inline SVG charts
+  - Canvas supports saved/inferred chart embeds and proxies chart loads locally for auth-safe rendering
+- ✅ **Follow-up grounding prefers structured tool results** - Recent conversation context now treats saved `tool_results` as source-of-truth over prior assistant prose
+  - Helps follow-up actions like Canvas saves build from structured JSON instead of markdown summaries
+
 **2026-04-27:**
 - ✅ **Jarvis Docs assistant (viewer `:5004`)**
   - Dedicated LLM assistant in [jarvis-docs](../jarvis-docs/) with read-only retrieval from `docs/`, citation links normalized to explorer paths (relative to `docs/`, fuzzy filename matching for stable “open doc” behavior).
@@ -1562,6 +1572,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-04-23
-**Latest:** xAI native TTS with optional expressive final-speech tags, compact Tool RAG retrieval/tracing, follow-up extractor service, xAI native-search budget caps, intelligence provenance/sync/dry-run maintenance, dashboard pagination, and Canvas public LAN links
+**Last Updated:** 2026-04-28
+**Latest:** native `crypto_chart`, inline SVG chart rendering in Jarvis Web and Canvas, auth-safe Canvas chart proxying, and follow-up grounding that prioritizes structured `tool_results`
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

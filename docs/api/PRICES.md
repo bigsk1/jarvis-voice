@@ -105,6 +105,60 @@ curl http://localhost:8880/api/prices/crypto/SOL | jq
 }
 ```
 
+### Crypto Chart
+
+```bash
+GET /api/prices/crypto/{symbol}/chart
+```
+
+Get structured CoinGecko chart data for web UI charts, monitoring dashboards, or canvas visualizations.
+
+**Query Parameters:**
+- `days` - Chart range such as `1`, `7`, `30`, `90`, `365`, or `max`
+- `vs_currency` - Quote currency, default `usd`
+- `points_limit` - Optional max number of points to return
+
+**Example:**
+```bash
+# Get a 30-day Bitcoin chart
+curl "http://localhost:8880/api/prices/crypto/BTC/chart?days=30&points_limit=120" | jq
+
+# Get a 7-day Solana chart in USD
+curl "http://localhost:8880/api/prices/crypto/SOL/chart?days=7" | jq
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "data": {
+    "coin": "Bitcoin",
+    "coin_id": "bitcoin",
+    "vs_currency": "usd",
+    "days": "30",
+    "range_label": "30-day",
+    "current_price": 76590.82,
+    "change_percent": -0.25,
+    "points_returned": 120,
+    "original_points": 721,
+    "source": "CoinGecko",
+    "authenticated": true,
+    "proxy_enabled": true,
+    "series": {
+      "prices": [
+        { "timestamp_ms": 1776769225300, "iso": "2026-04-21T11:00:25.300000+00:00", "value": 76784.39 }
+      ],
+      "market_caps": [
+        { "timestamp_ms": 1776769225300, "iso": "2026-04-21T11:00:25.300000+00:00", "value": 1537762754214.86 }
+      ],
+      "total_volumes": [
+        { "timestamp_ms": 1776769225300, "iso": "2026-04-21T11:00:25.300000+00:00", "value": 42109681288.49 }
+      ]
+    }
+  }
+}
+```
+
 ### Batch Prices
 
 ```bash

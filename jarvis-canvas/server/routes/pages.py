@@ -2,7 +2,10 @@
 Jarvis Canvas - Pages API routes
 """
 import json
+import subprocess
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from flask import Blueprint, jsonify, request, Response
 
 from config import CANVAS_DIR, STASH_DIR
@@ -10,6 +13,58 @@ from server.pages import load_pages, save_page, delete_page_file, get_page_path
 from server.utils import sync_stash_pins
 
 pages_bp = Blueprint('pages', __name__)
+SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
+
+
+@pages_bp.route('/api/pages/crypto-chart/<symbol>', methods=['GET'])
+def proxy_crypto_chart(symbol):
+    """
+    Resolve crypto chart requests directly through the local skill so browser
+    clients do not need to call the protected main API directly.
+    """
+    tool_path = SKILLS_DIR / "crypto_chart.py"
+    if not tool_path.exists():
+        return jsonify({"error": "crypto_chart tool not found"}), 404
+
+    args = {
+        "coin": symbol.lower(),
+        "days": request.args.get('days', '7'),
+        "vs_currency": request.args.get('vs_currency', 'usd').lower(),
+    }
+    for key in ('days', 'vs_currency', 'points_limit'):
+        value = request.args.get(key)
+        if value not in (None, ''):
+            args[key] = int(value) if key == 'points_limit' else value
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(tool_path), json.dumps(args)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(SKILLS_DIR.parent)
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Chart request timed out"}), 504
+    except Exception as exc:
+        return jsonify({"error": "Chart request failed", "detail": str(exc)}), 502
+
+    if result.returncode != 0:
+        return jsonify({
+            "error": "crypto_chart tool execution failed",
+            "detail": (result.stderr or result.stdout or "").strip()[:500]
+        }), 502
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return jsonify({
+            "error": "Invalid chart response",
+            "detail": result.stdout[:500]
+        }), 502
+
+    status_code = 200 if payload.get("ok") else 404
+    return jsonify(payload), status_code
 
 
 @pages_bp.route('/api/pages', methods=['GET'])

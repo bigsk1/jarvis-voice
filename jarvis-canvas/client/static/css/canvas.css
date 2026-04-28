@@ -668,6 +668,112 @@
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
+.crypto-chart-embed {
+    margin: 1.4rem 0;
+}
+
+.crypto-chart-shell {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    padding: 18px 18px 14px;
+    background:
+        radial-gradient(circle at top left, rgba(84, 195, 255, 0.14), transparent 38%),
+        linear-gradient(180deg, rgba(19, 26, 41, 0.96), rgba(11, 16, 26, 0.96));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.crypto-chart-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+
+.crypto-chart-title {
+    font-family: var(--font-mono);
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: rgba(241, 247, 255, 0.96);
+}
+
+.crypto-chart-subtitle,
+.crypto-chart-axis,
+.crypto-chart-loading,
+.crypto-chart-error {
+    font-size: 0.78rem;
+    color: rgba(201, 215, 233, 0.72);
+}
+
+.crypto-chart-metrics {
+    text-align: right;
+}
+
+.crypto-chart-price {
+    font-family: var(--font-mono);
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: rgba(247, 251, 255, 0.98);
+}
+
+.crypto-chart-change {
+    margin-top: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.crypto-chart-embed.is-positive .crypto-chart-change {
+    color: #79f0b2;
+}
+
+.crypto-chart-embed.is-negative .crypto-chart-change {
+    color: #ff9f9f;
+}
+
+.crypto-chart-viewport {
+    width: 100%;
+    height: 260px;
+}
+
+.crypto-chart-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.crypto-chart-bg {
+    fill: rgba(10, 16, 27, 0.86);
+}
+
+.crypto-chart-grid {
+    stroke: rgba(194, 206, 224, 0.12);
+    stroke-width: 1;
+}
+
+.crypto-chart-dot {
+    stroke: rgba(10, 16, 27, 0.9);
+    stroke-width: 3;
+}
+
+.crypto-chart-axis {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.crypto-chart-loading,
+.crypto-chart-error {
+    padding: 22px 0;
+}
+
 /* Hero image at top of page */
 .page-hero-image {
     width: 100%;

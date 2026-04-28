@@ -458,6 +458,7 @@ jarvis-voice/
 │   ├── send_webhook.py       # Webhook triggers
 │   ├── create_reminder.py    # Smart reminders
 │   ├── crypto_price.py       # Crypto prices (CoinGecko)
+│   ├── crypto_chart.py       # Crypto chart/history series (CoinGecko)
 │   ├── stock_price.py        # Stock prices
 │   └── *.tool.json           # Tool definitions
 ├── config/                   # Configuration files
@@ -775,6 +776,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `send_webhook` - Trigger named webhooks (Slack, n8n, APIs) with auth
 - `api_call` - Generic HTTP API calls
 - `crypto_price` - Get cryptocurrency prices
+- `crypto_chart` - **Crypto chart history**: CoinGecko time-series for price, market cap, and volume; shaped for web UI charts and Canvas
 - `get_time` - Current time
 - `calculator` - **Advanced math**: arithmetic, percentages, statistics, unit conversions, trig
 - `canvas` - **Visual viewer**: save rich content (research, code, comparisons) to web UI

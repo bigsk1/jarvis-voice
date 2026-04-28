@@ -81,6 +81,37 @@ async def get_crypto_price(symbol: str):
     return result
 
 
+@router.get("/crypto/{symbol}/chart")
+async def get_crypto_chart(
+    symbol: str,
+    days: str = Query("7", description="Chart range, e.g. 1, 7, 30, 90, 365, max"),
+    vs_currency: str = Query("usd", description="Quote currency, usually usd"),
+    points_limit: int | None = Query(None, description="Optional max number of points to return"),
+):
+    """
+    Get cryptocurrency chart data directly (no LLM routing).
+
+    Examples:
+    - /api/prices/crypto/BTC/chart
+    - /api/prices/crypto/ethereum/chart?days=30
+    - /api/prices/crypto/sol/chart?days=90&points_limit=120
+    """
+    args = {
+        "coin": symbol.lower(),
+        "days": days,
+        "vs_currency": vs_currency.lower(),
+    }
+    if points_limit is not None:
+        args["points_limit"] = points_limit
+
+    result = call_tool("crypto_chart", args)
+
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("error", "Failed to get chart"))
+
+    return result
+
+
 @router.get("/batch")
 async def get_batch_prices(
     stocks: str | None = Query(None, description="Comma-separated stock symbols (e.g., TSLA,AAPL,GC=F)"),

@@ -418,6 +418,7 @@ class LogsViewerApp {
       }
     } else if (this.state.contentViewType === 'markdown') {
       this.elements.viewerContent.innerHTML = `<div class="markdown-viewer">${Utils.parseMarkdown(this.state.markdownContent || '')}</div>`;
+      Utils.hydrateRichContent(this.elements.viewerContent);
       this.applyDomHighlights(this.elements.viewerContent);
     } else {
       this.elements.viewerContent.innerHTML = '<div class="empty-state compact">Nothing to show yet.</div>';
@@ -523,6 +524,7 @@ class LogsViewerApp {
 
     if (contentType === 'markdown') {
       this.elements.logRecordModalBody.innerHTML = `<div class="markdown-viewer modal-record-body">${Utils.parseMarkdown(content || '')}</div>`;
+      Utils.hydrateRichContent(this.elements.logRecordModalBody);
       this.applyDomHighlights(this.elements.logRecordModalBody);
     } else if (contentType === 'yaml') {
       this.elements.logRecordModalBody.innerHTML = `<div class="record-body modal-record-body yaml-pretty">${this.renderYamlMarkup(content || '')}</div>`;

@@ -81,6 +81,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'screenshot_url': ['url', 'screenshot_path'],
     # --- Knowledge/session refs ---
     'canvas': ['page_id', 'title'],
+    'crypto_chart': [
+        'coin', 'coin_id', 'vs_currency', 'days', 'range_label',
+        'current_price', 'change_percent', 'points_returned', 'original_points', 'source',
+    ],
     'opencode': ['session_id'],
     # --- Entity references (for modify/repeat/cancel follow-ups) ---
     'remember': ['memory_id', 'key', 'category'],
@@ -212,6 +216,8 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 continue
         if not isinstance(value, dict):
             continue
+
+        payload = value.get('data') if isinstance(value.get('data'), dict) else value
         # Auto-stashed web uploads are also stored under top-level "stash".
         # Keep skipping those lightweight upload refs here, but preserve actual
         # stash tool outputs so later follow-up turns can reference them.
@@ -246,12 +252,27 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         for field in fields_to_extract:
             if field in extracted:
                 continue  # Already got it above
-            if value.get(field):
-                extracted[field] = value[field]
+            if payload.get(field):
+                extracted[field] = payload[field]
 
         # Always include provider if present (needed for follow-ups)
-        if value.get('provider') and 'provider' not in extracted:
-            extracted['provider'] = value['provider']
+        if payload.get('provider') and 'provider' not in extracted:
+            extracted['provider'] = payload['provider']
+
+        if key == 'crypto_chart':
+            series = payload.get('series') if isinstance(payload.get('series'), dict) else {}
+            prices = series.get('prices') if isinstance(series.get('prices'), list) else []
+            if prices:
+                first = prices[0] if isinstance(prices[0], dict) else {}
+                last = prices[-1] if isinstance(prices[-1], dict) else {}
+                if first.get('iso'):
+                    extracted['start_iso'] = first['iso']
+                if first.get('value') is not None:
+                    extracted['start_price'] = first['value']
+                if last.get('iso'):
+                    extracted['end_iso'] = last['iso']
+                if last.get('value') is not None:
+                    extracted['end_price'] = last['value']
 
         # Preserve compact focused product details for shopping follow-ups.
         if key == 'serpapi_search':

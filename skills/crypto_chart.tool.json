@@ -1,0 +1,41 @@
+{
+  "enabled": true,
+  "name": "crypto_chart",
+  "description": "Get historical cryptocurrency chart data from CoinGecko API. Returns structured time-series data for prices, market caps, and trading volume, shaped for web UI charts or canvas visualizations. Supports common names, symbols, or CoinGecko IDs like bitcoin, btc, ethereum, eth, solana, sol, xrp, dogecoin, doge, arbitrum, ton, pepe, and more. Use this when the user wants a crypto chart, history, trend line, or time series.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
+  "script": "crypto_chart.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "coin": {
+        "type": "string",
+        "description": "Cryptocurrency name, symbol, or CoinGecko ID. Examples: bitcoin, btc, ethereum, eth, solana, sol, xrp, dogecoin, doge, toncoin, ton, arbitrum, arb"
+      },
+      "days": {
+        "type": "string",
+        "description": "Chart range. Recommended values: 1, 7, 14, 30, 90, 180, 365, or max. Defaults to 7."
+      },
+      "vs_currency": {
+        "type": "string",
+        "description": "Quote currency for the chart, usually usd. Defaults to usd."
+      },
+      "points_limit": {
+        "type": "integer",
+        "description": "Optional max number of points to return per series. Useful for lighter chart payloads."
+      }
+    },
+    "required": [
+      "coin"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

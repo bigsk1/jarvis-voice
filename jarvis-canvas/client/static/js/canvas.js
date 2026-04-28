@@ -41,7 +41,34 @@ function closeSidebar() {
 }
 
 // Configure marked
+const canvasMarkedRenderer = new marked.Renderer();
+canvasMarkedRenderer.code = function(codeOrToken, infostring) {
+    let rawCode = codeOrToken;
+    let language = infostring || '';
+
+    if (codeOrToken && typeof codeOrToken === 'object') {
+        rawCode = codeOrToken.text || '';
+        language = codeOrToken.lang || '';
+    }
+
+    const codeText = rawCode == null ? '' : String(rawCode);
+    const safeLanguage = escapeHtml(String(language || '').trim());
+
+    if (safeLanguage === 'crypto-chart') {
+        const encodedConfig = encodeURIComponent(codeText);
+        return `
+            <div class="crypto-chart-embed" data-crypto-chart="${encodedConfig}">
+                <div class="crypto-chart-loading">Loading chart…</div>
+            </div>
+        `;
+    }
+
+    const className = safeLanguage ? `language-${safeLanguage}` : '';
+    return `<pre><code class="${className}">${escapeHtml(codeText)}</code></pre>`;
+};
+
 marked.setOptions({
+    renderer: canvasMarkedRenderer,
     highlight: function(code, lang) {
         if (lang && hljs.getLanguage(lang)) {
             return hljs.highlight(code, { language: lang }).value;
@@ -222,6 +249,230 @@ function renderMarkdown(content) {
     resolved = linkifyBareStashViewerPaths(resolved);
     resolved = preserveSingleTildes(resolved);
     return DOMPurify.sanitize(marked.parse(resolved));
+}
+
+function inferCryptoChartConfigFromPage(page) {
+    const title = String(page?.title || '').trim();
+    if (!title) return null;
+
+    const explicitChartAlreadyPresent = /```crypto-chart/i.test(String(page?.content || ''));
+    if (explicitChartAlreadyPresent) return null;
+
+    const match = title.match(/^(.+?)(?:\s+\(([A-Z0-9.-]+)\))?\s+(\d+)-Day Price Chart$/i);
+    if (!match) return null;
+
+    const coinName = (match[1] || '').trim();
+    const coinToken = (match[2] || coinName).trim();
+    const days = (match[3] || '7').trim();
+
+    if (!coinToken) return null;
+
+    return {
+        title,
+        coin: coinName,
+        range_label: `${days}-day`,
+        days,
+        endpoint: `/api/prices/crypto/${encodeURIComponent(coinToken)}/chart?days=${encodeURIComponent(days)}&points_limit=120`
+    };
+}
+
+function buildCryptoChartEmbedHtml(config) {
+    return `
+        <div class="crypto-chart-embed" data-crypto-chart="${encodeURIComponent(JSON.stringify(config))}">
+            <div class="crypto-chart-loading">Loading chart…</div>
+        </div>
+    `;
+}
+
+function resolveChartEndpoint(endpoint) {
+    if (!endpoint) return endpoint;
+    const raw = String(endpoint).trim();
+    if (/^https?:\/\//i.test(raw)) {
+        return raw;
+    }
+    const priceChartMatch = raw.match(/^\/api\/prices\/crypto\/([^/?#]+)\/chart(\?.*)?$/i);
+    if (priceChartMatch) {
+        const symbol = priceChartMatch[1];
+        const query = priceChartMatch[2] || '';
+        return `/api/pages/crypto-chart/${symbol}${query}`;
+    }
+    if (raw.startsWith('/')) {
+        return `${window.location.origin}${raw}`;
+    }
+    return raw;
+}
+
+async function hydrateCryptoCharts(root = document) {
+    const containers = root?.querySelectorAll?.('.crypto-chart-embed[data-crypto-chart]') || [];
+    if (!containers.length) return;
+    await Promise.all(Array.from(containers).map((container) => hydrateCryptoChartContainer(container)));
+}
+
+async function hydrateCryptoChartContainer(container) {
+    if (!container || container.dataset.chartHydrated === 'true') return;
+    container.dataset.chartHydrated = 'true';
+
+    let config;
+    try {
+        config = JSON.parse(decodeURIComponent(container.dataset.cryptoChart || ''));
+    } catch (err) {
+        renderCryptoChartError(container, 'Invalid chart config');
+        return;
+    }
+
+    if (Array.isArray(config?.series?.prices) && config.series.prices.length) {
+        renderCryptoChart(container, config);
+        return;
+    }
+
+    if (!config?.endpoint) {
+        renderCryptoChartError(container, 'Chart config needs series.prices or endpoint');
+        return;
+    }
+
+    try {
+        const response = await fetch(resolveChartEndpoint(config.endpoint), { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const data = payload?.data || payload;
+        renderCryptoChart(container, {
+            ...config,
+            ...data,
+            endpoint: config.endpoint
+        });
+    } catch (err) {
+        renderCryptoChartError(container, `Failed to load chart: ${err.message}`);
+    }
+}
+
+function renderCryptoChartError(container, message) {
+    container.classList.add('is-error');
+    container.innerHTML = `
+        <div class="crypto-chart-shell">
+            <div class="crypto-chart-error">${escapeHtml(message)}</div>
+        </div>
+    `;
+}
+
+function renderCryptoChart(container, config) {
+    const prices = Array.isArray(config?.series?.prices) ? config.series.prices : [];
+    if (!prices.length) {
+        renderCryptoChartError(container, 'No price series available');
+        return;
+    }
+
+    const title = config.title || `${config.coin || config.coin_id || 'Crypto'} ${config.range_label || 'chart'}`;
+    const currentPrice = Number(config.current_price ?? prices[prices.length - 1]?.value ?? 0);
+    const changePercent = Number(config.change_percent ?? 0);
+    const positive = changePercent >= 0;
+    const rangeLabel = config.range_label || (config.days ? `${config.days}-day` : 'chart');
+    const subtitleBits = [];
+    if (config.vs_currency) subtitleBits.push(String(config.vs_currency).toUpperCase());
+    if (config.points_returned) subtitleBits.push(`${config.points_returned} pts`);
+    const svg = buildCryptoChartSvg(prices, { positive });
+    const currentLabel = formatChartCurrency(currentPrice, config.vs_currency || 'usd');
+    const changeLabel = `${positive ? '+' : ''}${changePercent.toFixed(2)}%`;
+    const startLabel = prices[0]?.iso ? formatChartDate(prices[0].iso) : '';
+    const endLabel = prices[prices.length - 1]?.iso ? formatChartDate(prices[prices.length - 1].iso) : '';
+
+    container.classList.toggle('is-positive', positive);
+    container.classList.toggle('is-negative', !positive);
+    container.innerHTML = `
+        <div class="crypto-chart-shell">
+            <div class="crypto-chart-header">
+                <div>
+                    <div class="crypto-chart-title">${escapeHtml(title)}</div>
+                    <div class="crypto-chart-subtitle">${escapeHtml([rangeLabel, ...subtitleBits].join(' • '))}</div>
+                </div>
+                <div class="crypto-chart-metrics">
+                    <div class="crypto-chart-price">${escapeHtml(currentLabel)}</div>
+                    <div class="crypto-chart-change">${escapeHtml(changeLabel)}</div>
+                </div>
+            </div>
+            <div class="crypto-chart-viewport">${svg}</div>
+            <div class="crypto-chart-axis">
+                <span>${escapeHtml(startLabel)}</span>
+                <span>${escapeHtml(endLabel)}</span>
+            </div>
+        </div>
+    `;
+}
+
+function buildCryptoChartSvg(points, { positive = true } = {}) {
+    const width = 860;
+    const height = 320;
+    const padTop = 18;
+    const padRight = 18;
+    const padBottom = 42;
+    const padLeft = 18;
+    const plotWidth = width - padLeft - padRight;
+    const plotHeight = height - padTop - padBottom;
+    const values = points.map((point) => Number(point.value)).filter((value) => Number.isFinite(value));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || Math.max(1, Math.abs(max) * 0.02 || 1);
+    const topValue = max + range * 0.08;
+    const bottomValue = min - range * 0.08;
+    const color = positive ? '#32c48d' : '#ff6b6b';
+    const stroke = positive ? '#79f0b2' : '#ff9f9f';
+    const uid = `canvas-chart-${points.length}-${Math.round(values[values.length - 1] || 0)}`;
+
+    const xAt = (index) => padLeft + (plotWidth * index) / Math.max(1, points.length - 1);
+    const yAt = (value) => padTop + ((topValue - value) / Math.max(1e-9, topValue - bottomValue)) * plotHeight;
+
+    const linePath = points.map((point, index) => {
+        const x = xAt(index);
+        const y = yAt(Number(point.value));
+        return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }).join(' ');
+
+    const areaPath = `${linePath} L ${xAt(points.length - 1).toFixed(2)} ${(padTop + plotHeight).toFixed(2)} L ${xAt(0).toFixed(2)} ${(padTop + plotHeight).toFixed(2)} Z`;
+    const gridLines = [0, 0.33, 0.66, 1].map((ratio) => {
+        const y = padTop + plotHeight * ratio;
+        return `<line x1="${padLeft}" y1="${y.toFixed(2)}" x2="${width - padRight}" y2="${y.toFixed(2)}" class="crypto-chart-grid" />`;
+    }).join('');
+    const lastX = xAt(points.length - 1);
+    const lastY = yAt(Number(points[points.length - 1].value));
+
+    return `
+        <svg class="crypto-chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Crypto price chart">
+            <defs>
+                <linearGradient id="${uid}-fill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="${color}" stop-opacity="0.34"></stop>
+                    <stop offset="100%" stop-color="${color}" stop-opacity="0.03"></stop>
+                </linearGradient>
+                <filter id="${uid}-glow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                    <feMerge>
+                        <feMergeNode in="blur"></feMergeNode>
+                        <feMergeNode in="SourceGraphic"></feMergeNode>
+                    </feMerge>
+                </filter>
+            </defs>
+            <rect x="0" y="0" width="${width}" height="${height}" rx="24" class="crypto-chart-bg"></rect>
+            ${gridLines}
+            <path d="${areaPath}" fill="url(#${uid}-fill)"></path>
+            <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" filter="url(#${uid}-glow)"></path>
+            <circle cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="6" fill="${stroke}" class="crypto-chart-dot"></circle>
+        </svg>
+    `;
+}
+
+function formatChartCurrency(value, vsCurrency = 'usd') {
+    const currency = String(vsCurrency || 'usd').toUpperCase();
+    if (currency === 'USD') {
+        if (value >= 1000) return `$${Math.round(value).toLocaleString()}`;
+        if (value >= 1) return `$${value.toFixed(2)}`;
+        if (value >= 0.01) return `$${value.toFixed(4)}`;
+        return `$${value.toFixed(8)}`;
+    }
+    return `${value.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currency}`;
+}
+
+function formatChartDate(iso) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function extractYouTubeVideoId(url) {
@@ -875,11 +1126,20 @@ function selectPage(id) {
         <div class="page-content">${content}</div>
         ${sourceHtml}
     `;
+
+    const pageContentEl = pageView.querySelector('.page-content');
+    if (pageContentEl && !pageContentEl.querySelector('.crypto-chart-embed')) {
+        const inferredChart = inferCryptoChartConfigFromPage(page);
+        if (inferredChart) {
+            pageContentEl.insertAdjacentHTML('afterbegin', buildCryptoChartEmbedHtml(inferredChart));
+        }
+    }
     
     // Re-highlight code blocks
     pageView.querySelectorAll('pre code').forEach(block => {
         hljs.highlightElement(block);
     });
+    hydrateCryptoCharts(pageView);
 
     // Setup content interaction handlers
     setupImageHandlers();
