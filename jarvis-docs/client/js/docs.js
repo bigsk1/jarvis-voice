@@ -12,12 +12,19 @@ class DocsApp {
       hasMore: false,
       editEnabled: false,
       isEditing: false,
-      libraryOpen: true,
-      outlineOpen: true,
+      libraryOpen:
+        typeof window.matchMedia !== 'undefined'
+          ? window.matchMedia('(min-width: 1200px)').matches
+          : true,
+      outlineOpen:
+        typeof window.matchMedia !== 'undefined'
+          ? window.matchMedia('(min-width: 1500px)').matches
+          : true,
     };
 
     this.elements = {
       docsLayout: document.querySelector('.docs-layout'),
+      docsBackdrop: document.getElementById('docsBackdrop'),
       globalSearchInput: document.getElementById('globalSearchInput'),
       sortSelect: document.getElementById('sortSelect'),
       toggleLibraryBtn: document.getElementById('toggleLibraryBtn'),
@@ -47,8 +54,14 @@ class DocsApp {
 
     this._bindEvents();
     this.restoreSidebarState();
-    this.applySidebarState();
     window.addEventListener('resize', this.debounce(() => this.handleResize(), 120));
+    if (typeof window.matchMedia === 'function') {
+      this._compactMql = window.matchMedia('(max-width: 1199px)');
+      this._onCompactChange = () => {
+        this.handleResize();
+      };
+      this._compactMql.addEventListener('change', this._onCompactChange);
+    }
     this.loadInitial();
   }
 
@@ -72,6 +85,31 @@ class DocsApp {
     this.elements.toggleOutlineBtn.addEventListener('click', () => this.toggleSidebar('outline'));
     this.elements.closeLibraryBtn.addEventListener('click', () => this.setSidebar('library', false));
     this.elements.closeOutlineBtn.addEventListener('click', () => this.setSidebar('outline', false));
+
+    if (this.elements.docsBackdrop) {
+      this.elements.docsBackdrop.addEventListener('click', () => {
+        if (!this.isCompactLayout()) {
+          return;
+        }
+        this.setSidebar('library', false);
+        this.setSidebar('outline', false);
+      });
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      if (!this.isCompactLayout()) {
+        return;
+      }
+      if (!this.state.libraryOpen && !this.state.outlineOpen) {
+        return;
+      }
+      event.preventDefault();
+      this.setSidebar('library', false);
+      this.setSidebar('outline', false);
+    });
   }
 
   async loadInitial() {
@@ -145,34 +183,41 @@ class DocsApp {
     this.state.selectedFolder = folderPath;
     this.renderFolders();
     await this.loadDocuments(true);
-    if (this.state.documents.length > 0) {
-      await this.selectDocument(this.state.documents[0].path);
-    } else {
-      this.renderReaderEmpty();
-    }
   }
 
   async selectDocument(relativePath) {
     if (!relativePath) {
-      return;
+      return false;
     }
 
-    const response = await this.authFetch(`/api/docs/document?path=${encodeURIComponent(relativePath)}`);
-    const data = await response.json();
-    this.state.selectedDocument = relativePath;
-    this.state.selectedDocumentData = data;
-    this.state.isEditing = false;
-    this.renderDocuments();
-    this.renderDocument(data);
-    this.syncUrl(relativePath);
+    try {
+      const response = await this.authFetch(`/api/docs/document?path=${encodeURIComponent(relativePath)}`);
+      const data = await response.json();
+      this.state.selectedDocument = relativePath;
+      this.state.selectedDocumentData = data;
+      this.state.isEditing = false;
+      this.renderDocuments();
+      this.renderDocument(data);
+      this.syncUrl(relativePath);
+      if (this.isCompactLayout()) {
+        this.setSidebar('library', false);
+      }
+      return true;
+    } catch (error) {
+      console.error('[DocsApp] Open document failed:', error);
+      this.toast(error.message || 'Failed to open document', 'error');
+      return false;
+    }
   }
 
   async refreshDocument() {
     if (!this.state.selectedDocument) {
       return;
     }
-    await this.selectDocument(this.state.selectedDocument);
-    this.toast('Document refreshed', 'success');
+    const ok = await this.selectDocument(this.state.selectedDocument);
+    if (ok) {
+      this.toast('Document refreshed', 'success');
+    }
   }
 
   enterEditMode() {
@@ -352,6 +397,9 @@ class DocsApp {
         if (target) {
           target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+        if (this.isCompactLayout()) {
+          this.setSidebar('outline', false);
+        }
       });
     });
   }
@@ -364,28 +412,39 @@ class DocsApp {
     if (typeof saved.outlineOpen === 'boolean') {
       this.state.outlineOpen = saved.outlineOpen;
     }
-    this.handleResize(true);
+    this.handleResize();
   }
 
-  handleResize(initial = false) {
-    const width = window.innerWidth;
-    if (width <= 920) {
-      this.state.libraryOpen = true;
-      this.state.outlineOpen = true;
-      this.applySidebarState();
+  handleResize() {
+    this.applySidebarState();
+  }
+
+  isCompactLayout() {
+    if (typeof window.matchMedia === 'function') {
+      return window.matchMedia('(max-width: 1199px)').matches;
+    }
+    return window.innerWidth <= 1199;
+  }
+
+  applyBackdropState() {
+    const backdrop = this.elements.docsBackdrop;
+    if (!backdrop) {
       return;
     }
-
-    if (initial) {
-      if (width <= 1450) {
-        this.state.outlineOpen = false;
-      }
-      if (width <= 1180) {
-        this.state.libraryOpen = false;
-      }
+    const compact = this.isCompactLayout();
+    if (!compact) {
+      backdrop.hidden = true;
+      backdrop.classList.remove('is-visible');
+      return;
     }
-
-    this.applySidebarState();
+    const show = this.state.libraryOpen || this.state.outlineOpen;
+    if (!show) {
+      backdrop.hidden = true;
+      backdrop.classList.remove('is-visible');
+      return;
+    }
+    backdrop.hidden = false;
+    backdrop.classList.add('is-visible');
   }
 
   toggleSidebar(sidebar) {
@@ -397,9 +456,16 @@ class DocsApp {
   }
 
   setSidebar(sidebar, isOpen) {
+    const compact = this.isCompactLayout();
     if (sidebar === 'library') {
+      if (compact && isOpen) {
+        this.state.outlineOpen = false;
+      }
       this.state.libraryOpen = isOpen;
-    } else {
+    } else if (sidebar === 'outline') {
+      if (compact && isOpen) {
+        this.state.libraryOpen = false;
+      }
       this.state.outlineOpen = isOpen;
     }
     this.applySidebarState();
@@ -410,11 +476,15 @@ class DocsApp {
   }
 
   applySidebarState() {
+    if (this.isCompactLayout() && this.state.libraryOpen && this.state.outlineOpen) {
+      this.state.outlineOpen = false;
+    }
     const layout = this.elements.docsLayout;
     layout.classList.toggle('left-collapsed', !this.state.libraryOpen);
     layout.classList.toggle('right-collapsed', !this.state.outlineOpen);
     this.elements.toggleLibraryBtn.classList.toggle('is-active', this.state.libraryOpen);
     this.elements.toggleOutlineBtn.classList.toggle('is-active', this.state.outlineOpen);
+    this.applyBackdropState();
   }
 
   decorateMarkdown(currentPath) {
@@ -428,15 +498,12 @@ class DocsApp {
 
     this.enhanceCodeBlocks();
     this.linkifyMarkdownReferences(currentPath);
+    this.linkifyInlineCodeDocPaths(currentPath);
 
     const anchors = this.elements.renderedMarkdown.querySelectorAll('a[href]');
     anchors.forEach((anchor) => {
+      // Plain-text / inline-code linkifiers already call applyDocumentNavigation.
       if (anchor.dataset.docPath) {
-        this.applyDocumentNavigation(anchor, {
-          path: anchor.dataset.docPath,
-          hash: anchor.dataset.docHash || '',
-          isMarkdownDocument: true,
-        });
         return;
       }
 
@@ -539,7 +606,7 @@ class DocsApp {
             target.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
         }
-      });
+      }).catch(() => {});
     });
   }
 
@@ -611,13 +678,96 @@ class DocsApp {
     });
   }
 
+  /**
+   * Paths written as markdown inline code (`docs/Foo.md`) render as <code>; the plain-text
+   * linkifier skips code nodes. Linkify when the entire span is only a resolvable .md path.
+   */
+  linkifyInlineCodeDocPaths(currentPath) {
+    const linePattern = /^((?:docs\/)?[A-Za-z0-9._/-]+\.md)(#\S+)?$/;
+    const codes = Array.from(this.elements.renderedMarkdown.querySelectorAll('code')).filter((el) => !el.closest('pre'));
+
+    for (const code of codes) {
+      if (code.closest('a')) {
+        continue;
+      }
+      const raw = (code.textContent || '').trim();
+      if (!linePattern.test(raw)) {
+        continue;
+      }
+      const resolved = this.resolveDocsPath(currentPath, raw);
+      if (!resolved || !resolved.isMarkdownDocument) {
+        continue;
+      }
+
+      const link = document.createElement('a');
+      link.className = 'inline-doc-ref';
+
+      const inner = document.createElement('code');
+      inner.textContent = raw;
+      link.appendChild(inner);
+      this.applyDocumentNavigation(link, resolved);
+      code.parentNode.replaceChild(link, code);
+    }
+  }
+
+  _safeDecodeURIComponent(value) {
+    try {
+      return decodeURIComponent(String(value));
+    } catch (_e) {
+      return String(value);
+    }
+  }
+
+  _normalizePathSegments(segments) {
+    const clean = [];
+    for (const segment of segments) {
+      if (!segment || segment === '.') {
+        continue;
+      }
+      if (segment === '..') {
+        if (!clean.length) {
+          return null;
+        }
+        clean.pop();
+        continue;
+      }
+      clean.push(segment);
+    }
+    return clean;
+  }
+
+  _relativePathFromBase(baseSegments, relativeHref) {
+    const parts = relativeHref.split('/');
+    const stack = baseSegments.slice();
+    for (const p of parts) {
+      if (p === '' || p === '.') {
+        continue;
+      }
+      if (p === '..') {
+        if (!stack.length) {
+          return null;
+        }
+        stack.pop();
+      } else {
+        stack.push(p);
+      }
+    }
+    return stack;
+  }
+
   resolveDocsPath(currentPath, href, options = {}) {
     const allowAssets = Boolean(options.allowAssets);
     try {
-      const [pathPart, hashPart] = href.split('#');
-      let normalizedPath = String(pathPart || '').trim();
+      const [pathPartRaw, hashPart] = String(href).split('#');
+      let normalizedPath = String(pathPartRaw || '').trim().split('?')[0];
       if (!normalizedPath) {
         return null;
+      }
+
+      try {
+        normalizedPath = decodeURIComponent(normalizedPath);
+      } catch (_e) {
+        // Non-escaped href; continue with literal string.
       }
 
       if (normalizedPath.startsWith('/')) {
@@ -629,29 +779,33 @@ class DocsApp {
         normalizedPath = normalizedPath.slice(docsIndex + docsMarker.length);
       }
 
-      const baseSegments = currentPath.split('/').slice(0, -1);
-      const pathSegments = normalizedPath.replace(/^\.\/+/, '').split('/');
-      const effectiveSegments = pathSegments[0] === 'docs'
-        ? pathSegments.slice(1)
-        : baseSegments.concat(pathSegments);
-      const cleanSegments = [];
-      for (const segment of effectiveSegments) {
-        if (!segment || segment === '.') {
-          continue;
-        }
-        if (segment === '..') {
-          if (!cleanSegments.length) {
-            return null;
-          }
-          cleanSegments.pop();
-          continue;
-        }
-        cleanSegments.push(segment);
-      }
-      const resolvedPath = cleanSegments.join('/');
-      if (!resolvedPath) {
+      const baseSegments = currentPath.split('/').filter(Boolean).slice(0, -1);
+      const segments = normalizedPath.split('/').filter((s) => s !== '');
+
+      if (!segments.length) {
         return null;
       }
+
+      let resolvedParts;
+
+      if (normalizedPath.startsWith('./') || normalizedPath.startsWith('../')) {
+        resolvedParts = this._relativePathFromBase(baseSegments, normalizedPath);
+        if (!resolvedParts) {
+          return null;
+        }
+      } else if (segments[0] === 'docs') {
+        resolvedParts = this._normalizePathSegments(segments.slice(1));
+      } else if (segments.length === 1) {
+        resolvedParts = this._normalizePathSegments(baseSegments.concat(segments));
+      } else {
+        resolvedParts = this._normalizePathSegments(segments);
+      }
+
+      if (!resolvedParts || resolvedParts.length === 0) {
+        return null;
+      }
+
+      const resolvedPath = resolvedParts.join('/');
       const isMarkdownDocument = resolvedPath.toLowerCase().endsWith('.md');
       const isAsset = allowAssets && !isMarkdownDocument;
       if (!isMarkdownDocument && !isAsset) {
@@ -659,7 +813,7 @@ class DocsApp {
       }
       return {
         path: resolvedPath,
-        hash: hashPart ? decodeURIComponent(hashPart) : '',
+        hash: hashPart ? this._safeDecodeURIComponent(hashPart) : '',
         isMarkdownDocument,
         isAsset,
       };
