@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0c10">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Jarvis Docs - Login</title>
   <link rel="stylesheet" href="/css/fonts.css">
   <style>
@@ -19,6 +21,10 @@
       --error: #f87171;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      background: var(--bg-primary);
+      color-scheme: dark;
+    }
     body {
       min-height: 100vh;
       display: grid;

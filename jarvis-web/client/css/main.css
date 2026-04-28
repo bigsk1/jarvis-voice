@@ -214,6 +214,7 @@ body {
 .sidebar-footer-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--space-xs);
   margin-bottom: var(--space-sm);
 }
@@ -231,6 +232,14 @@ body {
 .footer-action-btn:hover {
   background: var(--bg-hover);
   border-color: var(--accent-primary);
+}
+
+.footer-action-btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: inherit;
 }
 
 /* Tools list */

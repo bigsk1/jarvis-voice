@@ -13,6 +13,8 @@ body {
   margin: 0;
   max-width: 100%;
   overflow-x: clip;
+  background: #0b0c10;
+  color-scheme: dark;
 }
 
 body {
