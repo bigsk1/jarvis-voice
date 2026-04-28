@@ -45,6 +45,7 @@
       "params": {},
       "llm_prompt": "The user requested a crypto report for: ${coins}\n\nExtract the FIRST cryptocurrency mentioned. If none specified or just 'bitcoin and solana', return 'bitcoin'.\n\nCommon mappings: btc=bitcoin, eth=ethereum, sol=solana, xrp=ripple, ada=cardano, doge=dogecoin, bnb=binancecoin, dot=polkadot, avax=avalanche-2, matic=matic-network\n\nRespond with ONLY the coin id (lowercase, no extra text). Example: bitcoin",
       "extract": {
+        "coin1_id": "coin_id",
         "coin1_price": "price_usd",
         "coin1_change": "change_24h_percent",
         "coin1_name": "coin",
@@ -59,6 +60,7 @@
       "params": {},
       "llm_prompt": "The user requested a crypto report for: ${coins}\n\nExtract the SECOND cryptocurrency mentioned. If only one coin specified, or none specified, or just 'bitcoin and solana', return 'solana'.\n\nCommon mappings: btc=bitcoin, eth=ethereum, sol=solana, xrp=ripple, ada=cardano, doge=dogecoin, bnb=binancecoin, dot=polkadot, avax=avalanche-2, matic=matic-network\n\nRespond with ONLY the coin id (lowercase, no extra text). Example: solana",
       "extract": {
+        "coin2_id": "coin_id",
         "coin2_price": "price_usd",
         "coin2_change": "change_24h_percent",
         "coin2_name": "coin",
@@ -69,6 +71,40 @@
     },
     {
       "step": 4,
+      "tool": "crypto_chart",
+      "params": {
+        "coin": "${coin1_id}",
+        "days": "7",
+        "points_limit": 120
+      },
+      "output_var": "coin1_chart_result",
+      "extract": {
+        "coin1_chart_points": "points_returned",
+        "coin1_chart_range": "range_label"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Get first coin 7-day chart"
+    },
+    {
+      "step": 5,
+      "tool": "crypto_chart",
+      "params": {
+        "coin": "${coin2_id}",
+        "days": "7",
+        "points_limit": 120
+      },
+      "output_var": "coin2_chart_result",
+      "extract": {
+        "coin2_chart_points": "points_returned",
+        "coin2_chart_range": "range_label"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Get second coin 7-day chart"
+    },
+    {
+      "step": 6,
       "tool": "mcp_brave_search_brave_web_search",
       "params": {
         "query": "cryptocurrency market news ${coins} price movement today",
@@ -83,7 +119,7 @@
       "description": "Search for crypto news"
     },
     {
-      "step": 5,
+      "step": 7,
       "tool": "crawl_url",
       "for_each": "${search_results.urls[:3]}",
       "output_var": "news_articles",
@@ -110,7 +146,7 @@
       "description": "Crawl news articles"
     },
     {
-      "step": 6,
+      "step": 8,
       "tool": "stash",
       "action": "open_space",
       "params": {
@@ -123,7 +159,7 @@
       "description": "Create stash workspace"
     },
     {
-      "step": 7,
+      "step": 9,
       "tool": "stash",
       "action": "save",
       "params": {
@@ -140,14 +176,14 @@
       "description": "Save report to stash"
     },
     {
-      "step": 8,
+      "step": 10,
       "tool": "canvas",
       "action": "create",
       "params": {
         "title": "Workflows/Crypto/${report_date}",
         "tags": ["crypto", "market", "report", "workflow"]
       },
-      "llm_prompt": "Create a comprehensive crypto market report canvas page using ONLY plain markdown (NO mermaid diagrams, NO graph syntax, NO code blocks for charts).\n\nReport generated: ${report_date} at ${report_time}\n\n## Price Data\n- ${coin1_name}: $${coin1_price} (${coin1_change}% 24h change)\n- ${coin2_name}: $${coin2_price} (${coin2_change}% 24h change)\n\n## News & Sentiment\nBased on these articles:\n${validated_articles}\n\nGenerate a well-formatted markdown report including:\n1. **Executive Summary** - Quick overview of market conditions\n2. **Price Analysis** - Use a markdown table for prices. Use 🟢 for positive, 🔴 for negative changes.\n3. **Market Sentiment** - What the news says about current conditions\n4. **Key Drivers** - What's affecting price movements today\n5. **Notable Headlines** - Top 3 stories with brief summaries\n6. **Stash Reference**: ${stash_ref}",
+      "llm_prompt": "Create a comprehensive crypto market report canvas page using ONLY plain markdown. Do NOT use mermaid or other graph syntax. You MUST include exactly two fenced `crypto-chart` blocks, one for each coin, with a short heading and description before each block so the charts are separated instead of appearing stacked without context.\n\nReport generated: ${report_date} at ${report_time}\n\n## Price Data\n- ${coin1_name}: $${coin1_price} (${coin1_change}% 24h change)\n- ${coin2_name}: $${coin2_price} (${coin2_change}% 24h change)\n\n## Chart Data Available\n- ${coin1_name}: ${coin1_chart_range} chart with ${coin1_chart_points} points\n- ${coin2_name}: ${coin2_chart_range} chart with ${coin2_chart_points} points\n\n## News & Sentiment\nBased on these articles:\n${validated_articles}\n\nGenerate a well-formatted markdown report including:\n1. **Executive Summary** - Quick overview of market conditions\n2. **Price Analysis** - Use a markdown table for prices. Use 🟢 for positive, 🔴 for negative changes.\n3. **7-Day Charts** - Create two subsections, one for ${coin1_name} and one for ${coin2_name}. Each subsection must include:\n   - A 1-2 sentence description of the recent trend\n   - Then a fenced `crypto-chart` block using the exact endpoint below\n4. **Market Sentiment** - What the news says about current conditions\n5. **Key Drivers** - What's affecting price movements today\n6. **Notable Headlines** - Top 3 stories with brief summaries\n7. **Stash Reference**: ${stash_ref}\n\nUse these exact chart embeds:\n\n### ${coin1_name} ${coin1_chart_range} Chart\n```crypto-chart\n{\"title\":\"${coin1_name} ${coin1_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${coin1_id}/chart?days=7&points_limit=120\"}\n```\n\n### ${coin2_name} ${coin2_chart_range} Chart\n```crypto-chart\n{\"title\":\"${coin2_name} ${coin2_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${coin2_id}/chart?days=7&points_limit=120\"}\n```\n\nIMPORTANT: Keep the headings and explanatory text OUTSIDE the fenced blocks. Use the actual values above and do not output placeholder syntax like ${var}.",
       "extract": {
         "canvas_id": "page_id"
       },
@@ -155,7 +191,7 @@
       "description": "Create canvas report"
     },
     {
-      "step": 9,
+      "step": 11,
       "tool": "send_email",
       "params": {
         "to": "boss",
