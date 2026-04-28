@@ -15,12 +15,47 @@
   box-sizing: border-box;
 }
 
+/* Dimmed backdrop when chat is open — mobile/narrow only (tap outside to dismiss) */
+.docs-assistant-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 801;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: none;
+  background: rgba(4, 10, 18, 0.48);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+@media (max-width: 620px) {
+  .docs-assistant-scrim:not([hidden]) {
+    display: block;
+  }
+}
+
+@media (min-width: 621px) {
+  .docs-assistant-scrim {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden;
+  }
+}
+
+.docs-assistant-scrim[hidden] {
+  display: none !important;
+}
+
 .docs-assistant-panel,
 .docs-assistant-fab {
   pointer-events: auto;
 }
 
 .docs-assistant-fab {
+  position: relative;
+  z-index: 803;
   display: grid;
   place-items: center;
   width: 52px;
@@ -53,6 +88,7 @@
   position: absolute;
   right: 0;
   bottom: 0;
+  z-index: 802;
   width: min(100vw - 32px, 400px);
   height: clamp(260px, 46vh, 520px);
   display: none;
@@ -63,6 +99,8 @@
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(14px);
   overflow: hidden;
+  /* Keep toolbar + composer visible; only messages scroll */
+  min-height: 0;
 }
 
 .docs-assistant.docs-assistant--open .docs-assistant-panel {
@@ -82,6 +120,7 @@
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border-primary);
   background: var(--bg-tertiary);
+  flex-shrink: 0;
 }
 
 .docs-assistant-title {
@@ -109,9 +148,9 @@
   flex-wrap: wrap;
   gap: 4px;
   flex-shrink: 0;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-end;
-  max-width: 50%;
+  min-width: 0;
 }
 
 .docs-assistant-mode-select {
@@ -407,9 +446,66 @@
 }
 
 @media (max-width: 620px) {
+  /* Root fills the viewport when open so children can use position:fixed safely */
+  .docs-assistant.docs-assistant--open {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    max-height: 100dvh;
+    pointer-events: none;
+  }
+
+  .docs-assistant.docs-assistant--open .docs-assistant-fab {
+    position: fixed;
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+  }
+
+  /* Panel anchored to viewport — avoids clipping when parent was only FAB-sized */
+  .docs-assistant.docs-assistant--open .docs-assistant-panel {
+    position: fixed;
+    left: max(10px, env(safe-area-inset-left, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-width: none;
+    height: min(72dvh, 560px);
+    z-index: 802;
+  }
+
   .docs-assistant.docs-assistant--expanded .docs-assistant-panel {
-    height: calc(100vh - 32px - env(safe-area-inset-bottom, 0px));
-    width: calc(100vw - 24px);
+    top: max(8px, env(safe-area-inset-top, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    width: auto;
+    height: auto;
+    max-height: none;
+  }
+
+  .docs-assistant-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .docs-assistant-toolbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .docs-assistant-mode-select {
+    flex: 1 1 120px;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .docs-assistant-composer {
+    flex-shrink: 0;
   }
 }
 

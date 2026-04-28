@@ -41,6 +41,7 @@
 <button type="button" class="docs-assistant-fab" id="docsAssistantFab" title="Docs assistant" aria-label="Open Docs assistant">
   <span class="docs-assistant-fab-icon">📚</span>
 </button>
+<div class="docs-assistant-scrim" id="docsAssistantScrim" hidden aria-hidden="true"></div>
 <section class="docs-assistant-panel" id="docsAssistantPanel" aria-label="Documentation assistant chat" aria-hidden="true">
   <header class="docs-assistant-toolbar">
     <div class="docs-assistant-title">
@@ -73,6 +74,7 @@
       this.root = root;
       this.elements.panel = root.querySelector('#docsAssistantPanel');
       this.elements.fab = root.querySelector('#docsAssistantFab');
+      this.elements.scrim = root.querySelector('#docsAssistantScrim');
       this.elements.messages = root.querySelector('#docsAssistantMessages');
       this.elements.input = root.querySelector('#docsAssistantInput');
       this.elements.form = root.querySelector('#docsAssistantForm');
@@ -112,6 +114,9 @@
 
     _bind() {
       this.elements.fab.addEventListener('click', () => this.toggle());
+      if (this.elements.scrim) {
+        this.elements.scrim.addEventListener('click', () => this.hide());
+      }
       this.elements.closeBtn.addEventListener('click', () => this.hide());
       this.elements.refreshBtn.addEventListener('click', () => this.newChat());
       this.elements.sizeBtn.addEventListener('click', () => this.cycleSize());
@@ -269,6 +274,10 @@
       this.root.classList.toggle('docs-assistant--open');
       const open = this.root.classList.contains('docs-assistant--open');
       this.elements.panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+      if (this.elements.scrim) {
+        this.elements.scrim.hidden = !open;
+        this.elements.scrim.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
       if (open) {
         this.elements.input.focus();
       }
@@ -277,6 +286,10 @@
     hide() {
       this.root.classList.remove('docs-assistant--open');
       this.elements.panel.setAttribute('aria-hidden', 'true');
+      if (this.elements.scrim) {
+        this.elements.scrim.hidden = true;
+        this.elements.scrim.setAttribute('aria-hidden', 'true');
+      }
     }
 
     cycleSize() {
