@@ -9,6 +9,16 @@ Local search engine for Jarvis documentation using [tobi/qmd](https://github.com
 - **Semantic search** - find by meaning when keywords fail
 - **33 context annotations** - sections have detailed descriptions to improve relevance
 
+## Jarvis Docs assistant
+
+The [Jarvis Docs viewer](../../jarvis-docs/) (often served on port `:5004`) includes an in-page **Docs assistant** that retrieves excerpts from `docs/` before answering. That pipeline uses QMD **when available** and degrades safely when it is not:
+
+- **`qmd` on PATH** — Semantic (`vsearch`) and keyword-backed retrieval run against your indexed `jarvis-docs` collection (see [First-Time Setup](#first-time-setup)). This improves “what does X mean?” style questions.
+- **No QMD** — Retrieval skips semantic search and relies on **ripgrep** (`rg`) over the repo’s `docs/` tree when `rg` is installed. The assistant does not crash; the UI shows retrieval metadata (mode, counts) so clones without optional QMD still work for keyword-style grounding.
+- **Neither tool** — The server avoids broken subprocess calls; responses may be thinner, and metadata reflects limited retrieval.
+
+Treat QMD as **recommended**, not mandatory, for local docs browsing and the assistant.
+
 ## Quick Reference
 
 ```bash

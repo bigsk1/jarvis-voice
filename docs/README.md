@@ -316,6 +316,12 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-04-27:**
+- ✅ **Jarvis Docs assistant (viewer `:5004`)**
+  - Dedicated LLM assistant in [jarvis-docs](../jarvis-docs/) with read-only retrieval from `docs/`, citation links normalized to explorer paths (relative to `docs/`, fuzzy filename matching for stable “open doc” behavior).
+  - **Retrieval:** uses QMD when `qmd` is on PATH; otherwise skips semantic search and uses **ripgrep** (`rg`) when available; graceful handling when neither is installed (metadata in UI, no hard failure). Documented under [docs/qmd/README.md](qmd/README.md) (*Jarvis Docs assistant*).
+  - Chat UX: loading state (**Working…** + spinner) while the LLM round-trip runs; muted **Ask** control styling. Assistant is not duplicated in jarvis-web; API: `POST /api/docs/assistant/chat`.
+
 **2026-04-23:**
 - ✅ **xAI native TTS + expressive final-speech tags**
   - Added first-class xAI TTS provider support across CLI, Web UI TTS, Voice API, and status playback paths using `TTS_PROVIDER=xai` and `XAI_API_KEY`.

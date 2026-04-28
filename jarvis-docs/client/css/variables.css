@@ -25,4 +25,27 @@
   --radius-sm: 10px;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* Tokens shared with embedded panels (docs assistant FAB) — mirror jarvis-web where useful */
+  --bg-primary: var(--bg-base);
+  --bg-secondary: var(--bg-panel);
+  --bg-tertiary: var(--bg-panel-strong);
+  --bg-hover: var(--bg-card-hover);
+  --bg-input: var(--bg-panel-strong);
+  --border-primary: var(--border);
+  --border-secondary: var(--border-strong);
+  --border-focus: var(--accent-primary);
+  --text-tertiary: var(--text-muted);
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-xl: 1.25rem;
+  --text-link-chat: var(--accent-secondary);
+  --text-link-chat-hover: var(--accent-primary);
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --radius-full: 9999px;
+  --shadow-lg: var(--shadow-xl);
+  --shadow-glow: 0 0 22px rgba(94, 234, 212, 0.12);
+  --transition-fast: 150ms ease;
 }

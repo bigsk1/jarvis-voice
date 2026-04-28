@@ -78,6 +78,27 @@ def get_config():
     })
 
 
+@docs_bp.route('/assistant/chat', methods=['POST'])
+def docs_assistant_chat():
+    """Dedicated docs LLM Q&A — uses LLM_PROVIDER from cloud/local env."""
+    data = request.get_json() or {}
+    messages = data.get('messages')
+    mode_raw = data.get('mode', 'cloud')
+    mode = 'local' if str(mode_raw).strip().lower() == 'local' else 'cloud'
+
+    if not isinstance(messages, list) or len(messages) < 1:
+        return jsonify({'ok': False, 'error': 'messages must be a non-empty array'}), 400
+
+    try:
+        from ..services.docs_assistant import run_docs_assistant
+
+        payload = run_docs_assistant(messages, mode)
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+    return jsonify(payload)
+
+
 @docs_bp.route('/asset', methods=['GET'])
 def get_asset():
     relative_path = request.args.get('path', '')
