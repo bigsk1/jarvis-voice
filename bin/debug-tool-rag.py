@@ -31,12 +31,14 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "orchestrator"))
 from config_loader import load_config, get_config_value, get_float
 from memory_db import get_memory_db
+from tool_schema import ToolRegistry, _merged_ghost_tool_names
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 from router_v2 import (
     build_tool_retrieval_signals,
@@ -45,11 +47,33 @@ from router_v2 import (
 )
 
 
-def _enabled_tool_names_from_db(db) -> list[str]:
-    rows = db.conn.execute(
-        "SELECT name FROM tool_definitions WHERE enabled = 1"
-    ).fetchall()
-    return [r[0] for r in rows]
+def _build_live_registry() -> ToolRegistry:
+    """Build the active registry so debug output matches profile/runtime visibility."""
+    project_root = Path(__file__).resolve().parents[1]
+    skills_dir = str(project_root / "skills")
+    mcp_config_path = str(project_root / "config" / "mcp-servers.json")
+
+    previous_json_mode = os.environ.get("JARVIS_JSON_MODE")
+    os.environ["JARVIS_JSON_MODE"] = "1"
+    try:
+        return ToolRegistry(skills_dir=skills_dir, mcp_config_path=mcp_config_path)
+    finally:
+        if previous_json_mode is None:
+            os.environ.pop("JARVIS_JSON_MODE", None)
+        else:
+            os.environ["JARVIS_JSON_MODE"] = previous_json_mode
+
+
+def _enabled_tool_names_from_registry(registry: ToolRegistry) -> list[str]:
+    return list(registry.tools.keys())
+
+
+def _active_ghost_tools(enabled_tool_names: list[str]) -> list[str]:
+    ghost_tools_str = get_config_value(
+        "GHOST_TOOLS",
+        "search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time",
+    )
+    return _merged_ghost_tool_names(ghost_tools_str, set(enabled_tool_names))
 
 
 def build_synthetic_full_transcript(user_query: str) -> str:
@@ -249,12 +273,6 @@ def debug_tool_rag(
     print()
 
     load_config(mode)
-
-    ghost_tools_str = get_config_value(
-        "GHOST_TOOLS",
-        "search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time",
-    )
-    ghost_tools = [t.strip() for t in ghost_tools_str.split(",")]
     env_threshold = get_float("TOOL_SIMILARITY_THRESHOLD", 0.0)
     full_env_raw = get_config_value("TOOL_SIMILARITY_THRESHOLD_FULL", None)
     try:
@@ -273,9 +291,12 @@ def debug_tool_rag(
     db = get_memory_db()
 
     try:
+        registry = _build_live_registry()
+        tool_names = _enabled_tool_names_from_registry(registry)
+        ghost_tools = _active_ghost_tools(tool_names)
+
         # Regime 1: single-line `query` — use the same text as hint_source so typo matching
         # mirrors the live path where ToolRegistry.find_tools gets typo_hint_source=user text.
-        tool_names = _enabled_tool_names_from_db(db)
         plain_query_embed, typo_hints = expand_tool_rag_query_for_typo_hints(
             query,
             tool_names,
@@ -324,14 +345,22 @@ def debug_tool_rag(
         if full_transcript_file:
             with open(full_transcript_file, encoding="utf-8", errors="replace") as f:
                 full_query = f.read()
+            full_query_embed, full_typo_hints = expand_tool_rag_query_for_typo_hints(
+                full_query,
+                tool_names,
+                hint_source=query,
+            )
+            if full_typo_hints:
+                print(f"🔤 Typo RAG hints for regime 2 (embedding only): {full_typo_hints}")
+                print()
             _print_block(
                 f"=== Regime 2: full transcript from file ({full_transcript_file}) ===",
-                full_query,
+                full_query_embed,
                 ft,
                 retrieval_limit,
                 ghost_tools,
-                _run_search(db, full_query, 100),
-                db.search_tools(full_query, limit=retrieval_limit, threshold=ft),
+                _run_search(db, full_query_embed, 100),
+                db.search_tools(full_query_embed, limit=retrieval_limit, threshold=ft),
             )
             _print_production_block(
                 f"=== Production-style retrieval: full transcript from file ({full_transcript_file}) ===",
@@ -345,14 +374,22 @@ def debug_tool_rag(
             )
         elif synthetic_full:
             full_query = build_synthetic_full_transcript(query)
+            full_query_embed, full_typo_hints = expand_tool_rag_query_for_typo_hints(
+                full_query,
+                tool_names,
+                hint_source=query,
+            )
+            if full_typo_hints:
+                print(f"🔤 Typo RAG hints for regime 2 (embedding only): {full_typo_hints}")
+                print()
             _print_block(
                 "=== Regime 2: synthetic full transcript (dilution experiment) ===",
-                full_query,
+                full_query_embed,
                 ft,
                 retrieval_limit,
                 ghost_tools,
-                _run_search(db, full_query, 100),
-                db.search_tools(full_query, limit=retrieval_limit, threshold=ft),
+                _run_search(db, full_query_embed, 100),
+                db.search_tools(full_query_embed, limit=retrieval_limit, threshold=ft),
             )
             _print_production_block(
                 "=== Production-style retrieval: synthetic full transcript ===",

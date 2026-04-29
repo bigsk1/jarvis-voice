@@ -233,16 +233,17 @@ This avoids scanning:
 Matching behavior:
 - **URL-like spans** (`https?://…`, `www.…`) are removed before tokenization so host/path fragments are not typo-matched
 - remaining tokens are compared to each enabled tool's **full name**
-- they are also compared to **snake_case / hyphen segments** long enough (`TOOL_RAG_TYPO_MIN_TOKEN_LEN`, default **4**)
+- they are also compared to **distinctive** snake_case / hyphen segments long enough (`TOOL_RAG_TYPO_MIN_TOKEN_LEN`, default **4**)
 - distance uses **optimal string alignment** (Damerau-style adjacent transpositions)
 - per tool, the **minimum** full-name/segment distance is used
-- if the global minimum is in `1 … TOOL_RAG_TYPO_MAX_DISTANCE` (default **2**) and **exactly one** tool achieves it, that canonical tool name is appended
+- if the global minimum is in `1 … TOOL_RAG_TYPO_MAX_DISTANCE` (default **1**) and **exactly one** tool achieves it, that canonical tool name is appended
 - **exact** token matches (full name or segment, distance **0**) add **no** hint
 - **ties** (multiple tools at the same minimum distance) add **no** hint
 - hints are capped per query (`TOOL_RAG_TYPO_MAX_HINTS`, default **5**)
 
-Practical note:
-- this is now slightly broader than typo-only behavior because segment matching can intentionally help with common nouns, for example `bookmarks` nudging `bookmark_search`
+Practical notes:
+- segment matching intentionally ignores generic nouns like `tool`, `tools`, `doc`, `docs`, `search`, and `logs` so typo hints behave more like typo correction than noun hunting
+- segment matching is limited to one-edit near misses; longer-distance segment guesses are skipped even if full-name typo matching allows a wider threshold
 
 Debugging note:
 - `bin/debug-tool-rag.py` now uses the same typo-hint expansion path for regime 1, so the plain-query debug view is much closer to live routing behavior

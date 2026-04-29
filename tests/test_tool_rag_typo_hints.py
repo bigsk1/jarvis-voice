@@ -44,7 +44,7 @@ class TestExpandToolRagQuery(unittest.TestCase):
         ]
 
     def test_bookmakrs_hints_bookmark_search(self):
-        """Production name: typo vs 'bookmark' segment → hint canonical bookmark_search."""
+        """Two-edit segment guesses are now intentionally skipped."""
         q, hints = expand_tool_rag_query_for_typo_hints(
             "check my bookmakrs for cheese",
             self.tools,
@@ -52,8 +52,8 @@ class TestExpandToolRagQuery(unittest.TestCase):
             max_distance=2,
             min_token_len=4,
         )
-        self.assertEqual(hints, ["bookmark_search"])
-        self.assertIn("bookmark_search", q)
+        self.assertEqual(hints, [])
+        self.assertEqual(q, "check my bookmakrs for cheese")
         self.assertTrue(q.startswith("check my bookmakrs"))
 
     def test_exact_tool_name_no_duplicate_hint(self):
@@ -140,6 +140,28 @@ class TestExpandToolRagQuery(unittest.TestCase):
         )
         self.assertEqual(hints, ["weather"])
 
+    def test_generic_segments_do_not_trigger_false_positive_hints(self):
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            "find my recent tool logs",
+            ["network_tools", "search_docs", "check_tool_logs"],
+            enabled=True,
+            max_distance=2,
+            min_token_len=4,
+        )
+        self.assertEqual(hints, [])
+        self.assertEqual(q, "find my recent tool logs")
+
+    def test_segment_matching_is_limited_to_one_edit(self):
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            "check my bookmakrs for cheese",
+            ["bookmark_search"],
+            enabled=True,
+            max_distance=2,
+            min_token_len=4,
+        )
+        self.assertEqual(hints, [])
+        self.assertEqual(q, "check my bookmakrs for cheese")
+
     def test_hint_source_scans_user_text_only(self):
         """Orchestrator passes hint_source=raw user request; do not scan intelligence/context."""
         noisy_blob = "\n".join(
@@ -158,8 +180,8 @@ class TestExpandToolRagQuery(unittest.TestCase):
             max_distance=2,
             min_token_len=4,
         )
-        self.assertEqual(hints, ["bookmark_search"])
-        self.assertIn("bookmark_search", q)
+        self.assertEqual(hints, [])
+        self.assertNotIn("bookmark_search", q)
         self.assertTrue(q.startswith("=== LEARNED"))
 
 

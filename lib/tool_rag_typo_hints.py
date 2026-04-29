@@ -29,6 +29,62 @@ logger = logging.getLogger(__name__)
 
 # Token must be at least this long to consider (avoids "ab" → many hits).
 _DEFAULT_MIN_TOKEN_LEN = 4
+_DEFAULT_MAX_DISTANCE = 1
+_GENERIC_SEGMENTS = frozenset(
+    {
+        "api",
+        "apis",
+        "call",
+        "calls",
+        "check",
+        "checks",
+        "data",
+        "doc",
+        "docs",
+        "email",
+        "emails",
+        "fetch",
+        "file",
+        "files",
+        "find",
+        "get",
+        "image",
+        "images",
+        "intel",
+        "list",
+        "lists",
+        "log",
+        "logs",
+        "manage",
+        "memory",
+        "network",
+        "price",
+        "prices",
+        "query",
+        "recent",
+        "recall",
+        "reminder",
+        "reminders",
+        "search",
+        "service",
+        "session",
+        "sessions",
+        "stock",
+        "stocks",
+        "system",
+        "time",
+        "tool",
+        "tools",
+        "update",
+        "url",
+        "urls",
+        "video",
+        "videos",
+        "weather",
+        "web",
+        "webhook",
+    }
+)
 
 
 def optimal_string_alignment_distance(a: str, b: str) -> int:
@@ -76,15 +132,17 @@ def _tokenize_for_typo_scan(query: str) -> list[str]:
     return re.findall(r"[A-Za-z0-9_]+", query)
 
 
-def _tool_name_candidates(name: str, min_segment_len: int) -> list[str]:
-    """Full lower name plus underscore/hyphen segments long enough to compare."""
-    out: list[str] = [name.lower()]
+def _tool_name_candidates(name: str, min_segment_len: int) -> list[tuple[str, bool]]:
+    """Full lower name plus distinctive underscore/hyphen segments long enough to compare."""
+    out: list[tuple[str, bool]] = [(name.lower(), False)]
     for seg in re.split(r"[_-]+", name):
-        if len(seg) >= min_segment_len:
-            out.append(seg.lower())
+        seg = seg.lower()
+        if len(seg) < min_segment_len or seg in _GENERIC_SEGMENTS:
+            continue
+        out.append((seg, True))
     # Preserve order, dedupe
-    seen: set[str] = set()
-    uniq: list[str] = []
+    seen: set[tuple[str, bool]] = set()
+    uniq: list[tuple[str, bool]] = []
     for c in out:
         if c not in seen:
             seen.add(c)
@@ -103,11 +161,12 @@ def _best_typo_distance_for_tool(
     Returns None if no distance in [1, max_distance]; 0 means exact match (caller skips hint).
     """
     best: int | None = None
-    for c in _tool_name_candidates(name, min_segment_len):
+    for c, is_segment in _tool_name_candidates(name, min_segment_len):
+        allowed_distance = min(max_distance, 1) if is_segment else max_distance
         d = optimal_string_alignment_distance(token_lower, c)
         if d == 0:
             return 0
-        if 1 <= d <= max_distance:
+        if 1 <= d <= allowed_distance:
             if best is None or d < best:
                 best = d
     return best
@@ -158,7 +217,7 @@ def expand_tool_rag_query_for_typo_hints(
             are considered for typo/near-segment matching. Hints are still appended
             to ``query``. If unset or empty, all tokens in ``query`` are scanned
             (legacy behavior for tests and single-line debug queries).
-        max_distance: Default from TOOL_RAG_TYPO_MAX_DISTANCE or 2.
+        max_distance: Default from TOOL_RAG_TYPO_MAX_DISTANCE or 1.
         min_token_len: Default from TOOL_RAG_TYPO_MIN_TOKEN_LEN or 4.
         enabled: Default from TOOL_RAG_TYPO_ENABLED or True.
 
@@ -171,7 +230,7 @@ def expand_tool_rag_query_for_typo_hints(
         return query, []
 
     if max_distance is None:
-        max_distance = int(get_int("TOOL_RAG_TYPO_MAX_DISTANCE", 2))
+        max_distance = int(get_int("TOOL_RAG_TYPO_MAX_DISTANCE", _DEFAULT_MAX_DISTANCE))
     max_distance = max(1, min(max_distance, 3))
 
     if min_token_len is None:
