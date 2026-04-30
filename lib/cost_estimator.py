@@ -14,7 +14,7 @@ from model_catalog import get_model_pricing
 #   specialized, or non-curated models
 #
 # Pricing as of November 2025 (USD per million tokens)
-# Note: User is Tier 2 with Anthropic
+# Note: User is Tier 3 with Anthropic
 PRICING = {
     "openai": {
         # GPT-5 series (Aug 2025) - Official pricing from openai.com/api/pricing

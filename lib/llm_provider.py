@@ -208,15 +208,26 @@ class AnthropicProvider(LLMProvider):
                 messages=[{"role": "user", "content": message}]
             )
             
-            # Extract text from response
-            for block in response.content:
-                if block.type == "text":
-                    return block.text
+            text_content = self._collect_anthropic_text_blocks(response.content)
+            if text_content:
+                return text_content
             
             return "No response from Claude"
         except Exception as e:
             print(f"Anthropic API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
+
+    @staticmethod
+    def _collect_anthropic_text_blocks(blocks: list[Any]) -> str:
+        """Preserve all text blocks in order; Anthropic may split one answer across many."""
+        parts: list[str] = []
+        for block in blocks or []:
+            if getattr(block, "type", None) != "text":
+                continue
+            text = getattr(block, "text", None)
+            if text:
+                parts.append(text)
+        return "".join(parts)
     
     def chat_with_tools(
         self,
@@ -240,7 +251,7 @@ class AnthropicProvider(LLMProvider):
         """
         try:
             # Enable prompt caching for system prompt
-            # Cache everything in the system prompt (saves 90% on cache hits)
+            # Cache everything in the system prompt (saves 90% on cache hits) the embedded date/time in system prompt can invalid cache fyi, look at later
             system_blocks = [
                 {
                     "type": "text",
@@ -363,18 +374,31 @@ class AnthropicProvider(LLMProvider):
                 
                 # Merge cache info into usage_info
                 usage_info.update(cache_info)
+
+                # Anthropic reports cache tokens separately from input_tokens/output_tokens.
+                # Include them in total_tokens so UI/log totals match provider dashboards.
+                usage_info["total_tokens"] = (
+                    input_tokens
+                    + output_tokens
+                    + cache_creation_tokens
+                    + cache_read_tokens
+                )
+
+                server_tool_use = getattr(response.usage, 'server_tool_use', None)
+                web_search_requests = getattr(server_tool_use, 'web_search_requests', 0) or 0
+                if web_search_requests > 0:
+                    usage_info["server_side_tools"] = {
+                        "SERVER_SIDE_TOOL_WEB_SEARCH": web_search_requests
+                    }
             
             # Check response type
             # Anthropic may return BOTH text AND tool_use blocks
             # Prioritize tool_use if present
             tool_use_block = None
-            text_block = None
             
             for block in response.content:
                 if block.type == "tool_use":
                     tool_use_block = block
-                elif block.type == "text":
-                    text_block = block
             
             # Return tool use if found (text is just explanatory)
             if tool_use_block:
@@ -384,8 +408,9 @@ class AnthropicProvider(LLMProvider):
                 }, usage_info, thinking_text
             
             # Otherwise return text response
-            if text_block:
-                return text_block.text, None, usage_info, thinking_text
+            text_content = self._collect_anthropic_text_blocks(response.content)
+            if text_content:
+                return text_content, None, usage_info, thinking_text
             
             return "No response from Claude", None, usage_info, thinking_text
             

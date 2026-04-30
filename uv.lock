@@ -1292,7 +1292,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = "==4.15.0" },
     { name = "urllib3", specifier = "==2.5.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.23.0" },
-    { name = "xai-sdk", specifier = ">=1.6.1" },
+    { name = "xai-sdk", specifier = ">=1.12.0" },
     { name = "yfinance", specifier = ">=1.1.0" },
     { name = "yt-dlp", specifier = ">=2026.3.17" },
 ]
@@ -2993,7 +2993,7 @@ wheels = [
 
 [[package]]
 name = "xai-sdk"
-version = "1.6.1"
+version = "1.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -3005,9 +3005,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9e/66/1e0163eac090733d0ed0836a0cd3c14f5b59abeaa6fdba71c7b56b1916e4/xai_sdk-1.6.1.tar.gz", hash = "sha256:b55528df188f8c8448484021d735f75b0e7d71719ddeb432c5f187ac67e3c983", size = 388223, upload-time = "2026-01-29T03:13:07.373Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/39/93b95ba32a99ebe7c14d0e646ee3b507a8b0977674857395717c89ee0e55/xai_sdk-1.12.0.tar.gz", hash = "sha256:d9c33432ff5463a8f9ff0d8c31abec9b243f9e9906541476f383a07b8bd44753", size = 412578, upload-time = "2026-04-29T18:42:52.401Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/98/8b4019b35f2200295c5eec8176da4b779ec3a0fd60eba7196b618f437e1f/xai_sdk-1.6.1-py3-none-any.whl", hash = "sha256:f478dee9bd8839b8d341bd075277d0432aff5cd7120a4284547d25c6c9e7ab3b", size = 240917, upload-time = "2026-01-29T03:13:05.626Z" },
+    { url = "https://files.pythonhosted.org/packages/75/b7/929830ed33c623235d08b26a51b3c3c90c99beed3f47cf2910a6e4521c99/xai_sdk-1.12.0-py3-none-any.whl", hash = "sha256:f28f876d1d7ba2d266bcd1fdf9e8f79f75458ef52d60605fb99b576547848e6a", size = 256549, upload-time = "2026-04-29T18:42:50.781Z" },
 ]
 
 [[package]]

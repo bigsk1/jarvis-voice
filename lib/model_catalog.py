@@ -86,6 +86,13 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "aliases": ["opus-4.6"],
         },
         {
+            "id": "claude-opus-4-7",
+            "name": "Claude Opus 4.7",
+            "context_tokens": 200_000,
+            "pricing": {"input": 15.00, "output": 75.00},
+            "aliases": ["opus-4.7"],
+        },
+        {
             "id": "claude-opus-4-5",
             "name": "Claude Opus 4.5",
             "context_tokens": 200_000,
@@ -111,18 +118,6 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "context_tokens": 200_000,
             "pricing": {"input": 3.00, "output": 15.00},
             "aliases": ["sonnet-4"],
-        },
-        {
-            "id": "claude-3-5-sonnet-20241022",
-            "name": "Claude 3.5 Sonnet",
-            "context_tokens": 200_000,
-            "pricing": {"input": 3.00, "output": 15.00},
-        },
-        {
-            "id": "claude-3-opus-20240229",
-            "name": "Claude 3 Opus",
-            "context_tokens": 200_000,
-            "pricing": {"input": 15.00, "output": 75.00},
         },
     ],
     "openai": [

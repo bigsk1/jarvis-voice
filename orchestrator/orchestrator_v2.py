@@ -843,6 +843,7 @@ Mode: {self.mode}
         total_usage = retry_state.get("total_usage") or {
             "input_tokens": 0,
             "output_tokens": 0,
+            "total_tokens": 0,
             "cost_usd": 0.0,
             "cache_creation_tokens": 0,
             "cache_read_tokens": 0,
@@ -951,6 +952,8 @@ Mode: {self.mode}
                     total_usage["input_tokens"] += usage["input_tokens"]
                 if usage.get("output_tokens"):
                     total_usage["output_tokens"] += usage["output_tokens"]
+                if usage.get("total_tokens"):
+                    total_usage["total_tokens"] += usage["total_tokens"]
                 if usage.get("cost_usd"):
                     total_usage["cost_usd"] += usage["cost_usd"]
                 # Accumulate cache metrics
@@ -964,6 +967,14 @@ Mode: {self.mode}
                 if usage.get("server_side_tools"):
                     for tool_name, count in usage["server_side_tools"].items():
                         total_usage["server_side_tools"][tool_name] = total_usage["server_side_tools"].get(tool_name, 0) + count
+
+                if not usage.get("total_tokens"):
+                    total_usage["total_tokens"] = (
+                        total_usage["input_tokens"]
+                        + total_usage["output_tokens"]
+                        + total_usage["cache_creation_tokens"]
+                        + total_usage["cache_read_tokens"]
+                    )
             
             # Capture thinking from first turn (for display)
             if turn_num == 0 and route.get("thinking") and not first_thinking:
