@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "serpapi_maps_search",
   "description": "Search places and local business results through SerpApi Google Maps with normalized place fields like address, rating, hours, phone, and website.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
   "script": "serpapi_maps_search.py",
   "parameters": {
     "type": "object",

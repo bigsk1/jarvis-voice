@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "git_release_notes",
   "description": "Analyze a GitHub release URL or repo URL and generate concise release notes with commit/PR/issue breakdown, risk flags, and optional canvas + stash output. Use when user asks 'what changed in this release', 'summarize latest release', or wants upgrade impact from GitHub releases.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
   "script": "git_release_notes.py",
   "parameters": {
     "type": "object",

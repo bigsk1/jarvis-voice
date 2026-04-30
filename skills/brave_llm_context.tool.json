@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "brave_llm_context",
   "description": "Retrieve Brave LLM Context: pre-extracted, relevance-scored web content for grounding AI answers. Use for current facts, research, technical questions, and RAG-style web grounding when snippets/source chunks are more useful than plain search links. This is not Brave Answers and does not generate the final answer itself.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
   "script": "brave_llm_context.py",
   "parameters": {
     "type": "object",

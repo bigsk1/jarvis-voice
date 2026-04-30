@@ -2,6 +2,9 @@
   "enabled": true,
   "name": "manage_intel",
   "description": "SAVE TO INTEL FOLDER: Create, read, update, append, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. SELF-LEARNING: When you discover a critical tool limitation, provider quirk, or recurring failure pattern, use action=append with path=jarvis-learned-lessons.md to save the lesson for future sessions. Format: '- **Topic**: Lesson learned'. Always set auto_ingest=true. Write real markdown with real line breaks, headers, bullets, or key-value pairs so ingest_intel can extract clean facts. Sandboxed to jarvis-intel/ only (FLAT - no subdirs).",
+  "complementary_tools": [
+    "ingest_intel"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

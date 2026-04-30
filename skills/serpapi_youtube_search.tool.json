@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "serpapi_youtube_search",
   "description": "Search YouTube videos through SerpApi using keyword queries, with normalized video-first results including title, URL, channel, published date, views, duration, thumbnail, and pagination token. Use this to find YouTube videos when you do not already have a specific URL.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
   "script": "serpapi_youtube_search.py",
   "parameters": {
     "type": "object",

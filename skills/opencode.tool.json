@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "opencode",
   "description": "Execute complex SOFTWARE DEVELOPMENT tasks: coding, building apps/websites/APIs, deploying services, git operations, and multi-step programming workflows.\n\nUse this when:\n- User wants to BUILD SOFTWARE (apps, websites, APIs, scripts)\n- User says 'code', 'develop', 'deploy', 'make an app/website'\n- Task requires writing multiple files, tests, or package.json/requirements.txt\n- Task needs a full project structure with README\n\nDo NOT use for:\n- Simple document generation (PDFs, reports) → use pdf_create instead\n- Downloading images or files → use stash instead\n- Text formatting or markdown → use canvas instead\n- One-off shell commands → use execute_bash instead\n- API calls → use api_call instead",
+  "complementary_tools": [
+    "canvas",
+    "check_opencode_sessions"
+  ],
   "parameters": {
     "type": "object",
     "properties": {

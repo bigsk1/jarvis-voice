@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "serpapi_hotel_search",
   "description": "Search hotel options through SerpApi Google Hotels with normalized hotel fields like nightly price, total price, rating, class, and amenities.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
   "script": "serpapi_hotel_search.py",
   "parameters": {
     "type": "object",

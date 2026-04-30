@@ -2,6 +2,9 @@
   "enabled": true,
   "name": "pdf_read",
   "description": "Read and process EXISTING PDF files: extract text/images, merge, split, convert to images, search. This is for PDF INPUT processing, not creating new PDFs.\n\nUse when:\n- 'Extract text from this PDF' → action: extract_text\n- 'What's in this PDF?' → action: info or extract_text\n- 'Get images from PDF' → action: extract_images\n- 'Merge these PDFs into one' → action: merge\n- 'Split this PDF at page 5' → action: split\n- 'Convert PDF pages to images' → action: to_images\n- 'Search PDF for keyword' → action: search\n- 'How many pages in this PDF?' → action: info\n\nDo NOT use for:\n- Creating new PDFs from scratch → use pdf_create instead\n- Making reports/documents from text → use pdf_create instead\n- Generating printable output → use pdf_create instead\n\nWorkflow direction:\n- pdf_read: PDF → text/images/info (extract FROM pdf)\n- pdf_create: text/images → PDF (generate TO pdf)",
+  "complementary_tools": [
+    "printer"
+  ],
   "script": "pdf_read.py",
   "parameters": {
     "type": "object",

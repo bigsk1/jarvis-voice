@@ -3,7 +3,6 @@
   "name": "supa_crawl_knowledge",
   "complementary_tools": [
     "remember",
-    "semantic_recall",
     "stash",
     "manage_intel",
     "canvas"

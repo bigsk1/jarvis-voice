@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "serpapi_search",
   "description": "Structured shopping and search lookup via SerpApi across engines like amazon, amazon_product, google, google_shopping, and news. Best tool for Amazon product search, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, product comparisons, and finding products to buy when the user asks about Amazon items or shopping results. Recommended shopping pattern: use engine=amazon first to gather and compare multiple candidate listings, then use engine=amazon_product with a chosen ASIN when you want one focused product page with richer details, direct link, image/thumbnail, and a cleaner final recommendation. If saving that focused product to Canvas, preserve the thumbnail by passing it to the canvas tool as image_url.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
   "script": "serpapi_search.py",
   "parameters": {
     "type": "object",

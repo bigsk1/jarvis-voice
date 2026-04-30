@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "bookmark_search",
   "description": "Parse and search Firefox bookmark export files (Netscape HTML format). Supports keyword and quoted phrase search, plus filters by tags, folder path fragments, and domains. Actions: search, list_tags, list_folders, stats.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
   "script": "bookmark_search.py",
   "parameters": {
     "type": "object",

@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "serpapi_yelp_search",
   "description": "Search Yelp places through SerpApi using find_desc and find_loc, with optional attrs filters, sort order, dog-friendly helper, and optional review fetch for a selected or top place. Good for restaurants, coffee shops, bars, and places to eat near a location. Success data includes `results` (place objects with title, rating, address, snippet, url, etc.) and optional `review_data`.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
   "script": "serpapi_yelp_search.py",
   "parameters": {
     "type": "object",
