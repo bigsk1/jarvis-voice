@@ -123,12 +123,6 @@ jarvis-intel/*
 !jarvis-intel/jarvis-learned-lessons.md
 !jarvis-intel/README.md
 
-# ===== Blinko Integration =====
-# Ignore runtime data but keep setup files
-blinko/data/
-blinko/postgres-data/
-blinko/.env
-
 opencodetmp/
 # Spotify OAuth cache (contains access tokens)
 data/.spotify_cache

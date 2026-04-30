@@ -622,7 +622,7 @@ Block specific tools from being synced to the database:
 
 ```bash
 # In config/cloud.env or config/local.env
-BLOCKED_TOOLS="mcp_blinko_webSearch,mcp_blinko_webExtra"
+BLOCKED_TOOLS="mcp_playwright_browser_navigate,mcp_playwright_browser_snapshot"
 ```
 
 **Precedence** (highest to lowest):

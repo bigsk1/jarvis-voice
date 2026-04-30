@@ -85,15 +85,6 @@
       ],
       "description": "Browser automation for JS-heavy sites: navigate, click, fill forms, screenshots, PDFs. Use when fetch fails on dynamic content.",
       "enabled": false
-    },
-    "blinko": {
-      "type": "sse",
-      "url": "http://localhost:1111/sse",
-      "headers": {
-        "Authorization": "Bearer ${BLINKO_API_KEY}"
-      },
-      "description": "Blinko note-taking: Create quick thoughts (blinko), longer notes, or todos. Use upsertBlinko to save notes with #tags, searchBlinko to find notes, updateBlinko to modify, deleteBlinko to remove. Perfect for saving ideas, research findings, or task lists.",
-      "enabled": false
     }
   }
 }

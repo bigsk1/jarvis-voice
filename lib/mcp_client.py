@@ -816,7 +816,7 @@ class MCPRemoteClient:
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            # Check for stale session error (Blinko returns 400 with "No transport found for sessionId")
+            # Stale SSE session (400 + session/transport wording); reconnect once
             if e.response.status_code == 400 and retry_count < 1:
                 error_text = e.response.text if hasattr(e.response, 'text') else ''
                 if 'session' in error_text.lower() or 'transport' in error_text.lower():

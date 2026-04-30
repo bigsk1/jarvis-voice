@@ -384,7 +384,6 @@ These tools from the original roadmap have been implemented:
 | **slack_message** | Send Slack messages, read channels | n8n workflow (Slack node) |
 | **file_search** | Search files by name/content in workspace | Local tool (Python subprocess) |
 | **clipboard** | Read/write system clipboard | Local tool (pyperclip) |
-| **blinko** | Note-taking sync with Blinko app | MCP server (in progress) |
 
 #### 🟡 MEDIUM PRIORITY (Nice to Have)
 
@@ -550,7 +549,6 @@ entries = [{'title': e.title, 'link': e.link} for e in feed.entries[:10]]
 5. **Add Slack Integration** - n8n workflow for team comms
 6. **Add File Search** - Local tool for workspace search
 7. **Add Clipboard** - Quick data transfer
-8. **Complete Blinko MCP** - Note-taking integration
 
 ### MCP Servers to Consider
 

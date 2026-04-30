@@ -663,7 +663,7 @@ When adding a new tool idea to this document:
 
 ## 🔗 Related Documentation
 
-- **[Blinko Integration Ideas](BLINKO_INTEGRATION_IDEAS.md)** - Exploration of integrating Blinko AI note-taking system with Jarvis
+- See **docs/README.md** for integration guides (webhooks, n8n, API).
 
 ---
 

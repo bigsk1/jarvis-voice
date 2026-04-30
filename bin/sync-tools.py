@@ -101,7 +101,7 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False):
     db = get_memory_db()
     
     # Load blocked tools from config (comma-separated list)
-    # Example: BLOCKED_TOOLS="mcp_blinko_webSearch,mcp_blinko_webExtra"
+    # Example: BLOCKED_TOOLS="mcp_playwright_browser_navigate,mcp_playwright_browser_snapshot"
     from config_loader import get_config_value
     blocked_tools_str = get_config_value('BLOCKED_TOOLS', '')
     blocked_tools = set(t.strip() for t in blocked_tools_str.split(',') if t.strip())

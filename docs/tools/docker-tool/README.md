@@ -209,7 +209,7 @@ Omit `container` to get stats for all running containers.
 "show logs for jarvis-grafana"
 "docker compose up in ~/myproject"
 "pull the latest postgres image"
-"what's the health status of blinko-app"
+"what's the health status of jarvis-grafana"
 "prune docker system"
 "show docker stats for all containers"
 ```

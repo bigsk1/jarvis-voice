@@ -492,7 +492,6 @@ For self-hosted or optional integrations:
 - **OpenCode**: no external API key for Jarvis itself; set up your local OpenCode server and use `OPENCODE_SERVER_PASSWORD` plus provider keys in the OpenCode environment. See `docs/opencode/OPENCODE.md`.
 - **n8n**: generate the API key from your own n8n instance at `Settings -> API` after n8n is running. Used by `N8N_LOCAL_API_KEY`.
 - **Crawl4AI**: if using a hosted Crawl4AI service, use the key issued by that service/provider.
-- **Blinko**: generate the API key from your own Blinko instance if you enable that integration..
 
 **Verify keys are set:**
 ```bash
