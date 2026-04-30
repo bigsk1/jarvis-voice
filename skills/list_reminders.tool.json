@@ -1,15 +1,15 @@
 {
   "enabled": true,
   "name": "list_reminders",
-  "description": "List reminders by status. ALWAYS use this tool for ANY reminder-related query, including: 'when is my next reminder?', 'what reminders do I have?', 'cancel my X reminder' (need ID first!), 'delete reminder', 'show my reminders', 'check reminders', 'any upcoming reminders?', 'did I miss any reminders?', etc. NEVER answer reminder questions from memory or context - always call this tool to get current state. **CRITICAL**: If user wants to cancel/delete a specific reminder by title, you MUST call this first to get the reminder ID, then call 'acknowledge_reminders' with that ID. Returns reminders with IDs, relative time, and status.",
+  "description": "List reminders by status. ALWAYS use this tool for ANY reminder-related query, including: 'when is my next reminder?', 'what reminders do I have?', 'what are my current reminders?', 'what reminder statuses do I have?', 'did I miss any reminders?', 'cancel my X reminder' (need ID first!), 'delete reminder', 'show my reminders', and 'check reminders'. NEVER answer reminder questions from memory or context - always call this tool to get current state. IMPORTANT STATUS GUIDANCE: For generic live-state questions like 'what reminders do I have?', 'any current reminders?', 'what is my reminder status?', or 'did any reminders go off?', prefer status='current' unless the user explicitly asks for acknowledged/history/all. 'current' means reminders that still matter right now: scheduled reminders plus triggered reminders that may already have been spoken but are NOT acknowledged yet. **CRITICAL**: If user wants to cancel/delete a specific reminder by title, you MUST call this first to get the reminder ID, then call 'acknowledge_reminders' with that ID. Returns reminders with IDs, relative time, status, and spoken state.",
   "script": "list_reminders.py",
   "parameters": {
     "type": "object",
     "properties": {
       "status": {
         "type": "string",
-        "description": "Filter by status: 'scheduled', 'triggered', 'acknowledged', or 'all' (default)",
-        "enum": ["scheduled", "triggered", "acknowledged", "all"]
+        "description": "Filter by status: 'current' (default, scheduled + triggered still needing attention), 'scheduled', 'triggered', 'acknowledged', or 'all'",
+        "enum": ["current", "scheduled", "triggered", "acknowledged", "all"]
       },
       "limit": {
         "type": "integer",
@@ -26,4 +26,3 @@
     "auto_approve": true
   }
 }
-

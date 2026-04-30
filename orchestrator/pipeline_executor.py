@@ -519,12 +519,92 @@ class PipelineExecutor:
             value = self._resolve_variable(full_match, variables)
             if value is None:
                 continue
-            if isinstance(value, (dict, list)):
-                replacement = json.dumps(value, default=str)
-            else:
-                replacement = str(value)
+            replacement = self._format_template_value(value)
             result = result.replace(full_match, replacement)
         return result
+
+    def _format_template_value(self, value: Any) -> str:
+        """Format structured values for LLM prompts in a readable way."""
+        if isinstance(value, list):
+            formatted_list = self._format_reminders_for_prompt(value)
+            if formatted_list is not None:
+                return formatted_list
+            return json.dumps(value, default=str)
+        if isinstance(value, dict):
+            return json.dumps(value, default=str)
+        return str(value)
+
+    def _format_reminders_for_prompt(self, reminders: list[Any]) -> str | None:
+        """Convert reminder objects into deterministic markdown for workflow prompts."""
+        if not reminders or not all(isinstance(item, dict) for item in reminders):
+            return None
+
+        reminder_like = [
+            item for item in reminders
+            if {"title", "status", "trigger_time"}.issubset(item.keys())
+        ]
+        if len(reminder_like) != len(reminders):
+            return None
+
+        triggered = [r for r in reminders if r.get("status") == "triggered"]
+        scheduled = [r for r in reminders if r.get("status") == "scheduled"]
+        historical = [r for r in reminders if r.get("status") not in {"triggered", "scheduled"}]
+
+        lines: list[str] = []
+        if triggered:
+            lines.append("Triggered (need attention, unacknowledged)")
+            lines.append("")
+            for reminder in triggered:
+                lines.extend(self._format_single_reminder_lines(reminder))
+                lines.append("")
+        if scheduled:
+            lines.append("Scheduled (upcoming)")
+            lines.append("")
+            for reminder in scheduled:
+                lines.extend(self._format_single_reminder_lines(reminder))
+                lines.append("")
+        if historical:
+            lines.append("History")
+            lines.append("")
+            for reminder in historical:
+                lines.extend(self._format_single_reminder_lines(reminder))
+                lines.append("")
+
+        return "\n".join(lines).strip() if lines else "No reminders"
+
+    def _format_single_reminder_lines(self, reminder: dict[str, Any]) -> list[str]:
+        """Format one reminder for workflow prompt consumption."""
+        reminder_id = reminder.get("id")
+        title = reminder.get("title") or reminder.get("message") or "Reminder"
+        status = reminder.get("status", "unknown")
+        spoken = reminder.get("spoken")
+        trigger_local = reminder.get("trigger_time_local") or reminder.get("trigger_time", "")
+        relative_time = reminder.get("relative_time", "")
+        recurrence = reminder.get("recurrence_rule")
+        acknowledged = "Yes" if reminder.get("acknowledged_at") else "No"
+
+        if spoken in (0, 1, True, False):
+            spoken_text = "spoken 1 time" if bool(spoken) else "not spoken"
+        else:
+            spoken_text = "spoken state unknown"
+
+        first_line = f"- ID {reminder_id}: {title}" if reminder_id is not None else f"- {title}"
+        trigger_line = f"  Trigger: {trigger_local}"
+        if relative_time:
+            trigger_line += f" ({relative_time})"
+
+        lines = [
+            first_line,
+            f"  Status: {status} ({spoken_text})",
+            trigger_line,
+        ]
+
+        if status == "triggered":
+            lines.append(f"  Acknowledged: {acknowledged}")
+        if recurrence:
+            lines.append(f"  Recurrence: {recurrence}")
+
+        return lines
     
     def _get_nested_value(self, data: dict, path: str) -> Any:
         """Get a nested value from a dict using dot notation."""
@@ -564,7 +644,6 @@ class PipelineExecutor:
                 value = self._extract_by_path(data, path)
                 if value is not None:
                     variables[var_name] = value
-            return
         
         # Built-in patterns (fallback for common tools)
         
@@ -610,6 +689,14 @@ class PipelineExecutor:
                 variables["canvas_id"] = data["page_id"]
             elif data.get("id"):
                 variables["canvas_id"] = data["id"]
+
+        # Reminder tool - provide deterministic markdown for workflow prompts/canvas reports
+        if tool_name == "list_reminders":
+            reminders = data.get("reminders", [])
+            if isinstance(reminders, list):
+                formatted = self._format_reminders_for_prompt(reminders)
+                if formatted:
+                    variables["reminders_markdown"] = formatted
         
         # SSH tool - extract output
         if tool_name == "ssh_remote":
@@ -1155,13 +1242,8 @@ class PipelineExecutor:
                 # Special handling for articles - extract actual content
                 articles_text = self._format_articles_for_llm(value)
                 prompt = prompt.replace(placeholder, articles_text)
-            elif isinstance(value, dict):
-                # For complex values, provide JSON representation
-                prompt = prompt.replace(placeholder, json.dumps(value, indent=2, default=str)[:2000])
-            elif isinstance(value, list):
-                prompt = prompt.replace(placeholder, json.dumps(value, indent=2, default=str)[:2000])
             else:
-                prompt = prompt.replace(placeholder, str(value))
+                prompt = prompt.replace(placeholder, self._format_template_value(value)[:3000])
         
         try:
             # Use appropriate system prompt based on tool type

@@ -209,9 +209,9 @@ def main():
             else:
                 failures.append(f"alerts: {result.get('error')}")
         
-        # 5. Reminders - scheduled only (not acknowledged/triggered)
+        # 5. Reminders - current live state (scheduled + triggered needing attention)
         if 'reminders' in sections:
-            result = call_tool('list_reminders', {'status': 'scheduled', 'limit': 10})
+            result = call_tool('list_reminders', {'status': 'current', 'limit': 10})
             if result.get('ok'):
                 report_data['reminders'] = result.get('data', {})
             else:
@@ -398,15 +398,19 @@ def main():
         
         # Alerts/reminders summary
         alert_count = len(report_data.get('alerts', {}).get('alerts', []))
-        reminder_count = len(report_data.get('reminders', {}).get('reminders', []))
+        reminders = report_data.get('reminders', {}).get('reminders', [])
+        triggered_reminders = [r for r in reminders if r.get('status') == 'triggered']
+        scheduled_reminders = [r for r in reminders if r.get('status') == 'scheduled']
         status_items = []
         if alert_count:
             status_items.append(f"**{alert_count}** active alert{'s' if alert_count > 1 else ''}")
         else:
             status_items.append("✅ No alerts")
-        if reminder_count:
-            status_items.append(f"**{reminder_count}** upcoming reminder{'s' if reminder_count > 1 else ''}")
-        else:
+        if triggered_reminders:
+            status_items.append(f"**{len(triggered_reminders)}** triggered reminder{'s' if len(triggered_reminders) > 1 else ''}")
+        if scheduled_reminders:
+            status_items.append(f"**{len(scheduled_reminders)}** upcoming reminder{'s' if len(scheduled_reminders) > 1 else ''}")
+        if not triggered_reminders and not scheduled_reminders:
             status_items.append("No reminders")
         summary_parts.append(" • ".join(status_items))
         
@@ -491,14 +495,34 @@ def main():
         
         # Reminders section
         reminders = report_data.get('reminders', {}).get('reminders', [])
-        canvas_lines.append(f"## ⏰ Upcoming Reminders ({len(reminders)})")
-        if reminders:
-            for r in reminders[:10]:
+        triggered_reminders = [r for r in reminders if r.get('status') == 'triggered']
+        scheduled_reminders = [r for r in reminders if r.get('status') == 'scheduled']
+        canvas_lines.append(f"## ⏰ Current Reminders ({len(reminders)})")
+        if triggered_reminders:
+            canvas_lines.append(f"### Triggered / Needs Attention ({len(triggered_reminders)})")
+            for r in triggered_reminders[:10]:
                 title = r.get('title', r.get('message', 'Reminder'))
                 rel_time = r.get('relative_time', '')
-                canvas_lines.append(f"- {title}" + (f" — *{rel_time}*" if rel_time else ""))
-        else:
-            canvas_lines.append("- ✅ No upcoming reminders")
+                spoken = bool(r.get('spoken'))
+                spoken_note = "already spoken aloud" if spoken else "not yet spoken"
+                line = f"- {title}"
+                if rel_time:
+                    line += f" — *{rel_time}*"
+                line += f" ({spoken_note})"
+                canvas_lines.append(line)
+            canvas_lines.append("")
+        if scheduled_reminders:
+            canvas_lines.append(f"### Upcoming ({len(scheduled_reminders)})")
+            for r in scheduled_reminders[:10]:
+                title = r.get('title', r.get('message', 'Reminder'))
+                rel_time = r.get('relative_time', '')
+                line = f"- {title}"
+                if rel_time:
+                    line += f" — *{rel_time}*"
+                canvas_lines.append(line)
+            canvas_lines.append("")
+        if not reminders:
+            canvas_lines.append("- ✅ No current reminders")
         canvas_lines.append("")
         
         # System section

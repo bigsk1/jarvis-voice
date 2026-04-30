@@ -26,6 +26,27 @@ mkdir -p "$AUDIO_DIR/mic"
 mkdir -p "$AUDIO_DIR/tts"
 mkdir -p "$AUDIO_DIR/logs"
 
+configure_wake_response_style() {
+    local wake_style="${JARVIS_WAKE_RESPONSE_STYLE:-auto}"
+
+    case "${wake_style,,}" in
+        auto|casual)
+            export JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE="${wake_style,,}"
+            ;;
+        *)
+            export JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE="auto"
+            ;;
+    esac
+
+    if [ -n "${JARVIS_WAKE_QA_WORD_LIMIT:-}" ]; then
+        export JARVIS_OVERRIDE_JARVIS_QA_WORD_LIMIT="$JARVIS_WAKE_QA_WORD_LIMIT"
+    fi
+
+    if [ -n "${JARVIS_WAKE_MULTI_TURN_WORD_LIMIT:-}" ]; then
+        export JARVIS_OVERRIDE_JARVIS_MULTI_TURN_WORD_LIMIT="$JARVIS_WAKE_MULTI_TURN_WORD_LIMIT"
+    fi
+}
+
 normalize_control_phrase() {
     printf '%s' "$1" \
         | tr '[:upper:]' '[:lower:]' \
@@ -81,6 +102,7 @@ echo "$TRANSCRIPT" > "$TRANSCRIPT_FILE"
 
 # Process through orchestrator
 echo "🧠 Processing with orchestrator..."
+configure_wake_response_style
 ORCH_RESULT=$(python3 "$ORCHESTRATOR" local "$TRANSCRIPT" --json 2>/dev/null)
 
 # Extract speech from orchestrator result

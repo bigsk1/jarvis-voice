@@ -10,7 +10,7 @@ The `status_recap` tool aggregates data from multiple sources into one report:
 - 💰 **Crypto** - Cryptocurrency prices and 24h changes (Bitcoin, Solana by default)
 - 📊 **Stocks** - Stock/futures prices and daily changes (Tesla, Gold, Silver by default)
 - 🚨 **Alerts** - Any active system alerts
-- 📋 **Reminders** - Upcoming scheduled reminders
+- 📋 **Reminders** - Current reminders: upcoming scheduled plus triggered reminders needing attention
 - 💻 **System** - CPU, RAM, disk usage, and uptime
 - 🖼️ **Dashboard Image** - Optional AI-generated status visualization
 
@@ -76,7 +76,7 @@ Available sections: `time`, `weather`, `crypto`, `stocks`, `alerts`, `reminders`
 
 I will:
 1. **Summarize** the key points in speech
-2. **Highlight** any issues requiring attention (high CPU, active alerts, overdue reminders)
+2. **Highlight** any issues requiring attention (high CPU, active alerts, triggered reminders, overdue reminders)
 3. **Reference** the canvas page for full details
 4. **Add news** if requested (using native grounding search)
 

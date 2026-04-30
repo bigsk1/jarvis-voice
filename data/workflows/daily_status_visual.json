@@ -120,7 +120,7 @@
       "step": 8,
       "tool": "list_reminders",
       "params": {
-        "status": "scheduled",
+        "status": "current",
         "limit": 5
       },
       "output_var": "reminders_result",
@@ -129,7 +129,7 @@
         "reminders": "reminders"
       },
       "required": false,
-      "description": "Get upcoming reminders"
+      "description": "Get current reminders needing attention and what's coming up next"
     },
     {
       "step": 9,
@@ -156,7 +156,7 @@
       "extract": {
         "image_ref": "saved.stash_ref"
       },
-      "llm_prompt": "Create a modern dark-themed status dashboard image showing these EXACT values:\n\nWEATHER: ${temperature}°F, ${condition}, ${humidity}% humidity, ${wind_speed} mph wind\nCRYPTO: Bitcoin $${btc_price} (${btc_change}% 24h), Solana $${sol_price} (${sol_change}% 24h)\nSTOCKS: TSLA $${tsla_price} (${tsla_change}%), Gold $${gold_price} (${gold_change}%)\nSYSTEM: CPU ${cpu_percent}%, RAM ${memory_percent}%, Uptime ${uptime}\nALERTS: ${alert_count} pending, REMINDERS: ${reminder_count} upcoming\n\nStyle: Futuristic HUD design with neon accents, glowing elements, clean typography. Show all numbers clearly. Dark background with cyan/green/orange highlights. Make it look like a sci-fi command center display.",
+      "llm_prompt": "Create a modern dark-themed status dashboard image showing these EXACT values:\n\nWEATHER: ${temperature}°F, ${condition}, ${humidity}% humidity, ${wind_speed} mph wind\nCRYPTO: Bitcoin $${btc_price} (${btc_change}% 24h), Solana $${sol_price} (${sol_change}% 24h)\nSTOCKS: TSLA $${tsla_price} (${tsla_change}%), Gold $${gold_price} (${gold_change}%)\nSYSTEM: CPU ${cpu_percent}%, RAM ${memory_percent}%, Uptime ${uptime}\nALERTS: ${alert_count} pending, REMINDERS: ${reminder_count} current\n\nStyle: Futuristic HUD design with neon accents, glowing elements, clean typography. Show all numbers clearly. Dark background with cyan/green/orange highlights. Make it look like a sci-fi command center display.",
       "required": false,
       "on_fail": "continue",
       "description": "Generate visual dashboard image"
@@ -169,7 +169,7 @@
         "title": "Workflows/Daily Status/${date}",
         "tags": ["status", "daily", "workflow", "visual", "${date}"]
       },
-      "llm_prompt": "Create a clean, well-formatted status report. If an image was generated, include it at the top with: ![Status Dashboard](${image_ref})\n\nIMPORTANT: Copy the stash:// reference EXACTLY as provided - do NOT modify the space ID format or dates.\n\nData to include:\nDate: ${date} (${day_of_week})\nTime: ${timestamp}\n\n## Weather (${location}):\n- Temperature: ${temperature}°F (feels like ${feels_like}°F)\n- Condition: ${condition}\n- Humidity: ${humidity}%\n- Wind: ${wind_speed} mph\n\n## Crypto:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n\n## Stocks:\n- TSLA: $${tsla_price} (${tsla_change}% today)\n- Gold: $${gold_price} (${gold_change}% today)\n\n## Alerts: ${alert_count} pending\n${alerts}\n\n## Reminders: ${reminder_count} upcoming\n${reminders}\n\n## System Health:\n- CPU: ${cpu_percent}%\n- RAM: ${memory_percent}% (${memory_used_gb}/${memory_total_gb} GB)\n- Uptime: ${uptime}\n\nFormat with emojis (🌤️ Weather, 📈 Crypto, 📊 Stocks, 🚨 Alerts, ⏰ Reminders, 💻 System). Add green/red indicators for changes.",
+      "llm_prompt": "Create a clean, well-formatted status report. If an image was generated, include it at the top with: ![Status Dashboard](${image_ref})\n\nIMPORTANT: Copy the stash:// reference EXACTLY as provided - do NOT modify the space ID format or dates.\n\nData to include:\nDate: ${date} (${day_of_week})\nTime: ${timestamp}\n\n## Weather (${location}):\n- Temperature: ${temperature}°F (feels like ${feels_like}°F)\n- Condition: ${condition}\n- Humidity: ${humidity}%\n- Wind: ${wind_speed} mph\n\n## Crypto:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n\n## Stocks:\n- TSLA: $${tsla_price} (${tsla_change}% today)\n- Gold: $${gold_price} (${gold_change}% today)\n\n## Alerts: ${alert_count} pending\n${alerts}\n\n## Current Reminders: ${reminder_count}\n${reminders_markdown}\n\nCRITICAL REMINDER RULES:\n- The reminder block above is source-of-truth and already formatted.\n- Reproduce EVERY reminder entry from that block.\n- Do NOT omit any reminder that appears in the provided block.\n- Do NOT summarize the reminder list into fewer items.\n- Do NOT add notes like 'incomplete', 'additional reminders', 'monitored for updates', or any similar commentary.\n- Do NOT invent missing fields or speculate.\n- Preserve the triggered vs scheduled grouping exactly.\n- Preserve reminder IDs, titles, spoken state, trigger times, acknowledged state, and recurrence when present.\n\n## System Health:\n- CPU: ${cpu_percent}%\n- RAM: ${memory_percent}% (${memory_used_gb}/${memory_total_gb} GB)\n- Uptime: ${uptime}\n\nFormat with emojis (🌤️ Weather, 📈 Crypto, 📊 Stocks, 🚨 Alerts, ⏰ Reminders, 💻 System). Add green/red indicators for changes.",
       "required": true,
       "description": "Create formatted canvas report with image"
     }

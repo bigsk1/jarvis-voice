@@ -156,7 +156,7 @@
       "step": 10,
       "tool": "list_reminders",
       "params": {
-        "status": "scheduled",
+        "status": "current",
         "limit": 5
       },
       "output_var": "reminders_result",
@@ -165,7 +165,7 @@
         "reminders": "reminders"
       },
       "required": false,
-      "description": "Get upcoming reminders"
+      "description": "Get current reminders needing attention and what's coming up next"
     },
     {
       "step": 11,
@@ -190,7 +190,7 @@
         "title": "Workflows/Daily Status/${date}",
         "tags": ["status", "daily", "workflow", "${date}"]
       },
-      "llm_prompt": "Create a clean, well-formatted status report using this data. Use plain markdown only.\n\nDate: ${date} (${day_of_week})\nTime: ${timestamp}\n\n## Weather (${location}):\n- Temperature: ${temperature}°F (feels like ${feels_like}°F)\n- Condition: ${condition}\n- Humidity: ${humidity}%\n- Wind: ${wind_speed} mph\n\n## Crypto:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n- Bitcoin chart: ${btc_chart_range} with ${btc_chart_points} points\n- Solana chart: ${sol_chart_range} with ${sol_chart_points} points\n\n## Stocks:\n- TSLA: $${tsla_price} (${tsla_change}% today)\n- Gold: $${gold_price} (${gold_change}% today)\n\n## Alerts: ${alert_count} pending\n${alerts}\n\n## Reminders: ${reminder_count} upcoming\n${reminders}\n\n## System Health:\n- CPU: ${cpu_percent}%\n- RAM: ${memory_percent}% (${memory_used_gb}/${memory_total_gb} GB)\n- Uptime: ${uptime}\n\nFormat nicely with emojis for sections (🌤️ Weather, 📈 Crypto, 📊 Stocks, 🚨 Alerts, ⏰ Reminders, 💻 System). Add green/red indicators for price changes.\n\nIn the crypto section, create two clearly separated subsections so the charts do not appear stacked without context:\n1. **Bitcoin ${btc_chart_range} Chart**\n   - One short sentence on the trend\n   - Then this exact chart block:\n```crypto-chart\n{\"title\":\"Bitcoin ${btc_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${btc_coin_id}/chart?days=7&points_limit=120\"}\n```\n2. **Solana ${sol_chart_range} Chart**\n   - One short sentence on the trend\n   - Then this exact chart block:\n```crypto-chart\n{\"title\":\"Solana ${sol_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${sol_coin_id}/chart?days=7&points_limit=120\"}\n```\n\nKeep the headings and sentences outside the fenced chart blocks. Use actual values only; do not output placeholder syntax like ${var}. Keep the overall report concise but complete.",
+      "llm_prompt": "Create a clean, well-formatted status report using this data. Use plain markdown only.\n\nDate: ${date} (${day_of_week})\nTime: ${timestamp}\n\n## Weather (${location}):\n- Temperature: ${temperature}°F (feels like ${feels_like}°F)\n- Condition: ${condition}\n- Humidity: ${humidity}%\n- Wind: ${wind_speed} mph\n\n## Crypto:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n- Bitcoin chart: ${btc_chart_range} with ${btc_chart_points} points\n- Solana chart: ${sol_chart_range} with ${sol_chart_points} points\n\n## Stocks:\n- TSLA: $${tsla_price} (${tsla_change}% today)\n- Gold: $${gold_price} (${gold_change}% today)\n\n## Alerts: ${alert_count} pending\n${alerts}\n\n## Current Reminders: ${reminder_count}\n${reminders_markdown}\n\nCRITICAL REMINDER RULES:\n- The reminder block above is source-of-truth and already formatted.\n- Reproduce EVERY reminder entry from that block.\n- Do NOT omit any reminder that appears in the provided block.\n- Do NOT summarize the reminder list into fewer items.\n- Do NOT add notes like 'incomplete', 'additional reminders', 'monitored for updates', or any similar commentary.\n- Do NOT invent missing fields or speculate.\n- Preserve the triggered vs scheduled grouping exactly.\n- Preserve reminder IDs, titles, spoken state, trigger times, acknowledged state, and recurrence when present.\n\n## System Health:\n- CPU: ${cpu_percent}%\n- RAM: ${memory_percent}% (${memory_used_gb}/${memory_total_gb} GB)\n- Uptime: ${uptime}\n\nFormat nicely with emojis for sections (🌤️ Weather, 📈 Crypto, 📊 Stocks, 🚨 Alerts, ⏰ Reminders, 💻 System). Add green/red indicators for price changes.\n\nIn the crypto section, create two clearly separated subsections so the charts do not appear stacked without context:\n1. **Bitcoin ${btc_chart_range} Chart**\n   - One short sentence on the trend\n   - Then this exact chart block:\n```crypto-chart\n{\"title\":\"Bitcoin ${btc_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${btc_coin_id}/chart?days=7&points_limit=120\"}\n```\n2. **Solana ${sol_chart_range} Chart**\n   - One short sentence on the trend\n   - Then this exact chart block:\n```crypto-chart\n{\"title\":\"Solana ${sol_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${sol_coin_id}/chart?days=7&points_limit=120\"}\n```\n\nKeep the headings and sentences outside the fenced chart blocks. Use actual values only; do not output placeholder syntax like ${var}. Keep the overall report concise but complete.",
       "required": true,
       "description": "Create formatted canvas report"
     }

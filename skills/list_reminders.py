@@ -4,7 +4,7 @@ List Reminders Tool
 Query reminders by status and time range.
 
 Input: {
-    "status": "scheduled|triggered|acknowledged|all",  # optional, default "all"
+    "status": "current|scheduled|triggered|acknowledged|all",  # optional, default "current"
     "limit": 10  # optional, default 10
 }
 
@@ -77,6 +77,46 @@ def format_trigger_time_local(trigger_time_str: str, tz) -> str:
         return trigger_time_str
 
 
+def sort_current_reminders(reminders: list[dict]) -> list[dict]:
+    """Prioritize triggered reminders first, then scheduled by nearest time."""
+    def sort_key(reminder: dict):
+        status_priority = 0 if reminder.get('status') == 'triggered' else 1
+        try:
+            trigger_time = parse_utc_timestamp(reminder['trigger_time'])
+        except Exception:
+            trigger_time = datetime.max.replace(tzinfo=timezone.utc)
+        return (status_priority, trigger_time)
+
+    return sorted(reminders, key=sort_key)
+
+
+def sort_all_reminders(reminders: list[dict]) -> list[dict]:
+    """Keep live reminders first, then recent history."""
+    def safe_time(value: str | None, fallback_future: bool = False):
+        if not value:
+            return datetime.max.replace(tzinfo=timezone.utc) if fallback_future else datetime.min.replace(tzinfo=timezone.utc)
+        try:
+            return parse_utc_timestamp(value)
+        except Exception:
+            return datetime.max.replace(tzinfo=timezone.utc) if fallback_future else datetime.min.replace(tzinfo=timezone.utc)
+
+    def sort_key(reminder: dict):
+        status = reminder.get('status')
+        if status == 'triggered':
+            return (0, safe_time(reminder.get('trigger_time'), fallback_future=True))
+        if status == 'scheduled':
+            return (1, safe_time(reminder.get('trigger_time'), fallback_future=True))
+        if status == 'acknowledged':
+            return (2, -safe_time(reminder.get('acknowledged_at')).timestamp())
+        if status == 'canceled':
+            return (3, -safe_time(reminder.get('trigger_time')).timestamp())
+        if status == 'expired':
+            return (4, -safe_time(reminder.get('trigger_time')).timestamp())
+        return (5, -safe_time(reminder.get('trigger_time')).timestamp())
+
+    return sorted(reminders, key=sort_key)
+
+
 def main():
     try:
         # Parse arguments
@@ -89,11 +129,11 @@ def main():
         load_config()
         
         # Extract parameters
-        status_filter = args.get('status', 'all').lower()
+        status_filter = args.get('status', 'current').lower()
         limit = args.get('limit', 10)
         
         # Valid statuses
-        valid_statuses = ['scheduled', 'triggered', 'acknowledged', 'all']
+        valid_statuses = ['current', 'scheduled', 'triggered', 'acknowledged', 'all']
         if status_filter not in valid_statuses:
             raise ValueError(f"status must be one of: {', '.join(valid_statuses)}")
         
@@ -104,10 +144,27 @@ def main():
         cursor = conn.cursor()
         
         # Build query
-        if status_filter == 'all':
+        if status_filter == 'current':
             query = """
                 SELECT * FROM reminders
-                ORDER BY trigger_time ASC
+                WHERE status IN ('scheduled', 'triggered')
+                ORDER BY
+                    CASE WHEN status = 'triggered' THEN 0 ELSE 1 END,
+                    trigger_time ASC
+                LIMIT ?
+            """
+            params = (limit,)
+        elif status_filter == 'all':
+            query = """
+                SELECT * FROM reminders
+                ORDER BY
+                    CASE
+                        WHEN status = 'triggered' THEN 0
+                        WHEN status = 'scheduled' THEN 1
+                        WHEN status = 'acknowledged' THEN 2
+                        ELSE 3
+                    END,
+                    trigger_time ASC
                 LIMIT ?
             """
             params = (limit,)
@@ -134,12 +191,17 @@ def main():
             reminder['trigger_time_local'] = format_trigger_time_local(reminder['trigger_time'], local_tz)
             reminders.append(reminder)
         
-        reminders.sort(key=lambda r: parse_utc_timestamp(r['trigger_time']))
+        if status_filter == 'current':
+            reminders = sort_current_reminders(reminders)
+        elif status_filter == 'all':
+            reminders = sort_all_reminders(reminders)
+        else:
+            reminders.sort(key=lambda r: parse_utc_timestamp(r['trigger_time']))
         
         # Generate speech
         if not reminders:
-            speech = "You have no reminders"
-            if status_filter != 'all':
+            speech = "You have no current reminders." if status_filter == 'current' else "You have no reminders"
+            if status_filter not in ('all', 'current'):
                 speech += f" with status '{status_filter}'"
             speech += "."
         else:
@@ -148,38 +210,70 @@ def main():
             # Group by status for summary
             scheduled = [r for r in reminders if r['status'] == 'scheduled']
             triggered = [r for r in reminders if r['status'] == 'triggered']
+            triggered_spoken = [r for r in triggered if bool(r.get('spoken'))]
+            triggered_unspoken = [r for r in triggered if not bool(r.get('spoken'))]
             
-            if status_filter == 'all':
+            if status_filter in ('current', 'all'):
                 # Highlight triggered (missed) reminders first
                 if triggered:
                     if len(triggered) == 1:
                         t = triggered[0]
-                        speech = f"Yes, you have 1 missed reminder: '{t['title']}' from {t['relative_time']}. "
+                        spoken_note = " It already played out loud." if t.get('spoken') else " It has not been spoken yet."
+                        speech = f"Yes, you have 1 triggered reminder: '{t['title']}' from {t['relative_time']}.{spoken_note} "
                     else:
-                        speech = f"Yes, you have {len(triggered)} missed reminders. "
-                        speech += f"Most recent: '{triggered[0]['title']}' from {triggered[0]['relative_time']}. "
+                        speech = f"Yes, you have {len(triggered)} triggered reminders"
+                        if triggered_spoken and triggered_unspoken:
+                            speech += f", {len(triggered_spoken)} already spoken and {len(triggered_unspoken)} not yet spoken"
+                        elif triggered_spoken:
+                            speech += f", all {len(triggered_spoken)} already spoken"
+                        elif triggered_unspoken:
+                            speech += f", none spoken yet"
+                        speech += ". "
+                        speech += f"Most urgent: '{triggered[0]['title']}' from {triggered[0]['relative_time']}. "
                     
                     # Add scheduled info if any
                     if scheduled:
-                        speech += f"You also have {len(scheduled)} upcoming reminder{'s' if len(scheduled) != 1 else ''}."
+                        next_scheduled = scheduled[0]
+                        speech += f"You also have {len(scheduled)} upcoming reminder{'s' if len(scheduled) != 1 else ''}. "
+                        speech += f"Next: '{next_scheduled['title']}' {next_scheduled['relative_time']}."
                 else:
                     # No triggered, just scheduled
                     if scheduled:
-                        speech = f"No missed reminders. You have {len(scheduled)} upcoming reminder{'s' if len(scheduled) != 1 else ''}. "
+                        speech = f"You have {len(scheduled)} upcoming reminder{'s' if len(scheduled) != 1 else ''}. "
                         next_reminder = scheduled[0]
                         speech += f"Next: '{next_reminder['title']}' {next_reminder['relative_time']}."
                     else:
-                        speech = "You have no active reminders."
+                        if status_filter == 'all':
+                            historical = [r for r in reminders if r['status'] not in ('scheduled', 'triggered')]
+                            historical_count = len(historical)
+                            acknowledged_count = sum(1 for r in historical if r['status'] == 'acknowledged')
+                            if historical_count > 0:
+                                if acknowledged_count == historical_count:
+                                    speech = f"You have no current reminders. The most recent results are {historical_count} acknowledged reminder{'s' if historical_count != 1 else ''}."
+                                else:
+                                    speech = f"You have no current reminders. I found {historical_count} past reminder{'s' if historical_count != 1 else ''}, including {acknowledged_count} acknowledged."
+                            else:
+                                speech = "You have no current reminders."
+                        else:
+                            speech = "You have no current reminders."
             else:
                 # Specific status filter
                 if status_filter == 'triggered':
                     # User specifically asked for triggered/missed reminders
                     if count == 1:
                         r = reminders[0]
-                        speech = f"You have 1 missed reminder: '{r['title']}' from {r['relative_time']}."
+                        spoken_note = " It already played out loud." if r.get('spoken') else " It has not been spoken yet."
+                        speech = f"You have 1 triggered reminder: '{r['title']}' from {r['relative_time']}.{spoken_note}"
                     else:
-                        speech = f"You have {count} missed reminders. "
-                        speech += f"Most recent: '{reminders[0]['title']}' from {reminders[0]['relative_time']}."
+                        speech = f"You have {count} triggered reminders"
+                        if triggered_spoken and triggered_unspoken:
+                            speech += f", {len(triggered_spoken)} already spoken and {len(triggered_unspoken)} not yet spoken"
+                        elif triggered_spoken:
+                            speech += f", all {len(triggered_spoken)} already spoken"
+                        elif triggered_unspoken:
+                            speech += f", none spoken yet"
+                        speech += ". "
+                        speech += f"Most urgent: '{reminders[0]['title']}' from {reminders[0]['relative_time']}."
                 else:
                     speech = f"Found {count} {status_filter} reminder{'s' if count != 1 else ''}"
                     if count > 0:
