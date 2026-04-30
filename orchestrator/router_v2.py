@@ -314,7 +314,7 @@ def build_tool_retrieval_signals(
             line,
         )
         if prefer_match:
-            min_bias = get_float("TOOL_RAG_MIN_LEARNED_PREFER_BIAS", 0.40)
+            min_bias = get_float("TOOL_RAG_MIN_LEARNED_PREFER_BIAS", 0.50)
             bias_raw = prefer_match.group(2)
             bias_ok = True
             if bias_raw is not None:
@@ -1242,7 +1242,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         
         # 1. Determine retrieval limit based on mode
         # Local models (Ollama) have smaller context, so we serve fewer tools
-        # Cloud models (Claude/GPT) can handle more choices
+        # Cloud models (Claude/GPT/xAI) can handle more choices
         retrieval_limit = 5 if self.mode == 'local' else 15
         
         # 2. Build a Tool RAG retrieval view. The routing LLM still receives the
@@ -1304,7 +1304,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         
         # Separate ghost tools from retrieved tools for visibility
         from config_loader import get_config_value
-        ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations')
+        ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,update_memory,semantic_recall,remember,canvas')
         ghost_list = _merged_ghost_tool_names(ghost_tools_str, set(enabled_tool_names))
 
         initial_tool_names = [t.name for t in relevant_tools]

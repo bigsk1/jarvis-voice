@@ -124,7 +124,7 @@ def _ghost_tool_names(registry) -> set[str]:
     available_names = set(getattr(registry, "tools", {}).keys())
     raw_value = get_config_value(
         "GHOST_TOOLS",
-        "search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations",
+        "search_memory,update_memory,semantic_recall,remember,canvas",
     )
     return set(_merged_ghost_tool_names(raw_value, available_names))
 

@@ -376,11 +376,11 @@ The Tool Builder uses providers in this order:
 
 # Dedicated tool builder (optional)
 TOOL_BUILDER_PROVIDER=xai
-TOOL_BUILDER_MODEL=grok-4.1-fast-non-reasoning-latest
+TOOL_BUILDER_MODEL=grok-4-1-fast-non-reasoning-latest
 
 # Or use Anthropic
 TOOL_BUILDER_PROVIDER=anthropic
-TOOL_BUILDER_MODEL=claude-sonnet-4-5-20250929
+TOOL_BUILDER_MODEL=claude-sonnet-4-6
 
 # Falls back to FEEDBACK_PROVIDER, then LLM_PROVIDER
 ```
@@ -395,7 +395,7 @@ TOOL_BUILDER_PROVIDER → FEEDBACK_PROVIDER → LLM_PROVIDER
 
 | Provider | Default Model |
 |----------|---------------|
-| xAI | `grok-4.1-fast-non-reasoning-latest` |
+| xAI | `grok-4-1-fast-non-reasoning-latest` |
 | Anthropic | `claude-sonnet-4-5-20250929` |
 | OpenAI | `gpt-4o` |
 | Ollama | `qwen3.5:latest` |

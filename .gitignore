@@ -62,9 +62,11 @@ logs/test/*.json
 tmp/
 tests/integration/logs
 tests/integration/logs/*
-# Tool profiles: only default.json is tracked; everything else is local
+# Tool profiles: only default.json + profiles/examples/* are tracked; other stems are local
 skills/profiles/*
 !skills/profiles/default.json
+!skills/profiles/examples/
+!skills/profiles/examples/**
 
 # ===== Backup & Temp Files =====
 *.bak

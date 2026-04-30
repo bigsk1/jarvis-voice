@@ -1,10 +1,13 @@
 {
-  "description": "Add to skills/profiles/offline.json to disable tools that typically use the public internet (search, fetch, SerpAPI, weather, media APIs, webhooks, email, MCP fetch/brave/playwright, etc.). Keeps canvas, stash, semantic_recall, deep_memory_search (local/LAN-first). Also disables create_reminder (Google Calendar sync). Adjust for your setup; add more mcp_* names from ./bin/manage-tools.py profile export when online.",
+  "description": "Copy to skills/profiles/offline_lan_first.json — disable tools that usually need the public internet or paid media APIs. Keeps memory, canvas, stash, docs, shell, and typical 'ghost' paths; tune mcp_* for your machine. Based on config/offline.json.example.",
   "overrides": {
     "analyze_image": false,
     "api_call": false,
+    "brave_llm_context": false,
     "check_opencode_sessions": false,
     "create_reminder": false,
+    "crawl_url": false,
+    "crypto_chart": false,
     "crypto_price": false,
     "generate_image": false,
     "generate_music": false,
@@ -34,6 +37,7 @@
     "ssh_remote": false,
     "status_recap": false,
     "stock_price": false,
+    "supa_crawl_knowledge": false,
     "text_summarizer": false,
     "upload_cloudflare": false,
     "weather": false,

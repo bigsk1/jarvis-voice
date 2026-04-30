@@ -14,14 +14,14 @@ skills/
 │   ├── *.py
 │   ├── *.tool.json
 │   └── *.report.json # Build audit reports
-└── profiles/         # Tool profile overlays (only default.json is tracked in git)
+└── profiles/         # Tool profile overlays (default.json + profiles/examples/ tracked in git)
 ```
 
 ### Tool profiles (optional)
 
 Each profile is `skills/profiles/<name>.json` with `{"description": "...", "overrides": {"tool_name": false}}`. Keys in `overrides` win over the `enabled` flag in `*.tool.json`. Omit a tool to leave the file’s setting unchanged.
 
-Set **`JARVIS_TOOL_PROFILE`** in `config/local.env` or `config/cloud.env` to the profile **name** (stem of the file, default: `default`). Add any other profile files locally—they are gitignored except **`skills/profiles/default.json`**.
+Set **`JARVIS_TOOL_PROFILE`** in `config/local.env` or `config/cloud.env` to the profile **name** (stem of the file under `skills/profiles/`, default: `default`). Custom profile JSON files in `skills/profiles/` are gitignored except **`default.json`**. **Copy-paste templates** live in **`skills/profiles/examples/`** (tracked); copy one to `skills/profiles/<name>.json` and set `JARVIS_TOOL_PROFILE=<name>`.
 
 After changing profile: restart Jarvis services, then run `./bin/sync-tools.py local` or `./bin/sync-tools.py cloud`. Inspect: `./bin/manage-tools.py profile show`.
 
@@ -40,6 +40,8 @@ Example profile you can copy to `skills/profiles/<your_name>.json` and edit (fil
 ```
 
 - Only tools listed under `overrides` are changed; every other tool still follows its `*.tool.json` `enabled` flag.
+- If a tool is already **`"enabled": false`** in its `*.tool.json`, you do not need to repeat **`"tool_name": false`** in a profile for the same effect (unless you like documenting intent).
+- Overrides may include **names that are not registered** (missing MCP server, typo, removed skill); they are **harmless** and do not raise—only registered tools read those entries.
 - Use `true` to force-enable a tool that is disabled in the tool file (uncommon).
 - Discover exact tool names (including `mcp_*`): `./bin/manage-tools.py list` or `./bin/manage-tools.py profile export` while the tools you care about are registered.
 

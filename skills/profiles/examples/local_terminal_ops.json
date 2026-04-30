@@ -1,0 +1,26 @@
+{
+  "description": "Copy to skills/profiles/local_terminal_ops.json — Headless box on LAN: bash, ssh_remote, docker_control, system_monitor, network_tools, query_service_logs, check_tool_logs, opencode (optional heavy). Strips broad web research (SerpAPI, Brave context, crawl, supa), consumer media, and phone so operator workflows win the 5 retrieval slots.",
+  "overrides": {
+    "brave_llm_context": false,
+    "crawl_url": false,
+    "generate_image": false,
+    "generate_music": false,
+    "generate_video": false,
+    "memory_deduper": false,
+    "phone_call": false,
+    "samantha": false,
+    "screenshot_url": false,
+    "serpapi_hotel_search": false,
+    "serpapi_maps_search": false,
+    "serpapi_search": false,
+    "serpapi_yelp_search": false,
+    "serpapi_youtube": false,
+    "serpapi_youtube_search": false,
+    "spotify": false,
+    "status_recap": false,
+    "supa_crawl_knowledge": false,
+    "upload_cloudflare": false,
+    "youtube_transcript": false,
+    "youtube_video": false
+  }
+}

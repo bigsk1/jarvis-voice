@@ -3,8 +3,7 @@
 Manage Jarvis tool definitions (skills/**/*.tool.json) and inspect profile overlays.
 
 Profile overlays (optional): set JARVIS_TOOL_PROFILE in config/local.env or cloud.env
-to the stem of skills/profiles/<name>.json. Only skills/profiles/default.json is tracked
-in git; add other JSON files locally. After changing a profile, restart services and run
+(copy templates from examples/ to profiles/<name>.json). After changing a profile, restart services and run
 ./bin/sync-tools.py local (or cloud). See skills/README.md (Tool profiles).
 
 Usage (run with -h / --help on this script or on a subcommand for full flags):

@@ -383,7 +383,7 @@ class Orchestrator:
             "crypto_price": 120,
             "stock_price": 120,
             "weather": 600,
-            "get_time": 30,
+            "get_time": 60,
         }
         return ttl_map.get(tool_name)
 

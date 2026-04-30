@@ -4,7 +4,7 @@ Tool profile overlays: merge per-tool enabled flags without editing skills/*.too
 
 Active profile: JARVIS_TOOL_PROFILE (default: default). Respects JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE.
 
-Profile files live under skills/profiles/<name>.json (only default.json is tracked in git; other names are local).
+Profile files live under skills/profiles/<name>.json. Git tracks default.json and skills/profiles/examples/*.json (templates); other stems are local.
 
 Shape:
   { "description": "optional", "overrides": { "tool_name": true|false } }
