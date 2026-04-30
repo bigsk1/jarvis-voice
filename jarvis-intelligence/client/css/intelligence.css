@@ -628,11 +628,30 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+.insight-header-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+  margin-left: var(--space-sm);
+}
+
 .insight-description {
   font-size: var(--text-sm);
   color: var(--text-primary);
   word-break: break-word;
   flex: 1;
+}
+
+.insight-id-badge {
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .constraint-badge {
@@ -641,7 +660,6 @@ body {
   border-radius: var(--radius-full);
   font-weight: 600;
   flex-shrink: 0;
-  margin-left: var(--space-sm);
 }
 
 .constraint-badge.positive {

@@ -708,7 +708,34 @@ class IntelligenceService:
         
         try:
             order_sql = self._insight_order_sql(sort)
-            results = cursor.execute("""
+            normalized_query = (query or "").strip()
+            id_match = None
+            if normalized_query:
+                numeric_candidate = normalized_query[1:] if normalized_query.startswith("#") else normalized_query
+                if numeric_candidate.isdigit():
+                    id_match = int(numeric_candidate)
+
+            search_params = [
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+                f"%{normalized_query}%",
+            ]
+            where_clauses = [
+                "description LIKE ?",
+                "applies_to_pattern LIKE ?",
+                "preferred_tools LIKE ?",
+                "avoided_tools LIKE ?",
+                "source_web_conversation_id LIKE ?",
+                "source_query LIKE ?",
+            ]
+            if id_match is not None:
+                where_clauses.insert(0, "id = ?")
+                search_params.insert(0, id_match)
+
+            results = cursor.execute(f"""
                 SELECT id, created_at, updated_at, insight_type, description,
                        constraint_type, applies_to_pattern, confidence, evidence_count,
                        times_applied, times_helpful, times_failed,
@@ -721,20 +748,10 @@ class IntelligenceService:
                        reflection_total_tokens, reflection_cost_usd,
                        CASE WHEN insight_embedding IS NOT NULL THEN 1 ELSE 0 END as has_embedding
                 FROM insights
-                WHERE description LIKE ? OR applies_to_pattern LIKE ? 
-                      OR preferred_tools LIKE ? OR avoided_tools LIKE ?
-                      OR source_web_conversation_id LIKE ? OR source_query LIKE ?
+                WHERE {" OR ".join(where_clauses)}
                 ORDER BY """ + order_sql + """
                 LIMIT ?
-            """, (
-                f"%{query}%",
-                f"%{query}%",
-                f"%{query}%",
-                f"%{query}%",
-                f"%{query}%",
-                f"%{query}%",
-                limit,
-            )).fetchall()
+            """, (*search_params, limit)).fetchall()
             
             return [self._hydrate_insight(row) for row in results]
         finally:

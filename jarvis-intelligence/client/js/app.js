@@ -912,7 +912,10 @@ function renderInsightCard(insight) {
     <div class="card insight-card" data-id="${insight.id}">
       <div class="card-header">
         <div class="insight-description">${escapeHtml(truncate(insight.description, 200))}</div>
-        <span class="constraint-badge ${constraint}">${constraintLabel}</span>
+        <div class="insight-header-badges">
+          <span class="insight-id-badge" title="Insight DB ID">#${insight.id}</span>
+          <span class="constraint-badge ${constraint}">${constraintLabel}</span>
+        </div>
       </div>
       <div class="insight-timestamp" title="${escapeHtml(timestampTitle)}">
         📅 ${displayDate}
