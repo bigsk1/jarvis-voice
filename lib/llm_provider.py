@@ -6,8 +6,13 @@ Supports OpenAI, Anthropic, xAI (Grok), and Ollama with unified interface.
 import os
 import sys
 import json
+import time
 from typing import Any
 from abc import ABC, abstractmethod
+
+# Prefer the system resolver over c-ares for xAI/gRPC DNS stability.
+# environment already chose something else explicitly.
+os.environ.setdefault("GRPC_DNS_RESOLVER", "native")
 
 from model_catalog import get_provider_fallback_model
 from ollama_utils import parse_ollama_base_urls, request_ollama
@@ -479,6 +484,48 @@ class XAIProvider(LLMProvider):
             tools.append(code_execution())
         
         return tools
+
+    @staticmethod
+    def _is_retryable_xai_sdk_error(exc: Exception) -> bool:
+        """Retry only for transient gRPC/xAI DNS resolver failures."""
+        error_text = str(exc).lower()
+        retryable_markers = (
+            "dns resolution failed",
+            "ares_success",
+            "grpc_status:14",
+            "statuscode.unavailable",
+            "dns server returned answer with no data",
+            "connection reset by peer",
+        )
+        return any(marker in error_text for marker in retryable_markers)
+
+    @staticmethod
+    def _xai_sdk_retry_delay(attempt: int) -> float:
+        """Keep retries short so voice/chat latency stays reasonable."""
+        return 0.35 * (2 ** (attempt - 1))
+
+    def _sample_xai_chat_with_retry(self, chat: Any):
+        """Give transient xAI SDK DNS/gRPC failures one quick retry."""
+        max_attempts = 2
+        last_exception: Exception | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return chat.sample()
+            except Exception as exc:
+                last_exception = exc
+                if attempt >= max_attempts or not self._is_retryable_xai_sdk_error(exc):
+                    raise
+
+                delay = self._xai_sdk_retry_delay(attempt)
+                print(
+                    f"xAI SDK transient error on attempt {attempt}/{max_attempts}: {exc}. "
+                    f"Retrying in {delay:.2f}s",
+                    file=sys.stderr
+                )
+                time.sleep(delay)
+
+        raise last_exception or RuntimeError("xAI SDK retry failed without an exception")
     
     def _chat_with_xai_sdk(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat using xAI SDK with server-side tools."""
@@ -505,7 +552,7 @@ class XAIProvider(LLMProvider):
             chat.append(user(message))
             
             # Get response (non-streaming for simple chat)
-            response = chat.sample()
+            response = self._sample_xai_chat_with_retry(chat)
             
             return response.content or ""
         except Exception as e:
@@ -711,7 +758,7 @@ class XAIProvider(LLMProvider):
                     chat.append(assistant(content))
             
             # Get response (non-streaming for now)
-            response = chat.sample()
+            response = self._sample_xai_chat_with_retry(chat)
             
             # Extract usage info
             usage_info = None
