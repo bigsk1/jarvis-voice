@@ -1,10 +1,13 @@
 {
   "enabled": true,
   "name": "forget",
-  "description": "DELETE/REMOVE a memory permanently. Use when user says 'forget', 'delete', 'remove', or 'erase' a memory. Can search by keywords if memory_id unknown. This is for DELETION - use update_memory if you need to CHANGE a value instead.",
+  "description": "DELETE/REMOVE one or more memories permanently. Use when user says 'forget', 'delete', 'remove', or 'erase' a memory. Supports a single memory_id, multiple memory_ids, or a search_query if the ID is unknown. This is for DELETION - use update_memory if you need to CHANGE a value instead.",
   "complementary_tools": [
     "remember",
-    "manage_intel"
+    "manage_intel",
+    "update_memory",
+    "search_memory",
+    "semantic_recall"
   ],
   "script": "forget.py",
   "parameters": {
@@ -13,6 +16,13 @@
       "memory_id": {
         "type": "integer",
         "description": "The ID of the memory to delete (optional if search_query provided)"
+      },
+      "memory_ids": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "description": "Multiple memory IDs to delete in one call. Use this when the user names more than one memory ID."
       },
       "search_query": {
         "type": "string",

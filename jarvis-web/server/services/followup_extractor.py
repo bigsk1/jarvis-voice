@@ -88,6 +88,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'opencode': ['session_id'],
     # --- Entity references (for modify/repeat/cancel follow-ups) ---
     'remember': ['memory_id', 'key', 'category'],
+    'search_memory': ['count', 'by_category'],
+    'semantic_recall': ['count'],
+    'update_memory': ['memory_id', 'old_value', 'new_value'],
+    'forget': ['deleted_id', 'deleted_key', 'deleted_ids', 'deleted_keys', 'missing_ids'],
     'create_reminder': ['reminder_id', 'formatted_time'],
     'send_email': ['to', 'subject', 'status'],
     'api_call': ['url', 'method', 'status_code'],
@@ -104,6 +108,83 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'returned', 'sites', 'site_name', 'threshold', 'dedupe',
     ],
 }
+
+
+def _compact_memory_candidate(item: dict) -> dict:
+    """Keep only the fields needed for follow-up memory actions."""
+    candidate = {}
+    for field in (
+        'id', 'key', 'value', 'category', 'importance',
+        'similarity', 'relevance',
+    ):
+        value = item.get(field)
+        if value not in (None, '', [], {}):
+            candidate[field] = value
+    return candidate
+
+
+def _extract_memory_candidates(payload: dict, max_candidates: int) -> dict:
+    """Extract compact memory refs from tools that return memories."""
+    memories = payload.get('memories')
+    if not isinstance(memories, list) or not memories:
+        return {}
+
+    candidates = []
+    for item in memories[:max_candidates]:
+        if not isinstance(item, dict):
+            continue
+        candidate = _compact_memory_candidate(item)
+        if candidate:
+            candidates.append(candidate)
+
+    if not candidates:
+        return {}
+
+    extracted = {
+        'memory_count': payload.get('count', len(memories)),
+        'candidates': candidates,
+    }
+
+    first = candidates[0]
+    for field in ('id', 'key', 'value', 'category'):
+        if first.get(field) not in (None, '', [], {}):
+            extracted[field] = first[field]
+
+    return extracted
+
+
+def _extract_memory_mutation_refs(payload: dict, max_candidates: int) -> dict:
+    """Extract compact refs from tools that changed or deleted memories."""
+    extracted = {}
+
+    if payload.get('deleted_id') is not None:
+        extracted['deleted_id'] = payload['deleted_id']
+    if payload.get('deleted_key'):
+        extracted['deleted_key'] = payload['deleted_key']
+    if payload.get('deleted_ids'):
+        extracted['deleted_ids'] = payload['deleted_ids']
+    if payload.get('deleted_keys'):
+        extracted['deleted_keys'] = payload['deleted_keys']
+    if payload.get('missing_ids'):
+        extracted['missing_ids'] = payload['missing_ids']
+
+    deleted = payload.get('deleted')
+    if isinstance(deleted, list) and deleted:
+        deleted_candidates = []
+        for item in deleted[:max_candidates]:
+            if not isinstance(item, dict):
+                continue
+            candidate = {}
+            for field in ('id', 'key'):
+                value = item.get(field)
+                if value not in (None, '', [], {}):
+                    candidate[field] = value
+            if candidate:
+                deleted_candidates.append(candidate)
+        if deleted_candidates:
+            extracted['deleted'] = deleted_candidates
+
+    return extracted
 
 
 def truncate_followup_summary(summary: str, max_chars: int = FOLLOWUP_SUMMARY_MAX_CHARS) -> str:
@@ -258,6 +339,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         # Always include provider if present (needed for follow-ups)
         if payload.get('provider') and 'provider' not in extracted:
             extracted['provider'] = payload['provider']
+
+        # Preserve compact memory refs for follow-up turns like
+        # "forget those", "update that birthday memory", or "show me the other one".
+        extracted.update(_extract_memory_candidates(payload, max_candidates))
+        extracted.update(_extract_memory_mutation_refs(payload, max_candidates))
 
         if key == 'crypto_chart':
             series = payload.get('series') if isinstance(payload.get('series'), dict) else {}
