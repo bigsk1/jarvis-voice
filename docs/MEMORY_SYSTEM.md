@@ -6,11 +6,9 @@ Jarvis has an intelligent memory system that allows it to remember important inf
 
 ## Database Location
 
-```
-~/jarvis-voice/data/memory.db
-```
+Cloud mode uses **`data/jarvis_memory.db`**; local mode (Ollama / smaller embeddings) uses **`data/jarvis_memory_local.db`**. Same schema; sync between them is `./bin/sync-memory-db.py` (see `docs/DUAL_DATABASE_SYSTEM.md`).
 
-**Note:** The database file is `memory.db`, and the table is called `knowledge_base` (not `memories`).
+**Note:** The main store is *not* named `memory.db`. The facts table is `knowledge_base` (not `memories`).
 
 ## Memory Tables
 

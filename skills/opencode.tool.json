@@ -6,6 +6,7 @@
     "canvas",
     "check_opencode_sessions"
   ],
+  "script": "opencode.py",
   "parameters": {
     "type": "object",
     "properties": {

@@ -2,6 +2,11 @@
   "enabled": true,
   "name": "update_memory",
   "description": "Update or correct an existing memory. Use this when you realize a stored fact is outdated, incorrect, or needs to be changed. Can search for the memory automatically if you provide a search query instead of a memory ID.",
+  "complementary_tools": [
+    "search_memory",
+    "manage_intel"
+  ],
+  "script": "update_memory.py",
   "parameters": {
     "type": "object",
     "properties": {
@@ -33,6 +38,9 @@
     ]
   },
   "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
     "filesystem": true,
     "auto_approve": true
   }

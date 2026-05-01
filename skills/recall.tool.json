@@ -2,6 +2,11 @@
   "enabled": true,
   "name": "recall",
   "description": "Keyword search in stored memories (fuzzy text matching). Finds memories where the key or value contains your search term. Use for simple keyword lookups. For natural language questions, use semantic_recall instead. Example: query='food' finds 'favorite_food', 'seafood', etc.",
+  "complementary_tools": [
+    "semantic_recall",
+    "search_conversations"
+  ],
+  "script": "recall.py",
   "parameters": {
     "type": "object",
     "properties": {
@@ -32,6 +37,9 @@
     ]
   },
   "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
     "filesystem": true,
     "auto_approve": true
   }

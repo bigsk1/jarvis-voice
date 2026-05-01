@@ -20,6 +20,8 @@
         "run",
         "-e",
         "BRAVE_API_KEY",
+        "-e",
+        "BRAVE_MCP_DISABLED_TOOLS",
         "-i",
         "--rm",
         "--network",
@@ -27,9 +29,10 @@
         "mcp/brave-search"
       ],
       "env": {
-        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}",
+        "BRAVE_MCP_DISABLED_TOOLS": "brave_llm_context"
       },
-      "description": "Web search tool. Search the web for news, local search, images and videos using Brave Search, Pro AI API key is enabled, use this when native search is not available or when you need more info",
+      "description": "Web search tool. Search the web for news, local search, images and videos using Brave Search. Use this when native search is not available or when you need more info from the web",
       "enabled": true
     },
     "sequentialthinking": {

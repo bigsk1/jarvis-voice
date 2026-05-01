@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "crawl_url",
   "description": "Crawl and extract content from any webpage using Crawl4AI.\n\nUse this when:\n- User wants to read or summarize a specific webpage\n- You need content from JavaScript-heavy or dynamic sites\n- Basic fetch fails or returns incomplete content\n- Site has anti-bot protection (use stealth mode)\n- You need structured data extraction (prices, facts, entities)\n\nExtraction strategies:\n- None (default): Returns clean markdown\n- 'llm': LLM extracts structured data with instruction/schema\n- 'cosine': Filters content by semantic relevance to topic\n- 'regex': Fast pattern extraction (email, phone, price, etc.)\n\nWait strategies:\n- 'fast': DOM ready only - fastest\n- 'normal' (DEFAULT): All resources loaded\n- 'full': Network idle - AVOID for live data sites!\n\nFor deep research, use extraction_type='cosine' with semantic_filter to focus on relevant content.",
+  "complementary_tools": [
+    "stash",
+    "canvas"
+  ],
   "script": "crawl_url.py",
   "parameters": {
     "type": "object",

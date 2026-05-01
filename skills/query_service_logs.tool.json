@@ -2,6 +2,7 @@
   "enabled": true,
   "name": "query_service_logs",
   "description": "Query background service logs (follow-up daemon, self-healing daemon, reminder scheduler). Use this to check what the services are doing, find errors, or get statistics. Examples: 'Show me service errors', 'What has the self-healing daemon done?', 'Are the services running okay?'",
+  "script": "query_service_logs.py",
   "parameters": {
     "type": "object",
     "properties": {
@@ -26,7 +27,6 @@
     },
     "required": []
   },
-  "handler": "skills/query_service_logs.py",
   "permissions": {
     "dangerous": false,
     "bash": false,

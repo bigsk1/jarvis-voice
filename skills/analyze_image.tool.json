@@ -2,6 +2,11 @@
   "enabled": true,
   "name": "analyze_image",
   "description": "👁️ Analyze images using AI vision. Understands photos, screenshots, documents, artwork. Accepts: URLs (https://...), local files (/path/to/image.jpg), stash references (stash://space_id/file_id). Use for: identifying objects, reading text in images, describing scenes, answering questions about visual content. Can optionally save web images to stash for future tool access.",
+  "complementary_tools": [
+    "canvas",
+    "stash",
+    "manage_intel"
+  ],
   "script": "analyze_image.py",
   "parameters": {
     "type": "object",

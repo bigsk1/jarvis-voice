@@ -2,6 +2,11 @@
   "enabled": true,
   "name": "forget",
   "description": "DELETE/REMOVE a memory permanently. Use when user says 'forget', 'delete', 'remove', or 'erase' a memory. Can search by keywords if memory_id unknown. This is for DELETION - use update_memory if you need to CHANGE a value instead.",
+  "complementary_tools": [
+    "remember",
+    "manage_intel"
+  ],
+  "script": "forget.py",
   "parameters": {
     "type": "object",
     "properties": {
@@ -17,6 +22,9 @@
     "required": []
   },
   "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
     "filesystem": true,
     "auto_approve": true
   }

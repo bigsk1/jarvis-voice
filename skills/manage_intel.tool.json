@@ -5,6 +5,7 @@
   "complementary_tools": [
     "ingest_intel"
   ],
+  "script": "manage_intel.py",
   "parameters": {
     "type": "object",
     "properties": {
@@ -41,7 +42,6 @@
       "action"
     ]
   },
-  "handler": "skills/manage_intel.py",
   "permissions": {
     "dangerous": false,
     "bash": false,

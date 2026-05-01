@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "pdf_create",
   "description": "Generate NEW PDF documents from text, images, or stash files. This is for PDF OUTPUT generation, not reading existing PDFs, not software development.\n\nUse this when:\n- User wants a PDF report, document, or printable output\n- User says 'create PDF', 'make a report', 'generate document'\n- Combining images and text into a single document\n- Formatting data for printing\n\nDo NOT use for:\n- Reading/extracting from existing PDFs → use pdf_read instead\n- Merging/splitting existing PDFs → use pdf_read instead\n- Searching text in PDFs → use pdf_read instead\n- Building software/apps → use opencode instead\n- Just downloading images → use stash instead\n- Interactive content → use canvas instead\n\nWorkflow direction:\n- pdf_create: text/images → PDF (generate TO pdf)\n- pdf_read: PDF → text/images/info (extract FROM pdf)\n\nExamples:\n- 'Create a PDF report about X' → action: create, text: '...', title: 'X Report'\n- 'Make a PDF with the logo and schedule' → action: create, files: ['logo.png'], text: '...'\n- 'Generate a printable document' → action: from_text, text: '...'\n\nThe PDF is saved to stash and can be printed.",
+  "complementary_tools": [
+    "stash",
+    "printer"
+  ],
   "script": "pdf_create.py",
   "parameters": {
     "type": "object",

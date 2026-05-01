@@ -2,6 +2,12 @@
   "enabled": true,
   "name": "semantic_recall",
   "description": "\u26a1 PRIORITY TOOL - CHECK FIRST! CONCEPTUAL/MEANING search using AI embeddings. USE THIS BEFORE action tools when user asks questions about things they told you, preferences, or past setups. Matches by meaning, not exact words. Examples: 'what did you say about X', 'how is Y configured', 'where is Z running'. ALWAYS try this first before execute_bash, query_service_logs, or api_call. For specific entity names/keywords, use search_memory (faster).",
+  "complementary_tools": [
+    "search_memory",
+    "search_conversations",
+    "manage_intel"
+  ],
+  "script": "semantic_recall.py",
   "parameters": {
     "type": "object",
     "properties": {
@@ -20,8 +26,10 @@
     ]
   },
   "permissions": {
-    "filesystem": true,
+    "dangerous": false,
+    "bash": false,
     "network": true,
+    "filesystem": true,
     "auto_approve": true
   }
 }

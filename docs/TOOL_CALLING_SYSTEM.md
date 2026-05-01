@@ -305,6 +305,8 @@ Control which tools are loaded to reduce token count and improve performance:
 
 ## Permission System
 
+Tool permissions are defined in the tool schema file and not fully implemented yet. FUTURE TODO:
+
 ```json
 {
   "permissions": {
@@ -339,8 +341,8 @@ skills/
   *.py / *.sh          - Tool implementations
   
 bin/
-  wake-jarvis.py               - Wake word loop (cloud) ✨ UPDATED
-  wake-jarvis-local.py         - Wake word loop (local) ✨ UPDATED
+  wake-jarvis.py               - Wake word loop (cloud)
+  wake-jarvis-local.py         - Wake word loop (local)
   question-orchestrator.sh     - Q&A with tools (cloud)
   question-orchestrator-local.sh - Q&A with tools (local)
 ```

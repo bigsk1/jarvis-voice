@@ -2,6 +2,11 @@
   "enabled": true,
   "name": "remember",
   "description": "Store important information in persistent memory. Use this when the user shares information that should be remembered for future conversations, such as: personal facts (name, birthday, family), preferences (favorite places, settings), important contacts (doctor, dentist), locations (home address, work), or any other information that would be useful to recall later. You should proactively decide what's important to remember - don't wait to be told.",
+  "complementary_tools": [
+    "update_memory",
+    "manage_intel"
+  ],
+  "script": "remember.py",
   "parameters": {
     "type": "object",
     "properties": {
@@ -43,6 +48,9 @@
     ]
   },
   "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": false,
     "filesystem": true,
     "auto_approve": true
   }

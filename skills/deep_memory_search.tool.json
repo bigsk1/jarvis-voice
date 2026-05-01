@@ -2,6 +2,11 @@
   "enabled": true,
   "name": "deep_memory_search",
   "description": "COMPREHENSIVE DEEP SEARCH across ALL Jarvis data sources. Use when normal search tools (search_memory, semantic_recall) return nothing or user needs to find EVERYTHING related to a topic. Searches: memory database (facts), terminal conversations, web UI conversations, intel folder files, canvas pages, and stash artifacts. Returns unified results with source labels. Use for: 'find everything about X', 'have I ever mentioned Y', 'search all my data for Z', or when user is certain info exists but quick searches miss it. SLOWER than single-source tools - use only when comprehensive search needed.",
+  "complementary_tools": [
+    "canvas",
+    "stash",
+    "manage_intel"
+  ],
   "script": "deep_memory_search.py",
   "parameters": {
     "type": "object",

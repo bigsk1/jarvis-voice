@@ -24,6 +24,7 @@
   },
   "permissions": {
     "dangerous": false,
+    "bash": false,
     "network": false,
     "filesystem": false,
     "auto_approve": true

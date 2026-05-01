@@ -2,6 +2,10 @@
   "enabled": true,
   "name": "canvas",
   "description": "Save and read rich content from Jarvis Canvas - a visual viewer for research results, code snippets, comparisons, and reference material.\n\nIMPORTANT: For research tasks, create canvas as your FINAL step AFTER gathering ALL data. If you already created a canvas but gathered more data, use action='update' with page_id to add the new information.\n\nUse when:\n- User asks to research something and results are complex\n- User asks to 'save to canvas' or 'put in viewer'\n- Content has tables, code, or detailed formatting\n- User asks 'what's on my canvas?' or 'read my canvas page about X'\n- User wants to summarize/read a specific canvas page\n\nFinding pages:\n- 'summarize the 69x Opportunity page' → action=read, search='69x Opportunity'\n- 'read my notes from yesterday' → action=read, search='Notes/2026-01'\n- 'what research do I have?' → action=read, search='Workflows/Research'\n- 'show all canvas pages' → action=list\n\nActions: create (new page), update (modify existing), delete (remove), list (show all), open (get URL), read (find and get page content by search term or page_id).",
+  "complementary_tools": [
+    "stash",
+    "manage_intel"
+  ],
   "script": "canvas.py",
   "parameters": {
     "type": "object",
