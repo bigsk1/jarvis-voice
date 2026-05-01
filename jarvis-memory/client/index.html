@@ -10,6 +10,9 @@
   <link rel="stylesheet" href="/css/variables.css">
   <link rel="stylesheet" href="/css/memory.css">
   
+  <!-- Markdown renderer (local vendor; CDN fallback) -->
+  <script src="/vendor/marked.min.js" onerror="this.removeAttribute('onerror');this.src='https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js'"></script>
+  
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
 </head>
 <body>
@@ -281,8 +284,15 @@
               <input type="text" class="form-input" id="intelFilename" placeholder="e.g., network-config.md" required>
             </div>
             <div class="form-group">
-              <label class="form-label" for="intelContent">Content</label>
+              <div class="intel-form-label-row">
+                <label class="form-label" for="intelContent">Content</label>
+                <div class="view-toggle" role="tablist" aria-label="Intel editor preview mode">
+                  <button type="button" class="view-toggle-btn active" id="intelEditorRawBtn" data-view="raw">Raw</button>
+                  <button type="button" class="view-toggle-btn" id="intelEditorRenderedBtn" data-view="rendered">Rendered</button>
+                </div>
+              </div>
               <textarea class="form-input" id="intelContent" placeholder="# Your Intel File&#10;&#10;Add your information here..." rows="15" style="font-family: var(--font-mono);"></textarea>
+              <div class="markdown-viewer intel-rendered-preview" id="intelRenderedPreview" style="display: none;"></div>
             </div>
           </div>
           <div class="modal-footer">

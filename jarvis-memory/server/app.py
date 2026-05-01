@@ -11,6 +11,7 @@ from flask_cors import CORS
 MEMORY_ROOT = Path(__file__).parent.parent
 JARVIS_ROOT = MEMORY_ROOT.parent
 CLIENT_PATH = MEMORY_ROOT / 'client'
+VENDOR_PATH = JARVIS_ROOT / 'jarvis-web' / 'client' / 'vendor'
 DATA_PATH = JARVIS_ROOT / 'data'
 INTEL_PATH = JARVIS_ROOT / 'jarvis-intel'
 
@@ -101,6 +102,12 @@ def serve_login():
 def serve_index():
     """Serve the main HTML page"""
     return send_from_directory(CLIENT_PATH, 'index.html')
+
+
+@app.route('/vendor/<path:path>')
+def serve_vendor(path):
+    """Serve shared vendor assets used by the memory UI."""
+    return send_from_directory(VENDOR_PATH, path)
 
 
 @app.route('/<path:path>')

@@ -27,6 +27,7 @@ let scheduledSortBy = 'next_run_asc';
 let scheduledTaskRuns = {};
 let scheduledTaskRunsLoading = {};
 let scheduledTaskRunsExpanded = {};
+let intelEditorView = 'raw';
 
 // Search placeholders per tab
 const SEARCH_PLACEHOLDERS = {
@@ -115,6 +116,9 @@ function setupEventListeners() {
   
   // Intel file form
   document.getElementById('intelForm').addEventListener('submit', handleIntelSubmit);
+  document.getElementById('intelContent')?.addEventListener('input', updateIntelRenderedPreview);
+  document.getElementById('intelEditorRawBtn')?.addEventListener('click', () => setIntelEditorView('raw'));
+  document.getElementById('intelEditorRenderedBtn')?.addEventListener('click', () => setIntelEditorView('rendered'));
   document.getElementById('scheduledTaskForm').addEventListener('submit', handleScheduledTaskSubmit);
   document.getElementById('scheduledTaskType')?.addEventListener('change', handleScheduledTaskTypeChange);
   document.getElementById('scheduledStatusFilter')?.addEventListener('change', (e) => {
@@ -1210,6 +1214,9 @@ function openIntelModal(file = null) {
   document.getElementById('intelFilename').value = file?.name || '';
   document.getElementById('intelFilename').disabled = !!file;
   document.getElementById('intelContent').value = file?.content || '';
+  intelEditorView = 'raw';
+  updateIntelRenderedPreview();
+  setIntelEditorView('raw');
   
   showModal(modal);
 }
@@ -1970,8 +1977,15 @@ async function viewIntelFile(filename) {
       </div>
       ` : ''}
       <div class="form-group">
-        <label class="form-label">Content</label>
-        <div class="code-block" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap;">${escapeHtml(file.content)}</div>
+        <div class="intel-form-label-row">
+          <label class="form-label">Content</label>
+          <div class="view-toggle" role="tablist" aria-label="Intel viewer preview mode">
+            <button type="button" class="view-toggle-btn active" id="intelViewRawBtn" data-view="raw">Raw</button>
+            <button type="button" class="view-toggle-btn" id="intelViewRenderedBtn" data-view="rendered">Rendered</button>
+          </div>
+        </div>
+        <div class="code-block" id="intelViewRawContent" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap;">${escapeHtml(file.content)}</div>
+        <div class="markdown-viewer intel-rendered-preview" id="intelViewRenderedContent" style="display: none;">${renderMarkdown(file.content)}</div>
       </div>
       <div class="form-group">
         <label class="form-label">Size</label>
@@ -1982,6 +1996,7 @@ async function viewIntelFile(filename) {
         <button class="btn btn-danger" onclick="confirmDeleteFile('${escapeHtml(file.name)}'); closeAllModals();">Delete</button>
       </div>
     `;
+    bindIntelViewToggle();
     
     showModal(modal);
   } catch (error) {
@@ -2129,6 +2144,75 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function renderMarkdown(text) {
+  const source = String(text || '');
+
+  if (typeof marked === 'undefined' || !source.trim()) {
+    return source.trim()
+      ? `<pre class="code-block">${escapeHtml(source)}</pre>`
+      : '<p style="color: var(--text-muted);">Nothing to preview yet.</p>';
+  }
+
+  try {
+    const safeSource = escapeHtml(source);
+    return marked.parse(safeSource, {
+      gfm: true,
+      breaks: false
+    });
+  } catch (error) {
+    console.warn('Markdown render failed:', error);
+    return `<pre class="code-block">${escapeHtml(source)}</pre>`;
+  }
+}
+
+function updateIntelRenderedPreview() {
+  const preview = document.getElementById('intelRenderedPreview');
+  const textarea = document.getElementById('intelContent');
+  if (!preview || !textarea) return;
+  preview.innerHTML = renderMarkdown(textarea.value);
+}
+
+function setIntelEditorView(view) {
+  intelEditorView = view === 'rendered' ? 'rendered' : 'raw';
+
+  const textarea = document.getElementById('intelContent');
+  const preview = document.getElementById('intelRenderedPreview');
+  const rawBtn = document.getElementById('intelEditorRawBtn');
+  const renderedBtn = document.getElementById('intelEditorRenderedBtn');
+
+  if (!textarea || !preview || !rawBtn || !renderedBtn) return;
+
+  const rendered = intelEditorView === 'rendered';
+  textarea.style.display = rendered ? 'none' : '';
+  preview.style.display = rendered ? 'block' : 'none';
+  rawBtn.classList.toggle('active', !rendered);
+  renderedBtn.classList.toggle('active', rendered);
+
+  if (rendered) {
+    updateIntelRenderedPreview();
+  }
+}
+
+function bindIntelViewToggle() {
+  const rawBtn = document.getElementById('intelViewRawBtn');
+  const renderedBtn = document.getElementById('intelViewRenderedBtn');
+  const rawContent = document.getElementById('intelViewRawContent');
+  const renderedContent = document.getElementById('intelViewRenderedContent');
+
+  if (!rawBtn || !renderedBtn || !rawContent || !renderedContent) return;
+
+  const setView = (view) => {
+    const rendered = view === 'rendered';
+    rawBtn.classList.toggle('active', !rendered);
+    renderedBtn.classList.toggle('active', rendered);
+    rawContent.style.display = rendered ? 'none' : 'block';
+    renderedContent.style.display = rendered ? 'block' : 'none';
+  };
+
+  rawBtn.addEventListener('click', () => setView('raw'));
+  renderedBtn.addEventListener('click', () => setView('rendered'));
 }
 
 function truncate(text, length) {
