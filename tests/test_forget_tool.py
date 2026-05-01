@@ -64,6 +64,41 @@ class ForgetToolTests(unittest.TestCase):
 
         self.assertEqual(remaining_ids, [])
 
+    def test_forget_caps_bulk_deletes_to_ten_ids(self):
+        db = MemoryDB(str(self.db_path))
+        try:
+            ids = [
+                db.remember("fact", f"key_{idx}", f"value_{idx}", generate_embedding=False)
+                for idx in range(12)
+            ]
+        finally:
+            db.close()
+
+        stdout = StringIO()
+        with patch("skills.forget.get_memory_db", return_value=MemoryDB(str(self.db_path))), \
+             patch.object(
+                 sys,
+                 "argv",
+                 ["forget.py", json.dumps({"memory_ids": ids})],
+             ), \
+             patch("sys.stdout", stdout):
+            result = forget.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(payload["data"]["deleted_ids"]), 10)
+        self.assertEqual(payload["data"]["capped_at"], 10)
+        self.assertEqual(payload["data"]["requested_id_count"], 12)
+        self.assertIn("first 10 memory IDs", payload["speech"])
+
+        db = MemoryDB(str(self.db_path))
+        try:
+            remaining_ids = sorted(memory["id"] for memory in db.get_all_memories())
+        finally:
+            db.close()
+
+        self.assertEqual(remaining_ids, ids[10:])
+
 
 if __name__ == "__main__":
     unittest.main()

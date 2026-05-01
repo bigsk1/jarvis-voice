@@ -22,7 +22,8 @@
         "items": {
           "type": "integer"
         },
-        "description": "Multiple memory IDs to delete in one call. Use this when the user names more than one memory ID."
+        "maxItems": 10,
+        "description": "Multiple memory IDs to delete in one call. Use this when the user names more than one memory ID. Hard capped at 10 IDs for safety."
       },
       "search_query": {
         "type": "string",

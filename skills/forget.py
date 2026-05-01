@@ -10,6 +10,8 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
 from memory_db import get_memory_db
 
+MAX_FORGET_IDS = 10
+
 
 def _normalize_memory_ids(args: dict) -> list[int]:
     """Accept either memory_id or memory_ids and return a deduplicated list."""
@@ -31,7 +33,7 @@ def _normalize_memory_ids(args: dict) -> list[int]:
             seen.add(memory_id)
             normalized.append(memory_id)
 
-    return normalized
+    return normalized[:MAX_FORGET_IDS]
 
 
 def main():
@@ -40,7 +42,8 @@ def main():
         # Read arguments
         args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
 
-        memory_ids = _normalize_memory_ids(args)
+        requested_memory_ids = _normalize_memory_ids(args)
+        memory_ids = requested_memory_ids
         search_query = args.get('search_query')
 
         db = get_memory_db()
@@ -74,6 +77,13 @@ def main():
             print(json.dumps(result))
             db.close()
             return result
+
+        raw_memory_ids = []
+        if args.get("memory_id") is not None:
+            raw_memory_ids.append(args.get("memory_id"))
+        raw_memory_ids.extend(args.get("memory_ids") or [])
+        requested_count = len({str(item) for item in raw_memory_ids if item is not None})
+        was_capped = requested_count > MAX_FORGET_IDS and bool(raw_memory_ids)
 
         memory_by_id = {
             memory.get("id"): memory
@@ -151,6 +161,13 @@ def main():
                 ),
                 "error": "Memory not found"
             }
+
+        if was_capped:
+            suffix = f" I only processed the first {MAX_FORGET_IDS} memory IDs for safety."
+            result["speech"] = (result.get("speech") or "").rstrip() + suffix
+            if isinstance(result.get("data"), dict):
+                result["data"]["capped_at"] = MAX_FORGET_IDS
+                result["data"]["requested_id_count"] = requested_count
 
         print(json.dumps(result))
         return result
