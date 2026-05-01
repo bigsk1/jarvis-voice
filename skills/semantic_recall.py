@@ -10,6 +10,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
 from memory_db import get_memory_db
 from config_loader import load_config
+from time_utils import attach_local_display_fields
 
 
 def main():
@@ -38,6 +39,9 @@ def main():
         memories = db.semantic_search(query=query, limit=limit)
         semantic_meta = getattr(db, 'last_semantic_search_meta', {"fallback_embeddings": None})
         db.close()
+
+        for idx, mem in enumerate(memories):
+            memories[idx] = attach_local_display_fields(mem)
         
         if not memories:
             result = {

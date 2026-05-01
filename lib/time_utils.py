@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from typing import Any
 
 from config_loader import get_config_value
 
@@ -123,6 +124,50 @@ def safe_iso_to_local_datetime(iso_text: str | None, tz: ZoneInfo | None = None)
         return dt.astimezone(tz)
     except Exception:
         return None
+
+
+def attach_local_display_fields(
+    record: dict[str, Any],
+    fields: tuple[str, ...] = ("created_at", "updated_at", "timestamp"),
+    tz: ZoneInfo | None = None,
+) -> dict[str, Any]:
+    """
+    Add local display helpers for timestamp fields on a dict-like record.
+
+    Storage remains untouched; this only enriches the returned payload with
+    fields such as:
+    - created_at_local
+    - created_at_local_display
+    - created_at_timezone
+
+    For DB-backed fields, naive strings are treated as stored UTC using
+    ``parse_utc_timestamp``. If parsing fails, fall back to the more permissive
+    ISO-to-local helper.
+    """
+    if not isinstance(record, dict):
+        return record
+
+    tz = tz or get_app_timezone()
+    enriched = dict(record)
+
+    for field in fields:
+        value = enriched.get(field)
+        if not value:
+            continue
+
+        dt_local = None
+        try:
+            dt_local = parse_utc_timestamp(str(value)).astimezone(tz)
+        except Exception:
+            dt_local = safe_iso_to_local_datetime(str(value), tz)
+        if not dt_local:
+            continue
+
+        enriched[f"{field}_local"] = dt_local.isoformat()
+        enriched[f"{field}_local_display"] = format_display_datetime(dt_local)
+        enriched[f"{field}_timezone"] = getattr(tz, "key", str(tz))
+
+    return enriched
 
 
 def add_months_local(dt: datetime, months: int = 1) -> datetime:

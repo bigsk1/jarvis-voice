@@ -4,8 +4,12 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -14,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 
 from intel_content import normalize_intel_content
 from ingest_intel import extract_facts_from_content
+from manage_intel import append_intel_file
 
 
 class TestIntelContentNormalization(unittest.TestCase):
@@ -54,6 +59,26 @@ class TestIntelContentNormalization(unittest.TestCase):
         values = [fact["value"] for fact in facts]
         self.assertIn("Ollama Docs", values)
         self.assertIn("Supabase Docs", values)
+
+    def test_append_preserves_heading_structure_and_uses_local_zone_label(self) -> None:
+        tz = ZoneInfo("America/Los_Angeles")
+        fake_now = datetime(2026, 5, 1, 0, 44, tzinfo=tz)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            target = intel_dir / "garden.md"
+            target.write_text("# Garden\n", encoding="utf-8")
+
+            with patch("manage_intel.now_local", return_value=fake_now):
+                append_intel_file(
+                    intel_dir,
+                    "garden.md",
+                    "## 2026-05-01\n- Observation: structure preserved",
+                )
+
+            content = target.read_text(encoding="utf-8")
+            self.assertIn("[2026-05-01 00:44 PDT]\n## 2026-05-01", content)
+            self.assertIn("- Observation: structure preserved", content)
 
 
 if __name__ == "__main__":

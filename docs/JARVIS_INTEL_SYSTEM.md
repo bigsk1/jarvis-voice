@@ -124,6 +124,31 @@ Database name = production_db
 
 **Plain text sections** (headers with substantial content > 10 chars)
 
+### Best Formats For Later Recall
+
+If you want intel to retrieve well from memory search later, prefer:
+
+- Stable markdown headers for section context
+- `Key: Value` lines for concrete facts
+- Bullets for short notes, lists, and observations
+- Dated subsections for logs, journals, timelines, and recurring trackers
+- Consistent structure across updates instead of mixing formats in the same file
+
+Good example:
+
+```md
+## 2026-05-12
+- Service: Frigate
+- Host: 192.168.70.25
+- Note: Moved to the rack UPS
+```
+
+Less reliable example:
+
+```md
+frigate moved maybe on the 12th to that one machine in the rack i think it was 70.25
+```
+
 ### Automatic Categorization
 
 | Keywords in content | Category |

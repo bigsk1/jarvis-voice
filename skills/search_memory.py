@@ -9,6 +9,7 @@ import os
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
 from memory_db import get_memory_db
+from time_utils import attach_local_display_fields
 
 
 def main():
@@ -35,9 +36,10 @@ def main():
         db.close()
         
         # Remove embedding blobs (not JSON serializable)
-        for mem in memories:
+        for idx, mem in enumerate(memories):
             if 'embedding' in mem:
                 del mem['embedding']
+            memories[idx] = attach_local_display_fields(mem)
         
         if not memories:
             result = {
@@ -85,4 +87,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

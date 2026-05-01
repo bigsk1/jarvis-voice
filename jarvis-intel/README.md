@@ -35,6 +35,34 @@ This README is skipped during ingestion.
 6. If a file is modified, old facts from that file are deleted and new ones extracted
 7. If a file is deleted, orphaned facts are cleaned up
 
+## Writing For Retrieval
+
+If you want intel to come back cleanly from memory later, prefer stable, structured markdown:
+
+- Use clear headers for major sections
+- Use `Key: Value` lines for specific facts
+- Use bullets for short notes or itemized details
+- For growing files, keep one consistent format over time
+- For logs, timelines, and seasonal trackers, append new dated sections instead of rewriting the whole file
+- For inventories and reference docs, keep a stable summary or index section near the top
+
+Weak pattern:
+
+```md
+random thoughts about the garden and maybe this bug showed up again somewhere near tomatoes
+```
+
+Better pattern:
+
+```md
+## 2026-05-12
+
+- Bug: Western Conifer Seed Bug
+- Category: Pest
+- Location: Tomato bed
+- Note: Seen again near ripening fruit
+```
+
 ## Auto-detection Categories
 
 | Keywords in content | Category |

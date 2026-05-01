@@ -15,6 +15,7 @@ import hashlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from intel_content import normalize_intel_content
 from memory_db import MemoryDB
+from time_utils import format_utc_z, now_utc
 
 
 def return_success(speech: str, data: dict[str, Any] = None):
@@ -284,7 +285,6 @@ def main():
                 db.conn.commit()
             
             # Save each fact to memory with metadata
-            from datetime import datetime
             for fact in facts:
                 # Include source in the value for context
                 enriched_value = f"{fact['value']} (source: {fact.get('source', 'intel')})"
@@ -292,7 +292,7 @@ def main():
                 # Build metadata
                 metadata = {
                     "source_file": filepath.name,
-                    "ingested_at": datetime.now().isoformat(),
+                    "ingested_at": format_utc_z(now_utc()),
                     "file_hash": file_hash,
                     "tool": "ingest_intel"
                 }
@@ -355,4 +355,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

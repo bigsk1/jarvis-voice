@@ -24,6 +24,7 @@ import subprocess
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from intel_content import normalize_intel_content
 from memory_db import MemoryDB
+from time_utils import now_local
 
 
 def validate_path(path: str, intel_dir: Path) -> Path:
@@ -129,8 +130,6 @@ def update_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
 
 def append_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any]:
     """Append content to an existing intel file. Safe — can only add, never overwrite."""
-    from datetime import datetime
-    
     file_path = validate_path(path, intel_dir)
     content, content_normalized = normalize_intel_content(content)
     
@@ -149,9 +148,14 @@ def append_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
     if existing.endswith("\n"):
         separator = "\n"
     
-    # Prepend date stamp to the content
-    date_stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    dated_content = f"[{date_stamp}] {content}"
+    # Preserve markdown structure for append-heavy intel files.
+    # Inline timestamp prefixes break headings like "## Section" and make
+    # seasonal logs / inventories harder to ingest cleanly later.
+    date_stamp = now_local().strftime("%Y-%m-%d %H:%M %Z")
+    if _should_preserve_block_structure(content):
+        dated_content = f"[{date_stamp}]\n{content}"
+    else:
+        dated_content = f"[{date_stamp}] {content}"
     
     # Append new content
     file_path.write_text(existing + separator + dated_content + "\n", encoding='utf-8')
@@ -165,6 +169,29 @@ def append_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
         "appended": True,
         "content_normalized": content_normalized
     }
+
+
+def _should_preserve_block_structure(content: str) -> bool:
+    """
+    Decide whether appended content should keep its own line structure.
+
+    Structured markdown blocks like headings, bullets, numbered items, and
+    multiline notes should not be forced onto the same line as the timestamp.
+    """
+    stripped = content.lstrip()
+    if not stripped:
+        return False
+
+    if "\n" in stripped:
+        return True
+
+    if stripped.startswith(("#", "-", "*", ">")):
+        return True
+
+    if len(stripped) >= 3 and stripped[0].isdigit() and ". " in stripped[:4]:
+        return True
+
+    return False
 
 
 def delete_intel_file(intel_dir: Path, path: str, db: MemoryDB) -> dict[str, Any]:
@@ -372,4 +399,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
