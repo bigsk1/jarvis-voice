@@ -4,6 +4,18 @@ Flask + SocketIO server for the web chat interface
 """
 import sys
 from pathlib import Path
+
+# When launched directly via `python -m server.app` (from the jarvis-web tree
+# with the module path set up), apply the Eventlet monkey patch here too. The
+# normal `bin/jarvis-web` launcher already does this before import, but direct
+# module execution bypassed that path.
+if __name__ == '__main__':
+    try:
+        import eventlet
+        eventlet.monkey_patch()
+    except ImportError:
+        pass
+
 from flask import Flask, send_from_directory
 from flask_socketio import SocketIO
 from flask_cors import CORS
@@ -46,6 +58,11 @@ socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode='eventlet',
+    # Grok/xAI SDK calls can block for a while on tool-heavy requests. Give the
+    # browser more heartbeat headroom so a slow model turn does not look like a
+    # dead socket immediately.
+    ping_interval=25,
+    ping_timeout=90,
     logger=False,
     engineio_logger=False
 )

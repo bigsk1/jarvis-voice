@@ -1,0 +1,77 @@
+enabled: true
+description: "Template for model-specific prompt overrides"
+applies_to_modes:
+  - cloud
+
+# Put only small, surgical nudges here.
+# Omit any section you do not need.
+
+# routing_prepend:
+# Added BEFORE the main router system prompt.
+# Use this when the model chooses the wrong overall strategy or misses the main intent.
+# Good for:
+# - "treat shopping/buying queries as product search, not general research"
+# - "prefer finishing the task before asking a follow-up when enough constraints already exist"
+# - "for Grok duplicate behavior: do not repeat the same tool with the same arguments just to be safe"
+routing_prepend: |
+  Follow the user's explicitly requested source, site, or tool when it is available.
+  Do not repeat the same tool with the same or near-identical arguments.
+  For shopping or product-search tasks, converge quickly: after 2-3 materially different searches, synthesize the best results instead of endlessly refining.
+  When the user asks for X search, native X search, or the latest posts on X/Twitter, keep that instruction literal and prioritize provider-native x_search over external web search tools.
+
+# routing_append:
+# Added AFTER the main router system prompt.
+# Use this for short reinforcing reminders that should be seen after the big base prompt.
+# Good for:
+# - "preserve exact model numbers and dimensions"
+# - "avoid drifting from the requested site/store/entity"
+# - "keep compatibility constraints intact"
+# routing_append: |
+#   Preserve exact entity names, model numbers, and constraints.
+
+# qa_prepend:
+# Added BEFORE QA/synthesis prompts in the answer-formatting stage.
+# Use this when the model technically completes the task but presents the result badly.
+# Good for:
+# - "prefer direct product links over bare ASINs"
+# - "give 2-4 concrete options instead of vague summaries"
+# - "answer first, then briefly note uncertainty"
+# qa_prepend: |
+#   Answer concretely and prefer actionable results when available.
+
+# qa_append:
+# Added AFTER QA/synthesis prompts.
+# Use this for final output reminders that should shape the delivered answer.
+# Good for:
+# - "if evidence is incomplete, say what remains unverified"
+# - "do not end with a clarifying question if a best-effort answer is already possible"
+# - "include a short recommendation when the user asked for a choice"
+qa_append: |
+  If evidence is partial, say what remains unverified.
+  Do not end with a follow-up question when a best-effort answer is already possible from the gathered results.
+  For shopping or product recommendation tasks, prefer concrete product listings over generic summaries.
+  When product URLs are available in tool results, include direct links instead of only naming products or giving bare ASINs.
+
+# tool_calling_prepend:
+# Added with routing guidance before tool-calling decisions.
+# Use this when the model's tool behavior is the problem rather than the wording of the final answer.
+# Good for:
+# - "do not call the same tool twice with the same arguments"
+# - "when one search/tool result is sufficient, summarize instead of retrying"
+# - "choose the tool that directly matches the requested action, not a topic-adjacent tool"
+tool_calling_prepend: |
+  Tool Rag is only showing a small number of tools, call tool_search to find more tools if the current tool list is weak, we have 70+ tools when using default profile! 
+  Do not substitute Brave or other external search tools when the user explicitly requested X search or native X search, unless native x_search is unavailable or clearly insufficient. If native x_search is available, use it first for current X/Twitter post discovery.
+  Do not keep reissuing slightly tweaked searches once you already have enough evidence to recommend 2-5 concrete options.
+  If one search family is returning usable product candidates, summarize the best options instead of exploring every variant.
+  For Amazon or shopping tasks, preserve product URLs from search results and ASINs if available. If you save shopping results to Canvas, include direct product links in the saved content whenever the tool returned them.
+
+# completion_guard_eval_prepend:
+# Added BEFORE the Completion Guard evaluator prompt.
+# Use this only if a specific model acting as the evaluator judges too loosely or too harshly.
+# Good for:
+# - "treat duplicate-tool recaps as incomplete when the requested outcome was not delivered"
+# - "require actionable shopping results, not just identifiers"
+# - "do not penalize answers only for style if the task outcome was correct"
+# completion_guard_eval_prepend: |
+#   Judge whether the requested outcome was actually delivered.

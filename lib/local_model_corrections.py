@@ -115,6 +115,62 @@ def smart_url_fix(url: str) -> str:
     return f"https://{url}"
 
 
+def normalize_brave_freshness(value: str) -> str:
+    """
+    Normalize common freshness variants to Brave's accepted format.
+
+    Brave news search accepts:
+    - pd / pw / pm / py
+    - YYYY-MM-DDtoYYYY-MM-DD
+    """
+    if not isinstance(value, str):
+        return value
+
+    raw = value.strip()
+    if not raw:
+        return value
+
+    lowered = raw.lower()
+    if lowered in {"pd", "pw", "pm", "py"}:
+        return lowered
+
+    alias_map = {
+        "today": "pd",
+        "past day": "pd",
+        "last day": "pd",
+        "previous day": "pd",
+        "24h": "pd",
+        "24 hours": "pd",
+        "this week": "pw",
+        "past week": "pw",
+        "last week": "pw",
+        "previous week": "pw",
+        "7d": "pw",
+        "7 days": "pw",
+        "this month": "pm",
+        "past month": "pm",
+        "last month": "pm",
+        "previous month": "pm",
+        "30d": "pm",
+        "30 days": "pm",
+        "this year": "py",
+        "past year": "py",
+        "last year": "py",
+        "previous year": "py",
+        "365d": "py",
+        "365 days": "py",
+    }
+    if lowered in alias_map:
+        return alias_map[lowered]
+
+    # Normalize common date-range variants to YYYY-MM-DDtoYYYY-MM-DD
+    date_matches = re.findall(r"\d{4}-\d{2}-\d{2}", raw)
+    if len(date_matches) == 2:
+        return f"{date_matches[0]}to{date_matches[1]}"
+
+    return value
+
+
 def correct_tool_call(tool_call: dict[str, Any], strict_mode: bool = False) -> dict[str, Any]:
     """
     Apply smart corrections to tool calls from local LLMs.
@@ -143,6 +199,15 @@ def correct_tool_call(tool_call: dict[str, Any], strict_mode: bool = False) -> d
         # Fix memory key if present
         if "key" in args and isinstance(args["key"], str):
             args["key"] = normalize_memory_key(args["key"])
+
+        # Fix Brave news-search freshness shorthands/date ranges
+        tool_name = corrected.get("name", "")
+        if (
+            tool_name in {"brave_news_search", "mcp_brave_search_brave_news_search"}
+            and "freshness" in args
+            and isinstance(args["freshness"], str)
+        ):
+            args["freshness"] = normalize_brave_freshness(args["freshness"])
         
         corrected["arguments"] = args
     

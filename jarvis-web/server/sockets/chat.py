@@ -10,6 +10,7 @@ import traceback
 import json
 import re
 import copy
+import threading
 from urllib.parse import urlparse
 from datetime import datetime
 from pathlib import Path
@@ -274,6 +275,24 @@ class ChatHandler:
         if session_id in self.sessions:
             self.sessions[session_id]['conversation_room'] = room
 
+    def _start_blocking_task(self, target, *args, name: str | None = None) -> threading.Thread:
+        """
+        Run long blocking work in a real thread instead of an Eventlet greenlet.
+
+        Some provider SDK paths, especially xAI's Agent Tools flow, can block long
+        enough to starve Socket.IO heartbeats when they run inside Eventlet's
+        cooperative scheduler. A native thread keeps the socket server responsive
+        while the provider request is in flight.
+        """
+        thread = threading.Thread(
+            target=target,
+            args=args,
+            daemon=True,
+            name=name or getattr(target, '__name__', 'jarvis-blocking-task'),
+        )
+        thread.start()
+        return thread
+
     @staticmethod
     def _build_feedback_result_from_record(record: dict) -> dict:
         """Build a result-like payload for feedback from the stored original response."""
@@ -345,7 +364,7 @@ class ChatHandler:
         record['feedback_state'] = 'running'
         record['feedback_display_message_id'] = display_message_id
 
-        self.socketio.start_background_task(
+        self._start_blocking_task(
             self._collect_feedback_async,
             session_id,
             parent_message_id,
@@ -357,7 +376,8 @@ class ChatHandler:
             tools_used,
             record.get('provider'),
             record.get('model'),
-            self._build_completion_guard_feedback_context(record, completion_guard_status)
+            self._build_completion_guard_feedback_context(record, completion_guard_status),
+            name=f"feedback-{parent_message_id[:8]}",
         )
 
     def _settle_pending_completion_guard(
@@ -1836,8 +1856,9 @@ Previous structured data:
                 'conversation_id': conversation_id
             })
             
-            # Process in background to not block
-            self.socketio.start_background_task(
+            # Process in a real thread so long provider/tool calls do not block
+            # Eventlet heartbeats and disconnect the browser mid-response.
+            self._start_blocking_task(
                 self._process_message,
                 session_id,
                 message,
@@ -1847,7 +1868,8 @@ Previous structured data:
                 image_data,
                 prompt_meta,
                 request_feedback,
-                file_context
+                file_context,
+                name=f"jarvis-chat-{message_id[:8]}",
             )
 
         @self.socketio.on('completion_guard:submit')
@@ -2067,11 +2089,12 @@ Previous structured data:
                     }
                 )
 
-                self.socketio.start_background_task(
+                self._start_blocking_task(
                     self._run_completion_guard_repair,
                     session_id,
                     record,
-                    note
+                    note,
+                    name=f"completion-guard-repair-{message_id[:8]}",
                 )
             except Exception as e:
                 print(f"[COMPLETION_GUARD] Failed to start repair: {e}")
@@ -3379,10 +3402,11 @@ Previous structured data:
                 )
 
             if completion_guard_auto_eval:
-                self.socketio.start_background_task(
+                self._start_blocking_task(
                     self._run_completion_guard_auto_eval,
                     session_id,
-                    self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id, {})
+                    self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id, {}),
+                    name=f"completion-guard-auto-{message_id[:8]}",
                 )
 
             # Collect feedback if requested (runs async after main response)
@@ -3396,7 +3420,7 @@ Previous structured data:
                 print(f"[CHAT] Deferring feedback until Completion Guard settles for message {message_id[:8]}...")
             elif request_feedback and result.get('ok', True) and not already_has_feedback:
                 print(f"[CHAT] Starting async feedback collection for message {message_id[:8]}...")
-                self.socketio.start_background_task(
+                self._start_blocking_task(
                     self._collect_feedback_async,
                     session_id,
                     message_id,
@@ -3408,7 +3432,8 @@ Previous structured data:
                     tools_used,
                     effective_provider,
                     effective_model,
-                    None
+                    None,
+                    name=f"feedback-{message_id[:8]}",
                 )
             elif already_has_feedback:
                 # Orchestrator already collected feedback (for example random trigger), emit that result

@@ -561,7 +561,7 @@ def list_conversations():
     from ..services.conversation_store import get_conversation_store
     store = get_conversation_store()
     
-    limit = request.args.get('limit', 50, type=int)
+    limit = request.args.get('limit', 100, type=int)
     include_archived = request.args.get('include_archived', 'true').lower() in {'1', 'true', 'yes', 'on'}
     conversations = store.list_conversations(limit=limit, include_archived=include_archived)
     

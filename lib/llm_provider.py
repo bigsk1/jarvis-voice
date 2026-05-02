@@ -482,8 +482,12 @@ class XAIProvider(LLMProvider):
         
         try:
             params = {"model": self.model, "messages": messages}
-            if max_tokens:
-                params["max_tokens"] = max_tokens
+            effective_max_tokens = max_tokens or self._xai_max_output_tokens()
+            if effective_max_tokens:
+                params["max_tokens"] = effective_max_tokens
+            temperature = self._xai_temperature()
+            if temperature is not None:
+                params["temperature"] = temperature
             
             response = self.client.chat.completions.create(**params)
             return response.choices[0].message.content or ""
@@ -529,6 +533,40 @@ class XAIProvider(LLMProvider):
         """Keep retries short so voice/chat latency stays reasonable."""
         return 0.35 * (2 ** (attempt - 1))
 
+    @staticmethod
+    def _xai_max_output_tokens() -> int | None:
+        """
+        Default output cap for xAI requests when callers do not provide one.
+
+        This mainly protects the xAI SDK Agent Tools path, which otherwise can
+        return very large outputs on heavy Grok models like grok-4.3.
+        """
+        raw = os.environ.get('XAI_MAX_OUTPUT_TOKENS', '4096').strip()
+        if not raw:
+            return None
+        try:
+            value = int(raw)
+            return value if value > 0 else None
+        except ValueError:
+            return 4096
+
+    @staticmethod
+    def _xai_temperature() -> float | None:
+        """
+        Default temperature for xAI requests when configured.
+
+        Lower values generally behave better for tool-heavy Jarvis flows by
+        reducing exploratory branching and redundant search retries.
+        """
+        raw = os.environ.get('XAI_TEMPERATURE', '').strip()
+        if not raw:
+            return None
+        try:
+            value = float(raw)
+        except ValueError:
+            return 0.7
+        return min(2.0, max(0.0, value))
+
     def _sample_xai_chat_with_retry(self, chat: Any):
         """Give transient xAI SDK DNS/gRPC failures one quick retry."""
         max_attempts = 2
@@ -561,8 +599,12 @@ class XAIProvider(LLMProvider):
                 "model": self.model,
                 "tools": self._build_xai_server_tools(),
             }
-            if max_tokens:
-                create_kwargs["max_tokens"] = max_tokens
+            effective_max_tokens = max_tokens or self._xai_max_output_tokens()
+            if effective_max_tokens:
+                create_kwargs["max_tokens"] = effective_max_tokens
+            temperature = self._xai_temperature()
+            if temperature is not None:
+                create_kwargs["temperature"] = temperature
             max_turns = self._xai_max_turns()
             if max_turns:
                 create_kwargs["max_turns"] = max_turns
@@ -648,8 +690,11 @@ class XAIProvider(LLMProvider):
             request_params = {
                 "model": self.model,
                 "messages": full_messages,
-                "max_tokens": 1024  # Ensure adequate response length
+                "max_tokens": max(1024, self._xai_max_output_tokens() or 1024)
             }
+            temperature = self._xai_temperature()
+            if temperature is not None:
+                request_params["temperature"] = temperature
             
             # Only add tools if provided
             if tools:
@@ -761,6 +806,12 @@ class XAIProvider(LLMProvider):
                 "model": self.model,
                 "tools": xai_tools,
             }
+            effective_max_tokens = self._xai_max_output_tokens()
+            if effective_max_tokens:
+                create_kwargs["max_tokens"] = effective_max_tokens
+            temperature = self._xai_temperature()
+            if temperature is not None:
+                create_kwargs["temperature"] = temperature
             max_turns = self._xai_max_turns()
             if max_turns:
                 create_kwargs["max_turns"] = max_turns
