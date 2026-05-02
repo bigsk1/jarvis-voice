@@ -13,6 +13,21 @@ def get_mode() -> str:
     return request.args.get('mode', 'cloud')
 
 
+def _parse_memory_id_query(query: str) -> int | None:
+    """Accept `123` or `#123` as a direct memory ID search."""
+    if not query:
+        return None
+    normalized = query.strip()
+    if normalized.startswith('#'):
+        normalized = normalized[1:].strip()
+    if not normalized.isdigit():
+        return None
+    try:
+        return int(normalized)
+    except ValueError:
+        return None
+
+
 @memories_bp.route('', methods=['GET'])
 def list_memories():
     """
@@ -93,6 +108,18 @@ def search_memories():
             'ok': False,
             'error': 'Search query required (q parameter)'
         }), 400
+
+    direct_memory_id = _parse_memory_id_query(query)
+    if direct_memory_id is not None:
+        memory = service.get_memory(direct_memory_id)
+        memories = [memory] if memory else []
+        return jsonify({
+            'ok': True,
+            'mode': mode,
+            'query': query,
+            'count': len(memories),
+            'memories': memories
+        })
     
     memories = service.search_memories(query, limit=limit)
     
@@ -324,4 +351,3 @@ def get_categories():
         'mode': mode,
         'categories': categories
     })
-

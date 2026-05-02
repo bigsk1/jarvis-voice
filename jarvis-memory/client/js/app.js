@@ -31,7 +31,7 @@ let intelEditorView = 'raw';
 
 // Search placeholders per tab
 const SEARCH_PLACEHOLDERS = {
-  memories: 'Search memories (FTS5)...',
+  memories: 'Search memories (FTS5 or #123)...',
   intel: 'Search intel files...',
   conversations: 'Search conversations...',
   reminders: 'Search reminders...',
@@ -354,7 +354,10 @@ function renderMemoryCard(memory) {
     <div class="memory-card" onclick="viewMemory(${memory.id})">
       <div class="memory-card-header">
         <div class="memory-key">${escapeHtml(memory.key)}</div>
-        <span class="memory-category">${escapeHtml(memory.category)}</span>
+        <div class="memory-card-header-badges">
+          <span class="memory-id-badge" title="Memory ID for current mode">#${memory.id}</span>
+          <span class="memory-category">${escapeHtml(memory.category)}</span>
+        </div>
       </div>
       <div class="memory-value">${escapeHtml(memory.value)}</div>
       <div class="memory-card-footer">
