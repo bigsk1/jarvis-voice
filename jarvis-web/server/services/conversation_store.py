@@ -14,18 +14,62 @@ CONVERSATIONS_DIR = Path(__file__).parent.parent.parent.parent / 'data' / 'web_c
 class ConversationStore:
     """Manages conversation persistence"""
     
-    def __init__(self):
-        self.conversations_dir = CONVERSATIONS_DIR
+    def __init__(self, conversations_dir: Path | None = None):
+        self.conversations_dir = conversations_dir or CONVERSATIONS_DIR
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
         self._index_file = self.conversations_dir / 'index.json'
         self._index = self._load_index()
+
+    @staticmethod
+    def _default_summary(
+        conv_id: str,
+        title: str,
+        created_at: str,
+        updated_at: str,
+        message_count: int = 0,
+    ) -> dict:
+        return {
+            'id': conv_id,
+            'title': title,
+            'created_at': created_at,
+            'updated_at': updated_at,
+            'message_count': message_count,
+            'pinned': False,
+            'archived': False,
+            'pinned_at': None,
+            'archived_at': None,
+        }
+
+    @staticmethod
+    def _normalize_summary(summary: dict | None) -> dict:
+        summary = dict(summary or {})
+        summary.setdefault('message_count', 0)
+        summary['pinned'] = bool(summary.get('pinned', False))
+        summary['archived'] = bool(summary.get('archived', False))
+        summary['pinned_at'] = summary.get('pinned_at')
+        summary['archived_at'] = summary.get('archived_at')
+        return summary
+
+    @staticmethod
+    def _normalize_conversation_metadata(conversation: dict | None) -> dict:
+        conversation = dict(conversation or {})
+        conversation['pinned'] = bool(conversation.get('pinned', False))
+        conversation['archived'] = bool(conversation.get('archived', False))
+        conversation['pinned_at'] = conversation.get('pinned_at')
+        conversation['archived_at'] = conversation.get('archived_at')
+        return conversation
     
     def _load_index(self) -> dict:
         """Load conversation index"""
         if self._index_file.exists():
             try:
                 with open(self._index_file, 'r') as f:
-                    return json.load(f)
+                    loaded = json.load(f)
+                    summaries = [
+                        self._normalize_summary(item)
+                        for item in loaded.get('conversations', [])
+                    ]
+                    return {'conversations': summaries}
             except Exception:
                 pass
         return {'conversations': []}
@@ -45,7 +89,11 @@ class ConversationStore:
             'title': title or f'Chat {datetime.now().strftime("%m/%d %H:%M")}',
             'created_at': timestamp,
             'updated_at': timestamp,
-            'messages': []
+            'messages': [],
+            'pinned': False,
+            'archived': False,
+            'pinned_at': None,
+            'archived_at': None,
         }
         
         # Save to file
@@ -54,13 +102,16 @@ class ConversationStore:
             json.dump(conversation, f, indent=2)
         
         # Update index
-        self._index['conversations'].insert(0, {
-            'id': conv_id,
-            'title': conversation['title'],
-            'created_at': timestamp,
-            'updated_at': timestamp,
-            'message_count': 0
-        })
+        self._index['conversations'].insert(
+            0,
+            self._default_summary(
+                conv_id,
+                conversation['title'],
+                timestamp,
+                timestamp,
+                message_count=0,
+            ),
+        )
         self._save_index()
         
         return conversation
@@ -70,7 +121,7 @@ class ConversationStore:
         conv_file = self.conversations_dir / f'{conv_id}.json'
         if conv_file.exists():
             with open(conv_file, 'r') as f:
-                return json.load(f)
+                return self._normalize_conversation_metadata(json.load(f))
         return None
     
     def add_message(self, conv_id: str, role: str, content: str, 
@@ -115,13 +166,20 @@ class ConversationStore:
         
         return message
     
-    def list_conversations(self, limit: int = 50) -> list[dict]:
-        """List recent conversations"""
-        # Sort by updated_at descending
+    def list_conversations(self, limit: int = 50, include_archived: bool = True) -> list[dict]:
+        """List recent conversations, with pinned chats sorted first."""
+        convs = [self._normalize_summary(item) for item in self._index['conversations']]
+        if not include_archived:
+            convs = [item for item in convs if not item.get('archived')]
         convs = sorted(
-            self._index['conversations'],
-            key=lambda x: x.get('updated_at', ''),
-            reverse=True
+            convs,
+            key=lambda item: (
+                1 if item.get('pinned') and not item.get('archived') else 0,
+                1 if not item.get('archived') else 0,
+                item.get('pinned_at') or item.get('updated_at', ''),
+                item.get('updated_at', ''),
+            ),
+            reverse=True,
         )
         return convs[:limit]
     
@@ -173,6 +231,40 @@ class ConversationStore:
             self._save_index()
             return True
         return False
+
+    def update_state(self, conv_id: str, *, pinned: bool | None = None, archived: bool | None = None) -> dict | None:
+        """Update pinned/archive state for a conversation and return the updated summary."""
+        conversation = self.get_conversation(conv_id)
+        if not conversation:
+            return None
+
+        timestamp = datetime.now().isoformat()
+        if archived is not None:
+            conversation['archived'] = bool(archived)
+            conversation['archived_at'] = timestamp if conversation['archived'] else None
+            if conversation['archived']:
+                conversation['pinned'] = False
+                conversation['pinned_at'] = None
+        if pinned is not None and not conversation.get('archived'):
+            conversation['pinned'] = bool(pinned)
+            conversation['pinned_at'] = timestamp if conversation['pinned'] else None
+
+        conv_file = self.conversations_dir / f'{conv_id}.json'
+        with open(conv_file, 'w') as f:
+            json.dump(conversation, f, indent=2)
+
+        updated_summary = None
+        for idx_conv in self._index['conversations']:
+            if idx_conv['id'] != conv_id:
+                continue
+            idx_conv['pinned'] = conversation.get('pinned', False)
+            idx_conv['archived'] = conversation.get('archived', False)
+            idx_conv['pinned_at'] = conversation.get('pinned_at')
+            idx_conv['archived_at'] = conversation.get('archived_at')
+            updated_summary = dict(idx_conv)
+            break
+        self._save_index()
+        return self._normalize_summary(updated_summary)
 
     def update_message_data_by_web_message_id(self, conv_id: str, web_message_id: str, patch: dict) -> bool:
         """Merge message data into an assistant message identified by its live web message id."""

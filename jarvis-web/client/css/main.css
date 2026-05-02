@@ -3408,6 +3408,10 @@ body {
   position: relative;
 }
 
+.history-item.menu-open {
+  z-index: 90;
+}
+
 .history-item:hover {
   background: var(--bg-hover);
   border-color: var(--border-primary);
@@ -3430,6 +3434,13 @@ body {
   overflow: hidden;
 }
 
+.history-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .history-title {
   font-size: var(--text-sm);
   font-weight: 500;
@@ -3440,11 +3451,27 @@ body {
   margin-bottom: 2px;
 }
 
+.history-pin {
+  margin-right: 4px;
+  color: #f87171;
+}
+
+.history-state-pill {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-primary);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+
 /* Full title: position/size set in JS (fixed) so .history-list overflow-y does not clip */
 .history-title-tooltip {
   display: none;
   /* Let pointer pass through to rows below so vertical list hover works */
   pointer-events: none;
+  z-index: 40;
   padding: 8px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
@@ -3474,21 +3501,106 @@ body {
   color: var(--text-muted);
 }
 
-.history-delete {
+.history-menu {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 60;
+}
+
+.history-menu-trigger {
   padding: var(--space-xs);
   background: transparent;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: var(--text-sm);
+  font-size: 0.95rem;
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
-  flex-shrink: 0;
+  line-height: 1;
 }
 
-.history-delete:hover {
-  background: var(--error);
-  color: white;
+.history-menu-trigger:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.history-menu-dropdown {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 120px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 80;
+}
+
+.history-menu-dropdown.open {
+  display: block;
+}
+
+.history-menu-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+}
+
+.history-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.history-menu-item.danger {
+  color: #f87171;
+}
+
+.history-menu-item.danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.history-archived-section {
+  margin-top: var(--space-sm);
+}
+
+.history-archived-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.history-archived-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.history-archived-count {
+  margin-left: auto;
+}
+
+.history-archived-list {
+  margin-top: 6px;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.history-item.archived {
+  opacity: 0.88;
 }
 
 .history-empty {

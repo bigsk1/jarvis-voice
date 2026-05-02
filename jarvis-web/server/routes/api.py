@@ -562,7 +562,8 @@ def list_conversations():
     store = get_conversation_store()
     
     limit = request.args.get('limit', 50, type=int)
-    conversations = store.list_conversations(limit=limit)
+    include_archived = request.args.get('include_archived', 'true').lower() in {'1', 'true', 'yes', 'on'}
+    conversations = store.list_conversations(limit=limit, include_archived=include_archived)
     
     return jsonify({
         'ok': True,
@@ -642,6 +643,35 @@ def update_conversation_title(conv_id):
         }), 404
 
 
+@api_bp.route('/conversations/<conv_id>/state', methods=['PATCH'])
+def update_conversation_state(conv_id):
+    """Update pinned/archive state for a conversation."""
+    from ..services.conversation_store import get_conversation_store
+    store = get_conversation_store()
+
+    data = request.get_json() or {}
+    pinned = data['pinned'] if 'pinned' in data else None
+    archived = data['archived'] if 'archived' in data else None
+
+    if pinned is None and archived is None:
+        return jsonify({
+            'ok': False,
+            'error': 'No state changes provided'
+        }), 400
+
+    updated = store.update_state(conv_id, pinned=pinned, archived=archived)
+    if not updated:
+        return jsonify({
+            'ok': False,
+            'error': 'Conversation not found'
+        }), 404
+
+    return jsonify({
+        'ok': True,
+        'conversation': updated
+    })
+
+
 @api_bp.route('/conversations/<conv_id>/clear', methods=['POST'])
 def clear_conversation(conv_id):
     """Clear all messages from a conversation (keeps conversation, resets to empty)"""
@@ -679,7 +709,7 @@ def search_conversations():
         return jsonify({'ok': False, 'error': 'Search query required'}), 400
     
     results = []
-    conversations = store.list_conversations(limit=100)  # Search up to 100 conversations
+    conversations = store.list_conversations(limit=100, include_archived=True)  # Search up to 100 conversations
     
     for conv_summary in conversations:
         conv = store.get_conversation(conv_summary['id'])
@@ -869,6 +899,10 @@ def import_conversation():
             conv['created_at'] = conversation_data['created_at']
         if 'updated_at' in conversation_data:
             conv['updated_at'] = conversation_data['updated_at']
+        conv['pinned'] = bool(conversation_data.get('pinned', False))
+        conv['archived'] = bool(conversation_data.get('archived', False))
+        conv['pinned_at'] = conversation_data.get('pinned_at') if conv['pinned'] else None
+        conv['archived_at'] = conversation_data.get('archived_at') if conv['archived'] else None
         
         # Save updated conversation
         conv_file = store.conversations_dir / f"{new_conv['id']}.json"
@@ -881,6 +915,10 @@ def import_conversation():
                 idx_conv['title'] = conv['title']
                 idx_conv['message_count'] = len(conv['messages'])
                 idx_conv['updated_at'] = conv.get('updated_at', datetime.now().isoformat())
+                idx_conv['pinned'] = conv.get('pinned', False)
+                idx_conv['archived'] = conv.get('archived', False)
+                idx_conv['pinned_at'] = conv.get('pinned_at')
+                idx_conv['archived_at'] = conv.get('archived_at')
                 break
         store._save_index()
         

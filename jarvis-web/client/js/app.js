@@ -29,6 +29,8 @@ class JarvisApp {
     this.audioEnabled = Utils.storage.get('audioEnabled', false);
     this.glowIntensity = Utils.storage.get('glowIntensity', 'low');
     this._settingsData = null;
+    this._conversations = [];
+    this._archivedExpanded = false;
     
     // Audio playback state
     this.currentAudio = null;
@@ -375,6 +377,12 @@ class JarvisApp {
         }
       });
     }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.history-menu')) {
+        this._closeConversationMenus();
+      }
+    });
     
     // Conversation filter (quick filter by title)
     const filterInput = document.getElementById('conversationFilter');
@@ -1855,11 +1863,12 @@ class JarvisApp {
     const container = document.getElementById('historyList');
     
     try {
-      const response = await fetch('/api/conversations?limit=30');
+      const response = await fetch('/api/conversations?limit=100&include_archived=true');
       const data = await response.json();
       
       if (data.ok && data.conversations) {
         const convs = data.conversations;
+        this._conversations = convs;
         
         if (convs.length === 0) {
           container.innerHTML = `
@@ -1871,40 +1880,174 @@ class JarvisApp {
           `;
           return;
         }
-        
-        let html = '';
-        for (const conv of convs) {
-          const isActive = this.socket.conversationId === conv.id;
-          const date = this._formatRelativeDate(conv.updated_at);
-          const fullTitle = conv.title || 'Untitled';
-          
-          html += `
-            <div class="history-item ${isActive ? 'active' : ''}" 
-                 data-conv-id="${conv.id}"
-                 onclick="window.jarvisApp.loadConversation('${conv.id}')">
-              <div class="history-item-content">
-                <div class="history-title">${Utils.escapeHtml(fullTitle)}</div>
-                <div class="history-date">${date} · ${conv.message_count || 0} messages</div>
-              </div>
-              <div class="history-title-tooltip" aria-hidden="true">${Utils.escapeHtml(fullTitle)}</div>
-              <button class="history-delete" 
-                      onclick="event.stopPropagation(); window.jarvisApp.deleteConversation('${conv.id}')"
-                      title="Delete conversation">🗑️</button>
-            </div>
-          `;
+        if (this.socket.conversationId) {
+          const activeConversation = convs.find(conv => conv.id === this.socket.conversationId);
+          if (activeConversation?.archived) {
+            this._archivedExpanded = true;
+          }
         }
-        
-        container.innerHTML = html;
+
+        container.innerHTML = this._renderConversationHistory(convs);
         this._setupHistoryTitleTooltips(container);
-        
-        // Store conversations for filtering
-        this._conversations = data.conversations;
+        this._bindConversationHistoryActions(container);
       } else {
         container.innerHTML = '<div class="history-empty">Failed to load history</div>';
       }
     } catch (err) {
       console.error('[App] Failed to load history:', err);
       container.innerHTML = `<div class="history-empty">Error: ${err.message}</div>`;
+    }
+  }
+
+  _renderConversationHistory(conversations) {
+    const activeConversations = conversations.filter(conv => !conv.archived);
+    const archivedConversations = conversations.filter(conv => conv.archived);
+
+    let html = activeConversations.map(conv => this._renderConversationRow(conv)).join('');
+
+    if (archivedConversations.length > 0) {
+      html += `
+        <div class="history-archived-section ${this._archivedExpanded ? 'expanded' : ''}">
+          <button class="history-archived-toggle" id="historyArchivedToggle" type="button">
+            <span class="history-archived-chevron">${this._archivedExpanded ? '▾' : '▸'}</span>
+            <span>Archived</span>
+            <span class="history-archived-count">${archivedConversations.length}</span>
+          </button>
+          <div class="history-archived-list" style="display: ${this._archivedExpanded ? 'block' : 'none'};">
+            ${archivedConversations.map(conv => this._renderConversationRow(conv)).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    return html;
+  }
+
+  _renderConversationRow(conv) {
+    const isActive = this.socket.conversationId === conv.id;
+    const date = this._formatRelativeDate(conv.updated_at);
+    const fullTitle = conv.title || 'Untitled';
+    const archiveBadge = conv.archived ? '<span class="history-state-pill">Archived</span>' : '';
+    const pinBadge = conv.pinned ? '<span class="history-pin" title="Pinned conversation">📌</span>' : '';
+
+    return `
+      <div class="history-item ${isActive ? 'active' : ''} ${conv.archived ? 'archived' : ''}"
+           data-conv-id="${conv.id}"
+           data-pinned="${conv.pinned ? 'true' : 'false'}"
+           data-archived="${conv.archived ? 'true' : 'false'}"
+           onclick="window.jarvisApp.loadConversation('${conv.id}')">
+        <div class="history-item-content">
+          <div class="history-title-row">
+            <div class="history-title">${pinBadge}${Utils.escapeHtml(fullTitle)}</div>
+            ${archiveBadge}
+          </div>
+          <div class="history-date">${date} · ${conv.message_count || 0} messages</div>
+        </div>
+        <div class="history-title-tooltip" aria-hidden="true">${Utils.escapeHtml(fullTitle)}</div>
+        <div class="history-menu">
+          <button class="history-menu-trigger"
+                  type="button"
+                  data-conv-id="${conv.id}"
+                  title="Conversation options"
+                  aria-label="Conversation options"
+                  onclick="event.stopPropagation(); window.jarvisApp.toggleConversationMenu('${conv.id}')">☰</button>
+          <div class="history-menu-dropdown" data-conv-id="${conv.id}">
+            <button class="history-menu-item" type="button"
+                    onclick="event.stopPropagation(); window.jarvisApp.toggleConversationPin('${conv.id}', ${conv.pinned ? 'false' : 'true'})">
+              ${conv.pinned ? 'Unpin' : 'Pin'}
+            </button>
+            <button class="history-menu-item" type="button"
+                    onclick="event.stopPropagation(); window.jarvisApp.toggleConversationArchive('${conv.id}', ${conv.archived ? 'false' : 'true'})">
+              ${conv.archived ? 'Unarchive' : 'Archive'}
+            </button>
+            <button class="history-menu-item danger" type="button"
+                    onclick="event.stopPropagation(); window.jarvisApp.deleteConversation('${conv.id}')">
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _bindConversationHistoryActions(container) {
+    container.querySelector('#historyArchivedToggle')?.addEventListener('click', () => {
+      this._archivedExpanded = !this._archivedExpanded;
+      const archivedList = container.querySelector('.history-archived-list');
+      const chevron = container.querySelector('.history-archived-chevron');
+      if (archivedList) {
+        archivedList.style.display = this._archivedExpanded ? 'block' : 'none';
+      }
+      if (chevron) {
+        chevron.textContent = this._archivedExpanded ? '▾' : '▸';
+      }
+      container.querySelector('.history-archived-section')?.classList.toggle('expanded', this._archivedExpanded);
+    });
+  }
+
+  _closeConversationMenus() {
+    document.querySelectorAll('.history-menu-dropdown.open').forEach(menu => {
+      menu.classList.remove('open');
+      menu.closest('.history-item')?.classList.remove('menu-open');
+    });
+  }
+
+  _hideConversationTooltips() {
+    document.querySelectorAll('.history-title-tooltip').forEach(tooltip => {
+      tooltip.style.display = 'none';
+    });
+  }
+
+  toggleConversationMenu(convId) {
+    const menu = document.querySelector(`.history-menu-dropdown[data-conv-id="${convId}"]`);
+    if (!menu) return;
+    const shouldOpen = !menu.classList.contains('open');
+    this._closeConversationMenus();
+    if (shouldOpen) {
+      this._hideConversationTooltips();
+      menu.closest('.history-item')?.classList.add('menu-open');
+      menu.classList.add('open');
+    }
+  }
+
+  async toggleConversationPin(convId, pinned) {
+    this._closeConversationMenus();
+    const ok = await this._updateConversationState(convId, { pinned });
+    if (ok) {
+      Utils.toast(pinned ? 'Conversation pinned' : 'Conversation unpinned', 'info');
+    }
+  }
+
+  async toggleConversationArchive(convId, archived) {
+    this._closeConversationMenus();
+    const ok = await this._updateConversationState(convId, { archived });
+    if (ok) {
+      Utils.toast(archived ? 'Conversation archived' : 'Conversation restored', 'info');
+    }
+  }
+
+  async _updateConversationState(convId, patch) {
+    try {
+      const response = await fetch(`/api/conversations/${convId}/state`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(patch)
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        Utils.toast(data.error || 'Failed to update conversation', 'error');
+        return false;
+      }
+      if (this.socket.conversationId === convId && patch.archived === true) {
+        this._archivedExpanded = true;
+      }
+      await this._loadConversationHistory();
+      return true;
+    } catch (err) {
+      Utils.toast(`Error: ${err.message}`, 'error');
+      return false;
     }
   }
   
@@ -1924,6 +2067,13 @@ class JarvisApp {
         item.style.display = 'none';
       }
     });
+
+    const archivedSection = container.querySelector('.history-archived-section');
+    if (archivedSection) {
+      const archivedItems = archivedSection.querySelectorAll('.history-item');
+      const anyVisible = Array.from(archivedItems).some(item => item.style.display !== 'none');
+      archivedSection.style.display = anyVisible || lowerQuery === '' ? '' : 'none';
+    }
   }
   
   /**
