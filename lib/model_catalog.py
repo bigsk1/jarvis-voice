@@ -219,11 +219,11 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "aliases": ["gpt-4.1-2025-04-14"],
         },
         {
-            "id": "gpt-4o",
-            "name": "GPT-4o",
+            "id": "gpt-4o-mini",
+            "name": "GPT-4o Mini",
             "context_tokens": 128_000,
-            "pricing": {"input": 5.00, "output": 15.00, "cached": 0.75},
-            "aliases": ["gpt-4o-2024-11-20", "gpt-4o-2024-08-06", "gpt-4o-2024-05-13"],
+            "pricing": {"input": 0.15, "output": 0.60, "cached": 0.07},
+            "aliases": ["gpt-4o-mini-2024-07-18"],
         },
     ],
 }
