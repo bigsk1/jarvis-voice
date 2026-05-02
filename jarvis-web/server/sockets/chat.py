@@ -250,6 +250,31 @@ class ChatHandler:
         return display_text or '', speech_text or ''
 
     @staticmethod
+    def _conversation_room_name(conversation_id: str | None) -> str | None:
+        """Build a stable room name for a chat conversation."""
+        if not conversation_id:
+            return None
+        return f"conversation:{conversation_id}"
+
+    def _delivery_room(self, session_id: str, conversation_id: str | None) -> str:
+        """Prefer a stable conversation room so reconnects can still receive in-flight updates."""
+        return self._conversation_room_name(conversation_id) or session_id
+
+    def _join_conversation_room(self, session_id: str, conversation_id: str | None) -> None:
+        """Attach the current socket to the active conversation room."""
+        room = self._conversation_room_name(conversation_id)
+        if not room:
+            return
+
+        prior_room = self.sessions.get(session_id, {}).get('conversation_room')
+        if prior_room and prior_room != room:
+            leave_room(prior_room)
+
+        join_room(room)
+        if session_id in self.sessions:
+            self.sessions[session_id]['conversation_room'] = room
+
+    @staticmethod
     def _build_feedback_result_from_record(record: dict) -> dict:
         """Build a result-like payload for feedback from the stored original response."""
         return {
@@ -1680,6 +1705,7 @@ Previous structured data:
             self.sessions[session_id] = {
                 'mode': default_mode,
                 'conversation_id': None,
+                'conversation_room': None,
                 'connected_at': time.time(),
                 'completion_guard_records': {}
             }
@@ -1702,6 +1728,9 @@ Previous structured data:
         def handle_disconnect():
             session_id = request.sid
             if session_id in self.sessions:
+                prior_room = self.sessions[session_id].get('conversation_room')
+                if prior_room:
+                    leave_room(prior_room)
                 del self.sessions[session_id]
             leave_room(session_id)
             print(f"[WS] Client disconnected: {session_id}")
@@ -1796,6 +1825,7 @@ Previous structured data:
             if session_id in self.sessions:
                 self.sessions[session_id]['mode'] = mode
                 self.sessions[session_id]['conversation_id'] = conversation_id
+            self._join_conversation_room(session_id, conversation_id)
             
             # Generate message ID
             message_id = str(uuid.uuid4())
@@ -2055,6 +2085,7 @@ Previous structured data:
             """Load a conversation history"""
             session_id = request.sid
             conv_id = data.get('conversation_id')
+            reconnect_only = self._parse_bool(data.get('reconnect_only'))
             
             if not conv_id:
                 emit('chat:error', {'error': 'No conversation_id provided'})
@@ -2068,7 +2099,11 @@ Previous structured data:
                 # Update session
                 if session_id in self.sessions:
                     self.sessions[session_id]['conversation_id'] = conv_id
-                
+                self._join_conversation_room(session_id, conv_id)
+
+                if reconnect_only:
+                    return
+
                 emit('conversation:loaded', {
                     'conversation': conversation
                 })
@@ -2660,6 +2695,7 @@ Previous structured data:
                          file_context: dict = None):
         """Process a chat message through the orchestrator (with optional vision, text file, prompt metadata, and feedback)"""
         start_time = time.time()
+        delivery_room = self._delivery_room(session_id, conversation_id)
         original_user_message = message
         prompt_meta = prompt_meta or {}
         prompt_info = f", prompt={prompt_meta.get('prompt_name')}" if prompt_meta.get('prompt_name') else ""
@@ -2789,7 +2825,7 @@ Previous structured data:
                         'conversation_id': conversation_id,
                         'status': 'Preparing image for video generation...',
                         'timestamp': time.time()
-                    }, room=session_id)
+                    }, room=delivery_room)
                     
                     stash_info = self._auto_stash_image(image_data, '', mode)
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
@@ -2835,7 +2871,7 @@ Previous structured data:
                         'conversation_id': conversation_id,
                         'status': 'Preparing image for editing...',
                         'timestamp': time.time()
-                    }, room=session_id)
+                    }, room=delivery_room)
                     
                     stash_info = self._auto_stash_image(image_data, '', mode)
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
@@ -2893,7 +2929,7 @@ Previous structured data:
                         'conversation_id': conversation_id,
                         'status': 'Analyzing image...',
                         'timestamp': time.time()
-                    }, room=session_id)
+                    }, room=delivery_room)
                     
                     vision_result = self._process_vision(
                         image_data['base64'], 
@@ -2938,7 +2974,7 @@ Previous structured data:
                     'conversation_id': conversation_id,
                     'status': status_message,
                     'timestamp': time.time()
-                }, room=session_id)
+                }, room=delivery_room)
             
             orchestrator.set_status_callback(status_callback)
             
@@ -2966,7 +3002,7 @@ Previous structured data:
                             'turn': kwargs.get('turn'),
                             'max_turns': kwargs.get('max_turns'),
                             'timestamp': time.time()
-                        }, room=session_id)
+                        }, room=delivery_room)
                     
                     elif event_type == 'tool_complete':
                         # Emit tool completion in real-time (success or failure)
@@ -2985,7 +3021,7 @@ Previous structured data:
                                 'duration_ms': duration_ms,
                                 'success': True,
                                 'timestamp': time.time()
-                            }, room=session_id)
+                            }, room=delivery_room)
                         else:
                             print(f"[CHAT] Tool failed: {tool_name}[{call_index}] - {kwargs.get('error', 'unknown')}")
                             self.socketio.emit('tool:error', {
@@ -2995,7 +3031,7 @@ Previous structured data:
                                 'error': kwargs.get('error', 'Unknown error'),
                                 'duration_ms': duration_ms,
                                 'timestamp': time.time()
-                            }, room=session_id)
+                            }, room=delivery_room)
                     
                     elif event_type == 'routing':
                         print(f"[CHAT] Routing: {kwargs.get('message')}")
@@ -3003,7 +3039,7 @@ Previous structured data:
                             'message_id': message_id,
                             'status': kwargs.get('message'),
                             'timestamp': time.time()
-                        }, room=session_id)
+                        }, room=delivery_room)
                 
                 orchestrator.set_progress_callback(progress_callback)
                 
@@ -3097,7 +3133,7 @@ Previous structured data:
                                 'success': output_ok,
                                 'message_id': message_id,
                                 'workflow_step': f"{step_num}_{idx}"  # Unique per iteration
-                            }, room=session_id)
+                            }, room=delivery_room)
                             emit_index += 1
                     else:
                         # Single execution step
@@ -3115,7 +3151,7 @@ Previous structured data:
                             'success': step_ok,
                             'message_id': message_id,
                             'workflow_step': step_num
-                        }, room=session_id)
+                        }, room=delivery_room)
                         emit_index += 1
             else:
                 # Normal orchestrator results - tools_used may have duplicates
@@ -3145,7 +3181,7 @@ Previous structured data:
                             'success': True,
                             'message_id': message_id,
                             'workflow_step': idx  # Use overall index for unique ID
-                        }, room=session_id)
+                        }, room=delivery_room)
             
             # Save assistant response to conversation
             try:
@@ -3332,7 +3368,7 @@ Previous structured data:
                     'prompt_user': completion_guard_prompt,
                     'expires_in_ms': completion_guard_expires_in_ms,
                 }
-            }, room=session_id)
+            }, room=delivery_room)
 
             if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0:
                 self.socketio.start_background_task(
@@ -3382,7 +3418,7 @@ Previous structured data:
                     'message_id': message_id,
                     'conversation_id': conversation_id,
                     'status': 'complete'  # Already done
-                }, room=session_id)
+                }, room=delivery_room)
                 self.socketio.emit('feedback:complete', {
                     'message_id': message_id,
                     'conversation_id': conversation_id,
@@ -3395,7 +3431,7 @@ Previous structured data:
                     'analysis': feedback.get('analysis', ''),
                     'duration_ms': 0,  # Already collected
                     'success': True
-                }, room=session_id)
+                }, room=delivery_room)
             
         except Exception as e:
             error_msg = str(e)
@@ -3407,7 +3443,7 @@ Previous structured data:
                 'conversation_id': conversation_id,
                 'error': error_msg,
                 'traceback': traceback.format_exc()
-            }, room=session_id)
+            }, room=delivery_room)
     
     def _collect_feedback_async(self, session_id: str, source_message_id: str, query: str, mode: str,
                                  message_id: str, conversation_id: str,
@@ -3418,6 +3454,7 @@ Previous structured data:
         """Collect feedback asynchronously after main response is sent"""
         import time as time_module
         start_time = time_module.time()
+        delivery_room = self._delivery_room(session_id, conversation_id)
         completion_guard_context = completion_guard_context or {'status': 'none'}
         
         try:
@@ -3426,7 +3463,7 @@ Previous structured data:
                 'message_id': message_id,
                 'conversation_id': conversation_id,
                 'status': 'analyzing'
-            }, room=session_id, namespace='/')
+            }, room=delivery_room, namespace='/')
         except Exception as emit_err:
             print(f"[FEEDBACK] ERROR emitting feedback:start: {emit_err}")
         
@@ -3576,7 +3613,7 @@ Mode: {mode}
                     'analysis': analysis,
                     'duration_ms': duration_ms,
                     'success': True
-                }, room=session_id, namespace='/')
+                }, room=delivery_room, namespace='/')
             except Exception as emit_err:
                 print(f"[FEEDBACK] ERROR emitting feedback:complete: {emit_err}")
             
@@ -3595,7 +3632,7 @@ Mode: {mode}
                     'error': str(e),
                     'duration_ms': duration_ms,
                     'success': False
-                }, room=session_id, namespace='/')
+                }, room=delivery_room, namespace='/')
             except Exception as emit_err:
                 print(f"[FEEDBACK] ERROR emitting feedback:complete: {emit_err}")
     

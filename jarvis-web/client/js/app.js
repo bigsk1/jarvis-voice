@@ -80,6 +80,16 @@ class JarvisApp {
         console.log(`[App] Syncing saved mode (${savedMode}) with server`);
         this.socket.setMode(savedMode);
       }
+
+      // Rejoin the active conversation room after socket reconnects so
+      // in-flight responses continue streaming to the browser.
+      if (this.socket.conversationId) {
+        console.log('[App] Rejoining active conversation after reconnect:', this.socket.conversationId);
+        this.socket.emit('conversation:load', {
+          conversation_id: this.socket.conversationId,
+          reconnect_only: true
+        });
+      }
       
       // Initialize proactive notifications
       if (!this.proactive && window.ProactiveManager) {

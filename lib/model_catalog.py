@@ -36,6 +36,13 @@ def _context_label(tokens: int) -> str:
 CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     "xai": [
         {
+            "id": "grok-4.3",
+            "name": "Grok 4.3",
+            "context_tokens": 1_000_000,
+            "pricing": {"input": 1.25, "output": 2.50, "cached": 0.20},
+            "aliases": ["grok-4.3-latest"],
+        },
+        {
             "id": "grok-4.20-reasoning",
             "name": "Grok 4.20 Reasoning",
             "context_tokens": 2_000_000,

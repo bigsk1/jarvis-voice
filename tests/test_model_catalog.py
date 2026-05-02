@@ -33,8 +33,8 @@ class ModelCatalogTests(unittest.TestCase):
     def test_xai_options_match_current_catalog(self):
         models = [entry["id"] for entry in get_provider_model_options("xai")]
         self.assertEqual(
-            models[:2],
-            ["grok-4.20-reasoning", "grok-4.20-non-reasoning-latest"],
+            models[:3],
+            ["grok-4.3", "grok-4.20-reasoning", "grok-4.20-non-reasoning-latest"],
         )
         self.assertNotIn("grok-4-fast", models)
         self.assertEqual(get_model_context_label("xai", "grok-4.20-reasoning"), "2M")
@@ -58,6 +58,15 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIsNotNone(pricing)
         self.assertEqual(pricing["input"], 2.00)
         self.assertEqual(pricing["cached"], 0.20)
+
+    def test_grok_4_3_variant_resolves_with_pricing(self):
+        self.assertEqual(get_model_context_window("xai", "grok-4.3"), 1_000_000)
+        self.assertEqual(get_model_context_window("xai", "grok-4.3-latest"), 1_000_000)
+        pricing = get_model_pricing("xai", "grok-4.3")
+        self.assertIsNotNone(pricing)
+        self.assertEqual(pricing["input"], 1.25)
+        self.assertEqual(pricing["cached"], 0.20)
+        self.assertEqual(pricing["output"], 2.50)
 
     def test_dated_openai_variant_resolves_to_family_metadata(self):
         self.assertEqual(get_model_context_window("openai", "gpt-5.4-nano-2026-03-17"), 400_000)
