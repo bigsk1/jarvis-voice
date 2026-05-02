@@ -81,6 +81,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'screenshot_url': ['url', 'screenshot_path'],
     # --- Knowledge/session refs ---
     'canvas': ['page_id', 'title'],
+    'crypto_price': [
+        'coin', 'coin_id', 'price_usd', 'change_24h_percent',
+        'market_cap_usd', 'source',
+    ],
     'crypto_chart': [
         'coin', 'coin_id', 'vs_currency', 'days', 'range_label',
         'current_price', 'change_percent', 'points_returned', 'original_points', 'source',
@@ -359,6 +363,41 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     extracted['end_iso'] = last['iso']
                 if last.get('value') is not None:
                     extracted['end_price'] = last['value']
+
+        if key == 'crypto_price':
+            coins = payload.get('coins') if isinstance(payload.get('coins'), list) else []
+            if coins:
+                extracted['count'] = payload.get('count', len(coins))
+                first = coins[0] if isinstance(coins[0], dict) else {}
+                if isinstance(first, dict):
+                    for field in (
+                        'requested', 'coin', 'coin_id', 'price_usd',
+                        'change_24h_percent', 'market_cap_usd',
+                    ):
+                        value = first.get(field)
+                        if value not in (None, '', [], {}):
+                            extracted[field] = value
+
+                candidates = []
+                for item in coins[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {}
+                    for field in (
+                        'requested', 'coin', 'coin_id', 'price_usd',
+                        'change_24h_percent', 'market_cap_usd',
+                    ):
+                        value = item.get(field)
+                        if value not in (None, '', [], {}):
+                            candidate[field] = value
+                    if candidate:
+                        candidates.append(candidate)
+
+                if candidates:
+                    extracted['candidates'] = candidates
+
+                if payload.get('missing_coins'):
+                    extracted['missing_coins'] = payload['missing_coins']
 
         # Preserve compact focused product details for shopping follow-ups.
         if key == 'serpapi_search':

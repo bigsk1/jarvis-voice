@@ -480,7 +480,15 @@ class Orchestrator:
             return None
         if tool_name == "crypto_price":
             v = arguments.get("coin")
-            return str(v).strip().lower() if v is not None else None
+            if v is not None:
+                return str(v).strip().lower()
+            coins = arguments.get("coins")
+            if isinstance(coins, list):
+                normalized = [str(item).strip().lower() for item in coins if str(item).strip()]
+                return ",".join(normalized) if normalized else None
+            if coins is not None:
+                return str(coins).strip().lower()
+            return None
         if tool_name == "stock_price":
             v = arguments.get("symbol")
             return str(v).strip().upper() if v is not None else None

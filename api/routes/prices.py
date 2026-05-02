@@ -39,6 +39,18 @@ def call_tool(tool_name: str, args: dict) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def _extract_crypto_batch_items(result: dict) -> list[dict]:
+    """Normalize single and multi-coin crypto_price responses for batch APIs."""
+    data = result.get("data", {}) if isinstance(result, dict) else {}
+    if isinstance(data.get("coins"), list):
+        return data["coins"]
+
+    if data.get("coin_id"):
+        return [data]
+
+    return []
+
+
 @router.get("/stock/{symbol}")
 async def get_stock_price(symbol: str):
     """
@@ -139,17 +151,26 @@ async def get_batch_prices(
                     results["stocks"][symbol] = {"error": result.get("error")}
     
     if crypto:
-        for symbol in crypto.split(","):
-            symbol = symbol.strip()
-            if symbol:
-                result = call_tool("crypto_price", {"coin": symbol.lower()})
-                if result.get("ok"):
-                    results["crypto"][symbol] = {
-                        "price": result["data"].get("price_usd"),
-                        "change_percent": result["data"].get("change_24h_percent"),
-                        "name": result["data"].get("name")
-                    }
-                else:
+        crypto_symbols = [symbol.strip() for symbol in crypto.split(",") if symbol.strip()]
+        if crypto_symbols:
+            result = call_tool("crypto_price", {"coins": [symbol.lower() for symbol in crypto_symbols]})
+            if result.get("ok"):
+                items = _extract_crypto_batch_items(result)
+                items_by_id = {item.get("coin_id"): item for item in items}
+                items_by_requested = {item.get("requested"): item for item in items}
+                for symbol in crypto_symbols:
+                    lookup_id = symbol.lower()
+                    item = items_by_requested.get(lookup_id) or items_by_id.get(lookup_id)
+                    if item:
+                        results["crypto"][symbol] = {
+                            "price": item.get("price_usd"),
+                            "change_percent": item.get("change_24h_percent"),
+                            "name": item.get("coin")
+                        }
+                    else:
+                        results["crypto"][symbol] = {"error": f"No data found for '{symbol}'."}
+            else:
+                for symbol in crypto_symbols:
                     results["crypto"][symbol] = {"error": result.get("error")}
     
     return results

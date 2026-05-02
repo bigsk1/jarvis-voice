@@ -1,19 +1,23 @@
 {
   "enabled": true,
   "name": "crypto_price",
-  "description": "Get current cryptocurrency price in USD from CoinGecko API. Supports 50+ coins: bitcoin, ethereum, solana, xrp, cardano, dogecoin, polygon, avalanche, chainlink, litecoin, bnb, uniswap, cosmos, near, arbitrum, optimism, toncoin, pepe, shiba inu, and many more. Accepts common names (solana), symbols (SOL, ETH, BTC), or CoinGecko IDs. Use this when the user asks about crypto prices.",
+  "description": "Get current cryptocurrency price in USD from CoinGecko API. Supports single-coin lookups and multi-coin lookups in one call. Supports 50+ coins: bitcoin, ethereum, solana, xrp, cardano, dogecoin, polygon, avalanche, chainlink, litecoin, bnb, uniswap, cosmos, near, arbitrum, optimism, toncoin, pepe, shiba inu, and many more. Accepts common names (solana), symbols (SOL, ETH, BTC), or CoinGecko IDs. Use `coin` for one coin or `coins` for 2+ coins.",
   "script": "crypto_price.py",
   "parameters": {
     "type": "object",
     "properties": {
       "coin": {
         "type": "string",
-        "description": "Cryptocurrency name, symbol, or CoinGecko ID. Examples: bitcoin, btc, ethereum, eth, solana, sol, xrp, cardano, ada, dogecoin, doge, polygon, matic, avalanche, avax, chainlink, link, arbitrum, optimism, toncoin, ton, pepe, shiba, bonk"
+        "description": "Single cryptocurrency name, symbol, or CoinGecko ID. Backward-compatible legacy field. Also accepts a comma-separated list when needed. Examples: bitcoin, btc, ethereum, eth, solana, sol, bitcoin,solana"
+      },
+      "coins": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Two or more cryptocurrency names, symbols, or CoinGecko IDs for one request. Example: [\"bitcoin\", \"solana\"]"
       }
-    },
-    "required": [
-      "coin"
-    ]
+    }
   },
   "permissions": {
     "dangerous": false,

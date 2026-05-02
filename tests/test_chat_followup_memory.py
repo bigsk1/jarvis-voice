@@ -138,3 +138,68 @@ def test_extract_followup_data_preserves_update_memory_refs():
     assert updated["memory_id"] == 387
     assert updated["old_value"] == "January 1st"
     assert updated["new_value"] == "March 15th"
+
+
+def test_extract_followup_data_preserves_single_crypto_price_fields():
+    handler = _handler()
+    data = {
+        "crypto_price": {
+            "coin": "Bitcoin",
+            "coin_id": "bitcoin",
+            "price_usd": 78732,
+            "change_24h_percent": 0.82,
+            "market_cap_usd": 1576177403500.0,
+            "source": "CoinGecko",
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    crypto = result["crypto_price"]
+
+    assert crypto["coin"] == "Bitcoin"
+    assert crypto["coin_id"] == "bitcoin"
+    assert crypto["price_usd"] == 78732
+    assert crypto["change_24h_percent"] == 0.82
+    assert crypto["market_cap_usd"] == 1576177403500.0
+
+
+def test_extract_followup_data_preserves_multi_crypto_price_candidates():
+    handler = _handler()
+    data = {
+        "crypto_price": {
+            "coins": [
+                {
+                    "requested": "btc",
+                    "coin": "Bitcoin",
+                    "coin_id": "bitcoin",
+                    "price_usd": 78729,
+                    "change_24h_percent": 0.82,
+                    "market_cap_usd": 1576177403500.0,
+                },
+                {
+                    "requested": "sol",
+                    "coin": "Solana",
+                    "coin_id": "solana",
+                    "price_usd": 84.36,
+                    "change_24h_percent": 0.71,
+                    "market_cap_usd": 48583044724.0,
+                },
+            ],
+            "count": 2,
+            "source": "CoinGecko",
+            "missing_coins": ["notarealcoin"],
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    crypto = result["crypto_price"]
+
+    assert crypto["count"] == 2
+    assert crypto["coin"] == "Bitcoin"
+    assert crypto["coin_id"] == "bitcoin"
+    assert crypto["requested"] == "btc"
+    assert crypto["missing_coins"] == ["notarealcoin"]
+    assert len(crypto["candidates"]) == 2
+    assert crypto["candidates"][1]["requested"] == "sol"
+    assert crypto["candidates"][1]["coin"] == "Solana"
+    assert crypto["candidates"][1]["coin_id"] == "solana"
