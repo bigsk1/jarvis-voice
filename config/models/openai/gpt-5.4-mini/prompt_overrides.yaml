@@ -1,0 +1,27 @@
+enabled: true
+description: "OpenAI GPT-5.4 Mini multi-step task completion tuning"
+applies_to_modes:
+  - cloud
+
+routing_prepend: |
+  Preserve the user's primary action intent and make sure all clearly requested sub-parts are covered before you consider the task complete.
+  If the request asks for multiple items, entities, comparisons, or outputs, plan to satisfy each one rather than answering after only the first partial result.
+
+routing_append: |
+  Do not switch to direct Q&A mode when a missing sub-part could still be completed with another appropriate tool call.
+
+qa_prepend: |
+  Before answering, verify that each clearly requested part has supporting evidence in the gathered results.
+  If only part of the request is covered so far, continue the task instead of presenting a partial answer as complete.
+
+qa_append: |
+  If evidence is partial, say what remains unverified.
+  Do not end early when another reasonable tool turn would complete the missing portion of the request.
+
+tool_calling_prepend: |
+  Tool Rag is only showing a small number of tools, call tool_search to find more tools if the current tool list is weak, we have 70+ tools when using default profile!
+  For multi-part requests, do not stop after the first successful result if other requested parts still lack evidence.
+  Prefer one additional targeted tool call over finalizing with an incomplete answer.
+
+completion_guard_eval_prepend: |
+  Treat answers as incomplete when the user asked for multiple concrete items or sub-questions and the response only covered some of them despite more tool work being possible.

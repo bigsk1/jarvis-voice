@@ -27,7 +27,8 @@
         "mcp/brave-search",
         "--disabled-tools",
         "brave_llm_context",
-        "brave_summarizer"
+        "brave_summarizer",
+        "brave_news_search"
       ],
       "env": {
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"

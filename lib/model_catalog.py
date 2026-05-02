@@ -135,6 +135,12 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "pricing": {"input": 2.50, "output": 15.00, "cached": 0.25},
         },
         {
+            "id": "gpt-5.4-mini",
+            "name": "GPT-5.4 Mini",
+            "context_tokens": 400_000,
+            "pricing": {"input": 0.75, "output": 4.50, "cached": 0.075},
+        },
+        {
             "id": "gpt-5.4-nano",
             "name": "GPT-5.4 Nano (Default)",
             "context_tokens": 400_000,

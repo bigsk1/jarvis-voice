@@ -74,6 +74,53 @@ class OpenAIProvider(LLMProvider):
         
         self.client = OpenAI(api_key=api_key)
         self.model = model
+
+    def _openai_reasoning_effort(self, *, uses_tools: bool = False) -> str | None:
+        """
+        Optional reasoning-effort override for reasoning-capable OpenAI models.
+
+        Chat Completions supports reasoning_effort on GPT-5/o-series models, but
+        it should be omitted for older non-reasoning chat families.
+        """
+        if not self.model.startswith(("gpt-5", "o1", "o3", "o4")):
+            return None
+
+        from config_loader import get_config_value
+
+        value = (get_config_value("OPENAI_REASONING_EFFORT", "") or "").strip().lower()
+        if not value:
+            return None
+
+        allowed = {"none", "minimal", "low", "medium", "high", "xhigh"}
+        if value not in allowed:
+            print(
+                f"WARNING: Ignoring invalid OPENAI_REASONING_EFFORT={value!r}",
+                file=sys.stderr,
+            )
+            return None
+
+        # OpenAI docs note models before GPT-5.1 do not support "none".
+        if value == "none" and not self.model.startswith("gpt-5.1"):
+            print(
+                f"WARNING: {self.model} does not support reasoning_effort='none'; "
+                "using 'minimal' instead",
+                file=sys.stderr,
+            )
+            return "minimal"
+
+        # Current OpenAI behavior: gpt-5.4-mini rejects the combination of
+        # reasoning_effort + function tools on /v1/chat/completions and asks
+        # callers to use /v1/responses instead. Jarvis still uses Chat
+        # Completions for tool orchestration, so skip the env override here.
+        if uses_tools and self.model.startswith("gpt-5.4-mini"):
+            print(
+                f"INFO: Skipping reasoning_effort for {self.model} tool calls on "
+                "/v1/chat/completions (unsupported by OpenAI for this model)",
+                file=sys.stderr,
+            )
+            return None
+
+        return value
     
     def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
@@ -84,6 +131,9 @@ class OpenAIProvider(LLMProvider):
         
         try:
             params = {"model": self.model, "messages": messages}
+            reasoning_effort = self._openai_reasoning_effort()
+            if reasoning_effort:
+                params["reasoning_effort"] = reasoning_effort
             if max_tokens:
                 # Newer OpenAI models (gpt-5.x, o1, o3, etc.) use max_completion_tokens
                 if self.model.startswith(('gpt-5', 'o1', 'o3')):
@@ -122,6 +172,9 @@ class OpenAIProvider(LLMProvider):
                 "model": self.model,
                 "messages": full_messages,
             }
+            reasoning_effort = self._openai_reasoning_effort(uses_tools=bool(tools))
+            if reasoning_effort:
+                request_params["reasoning_effort"] = reasoning_effort
             if tools:
                 request_params["tools"] = tools
                 request_params["tool_choice"] = "auto"
