@@ -593,7 +593,9 @@ def apply_groups(
             deleted = []
             if not dry_run:
                 for did in delete_ids:
-                    if db.forget(did):
+                    # Duplicate rows may share category+key on this DB while sibling has one row.
+                    # Per-id delete only; do not mirror category+key DELETE onto sibling.
+                    if db.forget(did, mirror_sibling=False):
                         deleted.append(did)
                 deleted_total += len(deleted)
             else:

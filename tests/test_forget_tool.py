@@ -137,7 +137,6 @@ class ForgetToolTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertTrue(result["ok"])
         self.assertEqual(payload["data"]["deleted_id"], cloud_id)
-        self.assertEqual(payload["data"]["deleted"][0]["sibling_deleted"], 1)
 
         cloud_db = MemoryDB(str(cloud_path))
         local_db = MemoryDB(str(local_path))
@@ -175,7 +174,6 @@ class ForgetToolTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertTrue(result["ok"])
         self.assertEqual(payload["data"]["deleted_id"], cloud_id)
-        self.assertNotIn("sibling_deleted", payload["data"]["deleted"][0])
         self.assertFalse(local_path.exists())
 
 

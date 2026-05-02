@@ -324,6 +324,30 @@ class MemoryDB:
             return cursor.rowcount
         finally:
             conn.close()
+
+    def _delete_matching_memory_from_sibling(self, category: str, key: str) -> int:
+        """
+        Delete the equivalent logical memory from the sibling DB by category+key.
+
+        Safety:
+        - Skips if sibling DB does not exist
+        - Does not create missing DBs on fresh installs
+        """
+        sibling_path = self._get_sibling_db_path()
+        if not sibling_path or not sibling_path.exists():
+            return 0
+
+        conn = sqlite3.connect(str(sibling_path))
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM knowledge_base WHERE category = ? AND key = ?",
+                (category, key),
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
     
     def update_memory(self, memory_id: int, value: str = None, importance: int = None) -> bool:
         """Update an existing memory."""
@@ -366,12 +390,31 @@ class MemoryDB:
 
         return updated
     
-    def forget(self, memory_id: int) -> bool:
-        """Delete a memory."""
+    def forget(self, memory_id: int, *, mirror_sibling: bool = True) -> bool:
+        """
+        Delete a memory from this DB.
+
+        When mirror_sibling is True (default), also deletes the sibling cloud/local row
+        matching the same category+key if that sibling DB exists.
+
+        Use mirror_sibling=False for callers that remove duplicate rows by id on only the
+        active DB (e.g. memory_deduper apply): the sibling may hold a single correct row
+        while this DB has multiple identical keys.
+        """
         cursor = self.conn.cursor()
+        row = cursor.execute(
+            "SELECT category, key FROM knowledge_base WHERE id = ?",
+            (memory_id,),
+        ).fetchone()
+        if not row:
+            return False
+
         cursor.execute("DELETE FROM knowledge_base WHERE id = ?", (memory_id,))
         self.conn.commit()
-        return cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
+        if deleted and mirror_sibling:
+            self._delete_matching_memory_from_sibling(row["category"], row["key"])
+        return deleted
     
     def search_memory(self, query: str, limit: int = 10) -> list[dict]:
         """

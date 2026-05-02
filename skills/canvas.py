@@ -308,9 +308,16 @@ def remove_from_memory(page_id: str) -> None:
     try:
         from memory_db import MemoryDB
         db = MemoryDB()
-        
-        key = f"canvas_page_{page_id}"
-        db.forget(key)
+        try:
+            key = f"canvas_page_{page_id}"
+            row = db.conn.execute(
+                "SELECT id FROM knowledge_base WHERE category = ? AND key = ?",
+                ("canvas", key),
+            ).fetchone()
+            if row:
+                db.forget(int(row["id"]))
+        finally:
+            db.close()
     except Exception:
         pass  # Non-fatal
 
