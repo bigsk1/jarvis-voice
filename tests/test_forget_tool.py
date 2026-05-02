@@ -34,6 +34,28 @@ class ForgetToolTests(unittest.TestCase):
         finally:
             db.close()
 
+    def _seed_standard_dual_dbs(self) -> tuple[Path, Path, int]:
+        cloud_path = Path(self.temp_dir.name) / "jarvis_memory.db"
+        local_path = Path(self.temp_dir.name) / "jarvis_memory_local.db"
+
+        cloud_db = MemoryDB(str(cloud_path))
+        try:
+            cloud_id = cloud_db.remember(
+                "personal", "user_birthday", "January 1st", generate_embedding=False
+            )
+        finally:
+            cloud_db.close()
+
+        local_db = MemoryDB(str(local_path))
+        try:
+            local_db.remember(
+                "personal", "user_birthday", "January 1st", generate_embedding=False
+            )
+        finally:
+            local_db.close()
+
+        return cloud_path, local_path, cloud_id
+
     def test_forget_accepts_multiple_memory_ids_in_one_call(self):
         first_id, second_id = self._seed_memories()
         stdout = StringIO()
@@ -98,6 +120,63 @@ class ForgetToolTests(unittest.TestCase):
             db.close()
 
         self.assertEqual(remaining_ids, ids[10:])
+
+    def test_forget_deletes_matching_memory_from_sibling_db_when_present(self):
+        cloud_path, local_path, cloud_id = self._seed_standard_dual_dbs()
+        stdout = StringIO()
+
+        with patch("skills.forget.get_memory_db", return_value=MemoryDB(str(cloud_path))), \
+             patch.object(
+                 sys,
+                 "argv",
+                 ["forget.py", json.dumps({"memory_id": cloud_id})],
+             ), \
+             patch("sys.stdout", stdout):
+            result = forget.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(result["ok"])
+        self.assertEqual(payload["data"]["deleted_id"], cloud_id)
+        self.assertEqual(payload["data"]["deleted"][0]["sibling_deleted"], 1)
+
+        cloud_db = MemoryDB(str(cloud_path))
+        local_db = MemoryDB(str(local_path))
+        try:
+            self.assertEqual(cloud_db.get_all_memories(), [])
+            self.assertEqual(local_db.get_all_memories(), [])
+        finally:
+            cloud_db.close()
+            local_db.close()
+
+    def test_forget_skips_sibling_delete_when_other_db_does_not_exist(self):
+        cloud_path = Path(self.temp_dir.name) / "jarvis_memory.db"
+        local_path = Path(self.temp_dir.name) / "jarvis_memory_local.db"
+
+        cloud_db = MemoryDB(str(cloud_path))
+        try:
+            cloud_id = cloud_db.remember(
+                "personal", "user_birthday", "January 1st", generate_embedding=False
+            )
+        finally:
+            cloud_db.close()
+
+        self.assertFalse(local_path.exists())
+
+        stdout = StringIO()
+        with patch("skills.forget.get_memory_db", return_value=MemoryDB(str(cloud_path))), \
+             patch.object(
+                 sys,
+                 "argv",
+                 ["forget.py", json.dumps({"memory_id": cloud_id})],
+             ), \
+             patch("sys.stdout", stdout):
+            result = forget.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(result["ok"])
+        self.assertEqual(payload["data"]["deleted_id"], cloud_id)
+        self.assertNotIn("sibling_deleted", payload["data"]["deleted"][0])
+        self.assertFalse(local_path.exists())
 
 
 if __name__ == "__main__":

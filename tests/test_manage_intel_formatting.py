@@ -18,7 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 
 from intel_content import normalize_intel_content
 from ingest_intel import extract_facts_from_content
-from manage_intel import append_intel_file
+from manage_intel import append_intel_file, auto_ingest, format_ingest_summary
 
 
 class TestIntelContentNormalization(unittest.TestCase):
@@ -79,6 +79,140 @@ class TestIntelContentNormalization(unittest.TestCase):
             content = target.read_text(encoding="utf-8")
             self.assertIn("[2026-05-01 00:44 PDT]\n## 2026-05-01", content)
             self.assertIn("- Observation: structure preserved", content)
+
+    def test_format_ingest_summary_mentions_both_dbs(self) -> None:
+        summary = format_ingest_summary({
+            "ingested": True,
+            "new_files": 2,
+            "total_facts": 28,
+            "modes": ["cloud", "local"],
+        })
+
+        self.assertIn("cloud and local", summary)
+        self.assertIn("28 total facts", summary)
+        self.assertIn("across both DBs", summary)
+
+    def test_auto_ingest_runs_current_then_sibling_sequentially(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skills_dir = root / "skills"
+            data_dir = root / "data"
+            skills_dir.mkdir()
+            data_dir.mkdir()
+            (skills_dir / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
+            (data_dir / "jarvis_memory.db").write_text("", encoding="utf-8")
+            (data_dir / "jarvis_memory_local.db").write_text("", encoding="utf-8")
+
+            calls = []
+
+            def fake_run(cmd, capture_output, text, timeout, env):
+                calls.append(env["LLM_PROVIDER"])
+
+                class Result:
+                    returncode = 0
+                    stdout = '{"ok": true, "data": {"new_files": 0, "total_facts": 0, "deleted_files": 1, "deleted_facts": 2}}'
+                    stderr = ""
+
+                return Result()
+
+            with patch("manage_intel.subprocess.run", side_effect=fake_run):
+                result = auto_ingest(root, "cloud")
+
+            self.assertTrue(result["ingested"])
+            self.assertEqual(result["modes"], ["cloud", "local"])
+            self.assertEqual(calls, ["anthropic", "ollama"])
+
+    def test_auto_ingest_skips_missing_sibling_db(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skills_dir = root / "skills"
+            data_dir = root / "data"
+            skills_dir.mkdir()
+            data_dir.mkdir()
+            (skills_dir / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
+            (data_dir / "jarvis_memory_local.db").write_text("", encoding="utf-8")
+
+            calls = []
+
+            def fake_run(cmd, capture_output, text, timeout, env):
+                calls.append(env["LLM_PROVIDER"])
+
+                class Result:
+                    returncode = 0
+                    stdout = '{"ok": true, "data": {"new_files": 0, "total_facts": 0}}'
+                    stderr = ""
+
+                return Result()
+
+            with patch("manage_intel.subprocess.run", side_effect=fake_run):
+                result = auto_ingest(root, "local")
+
+            self.assertTrue(result["ingested"])
+            self.assertEqual(result["modes"], ["local"])
+            self.assertEqual(calls, ["ollama"])
+
+    def test_auto_ingest_treats_sibling_failure_as_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skills_dir = root / "skills"
+            data_dir = root / "data"
+            skills_dir.mkdir()
+            data_dir.mkdir()
+            (skills_dir / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
+            (data_dir / "jarvis_memory.db").write_text("", encoding="utf-8")
+            (data_dir / "jarvis_memory_local.db").write_text("", encoding="utf-8")
+
+            calls = []
+
+            def fake_run(cmd, capture_output, text, timeout, env):
+                calls.append(env["LLM_PROVIDER"])
+
+                class Result:
+                    stderr = ""
+
+                result = Result()
+                if env["LLM_PROVIDER"] == "anthropic":
+                    result.returncode = 0
+                    result.stdout = '{"ok": true, "data": {"new_files": 1, "total_facts": 3}}'
+                else:
+                    result.returncode = 1
+                    result.stdout = "ollama unavailable"
+                    result.stderr = "ollama unavailable"
+                return result
+
+            with patch("manage_intel.subprocess.run", side_effect=fake_run):
+                result = auto_ingest(root, "cloud")
+
+            self.assertTrue(result["ingested"])
+            self.assertTrue(result["partial"])
+            self.assertEqual(result["modes"], ["cloud"])
+            self.assertEqual(result["failed_modes"], ["local"])
+            self.assertIn("local ingest failed", result["warning"])
+            self.assertEqual(calls, ["anthropic", "ollama"])
+
+    def test_auto_ingest_fails_when_current_mode_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            skills_dir = root / "skills"
+            data_dir = root / "data"
+            skills_dir.mkdir()
+            data_dir.mkdir()
+            (skills_dir / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
+            (data_dir / "jarvis_memory.db").write_text("", encoding="utf-8")
+
+            def fake_run(cmd, capture_output, text, timeout, env):
+                class Result:
+                    returncode = 1
+                    stdout = "primary failed"
+                    stderr = "primary failed"
+
+                return Result()
+
+            with patch("manage_intel.subprocess.run", side_effect=fake_run):
+                result = auto_ingest(root, "cloud")
+
+            self.assertFalse(result["ingested"])
+            self.assertIn("cloud ingest failed", result["error"])
 
 
 if __name__ == "__main__":

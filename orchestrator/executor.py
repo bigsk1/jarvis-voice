@@ -143,9 +143,9 @@ class ToolExecutor:
             if tool_name == "opencode":
                 timeout = 480  # 8 minutes for OpenCode tasks (complex builds)
             elif tool_name == "ingest_intel":
-                timeout = 180  # 3 minutes for ingesting files with embeddings (large profiles can have 300+ facts)
+                timeout = 300  # 5 minutes to match API sync ingest timeout for large intel files
             elif tool_name == "manage_intel":
-                timeout = 180  # 3 minutes (can auto-ingest, which needs time for embeddings)
+                timeout = 600  # 10 minutes; create/update/delete can trigger two sequential ingests
             elif tool_name == "generate_image":
                 timeout = 300  # 5 minutes for AI image generation (especially with grounding)
             elif tool_name == "generate_music":

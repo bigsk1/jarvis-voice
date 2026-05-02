@@ -5,6 +5,8 @@ Forget Tool - Delete memories by ID or search query
 import sys
 import json
 import os
+import sqlite3
+from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
@@ -36,6 +38,42 @@ def _normalize_memory_ids(args: dict) -> list[int]:
     return normalized[:MAX_FORGET_IDS]
 
 
+def _sibling_db_path(current_db_path: str) -> Path | None:
+    """Return the other mode's DB path when using standard memory DB filenames."""
+    path = Path(current_db_path)
+    if path.name == "jarvis_memory.db":
+        return path.with_name("jarvis_memory_local.db")
+    if path.name == "jarvis_memory_local.db":
+        return path.with_name("jarvis_memory.db")
+    return None
+
+
+def _delete_matching_memory_from_sibling(current_db_path: str, category: str, key: str) -> int:
+    """
+    Delete the equivalent logical memory from the sibling DB by category+key.
+
+    Safety:
+    - Only acts on standard jarvis_memory*.db filenames
+    - Skips if sibling DB does not exist
+    - Does not create missing DBs on fresh installs
+    """
+    sibling_path = _sibling_db_path(current_db_path)
+    if not sibling_path or not sibling_path.exists():
+        return 0
+
+    conn = sqlite3.connect(str(sibling_path))
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM knowledge_base WHERE category = ? AND key = ?",
+            (category, key),
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
 def main():
     """Delete a memory from database by ID or search query."""
     try:
@@ -47,6 +85,7 @@ def main():
         search_query = args.get('search_query')
 
         db = get_memory_db()
+        current_db_path = getattr(db, "db_path", "")
 
         # If no memory IDs, try to find one by search_query
         if not memory_ids and search_query:
@@ -101,6 +140,14 @@ def main():
                 deleted_entry = {"id": memory_id}
                 if memory_info:
                     deleted_entry["key"] = memory_info.get("key", "that memory")
+                    deleted_entry["category"] = memory_info.get("category")
+                    sibling_deleted = _delete_matching_memory_from_sibling(
+                        current_db_path,
+                        memory_info.get("category"),
+                        memory_info.get("key"),
+                    )
+                    if sibling_deleted > 0:
+                        deleted_entry["sibling_deleted"] = sibling_deleted
                 deleted.append(deleted_entry)
             else:
                 missing.append(memory_id)

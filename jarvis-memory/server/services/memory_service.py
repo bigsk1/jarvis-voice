@@ -50,6 +50,81 @@ class MemoryService:
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _get_sibling_db_path(self) -> Path:
+        """Return the other mode's DB path."""
+        return DB_PATHS['local'] if self.mode == 'cloud' else DB_PATHS['cloud']
+
+    def _delete_matching_memory_from_sibling(self, category: str, key: str) -> int:
+        """
+        Delete the equivalent logical memory from the sibling DB by category+key.
+
+        Safety:
+        - Skips if sibling DB does not exist
+        - Does not create missing DBs on fresh installs
+        """
+        sibling_path = self._get_sibling_db_path()
+        if not sibling_path.exists():
+            return 0
+
+        conn = sqlite3.connect(str(sibling_path), check_same_thread=False)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM knowledge_base WHERE category = ? AND key = ?",
+                (category, key),
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
+
+    def _update_matching_memory_in_sibling(
+        self,
+        original_category: str,
+        original_key: str,
+        *,
+        new_category: str,
+        new_key: str,
+        value: str,
+        importance: int,
+        metadata_json: str | None,
+    ) -> int:
+        """
+        Update the equivalent logical memory in the sibling DB by original category+key.
+
+        Safety:
+        - Skips if sibling DB does not exist
+        - Does not create missing DBs on fresh installs
+        """
+        sibling_path = self._get_sibling_db_path()
+        if not sibling_path.exists():
+            return 0
+
+        conn = sqlite3.connect(str(sibling_path), check_same_thread=False)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE knowledge_base
+                SET category = ?, key = ?, value = ?, importance = ?, metadata = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE category = ? AND key = ?
+                """,
+                (
+                    new_category,
+                    new_key,
+                    value,
+                    importance,
+                    metadata_json,
+                    original_category,
+                    original_key,
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
     
     # =========================================================================
     # Knowledge Base Operations
@@ -215,6 +290,17 @@ class MemoryService:
         """Update an existing memory"""
         conn = self._get_conn()
         cursor = conn.cursor()
+        existing = cursor.execute(
+            """
+            SELECT category, key, value, importance, metadata
+            FROM knowledge_base
+            WHERE id = ?
+            """,
+            (memory_id,),
+        ).fetchone()
+        if not existing:
+            conn.close()
+            return False
         
         updates = []
         params = []
@@ -245,7 +331,23 @@ class MemoryService:
             query = f"UPDATE knowledge_base SET {', '.join(updates)} WHERE id = ?"
             cursor.execute(query, params)
             conn.commit()
-            return cursor.rowcount > 0
+            updated = cursor.rowcount > 0
+            if updated:
+                final_category = category if category is not None else existing["category"]
+                final_key = key if key is not None else existing["key"]
+                final_value = value if value is not None else existing["value"]
+                final_importance = importance if importance is not None else existing["importance"]
+                final_metadata = json.dumps(metadata) if metadata is not None else existing["metadata"]
+                self._update_matching_memory_in_sibling(
+                    existing["category"],
+                    existing["key"],
+                    new_category=final_category,
+                    new_key=final_key,
+                    value=final_value,
+                    importance=final_importance,
+                    metadata_json=final_metadata,
+                )
+            return updated
         finally:
             conn.close()
     
@@ -255,9 +357,19 @@ class MemoryService:
         cursor = conn.cursor()
         
         try:
+            memory = cursor.execute(
+                "SELECT category, key FROM knowledge_base WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
+            if not memory:
+                return False
+
             cursor.execute("DELETE FROM knowledge_base WHERE id = ?", (memory_id,))
             conn.commit()
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+            if deleted:
+                self._delete_matching_memory_from_sibling(memory["category"], memory["key"])
+            return deleted
         finally:
             conn.close()
     
@@ -442,4 +554,3 @@ class MemoryService:
             }
         finally:
             conn.close()
-

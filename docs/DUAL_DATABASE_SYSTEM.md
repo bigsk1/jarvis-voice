@@ -72,15 +72,21 @@ Starting LOCAL mode:
 - **Deleted memories**: Not removed from target (manual)
 - **Conflicts**: Source wins (last-write wins)
 
+Runtime note:
+- `forget` now mirrors deletions into the sibling DB by logical memory identity (`category + key`) when that sibling DB file already exists.
+- Intel ingestion via `manage_intel` auto-ingest and the Memory UI `Ingest All` flow now runs current mode first, then the sibling DB sequentially if it exists.
+
 ## Tool Compatibility
 
 All memory tools work seamlessly:
 
-### Write Tools (Auto-Sync Next Startup)
-- `remember` → Saves to current mode's DB
-- `update_memory` → Updates current mode's DB
-- `forget` → Deletes from current mode's DB
-- `ingest_intel` → Ingests to current mode's DB
+### Write Tools
+- `remember` → Saves to the current mode's DB; sibling DB picks it up on the next normal sync/startup flow
+- `update_memory` → Updates the current mode's DB and mirrors the same logical memory into the sibling DB when available
+- `forget` → Deletes from current mode's DB and mirrors the same logical key into the sibling DB when available
+- `ingest_intel` → Direct tool call ingests to the current mode's DB
+- `manage_intel` with `auto_ingest=true` → Ingests current mode first, then sibling DB sequentially when present
+- Memory UI `Ingest All` → Uses the same sequential current-mode-then-sibling ingest flow
 
 ### Read Tools (Always Current)
 - `recall` / `search_memory` → SQL fuzzy search (no embeddings)
@@ -230,6 +236,16 @@ stat data/jarvis_memory_local.db
 
 # Sync manually if needed
 ./bin/sync-memory-db.py --from <newer> --to <older>
+```
+
+### Inspect Drift
+
+```bash
+# Compare cloud/local DB availability, intel hashes, and logical memory drift
+./bin/check-memory-sync-health.py
+
+# JSON output for scripts/cron
+./bin/check-memory-sync-health.py --json
 ```
 
 ## Configuration

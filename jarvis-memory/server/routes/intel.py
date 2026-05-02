@@ -3,6 +3,7 @@ Intel File Manager API Routes
 Manage files in jarvis-intel/ folder
 """
 import os
+import sys
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
@@ -10,6 +11,12 @@ intel_bp = Blueprint('intel', __name__, url_prefix='/api/intel')
 
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 INTEL_PATH = JARVIS_ROOT / 'jarvis-intel'
+SKILLS_PATH = JARVIS_ROOT / 'skills'
+
+if str(SKILLS_PATH) not in sys.path:
+    sys.path.insert(0, str(SKILLS_PATH))
+
+from manage_intel import auto_ingest, format_ingest_summary
 
 
 @intel_bp.route('/files', methods=['GET'])
@@ -224,50 +231,31 @@ def ingest_intel():
     Trigger the ingest_intel tool to process all intel files
     This adds the content to the knowledge_base
     """
-    import subprocess
-    import sys
-    
-    mode = request.args.get('mode', 'cloud')
-    
-    # Set environment for the correct mode
-    env = os.environ.copy()
-    if mode == 'local':
-        env['LLM_PROVIDER'] = 'ollama'
-    else:
-        env['LLM_PROVIDER'] = 'anthropic'  # Default cloud provider
-    
+    mode = request.args.get('mode', 'cloud').lower()
+
+    if mode not in {'cloud', 'local'}:
+        return jsonify({'ok': False, 'error': f'Invalid mode: {mode}'}), 400
+
     try:
-        # Run the ingest_intel.py script
-        script_path = JARVIS_ROOT / 'skills' / 'ingest_intel.py'
-        
-        result = subprocess.run(
-            [sys.executable, str(script_path), '{}'],
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=60
-        )
-        
-        # Parse the JSON output
-        import json
-        try:
-            output = json.loads(result.stdout)
-            return jsonify({
-                'ok': output.get('ok', False),
-                'mode': mode,
-                'speech': output.get('speech', ''),
-                'data': output.get('data', {}),
-                'error': output.get('error')
-            })
-        except json.JSONDecodeError:
+        result = auto_ingest(JARVIS_ROOT, mode)
+        if not result.get('ingested'):
+            error = result.get('error', 'Ingest failed')
+            status = 504 if 'timeout' in error.lower() else 500
             return jsonify({
                 'ok': False,
-                'error': f'Invalid output: {result.stdout[:500]}',
-                'stderr': result.stderr[:500] if result.stderr else None
-            }), 500
-            
-    except subprocess.TimeoutExpired:
-        return jsonify({'ok': False, 'error': 'Ingest timed out'}), 504
+                'mode': mode,
+                'error': error,
+                'data': result,
+            }), status
+
+        speech = format_ingest_summary(result)
+
+        return jsonify({
+            'ok': True,
+            'mode': mode,
+            'speech': speech,
+            'data': result,
+            'error': None,
+        })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-

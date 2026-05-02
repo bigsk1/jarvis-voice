@@ -27,6 +27,57 @@ from memory_db import MemoryDB
 from time_utils import now_local
 
 
+def _mode_for_db_path(db_path: str) -> str:
+    """Infer mode name from the active memory DB path."""
+    name = Path(db_path).name
+    if name == "jarvis_memory_local.db":
+        return "local"
+    return "cloud"
+
+
+def _llm_provider_for_mode(mode: str) -> str:
+    """Map memory mode to the embedding provider selection used by MemoryDB."""
+    return "ollama" if mode == "local" else "anthropic"
+
+
+def _format_mode_list(modes: list[str]) -> str:
+    """Render mode names naturally for status messages."""
+    if not modes:
+        return "no modes"
+    if len(modes) == 1:
+        return modes[0]
+    if len(modes) == 2:
+        return f"{modes[0]} and {modes[1]}"
+    return f"{', '.join(modes[:-1])}, and {modes[-1]}"
+
+
+def format_ingest_summary(ingest_result: dict[str, Any]) -> str:
+    """Build a user-facing ingest summary that explains cross-DB totals."""
+    modes = ingest_result.get("modes", [])
+    total_new_files = ingest_result.get("new_files", 0)
+    total_facts = ingest_result.get("total_facts", 0)
+    mode_label = _format_mode_list(modes)
+
+    summary = (
+        f"Intel ingest complete for {mode_label}. "
+        f"Processed {total_new_files} changed file update"
+    )
+    if total_new_files != 1:
+        summary += "s"
+    summary += f" and {total_facts} total fact"
+    if total_facts != 1:
+        summary += "s"
+    if len(modes) > 1:
+        summary += " across both DBs."
+    else:
+        summary += "."
+
+    if ingest_result.get("warning"):
+        summary += f" Warning: {ingest_result['warning']}"
+
+    return summary
+
+
 def validate_path(path: str, intel_dir: Path) -> Path:
     """
     Validate and sanitize file path to ensure it's within jarvis-intel/.
@@ -252,39 +303,95 @@ def list_intel_files(intel_dir: Path, pattern: str = "*") -> dict[str, Any]:
     }
 
 
-def auto_ingest(project_root: Path) -> dict[str, Any]:
-    """Run ingest_intel tool to update memory."""
+def auto_ingest(project_root: Path, current_mode: str) -> dict[str, Any]:
+    """Run ingest_intel sequentially for current mode and existing sibling DB."""
+    per_mode_timeout = 300
     ingest_script = project_root / 'skills' / 'ingest_intel.py'
     
     if not ingest_script.exists():
         return {"ingested": False, "error": "ingest_intel.py not found"}
+
+    data_dir = project_root / 'data'
+    db_paths = {
+        "cloud": data_dir / "jarvis_memory.db",
+        "local": data_dir / "jarvis_memory_local.db",
+    }
+    sibling_mode = "local" if current_mode == "cloud" else "cloud"
+
+    modes_to_ingest = [current_mode]
+    if db_paths[sibling_mode].exists():
+        modes_to_ingest.append(sibling_mode)
+
+    mode_results = []
+    total_new_files = 0
+    total_facts = 0
+    warnings = []
     
     try:
-        result = subprocess.run(
-            ['python3', str(ingest_script)],
-            capture_output=True,
-            text=True,
-            timeout=180
-        )
-        
-        if result.returncode == 0:
-            # Parse output
+        for index, mode in enumerate(modes_to_ingest):
+            env = os.environ.copy()
+            env["LLM_PROVIDER"] = _llm_provider_for_mode(mode)
+            result = subprocess.run(
+                ['python3', str(ingest_script)],
+                capture_output=True,
+                text=True,
+                timeout=per_mode_timeout,
+                env=env,
+            )
+
+            if result.returncode != 0:
+                error_text = result.stderr or result.stdout
+                if index == 0:
+                    return {
+                        "ingested": False,
+                        "error": f"{mode} ingest failed: {error_text}"
+                    }
+
+                warnings.append(f"{mode} ingest failed: {error_text}")
+                mode_results.append({
+                    "mode": mode,
+                    "ok": False,
+                    "error": error_text,
+                })
+                continue
+
             try:
                 output = json.loads(result.stdout)
-                return {
-                    "ingested": True,
-                    "new_files": output.get('data', {}).get('new_files', 0),
-                    "total_facts": output.get('data', {}).get('total_facts', 0)
-                }
+                new_files = output.get('data', {}).get('new_files', 0)
+                facts = output.get('data', {}).get('total_facts', 0)
+                deleted_files = output.get('data', {}).get('deleted_files', 0)
+                deleted_facts = output.get('data', {}).get('deleted_facts', 0)
+                total_new_files += new_files
+                total_facts += facts
+                mode_results.append({
+                    "mode": mode,
+                    "ok": True,
+                    "new_files": new_files,
+                    "total_facts": facts,
+                    "deleted_files": deleted_files,
+                    "deleted_facts": deleted_facts,
+                })
             except json.JSONDecodeError:
-                return {"ingested": True, "raw_output": result.stdout}
-        else:
-            return {
-                "ingested": False,
-                "error": result.stderr or result.stdout
-            }
+                mode_results.append({
+                    "mode": mode,
+                    "ok": True,
+                    "raw_output": result.stdout,
+                })
+
+        response = {
+            "ingested": True,
+            "new_files": total_new_files,
+            "total_facts": total_facts,
+            "modes": [entry["mode"] for entry in mode_results if entry.get("ok")],
+            "results": mode_results,
+        }
+        if warnings:
+            response["warning"] = " ".join(warnings)
+            response["failed_modes"] = [entry["mode"] for entry in mode_results if entry.get("ok") is False]
+            response["partial"] = True
+        return response
     except subprocess.TimeoutExpired:
-        return {"ingested": False, "error": "Ingest timeout (180s)"}
+        return {"ingested": False, "error": f"Ingest timeout ({per_mode_timeout}s per mode)"}
     except Exception as e:
         return {"ingested": False, "error": str(e)}
 
@@ -373,11 +480,12 @@ def main():
         
         # Auto-ingest if requested and action modifies files
         if args.get('auto_ingest', False) and action in ['create', 'update', 'append', 'delete']:
-            ingest_result = auto_ingest(project_root)
+            current_mode = _mode_for_db_path(getattr(db, "db_path", ""))
+            ingest_result = auto_ingest(project_root, current_mode)
             result_data['ingest'] = ingest_result
             
             if ingest_result.get('ingested'):
-                speech += f". Ingested {ingest_result.get('new_files', 0)} file(s), {ingest_result.get('total_facts', 0)} facts."
+                speech += f". {format_ingest_summary(ingest_result)}"
             else:
                 speech += f". Warning: Ingest failed - {ingest_result.get('error', 'unknown error')}"
         

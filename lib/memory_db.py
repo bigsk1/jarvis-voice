@@ -270,10 +270,70 @@ class MemoryDB:
             memories.append(memory)
         
         return memories
+
+    def _get_sibling_db_path(self) -> Path | None:
+        """Return the sibling cloud/local DB path for standard memory DB names."""
+        path = Path(self.db_path)
+        if path.name == "jarvis_memory.db":
+            return path.with_name("jarvis_memory_local.db")
+        if path.name == "jarvis_memory_local.db":
+            return path.with_name("jarvis_memory.db")
+        return None
+
+    def _update_matching_memory_in_sibling(
+        self,
+        category: str,
+        key: str,
+        *,
+        value: str | None,
+        importance: int | None,
+    ) -> int:
+        """
+        Update the equivalent logical memory in the sibling DB by category+key.
+
+        Safety:
+        - Skips if sibling DB does not exist
+        - Does not create missing DBs on fresh installs
+        """
+        sibling_path = self._get_sibling_db_path()
+        if not sibling_path or not sibling_path.exists():
+            return 0
+
+        conn = sqlite3.connect(str(sibling_path))
+        try:
+            cursor = conn.cursor()
+            updates = []
+            params = []
+
+            if value is not None:
+                updates.append("value = ?")
+                params.append(value)
+            if importance is not None:
+                updates.append("importance = ?")
+                params.append(importance)
+            if not updates:
+                return 0
+
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            params.extend([category, key])
+            cursor.execute(
+                f"UPDATE knowledge_base SET {', '.join(updates)} WHERE category = ? AND key = ?",
+                params,
+            )
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
     
     def update_memory(self, memory_id: int, value: str = None, importance: int = None) -> bool:
         """Update an existing memory."""
         cursor = self.conn.cursor()
+        existing = cursor.execute(
+            "SELECT category, key FROM knowledge_base WHERE id = ?",
+            (memory_id,),
+        ).fetchone()
+        if not existing:
+            return False
         
         updates = []
         params = []
@@ -295,8 +355,16 @@ class MemoryDB:
         query = f"UPDATE knowledge_base SET {', '.join(updates)} WHERE id = ?"
         cursor.execute(query, params)
         self.conn.commit()
-        
-        return cursor.rowcount > 0
+        updated = cursor.rowcount > 0
+        if updated:
+            self._update_matching_memory_in_sibling(
+                existing["category"],
+                existing["key"],
+                value=value,
+                importance=importance,
+            )
+
+        return updated
     
     def forget(self, memory_id: int) -> bool:
         """Delete a memory."""

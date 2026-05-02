@@ -1,6 +1,7 @@
 """Memory API endpoints - CRUD and search for Jarvis memories"""
 
 from fastapi import APIRouter, HTTPException, Query
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -40,6 +41,41 @@ def memory_to_dict(row) -> dict:
             pass
     
     return memory
+
+
+def _sibling_db_path(current_db_path: str) -> Path | None:
+    """Return the sibling DB path for standard cloud/local memory DB names."""
+    path = Path(current_db_path)
+    if path.name == "jarvis_memory.db":
+        return path.with_name("jarvis_memory_local.db")
+    if path.name == "jarvis_memory_local.db":
+        return path.with_name("jarvis_memory.db")
+    return None
+
+
+def _delete_matching_memory_from_sibling(current_db_path: str, category: str, key: str) -> int:
+    """
+    Delete the equivalent logical memory from the sibling DB by category+key.
+
+    Safety:
+    - Skips if sibling DB does not exist
+    - Does not create missing DBs on fresh installs
+    """
+    sibling_path = _sibling_db_path(current_db_path)
+    if not sibling_path or not sibling_path.exists():
+        return 0
+
+    conn = sqlite3.connect(str(sibling_path))
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM knowledge_base WHERE category = ? AND key = ?",
+            (category, key),
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
 
 
 # ============================================
@@ -370,10 +406,21 @@ async def delete_memory(memory_id: int):
     """Delete a memory (forget it)"""
     try:
         db = get_db()
+        row = db.conn.execute(
+            "SELECT category, key FROM knowledge_base WHERE id = ?",
+            (memory_id,),
+        ).fetchone()
         success = db.forget(memory_id)
         
         if not success:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+
+        if row:
+            _delete_matching_memory_from_sibling(
+                str(db.db_path),
+                row["category"],
+                row["key"],
+            )
         
         return MemoryResponse(
             ok=True,

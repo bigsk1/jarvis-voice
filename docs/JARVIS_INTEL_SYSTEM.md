@@ -79,6 +79,10 @@ Create a file in `jarvis-intel/`:
 python3 skills/ingest_intel.py '{}'
 ```
 
+**Memory UI**:
+- `Ingest All` runs the selected mode first, then the sibling DB sequentially if that DB already exists
+- sibling-mode failures are surfaced as warnings; current-mode success is preserved
+
 ### 3. Use the Information
 
 Jarvis can now recall the facts via memory search:
@@ -99,6 +103,11 @@ Jarvis can now recall the facts via memory search:
 5. **Extract facts** — Parse key-value pairs, bullets, headers, and text sections
 6. **Save to memory** — Store in `knowledge_base` table with importance 8, auto-categorized
 7. **Update hash** — Store new hash for tracking
+
+Mode behavior:
+- direct `ingest_intel` updates only the current mode DB
+- `manage_intel` with `auto_ingest=true` and Memory UI `Ingest All` run current mode first, then sibling DB if it exists
+- status/toast counts are totals across the modes that actually ran
 
 ### Fact Extraction Patterns
 
@@ -267,6 +276,13 @@ Jarvis can also manage files via the `manage_intel` tool:
 sqlite3 data/jarvis_memory.db "SELECT key, value FROM knowledge_base WHERE key LIKE 'intel_hash_%'"
 ```
 
+### Check Cloud/Local Drift
+
+```bash
+./bin/check-memory-sync-health.py
+./bin/check-memory-sync-health.py --json
+```
+
 ### Semantic Search
 
 ```python
@@ -293,6 +309,9 @@ Ingestion works in both modes with separate databases:
 | Local | `data/jarvis_memory_local.db` | `./orchestrator/orchestrator_v2.py local "ingest intel"` |
 
 Each database maintains independent hash tracking. Running ingest in either mode only affects that mode's database.
+
+Exception:
+- `manage_intel` with `auto_ingest=true` and Memory UI `Ingest All` intentionally run the sibling DB after the current mode when that sibling DB file already exists
 
 ---
 
@@ -365,4 +384,4 @@ md5sum jarvis-intel/*.md jarvis-intel/*.txt 2>/dev/null
 
 ---
 
-**Last Updated**: 2026-02-10
+**Last Updated**: 2026-05-01
