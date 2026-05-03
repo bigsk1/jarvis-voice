@@ -836,6 +836,7 @@ class XAIProvider(LLMProvider):
         # TODO: Client and server side can be used together
         # https://docs.x.ai/docs/guides/tools/overview#server-side-tool-call-and-client-side-tool-call
         # https://grok.com/share/bGVnYWN5_adaeb9ed-6b5c-4338-90ff-c5fbcfab321f
+        # See xai function calling  https://docs.x.ai/developers/tools/function-calling
 
         # Check if messages contain tool results (xAI SDK doesn't support this)
         has_tool_results = any(msg.get("role") == "tool" for msg in messages)

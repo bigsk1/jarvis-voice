@@ -2553,9 +2553,10 @@ Your synthesized response:"""
                 }
             }
             lines = [
-                "=== RELEVANT STORED KNOWLEDGE (use this without calling search_memory tools) ===",
+                "=== RELEVANT STORED KNOWLEDGE (use directly when relevant) ===",
                 "Lines tagged pinned_pref are address/tone preferences (e.g. call me sir)—honor those over your defaults when they apply.",
                 "Other lines are semantic matches for this query (not necessarily instructions); use when relevant and ignore if off-topic or stale.",
+                "If this block already answers the question, use it directly. Call search_memory or semantic_recall only if you need broader recall than what is shown here.",
                 "Freshness note: For live market/weather questions, newer live tool calls outrank older stored memory.",
                 f"Higher rank = stronger fit. embed = cosine; rank = similarity after recency (semantic rows need adjusted rank ≥ {threshold:.2f}).",
                 ""
