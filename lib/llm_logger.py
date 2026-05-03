@@ -64,6 +64,7 @@ class LLMLogger:
             user_query: Original user query (if available)
             error: Error message (if call failed)
         """
+        provider_route = (routing_provenance or {}).get("provider_route", {}) if routing_provenance else {}
         log_entry = {
             "timestamp": datetime.now().isoformat(),
             "mode": mode,
@@ -79,6 +80,14 @@ class LLMLogger:
             "output_tokens": usage_info.get("output_tokens") if usage_info else None,
             "total_tokens": usage_info.get("total_tokens") if usage_info else None,
             "cost_usd": usage_info.get("cost_usd") if usage_info else None,
+            "cached_prompt_text_tokens": usage_info.get("cached_prompt_text_tokens") if usage_info else None,
+            "xai_cached_prompt_text_tokens": usage_info.get("cached_prompt_text_tokens") if usage_info else None,
+            "reasoning_tokens": usage_info.get("reasoning_tokens") if usage_info else None,
+            "xai_continuation_mode": provider_route.get("xai_continuation_mode"),
+            "xai_continuation_fallback_reason": provider_route.get("xai_continuation_fallback_reason"),
+            "xai_previous_response_id_present": provider_route.get("xai_previous_response_id_present"),
+            "xai_previous_response_id_used": provider_route.get("xai_previous_response_id_used"),
+            "provider_messages_shape": provider_route.get("provider_messages_shape"),
             
             # xAI native search usage (web_search, x_search)
             "xai_search_calls": sum(usage_info.get("server_side_tools", {}).values()) if usage_info else 0,

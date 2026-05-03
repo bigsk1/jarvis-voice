@@ -10,7 +10,7 @@
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
-- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search, native TTS, 10-15x cheaper!) ⭐ RECOMMENDED
+- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search/TTS, in-flight tool continuation) ⭐ RECOMMENDED
 
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.10** (Completion Guard eval overrides, Ollama cloud judge fixes, tightened auto-repair behavior, server logs) ⭐ ENHANCED
@@ -315,6 +315,14 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-05-03:**
+- ✅ **xAI SDK client-tool routing + in-flight continuation**
+  - xAI SDK path now handles Jarvis client-side tools even when xAI server-side tools are disabled for a turn.
+  - `XAI_STORE_MESSAGES=true` + `XAI_NATIVE_CONTINUATION=true` can link in-flight Jarvis tool loops with `previous_response_id` and structural `tool_result(...)`.
+  - Saved Web UI follow-ups still use Jarvis recent conversation context and follow-up extraction; persisted xAI response IDs across web turns are a future option.
+  - OpenAI-compatible xAI chat completions remains the fallback when the SDK path is unavailable or fails outside stored-continuation turns.
+  - See: [`docs/XAI_PROVIDER.md`](XAI_PROVIDER.md), [`docs/CONVERSATION_STATE_ARCHITECTURE.md`](CONVERSATION_STATE_ARCHITECTURE.md)
 
 **2026-04-28:**
 - ✅ **`crypto_chart` tool + price chart API** - Native CoinGecko historical series for price, market cap, and volume
@@ -1572,6 +1580,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-04-28
-**Latest:** native `crypto_chart`, inline SVG chart rendering in Jarvis Web and Canvas, auth-safe Canvas chart proxying, and follow-up grounding that prioritizes structured `tool_results`
+**Last Updated:** 2026-05-03
+**Latest:** xAI SDK client-tool routing, in-flight `previous_response_id` tool continuation, OpenAI-compatible fallback preservation, and updated provider-state documentation
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

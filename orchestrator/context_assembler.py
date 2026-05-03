@@ -412,7 +412,21 @@ class ContextAssembler:
                     self.build_llm_result_context_preview(tool_name, result)
                 )
 
-            context_parts.append(f"\n{i}. {tool_name}")
+            context_parts.append(f"\n{i}. Tool result #{i}: {tool_name}")
+            arguments = ctx.get("arguments", {}) if isinstance(ctx, dict) else {}
+            if arguments:
+                args_preview = self.truncate_preview_text(
+                    json.dumps(self.build_preview_value(arguments, parent_key="arguments"), default=str, separators=(",", ":")),
+                    1200,
+                )
+                context_parts.append(f"   Arguments: {args_preview}")
+            provider_ids = []
+            if meta.get("xai_response_id"):
+                provider_ids.append(f"xai_response_id={meta['xai_response_id']}")
+            if meta.get("xai_tool_call_id"):
+                provider_ids.append(f"xai_tool_call_id={meta['xai_tool_call_id']}")
+            if provider_ids:
+                context_parts.append(f"   Provider ids: {', '.join(provider_ids)}")
             context_parts.append(
                 "   Freshness: "
                 f"executed_at={executed_at_local or executed_at_iso or 'unknown'}, "
@@ -480,6 +494,114 @@ class ContextAssembler:
             context_parts.append("\n⚠️ NEWS REQUESTED: The user asked for news. Use your NATIVE SEARCH capability to get current news headlines. DO NOT call external search tools - use your built-in web search to find 3-5 relevant news headlines and include them in your response.")
 
         return "\n".join(context_parts)
+
+    def build_provider_tool_result_message(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        tool_call_id: str | None = None,
+        duration_ms: int | None = None,
+        max_chars: int = 6000,
+    ) -> tuple[str, dict[str, Any]]:
+        """Build a bounded provider-facing tool result without mutating canonical state."""
+        max_chars = max(800, int(max_chars or 6000))
+        result_summary, result_chars_total, result_chars_shown, result_truncated = (
+            self.build_llm_result_context_preview(tool_name, result)
+        )
+        args_preview = self.truncate_preview_text(
+            json.dumps(
+                self.build_preview_value(arguments or {}, parent_key="arguments"),
+                default=str,
+                separators=(",", ":"),
+            ),
+            max(120, min(1200, max_chars // 4)),
+        )
+        metadata = {
+            "ok": bool(result.get("ok", True)) if isinstance(result, dict) else False,
+            "result_truncated": result_truncated,
+            "result_chars_shown": result_chars_shown,
+            "result_chars_total": result_chars_total,
+        }
+        if duration_ms is not None:
+            metadata["duration_ms"] = duration_ms
+
+        header = [
+            "Jarvis tool result",
+            f"Tool: {tool_name}" + (f" (call_id: {tool_call_id})" if tool_call_id else ""),
+            f"Arguments: {args_preview}",
+            f"Status: {'ok' if metadata['ok'] else 'error'}",
+        ]
+        if duration_ms is not None:
+            header.append(f"Duration: {duration_ms} ms")
+        header.append(
+            "Result Meta: "
+            f"result_truncated={metadata['result_truncated']}, "
+            f"result_chars_shown={metadata['result_chars_shown']}, "
+            f"result_chars_total={metadata['result_chars_total']}"
+        )
+        header.append("Result:")
+        prefix = "\n".join(header) + "\n"
+        available = max_chars - len(prefix)
+        if available <= 160:
+            payload = {
+                "preview_notice": "Result omitted because metadata consumed the provider result budget.",
+                "result_truncated": True,
+            }
+            rendered = json.dumps(payload, default=str, separators=(",", ":"))
+            metadata["result_truncated"] = True
+            metadata["result_chars_shown"] = len(rendered)
+            return prefix + rendered, metadata
+
+        try:
+            parsed_summary = json.loads(result_summary)
+            rendered = json.dumps(
+                {
+                    "result": parsed_summary,
+                    "result_truncated": metadata["result_truncated"],
+                },
+                indent=2,
+                default=str,
+            )
+            if len(rendered) <= available:
+                metadata["result_chars_shown"] = len(rendered)
+                return prefix + rendered, metadata
+        except Exception:
+            pass
+
+        # Keep the Result block valid JSON even when the preview has to shrink.
+        # The previous text context can still carry richer previews; this string
+        # is only for provider-native tool_result(...) continuation.
+        preview_budget = max(80, available - 180)
+        while preview_budget >= 40:
+            payload = {
+                "result_preview_text": self.truncate_preview_text(result_summary, preview_budget),
+                "result_truncated": True,
+                "preview_notice": (
+                    "Provider-facing result preview shortened to fit budget; "
+                    "Jarvis retains the full canonical tool result locally."
+                ),
+            }
+            rendered = json.dumps(payload, default=str, separators=(",", ":"))
+            if len(rendered) <= available:
+                metadata["result_truncated"] = True
+                metadata["result_chars_shown"] = len(rendered)
+                return prefix + rendered, metadata
+            preview_budget = preview_budget // 2
+
+        rendered = json.dumps(
+            {
+                "result_preview_text": "",
+                "result_truncated": True,
+                "preview_notice": "Provider-facing result preview omitted to fit budget.",
+            },
+            default=str,
+            separators=(",", ":"),
+        )
+        metadata["result_truncated"] = True
+        metadata["result_chars_shown"] = len(rendered)
+        return prefix + rendered, metadata
 
     def tool_context_max_chars(self, tool_name: str) -> int:
         lowered = (tool_name or "").lower()

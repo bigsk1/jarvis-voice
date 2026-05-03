@@ -101,11 +101,12 @@ BAD EXAMPLES:
 
 Your response:"""
 
-            text_response, _, _ = self.provider.chat_with_tools(
+            provider_result = self.provider.chat_with_tools(
                 messages=[{"role": "user", "content": context}],
                 tools=[],
                 system_prompt="You are a voice assistant. Output a concise response, MAX 35 words. No greetings, no explanations.",
             )
+            text_response = provider_result[0] if provider_result else None
 
             if text_response and not self.looks_like_provider_error_text(text_response):
                 return text_response

@@ -21,13 +21,13 @@ Understanding how Jarvis handles conversation state between interactions is crit
 **A:** WebUI maintains conversation history client-side and passes it directly to the orchestrator via `conversation_history` parameter - different from terminal auto-context.
 
 **Q: Isn't that inefficient? It has to re-send the system prompt and all tools every time?**  
-**A: No - Prompt caching makes this efficient:**
-- ✅ **Prompt caching** (Anthropic, OpenAI) - system prompt cached for 5+ minutes
-- ✅ **Auto-context** now provides conversation continuity
-- ✅ **98%+ cost reduction** due to caching
+**A: Usually no. Prompt caching and provider-specific continuation reduce the pain:**
+- ✅ **Prompt caching** (Anthropic, OpenAI, xAI when cache hits apply) - system/tool prompts can be discounted
+- ✅ **Auto-context** provides conversation continuity from Jarvis' own saved state
+- ✅ **xAI in-flight continuation** can avoid resending the same Jarvis tool result during one multi-tool request
 
 **Q: What about OpenAI's Responses API with `store=True` and `previous_response_id`?**  
-**A:** Not implemented. Auto-context provides similar benefits without provider lock-in.
+**A:** OpenAI Responses continuation is not implemented. xAI has a narrower provider-native continuation path for in-flight Jarvis tool loops only. Saved Web UI follow-ups still use Jarvis local context and follow-up extraction.
 
 ---
 
@@ -257,21 +257,20 @@ AUTO_CONTEXT_MINUTES=10
 
 ---
 
-### 6. OpenAI Responses API (Not Implemented, image gen only 2-3-26)
+### 6. Provider-side response continuation
 
-**What You're Referring To:**
+**The general pattern:**
 ```python
-# OpenAI Responses API (NEW, not currently used)
 res1 = client.responses.create(
     model="gpt-5",
     input="What is the capital of France?",
-    store=True  # ← Store this conversation
+    store=True
 )
 
 res2 = client.responses.create(
     model="gpt-5",
     input="And its population?",
-    previous_response_id=res1.id,  # ← Link to previous response
+    previous_response_id=res1.id,
     store=True
 )
 ```
@@ -281,22 +280,28 @@ res2 = client.responses.create(
 - ✅ **Server-side state** - OpenAI stores the conversation history
 - ✅ **Seamless multi-turn** - No need to re-send full history
 
-**Why Not Implemented:**
+**Current Jarvis status:**
+
+- **OpenAI Responses API:** not wired for chat/tool routing. OpenAI still uses the existing provider path.
+- **xAI SDK stored continuation:** wired only for in-flight Jarvis client-side tool loops. After Grok asks for a Jarvis tool and Jarvis executes it, the next router turn can send `previous_response_id` plus a structural `tool_result(...)`.
+- **Saved Web UI follow-ups:** do not pass persisted provider `previous_response_id` yet. They use Jarvis recent conversation context plus compact structured follow-up data from `followup_extractor.py`.
+
+**Why cross-request continuation is not the default yet:**
 
 1. **Major Refactor Required**
-   - Current implementation uses Chat Completions API
-   - `llm_provider.py` would need rewrite
-   - Orchestrator would need response ID tracking
-   - Cross-cycle state management needed
+   - The web conversation layer would need to persist provider response ids with provider, model, alias, timestamps, and expiry.
+   - The orchestrator would need rules for when a same-conversation follow-up should trust provider state, when to ignore it, and when to fall back to local context.
 
 2. **Provider Compatibility**
-   - Responses API is OpenAI-specific
+   - OpenAI Responses continuation is OpenAI-specific
+   - xAI stored continuation is SDK-specific and time-limited
    - Anthropic doesn't have equivalent
    - Ollama doesn't support it
    - Would fragment code into provider-specific paths
 
 3. **Cost/Benefit**
    - Prompt caching already makes current approach efficient
+   - Jarvis local follow-up extraction is provider-neutral and inspectable
    - Added complexity may not justify benefit
    - Current approach works well for voice UX
 

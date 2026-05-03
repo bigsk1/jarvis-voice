@@ -555,6 +555,9 @@ class XAIProvider(LLMProvider):
     def _build_xai_server_tools(self):
         """Build list of xAI server-side tools based on config."""
         from xai_sdk.tools import web_search, x_search, code_execution
+
+        if self._xai_env_bool("XAI_DISABLE_SERVER_SIDE_TOOLS", False):
+            return []
         
         # Read config for fine-grained control
         enable_code = os.environ.get('XAI_CODE_EXECUTION', 'true').lower() == 'true'
@@ -924,6 +927,19 @@ class XAIProvider(LLMProvider):
             payload["tool_call_id"] = tool_call_id
         return payload
 
+    @staticmethod
+    def _is_xai_previous_response_error(exc: Exception) -> bool:
+        """Detect stored-state misses so Jarvis can retry with local text context."""
+        text = str(exc).lower()
+        markers = (
+            "previous_response_not_found",
+            "previous response not found",
+            "previous_response_id",
+            "response id not found",
+            "stored conversation",
+        )
+        return any(marker in text for marker in markers)
+
     def _extract_xai_sdk_usage(self, response: Any) -> dict[str, Any] | None:
         """Extract xAI SDK usage, preferring server-reported cost when available."""
         usage = getattr(response, "usage", None)
@@ -987,6 +1003,7 @@ class XAIProvider(LLMProvider):
         feeds previous tool results as plain text, but direct callers can now
         keep the native xAI SDK path for hybrid multi-turn conversations.
         """
+        use_continuation = False
         try:
             from xai_sdk.chat import user, system as sys_msg, assistant, tool_result
             from xai_sdk.tools import get_tool_call_type
@@ -1008,6 +1025,12 @@ class XAIProvider(LLMProvider):
                 force_serial_tool_calls=True,
                 previous_response_id=previous_response_id,
             )
+            if os.environ.get('JARVIS_DEBUG') and use_continuation:
+                print(
+                    "DEBUG: xAI using stored continuation with "
+                    f"previous_response_id={previous_response_id[:16]}...",
+                    file=sys.stderr,
+                )
 
             chat = self.xai_client.chat.create(**create_kwargs)
             
@@ -1045,16 +1068,29 @@ class XAIProvider(LLMProvider):
             # Check for client-side tool calls (our custom tools)
             # Server-side tools (web_search, x_search) are handled automatically by xAI
             if hasattr(response, 'tool_calls') and response.tool_calls:
-                for tc in response.tool_calls:
-                    tool_type = get_tool_call_type(tc)
-                    
-                    # Only return client-side tool calls for us to execute
-                    if tool_type == "client_side_tool":
-                        payload = self._xai_tool_call_payload(tc)
-                        response_id = getattr(response, "id", None)
-                        if response_id:
-                            payload["response_id"] = response_id
-                        return None, payload, usage_info, None
+                client_side_tool_calls = [
+                    tc for tc in response.tool_calls
+                    if get_tool_call_type(tc) == "client_side_tool"
+                ]
+                if len(client_side_tool_calls) > 1:
+                    names = [
+                        getattr(getattr(tc, "function", None), "name", "unknown")
+                        for tc in client_side_tool_calls
+                    ]
+                    print(
+                        "WARNING: xAI returned multiple client-side tool calls; "
+                        f"Jarvis executes one per router turn, taking first deterministically: {names}",
+                        file=sys.stderr,
+                    )
+                if client_side_tool_calls:
+                    tc = client_side_tool_calls[0]
+                    payload = self._xai_tool_call_payload(tc)
+                    response_id = getattr(response, "id", None)
+                    if response_id:
+                        payload["response_id"] = response_id
+                    if len(client_side_tool_calls) > 1:
+                        payload["additional_tool_call_count"] = len(client_side_tool_calls) - 1
+                    return None, payload, usage_info, None
             
             # No client-side tool calls - return the response
             # (may include results from server-side search tools)
@@ -1073,6 +1109,14 @@ class XAIProvider(LLMProvider):
             print(f"xAI SDK error: {e}", file=sys.stderr)
             if os.environ.get('JARVIS_DEBUG'):
                 traceback.print_exc()
+            if use_continuation:
+                if self._is_xai_previous_response_error(e):
+                    print(
+                        "xAI stored continuation expired/not found; retrying with text context",
+                        file=sys.stderr,
+                    )
+                    return "Error: previous_response_not_found", None, None, None
+                return f"Error: xAI stored continuation failed: {str(e)}", None, None, None
             # Fallback to OpenAI SDK without search
             print("Falling back to OpenAI SDK without search", file=sys.stderr)
             return self._chat_with_tools_openai_sdk(messages, tools, system_prompt, enable_thinking)

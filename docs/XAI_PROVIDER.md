@@ -329,6 +329,13 @@ XAI_SEARCH=true
 # Optional xAI SDK continuation knobs
 # Store response state server-side for SDK previous_response_id workflows.
 # XAI_STORE_MESSAGES=false
+# Experimental native Jarvis tool continuation. Off by default; requires
+# XAI_STORE_MESSAGES=true, XAI_SEARCH=true, and a working xai-sdk client.
+# XAI_NATIVE_CONTINUATION=false
+# XAI_CONTINUATION_CONTEXT_MODE=structural
+# XAI_CONTINUATION_RESULT_MAX_CHARS=6000
+# XAI_CONTINUATION_DELTA_MESSAGE=false
+# XAI_PREVIOUS_RESPONSE_MAX_AGE_DAYS=25
 # Include encrypted reasoning state for zero-data-retention continuation workflows.
 # XAI_USE_ENCRYPTED_CONTENT=false
 # Jarvis currently executes one client-side tool call at a time; override only
@@ -350,7 +357,7 @@ XAI_TTS_STYLE_TAGS_ENABLED=true
 
 `XAI_SERVER_SIDE_MAX_TOOL_TURNS` caps xAI's internal server-side agent loop for a single `chat.sample()` call and is also used as Jarvis's total native-search budget for the user request unless `XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST` is set. This prevents native web/X search calls from multiplying across many Jarvis router turns while still allowing xAI to spend the budget adaptively on the synthesis turn that needs it.
 
-The provider supports OpenAI-style `assistant.tool_calls` plus `role="tool"` messages on the xAI SDK path. When `XAI_STORE_MESSAGES=true`, Jarvis preserves xAI `response_id` values from successful tool-routing calls and passes them back as `previous_response_id` on later router turns. The main multi-tool orchestrator still summarizes prior tool results into the next routing prompt, so the next deeper continuation step is to pass structural `tool_result(...)` messages from the orchestrator instead of only text summaries.
+The provider supports OpenAI-style `assistant.tool_calls` plus `role="tool"` messages on the xAI SDK path. When `XAI_STORE_MESSAGES=true`, `XAI_NATIVE_CONTINUATION=true`, `XAI_SEARCH=true`, and the xAI SDK client initializes successfully, Jarvis can pass the successful Jarvis tool result back as a structural `tool_result(...)` linked to xAI's preserved `tool_call_id` and `previous_response_id`. Current scope is in-flight Jarvis tool orchestration inside one user request. Saved web-conversation follow-ups still use Jarvis' local recent-context and follow-up extraction path, not a persisted xAI `previous_response_id`.
 
 ### Testing
 
@@ -675,21 +682,23 @@ This entry captures the exact current state so future work can resume without re
 - `previous_response_id` is sent to xAI only when both conditions are true: a response id exists and `XAI_STORE_MESSAGES=true`.
 - `_chat_with_tools_xai_sdk(...)` uses the same stored-continuation condition to skip re-adding the routing system prompt. When `previous_response_id` is active, xAI prepends the stored conversation, including the original system prompt, server-side.
 - `orchestrator/router_v2.py` accepts `previous_response_id`, forwards it to the provider, and copies `id`, `tool_call_id`, and `response_id` from provider tool calls onto the route dict.
-- `orchestrator/orchestrator_v2.py` reads and forwards `xai_previous_response_id` only when provider is xAI and `XAI_STORE_MESSAGES=true`.
-- The orchestrator promotes `xai_previous_response_id` only after a Jarvis client-side tool runs successfully. Duplicate-guard blocks and failed tool executions do not advance the continuation handle.
+- `orchestrator/orchestrator_v2.py` stores xAI continuation metadata after a Jarvis client-side tool runs successfully, then sends the next in-flight turn as `previous_response_id` plus a structural `tool_result(...)`.
+- The orchestrator promotes continuation only after successful Jarvis tool execution. Duplicate-guard blocks and failed tool executions do not advance the continuation handle.
+- When a UI/client-side search hint disables xAI server-side tools, Jarvis keeps the xAI SDK path active for Jarvis tools and suppresses only xAI native server tools for that call.
 - `XAI_PARALLEL_TOOL_CALLS` is optional. By default, xAI tool-routing calls force `parallel_tool_calls=False` because Jarvis executes one client-side tool call at a time.
 
 **Default behavior with current config:**
 
 - With `XAI_STORE_MESSAGES=false`, no `previous_response_id` is sent, `store_messages` is not enabled, and the system prompt is always added normally.
 - With `XAI_SEARCH=false`, xAI uses the OpenAI-compatible Chat Completions path and ignores `previous_response_id`.
-- Existing Q&A, single-tool, multi-tool, image, and video flows still rely on Jarvis' normal text-based multi-turn context assembly. The executor and media tool paths were not changed.
+- Direct Q&A turns still use the normal provider message path. Jarvis does not persist xAI `previous_response_id` across saved web-conversation turns yet.
+- Single-tool and multi-tool Jarvis turns can use xAI stored continuation while the user request is still in flight. Later user follow-ups are grounded by Jarvis' saved conversation context and follow-up extractor.
 
 **Known gaps / edge cases:**
 
-- With `XAI_STORE_MESSAGES=true`, later turns may contain duplicated semantic context because xAI has the stored thread and Jarvis still sends summarized `_build_turn_context(...)` text.
-- The SDK fallback to OpenAI-compatible xAI drops continuation handles for that fallback call. Keep this for reliability unless logs show it creates worse recovery behavior than the SDK failure itself.
-- Full xAI-native hybrid parity is not complete yet. The provider can accept structural tool-result histories, but the main orchestrator still mostly sends prior Jarvis tool results as plain text rather than assistant `tool_calls` plus `tool_result(...)` messages.
+- xAI stored continuation is scoped to one in-flight Jarvis request. If the user comes back later in the same web conversation, Jarvis sends local follow-up context again rather than `previous_response_id`.
+- The SDK fallback to OpenAI-compatible xAI drops continuation handles for that fallback call. For stored-continuation failures, Jarvis asks the orchestrator to retry with local text context instead of feeding structural tool results to the fallback path.
+- Persisting xAI response IDs in saved web conversations could be useful later, especially for "same conversation id, continue this task" flows. That should be gated by provider/model, expiry, model alias, and local-context fallback.
 - `use_encrypted_content=True` is exposed but not yet wired as a true zero-data-retention continuation strategy. That would require preserving/appending previous xAI `Response` objects or encrypted content through the orchestrator path.
 
 **Verification run after this cleanup:**
@@ -706,12 +715,10 @@ Expected result from the last run: `8 passed`.
 
 Detailed implementation plan: [xAI Native Continuation Implementation Plan](XAI_NATIVE_CONTINUATION_PLAN.md).
 
-1. Add structural xAI continuation in the orchestrator: store the assistant tool call metadata and the executed Jarvis tool result in `conversation_context`, then pass those as an assistant `tool_calls` message plus a `role="tool"` / `tool_result(...)` message on the next xAI SDK call.
-2. Once structural `tool_result(...)` is active, trim or bypass redundant `_build_turn_context(...)` text for xAI stored-continuation turns so Grok 4.3 does not see the same tool result twice.
-3. Test `XAI_STORE_MESSAGES=true` cautiously with Grok 4.3 on multi-tool tasks that previously looped or hit duplicate guards. Compare total latency, native server-side tool counts, duplicate-guard frequency, and response quality against `XAI_STORE_MESSAGES=false`.
-4. Consider disabling xAI server-side tools on duplicate-recovery turns even when the native-search budget remains, so recovery focuses on existing results instead of fresh server-side searching.
-5. If xAI SDK/gRPC failures still happen often, keep the OpenAI-compatible fallback but log when continuation is dropped so failures are visible.
-6. Later, evaluate `use_encrypted_content=True` as the ZDR-friendly continuation path. Do this separately from `store_messages=True` because the state model is different.
+1. Keep testing `XAI_STORE_MESSAGES=true` with Grok 4.3 on multi-tool tasks that previously looped or hit duplicate guards. Compare latency, native server-side tool counts, duplicate-guard frequency, and response quality against `XAI_STORE_MESSAGES=false`.
+2. If xAI SDK/gRPC failures still happen often, keep the OpenAI-compatible fallback and watch logs for when continuation is dropped or retried as local text context.
+3. Consider a later saved-web-turn continuation layer: store xAI response IDs for eligible xAI/Grok turns, pass them on same-conversation follow-ups when fresh enough, and keep Jarvis' local follow-up data as fallback.
+4. Later, evaluate `use_encrypted_content=True` as the ZDR-friendly continuation path. Do this separately from `store_messages=True` because the state model is different.
 
 I’d think of it as three layers:
 
@@ -726,9 +733,11 @@ conversation_context, tools_used, accumulated_data, _tool_trace, usage, completi
 Jarvis still owns the truth of what happened.
 
 Provider-native continuation
-This is the new narrow layer:
+This is the narrow provider layer:
 xAI gets previous_response_id, assistant tool_call_id, and a structural tool_result(...) so Grok can connect:
 “I requested tool X” → “Jarvis executed X” → “this is the result.”
+
+Current scope: this applies only while one Jarvis user request is still running. It does not yet persist xAI response IDs across saved web-conversation follow-ups.
 
 The thing to clip is not auto memory or intelligence. It is the repeated full text version of the tool result inside _build_turn_context(...) when xAI already has that same tool call/result structurally.
 

@@ -10,7 +10,7 @@ import time
 import re
 from pathlib import Path
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 # Add lib to path
@@ -29,7 +29,7 @@ from model_catalog import get_provider_fallback_model
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
 
-from router_v2 import LLMRouter
+from router_v2 import LLMRouter, ProviderRouteInput
 from context_assembler import ContextAssembler
 from response_formatter import ResponseFormatter
 from executor import ToolExecutor
@@ -387,6 +387,36 @@ class Orchestrator:
         }
         return ttl_map.get(tool_name)
 
+    @staticmethod
+    def _config_bool(name: str, default: bool = False) -> bool:
+        value = str(get_config_value(name, str(default))).strip().lower()
+        return value in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _config_int(name: str, default: int) -> int:
+        try:
+            return int(str(get_config_value(name, str(default))).strip())
+        except (TypeError, ValueError):
+            return default
+
+    def _xai_native_continuation_allowed(self) -> bool:
+        provider = getattr(getattr(self, "router", None), "provider", None)
+        return (
+            getattr(self.router, "provider_type", "") == "xai"
+            and self._config_bool("XAI_SEARCH", False)
+            and self._config_bool("XAI_STORE_MESSAGES", False)
+            and self._config_bool("XAI_NATIVE_CONTINUATION", False)
+            and bool(getattr(provider, "enable_search", False))
+            and bool(getattr(provider, "xai_client", None))
+            and str(get_config_value("XAI_CONTINUATION_CONTEXT_MODE", "structural")).strip().lower() == "structural"
+        )
+
+    def _xai_provider_result_max_chars(self) -> int:
+        return max(800, self._config_int("XAI_CONTINUATION_RESULT_MAX_CHARS", 6000))
+
+    def _xai_previous_response_max_age_days(self) -> int:
+        return max(1, self._config_int("XAI_PREVIOUS_RESPONSE_MAX_AGE_DAYS", 25))
+
     def _safe_iso_to_local_datetime(self, iso_text: str):
         """Parse ISO timestamp string and normalize to local timezone."""
         return safe_iso_to_local_datetime(iso_text, self.timezone)
@@ -435,6 +465,108 @@ class Orchestrator:
         )
         self.response_formatter = formatter
         return formatter
+
+    def _xai_continuation_fallback_reason(self, continuation: dict[str, Any] | None) -> str | None:
+        """Return None when stored xAI continuation metadata is usable for this turn."""
+        if not self._xai_native_continuation_allowed():
+            return "disabled"
+        if not continuation:
+            return "missing_continuation"
+        if continuation.get("provider") != "xai":
+            return "provider_mismatch"
+        if not continuation.get("response_id"):
+            return "missing_response_id"
+        if not continuation.get("tool_call_id"):
+            return "missing_tool_call_id"
+        model = continuation.get("model")
+        current_model = getattr(getattr(self, "router", None), "model_name", None)
+        if not model or not current_model or model != current_model:
+            return "model_mismatch"
+        created_raw = continuation.get("response_created_at_iso")
+        created_dt = self._safe_iso_to_local_datetime(created_raw)
+        if not created_dt:
+            return "missing_response_created_at"
+        max_age = timedelta(days=self._xai_previous_response_max_age_days())
+        if datetime.now(self.timezone) - created_dt > max_age:
+            return "response_id_expired"
+        if not continuation.get("result_message"):
+            return "missing_result_message"
+        return None
+
+    def _build_xai_structural_route_input(
+        self,
+        *,
+        retrieval_query: str,
+        continuation: dict[str, Any],
+    ) -> ProviderRouteInput:
+        messages: list[dict[str, Any]] = [
+            {
+                "role": "tool",
+                "content": continuation["result_message"],
+                "tool_call_id": continuation["tool_call_id"],
+                "id": continuation["tool_call_id"],
+            }
+        ]
+        if self._config_bool("XAI_CONTINUATION_DELTA_MESSAGE", False):
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Continue the original Jarvis request. Use the completed tool result above. "
+                    "Choose the next required tool only if the original request is not complete; "
+                    "otherwise answer directly."
+                ),
+            })
+        return ProviderRouteInput(
+            tool_retrieval_query=retrieval_query,
+            messages=messages,
+            system_prompt=None,
+            previous_response_id=continuation["response_id"],
+            continuation_mode=(
+                "stored_with_delta"
+                if self._config_bool("XAI_CONTINUATION_DELTA_MESSAGE", False)
+                else "stored_structural"
+            ),
+        )
+
+    def _build_xai_provider_continuation(
+        self,
+        *,
+        route: dict[str, Any],
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        duration_ms: int,
+    ) -> dict[str, Any] | None:
+        response_id = route.get("response_id")
+        tool_call_id = route.get("tool_call_id") or route.get("id")
+        if not response_id or not tool_call_id:
+            return None
+        created_at = route.get("response_created_at_iso") or datetime.now(self.timezone).isoformat()
+        created_dt = self._safe_iso_to_local_datetime(created_at) or datetime.now(self.timezone)
+        expires_at = created_dt + timedelta(days=30)
+        safe_until = created_dt + timedelta(days=self._xai_previous_response_max_age_days())
+        result_message, result_meta = self._get_context_assembler().build_provider_tool_result_message(
+            tool_name=tool_name,
+            arguments=arguments,
+            result=result,
+            tool_call_id=tool_call_id,
+            duration_ms=duration_ms,
+            max_chars=self._xai_provider_result_max_chars(),
+        )
+        return {
+            "provider": "xai",
+            "response_id": response_id,
+            "model": route.get("response_model") or getattr(self.router, "model_name", None),
+            "model_alias": get_config_value("XAI_MODEL", getattr(self.router, "model_name", "")),
+            "response_created_at_iso": created_dt.isoformat(),
+            "response_expires_at_iso": expires_at.isoformat(),
+            "safe_until_iso": safe_until.isoformat(),
+            "tool_call_id": tool_call_id,
+            "tool_name": tool_name,
+            "arguments": arguments,
+            "result_message": result_message,
+            "result_meta": result_meta,
+        }
 
     def _format_age_seconds(self, seconds: float | int | None) -> str:
         """Human-friendly age text."""
@@ -847,11 +979,18 @@ Mode: {self.mode}
             and str(get_config_value("XAI_STORE_MESSAGES", "false")).strip().lower()
             in {"1", "true", "yes", "on"}
         )
+        xai_native_continuation_enabled = self._xai_native_continuation_allowed()
         xai_previous_response_id = (
             retry_state.get("xai_previous_response_id")
             if xai_store_messages_enabled
             else None
         )
+        xai_provider_continuation = (
+            retry_state.get("xai_provider_continuation")
+            if xai_store_messages_enabled
+            else None
+        )
+        xai_text_fallback_retry_used = bool(retry_state.get("xai_text_fallback_retry_used"))
         
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
@@ -948,8 +1087,31 @@ Mode: {self.mode}
                     "or answer directly.\n\n"
                     f"{turn_input}"
                 )
+            route_payload: str | ProviderRouteInput = turn_input
+            route_previous_response_id = None
+            continuation_fallback_reason = None
+            if (
+                xai_native_continuation_enabled
+                and turn_num > 0
+                and not blocked_duplicate_calls
+                and not disable_server_side_tools
+            ):
+                continuation_fallback_reason = self._xai_continuation_fallback_reason(xai_provider_continuation)
+                if continuation_fallback_reason is None and xai_provider_continuation:
+                    route_payload = self._build_xai_structural_route_input(
+                        retrieval_query=enhanced_transcript,
+                        continuation=xai_provider_continuation,
+                    )
+                    route_previous_response_id = xai_provider_continuation.get("response_id")
+                elif continuation_fallback_reason and xai_native_continuation_enabled:
+                    # Keep this diagnostic in logs; the provider still receives the normal text fallback.
+                    routing_provenance["xai_continuation_fallback_reason"] = continuation_fallback_reason
+            elif blocked_duplicate_calls and xai_native_continuation_enabled:
+                routing_provenance["xai_continuation_fallback_reason"] = "duplicate_guard_active"
+            elif disable_server_side_tools and xai_native_continuation_enabled:
+                routing_provenance["xai_continuation_fallback_reason"] = "server_side_tools_disabled"
             route = self.router.route(
-                turn_input,
+                route_payload,
                 excluded_tools=excluded_tools,
                 typo_hint_source=transcript,
                 disable_server_side_tools=disable_server_side_tools,
@@ -959,8 +1121,35 @@ Mode: {self.mode}
                     if native_search_remaining is not None and native_search_remaining > 0
                     else None
                 ),
-                previous_response_id=xai_previous_response_id,
+                previous_response_id=route_previous_response_id,
             )
+            if (
+                route.get("intent") == "error"
+                and route_previous_response_id
+                and not xai_text_fallback_retry_used
+                and route.get("xai_continuation_error")
+            ):
+                xai_text_fallback_retry_used = True
+                xai_previous_response_id = None
+                xai_provider_continuation = None
+                routing_provenance["xai_continuation_fallback_reason"] = (
+                    "previous_response_not_found"
+                    if "previous_response" in str(route.get("provider_error_raw", "")).lower()
+                    else "stored_continuation_error"
+                )
+                route = self.router.route(
+                    turn_input,
+                    excluded_tools=excluded_tools,
+                    typo_hint_source=transcript,
+                    disable_server_side_tools=disable_server_side_tools,
+                    routing_provenance=routing_provenance,
+                    server_side_max_tool_turns=(
+                        native_search_remaining
+                        if native_search_remaining is not None and native_search_remaining > 0
+                        else None
+                    ),
+                    previous_response_id=None,
+                )
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)
             
@@ -1257,13 +1446,27 @@ Mode: {self.mode}
                         xai_previous_response_id = route_response_id
                     if route.get("tool_call_id"):
                         tool_meta["xai_tool_call_id"] = route["tool_call_id"]
-                    conversation_context.append({
+                    context_item = {
                         "tool": tool_name,
                         "arguments": arguments,
                         "result": result,  # Store full result, not just data
                         "speech": result.get("speech", ""),
                         "meta": tool_meta
-                    })
+                    }
+                    provider_continuation = None
+                    if xai_store_messages_enabled and route_response_id:
+                        provider_continuation = self._build_xai_provider_continuation(
+                            route=route,
+                            tool_name=tool_name,
+                            arguments=arguments,
+                            result=result,
+                            duration_ms=tool_duration_ms,
+                        )
+                        if provider_continuation:
+                            context_item["provider_continuation"] = provider_continuation
+                            xai_provider_continuation = provider_continuation
+                            xai_previous_response_id = provider_continuation["response_id"]
+                    conversation_context.append(context_item)
 
                     if tool_name == "stash":
                         summary_args, summary_result = self._maybe_auto_summarize_stash_result(
@@ -1360,6 +1563,8 @@ Mode: {self.mode}
                                 "available_tools": available_tools,
                                 "tool_trace": tool_trace,
                                 "xai_previous_response_id": xai_previous_response_id,
+                                "xai_provider_continuation": xai_provider_continuation,
+                                "xai_text_fallback_retry_used": xai_text_fallback_retry_used,
                             }
                         )
                     

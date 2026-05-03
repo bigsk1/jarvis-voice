@@ -43,6 +43,18 @@ class ToolRetrievalSignals:
     notes: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ProviderRouteInput:
+    """Provider-facing route payload decoupled from Tool RAG retrieval text."""
+
+    tool_retrieval_query: str
+    messages: list[dict[str, Any]]
+    system_prompt: str | None
+    previous_response_id: str | None = None
+    continuation_mode: str = "text_fallback"
+    continuation_fallback_reason: str | None = None
+
+
 _REQUEST_BOUNDARY_MARKERS = (
     "\n\nTools executed so far:",
     "\nTools executed so far:",
@@ -573,6 +585,23 @@ def _tool_rag_similarity_threshold(
         return float(raw)
     except (ValueError, TypeError):
         return base
+
+
+def _provider_message_shape(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize provider messages without logging content."""
+    by_role: dict[str, int] = {}
+    for msg in messages or []:
+        role = str(msg.get("role", "unknown"))
+        by_role[role] = by_role.get(role, 0) + 1
+    return {
+        "count": len(messages or []),
+        "roles": by_role,
+        "has_tool_result": bool(by_role.get("tool")),
+        "has_assistant_tool_calls": any(
+            msg.get("role") == "assistant" and bool(msg.get("tool_calls"))
+            for msg in messages or []
+        ),
+    }
 
 
 class LLMRouter:
@@ -1215,7 +1244,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
     
     def route(
         self,
-        transcript: str,
+        transcript: str | ProviderRouteInput,
         excluded_tools: list = None,
         typo_hint_source: str | None = None,
         disable_server_side_tools: bool = False,
@@ -1242,10 +1271,37 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             }
         """
         self._excluded_tools = excluded_tools or []
+        if isinstance(transcript, ProviderRouteInput):
+            route_input = transcript
+            transcript_text = route_input.tool_retrieval_query
+            provider_messages = route_input.messages
+            provider_system_prompt = route_input.system_prompt
+            route_previous_response_id = route_input.previous_response_id
+            provider_shape = _provider_message_shape(provider_messages)
+            continuation_meta = {
+                "xai_continuation_mode": route_input.continuation_mode,
+                "xai_continuation_fallback_reason": route_input.continuation_fallback_reason,
+                "xai_previous_response_id_present": bool(route_input.previous_response_id),
+                "xai_previous_response_id_used": bool(route_input.previous_response_id),
+                "provider_messages_shape": provider_shape,
+            }
+        else:
+            transcript_text = transcript
+            provider_messages = [{"role": "user", "content": transcript_text}]
+            provider_system_prompt = self.system_prompt
+            route_previous_response_id = previous_response_id
+            provider_shape = _provider_message_shape(provider_messages)
+            continuation_meta = {
+                "xai_continuation_mode": "text_fallback",
+                "xai_continuation_fallback_reason": None,
+                "xai_previous_response_id_present": bool(previous_response_id),
+                "xai_previous_response_id_used": bool(previous_response_id),
+                "provider_messages_shape": provider_shape,
+            }
         
         # Only print if in interactive mode
         if sys.stdout.isatty():
-            print(f"🧠 Routing with LLM: '{transcript}'")
+            print(f"🧠 Routing with LLM: '{transcript_text}'")
         
         # DYNAMIC TOOL RETRIEVAL (The "Tool RAG" System)
         # Instead of loading all tools, we find only the relevant ones
@@ -1259,10 +1315,10 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         # full transcript, but embeddings use a compact task-shaped query plus
         # structured exact tool signals from hints/intelligence.
         enabled_tool_names = list(self.registry.tools.keys())
-        tool_signals = build_tool_retrieval_signals(transcript, enabled_tool_names)
+        tool_signals = build_tool_retrieval_signals(transcript_text, enabled_tool_names)
         tool_search_query = tool_signals.query
         tool_sim_threshold = _tool_rag_similarity_threshold(
-            transcript,
+            transcript_text,
             tool_search_query,
             tool_signals.source,
         )
@@ -1352,7 +1408,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         logger.info(f"[TOOL_RAG] Tool search query: {tool_search_query}")
         logger.info(
             f"[TOOL_RAG] similarity_threshold={tool_sim_threshold:.4f} "
-            f"(source={tool_signals.source}, full_transcript_embedding={tool_search_query == transcript})"
+            f"(source={tool_signals.source}, full_transcript_embedding={tool_search_query == transcript_text})"
         )
         if signal_meta.get("positive") or signal_meta.get("negative") or signal_meta.get("conflicted"):
             logger.info(f"[TOOL_RAG] signal_meta={signal_meta}")
@@ -1376,7 +1432,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             mode=self.mode,
             provider=getattr(self, "provider_type", "unknown"),
             model=getattr(self, "model_name", "unknown"),
-            transcript=transcript,
+            transcript=transcript_text,
             query=tool_search_query,
             threshold=tool_sim_threshold,
             retrieval_limit=retrieval_limit,
@@ -1392,9 +1448,6 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             tool_schema_top=schema_payload["top"],
         )
         
-        # Send to LLM
-        messages = [{"role": "user", "content": transcript}]
-        
         try:
             # Check if thinking mode is enabled
             sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -1408,23 +1461,26 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             import time
             llm_start_time = time.time()
             
-            previous_enable_search = getattr(self.provider, "enable_search", None)
             previous_max_tool_turns = os.environ.get("XAI_SERVER_SIDE_MAX_TOOL_TURNS")
-            if disable_server_side_tools and previous_enable_search is not None:
-                self.provider.enable_search = False
+            previous_disable_server_side_tools = os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS")
+            if disable_server_side_tools:
+                os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = "true"
             if server_side_max_tool_turns is not None:
                 os.environ["XAI_SERVER_SIDE_MAX_TOOL_TURNS"] = str(max(1, int(server_side_max_tool_turns)))
             try:
                 text_response, tool_call, usage_info, thinking = self.provider.chat_with_tools(
-                    messages=messages,
+                    messages=provider_messages,
                     tools=tools,
-                    system_prompt=self.system_prompt,
+                    system_prompt=provider_system_prompt,
                     enable_thinking=enable_thinking,
-                    previous_response_id=previous_response_id,
+                    previous_response_id=route_previous_response_id,
                 )
             finally:
-                if previous_enable_search is not None:
-                    self.provider.enable_search = previous_enable_search
+                if disable_server_side_tools:
+                    if previous_disable_server_side_tools is None:
+                        os.environ.pop("XAI_DISABLE_SERVER_SIDE_TOOLS", None)
+                    else:
+                        os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = previous_disable_server_side_tools
                 if server_side_max_tool_turns is not None:
                     if previous_max_tool_turns is None:
                         os.environ.pop("XAI_SERVER_SIDE_MAX_TOOL_TURNS", None)
@@ -1444,15 +1500,18 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     provider=self.provider_type,
                     model=self.model_name,
                     prompt_type="routing",
-                    messages=messages,
+                    messages=provider_messages,
                     response_text=logged_response_text,
                     tool_call=tool_call,
                     usage_info=usage_info,
                     thinking=thinking,
                     duration_ms=llm_duration_ms,
                     mode=self.mode,
-                    user_query=transcript,
-                    routing_provenance=routing_provenance,
+                    user_query=transcript_text,
+                    routing_provenance={
+                        **(routing_provenance or {}),
+                        "provider_route": continuation_meta,
+                    },
                     error=provider_error_info.raw_preview if provider_error_info else None
                 )
             except Exception as e:
@@ -1463,8 +1522,21 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 print(f"DEBUG: Provider returned: tool_call={tool_call is not None}, usage={usage_info is not None}, thinking={thinking is not None}", file=sys.stderr)
 
             if provider_error:
+                xai_continuation_error = bool(route_previous_response_id)
+                if xai_continuation_error:
+                    return {
+                        "intent": "error",
+                        "error": provider_error_info.friendly_message if provider_error_info else friendly_provider_error(provider_error),
+                        "text_response": provider_error_info.friendly_message if provider_error_info else friendly_provider_error(provider_error),
+                        "confidence": 0.0,
+                        "usage_info": usage_info,
+                        "available_tools": tool_names,
+                        "provider_error_raw": provider_error_info.raw_preview if provider_error_info else provider_error,
+                        "xai_continuation_error": True,
+                        **continuation_meta,
+                    }
                 fallback = self._provider_error_fallback_route(
-                    transcript=transcript,
+                    transcript=transcript_text,
                     error_text=provider_error,
                     tool_names=tool_names,
                     usage_info=usage_info,
@@ -1478,6 +1550,9 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     "confidence": 0.0,
                     "usage_info": usage_info,
                     "available_tools": tool_names,
+                    "provider_error_raw": provider_error_info.raw_preview if provider_error_info else provider_error,
+                    "xai_continuation_error": False,
+                    **continuation_meta,
                 }
             
             # Log xAI server-side tool usage (native search)
@@ -1495,11 +1570,16 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     "arguments": tool_call["arguments"],
                     "confidence": 1.0,
                     "usage_info": usage_info,  # Include token/cost data
-                    "available_tools": tool_names  # Tools shown to LLM for reflection
+                    "available_tools": tool_names,  # Tools shown to LLM for reflection
+                    **continuation_meta,
                 }
                 for metadata_key in ("id", "tool_call_id", "response_id"):
                     if tool_call.get(metadata_key):
                         response[metadata_key] = tool_call[metadata_key]
+                if response.get("response_id"):
+                    response["response_created_at_iso"] = datetime.now().isoformat()
+                    response["response_model"] = self.model_name
+                    response["response_provider"] = self.provider_type
                 
                 # Add thinking if present
                 if thinking:
@@ -1509,7 +1589,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     try:
                         from thinking import log_thinking
                         log_thinking(
-                            query=transcript,
+                            query=transcript_text,
                             thinking=thinking,
                             decision={
                                 "tool": tool_call["name"],
@@ -1525,7 +1605,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 
                 # Detect OpenCode agent mode if using opencode tool
                 if response.get("tool_name") == "opencode":
-                    response = self._detect_opencode_mode(transcript, response)
+                    response = self._detect_opencode_mode(transcript_text, response)
                 
                 return response
             
@@ -1536,7 +1616,8 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     "text_response": text_response or "I'm not sure how to respond to that.",
                     "confidence": 1.0,
                     "usage_info": usage_info,  # Include token/cost data
-                    "available_tools": tool_names  # Tools shown to LLM for reflection
+                    "available_tools": tool_names,  # Tools shown to LLM for reflection
+                    **continuation_meta,
                 }
                 
                 # Add thinking if present
@@ -1547,7 +1628,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     try:
                         from thinking import log_thinking
                         log_thinking(
-                            query=transcript,
+                            query=transcript_text,
                             thinking=thinking,
                             decision={
                                 "tool": "none",

@@ -27,8 +27,8 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertIn("[truncated]", out["note"])
 
     def test_bookmark_search_gets_larger_preview_budget(self):
-        self.assertEqual(self.orch._tool_context_max_chars("bookmark_search"), 4500)
-        self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 4000)
+        self.assertEqual(self.orch._tool_context_max_chars("bookmark_search"), 5000)
+        self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 6000)
 
 
 if __name__ == "__main__":

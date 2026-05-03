@@ -52,6 +52,8 @@ FOLLOWUP_DATA_SKIP_KEYS = frozenset({
     'server_side_tools',
     'experience_id',
     '_tool_trace',
+    'provider_continuation',
+    '_provider_continuation',
 })
 
 # @TOOL_CONFIG: follow-up data extraction — fields extracted from tool results for LLM context
