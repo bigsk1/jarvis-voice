@@ -169,7 +169,9 @@ Practical rule for Jarvis:
 - Treat `response_id` as usable for up to 30 days in principle.
 - Use a safer local cutoff, such as 25 days, before attempting `previous_response_id`.
 - Check `response_created_at_iso` before every attempted use.
+- Check the model used to create the stored response before every attempted use.
 - If the stored response id is older than the cutoff, ignore it and use the normal full local context path.
+- If the current xAI model differs from the stored response model, ignore the stored response id and use the normal full local context path.
 - If xAI returns `previous_response_not_found`, drop the continuation id for that turn and retry through the normal text context path.
 - Store enough canonical state locally to reconstruct the turn without xAI stored state.
 
@@ -181,6 +183,8 @@ Add metadata when storing provider continuation handles:
 "provider_continuation": {
     "provider": "xai",
     "response_id": route_response_id,
+    "model": route_model,
+    "model_alias": configured_model_alias,
     "response_created_at_iso": route_response_created_at,
     "response_expires_at_iso": route_response_created_at + timedelta(days=30),
     "safe_until_iso": route_response_created_at + timedelta(days=25),
@@ -337,6 +341,8 @@ Extend each successful `conversation_context` item with provider continuation me
     "provider_continuation": {
         "provider": "xai",
         "response_id": route_response_id,
+        "model": route_model,
+        "model_alias": configured_model_alias,
         "response_created_at_iso": route_response_created_at,
         "response_expires_at_iso": route_response_created_at + timedelta(days=30),
         "safe_until_iso": route_response_created_at + timedelta(days=25),
@@ -476,6 +482,7 @@ Behavior:
 - First turn: current full prompt path.
 - Successful Jarvis tool after xAI route: store `response_id` and `tool_call_id`.
 - Before using the stored id, check `response_created_at_iso` against `XAI_PREVIOUS_RESPONSE_MAX_AGE_DAYS`.
+- Before using the stored id, check that the current xAI model matches the stored continuation model.
 - Next turn: use `previous_response_id` plus `role="tool"` message.
 - Do not include `_build_turn_context(...)` full result text in the provider message.
 - Do not re-add the system prompt.
@@ -496,6 +503,7 @@ Fallback to text mode when:
 
 - no `response_id`
 - no `tool_call_id`
+- stored model is missing or differs from the current xAI model
 - missing or unparsable `response_created_at_iso`
 - response id is older than the configured safe continuation cutoff, default 25 days
 - `XAI_STORE_MESSAGES=false`
@@ -572,6 +580,7 @@ Add tests for:
 - Tool RAG retrieval query remains the original enhanced user request, not the tool result text.
 - Missing `tool_call_id` falls back to text context.
 - Missing `response_id` falls back to text context.
+- Missing or changed stored model falls back to text context.
 - Missing or unparsable `response_created_at_iso` falls back to text context.
 - Expired or too-old `response_id` falls back to text context.
 - `previous_response_not_found` triggers one text-context retry and clears the continuation handle for that turn.
@@ -685,6 +694,7 @@ XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST=4
 
 - Does the installed `xai-sdk` version accept `tool_result(..., tool_call_id=...)` exactly as expected?
 - Does Grok 4.3 perform better with only `tool_result(...)`, or with `tool_result(...)` plus a short continuation delta?
+- Does xAI accept `previous_response_id` with a different model in practice? Even if accepted, Jarvis should initially treat model mismatch as a text-fallback condition because reasoning traces, tool behavior, and latency profiles can differ across Grok variants.
 - How large should provider-facing tool result payloads be for search-heavy tools?
 - Should duplicate-recovery turns forcibly disable xAI server-side tools?
 - Can or should `x-grok-conv-id` be set through the SDK/gRPC client for better cache affinity?
@@ -702,4 +712,3 @@ This work is successful when:
 - Jarvis logs, saved web conversations, feedback, completion guard, Tool RAG, and intelligence records remain complete.
 - Grok 4.3 shows fewer duplicate or near-duplicate client tool calls on known repro prompts.
 - Latency improves or at least becomes more predictable on mixed xAI server-side plus Jarvis client-side tool workflows.
-
