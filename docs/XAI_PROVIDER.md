@@ -17,6 +17,7 @@
 9. [Performance Characteristics](#performance-characteristics)
 10. [Cost Examples](#cost-examples)
 11. [Migration Guide](#migration-guide)
+12. [Change Log / Handoff](#change-log--handoff)
 
 ---
 
@@ -129,12 +130,14 @@ Enable Grok's native tools via `XAI_SEARCH=true`:
 XAI_SEARCH=true   # Enable live search (default: true)
 ```
 
-**How It Works** (Updated January 2026):
+**How It Works** (Updated May 2026):
 - Uses xAI's **Agent Tools API** with server-side tools
 - Model autonomously decides when to use each tool
 - Server-side tools execute automatically on xAI servers (no round-trip!)
+- Client-side tool results can stay on the xAI SDK path via `tool_result(...)`
 - Returns synthesized answers with citations from web + X posts
 - **Hybrid approach**: Combines with your custom client-side tools seamlessly
+- OpenAI-compatible SDK fallback remains as a reliability escape hatch for xAI SDK/gRPC failures
 
 **Server-Side Tools Available**:
 | Tool | Description | Features |
@@ -323,6 +326,15 @@ XAI_SEARCH=true
 # XAI_SERVER_SIDE_MAX_TOOL_TURNS=5
 # XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST=10
 
+# Optional xAI SDK continuation knobs
+# Store response state server-side for SDK previous_response_id workflows.
+# XAI_STORE_MESSAGES=false
+# Include encrypted reasoning state for zero-data-retention continuation workflows.
+# XAI_USE_ENCRYPTED_CONTENT=false
+# Jarvis currently executes one client-side tool call at a time; override only
+# if the orchestrator also learns to execute multiple returned tool calls.
+# XAI_PARALLEL_TOOL_CALLS=false
+
 # Optional native xAI TTS
 TTS_PROVIDER=xai
 XAI_TTS_VOICE="rex"
@@ -337,6 +349,8 @@ XAI_TTS_STYLE_TAGS_ENABLED=true
 ```
 
 `XAI_SERVER_SIDE_MAX_TOOL_TURNS` caps xAI's internal server-side agent loop for a single `chat.sample()` call and is also used as Jarvis's total native-search budget for the user request unless `XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST` is set. This prevents native web/X search calls from multiplying across many Jarvis router turns while still allowing xAI to spend the budget adaptively on the synthesis turn that needs it.
+
+The provider supports OpenAI-style `assistant.tool_calls` plus `role="tool"` messages on the xAI SDK path. When `XAI_STORE_MESSAGES=true`, Jarvis preserves xAI `response_id` values from successful tool-routing calls and passes them back as `previous_response_id` on later router turns. The main multi-tool orchestrator still summarizes prior tool results into the next routing prompt, so the next deeper continuation step is to pass structural `tool_result(...)` messages from the orchestrator instead of only text summaries.
 
 ### Testing
 
@@ -643,6 +657,72 @@ LLM_PROVIDER="openai"     # Fallback to GPT
 
 ---
 
+## Change Log / Handoff
+
+### 2026-05-03 - xAI SDK hybrid continuation cleanup
+
+This entry captures the exact current state so future work can resume without redoing the xAI provider investigation.
+
+**Current implementation state:**
+
+- `lib/llm_provider.py` keeps the OpenAI-compatible xAI client as the fallback path and uses the native `xai_sdk` path only when `XAI_SEARCH=true` and the SDK client initialized.
+- `LLMProvider.chat_with_tools(...)` now accepts `previous_response_id: str | None = None`. OpenAI, Anthropic, and Ollama accept the parameter but ignore it. xAI uses it only on the native SDK path.
+- `_convert_tool_to_xai_sdk(...)` now uses `xai_sdk.chat.tool(...)` instead of manually constructing protobuf `Tool` objects.
+- `_chat_with_tools_xai_sdk(...)` no longer falls back just because messages contain `role="tool"`. It supports OpenAI-style assistant `tool_calls` and `role="tool"` results via `xai_sdk.chat.tool_result(...)`.
+- xAI client-side tool calls now preserve `id`, `tool_call_id`, and `response_id` in the returned Jarvis tool-call payload.
+- `_extract_xai_sdk_usage(...)` prefers xAI SDK `response.cost_usd` when available and carries richer xAI usage fields such as `server_side_tools`, `reasoning_tokens`, cached prompt text tokens, image prompt tokens, and source counts.
+- `_xai_sdk_create_kwargs(...)` centralizes `model`, `tools`, `max_tokens`, `temperature`, `max_turns`, `parallel_tool_calls`, `store_messages`, `use_encrypted_content`, and guarded `previous_response_id`.
+- `previous_response_id` is sent to xAI only when both conditions are true: a response id exists and `XAI_STORE_MESSAGES=true`.
+- `_chat_with_tools_xai_sdk(...)` uses the same stored-continuation condition to skip re-adding the routing system prompt. When `previous_response_id` is active, xAI prepends the stored conversation, including the original system prompt, server-side.
+- `orchestrator/router_v2.py` accepts `previous_response_id`, forwards it to the provider, and copies `id`, `tool_call_id`, and `response_id` from provider tool calls onto the route dict.
+- `orchestrator/orchestrator_v2.py` reads and forwards `xai_previous_response_id` only when provider is xAI and `XAI_STORE_MESSAGES=true`.
+- The orchestrator promotes `xai_previous_response_id` only after a Jarvis client-side tool runs successfully. Duplicate-guard blocks and failed tool executions do not advance the continuation handle.
+- `XAI_PARALLEL_TOOL_CALLS` is optional. By default, xAI tool-routing calls force `parallel_tool_calls=False` because Jarvis executes one client-side tool call at a time.
+
+**Default behavior with current config:**
+
+- With `XAI_STORE_MESSAGES=false`, no `previous_response_id` is sent, `store_messages` is not enabled, and the system prompt is always added normally.
+- With `XAI_SEARCH=false`, xAI uses the OpenAI-compatible Chat Completions path and ignores `previous_response_id`.
+- Existing Q&A, single-tool, multi-tool, image, and video flows still rely on Jarvis' normal text-based multi-turn context assembly. The executor and media tool paths were not changed.
+
+**Known gaps / edge cases:**
+
+- With `XAI_STORE_MESSAGES=true`, later turns may contain duplicated semantic context because xAI has the stored thread and Jarvis still sends summarized `_build_turn_context(...)` text.
+- The SDK fallback to OpenAI-compatible xAI drops continuation handles for that fallback call. Keep this for reliability unless logs show it creates worse recovery behavior than the SDK failure itself.
+- Full xAI-native hybrid parity is not complete yet. The provider can accept structural tool-result histories, but the main orchestrator still mostly sends prior Jarvis tool results as plain text rather than assistant `tool_calls` plus `tool_result(...)` messages.
+- `use_encrypted_content=True` is exposed but not yet wired as a true zero-data-retention continuation strategy. That would require preserving/appending previous xAI `Response` objects or encrypted content through the orchestrator path.
+
+**Verification run after this cleanup:**
+
+```bash
+source /home/boss/jarvis-venv/bin/activate
+python -m py_compile lib/llm_provider.py orchestrator/router_v2.py orchestrator/orchestrator_v2.py
+pytest -q tests/test_orchestrator_usage_passthrough.py tests/test_response_formatter.py
+```
+
+Expected result from the last run: `8 passed`.
+
+**Next best steps:**
+
+1. Add structural xAI continuation in the orchestrator: store the assistant tool call metadata and the executed Jarvis tool result in `conversation_context`, then pass those as an assistant `tool_calls` message plus a `role="tool"` / `tool_result(...)` message on the next xAI SDK call.
+2. Once structural `tool_result(...)` is active, trim or bypass redundant `_build_turn_context(...)` text for xAI stored-continuation turns so Grok 4.3 does not see the same tool result twice.
+3. Test `XAI_STORE_MESSAGES=true` cautiously with Grok 4.3 on multi-tool tasks that previously looped or hit duplicate guards. Compare total latency, native server-side tool counts, duplicate-guard frequency, and response quality against `XAI_STORE_MESSAGES=false`.
+4. Consider disabling xAI server-side tools on duplicate-recovery turns even when the native-search budget remains, so recovery focuses on existing results instead of fresh server-side searching.
+5. If xAI SDK/gRPC failures still happen often, keep the OpenAI-compatible fallback but log when continuation is dropped so failures are visible.
+6. Later, evaluate `use_encrypted_content=True` as the ZDR-friendly continuation path. Do this separately from `store_messages=True` because the state model is different.
+
+**Useful official xAI references:**
+
+- Function calling and client-side tools: https://docs.x.ai/developers/tools/function-calling
+- Tool usage details: https://docs.x.ai/developers/tools/tool-usage-details
+- Streaming and sync SDK patterns: https://docs.x.ai/developers/tools/streaming-and-sync
+- Advanced tool usage: https://docs.x.ai/developers/tools/advanced-usage
+- Text model comparison and capabilities: https://docs.x.ai/developers/model-capabilities/text/comparison
+- Prompt caching / conversation affinity: https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits
+- xAI docs home: https://docs.x.ai
+
+---
+
 ## Summary
 
 xAI Grok is **currently the best cloud provider for Jarvis**:
@@ -664,8 +744,8 @@ xAI Grok is **currently the best cloud provider for Jarvis**:
 
 ---
 
-**Last Updated**: 2026-04-23
-**Version**: 1.5 (Added xAI TTS and expressive speech tag notes)
+**Last Updated**: 2026-05-03
+**Version**: 1.6 (Added xAI SDK hybrid continuation handoff notes)
 
 **See Also**:
 - [QUICKSTART.md](QUICKSTART.md) - Getting started

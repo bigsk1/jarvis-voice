@@ -2586,7 +2586,13 @@ class ChatUI {
         const stepOutput = step.outputs
           ? (step.outputs[0]?.data ?? step.outputs[0] ?? {})
           : (step.data ?? {});
-        flat[tool] = stepOutput;
+        if (flat[tool] === undefined) {
+          flat[tool] = stepOutput;
+        } else if (Array.isArray(flat[tool])) {
+          flat[tool].push(stepOutput);
+        } else {
+          flat[tool] = [flat[tool], stepOutput];
+        }
       }
       toolResultsData = { ...toolResultsData, ...flat };
     }
@@ -2594,10 +2600,18 @@ class ChatUI {
     const pendingToolEntries = Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
       toolCardsHtml = '<div class="tool-cards">';
+      const toolOccurrenceCounts = {};
       for (const [cardId, toolData] of pendingToolEntries) {
         // Get display name - either stored toolName or extract from cardId
         const displayName = toolData.toolName || cardId.replace(/_step\d+$/, '');
-        const toolResult = toolResultsData[displayName] || toolData.result || {};
+        const occurrenceIndex = toolOccurrenceCounts[displayName] || 0;
+        toolOccurrenceCounts[displayName] = occurrenceIndex + 1;
+        const toolResult = this._getToolResultForOccurrence(
+          toolResultsData,
+          displayName,
+          occurrenceIndex,
+          toolData.result
+        );
         toolCardsHtml += this._createToolCardHtml(
           displayName,
           toolData.status || 'success',
@@ -2609,8 +2623,11 @@ class ChatUI {
     } else if (toolsUsed.length > 0) {
       // Fallback for non-workflow responses
       toolCardsHtml = '<div class="tool-cards">';
+      const toolOccurrenceCounts = {};
       for (const tool of toolsUsed) {
-        const toolResult = toolResultsData[tool] || {};
+        const occurrenceIndex = toolOccurrenceCounts[tool] || 0;
+        toolOccurrenceCounts[tool] = occurrenceIndex + 1;
+        const toolResult = this._getToolResultForOccurrence(toolResultsData, tool, occurrenceIndex);
         toolCardsHtml += this._createToolCardHtml(tool, 'success', toolResult, null);
       }
       toolCardsHtml += '</div>';
@@ -4070,6 +4087,28 @@ class ChatUI {
         <pre class="tool-card-body">${Utils.escapeHtmlAndLinkify(summary)}</pre>
       </div>
     `;
+  }
+
+  _getToolResultForOccurrence(toolResultsData, toolName, occurrenceIndex = 0, fallback = null) {
+    const namedResult = toolResultsData && toolResultsData[toolName];
+    if (Array.isArray(namedResult)) {
+      if (occurrenceIndex < namedResult.length) {
+        return namedResult[occurrenceIndex] ?? {};
+      }
+      return namedResult.length > 0 ? (namedResult[namedResult.length - 1] ?? {}) : {};
+    }
+    if (namedResult !== undefined && namedResult !== null) {
+      return namedResult;
+    }
+    if (
+      fallback
+      && typeof fallback === 'object'
+      && !Array.isArray(fallback)
+      && Object.keys(fallback).length === 0
+    ) {
+      return {};
+    }
+    return fallback ?? {};
   }
 
   /**

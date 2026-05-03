@@ -27,7 +27,8 @@ class LLMProvider(ABC):
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
         system_prompt: str | None = None,
-        enable_thinking: bool = False
+        enable_thinking: bool = False,
+        previous_response_id: str | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat request with tool calling capability.
@@ -37,6 +38,7 @@ class LLMProvider(ABC):
             tools: List of tool definitions (format depends on provider)
             system_prompt: System prompt for the conversation
             enable_thinking: Enable extended thinking mode (if supported by model)
+            previous_response_id: Provider-specific continuation handle, if supported
             
         Returns:
             Tuple of (text_response, tool_call, usage_info, thinking)
@@ -151,7 +153,8 @@ class OpenAIProvider(LLMProvider):
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
         system_prompt: str | None = None,
-        enable_thinking: bool = False
+        enable_thinking: bool = False,
+        previous_response_id: str | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with OpenAI function calling.
@@ -287,7 +290,8 @@ class AnthropicProvider(LLMProvider):
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
         system_prompt: str | None = None,
-        enable_thinking: bool = False
+        enable_thinking: bool = False,
+        previous_response_id: str | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with Anthropic tool calling.
@@ -648,19 +652,10 @@ class XAIProvider(LLMProvider):
         try:
             from xai_sdk.chat import user, system as sys_msg
 
-            create_kwargs: dict[str, Any] = {
-                "model": self.model,
-                "tools": self._build_xai_server_tools(),
-            }
-            effective_max_tokens = max_tokens or self._xai_max_output_tokens()
-            if effective_max_tokens:
-                create_kwargs["max_tokens"] = effective_max_tokens
-            temperature = self._xai_temperature()
-            if temperature is not None:
-                create_kwargs["temperature"] = temperature
-            max_turns = self._xai_max_turns()
-            if max_turns:
-                create_kwargs["max_turns"] = max_turns
+            create_kwargs = self._xai_sdk_create_kwargs(
+                tools=self._build_xai_server_tools(),
+                max_tokens=max_tokens,
+            )
 
             chat = self.xai_client.chat.create(**create_kwargs)
             
@@ -704,7 +699,8 @@ class XAIProvider(LLMProvider):
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
         system_prompt: str | None = None,
-        enable_thinking: bool = False
+        enable_thinking: bool = False,
+        previous_response_id: str | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with xAI function calling and optional reasoning mode.
@@ -719,7 +715,13 @@ class XAIProvider(LLMProvider):
             - thinking contains reasoning text for reasoning models
         """
         if self.enable_search and self.xai_client:
-            return self._chat_with_tools_xai_sdk(messages, tools, system_prompt, enable_thinking)
+            return self._chat_with_tools_xai_sdk(
+                messages,
+                tools,
+                system_prompt,
+                enable_thinking,
+                previous_response_id=previous_response_id,
+            )
         
         # Standard OpenAI SDK path (no search)
         return self._chat_with_tools_openai_sdk(messages, tools, system_prompt, enable_thinking)
@@ -729,7 +731,8 @@ class XAIProvider(LLMProvider):
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
         system_prompt: str | None = None,
-        enable_thinking: bool = False
+        enable_thinking: bool = False,
+        previous_response_id: str | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """Standard chat with tools using OpenAI SDK (no search)."""
         # Add system message if provided
@@ -793,34 +796,183 @@ class XAIProvider(LLMProvider):
             return f"Error: {str(e)}", None, None, None
     
     def _convert_tool_to_xai_sdk(self, tool: dict[str, Any]):
-        """Convert OpenAI-format tool to xAI SDK Protocol Buffer format."""
-        from xai_sdk.tools import chat_pb2
-        
-        xai_tool = chat_pb2.Tool()
-        
+        """Convert a client-side tool definition using xAI SDK's public helper."""
+        from xai_sdk.chat import tool as xai_tool
+
         # Handle OpenAI format: {"type": "function", "function": {...}}
         if tool.get("type") == "function":
             func_def = tool.get("function", {})
         else:
             # Handle Anthropic format: {"name": "...", "description": "...", "input_schema": {...}}
             func_def = tool
-        
-        xai_tool.function.name = func_def.get("name", "")
-        xai_tool.function.description = func_def.get("description", "")
-        
+
         # Parameters can be in "parameters" (OpenAI) or "input_schema" (Anthropic)
-        params = func_def.get("parameters") or func_def.get("input_schema", {})
-        if params:
-            xai_tool.function.parameters = json.dumps(params)
-        
-        return xai_tool
+        params = func_def.get("parameters") or func_def.get("input_schema") or {
+            "type": "object",
+            "properties": {},
+        }
+
+        return xai_tool(
+            name=func_def.get("name", ""),
+            description=func_def.get("description", ""),
+            parameters=params,
+        )
+
+    @staticmethod
+    def _xai_env_bool(name: str, default: bool = False) -> bool:
+        """Read an xAI boolean env knob without pulling config at call time."""
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _xai_sdk_create_kwargs(
+        self,
+        *,
+        tools: list[Any],
+        max_tokens: int | None = None,
+        force_serial_tool_calls: bool = False,
+        previous_response_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Build common xAI SDK chat.create kwargs for simple and tool chats."""
+        create_kwargs: dict[str, Any] = {
+            "model": self.model,
+            "tools": tools,
+        }
+        effective_max_tokens = max_tokens or self._xai_max_output_tokens()
+        if effective_max_tokens:
+            create_kwargs["max_tokens"] = effective_max_tokens
+        temperature = self._xai_temperature()
+        if temperature is not None:
+            create_kwargs["temperature"] = temperature
+        max_turns = self._xai_max_turns()
+        if max_turns:
+            create_kwargs["max_turns"] = max_turns
+
+        # The provider currently returns one client-side tool call at a time.
+        # Keep xAI aligned with that contract on tool-routing calls unless
+        # explicitly overridden.
+        if "XAI_PARALLEL_TOOL_CALLS" in os.environ:
+            create_kwargs["parallel_tool_calls"] = self._xai_env_bool("XAI_PARALLEL_TOOL_CALLS", False)
+        elif force_serial_tool_calls:
+            create_kwargs["parallel_tool_calls"] = False
+
+        use_stored_continuation = (
+            bool(previous_response_id)
+            and self._xai_env_bool("XAI_STORE_MESSAGES", False)
+        )
+
+        if self._xai_env_bool("XAI_STORE_MESSAGES", False):
+            create_kwargs["store_messages"] = True
+        if self._xai_env_bool("XAI_USE_ENCRYPTED_CONTENT", False):
+            create_kwargs["use_encrypted_content"] = True
+        if use_stored_continuation:
+            create_kwargs["previous_response_id"] = previous_response_id
+
+        return create_kwargs
+
+    @staticmethod
+    def _stringify_xai_content(content: Any) -> str:
+        """Render message/tool content to a string for xAI SDK helpers."""
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        try:
+            return json.dumps(content)
+        except TypeError:
+            return str(content)
+
+    @staticmethod
+    def _build_xai_assistant_message_from_openai(msg: dict[str, Any]):
+        """Preserve assistant tool_call history when callers pass OpenAI-style messages."""
+        from xai_sdk.chat import chat_pb2, text
+
+        message = chat_pb2.Message(role=chat_pb2.MessageRole.ROLE_ASSISTANT)
+        content = XAIProvider._stringify_xai_content(msg.get("content"))
+        if content:
+            message.content.append(text(content))
+
+        for raw_tool_call in msg.get("tool_calls") or []:
+            tool_call = chat_pb2.ToolCall(
+                id=raw_tool_call.get("id", ""),
+                type=chat_pb2.ToolCallType.TOOL_CALL_TYPE_CLIENT_SIDE_TOOL,
+                status=chat_pb2.ToolCallStatus.TOOL_CALL_STATUS_COMPLETED,
+            )
+            function_data = raw_tool_call.get("function") or {}
+            tool_call.function.name = function_data.get("name", "")
+            raw_arguments = function_data.get("arguments", "{}")
+            tool_call.function.arguments = (
+                raw_arguments if isinstance(raw_arguments, str) else json.dumps(raw_arguments)
+            )
+            message.tool_calls.append(tool_call)
+
+        return message
+
+    @staticmethod
+    def _xai_tool_call_payload(tool_call: Any) -> dict[str, Any]:
+        """Return the Jarvis tool-call shape while preserving xAI IDs for continuation."""
+        raw_arguments = tool_call.function.arguments
+        arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
+        payload = {
+            "name": tool_call.function.name,
+            "arguments": arguments or {},
+        }
+        tool_call_id = getattr(tool_call, "id", None)
+        if tool_call_id:
+            payload["id"] = tool_call_id
+            payload["tool_call_id"] = tool_call_id
+        return payload
+
+    def _extract_xai_sdk_usage(self, response: Any) -> dict[str, Any] | None:
+        """Extract xAI SDK usage, preferring server-reported cost when available."""
+        usage = getattr(response, "usage", None)
+        if not usage:
+            return None
+
+        from cost_estimator import estimate_cost
+
+        input_tokens = (
+            getattr(usage, "prompt_tokens", 0)
+            or getattr(usage, "prompt_text_tokens", 0)
+            or 0
+        )
+        output_tokens = getattr(usage, "completion_tokens", 0) or 0
+        usage_info = estimate_cost(
+            provider="xai",
+            model=self.model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+        exact_cost = getattr(response, "cost_usd", None)
+        if exact_cost is not None:
+            usage_info["cost_usd"] = exact_cost
+
+        for key in (
+            "reasoning_tokens",
+            "prompt_text_tokens",
+            "cached_prompt_text_tokens",
+            "prompt_image_tokens",
+            "num_sources_used",
+        ):
+            value = getattr(usage, key, 0) or 0
+            if value:
+                usage_info[key] = value
+
+        server_tool_usage = getattr(response, "server_side_tool_usage", None)
+        if server_tool_usage:
+            usage_info["server_side_tools"] = server_tool_usage
+
+        return usage_info
     
     def _chat_with_tools_xai_sdk(
         self,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
         system_prompt: str | None = None,
-        enable_thinking: bool = False
+        enable_thinking: bool = False,
+        previous_response_id: str | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Chat with tools using xAI SDK Agent Tools API.
@@ -830,83 +982,65 @@ class XAIProvider(LLMProvider):
         Server-side tools are executed automatically by xAI.
         Client-side tools are returned for us to execute.
         
-        Note: xAI SDK doesn't support client-side tool results in multi-turn conversations.
-        If messages contain tool results, we fall back to OpenAI SDK for full tool support.
+        Supports OpenAI-style assistant tool-call history and role="tool" results
+        via xai_sdk.chat.tool_result. Jarvis' main orchestrator still usually
+        feeds previous tool results as plain text, but direct callers can now
+        keep the native xAI SDK path for hybrid multi-turn conversations.
         """
-        # TODO: Client and server side can be used together
-        # https://docs.x.ai/docs/guides/tools/overview#server-side-tool-call-and-client-side-tool-call
-        # https://grok.com/share/bGVnYWN5_adaeb9ed-6b5c-4338-90ff-c5fbcfab321f
-        # See xai function calling  https://docs.x.ai/developers/tools/function-calling
-
-        # Check if messages contain tool results (xAI SDK doesn't support this)
-        has_tool_results = any(msg.get("role") == "tool" for msg in messages)
-        if has_tool_results:
-            # Fall back to OpenAI SDK for multi-turn tool conversations
-            return self._chat_with_tools_openai_sdk(messages, tools, system_prompt, enable_thinking)
-        
         try:
-            from xai_sdk.chat import user, system as sys_msg, assistant
+            from xai_sdk.chat import user, system as sys_msg, assistant, tool_result
             from xai_sdk.tools import get_tool_call_type
+            use_continuation = (
+                bool(previous_response_id)
+                and self._xai_env_bool("XAI_STORE_MESSAGES", False)
+            )
             
             # Build xAI SDK tools list: server-side tools (configurable) + client-side custom tools
             xai_tools = self._build_xai_server_tools()
             
-            # Convert our custom tools to xAI SDK Protocol Buffer format
+            # Convert our custom tools through the SDK helper to avoid protobuf drift.
             for tool in tools:
                 xai_tool = self._convert_tool_to_xai_sdk(tool)
                 xai_tools.append(xai_tool)
             
-            create_kwargs: dict[str, Any] = {
-                "model": self.model,
-                "tools": xai_tools,
-            }
-            effective_max_tokens = self._xai_max_output_tokens()
-            if effective_max_tokens:
-                create_kwargs["max_tokens"] = effective_max_tokens
-            temperature = self._xai_temperature()
-            if temperature is not None:
-                create_kwargs["temperature"] = temperature
-            max_turns = self._xai_max_turns()
-            if max_turns:
-                create_kwargs["max_turns"] = max_turns
+            create_kwargs = self._xai_sdk_create_kwargs(
+                tools=xai_tools,
+                force_serial_tool_calls=True,
+                previous_response_id=previous_response_id,
+            )
 
             chat = self.xai_client.chat.create(**create_kwargs)
             
-            # Add system prompt if provided
-            if system_prompt:
+            # previous_response_id prepends the stored conversation, including
+            # its original system message, on the xAI side.
+            if system_prompt and not use_continuation:
                 chat.append(sys_msg(system_prompt))
             
-            # Add conversation history (only user/assistant, tool results handled by fallback)
+            # Add conversation history. OpenAI-style assistant tool_calls are
+            # preserved so role="tool" messages can stay on the xAI SDK path.
             for msg in messages:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 
                 if role == "user":
-                    chat.append(user(content))
+                    chat.append(user(self._stringify_xai_content(content)))
+                elif role == "system":
+                    chat.append(sys_msg(self._stringify_xai_content(content)))
                 elif role == "assistant":
-                    # Simple assistant message (no tool_calls since we'd have fallen back)
-                    chat.append(assistant(content))
+                    if msg.get("tool_calls"):
+                        chat.append(self._build_xai_assistant_message_from_openai(msg))
+                    else:
+                        chat.append(assistant(self._stringify_xai_content(content)))
+                elif role == "tool":
+                    chat.append(tool_result(
+                        self._stringify_xai_content(content),
+                        tool_call_id=msg.get("tool_call_id") or msg.get("id"),
+                    ))
             
             # Get response (non-streaming for now)
             response = self._sample_xai_chat_with_retry(chat)
             
-            # Extract usage info
-            usage_info = None
-            if hasattr(response, 'usage') and response.usage:
-                from cost_estimator import estimate_cost
-                input_tokens = getattr(response.usage, 'prompt_tokens', 0) or getattr(response.usage, 'prompt_text_tokens', 0) or 0
-                output_tokens = getattr(response.usage, 'completion_tokens', 0) or 0
-                
-                usage_info = estimate_cost(
-                    provider="xai",
-                    model=self.model,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens
-                )
-                
-                # Add search tool usage info if available
-                if hasattr(response, 'server_side_tool_usage'):
-                    usage_info['server_side_tools'] = response.server_side_tool_usage
+            usage_info = self._extract_xai_sdk_usage(response)
             
             # Check for client-side tool calls (our custom tools)
             # Server-side tools (web_search, x_search) are handled automatically by xAI
@@ -916,10 +1050,11 @@ class XAIProvider(LLMProvider):
                     
                     # Only return client-side tool calls for us to execute
                     if tool_type == "client_side_tool":
-                        return None, {
-                            "name": tc.function.name,
-                            "arguments": json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments
-                        }, usage_info, None
+                        payload = self._xai_tool_call_payload(tc)
+                        response_id = getattr(response, "id", None)
+                        if response_id:
+                            payload["response_id"] = response_id
+                        return None, payload, usage_info, None
             
             # No client-side tool calls - return the response
             # (may include results from server-side search tools)
@@ -1185,7 +1320,8 @@ class OllamaProvider(LLMProvider):
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
         system_prompt: str | None = None,
-        enable_thinking: bool = False
+        enable_thinking: bool = False,
+        previous_response_id: str | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with Ollama using native tool calling API with structured prompting fallback.

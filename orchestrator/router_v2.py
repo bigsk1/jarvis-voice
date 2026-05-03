@@ -1221,6 +1221,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         disable_server_side_tools: bool = False,
         routing_provenance: dict[str, Any] | None = None,
         server_side_max_tool_turns: int | None = None,
+        previous_response_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Use LLM to determine intent and route appropriately.
@@ -1418,7 +1419,8 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     messages=messages,
                     tools=tools,
                     system_prompt=self.system_prompt,
-                    enable_thinking=enable_thinking
+                    enable_thinking=enable_thinking,
+                    previous_response_id=previous_response_id,
                 )
             finally:
                 if previous_enable_search is not None:
@@ -1495,6 +1497,9 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     "usage_info": usage_info,  # Include token/cost data
                     "available_tools": tool_names  # Tools shown to LLM for reflection
                 }
+                for metadata_key in ("id", "tool_call_id", "response_id"):
+                    if tool_call.get(metadata_key):
+                        response[metadata_key] = tool_call[metadata_key]
                 
                 # Add thinking if present
                 if thinking:

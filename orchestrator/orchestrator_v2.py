@@ -842,6 +842,16 @@ Mode: {self.mode}
         tool_call_counts = retry_state.get("tool_call_counts") or {}
         duplicate_recovery_attempts = retry_state.get("duplicate_recovery_attempts", 0)
         max_duplicate_recovery_attempts = retry_state.get("max_duplicate_recovery_attempts", 2)
+        xai_store_messages_enabled = (
+            getattr(self.router, "provider_type", "") == "xai"
+            and str(get_config_value("XAI_STORE_MESSAGES", "false")).strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        xai_previous_response_id = (
+            retry_state.get("xai_previous_response_id")
+            if xai_store_messages_enabled
+            else None
+        )
         
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
@@ -949,6 +959,7 @@ Mode: {self.mode}
                     if native_search_remaining is not None and native_search_remaining > 0
                     else None
                 ),
+                previous_response_id=xai_previous_response_id,
             )
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)
@@ -996,6 +1007,7 @@ Mode: {self.mode}
             if route["intent"] == "tool":
                 tool_name = route["tool_name"]
                 arguments = route["arguments"]
+                route_response_id = route.get("response_id") if xai_store_messages_enabled else None
                 
                 # Apply forced overrides from web UI (e.g. aspect_ratio, duration)
                 # The LLM generates the creative prompt, but technical params are
@@ -1232,19 +1244,25 @@ Mode: {self.mode}
                         )
                     executed_at = datetime.now(self.timezone)
                     ttl_seconds = self._tool_freshness_ttl_seconds(tool_name)
+                    tool_meta = {
+                        "executed_at_iso": executed_at.isoformat(),
+                        "executed_at_local": executed_at.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                        "freshness": "live_tool_call",
+                        "ttl_seconds": ttl_seconds,
+                        "source": source_hint,
+                        "authoritative_live": ttl_seconds is not None
+                    }
+                    if route_response_id:
+                        tool_meta["xai_response_id"] = route_response_id
+                        xai_previous_response_id = route_response_id
+                    if route.get("tool_call_id"):
+                        tool_meta["xai_tool_call_id"] = route["tool_call_id"]
                     conversation_context.append({
                         "tool": tool_name,
                         "arguments": arguments,
                         "result": result,  # Store full result, not just data
                         "speech": result.get("speech", ""),
-                        "meta": {
-                            "executed_at_iso": executed_at.isoformat(),
-                            "executed_at_local": executed_at.strftime("%Y-%m-%d %H:%M:%S %Z"),
-                            "freshness": "live_tool_call",
-                            "ttl_seconds": ttl_seconds,
-                            "source": source_hint,
-                            "authoritative_live": ttl_seconds is not None
-                        }
+                        "meta": tool_meta
                     })
 
                     if tool_name == "stash":
@@ -1341,6 +1359,7 @@ Mode: {self.mode}
                                 "first_thinking": first_thinking,
                                 "available_tools": available_tools,
                                 "tool_trace": tool_trace,
+                                "xai_previous_response_id": xai_previous_response_id,
                             }
                         )
                     
