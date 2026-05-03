@@ -80,6 +80,8 @@ class LLMLogger:
             "output_tokens": usage_info.get("output_tokens") if usage_info else None,
             "total_tokens": usage_info.get("total_tokens") if usage_info else None,
             "cost_usd": usage_info.get("cost_usd") if usage_info else None,
+            "prompt_text_tokens": usage_info.get("prompt_text_tokens") if usage_info else None,
+            "xai_prompt_text_tokens": usage_info.get("prompt_text_tokens") if usage_info else None,
             "cached_prompt_text_tokens": usage_info.get("cached_prompt_text_tokens") if usage_info else None,
             "xai_cached_prompt_text_tokens": usage_info.get("cached_prompt_text_tokens") if usage_info else None,
             "reasoning_tokens": usage_info.get("reasoning_tokens") if usage_info else None,
