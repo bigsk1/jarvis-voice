@@ -711,6 +711,50 @@ Expected result from the last run: `8 passed`.
 5. If xAI SDK/gRPC failures still happen often, keep the OpenAI-compatible fallback but log when continuation is dropped so failures are visible.
 6. Later, evaluate `use_encrypted_content=True` as the ZDR-friendly continuation path. Do this separately from `store_messages=True` because the state model is different.
 
+I’d think of it as three layers:
+
+Jarvis long-term / cross-turn context
+This stays exactly as-is:
+auto context, recent conversation history, learned knowledge, auto memory, Tool RAG, similarity scores, feedback, completion guard, intelligence logs.
+These are Jarvis’s brain and observability layer, not provider state.
+
+Jarvis in-flight orchestration state
+This also stays canonical:
+conversation_context, tools_used, accumulated_data, _tool_trace, usage, completion guard evidence, saved web conversation JSON.
+Jarvis still owns the truth of what happened.
+
+Provider-native continuation
+This is the new narrow layer:
+xAI gets previous_response_id, assistant tool_call_id, and a structural tool_result(...) so Grok can connect:
+“I requested tool X” → “Jarvis executed X” → “this is the result.”
+
+The thing to clip is not auto memory or intelligence. It is the repeated full text version of the tool result inside _build_turn_context(...) when xAI already has that same tool call/result structurally.
+
+So the safe shape is:
+
+First router turn:
+Use normal Jarvis prompt, Tool RAG, memory, learned knowledge, system prompt, tools.
+
+Tool call returned:
+Jarvis executes it, logs it, stores it in conversation_context, saves tool trace, updates Web UI.
+
+Next router turn with XAI_STORE_MESSAGES=true:
+Send previous_response_id.
+Send structural tool result linked to tool_call_id.
+Send only a small provider-facing delta like:
+“Continue the original task. The previous Jarvis tool completed successfully. Decide whether another tool is needed or answer.”
+
+For non-xAI providers:
+Keep current _build_turn_context(...) text path.
+
+That means the provider-specific piece should probably live behind an adapter boundary, not leak through the whole app. Something like:
+
+Jarvis canonical state
+  -> default adapter: text turn context
+  -> xAI stored adapter: previous_response_id + structural tool_result + clipped delta
+  -> future OpenAI adapter: similar response continuation path if we choose to wire it
+Completion guard, feedback, intelligence, logs, web conversation history should continue reading Jarvis’s canonical state, not xAI’s stored state. That keeps provider-native continuation as an optimization for model behavior, not the source of truth.
+
 **Useful official xAI references:**
 
 - Function calling and client-side tools: https://docs.x.ai/developers/tools/function-calling
