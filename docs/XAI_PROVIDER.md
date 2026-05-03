@@ -704,6 +704,8 @@ Expected result from the last run: `8 passed`.
 
 **Next best steps:**
 
+Detailed implementation plan: [xAI Native Continuation Implementation Plan](XAI_NATIVE_CONTINUATION_PLAN.md).
+
 1. Add structural xAI continuation in the orchestrator: store the assistant tool call metadata and the executed Jarvis tool result in `conversation_context`, then pass those as an assistant `tool_calls` message plus a `role="tool"` / `tool_result(...)` message on the next xAI SDK call.
 2. Once structural `tool_result(...)` is active, trim or bypass redundant `_build_turn_context(...)` text for xAI stored-continuation turns so Grok 4.3 does not see the same tool result twice.
 3. Test `XAI_STORE_MESSAGES=true` cautiously with Grok 4.3 on multi-tool tasks that previously looped or hit duplicate guards. Compare total latency, native server-side tool counts, duplicate-guard frequency, and response quality against `XAI_STORE_MESSAGES=false`.
