@@ -4,6 +4,9 @@
 
 ---
 
+![grok-image](images/image.png)
+
+
 ## Table of Contents
 
 1. [Why xAI Grok?](#why-xai-grok)
