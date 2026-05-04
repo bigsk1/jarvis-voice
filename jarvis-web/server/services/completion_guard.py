@@ -271,6 +271,7 @@ class CompletionGuardPolicy:
             pass
 
         default_location = str(get_config_value("JARVIS_DEFAULT_LOCATION", "") or "").strip()
+        default_postal_code = str(get_config_value("JARVIS_DEFAULT_POSTAL_CODE", "") or "").strip()
         if not default_location:
             return """Configured default location:
 (not set)
@@ -280,11 +281,18 @@ Location handling:
 - If no configured default location is set, do not treat an unstated fallback location as supported
 - Flag location issues when the answer invents a location or implies live/current geolocation without support"""
 
+        postal_line = (
+            f"\nConfigured default postal/ZIP code:\n{default_postal_code}\n"
+            if default_postal_code else ""
+        )
+
         return f"""Configured default location:
 {default_location}
+{postal_line}
 
 Location handling:
 - The configured default location above is valid runtime context for Jarvis, even when no location tool was used
+- The configured postal/ZIP code above is valid runtime context for tools that require structured postal-code input
 - If the user asked a location-relative question like "near me" and the answer uses the configured default location above, that is an allowed fallback
 - Do not treat use of the configured default location above as a hallucinated location claim when the answer is clearly using that default
 - Flag location issues only when the answer claims live/current geolocation, or switches to a different unsupported location"""

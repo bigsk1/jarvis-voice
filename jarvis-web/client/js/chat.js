@@ -3032,7 +3032,7 @@ class ChatUI {
     const rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
     const storedSpeech = innerData.speech || data.speech || '';
 
-    // Shopping/product preview card for focused SerpApi Amazon product lookups
+    // Shopping/product preview card for focused SerpApi product lookups
     // and single clear product results where a link + image is helpful.
     const serpapiPayload = toolResultsData.serpapi_search || data.serpapi_search;
     const latestSerpapi = Array.isArray(serpapiPayload)
@@ -3053,7 +3053,7 @@ class ChatUI {
       if (isFocusedProduct && product && product.url && product.title) {
         const title = Utils.escapeHtml(product.title);
         const link = Utils.escapeHtml(product.url);
-        const image = product.thumbnail ? Utils.escapeHtml(product.thumbnail) : '';
+        const image = (product.image_url || product.thumbnail) ? Utils.escapeHtml(product.image_url || product.thumbnail) : '';
         const price = product.price ? Utils.escapeHtml(String(product.price)) : '';
         const rating = product.rating != null ? Utils.escapeHtml(String(product.rating)) : '';
         const reviews = product.reviews != null ? Utils.escapeHtml(String(product.reviews)) : '';
@@ -3073,6 +3073,53 @@ class ChatUI {
             ` : ''}
             <div class="product-preview-body">
               <div class="product-preview-label">Amazon Product</div>
+              <a class="product-preview-title" href="${link}" target="_blank" rel="noopener noreferrer">${title}</a>
+              ${metaParts.length ? `<div class="product-preview-meta">${metaParts.join('')}</div>` : ''}
+              <div class="product-preview-actions">
+                <a class="product-preview-link" href="${link}" target="_blank" rel="noopener noreferrer">Open product</a>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    const homeDepotPayload = toolResultsData.serpapi_home_depot || data.serpapi_home_depot;
+    const latestHomeDepot = Array.isArray(homeDepotPayload)
+      ? homeDepotPayload[homeDepotPayload.length - 1]
+      : homeDepotPayload;
+
+    if (!shoppingHtml && latestHomeDepot && typeof latestHomeDepot === 'object') {
+      const results = Array.isArray(latestHomeDepot.top_results) && latestHomeDepot.top_results.length > 0
+        ? latestHomeDepot.top_results
+        : (Array.isArray(latestHomeDepot.results) ? latestHomeDepot.results : []);
+      const product = latestHomeDepot.product_details || results[0];
+
+      if (product && product.url && product.title) {
+        const title = Utils.escapeHtml(product.title);
+        const link = Utils.escapeHtml(product.url);
+        const image = (product.image_url || product.thumbnail || latestHomeDepot.top_image_url)
+          ? Utils.escapeHtml(product.image_url || product.thumbnail || latestHomeDepot.top_image_url)
+          : '';
+        const price = (product.price_formatted || product.price) ? Utils.escapeHtml(String(product.price_formatted || product.price)) : '';
+        const rating = product.rating != null ? Utils.escapeHtml(String(product.rating)) : '';
+        const reviews = product.reviews != null ? Utils.escapeHtml(String(product.reviews)) : '';
+        const productId = product.product_id ? Utils.escapeHtml(String(product.product_id)) : '';
+        const metaParts = [];
+        if (price) metaParts.push(`<span class="product-chip price">${price}</span>`);
+        if (rating) metaParts.push(`<span class="product-chip">⭐ ${rating}</span>`);
+        if (reviews) metaParts.push(`<span class="product-chip">${reviews} reviews</span>`);
+        if (productId) metaParts.push(`<span class="product-chip">Product ID ${productId}</span>`);
+
+        shoppingHtml = `
+          <div class="product-preview-card">
+            ${image ? `
+              <a class="product-preview-image" href="${link}" target="_blank" rel="noopener noreferrer">
+                <img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer">
+              </a>
+            ` : ''}
+            <div class="product-preview-body">
+              <div class="product-preview-label">Home Depot Product</div>
               <a class="product-preview-title" href="${link}" target="_blank" rel="noopener noreferrer">${title}</a>
               ${metaParts.length ? `<div class="product-preview-meta">${metaParts.join('')}</div>` : ''}
               <div class="product-preview-actions">

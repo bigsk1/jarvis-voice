@@ -5,6 +5,7 @@ Use the SerpApi tools to run web, marketplace, maps, and travel lookups through 
 The base tool is generic by design, and Jarvis now also includes thin SerpApi wrappers for common domains:
 
 - `serpapi_search` for generic engine-based search
+- `serpapi_home_depot` for The Home Depot product searches
 - `serpapi_maps_search` for Google Maps place and local business lookups
 - `serpapi_hotel_search` for Google Hotels searches
 - `serpapi_youtube` for YouTube video detail lookup with transcript fallback
@@ -15,6 +16,7 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 
 - Shared client: `lib/serpapi_client.py`
 - Generic tool: `skills/serpapi_search.py`
+- Home Depot wrapper: `skills/serpapi_home_depot.py`
 - Maps wrapper: `skills/serpapi_maps_search.py`
 - Hotels wrapper: `skills/serpapi_hotel_search.py`
 - YouTube wrapper: `skills/serpapi_youtube.py`
@@ -22,6 +24,7 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 - Yelp wrapper: `skills/serpapi_yelp_search.py`
 - Tool definitions:
   - `skills/serpapi_search.tool.json`
+  - `skills/serpapi_home_depot.tool.json`
   - `skills/serpapi_maps_search.tool.json`
   - `skills/serpapi_hotel_search.tool.json`
   - `skills/serpapi_youtube.tool.json`
@@ -32,6 +35,7 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 
 1. Add your key in env:
    - `SERP_API_KEY` in `config/cloud.env` and/or `config/local.env`
+   - Optional: `JARVIS_DEFAULT_POSTAL_CODE` for tools that need a ZIP/postal code, such as Home Depot US availability
 2. Sync tools:
    - `./bin/sync-tools.py cloud`
    - `./bin/sync-tools.py local` (if you use local mode)
@@ -131,6 +135,35 @@ have a much better chance of resolving to the right prior ASIN, link, and thumbn
   "num_results": 5
 }
 ```
+
+### Home Depot product search
+
+```json
+{
+  "query": "cordless drill",
+  "delivery_zip": "97124",
+  "sort_by": "top_rated",
+  "num_results": 5
+}
+```
+
+Use this when you want Home Depot product options, store/ZIP-specific availability, or price/rating comparisons. Jarvis preserves a compact shortlist of prior Home Depot candidates in follow-up context so turns like `show me the Milwaukee one` or `save that drill to canvas` can reuse the product ID, link, thumbnail, and price.
+
+For US searches, `delivery_zip` defaults to `JARVIS_DEFAULT_POSTAL_CODE` when omitted. Keep that postal code separate from `JARVIS_DEFAULT_LOCATION` so tools do not need to parse a city/state string.
+
+Home Depot search results include `thumbnail`, `image_url`, and top-level `top_image_url` when SerpApi returns product images. Keep normal searches lightweight: `include_product_details` defaults to false because it makes a second `home_depot_product` request. Use `include_product_details=true` only when the user asks for full product-page details, larger images, bullets, specifications, or similar focused detail.
+
+Avoid `no_cache=true` unless the user explicitly asks for fresh/live availability or pricing. Home Depot live fetches can be slow compared with cached SerpApi responses.
+
+### Home Depot product details by product ID
+
+```json
+{
+  "product_id": "341725053"
+}
+```
+
+Use this when you already have a Home Depot product ID and want the focused product page details, including `image_url`, description, highlights, bullets, specifications, rating, reviews, and price.
 
 ### Maps place search
 

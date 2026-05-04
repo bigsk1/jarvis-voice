@@ -1,0 +1,110 @@
+{
+  "enabled": true,
+  "name": "serpapi_home_depot",
+  "description": "Search The Home Depot products through SerpApi with normalized product fields like product_id, brand, model_number, price, rating, reviews, thumbnail, image_url, delivery, pickup, and stock information. Use this for Home Depot product searches, focused product details by product_id, store/ZIP-specific availability, price-sorted comparisons, and follow-up product references. For US searches, delivery_zip defaults to JARVIS_DEFAULT_POSTAL_CODE when omitted. In detailed/display mode, show product images from image_url/top_image_url when present. Keep normal searches cached and lightweight; only use no_cache or include_product_details when the user explicitly needs fresh availability or full product-page details.",
+  "complementary_tools": [
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_home_depot.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Home Depot search query, such as cordless drill, hammer, patio chair, or plywood. Required unless product_id is provided."
+      },
+      "product_id": {
+        "type": "string",
+        "description": "Optional Home Depot US product ID for a focused home_depot_product lookup with richer details and product images. If query is also provided, this can select which result to enrich."
+      },
+      "country": {
+        "type": "string",
+        "description": "Home Depot country: us or ca. Default: us."
+      },
+      "sort_by": {
+        "type": "string",
+        "description": "Friendly sort mode. US values map to top_sellers, price_low_to_high, price_high_to_low, top_rated, best_match. Canada values map to price-asc, price-desc, reviewAvgRating, relevance."
+      },
+      "hd_filter_tokens": {
+        "type": ["string", "array"],
+        "items": {
+          "type": "string"
+        },
+        "description": "US filter token string or list. Tokens can be obtained from a prior response's filters."
+      },
+      "filter": {
+        "type": "string",
+        "description": "Canada filter token string, with tokens separated by dashes."
+      },
+      "delivery_zip": {
+        "type": "string",
+        "description": "US ZIP code for shipping/product availability filtering. Defaults to JARVIS_DEFAULT_POSTAL_CODE when omitted."
+      },
+      "store_id": {
+        "type": "string",
+        "description": "US Home Depot store ID for local product filtering."
+      },
+      "store": {
+        "type": "string",
+        "description": "Canada Home Depot store ID. Default on Home Depot Canada is Gatineau (7140)."
+      },
+      "lowerbound": {
+        "type": "number",
+        "description": "US minimum price."
+      },
+      "upperbound": {
+        "type": "number",
+        "description": "US maximum price."
+      },
+      "minmax": {
+        "type": "string",
+        "description": "Canada price range filter, such as price:[100 TO 500], price:[100 TO *], or price:[0 TO 500]."
+      },
+      "nao": {
+        "type": "integer",
+        "description": "US product offset. Home Depot commonly uses 24 results per page."
+      },
+      "page": {
+        "type": "integer",
+        "description": "Results page number. Common to US and Canada searches."
+      },
+      "ps": {
+        "type": "integer",
+        "description": "US page size. Home Depot may override it; maximum is usually 48."
+      },
+      "pagesize": {
+        "type": "integer",
+        "description": "Canada page size. Default and maximum are usually 40."
+      },
+      "num_results": {
+        "type": "integer",
+        "description": "How many normalized product results to return. Clamped to 1..10. Default: 5."
+      },
+      "include_product_details": {
+        "type": "boolean",
+        "description": "If true, make an additional Home Depot Product API call for the selected/top US product, including larger image_url, description, highlights, bullets, and specifications. This is slower. Default: false for normal search; use true only when the user asks for full product-page details."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "If true, bypass SerpApi cache for a fresh live Home Depot fetch. This can be much slower and should only be used when the user explicitly asks for current/live availability or fresh pricing."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Additional SerpApi Home Depot parameters passed through, excluding reserved keys."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "If true, include full raw SerpApi payload in data.raw."
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

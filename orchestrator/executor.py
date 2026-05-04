@@ -64,6 +64,42 @@ class ToolExecutor:
     def set_excluded_tools(self, excluded_tools: list[str] | None = None):
         """Set request-scoped tools that must remain hidden from discovery."""
         self.excluded_tools = {str(name).strip() for name in (excluded_tools or []) if str(name).strip()}
+
+    def _get_subprocess_timeout(self, tool_name: str) -> int:
+        """Return the subprocess timeout for a local tool."""
+        if tool_name == "opencode":
+            return 480  # 8 minutes for OpenCode tasks (complex builds)
+        if tool_name == "ingest_intel":
+            return 300  # 5 minutes to match API sync ingest timeout for large intel files
+        if tool_name == "manage_intel":
+            return 600  # 10 minutes; create/update/delete can trigger two sequential ingests
+        if tool_name == "generate_image":
+            return 300  # 5 minutes for AI image generation (especially with grounding)
+        if tool_name == "generate_music":
+            return 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
+        if tool_name == "generate_video":
+            return 600  # 10 minutes for video generation (typically 2-3 min, up to 5 min for 4k)
+        if tool_name == "weather":
+            return 90  # Weather API can be slow with proxy fallback
+        if tool_name == "serpapi_home_depot":
+            return 300  # SerpApi request timeout is 90s; proxy chain may try proxy1/proxy2/direct
+        if tool_name == "status_recap":
+            return 180  # 3 minutes - calls multiple tools including generate_image
+        if tool_name == "crawl_url":
+            return 90  # 90 seconds - web scraping with JS wait can be slow
+        if tool_name == "search_docs":
+            return 90  # 60 seconds - search documentation with qmd
+        if tool_name == "text_summarizer":
+            return 180  # May call configured LLM over long stash/transcript artifacts
+        if tool_name == "convert_file":
+            return 180  # 3 minutes - convert files various formats, audio, video, image, ect.
+        if tool_name == "samantha":
+            return 180  # 3 minutes - Samantha is a remote assistant, so we need to increase the timeout
+        if tool_name == "youtube_video":
+            return 900  # 15 minutes - YouTube video download can be slow if downloading 2hr video
+        if tool_name == "phone_call":
+            return 900  # 15 min — aligns with VAPI_WAIT_TIMEOUT / wait_for_call_completion + Vapi maxDurationSeconds
+        return 75 if self.mode == "local" else 60
     
     def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False) -> dict[str, Any]:
         """
@@ -140,38 +176,7 @@ class ToolExecutor:
             # Ingest intel needs time for embedding generation (especially large profiles)
             # phone_call: Vapi max call length + poll loop + canvas save (see skills/phone_call.py)
             # Subprocess timeout settings see tool.json for HTTP timeouts
-            if tool_name == "opencode":
-                timeout = 480  # 8 minutes for OpenCode tasks (complex builds)
-            elif tool_name == "ingest_intel":
-                timeout = 300  # 5 minutes to match API sync ingest timeout for large intel files
-            elif tool_name == "manage_intel":
-                timeout = 600  # 10 minutes; create/update/delete can trigger two sequential ingests
-            elif tool_name == "generate_image":
-                timeout = 300  # 5 minutes for AI image generation (especially with grounding)
-            elif tool_name == "generate_music":
-                timeout = 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
-            elif tool_name == "generate_video":
-                timeout = 600  # 10 minutes for video generation (typically 2-3 min, up to 5 min for 4k)
-            elif tool_name == "weather":
-                timeout = 30  # Weather API can be slow with proxy fallback
-            elif tool_name == "status_recap":
-                timeout = 180  # 3 minutes - calls multiple tools including generate_image
-            elif tool_name == "crawl_url":
-                timeout = 90  # 90 seconds - web scraping with JS wait can be slow
-            elif tool_name == "search_docs":
-                timeout = 90  # 60 seconds - search documentation with qmd
-            elif tool_name == "text_summarizer":
-                timeout = 180  # May call configured LLM over long stash/transcript artifacts
-            elif tool_name == "convert_file":
-                timeout = 180  # 3 minutes - convert files various formats, audio, video, image, ect.
-            elif tool_name == "samantha":
-                timeout = 180  # 3 minutes - Samantha is a remote assistant, so we need to increase the timeout
-            elif tool_name == "youtube_video":
-                timeout = 900  # 15 minutes - YouTube video download can be slow if downloading 2hr video
-            elif tool_name == "phone_call":
-                timeout = 900  # 15 min — aligns with VAPI_WAIT_TIMEOUT / wait_for_call_completion + Vapi maxDurationSeconds
-            else:
-                timeout = 60 if self.mode == "local" else 45  # Increased default (was 30/15)
+            timeout = self._get_subprocess_timeout(tool_name)
             
             # Pass current environment to subprocess so tools inherit LLM_PROVIDER
             tool_env = os.environ.copy()

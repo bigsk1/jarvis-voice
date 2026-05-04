@@ -84,6 +84,21 @@ class OpenAIToolSchemaTests(unittest.TestCase):
         self.assertNotIn("enum", prop)
         self.assertNotIn("anyOf", prop)
 
+    def test_adds_items_to_array_union_without_items(self):
+        params = _sanitize_schema_for_openai({
+            "type": "object",
+            "properties": {
+                "hd_filter_tokens": {
+                    "type": ["string", "array"],
+                    "description": "String or list of filter tokens.",
+                }
+            }
+        }, is_root=True)
+
+        prop = params["properties"]["hd_filter_tokens"]
+        self.assertEqual(prop["type"], ["string", "array"])
+        self.assertEqual(prop["items"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,10 @@ class FakeRegistry:
 
 
 class ToolExecutorCancelTests(unittest.TestCase):
+    def test_home_depot_timeout_allows_http_timeout_and_proxy_fallbacks(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("serpapi_home_depot"), 300)
+
     def test_cancellation_stops_long_running_tool_promptly(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             script_path = Path(tmpdir) / "fake_long_tool.py"

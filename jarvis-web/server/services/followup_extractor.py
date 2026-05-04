@@ -22,6 +22,7 @@ _BRAVE_URL_RE = re.compile(r'https?://[^\s"\'<>)]+')
 # would overwrite or duplicate what the dedicated branch produced).
 _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_search',
+    'serpapi_home_depot',
     'serpapi_youtube_search',
     'serpapi_yelp_search',
     'crawl_url',
@@ -102,6 +103,7 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'send_email': ['to', 'subject', 'status'],
     'api_call': ['url', 'method', 'status_code'],
     'serpapi_search': ['engine', 'query', 'asin', 'results_count', 'top_url'],
+    'serpapi_home_depot': ['engine', 'query', 'country', 'product_id', 'results_count', 'top_url', 'top_image_url'],
     'serpapi_maps_search': ['engine', 'query', 'results_count'],
     'serpapi_hotel_search': ['engine', 'query', 'destination', 'check_in_date', 'check_out_date', 'results_count'],
     'spotify': ['name', 'artist'],
@@ -447,6 +449,70 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         candidate['reviews'] = item['reviews']
                     if item.get('thumbnail'):
                         candidate['thumbnail'] = item['thumbnail']
+                    candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+        if key == 'serpapi_home_depot':
+            results = value.get('results') or value.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = value.get('results_count', len(results))
+                first = results[0] if isinstance(results[0], dict) else {}
+                if isinstance(first, dict):
+                    if first.get('title'):
+                        extracted['title'] = first['title']
+                    if first.get('url') and 'top_url' not in extracted:
+                        extracted['top_url'] = first['url']
+                    if first.get('product_id') and 'product_id' not in extracted:
+                        extracted['product_id'] = first['product_id']
+                    if first.get('brand'):
+                        extracted['brand'] = first['brand']
+                    if first.get('model_number'):
+                        extracted['model_number'] = first['model_number']
+                    if first.get('price_formatted'):
+                        extracted['price'] = first['price_formatted']
+                    elif first.get('price') is not None:
+                        extracted['price'] = first['price']
+                    if first.get('rating'):
+                        extracted['rating'] = first['rating']
+                    if first.get('reviews'):
+                        extracted['reviews'] = first['reviews']
+                    if first.get('thumbnail'):
+                        extracted['thumbnail'] = first['thumbnail']
+                    if first.get('image_url'):
+                        extracted['image_url'] = first['image_url']
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    title = item.get('title')
+                    url = item.get('url')
+                    product_id = item.get('product_id')
+                    if not (title or url or product_id):
+                        continue
+                    candidate = {}
+                    if title:
+                        candidate['title'] = title
+                    if url:
+                        candidate['url'] = url
+                    if product_id:
+                        candidate['product_id'] = product_id
+                    if item.get('brand'):
+                        candidate['brand'] = item['brand']
+                    if item.get('model_number'):
+                        candidate['model_number'] = item['model_number']
+                    if item.get('price_formatted'):
+                        candidate['price'] = item['price_formatted']
+                    elif item.get('price') is not None:
+                        candidate['price'] = item['price']
+                    if item.get('rating'):
+                        candidate['rating'] = item['rating']
+                    if item.get('reviews'):
+                        candidate['reviews'] = item['reviews']
+                    if item.get('thumbnail'):
+                        candidate['thumbnail'] = item['thumbnail']
+                    if item.get('image_url'):
+                        candidate['image_url'] = item['image_url']
                     candidates.append(candidate)
                 if candidates:
                     extracted['candidates'] = candidates

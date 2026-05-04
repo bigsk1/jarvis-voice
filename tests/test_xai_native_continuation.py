@@ -207,6 +207,24 @@ class XAINativeContinuationTests(unittest.TestCase):
         self.assertEqual(provider.calls[0]["previous_response_id"], "resp_1")
         self.assertEqual(result["xai_continuation_mode"], "stored_structural")
 
+    def test_router_system_prompt_includes_default_postal_code(self):
+        router = LLMRouter.__new__(LLMRouter)
+        router.timezone = ZoneInfo("America/Los_Angeles")
+        router.prompt_override = None
+        router._system_prompt_base = "system"
+        router._provider_override = None
+        router._model_override = None
+
+        with patch("router_v2.get_config_value", side_effect=_config({
+            "JARVIS_DEFAULT_LOCATION": "Hillsboro, Oregon",
+            "JARVIS_DEFAULT_POSTAL_CODE": "97124",
+        })):
+            prompt = router.system_prompt
+
+        self.assertIn('use: "Hillsboro, Oregon"', prompt)
+        self.assertIn('Configured default postal/ZIP code for tools that require one: "97124"', prompt)
+        self.assertIn("Use the postal/ZIP code only for tools or APIs", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

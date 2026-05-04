@@ -1186,12 +1186,19 @@ When searching the web, if needed use the CURRENT YEAR ({now.year}) not past yea
         # Default location for weather/location queries only - never override user-specified locations
         location_block = ""
         default_loc = get_config_value("JARVIS_DEFAULT_LOCATION", "").strip()
+        default_postal_code = get_config_value("JARVIS_DEFAULT_POSTAL_CODE", "").strip()
         if default_loc:
+            postal_line = (
+                f'\nConfigured default postal/ZIP code for tools that require one: "{default_postal_code}"'
+                if default_postal_code else ""
+            )
             location_block = f"""
 
 DEFAULT LOCATION (weather and location-based queries):
 When the user asks for weather or location-based info WITHOUT specifying a place, use: "{default_loc}"
+{postal_line}
 Do NOT use this when the user specifies a different location (e.g. "weather in Seattle" → use Seattle).
+Use the postal/ZIP code only for tools or APIs that explicitly need a structured postal code; do not replace the readable location with it.
 Time and timezone use JARVIS_TIMEZONE - this is separate."""
         # Light personal touch for fresh conversations using existing date/time context above.
         greeting_hint = """

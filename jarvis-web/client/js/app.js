@@ -1067,6 +1067,7 @@ class JarvisApp {
       'pdf_create': '📄',
       'crypto_price': '💰',
       'opencode': '💻',
+      'serpapi_home_depot': '🛒',
       'list_reminders': '⏰',
       'set_reminder': '⏰',
       'system_monitor': '📊',
@@ -1656,6 +1657,10 @@ class JarvisApp {
             <div class="config-item">
               <span class="config-label">JARVIS_DEFAULT_LOCATION</span>
               <span class="config-value">${c.JARVIS_DEFAULT_LOCATION || 'Hillsboro, Oregon'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">JARVIS_DEFAULT_POSTAL_CODE</span>
+              <span class="config-value">${c.JARVIS_DEFAULT_POSTAL_CODE || 'Not set'}</span>
             </div>
             <div class="config-item">
               <span class="config-label">Mode</span>

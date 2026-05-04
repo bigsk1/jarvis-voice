@@ -208,6 +208,7 @@ JSON object printed to stdout:
 | `crypto_price` | Cryptocurrency prices |
 | `stock_price` | Stock/futures/forex prices |
 | `serpapi_search` | Generic SerpApi search (Amazon + other engines) |
+| `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |
 | `serpapi_hotel_search` | SerpApi Google Hotels search with stay filters |
 | `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |

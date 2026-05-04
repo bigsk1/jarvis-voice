@@ -160,6 +160,52 @@ def test_extract_followup_data_preserves_serpapi_youtube_search_candidates():
     assert youtube["candidates"][1]["video_id"] == "zyx987wvu65"
 
 
+def test_extract_followup_data_preserves_serpapi_home_depot_candidates():
+    handler = _handler()
+    data = {
+        "serpapi_home_depot": {
+            "engine": "home_depot",
+            "query": "cordless drill",
+            "country": "us",
+            "results": [
+                {
+                    "title": "20V MAX Cordless Drill/Driver Kit",
+                    "url": "https://www.homedepot.com/p/drill/123456789",
+                    "product_id": "123456789",
+                    "brand": "DEWALT",
+                    "model_number": "DCD771C2",
+                    "price_formatted": "$99.00",
+                    "rating": 4.7,
+                    "reviews": 2400,
+                    "thumbnail": "https://images.example.com/drill.jpg",
+                },
+                {
+                    "title": "M18 18V Lithium-Ion Drill Driver",
+                    "url": "https://www.homedepot.com/p/m18/987654321",
+                    "product_id": "987654321",
+                    "brand": "Milwaukee",
+                    "model_number": "2606-20",
+                    "price_formatted": "$89.00",
+                },
+            ],
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    home_depot = result["serpapi_home_depot"]
+
+    assert home_depot["query"] == "cordless drill"
+    assert home_depot["country"] == "us"
+    assert home_depot["title"] == "20V MAX Cordless Drill/Driver Kit"
+    assert home_depot["top_url"] == "https://www.homedepot.com/p/drill/123456789"
+    assert home_depot["product_id"] == "123456789"
+    assert home_depot["brand"] == "DEWALT"
+    assert home_depot["model_number"] == "DCD771C2"
+    assert home_depot["price"] == "$99.00"
+    assert len(home_depot["candidates"]) == 2
+    assert home_depot["candidates"][1]["product_id"] == "987654321"
+
+
 def test_extract_followup_data_preserves_serpapi_yelp_candidates():
     handler = _handler()
     data = {

@@ -98,6 +98,14 @@ def _collapse_simple_combinator(variants: Any) -> dict[str, Any]:
     return collapsed
 
 
+def _schema_type_includes(schema_type: Any, expected_type: str) -> bool:
+    if isinstance(schema_type, str):
+        return schema_type == expected_type
+    if isinstance(schema_type, list):
+        return expected_type in schema_type
+    return False
+
+
 def _sanitize_schema_for_openai(schema: Any, *, is_root: bool = False) -> Any:
     """
     Strip JSON Schema features that OpenAI function calling rejects.
@@ -138,6 +146,8 @@ def _sanitize_schema_for_openai(schema: Any, *, is_root: bool = False) -> Any:
     if is_root:
         sanitized.setdefault("type", "object")
         sanitized.setdefault("properties", {})
+    elif _schema_type_includes(sanitized.get("type"), "array"):
+        sanitized.setdefault("items", {})
 
     return sanitized
 

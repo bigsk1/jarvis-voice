@@ -20,6 +20,9 @@
       },
       "attrs": {
         "type": ["string", "array"],
+        "items": {
+          "type": "string"
+        },
         "description": "Optional Yelp attrs filter string or list. Example: GoodForKids,DogsAllowed or Smoking.no."
       },
       "sort_by": {

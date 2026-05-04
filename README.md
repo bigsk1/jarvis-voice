@@ -714,6 +714,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `brave_llm_context` - **Brave LLM Context API**: compact source snippets for LLM grounding (retrieval/context, not a final-answer generator)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 - `serpapi_search` - **SerpApi search**: Engine-based search (Amazon listings, Amazon product ASIN lookup, and other SerpApi engines)
+- `serpapi_home_depot` - **SerpApi Home Depot**: Product search with price, rating, product ID, store/ZIP availability, and follow-up candidate context
 - `serpapi_maps_search` - **SerpApi Maps**: Google Maps place and local business search with normalized address/rating/contact fields
 - `serpapi_hotel_search` - **SerpApi Hotels**: Google Hotels search with check-in/out, guest, price, and rating filters
 - `serpapi_yelp_search` - **SerpApi Yelp**: Local places (restaurants, coffee, bars) by description + location; filters, sort, optional reviews

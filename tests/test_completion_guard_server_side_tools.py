@@ -38,12 +38,19 @@ class _FakeSocketIO:
 
 class CompletionGuardServerSideToolsTests(unittest.TestCase):
     def test_completion_guard_location_context_uses_default_location(self):
+        def fake_config(key, default=""):
+            return {
+                "JARVIS_DEFAULT_LOCATION": "Hillsboro, Oregon",
+                "JARVIS_DEFAULT_POSTAL_CODE": "97124",
+            }.get(key, default)
+
         with patch("server.services.completion_guard.load_config"), patch(
-            "server.services.completion_guard.get_config_value", return_value="Hillsboro, Oregon"
+            "server.services.completion_guard.get_config_value", side_effect=fake_config
         ):
             context = ChatHandler._get_completion_guard_location_context("cloud")
 
         self.assertIn("Configured default location:\nHillsboro, Oregon", context)
+        self.assertIn("Configured default postal/ZIP code:\n97124", context)
         self.assertIn('location-relative question like "near me"', context)
         self.assertIn("allowed fallback", context)
 
@@ -101,6 +108,12 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         handler = ChatHandler.__new__(ChatHandler)
         captured = {}
 
+        def fake_config(key, default=""):
+            return {
+                "JARVIS_DEFAULT_LOCATION": "Hillsboro, Oregon",
+                "JARVIS_DEFAULT_POSTAL_CODE": "97124",
+            }.get(key, default)
+
         class _FakeProvider:
             def chat(self, prompt, system_prompt=None, max_tokens=None):
                 captured["prompt"] = prompt
@@ -133,12 +146,13 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         }
 
         with patch("server.services.completion_guard.load_config"), patch(
-            "server.services.completion_guard.get_config_value", return_value="Hillsboro, Oregon"
+            "server.services.completion_guard.get_config_value", side_effect=fake_config
         ):
             parsed = handler._evaluate_completion_guard_auto(record)
 
         self.assertEqual(parsed["recommended_action"], "accept")
         self.assertIn("Configured default location:\nHillsboro, Oregon", captured["prompt"])
+        self.assertIn("Configured default postal/ZIP code:\n97124", captured["prompt"])
         self.assertIn('location-relative question like "near me"', captured["prompt"])
         self.assertIn("allowed fallback", captured["prompt"])
 

@@ -34,6 +34,9 @@
           "string",
           "array"
         ],
+        "items": {
+          "type": "string"
+        },
         "description": "Tag filter(s), comma-separated string or array. Matches Firefox TAGS and folder-derived labels."
       },
       "folders": {
@@ -41,6 +44,9 @@
           "string",
           "array"
         ],
+        "items": {
+          "type": "string"
+        },
         "description": "Folder path fragment filter(s), comma-separated string or array."
       },
       "domains": {
@@ -48,6 +54,9 @@
           "string",
           "array"
         ],
+        "items": {
+          "type": "string"
+        },
         "description": "Domain filter(s), comma-separated string or array (e.g., github.com, reddit.com)."
       },
       "query_mode": {
