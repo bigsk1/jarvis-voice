@@ -544,7 +544,7 @@ source ~/jarvis-venv/bin/activate
 pip install -r requirements.txt
 
 # System packages (Ubuntu/Debian)
-sudo apt install sox ffmpeg jq sqlite3 traceroute inetutils-traceroute curl 
+see ~/jarvis-voice/install-system-deps.sh
 
 # See system-packages.txt for complete list of system dependencies
 
@@ -938,7 +938,7 @@ Stores facts, preferences, and technical information with **hybrid search** (FTS
 
 ```bash
 # Store a fact
-"Remember my WireGuard VPN is 192.168.70.0/24"
+"Remember my WireGuard VPN is 192.168.7.0/24"
 
 # Retrieve via keyword search (FTS5 with BM25 ranking)
 "Search for VPN network"  # Uses FTS5 for fast, accurate results
@@ -1185,19 +1185,6 @@ LIMIT 7;"
 - [`docs/mcp/MCP_QUICKSTART.md`](docs/mcp/MCP_QUICKSTART.md) - MCP server integration
 - [`docs/ERROR_RECOVERY.md`](docs/ERROR_RECOVERY.md) - Error handling
 
-**Testing:**
-- `tests/integration/compare-models.sh` - Model comparison framework
-- `tests/integration/test-memory-tools.sh` - Memory tool selection tests
-- `tests/integration/test-memory-real-world.sh` - Complex scenario tests
-
-### Historical/Reference Docs
-
-The following docs are kept for historical context but describe features that have been deprecated or improved:
-- `CHANGELOG_2025-11-14.md` - Detailed change log
-- `DATABASE_DEEP_DIVE.md` - Database evolution (mentions removed tables)
-- `FIXES_2025-11-14.md` - Bug fix details
-- `METADATA_POPULATION_STATUS.md` - Metadata implementation tracking
-
 ---
 
 ## 🔧 Development
@@ -1293,8 +1280,8 @@ The tool will be auto-discovered!
 ./tests/integration/test-memory-real-world.sh
 
 # Compare two models side-by-side (creates backups!)
-./tests/integration/compare-models.sh local qwen3-vl qwen2.5:7b
-./tests/integration/compare-models.sh cloud claude-sonnet-4-5 gpt-4o
+./tests/integration/compare-models.sh local gemma4 qwen3:14b
+./tests/integration/compare-models.sh cloud claude-sonnet-4-7 gpt-5.4-mini
 
 # Test specific tool
 ./orchestrator/orchestrator_v2.py cloud "remember test fact"
@@ -1327,7 +1314,7 @@ ollama serve
 
 **"Model not found"**
 ```bash
-ollama pull qwen3-vl
+ollama pull gemma4
 ollama pull nomic-embed-text
 ```
 
@@ -1816,18 +1803,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - **Phase 6: Self-Play Optimization** - Nightly simulation to discover better routing strategies
 - ✅ **Phase 7: Versioned Prompts** - COMPLETE! Auto-rollback on performance degradation
 
-**Other Planned:**
-- **Intelligence Layer Phase 2** - Implicit failure detection, tool trashing detection, conflict resolution
-- **Intelligence Layer Phase 3** - User profile learning (communication style, shortcuts, preferences)
-- ✅ ~~Web UI for memory management and system health~~ - **DONE! Memory Browser UI**
-- Home automation integrations (Home Assistant, MQTT)
-- Multi-user support with isolated memory contexts
-- Tool profiles for local vs cloud modes
-- Custom wake word training
-- Mobile app for remote control
-- Additional n8n workflows to integrate features
-- Test webhook system for universal effectiveness
-
 ---
 
 ## 📝 License
@@ -1835,6 +1810,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.49.1 (April 2026)
+**Current Version:** v2.49.1 (May 2026)
 **Status:** Production Ready ✅  
-**Latest Features:** v2.49: xAI native TTS with optional expressive final-speech tags, compact Tool RAG retrieval + live schema-token traces, follow-up extraction service with `crawl_url`/Brave context, xAI native-search budget guardrails, intelligence provenance/sync/dry-run maintenance, Intelligence Dashboard infinite-scroll pagination, and Canvas LAN/public page links — plus v2.48 Tool RAG hash skip, Completion Guard ↔ intelligence, `/logs`, alerts & Weather Watch, TTS profiles, Canvas/SerpAPI work
+**Latest Features:** v2.49.1: multi-coin crypto pricing and native charts (market/status/canvas), memory/intel UI (memory ID search, badges, markdown intel preview), dual-database forget/mirror fixes and safer bulk-forget caps, Jarvis Docs Assistant + standalone docs reader (mobile + QMD/ripgrep retrieval), Grok/xAI tuning (chat stability, cache affinity, native continuation, hybrid tools, DNS hardening), GPT-5.4 mini plus catalog tweaks and usage/caching reporting fixes, broader tool permissions + `complementary_tools`, `tool_search` discovery flow, Home Depot via SerpAPI, web conversations pin/archive + reconnect delivery, logging/orchestrator refinements (routing provenance, prompt token visibility, Completion Guard refactor) — on top of v2.49.0 xAI native TTS + Tool RAG traces, follow-up extractor, intelligence provenance/dashboard pagination, Canvas public links, `/logs`, alerts & Weather Watch, and v2.48 Tool RAG hash skip + related polish
