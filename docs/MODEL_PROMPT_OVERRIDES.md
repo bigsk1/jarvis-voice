@@ -48,7 +48,7 @@ config/
       gpt-5.4-nano/
         prompt_overrides.yaml
     xai/
-      grok-4-1-fast-non-reasoning-latest/
+      grok-4.20-non-reasoning/
         prompt_overrides.yaml
     ollama/
       qwen3/
@@ -136,8 +136,8 @@ Examples:
 - `openai / gpt-5.4-nano-2026-03-17` → first try `config/models/openai/gpt-5.4-nano-2026-03-17/prompt_overrides.yaml`, then fall back to `config/models/openai/gpt-5.4-nano/prompt_overrides.yaml`
 - `ollama / qwen3:latest` → first try `config/models/ollama/qwen3:latest/prompt_overrides.yaml`, then fall back to `config/models/ollama/qwen3/prompt_overrides.yaml`
 - `ollama / kimi-k2.5:cloud` → first try `config/models/ollama/kimi-k2.5:cloud/prompt_overrides.yaml`, then fall back to `config/models/ollama/kimi-k2.5/prompt_overrides.yaml`
-- `xai / grok-4-1-fast-non-reasoning-latest` → first try `config/models/xai/grok-4-1-fast-non-reasoning-latest/prompt_overrides.yaml`, then fall back to `config/models/xai/grok-4-1-fast-non-reasoning/prompt_overrides.yaml`
-- `xai / grok-4-1-fast-non-reasoning-cloud` → first try `config/models/xai/grok-4-1-fast-non-reasoning-cloud/prompt_overrides.yaml`, then fall back to `config/models/xai/grok-4-1-fast-non-reasoning/prompt_overrides.yaml`
+- `xai / grok-4.20-non-reasoning-latest` → first try `config/models/xai/grok-4.20-non-reasoning-latest/prompt_overrides.yaml`, then fall back to `config/models/xai/grok-4.20-non-reasoning/prompt_overrides.yaml`
+- `xai / grok-4.20-non-reasoning-cloud` → first try `config/models/xai/grok-4.20-non-reasoning-cloud/prompt_overrides.yaml`, then fall back to `config/models/xai/grok-4.20-non-reasoning/prompt_overrides.yaml`
 - `openai / gpt-5.4` → do **not** load the `gpt-5.4-nano` override
 
 This is intentionally strict. Normalization is limited to deterministic runtime suffix cleanup, not fuzzy matching.

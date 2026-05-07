@@ -10,7 +10,7 @@
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
-- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (2M context, native search/TTS, in-flight tool continuation) ⭐ RECOMMENDED
+- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` default, native search/TTS, in-flight tool continuation) ⭐ RECOMMENDED
 
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.10** (Completion Guard eval overrides, Ollama cloud judge fixes, tightened auto-repair behavior, server logs) ⭐ ENHANCED
@@ -426,7 +426,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Tool-failure retries now preserve in-flight orchestrator state such as `tool_call_counts`, `tools_used`, accumulated data, and prior tool context, which keeps repeated tool cards and WebUI/tool-history behavior consistent across retries.
 - ✅ **Stash follow-up context + model override fixes**
   - Web conversation follow-up extraction now preserves real `stash` tool results instead of treating them like upload-only metadata, which improves same-conversation follow-up questions against prior transcript/file reads.
-  - Model prompt override resolution now strips bare runtime suffixes like `-latest` and `-cloud` in addition to `:latest`, so folders such as `config/models/xai/grok-4-1-fast-non-reasoning/` correctly apply to active runtime IDs like `grok-4-1-fast-non-reasoning-latest`.
+  - Model prompt override resolution now strips bare runtime suffixes like `-latest` and `-cloud` in addition to `:latest`, so folders such as `config/models/xai/grok-4.3/` correctly apply to active runtime IDs like `grok-4.3`.
 
 **2026-04-09:**
 - ✅ **Ollama local-model routing hardening**

@@ -66,8 +66,7 @@ PRICING = {
         "haiku-3": {"input": 0.25, "output": 1.25},
     },
     "xai": {
-        # Grok fallback entries not yet curated in the catalog
-        "grok-code-fast": {"input": 0.20, "output": 1.50},
+        # Current curated xAI chat model pricing lives in lib/model_catalog.py.
     }
 }
 
@@ -88,10 +87,9 @@ CACHE_PRICING = {
     },
     "xai": {
         # xAI has automatic caching (like OpenAI, no cache_control needed)
-        # Cache hits can be 90%+ for repeated prompts
-        # Example: grok-code-fast-1 is $0.02 cached vs $0.20 regular (90% discount)
-        "cache_read": 0.02,  # 90% discount on cached tokens (10x cheaper!)
-        "cache_write_base": 0.20,  # Regular input cost for the default Grok 4.1 Fast model
+        # Default Grok 4.3 pricing is $1.25 input / $0.20 cached input per 1M.
+        "cache_read": 0.20,
+        "cache_write_base": 1.25,
     }
 }
 
@@ -114,7 +112,7 @@ def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: i
         - Sonnet 4.5 uses base tier pricing (≤200K tokens)
         - For prompts >200K tokens, actual costs may be higher
         - xAI pricing comes from the shared model catalog when available.
-        - xAI pricing is extremely competitive (10-15x cheaper than Claude/GPT)
+        - xAI chat pricing comes from the shared model catalog when available
     """
     if provider not in PRICING:
         return {

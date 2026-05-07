@@ -2,7 +2,7 @@
   "id": "daily_status_visual",
   "name": "Daily Status with Dashboard Image",
   "description": "Full status briefing with AI-generated visual dashboard (adds ~60-90 seconds for image)",
-  "version": "1.0",
+  "version": "1.1",
   "enabled": true,
   
   "triggers": {
@@ -54,6 +54,7 @@
       },
       "output_var": "btc_result",
       "extract": {
+        "btc_coin_id": "coin_id",
         "btc_price": "price_usd",
         "btc_change": "change_24h_percent"
       },
@@ -68,6 +69,7 @@
       },
       "output_var": "sol_result",
       "extract": {
+        "sol_coin_id": "coin_id",
         "sol_price": "price_usd",
         "sol_change": "change_24h_percent"
       },
@@ -76,6 +78,40 @@
     },
     {
       "step": 5,
+      "tool": "crypto_chart",
+      "params": {
+        "coin": "${btc_coin_id}",
+        "days": "7",
+        "points_limit": 120
+      },
+      "output_var": "btc_chart_result",
+      "extract": {
+        "btc_chart_points": "points_returned",
+        "btc_chart_range": "range_label"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Get Bitcoin 7-day chart"
+    },
+    {
+      "step": 6,
+      "tool": "crypto_chart",
+      "params": {
+        "coin": "${sol_coin_id}",
+        "days": "7",
+        "points_limit": 120
+      },
+      "output_var": "sol_chart_result",
+      "extract": {
+        "sol_chart_points": "points_returned",
+        "sol_chart_range": "range_label"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Get Solana 7-day chart"
+    },
+    {
+      "step": 7,
       "tool": "stock_price",
       "params": {
         "symbol": "TSLA"
@@ -89,7 +125,7 @@
       "description": "Get Tesla stock"
     },
     {
-      "step": 6,
+      "step": 8,
       "tool": "stock_price",
       "params": {
         "symbol": "GC=F"
@@ -103,7 +139,7 @@
       "description": "Get Gold futures"
     },
     {
-      "step": 7,
+      "step": 9,
       "tool": "list_alerts",
       "params": {
         "status": "pending"
@@ -117,7 +153,7 @@
       "description": "Get pending alerts"
     },
     {
-      "step": 8,
+      "step": 10,
       "tool": "list_reminders",
       "params": {
         "status": "current",
@@ -132,7 +168,7 @@
       "description": "Get current reminders needing attention and what's coming up next"
     },
     {
-      "step": 9,
+      "step": 11,
       "tool": "system_monitor",
       "params": {},
       "output_var": "system_result",
@@ -147,7 +183,7 @@
       "description": "Get system health"
     },
     {
-      "step": 10,
+      "step": 12,
       "tool": "generate_image",
       "params": {
         "aspect_ratio": "landscape"
@@ -162,14 +198,14 @@
       "description": "Generate visual dashboard image"
     },
     {
-      "step": 11,
+      "step": 13,
       "tool": "canvas",
       "action": "create",
       "params": {
         "title": "Workflows/Daily Status/${date}",
         "tags": ["status", "daily", "workflow", "visual", "${date}"]
       },
-      "llm_prompt": "Create a clean, well-formatted status report. If an image was generated, include it at the top with: ![Status Dashboard](${image_ref})\n\nIMPORTANT: Copy the stash:// reference EXACTLY as provided - do NOT modify the space ID format or dates.\n\nData to include:\nDate: ${date} (${day_of_week})\nTime: ${timestamp}\n\n## Weather (${location}):\n- Temperature: ${temperature}°F (feels like ${feels_like}°F)\n- Condition: ${condition}\n- Humidity: ${humidity}%\n- Wind: ${wind_speed} mph\n\n## Crypto:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n\n## Stocks:\n- TSLA: $${tsla_price} (${tsla_change}% today)\n- Gold: $${gold_price} (${gold_change}% today)\n\n## Alerts: ${alert_count} pending\n${alerts}\n\n## Current Reminders: ${reminder_count}\n${reminders_markdown}\n\nCRITICAL REMINDER RULES:\n- The reminder block above is source-of-truth and already formatted.\n- Reproduce EVERY reminder entry from that block.\n- Do NOT omit any reminder that appears in the provided block.\n- Do NOT summarize the reminder list into fewer items.\n- Do NOT add notes like 'incomplete', 'additional reminders', 'monitored for updates', or any similar commentary.\n- Do NOT invent missing fields or speculate.\n- Preserve the triggered vs scheduled grouping exactly.\n- Preserve reminder IDs, titles, spoken state, trigger times, acknowledged state, and recurrence when present.\n\n## System Health:\n- CPU: ${cpu_percent}%\n- RAM: ${memory_percent}% (${memory_used_gb}/${memory_total_gb} GB)\n- Uptime: ${uptime}\n\nFormat with emojis (🌤️ Weather, 📈 Crypto, 📊 Stocks, 🚨 Alerts, ⏰ Reminders, 💻 System). Add green/red indicators for changes.",
+      "llm_prompt": "Create a clean, well-formatted status report. Use plain markdown only. If an image was generated, include it at the top with: ![Status Dashboard](${image_ref})\n\nIMPORTANT: Copy the stash:// reference EXACTLY as provided - do NOT modify the space ID format or dates.\n\nData to include:\nDate: ${date} (${day_of_week})\nTime: ${timestamp}\n\n## Weather (${location}):\n- Temperature: ${temperature}°F (feels like ${feels_like}°F)\n- Condition: ${condition}\n- Humidity: ${humidity}%\n- Wind: ${wind_speed} mph\n\n## Crypto:\n- Bitcoin: $${btc_price} (${btc_change}% 24h)\n- Solana: $${sol_price} (${sol_change}% 24h)\n- Bitcoin chart: ${btc_chart_range} with ${btc_chart_points} points\n- Solana chart: ${sol_chart_range} with ${sol_chart_points} points\n\n## Stocks:\n- TSLA: $${tsla_price} (${tsla_change}% today)\n- Gold: $${gold_price} (${gold_change}% today)\n\n## Alerts: ${alert_count} pending\n${alerts}\n\n## Current Reminders: ${reminder_count}\n${reminders_markdown}\n\nCRITICAL REMINDER RULES:\n- The reminder block above is source-of-truth and already formatted.\n- Reproduce EVERY reminder entry from that block.\n- Do NOT omit any reminder that appears in the provided block.\n- Do NOT summarize the reminder list into fewer items.\n- Do NOT add notes like 'incomplete', 'additional reminders', 'monitored for updates', or any similar commentary.\n- Do NOT invent missing fields or speculate.\n- Preserve the triggered vs scheduled grouping exactly.\n- Preserve reminder IDs, titles, spoken state, trigger times, acknowledged state, and recurrence when present.\n\n## System Health:\n- CPU: ${cpu_percent}%\n- RAM: ${memory_percent}% (${memory_used_gb}/${memory_total_gb} GB)\n- Uptime: ${uptime}\n\nFormat nicely with emojis (🌤️ Weather, 📈 Crypto, 📊 Stocks, 🚨 Alerts, ⏰ Reminders, 💻 System). Add green/red indicators for changes.\n\nIn the crypto section, create two clearly separated subsections so the charts do not appear stacked without context:\n1. **Bitcoin ${btc_chart_range} Chart**\n   - One short sentence on the trend\n   - Then this exact chart block:\n```crypto-chart\n{\"title\":\"Bitcoin ${btc_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${btc_coin_id}/chart?days=7&points_limit=120\"}\n```\n2. **Solana ${sol_chart_range} Chart**\n   - One short sentence on the trend\n   - Then this exact chart block:\n```crypto-chart\n{\"title\":\"Solana ${sol_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${sol_coin_id}/chart?days=7&points_limit=120\"}\n```\n\nKeep the headings and sentences outside the fenced chart blocks. Use actual values only; do not output placeholder syntax like ${var}. Keep the overall report concise but complete.",
       "required": true,
       "description": "Create formatted canvas report with image"
     }

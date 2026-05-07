@@ -83,7 +83,7 @@ Complete LLM call logging and monitoring system for Jarvis, with specialized Gra
   "timestamp": "2025-11-24T00:19:23.835813",
   "mode": "cloud",
   "provider": "xai",
-  "model": "grok-4-1-fast-non-reasoning",
+  "model": "grok-4.3",
   "prompt_type": "routing",
   "user_query": "What time is it?",
   "messages_count": 1,
@@ -119,7 +119,7 @@ Complete LLM call logging and monitoring system for Jarvis, with specialized Gra
 
 #### LLM calls by specific model
 ```logql
-{job="jarvis", log_type="llm", model="grok-4-1-fast-non-reasoning"} | json
+{job="jarvis", log_type="llm", model="grok-4.3"} | json
 ```
 
 #### LLM calls by provider
@@ -317,7 +317,7 @@ source ~/jarvis-venv/bin/activate
 ### Query Performance
 - Use time ranges to avoid scanning all data
 - Filter by labels (`log_type`, `model`, `tool_name`) before parsing JSON
-- Example: `{log_type="llm", model="grok-4-1-fast-non-reasoning"} | json`
+- Example: `{log_type="llm", model="grok-4.3"} | json`
 
 ---
 

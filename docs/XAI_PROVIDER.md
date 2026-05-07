@@ -1,6 +1,6 @@
 # xAI (Grok) Provider - The Best Cloud Option for Jarvis
 
-> **TL;DR**: xAI Grok offers a **2M context window** at **10-15x lower cost** than competitors, with automatic caching, reasoning mode, and native function calling. It's currently the **best cloud provider** for Jarvis.
+> **TL;DR**: xAI Grok offers strong agentic tool calling with `grok-4.3` as Jarvis' default, 1M-2M context options across current Grok models, automatic caching, configurable reasoning effort, and native function calling.
 
 ---
 
@@ -30,15 +30,15 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 
 | Feature | xAI Grok | Anthropic Claude | OpenAI GPT |
 |---------|----------|------------------|------------|
-| **Context Window** | **2M tokens** 🏆 | 200K tokens | 128K tokens |
-| **Input Cost** | **$0.20/1M** 🏆 | $3.00/1M | $1.25-3.00/1M |
-| **Output Cost** | **$0.50/1M** 🏆 | $15.00/1M | $10.00-12.00/1M |
-| **Caching** | **90% discount** 🏆 | 90% discount | 50% discount |
-| **Reasoning Mode** | ✅ No extra cost | ✅ $3/$15 | ❌ |
+| **Context Window** | **1M-2M tokens** | 200K tokens | 128K-1M+ tokens |
+| **Input Cost** | **$1.25-$2.00/1M** | $3.00/1M | varies by model |
+| **Output Cost** | **$2.50-$6.00/1M** | $15.00/1M | varies by model |
+| **Caching** | **Cached input from $0.20/1M** | 90% discount | model-dependent |
+| **Reasoning Mode** | ✅ Configurable on Grok 4.3 | ✅ $3/$15 | model-dependent |
 | **Function Calling** | ✅ Native | ✅ Native | ✅ Native |
-| **Typical Query Cost** | **$0.0052** 🏆 | $0.0646 | $0.0308 |
+| **Typical Query Cost** | Competitive | Medium | varies |
 
-**Bottom Line**: xAI is **10-15x cheaper** with **10x larger context**, making it perfect for Jarvis's tool-heavy workload.
+**Bottom Line**: xAI provides large-context Grok models, native tools, and competitive cached-input pricing for Jarvis's tool-heavy workload.
 
 ---
 
@@ -78,18 +78,18 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 
 ## Key Features
 
-### 1. **Massive 2M Context Window**
+### 1. **Large 1M-2M Context Windows**
 
-- Handle **10x more tools** than competitors
+- Handle large tool catalogs and retrieved context
 - Include entire conversation history
 - Pass large documents without chunking
 - Perfect for Jarvis's 24+ tools with detailed descriptions
 
-**Example**: Jarvis system prompt + 24 tools = ~25K tokens. With 2M context, you can include:
+**Example**: Jarvis system prompt + 24 tools = ~25K tokens. With 1M+ context, you can include:
 - Full tool context: 25K tokens
 - Recent conversations: 10K tokens
 - Long documents: 100K+ tokens
-- Still have 1.8M+ tokens left!
+- Still have substantial headroom for multi-step work
 
 ### 2. **Automatic Prompt Caching (90% Discount)**
 
@@ -509,7 +509,7 @@ Grok 4.3 performs extended internal thinking before responding, and its depth ca
 
 - **Latency**: 1-3 seconds (similar to Claude/GPT)
 - **Throughput**: High (scales well)
-- **2M context**: No significant slowdown vs 200K
+- **Large context**: Current Grok models support 1M-2M token windows
 
 ### Reliability
 
@@ -632,7 +632,7 @@ Jarvis's `LLMProvider` abstraction means **zero code changes** needed. Just upda
 
 ### Q: Is xAI as good as Claude/GPT?
 
-**A**: For Jarvis's use case (tool calling, structured tasks), yes! xAI Grok-4 performs on par with Claude Sonnet 4.5 and GPT-5.1 for function calling, while being 10-15x cheaper with 10x larger context.
+**A**: For Jarvis's use case (tool calling, structured tasks), current Grok models are strong options alongside Claude and GPT models, especially when native xAI search/tools and large context are useful.
 
 ### Q: What about thinking mode?
 
@@ -669,9 +669,9 @@ LLM_PROVIDER="openai"     # Fallback to GPT
 
 1. **Use the right xAI model for the workload** - `grok-4.3` for reasoning/tool use, `grok-4.20-non-reasoning-latest` for faster simple work
 2. **Monitor cache hit rates** in usage stats (should be 90%+)
-3. **Keep system prompt + tools under 1M tokens** (plenty of headroom with 2M context)
+3. **Keep system prompt + tools under 1M tokens** (`grok-4.3` has 1M context; `grok-4.20-*` offers 2M when needed)
 4. **Test fallback providers** (Claude/GPT) in case xAI has issues
-5. **Track monthly costs** vs previous provider (should see 10-15x savings)
+5. **Track monthly costs** vs previous provider; cached-input usage can materially change the effective price
 
 ---
 
@@ -792,12 +792,12 @@ Completion guard, feedback, intelligence, logs, web conversation history should 
 
 ## Summary
 
-xAI Grok is **currently the best cloud provider for Jarvis**:
+xAI Grok is a strong cloud provider for Jarvis:
 
-✅ **2M context window** (10x larger)  
-✅ **10-15x cheaper** than competitors  
+✅ **1M-2M context window options**  
+✅ **Competitive pricing**  
 ✅ **Automatic caching** (90% discount)  
-✅ **Reasoning mode** at no extra cost  
+✅ **Configurable reasoning on Grok 4.3**  
 ✅ **Native function calling**  
 ✅ **Built-in live search** (XAI_SEARCH=true)   
 ✅ **Native TTS with optional expressive speech tags**

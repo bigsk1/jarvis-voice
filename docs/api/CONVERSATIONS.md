@@ -85,7 +85,7 @@ curl "http://localhost:8880/api/conversations?session_id=20260117_180010"
       "metadata": {
         "mode": "cloud",
         "provider": "xai",
-        "model": "grok-4-1-fast-non-reasoning-latest",
+        "model": "grok-4.3",
         "tool_count": 1
       }
     }

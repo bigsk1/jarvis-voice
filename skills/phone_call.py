@@ -20,6 +20,7 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value, get_int
+from model_catalog import get_provider_fallback_model
 
 # Vapi API base URL
 VAPI_API_BASE = "https://api.vapi.ai"
@@ -256,7 +257,7 @@ def get_vapi_model_config(system_prompt: str) -> dict:
     
     # Provider-specific defaults
     provider_defaults = {
-        'xai': 'grok-4-fast-non-reasoning',
+        'xai': get_provider_fallback_model('xai'),
         'anthropic': 'claude-sonnet-4-20250514',
         'openai': 'gpt-4o',
         'groq': 'llama-3.1-70b-versatile',
@@ -264,7 +265,7 @@ def get_vapi_model_config(system_prompt: str) -> dict:
     }
     
     if not vapi_model:
-        vapi_model = provider_defaults.get(vapi_provider, 'grok-4-fast-non-reasoning')
+        vapi_model = provider_defaults.get(vapi_provider, get_provider_fallback_model('xai'))
     
     return {
         "provider": vapi_provider,
@@ -1293,4 +1294,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

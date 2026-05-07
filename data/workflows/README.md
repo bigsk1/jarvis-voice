@@ -38,8 +38,8 @@ This folder contains JSON workflow definitions that the orchestrator can execute
 | `deep_research.json` | `/research <topic>` | Multi-source research with validation |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
-| `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, system health dashboard |
-| `daily_status_visual.json` | `/status_visual` | Same as /status but with AI-generated dashboard image |
+| `daily_status.json` | `/status` | Weather, crypto (7d charts on Canvas), stocks, alerts, system health dashboard |
+| `daily_status_visual.json` | `/status_visual` (also `/status-visual`, `/status-image`, `/daily-visual`) | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
 | `weather_watch.json` | `/weather_watch` | Default-location weather watch with canvas report and condition-specific alerts |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, keywords, canvas study notes |

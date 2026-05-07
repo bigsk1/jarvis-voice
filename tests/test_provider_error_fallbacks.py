@@ -85,7 +85,7 @@ class ProviderErrorFallbackTests(unittest.TestCase):
             "Error code: 403 - {'code': 'The caller does not have permission to execute the "
             "specified operation', 'error': 'Content violates usage guidelines. "
             "Team: 8640cd2d-39ef-44ab-a0a4-2d4fe01a9959, API key ID: 38905069-210d-42df-94c5-8caec1a5e97f, "
-            "Model: grok-4-1-fast-non-reasoning, Failed check: SAFETY_CHECK_TYPE_BIO'}"
+            "Model: grok-4.3, Failed check: SAFETY_CHECK_TYPE_BIO'}"
         )
         self.assertTrue(is_provider_error_text(raw))
         self.assertEqual(classify_provider_error(raw).kind, "safety")
@@ -151,7 +151,7 @@ class ProviderErrorFallbackTests(unittest.TestCase):
         line = json.dumps({
             "timestamp": "2026-04-16T16:22:43.439762",
             "provider": "xai",
-            "model": "grok-4-1-fast-non-reasoning-latest",
+            "model": "grok-4.3",
             "input_tokens": None,
             "output_tokens": None,
             "total_tokens": None,

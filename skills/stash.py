@@ -20,6 +20,7 @@ import subprocess
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from model_catalog import get_provider_fallback_model
 from ollama_utils import get_ollama_base_urls, request_ollama
 from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
@@ -182,7 +183,7 @@ Do NOT add commentary or opinions - just the facts."""
                 'https://api.x.ai/v1/chat/completions',
                 headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
                 json={
-                    'model': get_config_value('STASH_SUMMARIZE_MODEL', 'grok-4-1-fast-non-reasoning'),
+                    'model': get_config_value('STASH_SUMMARIZE_MODEL', get_provider_fallback_model('xai')),
                     'messages': [
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': user_prompt}

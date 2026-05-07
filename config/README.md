@@ -439,7 +439,7 @@ echo $BRAVE_API_KEY  # Should show your API key
 ## Model Recommendations
 
 ### Cloud Mode
-- **Best overall**: `grok-4-1-fast-non-reasoning`
+- **Best overall**: `grok-4.3`
 - **Fastest**: `gpt-5-4-nano`
 
 ### Local Mode (Ollama)

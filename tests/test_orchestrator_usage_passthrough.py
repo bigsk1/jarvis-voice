@@ -63,7 +63,7 @@ class OrchestratorUsagePassthroughTests(unittest.TestCase):
         handler.web_conversation_id = "conv-1"
         handler.router = SimpleNamespace(
             provider_type="xai",
-            model_name="grok-4-1-fast-non-reasoning-latest",
+            model_name="grok-4.3",
         )
 
         captured = {}

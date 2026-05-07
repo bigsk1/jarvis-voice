@@ -189,7 +189,7 @@ XAI_API_KEY=your-xai-key
 # or OPENAI_API_KEY=your-openai-key
 
 # Model for your provider
-XAI_MODEL="grok-4-1-fast-non-reasoning-latest"
+XAI_MODEL="grok-4.3"
 # or ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 # or OPENAI_MODEL="gpt-4o"
 

@@ -27,10 +27,10 @@ LLM_PROVIDER="openai"
 OPENAI_API_KEY="sk-your-key-here"
 ```
 
-# Or use xAI Grok-4-fast
+# Or use xAI Grok
 LLM_PROVIDER="xai"
 XAI_API_KEY="xai-your-key-here"
-XAI_MODEL="grok-4-1-fast-non-reasoning"
+XAI_MODEL="grok-4.3"
 
 ### 3. Test It
 
@@ -116,9 +116,9 @@ Tool availability is selected just before the router LLM call by Tool RAG. Local
 | **Anthropic Claude** | ✅ Native | Fast | Medium | Cloud |
 | **OpenAI GPT** | ✅ Native | Fast | Low | Cloud |
 | **Ollama (Local)** | ⚠️ Structured prompts | Slower | Free | Local |
-| **xAI Grok-4-fast** | ✅ Native | Fast | Low | Cloud |
+| **xAI Grok 4.3** | ✅ Native | Medium | Low | Cloud |
 
-**Recommendation:** Use xAI Grok-4-fast for best tool calling accuracy.
+**Recommendation:** Use xAI Grok 4.3 for agentic tool calling accuracy.
 
 ## Creating Custom Tools
 
@@ -349,13 +349,13 @@ bin/
 
 ## Switching Providers
 
-### To xAI Grok-4-fast (Recommended)
+### To xAI Grok 4.3 (Recommended)
 
 `config/cloud.env`:
 ```bash
 LLM_PROVIDER="xai"
 XAI_API_KEY="xai-..."
-XAI_MODEL="grok-4-1-fast-non-reasoning"
+XAI_MODEL="grok-4.3"
 ```
 
 ### To Anthropic Claude

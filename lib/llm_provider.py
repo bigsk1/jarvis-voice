@@ -482,17 +482,16 @@ class XAIProvider(LLMProvider):
     xAI (Grok) provider with hybrid SDK support.
     
     Features:
-    - 2M context window for current Grok 4.20 and Grok 4.1 Fast models
-    - 256k context for grok-4 and grok-code-fast models
-    - Extremely competitive pricing ($0.20 input / $0.50 output per 1M tokens)
+    - Current Grok text models from the shared model catalog
+    - Grok 4.3 configurable reasoning effort (low/medium/high)
+    - Prompt-cache affinity via x-grok-conv-id / SDK metadata
     - Native function calling (OpenAI-compatible)
-    - Reasoning mode support (grok-*-reasoning-* models)
     - Structured outputs
     - Live Search: When XAI_SEARCH=true, uses xAI SDK Agent Tools API
       for real-time web/X search (server-side tools)
     """
     
-    def __init__(self, api_key: str, model: str = "grok-4-1-fast-non-reasoning-latest"):
+    def __init__(self, api_key: str, model: str | None = None):
         """Initialize xAI provider with hybrid SDK support."""
         try:
             from openai import OpenAI
@@ -507,8 +506,8 @@ class XAIProvider(LLMProvider):
             api_key=api_key,
             base_url="https://api.x.ai/v1"
         )
-        self.model = model
-        self.is_reasoning_model = self._xai_model_is_reasoning(model)
+        self.model = model or get_provider_fallback_model("xai")
+        self.is_reasoning_model = self._xai_model_is_reasoning(self.model)
         
         # Check if live search is enabled (XAI_SEARCH=true in cloud.env)
         # When enabled, uses xAI SDK with Agent Tools API for web/X search

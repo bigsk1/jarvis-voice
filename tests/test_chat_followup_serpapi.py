@@ -300,7 +300,7 @@ def test_extract_followup_data_preserves_text_summarizer_summary_and_refs():
                 "summary_method": "llm",
                 "llm_used": True,
                 "llm_provider": "xai",
-                "llm_model": "grok-4-1-fast-non-reasoning-latest",
+                "llm_model": "grok-4.3",
                 "chunks_used": 2,
                 "chunks_total": 2,
                 "input_characters": 13088,

@@ -4229,7 +4229,7 @@ Mode: {mode}
         return None
     
     def _vision_xai(self, image_base64: str, prompt: str, model: str = None) -> str:
-        """Use xAI Grok for vision (grok-4-1-fast-non-reasoning or newer)"""
+        """Use xAI Grok for vision (grok-4.3 or newer)"""
         import requests
         from ..config import get_jarvis_setting
         

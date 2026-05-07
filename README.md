@@ -204,7 +204,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
 - **Tool Management**: Enable/disable tools per mode to optimize context window
 
 ### Dual Mode Operation
-- **Cloud Mode**: **xAI Grok** (2M context, 10-15x cheaper!), Anthropic Claude, OpenAI GPT
+- **Cloud Mode**: **xAI Grok** (`grok-4.3` default, 1M context), Anthropic Claude, OpenAI GPT
 - **Local Mode**: Ollama (qwen3-coder, mistral-nemo) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
 - **Model Prompt Overrides**: Small provider/model-specific YAML prompt overlays in `config/models/`
   - Lets you patch stable model quirks without changing the global prompts for every provider
@@ -226,7 +226,7 @@ See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_
 **Voice API** (`/api/voice/speak`): Supports per-request TTS provider/voice overrides for multi-agent voice identity.
 See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 
-**Recommended Cloud Provider**: **xAI Grok-4-fast** ($0.20/$0.50 per 1M tokens, 2M context window, automatic caching with 90% discount)
+**Recommended Cloud Provider**: **xAI Grok 4.3** (1M context window, automatic caching, configurable reasoning effort)
 
 ### Voice & Wake Word
 - **Wake Detection**: "Hey Jarvis" using OpenWakeWord
@@ -509,7 +509,7 @@ nano config/cloud.env  # Add your API keys
 # Recommended cloud provider: xAI Grok
 # LLM_PROVIDER="xai"
 # XAI_API_KEY="xai-..."  # Get from https://console.x.ai
-# XAI_MODEL="grok-4-1-fast-non-reasoning"  # 2M context, $0.20/$0.50, reasoning mode
+# XAI_MODEL="grok-4.3"  # 1M context, configurable reasoning effort
 
 # For local mode (Ollama)
 cp config/local.env.example config/local.env
@@ -865,8 +865,8 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, remember, canvas |
 | `/serpapi <query>` | SerpApi workflow: search + stash export + canvas report | serpapi_search, stash, canvas |
-| `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, stock_price, list_alerts, list_reminders, system_monitor, canvas |
-| `/status-visual` | Status briefing + AI-generated dashboard image | get_time, weather, crypto_price, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
+| `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, canvas |
+| `/status-visual` | Status briefing + AI-generated dashboard image + same Canvas crypto charts as `/status` | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
 | `/weather_watch`, `/garden_watch` | Weather watch for default location (`JARVIS_DEFAULT_LOCATION`); alerts for cold, wind, heat, or severe conditions | get_time, weather, create_alert, canvas |
 | `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel |
 | `/youtube_ingest <url>` | Download video + transcript, summarize, create study brief | youtube_transcript, youtube_video, stash, text_summarizer, canvas |
@@ -1754,7 +1754,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Activity timeline (LLM + Tool logs interleaved)
   - Cost/token tracking over time
 - ✅ Multi-turn tool orchestration
-- ✅ **xAI Grok integration** (2M context, 10-15x cheaper, automatic caching, reasoning mode)
+- ✅ **xAI Grok integration** (`grok-4.3` default, automatic caching, configurable reasoning)
 - ✅ **Google Calendar bidirectional sync** (reminders ↔ events via n8n workflows)
 - ✅ **Monitoring Stack** (Grafana + Prometheus + Loki for real-time observability)
 - ✅ **LLM Call Logging** (comprehensive telemetry: cost, latency, tokens, multi-turn analysis)
@@ -1805,6 +1805,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.49.0 (April 2026)
+**Current Version:** v2.49.1 (April 2026)
 **Status:** Production Ready ✅  
 **Latest Features:** v2.49: xAI native TTS with optional expressive final-speech tags, compact Tool RAG retrieval + live schema-token traces, follow-up extraction service with `crawl_url`/Brave context, xAI native-search budget guardrails, intelligence provenance/sync/dry-run maintenance, Intelligence Dashboard infinite-scroll pagination, and Canvas LAN/public page links — plus v2.48 Tool RAG hash skip, Completion Guard ↔ intelligence, `/logs`, alerts & Weather Watch, TTS profiles, Canvas/SerpAPI work

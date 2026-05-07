@@ -750,7 +750,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `deep_research.json` | `/research <topic>` | Search, for_each crawl, validation |
 | `daily_status.json` | `/status` | Static variables, nested extracts, multi-tool dashboard |
-| `daily_status_visual.json` | `/status-visual` | generate_image with data, image_ref in canvas |
+| `daily_status_visual.json` | `/status-visual` | Same crypto pipeline as `daily_status` (`crypto_chart`, fenced `crypto-chart` blocks); `generate_image` + `image_ref` at top of canvas |
 | `crypto_market_report.json` | `/crypto [coins]` | Multiple crypto_price calls, LLM formatting |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | youtube_transcript, stash read, text_summarizer, canvas |
 | `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |

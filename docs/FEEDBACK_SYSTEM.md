@@ -540,7 +540,7 @@ FEEDBACK_MODEL=qwen3:32b
 
 - `anthropic` - Claude models (claude-sonnet-4-5-20250929, etc.)
 - `openai` - GPT models (e.g. `gpt-5.4-nano` as default when `FEEDBACK_PROVIDER=openai` and model unset—see `lib/feedback.py`)
-- `xai` - Grok models (grok-4-1-fast-non-reasoning-latest, etc.)
+- `xai` - Grok models (grok-4.3, etc.)
 - `ollama` - Local models (qwen3.5:latest, llama3:70b, etc.)
 
 ### From Dashboard
@@ -647,7 +647,7 @@ $ ./orchestrator/orchestrator_v2.py cloud "What's the current price of Bitcoin?"
 
 🎯 Processing: 'What's the current price of Bitcoin?'
 📡 Mode: cloud
-🤖 Model: grok-4-1-fast-reasoning-latest
+🤖 Model: grok-4.3
 ============================================================
 
 ... normal task output ...

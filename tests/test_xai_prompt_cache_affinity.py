@@ -168,7 +168,13 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.3"))
         self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.20-reasoning"))
         self.assertFalse(XAIProvider._xai_model_is_reasoning("grok-4.20-non-reasoning"))
-        self.assertFalse(XAIProvider._xai_model_is_reasoning("grok-4-1-fast-non-reasoning-latest"))
+        self.assertFalse(XAIProvider._xai_model_is_reasoning("grok-4.20-non-reasoning-latest"))
+
+    def test_xai_provider_default_model_comes_from_catalog(self):
+        with patch("config_loader.get_config_value", return_value="false"):
+            provider = XAIProvider(api_key="xai-test-key")
+
+        self.assertEqual(provider.model, "grok-4.3")
 
     def test_xai_sdk_client_init_receives_grok_conv_id_metadata(self):
         calls = []

@@ -464,8 +464,8 @@ class ChatUI {
         if (selectedContext) {
           this.contextWindow = selectedContext;
         } else if (provider === 'xai') {
-          // Current Grok 4.20 / 4.1 Fast models have 2M context.
-          this.contextWindow = 2000000;
+          // Catalog default is grok-4.3 with 1M context; selected models can override this.
+          this.contextWindow = 1000000;
         } else if (provider === 'anthropic') {
           this.contextWindow = 200000;
         } else if (provider === 'openai') {

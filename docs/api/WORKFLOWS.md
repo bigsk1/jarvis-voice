@@ -247,8 +247,8 @@ HTTP Status: 404
 | Workflow ID | Triggers | Description |
 |-------------|----------|-------------|
 | `crypto_market_report` | `/crypto` | Crypto prices, news, analysis, email report (default: BTC, SOL) |
-| `daily_status` | `/status`, `/daily`, `/briefing`, `/recap` | Weather, crypto, stocks, alerts, reminders, health → Canvas report |
-| `daily_status_visual` | `/status-visual`, `/status-image`, `/daily-visual` | Same as daily_status but with AI-generated dashboard image |
+| `daily_status` | `/status`, `/daily`, `/briefing`, `/recap` | Weather, crypto (+ 7d `crypto_chart` embeds), stocks, alerts, reminders, health → Canvas report |
+| `daily_status_visual` | `/status-visual`, `/status-image`, `/daily-visual` | Same as `daily_status` (including Canvas crypto charts) plus AI-generated dashboard image |
 | `deep_dive` | `/deep-dive`, `/dive` | Screenshot + crawl URL, create comprehensive Canvas summary with visual |
 | `deep_research` | `/research` | Multi-source research with Brave + crawling, validates sources |
 | `quick_note` | `/note`, `/quicknote`, `/remember-this` | Save note to memory + Canvas |

@@ -52,7 +52,7 @@ data/subagents/
 {
   "name": "researcher",
   "description": "Web research and data gathering",
-  "models": ["grok-4-1-fast", "gemini-2.0-flash"],
+  "models": ["grok-4.3", "gemini-2.0-flash"],
   "tools": ["brave_search", "fetch", "crawl_url"],
   "max_turns": 5,
   "timeout_seconds": 120,
@@ -102,7 +102,7 @@ Spin up multiple agents of the same type for parallel work:
 
 Different agents can use different LLMs:
 ```
-Agent 1 (researcher): grok-4-1-fast + brave_search
+Agent 1 (researcher): grok-4.3 + brave_search
 Agent 2 (researcher): gemini-flash + fetch
 Agent 3 (researcher): claude-haiku + crawl_url
 ```

@@ -1708,7 +1708,7 @@ cat logs/intelligence/*.jsonl | jq 'select(.event == "meta_cognition")'
   "timestamp": "2025-11-28T20:09:31.778891",
   "event": "reflection_response",
   "provider": "xai",
-  "model": "grok-4-1-fast-reasoning-latest",
+  "model": "grok-4.3",
   "response": {
     "is_procedural": true,
     "constraint_type": "positive",

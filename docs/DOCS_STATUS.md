@@ -28,7 +28,7 @@ Last updated: November 22, 2025
 - `MULTI_TURN_ORCHESTRATION.md` - Multi-turn tool chaining
 - `METADATA_SYSTEM.md` - Cost tracking & metadata **[CURRENT - Nov 2025 pricing]**
 - `TOOL_MANAGEMENT.md` - Enable/disable tools **[NEW - Nov 2025]**
-- `XAI_PROVIDER.md` - xAI Grok provider (2M context, 10-15x cheaper!) **[RECOMMENDED]**
+- `XAI_PROVIDER.md` - xAI Grok provider (`grok-4.3` default, native search/TTS, in-flight continuation) **[RECOMMENDED]**
 
 **System Understanding:**
 - `AUTO_CONTEXT_SYSTEM.md` - Short-term conversation memory **[NEW - Nov 2025]**
@@ -309,4 +309,3 @@ docs/
 - ✅ MCP regression fixed (server name parsing)
 - ✅ Proactive reminder guard added
 - ✅ Test scripts auto-sync tool embeddings
-

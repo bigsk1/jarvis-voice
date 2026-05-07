@@ -292,8 +292,7 @@ def get_default_model_id(provider: str) -> str:
     if defaults:
         return defaults[0]["id"]
 
-    first = entries
-    return first[0]["id"] if first else ""
+    return entries[0]["id"]
 
 
 def get_provider_fallback_model(provider: str, *, local_default: str = "qwen3.5:latest") -> str:

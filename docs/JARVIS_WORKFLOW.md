@@ -552,14 +552,14 @@ graph LR
 - **Cloud**: OpenAI text-embedding-3-small (1536 dimensions) + FTS5 full-text search
 - **Local**: nomic-embed-text (768 dimensions) + FTS5 full-text search
 - **Search**: Hybrid (FTS5 for keywords, embeddings for concepts)
-- **Models**: xAI Grok-4-fast ⭐, Claude Sonnet 4.5, GPT-4o (cloud) | qwen3.5:latest, qwen3-coder (local)
+- **Models**: xAI Grok 4.3 ⭐, Claude Sonnet 4.5, GPT-4o (cloud) | qwen3.5:latest, qwen3-coder (local)
 
 ### Key Configuration Variables
 
 | Variable | Impact | Example Values |
 |----------|--------|----------------|
 | `LLM_PROVIDER` | Which LLM to use | `xai`, `anthropic`, `openai`, `ollama` |
-| `XAI_MODEL` | xAI Grok model (2M context!) | `grok-4-1-fast-non-reasoning` ⭐ RECOMMENDED |
+| `XAI_MODEL` | xAI Grok model | `grok-4.3` ⭐ RECOMMENDED |
 | `ANTHROPIC_MODEL` | Cloud model selection | `claude-sonnet-4-5-20250929` |
 | `OLLAMA_MODEL` | Local model selection | `qwen3.5:latest`, `qwen3-vl`, `deepseek-r1` |
 | `JARVIS_DEBUG_THINKING` | Show LLM reasoning | `true`, `false` |
@@ -868,7 +868,7 @@ a financial advisor for personalized guidance.
 
 **Model Selection:**
 - `LLM_PROVIDER` - Main LLM (`xai`, `anthropic`, `openai`, `ollama`)
-- `XAI_MODEL` - xAI Grok model (2M context, 10-15x cheaper!) ⭐ RECOMMENDED
+- `XAI_MODEL` - xAI Grok model (`grok-4.3` default) ⭐ RECOMMENDED
 - `ANTHROPIC_MODEL` - Claude model
 - `OLLAMA_MODEL` - Local model
 
@@ -896,7 +896,7 @@ a financial advisor for personalized guidance.
 
 - **Speed**: ⚡⚡⚡ Very fast (1-3 seconds)
 - **Cost**: 💰 Pay per token (~$0.01-0.10 per query)
-  - **xAI Grok**: $0.20 input / $0.50 output per 1M tokens (10-15x cheaper!) ⭐
+  - **xAI Grok 4.3**: $1.25 input / $2.50 output per 1M tokens ⭐
   - **Claude**: $3.00 input / $15.00 output per 1M tokens
   - **GPT-4o**: $2.50 input / $10.00 output per 1M tokens
 - **Capabilities**: Extended thinking, prompt caching, native tool calling, reasoning models
