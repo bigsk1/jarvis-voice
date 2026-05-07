@@ -67,7 +67,6 @@ PRICING = {
     },
     "xai": {
         # Grok fallback entries not yet curated in the catalog
-        "grok-code-fast-1": {"input": 0.20, "output": 1.50},  # 256k context
         "grok-code-fast": {"input": 0.20, "output": 1.50},
     }
 }

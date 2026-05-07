@@ -224,6 +224,9 @@ class XAINativeContinuationTests(unittest.TestCase):
         self.assertIn('use: "Hillsboro, Oregon"', prompt)
         self.assertIn('Configured default postal/ZIP code for tools that require one: "97124"', prompt)
         self.assertIn("Use the postal/ZIP code only for tools or APIs", prompt)
+        self.assertTrue(prompt.startswith("system"))
+        self.assertLess(prompt.index("system"), prompt.index("RUNTIME CONTEXT FOR THIS TURN"))
+        self.assertLess(prompt.index("system"), prompt.index("CURRENT DATE AND TIME"))
 
 
 if __name__ == "__main__":

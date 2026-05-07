@@ -37,17 +37,18 @@ class ModelCatalogTests(unittest.TestCase):
             ["grok-4.3", "grok-4.20-reasoning", "grok-4.20-non-reasoning-latest"],
         )
         self.assertNotIn("grok-4-fast", models)
+        self.assertNotIn("grok-4-1-fast-reasoning-latest", models)
+        self.assertNotIn("grok-4-1-fast-non-reasoning-latest", models)
         self.assertEqual(get_model_context_label("xai", "grok-4.20-reasoning"), "2M")
         self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 2_000_000)
 
-    def test_xai_reasoning_option_uses_api_model_id(self):
+    def test_retired_xai_models_are_not_curated(self):
         models = [entry["id"] for entry in get_provider_model_options("xai")]
-        self.assertIn("grok-4-1-fast-reasoning-latest", models)
+        self.assertNotIn("grok-4-1-fast-reasoning-latest", models)
         self.assertNotIn("grok-4-1-reasoning-latest", models)
 
         metadata = get_model_metadata("xai", "grok-4-1-reasoning-latest")
-        self.assertIsNotNone(metadata)
-        self.assertEqual(metadata["id"], "grok-4-1-fast-reasoning-latest")
+        self.assertIsNone(metadata)
 
     def test_grok_4_20_variant_resolves_with_pricing(self):
         self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 2_000_000)
@@ -85,7 +86,7 @@ class ModelCatalogTests(unittest.TestCase):
 
     def test_catalog_defaults_are_explicit(self):
         self.assertEqual(get_default_model_id("openai"), "gpt-5.4-nano")
-        self.assertEqual(get_default_model_id("xai"), "grok-4-1-fast-non-reasoning-latest")
+        self.assertEqual(get_default_model_id("xai"), "grok-4.3")
         self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-4-5-20250929")
 
     def test_exact_id_beats_alias_when_names_overlap(self):
@@ -94,12 +95,12 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(metadata["id"], "claude-4-5")
 
     def test_latest_suffix_falls_back_to_family_match(self):
-        metadata = get_model_metadata("xai", "grok-4-1-fast-non-reasoning-latest")
+        metadata = get_model_metadata("xai", "grok-4.3-latest")
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata["id"], "grok-4-1-fast-non-reasoning-latest")
-        family = get_model_metadata("xai", "grok-4-1-fast-non-reasoning-2026-04-01")
+        self.assertEqual(metadata["id"], "grok-4.3")
+        family = get_model_metadata("xai", "grok-4.3-2026-05-06")
         self.assertIsNotNone(family)
-        self.assertEqual(family["id"], "grok-4-1-fast-non-reasoning-latest")
+        self.assertEqual(family["id"], "grok-4.3")
 
     def test_unknown_provider_default_warns_and_returns_empty(self):
         with self.assertLogs("lib.model_catalog", level="WARNING") as captured:

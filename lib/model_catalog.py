@@ -37,8 +37,9 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     "xai": [
         {
             "id": "grok-4.3",
-            "name": "Grok 4.3",
+            "name": "Grok 4.3 (Default)",
             "context_tokens": 1_000_000,
+            "default": True,
             "pricing": {"input": 1.25, "output": 2.50, "cached": 0.20},
             "aliases": ["grok-4.3-latest"],
         },
@@ -59,21 +60,6 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "context_tokens": 2_000_000,
             "pricing": {"input": 2.00, "output": 6.00, "cached": 0.20},
             "aliases": ["grok-4.20-non-reasoning", "grok-4-20-non-reasoning"],
-        },
-        {
-            "id": "grok-4-1-fast-non-reasoning-latest",
-            "name": "Grok 4.1 Fast (Default)",
-            "context_tokens": 2_000_000,
-            "default": True,
-            "pricing": {"input": 0.20, "output": 0.50},
-            "aliases": ["grok-4-1-fast-non-reasoning", "grok-4-1-fast"],
-        },
-        {
-            "id": "grok-4-1-fast-reasoning-latest",
-            "name": "Grok 4.1 Fast Reasoning",
-            "context_tokens": 2_000_000,
-            "pricing": {"input": 0.20, "output": 0.50},
-            "aliases": ["grok-4-1-fast-reasoning", "grok-4-1-reasoning-latest"],
         },
     ],
     "anthropic": [

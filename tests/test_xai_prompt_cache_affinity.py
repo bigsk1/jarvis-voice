@@ -82,6 +82,50 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         self.assertIsNone(thinking)
         self.assertEqual(completions.last_kwargs["extra_headers"], {"x-grok-conv-id": "conv_chat"})
 
+    def test_grok_43_reasoning_effort_is_sent_to_chat_completions(self):
+        provider = self._provider_shell()
+        provider.model = "grok-4.3"
+        completions = _FakeCompletions()
+        provider.client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "low"}, clear=True):
+            text, tool_call, usage, thinking = provider._chat_with_tools_openai_sdk(
+                messages=[{"role": "user", "content": "hello"}],
+                tools=[],
+                system_prompt="system",
+            )
+
+        self.assertEqual(text, "ok")
+        self.assertIsNone(tool_call)
+        self.assertIsNone(usage)
+        self.assertIsNone(thinking)
+        self.assertEqual(completions.last_kwargs["reasoning_effort"], "low")
+
+    def test_reasoning_effort_is_only_for_grok_43_family(self):
+        provider = self._provider_shell()
+        provider.model = "grok-4.3-latest"
+
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "high"}, clear=True):
+            self.assertEqual(provider._xai_reasoning_effort(), "high")
+            self.assertEqual(
+                provider._xai_sdk_create_kwargs(tools=[])["reasoning_effort"],
+                "high",
+            )
+
+        provider.model = "grok-4.20-reasoning"
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "high"}, clear=True):
+            self.assertIsNone(provider._xai_reasoning_effort())
+            self.assertNotIn("reasoning_effort", provider._xai_sdk_create_kwargs(tools=[]))
+
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "xhigh"}, clear=True):
+            self.assertIsNone(provider._xai_reasoning_effort())
+
+    def test_xai_reasoning_model_detection_does_not_match_non_reasoning(self):
+        self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.3"))
+        self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.20-reasoning"))
+        self.assertFalse(XAIProvider._xai_model_is_reasoning("grok-4.20-non-reasoning"))
+        self.assertFalse(XAIProvider._xai_model_is_reasoning("grok-4-1-fast-non-reasoning-latest"))
+
     def test_xai_sdk_client_init_receives_grok_conv_id_metadata(self):
         calls = []
 

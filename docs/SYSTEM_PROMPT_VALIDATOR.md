@@ -121,10 +121,10 @@ See what the validator LLM receives without making an API call:
 The validator sends the reviewing LLM:
 
 1. **Full System Prompt** - The complete dynamic prompt including:
-   - Time prefix (current date/time)
+   - Stable base Jarvis prompt with all rules
+   - Runtime context (current date/time)
    - Style notes (voice output rules)
    - Native search indicators (XAI/Anthropic search enabled)
-   - Base Jarvis prompt with all rules
 
 2. **Tool Definitions** - All 40+ tools from ToolRegistry:
    - Skill tools (local Python scripts)

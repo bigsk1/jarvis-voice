@@ -646,7 +646,8 @@ class LLMRouter:
         # Timezone for timestamps (configurable via env)
         self.timezone = ZoneInfo(get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles"))
         
-        # System prompt for routing (base prompt - time is prepended dynamically)
+        # System prompt for routing. Keep the stable base first so provider
+        # prefix caches can reuse the large instruction block across turns.
         self._system_prompt_base = """You are Jarvis, an AI assistant with access to tools AND persistent memory.
 
 AUTO-CONTEXT (SHORT-TERM MEMORY):
@@ -825,9 +826,9 @@ When performing web searches or data gathering:
 
 VOICE OUTPUT RULES (ABSOLUTELY CRITICAL):
 When you respond with Q&A intent (NOT calling a tool), your response could be SPOKEN ALOUD through speakers.
-If the runtime prefix above says RESPONSE STYLE: DETAILED, skip this entire section for that turn—follow the DETAILED rules instead.
+If the runtime context for this turn says RESPONSE STYLE: DETAILED, skip this entire section for that turn--follow the DETAILED rules instead.
 
-MANDATORY FORMAT (skip entirely when RESPONSE STYLE is DETAILED—see runtime prefix):
+MANDATORY FORMAT (skip entirely when RESPONSE STYLE is DETAILED--see runtime context):
 - Tool confirmations: MAX 35 WORDS (action completed, result)—voice/casual/auto only
 - Q&A/informational responses: follow the CURRENT configured Q&A word limit from the runtime config
 - NO emojis, NO markdown (**, ##, bullets)
@@ -1064,7 +1065,8 @@ Be decisive and proactive - remember what's important, use tools when needed, ch
     @property
     def system_prompt(self) -> str:
         """
-        Dynamic system prompt with current date/time prepended.
+        Dynamic system prompt with stable instructions first and per-turn
+        runtime context appended.
         
         This ensures the LLM knows the CURRENT date/time for:
         - Web searches (use correct year, not training cutoff)
@@ -1174,9 +1176,10 @@ For current info, news, prices, events - use external search tools from your ava
 - crawl_url (if available) for extracting content from URLs
 """
         
-        # TODO: Time prefix will mess up provider token caching need better strategy for this
         now_utc = datetime.now(ZoneInfo("UTC"))
-        time_prefix = f"""CURRENT DATE AND TIME:
+        runtime_context = f"""RUNTIME CONTEXT FOR THIS TURN:
+
+CURRENT DATE AND TIME:
 Local: {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p %Z')}
 UTC:   {now_utc.strftime('%A, %B %d, %Y')} at {now_utc.strftime('%H:%M UTC')}
 Database times are stored in UTC. Convert to local time when presenting to the user.
@@ -1200,12 +1203,21 @@ When the user asks for weather or location-based info WITHOUT specifying a place
 Do NOT use this when the user specifies a different location (e.g. "weather in Seattle" → use Seattle).
 Use the postal/ZIP code only for tools or APIs that explicitly need a structured postal code; do not replace the readable location with it.
 Time and timezone use JARVIS_TIMEZONE - this is separate."""
-        # Light personal touch for fresh conversations using existing date/time context above.
+        # Light personal touch for fresh conversations using the runtime context.
         greeting_hint = """
 
 PERSONAL TOUCH (new conversations only):
 If this appears to be the start of a genuinely fresh conversation, you may add one short natural opener before the main response when it adds warmth/humor/facts. You may lightly draw from the current time, date, season, holiday, observance, or general vibe if it comes naturally from what you already know. Keep it original and brief, and skip it for urgent, transactional, or continuing conversations."""
-        base_prompt = time_prefix + location_block + greeting_hint + self._system_prompt_base
+        base_prompt = "\n\n".join(
+            part.strip()
+            for part in (
+                self._system_prompt_base,
+                runtime_context,
+                location_block,
+                greeting_hint,
+            )
+            if part and part.strip()
+        )
         return apply_prompt_override_sections(
             base_prompt,
             self.prompt_override,

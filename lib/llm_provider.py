@@ -508,7 +508,7 @@ class XAIProvider(LLMProvider):
             base_url="https://api.x.ai/v1"
         )
         self.model = model
-        self.is_reasoning_model = "reasoning" in model.lower()
+        self.is_reasoning_model = self._xai_model_is_reasoning(model)
         
         # Check if live search is enabled (XAI_SEARCH=true in cloud.env)
         # When enabled, uses xAI SDK with Agent Tools API for web/X search
@@ -549,6 +549,9 @@ class XAIProvider(LLMProvider):
             temperature = self._xai_temperature()
             if temperature is not None:
                 params["temperature"] = temperature
+            reasoning_effort = self._xai_reasoning_effort()
+            if reasoning_effort:
+                params["reasoning_effort"] = reasoning_effort
             extra_headers = self._xai_chat_extra_headers()
             if extra_headers:
                 params["extra_headers"] = extra_headers
@@ -633,6 +636,50 @@ class XAIProvider(LLMProvider):
         except ValueError:
             return 0.7
         return min(2.0, max(0.0, value))
+
+    @staticmethod
+    def _xai_model_supports_reasoning_effort(model: str) -> bool:
+        """Only Grok 4.3 supports configurable reasoning effort today."""
+        normalized = (model or "").strip().lower()
+        return normalized == "grok-4.3" or normalized.startswith("grok-4.3-")
+
+    @classmethod
+    def _xai_model_is_reasoning(cls, model: str) -> bool:
+        normalized = (model or "").strip().lower()
+        if "non-reasoning" in normalized or "non_reasoning" in normalized:
+            return False
+        return cls._xai_model_supports_reasoning_effort(normalized) or "reasoning" in normalized
+
+    def _xai_reasoning_effort(self) -> str | None:
+        """
+        Optional Grok 4.3 reasoning-effort override.
+
+        xAI docs currently support low/medium/high only for grok-4.3. Other
+        Grok reasoning models reason automatically and reject this parameter.
+        """
+        raw = os.environ.get("XAI_REASONING_EFFORT", "").strip().lower()
+        if not raw:
+            return None
+
+        allowed = {"low", "medium", "high"}
+        if raw not in allowed:
+            print(
+                f"WARNING: Ignoring invalid XAI_REASONING_EFFORT={raw!r}; "
+                "expected low, medium, or high",
+                file=sys.stderr,
+            )
+            return None
+
+        if not self._xai_model_supports_reasoning_effort(self.model):
+            if os.environ.get("JARVIS_DEBUG"):
+                print(
+                    f"DEBUG: {self.model} does not support XAI_REASONING_EFFORT; "
+                    "omitting reasoning_effort",
+                    file=sys.stderr,
+                )
+            return None
+
+        return raw
 
     def _xai_prompt_cache_key(self) -> str | None:
         """Stable xAI cache-affinity key for Chat Completions and SDK/gRPC paths."""
@@ -792,6 +839,9 @@ class XAIProvider(LLMProvider):
             temperature = self._xai_temperature()
             if temperature is not None:
                 request_params["temperature"] = temperature
+            reasoning_effort = self._xai_reasoning_effort()
+            if reasoning_effort:
+                request_params["reasoning_effort"] = reasoning_effort
             extra_headers = self._xai_chat_extra_headers()
             if extra_headers:
                 request_params["extra_headers"] = extra_headers
@@ -823,6 +873,8 @@ class XAIProvider(LLMProvider):
                     input_tokens=response.usage.prompt_tokens,
                     output_tokens=response.usage.completion_tokens
                 )
+                if reasoning_effort:
+                    usage_info["xai_reasoning_effort"] = reasoning_effort
             
             # Check if tool was called
             if message.tool_calls:
@@ -889,6 +941,9 @@ class XAIProvider(LLMProvider):
         temperature = self._xai_temperature()
         if temperature is not None:
             create_kwargs["temperature"] = temperature
+        reasoning_effort = self._xai_reasoning_effort()
+        if reasoning_effort:
+            create_kwargs["reasoning_effort"] = reasoning_effort
         max_turns = self._xai_max_turns()
         if max_turns:
             create_kwargs["max_turns"] = max_turns
@@ -1016,6 +1071,10 @@ class XAIProvider(LLMProvider):
             value = getattr(usage, key, 0) or 0
             if value:
                 usage_info[key] = value
+
+        reasoning_effort = self._xai_reasoning_effort()
+        if reasoning_effort:
+            usage_info["xai_reasoning_effort"] = reasoning_effort
 
         server_tool_usage = getattr(response, "server_side_tool_usage", None)
         if server_tool_usage:

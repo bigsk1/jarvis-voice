@@ -41,7 +41,7 @@ The current implementation already has the safe half of the work:
 - `XAIProvider` uses the xAI SDK when `XAI_SEARCH=true` and the SDK is available.
 - xAI client-side tool definitions use `xai_sdk.chat.tool(...)`.
 - xAI tool calls preserve `id`, `tool_call_id`, and `response_id`.
-- `_xai_sdk_create_kwargs(...)` only sends `previous_response_id` when `XAI_STORE_MESSAGES=true`.
+- `_xai_sdk_create_kwargs(...)` sends Grok 4.3 `reasoning_effort` only when `XAI_REASONING_EFFORT` is set to `low`, `medium`, or `high`, and only sends `previous_response_id` when `XAI_STORE_MESSAGES=true`.
 - `_chat_with_tools_xai_sdk(...)` skips re-adding the routing system prompt only when stored continuation is active.
 - `router_v2.py` forwards `previous_response_id` and preserves xAI ids on routes.
 - `orchestrator_v2.py` promotes `xai_previous_response_id` only after a Jarvis client-side tool succeeds.
@@ -149,7 +149,7 @@ Gate that delta separately so it can be disabled, and keep `XAI_CONTINUATION_DEL
 
 ## System Prompt Handling
 
-The first routing request in a user task should keep the current dynamic system prompt, including date/time, tool policies, memory guidance, and model overrides.
+The first routing request in a user task should keep the full dynamic system prompt, including date/time, tool policies, memory guidance, and model overrides. Keep stable instructions before per-turn runtime context so xAI can reuse a long prompt-cache prefix.
 
 For xAI stored continuation turns:
 
@@ -662,8 +662,8 @@ Recommended rollout order:
 1. Land Phase 0 and Phase 1 with no behavior change.
 2. Land Phase 2 adapter behind tests, still defaulting to text mode.
 3. Add Phase 3 behind `XAI_NATIVE_CONTINUATION=false` by default.
-4. Test with `grok-4-1-fast-non-reasoning` first.
-5. Test with `grok-4.3` on known failing multi-tool prompts.
+4. Test with `grok-4.20-non-reasoning-latest` first for the lower-latency baseline.
+5. Test with `grok-4.3` plus `XAI_REASONING_EFFORT=low` on known failing multi-tool prompts.
 6. Compare logs from the same prompts with continuation off vs on.
 7. Only then consider enabling `XAI_NATIVE_CONTINUATION=true` by default for xAI.
 

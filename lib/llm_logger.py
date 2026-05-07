@@ -85,6 +85,7 @@ class LLMLogger:
             "cached_prompt_text_tokens": usage_info.get("cached_prompt_text_tokens") if usage_info else None,
             "xai_cached_prompt_text_tokens": usage_info.get("cached_prompt_text_tokens") if usage_info else None,
             "reasoning_tokens": usage_info.get("reasoning_tokens") if usage_info else None,
+            "xai_reasoning_effort": usage_info.get("xai_reasoning_effort") if usage_info else None,
             "xai_continuation_mode": provider_route.get("xai_continuation_mode"),
             "xai_continuation_fallback_reason": provider_route.get("xai_continuation_fallback_reason"),
             "xai_previous_response_id_present": provider_route.get("xai_previous_response_id_present"),

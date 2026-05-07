@@ -50,9 +50,9 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 ┌─────────────────────────────────────────────────────────────────┐
 │ MODEL                              INPUT    OUTPUT   CONTEXT    │
 ├─────────────────────────────────────────────────────────────────┤
-│ xAI grok-4-fast (any variant)      $0.20    $0.50    2M    🏆  │
-│ xAI grok-code-fast-1               $0.20    $1.50    256K      │
-│ xAI grok-4 (premium)               $3.00    $15.00   256K      │
+│ xAI grok-4.3                       $1.25    $2.50    1M    🏆  │
+│ xAI grok-4.20 non-reasoning        $2.00    $6.00    2M        │
+│ xAI grok-4.20 reasoning            $2.00    $6.00    2M        │
 │                                                                 │
 │ Anthropic Claude Sonnet 4.5        $3.00    $15.00   200K      │
 │ OpenAI GPT-5.1                     $1.25    $10.00   128K      │
@@ -68,11 +68,11 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 
 | Provider | Cost per Query | Monthly Cost (1000 queries) |
 |----------|---------------|----------------------------|
-| **xAI Grok-4-fast** | **$0.0052** | **$5.20** 🏆 |
+| **xAI Grok-4.3** | **$0.0325** | **$32.50** |
 | Anthropic Claude | $0.0646 | $64.60 |
 | OpenAI GPT-5.1 | $0.0308 | $30.80 |
 
-**Savings**: Use xAI and save **$59.40/month** vs Claude or **$25.60/month** vs OpenAI (for 1000 queries).
+**Savings**: Grok 4.3 is roughly half the uncached input/output cost of Claude in this example; actual Jarvis cost depends heavily on prompt-cache hits, server-side tool calls, and reasoning tokens.
 
 ---
 
@@ -105,17 +105,17 @@ Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic
 - Subsequent requests: ~$0.0010 (cached system prompt + tools)
 - **80% cost reduction** after first query!
 
-### 3. **Reasoning Mode at No Extra Cost**
+### 3. **Configurable Reasoning Effort**
 
-- Reasoning models: `grok-4-1-fast-reasoning-latest`
-- **Same price** as non-reasoning models ($0.20/$0.50)
+- Reasoning model: `grok-4.3`
+- `XAI_REASONING_EFFORT=low|medium|high` controls latency/reasoning depth
 - Better decision-making for complex tasks
 - Reasoning is integrated into response (not exposed separately like Claude)
 
 **Comparison**:
-- xAI: Reasoning = $0.20/$0.50 (no premium)
-- Claude: Thinking mode = $3.00/$15.00 (same as regular)
-- OpenAI: No reasoning mode
+- xAI: Grok 4.3 exposes `reasoning_effort` and bills reasoning tokens as part of usage
+- Claude: Thinking mode can expose thinking blocks through a separate field
+- OpenAI: Reasoning effort is model/API dependent
 
 ### 4. **Native Function Calling**
 
@@ -195,7 +195,7 @@ Response uses:
 
 **Requirements**:
 - xai-sdk >= 1.6.1 (video generation requires 1.6.0+)
-- Supports Grok 4 models (grok-4, grok-4-fast, grok-4-1-fast)
+- Supports current Grok text models such as `grok-4.3` and `grok-4.20-*`
 
 **Cost**: Standard token pricing + search tool invocations (see xAI pricing)
 
@@ -315,8 +315,12 @@ LLM_PROVIDER="xai"
 XAI_API_KEY="xai-..."
 
 # Model Selection
-# Recommended: grok-4-1-fast-non-reasoning (reasoning + 2M context)
-XAI_MODEL="grok-4-1-fast-non-reasoning"
+# Recommended for reasoning / agentic tool workloads
+XAI_MODEL="grok-4.3"
+
+# Optional Grok 4.3 reasoning effort: low, medium, or high.
+# xAI defaults to medium when unset. Low is best when latency matters.
+XAI_REASONING_EFFORT=low
 
 # Prompt-cache affinity. xAI cache entries are stored per server, so Jarvis
 # routes repeated Grok requests to the same server by default.
@@ -360,9 +364,8 @@ XAI_TTS_TIMEOUT="180"
 XAI_TTS_STYLE_TAGS_ENABLED=true
 
 # Alternative models:
-# XAI_MODEL="grok-4-1-fast-non-reasoning-latest"  # No reasoning
-# XAI_MODEL="grok-code-fast-1"                    # Code-optimized
-# XAI_MODEL="grok-4"                              # Premium (256K context)
+# XAI_MODEL="grok-4.20-non-reasoning-latest"  # Lower-latency non-reasoning
+# XAI_MODEL="grok-4.20-reasoning"             # Automatic reasoning, no effort knob
 ```
 
 `XAI_SERVER_SIDE_MAX_TOOL_TURNS` caps xAI's internal server-side agent loop for a single `chat.sample()` call and is also used as Jarvis's total native-search budget for the user request unless `XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST` is set. This prevents native web/X search calls from multiplying across many Jarvis router turns while still allowing xAI to spend the budget adaptively on the synthesis turn that needs it.
@@ -386,34 +389,15 @@ The provider supports OpenAI-style `assistant.tool_calls` plus `role="tool"` mes
 
 ## Available Models
 
-### Grok 4 Fast Series (2M Context) - **RECOMMENDED**
+### Current xAI Text Models
 
 | Model | Context | Use Case | Reasoning |
 |-------|---------|----------|-----------|
-| `grok-4-1-fast-non-reasoning` | 2M | **Best overall** | ✅ Yes |
-| `grok-4-1-fast-reasoning-latest` | 2M | Latest reasoning | ✅ Yes |
-| `grok-4-fast-non-reasoning-latest` | 2M | Fast, no reasoning | ❌ No |
-| `grok-4-1-fast-non-reasoning-latest` | 2M | Latest, no reasoning | ❌ No |
+| `grok-4.3` | 1M | **Agentic reasoning/tool use** | ✅ Yes, configurable `low`/`medium`/`high` |
+| `grok-4.20-non-reasoning-latest` | 2M | Lower-latency non-reasoning | ❌ No |
+| `grok-4.20-reasoning` | 2M | Automatic reasoning | ✅ Yes, automatic |
 
-**Pricing**: All grok-4-fast models: **$0.20 input / $0.50 output**
-
-**Recommendation**: Use `grok-4-1-fast-non-reasoning` - same price, better quality.
-
-### Grok Code Fast (256K Context)
-
-| Model | Context | Use Case | Output Cost |
-|-------|---------|----------|-------------|
-| `grok-code-fast-1` | 256K | Code generation | $1.50/1M |
-
-**Pricing**: $0.20 input / $1.50 output (3x higher output cost for code quality)
-
-### Grok 4 Premium (256K Context)
-
-| Model | Context | Use Case | Pricing |
-|-------|---------|----------|---------|
-| `grok-4` | 256K | Premium quality | $3.00 / $15.00 |
-
-**Note**: Same price as Claude/GPT but smaller context. Use `grok-4-fast` instead.
+**Recommendation**: Use `grok-4.3` with `XAI_REASONING_EFFORT=low` when you want Grok 4.3 quality but need faster Jarvis tool-routing turns. Use `grok-4.20-non-reasoning-latest` when you want the lower-latency non-reasoning path.
 
 ---
 
@@ -438,6 +422,11 @@ xAI automatically caches **repeated prompt prefixes**:
 
 **Savings**: **86% cost reduction** on subsequent requests!
 
+Jarvis keeps the large router instructions at the front of the system prompt,
+then appends per-turn runtime context such as current date/time, response
+style, default location, and native-search capability notes. This ordering is
+intentional: dynamic text near the top weakens prefix cache reuse.
+
 ### Cache Affinity
 
 xAI cache entries are stored per server. Jarvis now sends a stable cache-affinity key so repeated requests are routed to the same server:
@@ -456,7 +445,7 @@ xAI returns usage stats in API response:
 {
   "usage": {
     "prompt_tokens": 26000,
-    "cached_prompt_tokens": 25000,  // 90%+ cache hit!
+    "cached_prompt_text_tokens": 25000,  // 90%+ cache hit!
     "completion_tokens": 30
   }
 }
@@ -479,7 +468,7 @@ Cache expires after:
 
 ### What Is It?
 
-Reasoning models (`*-reasoning-*`) perform extended internal thinking before responding:
+Grok 4.3 performs extended internal thinking before responding, and its depth can be tuned with `XAI_REASONING_EFFORT`:
 
 - Analyze the problem deeply
 - Consider multiple approaches
@@ -490,27 +479,27 @@ Reasoning models (`*-reasoning-*`) perform extended internal thinking before res
 
 | Feature | xAI Grok | Anthropic Claude |
 |---------|----------|------------------|
-| **API Field** | No separate field | Separate `thinking` field |
-| **Visibility** | Reasoning not exposed | Can see thinking process |
-| **`--debug-thinking`** | No effect | Shows thinking blocks |
-| **Pricing** | Same as regular | Same as regular |
+| **API Field** | `reasoning_effort` for Grok 4.3 | Separate `thinking` field |
+| **Visibility** | Reasoning summary only if specifically streamed/requested; Jarvis does not expose it by default | Can see thinking process |
+| **`--debug-thinking`** | Does not expose Grok reasoning in Jarvis | Shows thinking blocks |
+| **Pricing** | Reasoning tokens are billed | Same as regular |
 | **Quality** | Better answers | Better answers |
 
 ### When to Use Reasoning Models
 
-✅ **Use reasoning** (`grok-4-1-fast-non-reasoning`):
+✅ **Use reasoning** (`grok-4.3`):
 - Complex multi-step tasks
 - Financial decisions (e.g., "Should I invest?")
 - Code debugging
 - Tool selection for ambiguous queries
-- **No cost penalty** - same price!
+- Agentic tool chains where instruction following matters
 
-❌ **Skip reasoning** (`grok-4-fast-non-reasoning-latest`):
+❌ **Skip reasoning** (`grok-4.20-non-reasoning-latest`):
 - Simple facts ("What time is it?")
 - Quick lookups
 - When speed > quality (though difference is minimal)
 
-**Recommendation**: **Always use reasoning models** - no downside, better quality.
+**Recommendation**: Use `grok-4.3` with `XAI_REASONING_EFFORT=low` for Jarvis' normal tool-heavy flow, then raise to `medium` or `high` only for tasks where latency matters less than deeper reasoning.
 
 ---
 
@@ -592,7 +581,8 @@ Assuming 90% cache hit rate after first query:
    
    # To:
    LLM_PROVIDER="xai"
-   XAI_MODEL="grok-4-1-fast-non-reasoning"
+   XAI_MODEL="grok-4.3"
+   XAI_REASONING_EFFORT=low
    XAI_API_KEY="xai-..."  # Get from console.x.ai
    ```
 
@@ -604,8 +594,8 @@ Assuming 90% cache hit rate after first query:
 3. **Differences to note**:
    - `--debug-thinking` won't show reasoning (API limitation)
    - Caching is automatic (no `cache_control` needed)
-   - 10x larger context window (2M vs 200K)
-   - 12x cheaper per query
+   - larger context window (1M for Grok 4.3)
+   - lower input/output pricing for many workloads
 
 ### From OpenAI GPT
 
@@ -617,7 +607,8 @@ Assuming 90% cache hit rate after first query:
    
    # To:
    LLM_PROVIDER="xai"
-   XAI_MODEL="grok-4-1-fast-non-reasoning"
+   XAI_MODEL="grok-4.3"
+   XAI_REASONING_EFFORT=low
    XAI_API_KEY="xai-..."
    ```
 
@@ -645,7 +636,7 @@ Jarvis's `LLMProvider` abstraction means **zero code changes** needed. Just upda
 
 ### Q: What about thinking mode?
 
-**A**: xAI reasoning models DO extended thinking internally, but don't expose it via API (unlike Claude). You get better answers without seeing the reasoning process. `--debug-thinking` has no effect with xAI.
+**A**: xAI reasoning happens provider-side. Grok 4.3 supports `reasoning_effort=low|medium|high`, and Jarvis can set it with `XAI_REASONING_EFFORT`. Jarvis does not request/stream Grok reasoning summaries by default, so `--debug-thinking` does not show Grok reasoning text; use `reasoning_tokens` and `xai_reasoning_effort` in LLM logs to measure it.
 
 ### Q: Does caching really work?
 
@@ -653,7 +644,7 @@ Jarvis's `LLMProvider` abstraction means **zero code changes** needed. Just upda
 
 ### Q: Should I use reasoning or non-reasoning models?
 
-**A**: **Always use reasoning models** (`grok-4-1-fast-non-reasoning`). They're the same price, same speed, but give better quality answers. There's literally no downside.
+**A**: Use `grok-4.3` for reasoning-heavy or agentic tool work. Set `XAI_REASONING_EFFORT=low` when latency matters, or `medium`/`high` for harder reasoning. Use `grok-4.20-non-reasoning-latest` for simpler, lower-latency work.
 
 ### Q: What about rate limits?
 
@@ -676,7 +667,7 @@ LLM_PROVIDER="openai"     # Fallback to GPT
 
 ## Best Practices
 
-1. **Use reasoning models by default** - no cost penalty, better quality
+1. **Use the right xAI model for the workload** - `grok-4.3` for reasoning/tool use, `grok-4.20-non-reasoning-latest` for faster simple work
 2. **Monitor cache hit rates** in usage stats (should be 90%+)
 3. **Keep system prompt + tools under 1M tokens** (plenty of headroom with 2M context)
 4. **Test fallback providers** (Claude/GPT) in case xAI has issues
@@ -699,7 +690,7 @@ This entry captures the exact current state so future work can resume without re
 - xAI client-side tool calls now preserve `id`, `tool_call_id`, and `response_id` in the returned Jarvis tool-call payload.
 - `_extract_xai_sdk_usage(...)` prefers xAI SDK `response.cost_usd` when available and carries richer xAI usage fields such as `server_side_tools`, `reasoning_tokens`, cached prompt text tokens, image prompt tokens, and source counts.
 - xAI prompt-cache affinity is enabled by default: Chat Completions calls send `x-grok-conv-id`, and the SDK/gRPC client sends the same key as gRPC metadata.
-- `_xai_sdk_create_kwargs(...)` centralizes `model`, `tools`, `max_tokens`, `temperature`, `max_turns`, `parallel_tool_calls`, `store_messages`, `use_encrypted_content`, and guarded `previous_response_id`.
+- `_xai_sdk_create_kwargs(...)` centralizes `model`, `tools`, `max_tokens`, `temperature`, Grok 4.3 `reasoning_effort`, `max_turns`, `parallel_tool_calls`, `store_messages`, `use_encrypted_content`, and guarded `previous_response_id`.
 - `previous_response_id` is sent to xAI only when both conditions are true: a response id exists and `XAI_STORE_MESSAGES=true`.
 - `_chat_with_tools_xai_sdk(...)` uses the same stored-continuation condition to skip re-adding the routing system prompt. When `previous_response_id` is active, xAI prepends the stored conversation, including the original system prompt, server-side.
 - `orchestrator/router_v2.py` accepts `previous_response_id`, forwards it to the provider, and copies `id`, `tool_call_id`, and `response_id` from provider tool calls onto the route dict.
