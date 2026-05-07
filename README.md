@@ -265,6 +265,9 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - FTS5 search, dual database (cloud/local), re-embed after edits
   - Mobile responsive: hamburger menu at ≤730px
   - Launch: `./bin/jarvis-memory`
+
+![jarvis-docs](docs/images/jarvis-docs.jpg)
+
 - **Docs viewer** (`jarvis-docs`): Dedicated markdown workspace for everything under `docs/` at localhost:5004
   - Reader-first layout with global search across markdown files
   - Section rail + document feed + rendered article canvas
@@ -299,6 +302,20 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - Access via "🎬 Videos" link in Canvas header
 
 ![jarvis-video-gallery](docs/images/jarvis-video-gallery.png)
+
+### Jarvis Logs Viewer
+
+Dedicated **read-only** log triage inside Jarvis Web (`./bin/jarvis-web`): open **`http://localhost:5001/logs`** (same host/port as chat; respects Web UI auth if enabled).
+
+- **Scope** — Browses repo log folders that contain `.jsonl`, `.log`, or `.md`; no uploads, edits, or deletes
+- **Navigation** — Folder list (sorted A→Z); files newest-first inside each folder; folder search narrows files before you open them
+- **Viewing** — JSONL lines render as expandable YAML-style cards (good for LLM/tool/jsonl traces); markdown files render as Markdown; large files load in pages instead of dumping the whole file at once
+- **Mobile** — Drill-down flow (folder → file list → viewer) with back navigation on small screens
+- **Compared to chat** — The in-chat **Server Logs Panel** streams live tail; **`/logs`** is for paging through dated files under `logs/` (e.g. `llm-calls-*`, `tools/tool-calls-*`, `opencode`, `feedback`, web errors)
+
+![jarvis-logs](docs/images/jarvis-logs.jpg)
+
+Full detail: [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md) (*`/logs` Read-Only Browser*).
 
 ---
 
@@ -1363,6 +1380,19 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ---
 
 ## 🎯 Roadmap
+
+**Completed (May 2026) — v2.49.0 → v2.49.1:**
+- ✅ **Models & providers** — GPT-5.4 mini support with OpenAI reasoning guardrails; catalog refresh (e.g. `gpt-4o-mini`); Grok 4.3 controls; OpenAI-compatible usage now preserves cached prompt tokens where the API reports them; Anthropic accounting refresh and SDK updates
+- ✅ **xAI / Grok** — More stable web chat and calmer native tool use; conversation cache affinity and native continuation; hybrid tool handling and SDK DNS hardening; planning/docs brought in line with current options
+- ✅ **Crypto** — Multi-coin pricing; native crypto charts wired into market and status-style workflows (web + canvas)
+- ✅ **Memory & Intel UI** — Memory ID search and badges; rendered markdown preview in the intel view; clearer timestamps and retrieval formatting; better insight ID visibility and search; improved follow-up extraction from context
+- ✅ **Memory reliability** — Dual-database “forget” behavior unified (sibling mirror, dedupe/opt-out, canvas delete); safer cap on bulk forget; cross-database mutations and intel ingest aligned
+- ✅ **Web conversations** — Pin and archive conversations; improved message delivery after reconnects
+- ✅ **Jarvis Docs** — Docs Assistant plus a standalone docs reader; mobile layout, theming, and link UX fixes; grounded vs general knowledge behavior documented (QMD / ripgrep retrieval)
+- ✅ **Tools & MCP** — Home Depot via SerpAPI; `tool_search`-style discovery flow; tighter Tool RAG typo hints; `complementary_tools` and `permissions` coverage across tools; Blinko integration removed (README/structure refreshed); Brave MCP trimmed (summarizer removed)
+- ✅ **Observability & orchestrator** — LLM logs include routing provenance; prompt token counts in logging; Completion Guard policy refactored out of the chat handler; orchestrator context/response formatting cleanup
+- ✅ **Voice & workflows** — Reminder/status handling more consistent across voice and status workflows; workflows README/agents/default paths nudged toward the standard Jarvis install layout
+- ✅ **Generate image / xAI** — Image-tool model/doc updates aligned with newer xAI image options
 
 **Completed (April 2026):**
 - ✅ **xAI native TTS + expressive final speech** — `TTS_PROVIDER=xai` uses xAI's native `/v1/tts` path across CLI/Web UI/Voice API/status playback; optional `XAI_TTS_STYLE_TAGS_ENABLED` lets final chat speech use supported tags while Web UI display strips TTS-only markup and stores generated `audio_url`
