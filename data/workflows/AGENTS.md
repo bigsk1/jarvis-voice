@@ -262,11 +262,11 @@ PYEOF
 
 ### weather
 ```python
-# Params: location="Hillsboro, Oregon"
+# Params: location="${location}" — prefer workflow variable from JARVIS_DEFAULT_LOCATION (see README Variables)
 {
   "ok": true,
   "data": {
-    "location": "Hillsboro, Oregon",
+    "location": "City, Region",
     "temperature": 36,
     "feels_like": 34,
     "humidity": 79,
@@ -562,33 +562,56 @@ Note: The LLM will generate a text description for the image, NOT ASCII art.
 
 ### Variable Definitions
 
-**Simple static values** (strings, numbers, booleans):
+Implementation reference: `orchestrator/pipeline_executor.py` (`_extract_workflow_variables`). Authoring summary: [README.md](README.md).
+
+Runtime always includes `query`, `topic`, `content` (alias of `topic`), `workflow_id`, and `timestamp`.
+
+**Simple static values** (strings, numbers, booleans — copied as-is):
 ```json
 "variables": {
-  "location": "Hillsboro, Oregon",   // String - used as-is
-  "timeout": 30,                     // Number
-  "enabled": true                    // Boolean
+  "timeout": 30,
+  "dry_run": false,
+  "label": "example-label"
+}
+```
+
+**From environment** (reads `os.environ`; set values in `config/cloud.env` or `config/local.env`). Use this for **default geography** instead of hardcoding a city in JSON:
+```json
+"variables": {
+  "location": {
+    "from": "env",
+    "key": "JARVIS_DEFAULT_LOCATION",
+    "default": "City, Region"
+  }
+}
+```
+
+**From static object:**
+```json
+"variables": {
+  "mode": { "from": "static", "value": "summarize" }
 }
 ```
 
 **Dynamic extraction from query:**
 ```json
 "variables": {
-  "url": {"from": "query", "extract": "url"},           // Extracts URL, adds https:// if needed
-  "topic": {"from": "query", "extract": "main_subject"}, // Text after command
-  "host": {"from": "query", "extract": "main_subject", "default": "vps2"},  // With fallback
-  "url_domain": {"from": "url", "transform": "domain"}  // Extract domain from URL
+  "url": { "from": "query", "extract": "url" },
+  "topic": { "from": "query", "extract": "main_subject" },
+  "host": { "from": "query", "extract": "main_subject", "default": "vps2" },
+  "url_domain": { "from": "url", "transform": "domain", "default": "unknown" }
 }
 ```
+
+**`extract` values for `from`: `"query"`:** `main_subject`, `url`, `short_title`, `first_words` (optional `max_words`, default 4).
+
+**Second-pass transforms** (`transform` + `from` naming another variable): `domain`, `lowercase`, `uppercase`, `strip`.
 
 **Examples:**
 - `/archive bigsk1.com` → `url="https://bigsk1.com"`, `topic="bigsk1.com"`
 - `/health` → `host="vps2"` (default)
 - `/health vps20` → `host="vps20"`
 - `/dive https://cursor.com/pricing` → `url_domain="cursor.com"`
-
-**Transform types:**
-- `domain` - Extracts domain from URL (e.g., "cursor.com" from "https://cursor.com/pricing")
 
 ### Step Fields Reference
 

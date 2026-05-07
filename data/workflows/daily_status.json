@@ -2,7 +2,7 @@
   "id": "daily_status",
   "name": "Daily Status Briefing",
   "description": "Workflow version of status_recap - gets weather, crypto, stocks, alerts, reminders, system health and creates canvas report",
-  "version": "1.1",
+  "version": "1.2",
   "enabled": true,
   
   "triggers": {
@@ -12,7 +12,11 @@
   },
   
   "variables": {
-    "location": "Hillsboro, Oregon"
+    "location": {
+      "from": "env",
+      "key": "JARVIS_DEFAULT_LOCATION",
+      "default": "City, Region"
+    }
   },
   
   "steps": [

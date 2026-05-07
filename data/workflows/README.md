@@ -1,36 +1,198 @@
-# Workflow Definitions
+# Workflow definitions (`data/workflows/`)
 
-This folder contains JSON workflow definitions that the orchestrator can execute as deterministic multi-step pipelines.
+JSON files here are **deterministic pipelines**: fixed tool order, optional LLM only for `llm_prompt` / validation / branching. The orchestrator loads `*.json`, matches **explicit** triggers like `/note`, resolves **variables**, substitutes **`${...}`** in params, runs **steps** in order.
 
-## Quick Start
+Use this document as the **format contract** when authoring or editing workflows (humans and agents). Implementation details live in `orchestrator/pipeline_executor.py` (`_extract_workflow_variables`, `_resolve_params`) and `orchestrator/workflow_loader.py`.
 
-1. Create a new `.json` file in this folder
-2. Use an existing workflow as a template
-3. Set `"enabled": true` to activate
-4. Trigger via explicit command (e.g., `/archive`, `/research`)
+---
 
-## Workflow Structure
+## Top-level object (required shape)
+
+| Field | Type | Notes |
+|--------|------|--------|
+| `id` | string | Unique workflow id; required or file is skipped. |
+| `steps` | array | Non-empty; each step is an object with at least `step` (int), `tool` (string). |
+| `enabled` | boolean | If `false`, loader ignores the file. Default treated as true when missing. |
+| `name` | string | Display / documentation. |
+| `description` | string | Display / documentation. |
+| `version` | string | Optional; informational. |
+| `triggers` | object | At minimum use `explicit`: list of command strings (e.g. `"/archive"`). |
+| `variables` | object | Optional; see **Variables** below. |
+| `success_speech` | string | Resolved with `${variables}` when workflow completes. |
+| `abort_speech` | string | Optional; used when workflow aborts. |
+
+**Triggers:** Production matching is **explicit-only** by default (slash commands). `patterns` / `keywords` exist in the schema but are not the normal path; prefer `explicit`. Aliases like `/status-visual` and `/status_visual` are normalized by the router—define the forms you care about in `explicit`.
+
+---
+
+## Variables (exact formats)
+
+After load, the runtime always has at least: `query`, `topic`, `content` (same as `topic`), `workflow_id`, `timestamp`. Your `variables` block **adds or overrides** named keys used as `${name}` in steps.
+
+### 1. Static primitives
+
+Any JSON string, number, or boolean is copied as-is:
 
 ```json
-{
-  "id": "unique_id",
-  "name": "Display Name",
-  "description": "What this workflow does",
-  "enabled": true,
-  "triggers": {
-    "explicit": ["/command"]
-  },
-  "variables": {
-    "location": "Static value here"
-  },
-  "steps": [
-    {"step": 1, "tool": "tool_name", "params": {...}}
-  ],
-  "success_speech": "Spoken on completion"
+"variables": {
+  "timeout_seconds": 30,
+  "dry_run": false,
+  "label": "example-label"
 }
 ```
 
-## Current Workflows
+Use this for **non-sensitive defaults** that are not user- or deployment-specific.
+
+### 2. From the user query (`from`: `"query"`)
+
+Object form:
+
+```json
+"variables": {
+  "topic": { "from": "query", "extract": "main_subject" },
+  "url": { "from": "query", "extract": "url" },
+  "host": { "from": "query", "extract": "main_subject", "default": "vps2" }
+}
+```
+
+Supported **`extract`** values:
+
+| `extract` | Meaning |
+|-----------|---------|
+| `main_subject` | Text after the command (the routed “topic”). |
+| `url` | First URL-like substring in the topic (protocol added if missing). |
+| `short_title` | Short title derived from topic (may use LLM where configured). |
+| `first_words` | First `max_words` words from topic, joined with `_` (see `max_words`, default 4). |
+
+If extraction yields empty and **`default`** is set, `default` is used.
+
+### 3. From environment (`from`: `"env"`)
+
+Reads **`os.environ`** at run time (values come from `config/cloud.env`, `config/local.env`, or the shell, depending on how Jarvis is started):
+
+```json
+"variables": {
+  "location": {
+    "from": "env",
+    "key": "JARVIS_DEFAULT_LOCATION",
+    "default": "City, Region"
+  }
+}
+```
+
+**Portable workflows:** For **default city/region** used by weather and similar tools, prefer this pattern with **`JARVIS_DEFAULT_LOCATION`** so forks set their own value in env—not a hardcoded city in JSON. Replace `"City, Region"` with whatever safe fallback you want when the env var is unset.
+
+Optional: `key` defaults to the variable name if omitted (`"location": { "from": "env" }` uses env var `location`—usually you want an explicit `key`).
+
+### 4. Static inline (`from`: `"static"`)
+
+```json
+"variables": {
+  "mode": { "from": "static", "value": "summarize" }
+}
+```
+
+### 5. Transforms (second pass; `from` references another variable)
+
+The orchestrator runs a **second pass** for entries that have **`transform`**. Then **`from`** must be the name of another variable already resolved (often another key in the same `variables` block):
+
+```json
+"variables": {
+  "url": { "from": "query", "extract": "url" },
+  "url_domain": { "from": "url", "transform": "domain", "default": "unknown" }
+}
+```
+
+Supported **`transform`** values: `domain`, `lowercase`, `uppercase`, `strip`.
+
+---
+
+## Substitutions in steps (`${…}`)
+
+- `${var}` — simple variable.
+- `${nested.path}` — dotted lookup into the variables dict (e.g. fields merged from tool results).
+- `${arr[:N]}` — slice notation where implemented for arrays.
+
+Resolve rules and templating: see `_resolve_variable` / `_resolve_template_string` in `orchestrator/pipeline_executor.py`.
+
+---
+
+## Steps (minimal expectations)
+
+Each step typically includes:
+
+- `step` — integer order.
+- `tool` — registered tool name.
+- `action` — for multi-action tools (e.g. `stash`, `canvas`).
+- `params` — object; values may contain `${variables}` strings.
+- `extract` — maps **new variable names** to paths under **`result.data`** (paths must **not** use a `data.` prefix).
+- `output_var` — optional; stores raw tool payload under that variable name.
+- `required` — default true; if false and step fails, behavior depends on `on_fail`.
+- `on_fail` — e.g. `"continue"` for optional steps.
+- `llm_prompt` — optional; LLM fills params (uses tokens).
+
+Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
+
+---
+
+## Authoring checklist (agents)
+
+1. Valid JSON only—no `//` comments inside JSON files.
+2. Include **`id`** and a non-empty **`steps`** array or the loader skips the file.
+3. Use **`extract`** paths relative to tool **`data`** (never prefix with `data.`).
+4. For **`llm_prompt`** steps that produce user-visible markdown, instruct the model to emit **real values**, not literal `${var}` text.
+5. Prefer **`JARVIS_DEFAULT_LOCATION`** (env-backed `variables`) for default geography instead of embedding a specific city in shared workflow JSON.
+
+---
+
+## Quick Start
+
+1. Add a new `something.json` under this folder.
+2. Copy an existing workflow closest to your use case, then edit **`id`**, **`triggers.explicit`**, **`variables`**, **`steps`**.
+3. Set **`enabled`: true**.
+4. Run via CLI or Web UI using the explicit command.
+
+---
+
+## Minimal skeleton (copy and rename)
+
+```json
+{
+  "id": "example_pipeline",
+  "name": "Example pipeline",
+  "description": "Replace with real description",
+  "version": "1.0",
+  "enabled": true,
+  "triggers": {
+    "explicit": ["/example"],
+    "patterns": [],
+    "keywords": []
+  },
+  "variables": {
+    "subject": { "from": "query", "extract": "main_subject" },
+    "location": {
+      "from": "env",
+      "key": "JARVIS_DEFAULT_LOCATION",
+      "default": "City, Region"
+    }
+  },
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {},
+      "required": true,
+      "description": "Example step"
+    }
+  ],
+  "success_speech": "Done with ${subject}.",
+  "abort_speech": "Example workflow aborted."
+}
+```
+
+---
+
+## Current workflows
 
 | File | Command | Description |
 |------|---------|-------------|
@@ -49,54 +211,22 @@ This folder contains JSON workflow definitions that the orchestrator can execute
 | `deep_dive.json` | `/deep_dive <topic or url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons, links |
 | `serpapi_search.json` | `/serpapi <query>` | Run SerpApi search, save `.txt` export to stash, create canvas summary report |
 
-## Variables
+---
 
-Two formats supported:
+## Stash `kind` values
 
-**Simple static values:**
-```json
-"variables": {
-  "location": "Hillsboro, Oregon",
-  "timeout": 30,
-  "enabled": true
-}
-```
+The `stash` tool accepts:
 
-**Dynamic extraction:**
-```json
-"variables": {
-  "topic": {"from": "query", "extract": "main_subject"},
-  "url": {"from": "query", "extract": "url"},
-  "host": {"from": "query", "extract": "main_subject", "default": "vps2"},
-  "url_domain": {"from": "url", "transform": "domain"}
-}
-```
+- `text` — use param `text`
+- `json` — use param `json`
+- `base64` — use param `data`
+- `url` — use param `url`
+- `file` — use param `file_path` (screenshots and local artifacts)
 
-**Environment-backed variables:**
-```json
-"variables": {
-  "location": {"from": "env", "key": "JARVIS_DEFAULT_LOCATION", "default": "Hillsboro, Oregon"}
-}
-```
+---
 
-**Variable usage:**
-- `${topic}` - Simple variable
-- `${article.content}` - Nested path from previous step
-- `${urls[:5]}` - Array slice (first 5 items)
-- `${url_domain}` - Extracted domain from URL (e.g., "cursor.com")
+## Canvas folder titles
 
-## Stash Kinds
-
-The `stash` tool supports these `kind` values:
-- `text` - Plain text content (use `text` param)
-- `json` - JSON object (use `json` param)  
-- `base64` - Binary data as base64 (use `data` param)
-- `url` - Download from URL (use `url` param)
-- `file` - Copy local file (use `file_path` param) - useful for screenshots
-
-## Canvas Folder Structure
-
-Use folder paths in canvas titles for organization:
 ```json
 "params": {
   "title": "Workflows/Deep Dive/${url_domain}",
@@ -104,42 +234,42 @@ Use folder paths in canvas titles for organization:
 }
 ```
 
-## Resilient Workflows
+---
 
-For steps that may fail (e.g., crawling protected sites):
+## Resilient optional steps
+
 ```json
 {
   "step": 4,
   "tool": "crawl_url",
-  "params": {"url": "${url}"},
+  "params": { "url": "${url}" },
   "required": false,
   "on_fail": "continue",
-  "description": "Optional - continues if blocked"
+  "description": "Optional crawl; pipeline continues if blocked"
 }
 ```
 
-## LLM Prompts
+---
 
-When using `llm_prompt` for canvas content, tell the LLM to use actual values:
-```
-IMPORTANT: Use the actual values from the input data above - do not output placeholder syntax like ${var}.
-```
+## Extract paths (tool results)
 
-This prevents the LLM from echoing `${variable}` in its output.
+Paths in **`extract`** are relative to the tool’s **`data`** object.
 
-## Extract Rules
-
-Extract paths are relative to `result.data` - do NOT include `data.` prefix:
+CORRECT:
 
 ```json
-// CORRECT - paths relative to data
-"extract": {"temperature": "temperature", "cpu": "cpu.total_percent"}
-
-// WRONG - don't include data. prefix
-"extract": {"temperature": "data.temperature"}
+"extract": { "temperature": "temperature", "cpu": "cpu.total_percent" }
 ```
 
-## Documentation
+WRONG:
 
-- Full reference: [docs/WORKFLOW_ORCHESTRATION.md](../../docs/WORKFLOW_ORCHESTRATION.md)
-- Tool structures: [AGENTS.md](AGENTS.md)
+```json
+"extract": { "temperature": "data.temperature" }
+```
+
+---
+
+## Further reading
+
+- Architecture and features: [docs/WORKFLOW_ORCHESTRATION.md](../../docs/WORKFLOW_ORCHESTRATION.md)
+- Tool payloads and copy-paste patterns: [AGENTS.md](AGENTS.md)

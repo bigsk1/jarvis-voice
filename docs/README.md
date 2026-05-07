@@ -1401,7 +1401,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: `docs/STATUS_UPDATES_DESIGN.md`
 - ✅ **Weather Tool** - OpenWeatherMap integration with geocoding
   - Accurate location via Geocoding API (lat/lon)
-  - US state code handling ("Hillsboro, OR" → "Hillsboro, Oregon")
+  - US state code handling ("Denver, CO" → "Denver, Colorado")
   - wttr.in fallback if API unavailable
   - See: `skills/weather.py`
 

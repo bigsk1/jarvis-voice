@@ -509,8 +509,10 @@ The BUILD_PROMPT documents correct data paths for common tools:
 The `status_recap` tool demonstrates inter-tool calling by aggregating data from 7+ tools:
 
 ```python
+import os
+
 # Get weather
-weather_result = call_tool('weather', {'location': 'Hillsboro, OR'})
+weather_result = call_tool('weather', {'location': os.environ.get('JARVIS_DEFAULT_LOCATION', 'City, Region')})
 
 # Get crypto prices
 for coin in ['bitcoin', 'solana']:

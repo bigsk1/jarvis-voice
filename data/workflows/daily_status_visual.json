@@ -2,7 +2,7 @@
   "id": "daily_status_visual",
   "name": "Daily Status with Dashboard Image",
   "description": "Full status briefing with AI-generated visual dashboard (adds ~60-90 seconds for image)",
-  "version": "1.1",
+  "version": "1.2",
   "enabled": true,
   
   "triggers": {
@@ -12,7 +12,11 @@
   },
   
   "variables": {
-    "location": "Hillsboro, Oregon"
+    "location": {
+      "from": "env",
+      "key": "JARVIS_DEFAULT_LOCATION",
+      "default": "City, Region"
+    }
   },
   
   "steps": [
