@@ -14,7 +14,7 @@ Features:
 Providers:
   - gemini: Google Gemini 3 Pro Image Preview (grounding support)
   - openai: OpenAI GPT Image (best text rendering, highest quality)
-  - xai: xAI Grok Imagine (fast, cheap, good quality)
+  - xai: xAI Grok Imagine Image (fast, cheap, good quality)
 
 Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
 """

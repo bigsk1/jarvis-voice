@@ -17,7 +17,7 @@
       "provider": {
         "type": "string",
         "enum": ["gemini", "openai", "xai"],
-        "description": "Image provider: 'gemini' (default, grounding for real-time data), 'openai' (GPT Image, best text/instruction following), 'xai' (grok-imagine, fast & cheap). Uses IMAGE_TOOL_PROVIDER from config if not specified."
+        "description": "Image provider: 'gemini' (default, grounding for real-time data), 'openai' (GPT Image, best text/instruction following), 'xai' (grok-imagine-image, fast & cheap). Uses IMAGE_TOOL_PROVIDER from config if not specified."
       },
       "aspect_ratio": {
         "type": "string",
