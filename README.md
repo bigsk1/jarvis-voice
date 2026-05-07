@@ -77,7 +77,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
   - Separate databases for cloud/local (1536 vs 768 dimensions)
   - See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
 
-![jarvis-intellegince](docs/images/jarvis-intellegince.png)
+![jarvis-intellegince](docs/images/jarvis-intelligence.jpg)
 
 - **Intelligence Dashboard** at localhost:5003
   - Server-side paginated experience/insight lists with scroll loading and lightweight summary counts
@@ -190,7 +190,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
   - View issues: `./bin/jarvis-feedback issues --days 7`
 
 
-![memory-browser](docs/images/memory-browser.png)
+![memory-browser](docs/images/memory-browser.jpg)
 
 ### Memory System
 - **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)

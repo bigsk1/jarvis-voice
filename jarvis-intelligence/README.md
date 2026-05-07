@@ -4,7 +4,7 @@
 
 The Intelligence Dashboard provides a web interface to monitor, inspect, and manage Jarvis's learning capabilities - including experiences, insights, reflection queue, and meta-knowledge.
 
-![jarvis-intelligence](../docs/images/jarvis-intellegince.png)
+![jarvis-intelligence](../docs/images/jarvis-intelligence.jpg)
 
 ## Quick Start
 

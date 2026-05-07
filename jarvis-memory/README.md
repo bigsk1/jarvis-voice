@@ -2,7 +2,7 @@
 
 A web-based interface for viewing, searching, and managing Jarvis's memory database.
 
-![memory-browser](../docs/images/memory-browser.png)
+![memory-browser](../docs/images/memory-browser.jpg)
 
 ## Features
 
