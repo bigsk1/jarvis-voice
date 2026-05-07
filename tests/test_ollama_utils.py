@@ -26,24 +26,24 @@ class _FakeResponse:
 class OllamaUtilsTests(unittest.TestCase):
     def test_parse_ollama_base_urls_appends_localhost_once(self):
         urls = parse_ollama_base_urls(
-            "http://192.168.70.226:11434, http://192.168.1.68:11434"
+            "http://203.0.113.226:11434, http://203.0.113.68:11434"
         )
 
         self.assertEqual(
             urls,
             [
-                "http://192.168.70.226:11434",
-                "http://192.168.1.68:11434",
+                "http://203.0.113.226:11434",
+                "http://203.0.113.68:11434",
                 "http://localhost:11434",
             ],
         )
 
     def test_parse_single_remote_url_backwards_compatible(self):
         """Single OLLAMA_BASE_URL string (no commas) still gets localhost fallback."""
-        urls = parse_ollama_base_urls("http://192.168.70.226:11434")
+        urls = parse_ollama_base_urls("http://203.0.113.226:11434")
         self.assertEqual(
             urls,
-            ["http://192.168.70.226:11434", "http://localhost:11434"],
+            ["http://203.0.113.226:11434", "http://localhost:11434"],
         )
 
     @patch.dict(

@@ -63,7 +63,7 @@ echo "=============================================="
 
 test_scenario \
     "Ollama Server Check - Wrong IP Provided" \
-    "Is my Ollama server at 192.168.70.999 running?" \
+    "Is my Ollama server at 203.0.113.250 running?" \
     "running\|not running\|connection\|failed" \
     "true"
 

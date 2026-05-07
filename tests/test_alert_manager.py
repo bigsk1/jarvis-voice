@@ -67,14 +67,14 @@ class AlertManagerDedupeTests(unittest.TestCase):
             title="Cold watch",
             source="weather_watch",
             severity="high",
-            metadata={"dedupe_key": "weather_watch:cold:2026-04-03:Hillsboro, Oregon"},
+            metadata={"dedupe_key": "weather_watch:cold:2026-04-03:Portland, Oregon"},
             speak_immediately=False,
         )
         second_id = self.manager.create_alert(
             title="Cold watch",
             source="weather_watch",
             severity="high",
-            metadata={"dedupe_key": "weather_watch:cold:2026-04-03:Hillsboro, Oregon"},
+            metadata={"dedupe_key": "weather_watch:cold:2026-04-03:Portland, Oregon"},
             speak_immediately=False,
         )
 
@@ -86,14 +86,14 @@ class AlertManagerDedupeTests(unittest.TestCase):
             title="Cold watch",
             source="weather_watch",
             severity="high",
-            metadata={"dedupe_key": "weather_watch:cold:2026-04-03:Hillsboro, Oregon"},
+            metadata={"dedupe_key": "weather_watch:cold:2026-04-03:Portland, Oregon"},
             speak_immediately=False,
         )
         wind_id = self.manager.create_alert(
             title="Wind advisory",
             source="weather_watch",
             severity="high",
-            metadata={"dedupe_key": "weather_watch:wind:2026-04-03:Hillsboro, Oregon"},
+            metadata={"dedupe_key": "weather_watch:wind:2026-04-03:Portland, Oregon"},
             speak_immediately=False,
         )
 
@@ -103,7 +103,7 @@ class AlertManagerDedupeTests(unittest.TestCase):
 
     def test_weather_watch_speech_sanitizes_iso_dates(self):
         spoken = self.manager._sanitize_weather_watch_speech(
-            "Forecast low 34F tonight meets the cold watch threshold of 34F for Hillsboro, Oregon. "
+            "Forecast low 34F tonight meets the cold watch threshold of 34F for Portland, Oregon. "
             "Fri 2026-04-03 high 61F with partly cloudy. Sat 2026-04-04 low 40F, high 70F, condition overcast."
         )
 

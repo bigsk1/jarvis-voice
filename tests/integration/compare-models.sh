@@ -69,7 +69,7 @@ declare -a SETUP_QUERIES=(
     "Remember: Fixed CORS errors by adding Access-Control-Allow-Origin header to Nginx config"
     "Remember: Grafana monitoring dashboard is at https://monitor.example.com on port 3000"
     "Remember: Staging server for payment testing is at 192.168.1.20"
-    "Remember: Production deployment is at IP 192.168.70.100"
+    "Remember: Production deployment is at IP 203.0.113.100"
 )
 
 # Populate with MODEL1 (using it for setup)
@@ -120,7 +120,7 @@ declare -a EXPECTED=(
     "cors|nginx|access-control|header"
     "grafana|monitor|3000|dashboard"
     "staging|192.168.1.20|payment"
-    "192.168.70.100|production|deployment"
+    "203.0.113.100|production|deployment"
 )
 
 # Test MODEL 1

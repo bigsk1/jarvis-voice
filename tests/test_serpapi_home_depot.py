@@ -112,14 +112,14 @@ class SerpApiHomeDepotTests(unittest.TestCase):
 
         with patch.object(sys, "argv", ["serpapi_home_depot.py", '{"query":"drill"}']), patch(
             "serpapi_home_depot.load_config"
-        ), patch("serpapi_home_depot.get_config_value", return_value="97124"), patch(
+        ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
         ), patch(
             "serpapi_home_depot.get_proxy_enabled", return_value=False
         ):
             self.assertEqual(main(), 0)
 
-        self.assertEqual(captured["params"]["delivery_zip"], "97124")
+        self.assertEqual(captured["params"]["delivery_zip"], "97201")
         self.assertEqual(captured["timeout"], 90)
 
     def test_main_does_not_fetch_product_details_by_default(self):
@@ -140,7 +140,7 @@ class SerpApiHomeDepotTests(unittest.TestCase):
 
         with patch.object(sys, "argv", ["serpapi_home_depot.py", '{"query":"Milorganite"}']), patch(
             "serpapi_home_depot.load_config"
-        ), patch("serpapi_home_depot.get_config_value", return_value="97124"), patch(
+        ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
         ), patch(
             "serpapi_home_depot.get_proxy_enabled", return_value=False
@@ -168,7 +168,7 @@ class SerpApiHomeDepotTests(unittest.TestCase):
 
         with patch.object(sys, "argv", ["serpapi_home_depot.py", '{"product_id":"206667220"}']), patch(
             "serpapi_home_depot.load_config"
-        ), patch("serpapi_home_depot.get_config_value", return_value="97124"), patch(
+        ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
         ), patch(
             "serpapi_home_depot.get_proxy_enabled", return_value=False
@@ -177,7 +177,7 @@ class SerpApiHomeDepotTests(unittest.TestCase):
 
         self.assertEqual(captured["params"]["engine"], "home_depot_product")
         self.assertEqual(captured["params"]["product_id"], "206667220")
-        self.assertEqual(captured["params"]["delivery_zip"], "97124")
+        self.assertEqual(captured["params"]["delivery_zip"], "97201")
         self.assertEqual(captured["timeout"], 90)
 
     def test_main_keeps_explicit_delivery_zip(self):
@@ -191,7 +191,7 @@ class SerpApiHomeDepotTests(unittest.TestCase):
         input_json = '{"query":"drill","delivery_zip":"97006"}'
         with patch.object(sys, "argv", ["serpapi_home_depot.py", input_json]), patch(
             "serpapi_home_depot.load_config"
-        ), patch("serpapi_home_depot.get_config_value", return_value="97124"), patch(
+        ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
         ), patch(
             "serpapi_home_depot.get_proxy_enabled", return_value=False
@@ -212,7 +212,7 @@ class SerpApiHomeDepotTests(unittest.TestCase):
         input_json = '{"query":"chair","country":"ca"}'
         with patch.object(sys, "argv", ["serpapi_home_depot.py", input_json]), patch(
             "serpapi_home_depot.load_config"
-        ), patch("serpapi_home_depot.get_config_value", return_value="97124"), patch(
+        ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
         ), patch(
             "serpapi_home_depot.get_proxy_enabled", return_value=False

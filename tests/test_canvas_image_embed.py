@@ -67,17 +67,17 @@ def test_canvas_page_url_uses_public_url(monkeypatch):
     def fake_config(key, default=None):
         values = {
             "CANVAS_INTERNAL_URL": "http://localhost:8890",
-            "CANVAS_PUBLIC_URL": "http://192.168.70.228:8890/",
+            "CANVAS_PUBLIC_URL": "http://203.0.113.10:8890/",
         }
         return values.get(key, default)
 
     monkeypatch.setattr(canvas_module, "get_config_value", fake_config)
 
     assert canvas_module.get_canvas_internal_url() == "http://localhost:8890"
-    assert canvas_module.get_canvas_public_url() == "http://192.168.70.228:8890"
+    assert canvas_module.get_canvas_public_url() == "http://203.0.113.10:8890"
     assert (
         canvas_module.get_canvas_page_url("page_20260331_121401")
-        == "http://192.168.70.228:8890/page_20260331_121401"
+        == "http://203.0.113.10:8890/page_20260331_121401"
     )
 
 

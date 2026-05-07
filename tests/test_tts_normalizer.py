@@ -34,7 +34,7 @@ class TtsNormalizerTests(unittest.TestCase):
     def test_default_normalizer_removes_parenthesized_bare_url_examples(self):
         normalized = normalize_tts_text(
             "Preview limited; full details like exact hours in Yelp results "
-            "(e.g., yelp.com/search?find_desc=golf+driving+ranges&find_loc=Hillsboro). "
+            "(e.g., yelp.com/search?find_desc=golf+driving+ranges&find_loc=Portland). "
             "Need more specifics?"
         )
 

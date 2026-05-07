@@ -40,8 +40,8 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
     def test_completion_guard_location_context_uses_default_location(self):
         def fake_config(key, default=""):
             return {
-                "JARVIS_DEFAULT_LOCATION": "Hillsboro, Oregon",
-                "JARVIS_DEFAULT_POSTAL_CODE": "97124",
+                "JARVIS_DEFAULT_LOCATION": "Portland, Oregon",
+                "JARVIS_DEFAULT_POSTAL_CODE": "97201",
             }.get(key, default)
 
         with patch("server.services.completion_guard.load_config"), patch(
@@ -49,8 +49,8 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         ):
             context = ChatHandler._get_completion_guard_location_context("cloud")
 
-        self.assertIn("Configured default location:\nHillsboro, Oregon", context)
-        self.assertIn("Configured default postal/ZIP code:\n97124", context)
+        self.assertIn("Configured default location:\nPortland, Oregon", context)
+        self.assertIn("Configured default postal/ZIP code:\n97201", context)
         self.assertIn('location-relative question like "near me"', context)
         self.assertIn("allowed fallback", context)
 
@@ -110,8 +110,8 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
 
         def fake_config(key, default=""):
             return {
-                "JARVIS_DEFAULT_LOCATION": "Hillsboro, Oregon",
-                "JARVIS_DEFAULT_POSTAL_CODE": "97124",
+                "JARVIS_DEFAULT_LOCATION": "Portland, Oregon",
+                "JARVIS_DEFAULT_POSTAL_CODE": "97201",
             }.get(key, default)
 
         class _FakeProvider:
@@ -136,8 +136,8 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         record = {
             "mode": "cloud",
             "query": "what are some of the best places to eat near me?",
-            "raw_llm_response": "Top-rated restaurants in Hillsboro, OR (default location).",
-            "speech": "Top-rated restaurants in Hillsboro, OR.",
+            "raw_llm_response": "Top-rated restaurants in Portland, OR (default location).",
+            "speech": "Top-rated restaurants in Portland, OR.",
             "tools_used": ["mcp_brave_search_brave_local_search"],
             "server_side_tools": {},
             "available_tools": ["mcp_brave_search_brave_local_search"],
@@ -151,8 +151,8 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             parsed = handler._evaluate_completion_guard_auto(record)
 
         self.assertEqual(parsed["recommended_action"], "accept")
-        self.assertIn("Configured default location:\nHillsboro, Oregon", captured["prompt"])
-        self.assertIn("Configured default postal/ZIP code:\n97124", captured["prompt"])
+        self.assertIn("Configured default location:\nPortland, Oregon", captured["prompt"])
+        self.assertIn("Configured default postal/ZIP code:\n97201", captured["prompt"])
         self.assertIn('location-relative question like "near me"', captured["prompt"])
         self.assertIn("allowed fallback", captured["prompt"])
 

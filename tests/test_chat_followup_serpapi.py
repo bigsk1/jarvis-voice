@@ -442,7 +442,7 @@ def test_extract_followup_data_preserves_brave_llm_context_sources():
     handler = _handler()
     data = {
         "brave_llm_context": {
-            "query": "Regal Hillsboro showtimes",
+            "query": "Regal Portland showtimes",
             "grounding": {
                 "generic": [
                     {
@@ -454,7 +454,7 @@ def test_extract_followup_data_preserves_brave_llm_context_sources():
                 "poi": {
                     "name": "Regal Movies On TV",
                     "url": "https://regmovies.com/theatres/regal-movies-on-tv-0855",
-                    "snippets": ["SW 2929 234th Avenue, Hillsboro OR."],
+                    "snippets": ["1234 Example Blvd, Portland OR."],
                 },
             },
         }
@@ -463,7 +463,7 @@ def test_extract_followup_data_preserves_brave_llm_context_sources():
     result = handler._extract_followup_data(data)
     brave = result["brave_llm_context"]
 
-    assert brave["query"] == "Regal Hillsboro showtimes"
+    assert brave["query"] == "Regal Portland showtimes"
     assert brave["sources_count"] == 2
     assert brave["sources"][0]["title"] == "Regal Movies On TV Showtimes"
     assert brave["sources"][1]["url"] == "https://regmovies.com/theatres/regal-movies-on-tv-0855"
@@ -474,7 +474,7 @@ def test_compute_effective_evidence_tool_turn():
     save_data = {
         "serpapi_yelp_search": {
             "find_desc": "pizza",
-            "find_loc": "Hillsboro, OR",
+            "find_loc": "Portland, OR",
             "results": [
                 {"title": "A", "url": "https://yelp.com/a", "place_id": "a"},
             ],

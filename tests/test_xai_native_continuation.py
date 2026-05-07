@@ -216,13 +216,13 @@ class XAINativeContinuationTests(unittest.TestCase):
         router._model_override = None
 
         with patch("router_v2.get_config_value", side_effect=_config({
-            "JARVIS_DEFAULT_LOCATION": "Hillsboro, Oregon",
-            "JARVIS_DEFAULT_POSTAL_CODE": "97124",
+            "JARVIS_DEFAULT_LOCATION": "Portland, Oregon",
+            "JARVIS_DEFAULT_POSTAL_CODE": "97201",
         })):
             prompt = router.system_prompt
 
-        self.assertIn('use: "Hillsboro, Oregon"', prompt)
-        self.assertIn('Configured default postal/ZIP code for tools that require one: "97124"', prompt)
+        self.assertIn('use: "Portland, Oregon"', prompt)
+        self.assertIn('Configured default postal/ZIP code for tools that require one: "97201"', prompt)
         self.assertIn("Use the postal/ZIP code only for tools or APIs", prompt)
         self.assertTrue(prompt.startswith("system"))
         self.assertLess(prompt.index("system"), prompt.index("RUNTIME CONTEXT FOR THIS TURN"))

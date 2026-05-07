@@ -74,7 +74,7 @@ Selected tool hints: send_email.
 
 [END CONTEXT]
 
-User's request: No send an email to Christine with youtube video https://example.com/watch?v=1 and include love Wayne
+User's request: No send an email to Riley with youtube video https://example.com/watch?v=1 and include love Jordan
 """
         signals = build_tool_retrieval_signals(
             prompt,
@@ -82,7 +82,7 @@ User's request: No send an email to Christine with youtube video https://example
         )
 
         self.assertEqual(signals.source, "user_request")
-        self.assertTrue(signals.query.startswith("No send an email to Christine"))
+        self.assertTrue(signals.query.startswith("No send an email to Riley"))
         self.assertIn("send_email", signals.positive_tools)
         self.assertNotIn("generate_video", signals.positive_tools)
         self.assertIn("skipped_low_bias_prefer=generate_video:0.38", signals.notes)
@@ -93,7 +93,7 @@ User's request: No send an email to Christine with youtube video https://example
   ✅ PREFER: send_email (+0.90)
   ❌ AVOID: send_email (-0.90)
 
-Current request: email Christine
+Current request: email Riley
 """
         signals = build_tool_retrieval_signals(prompt, {"send_email"})
 
@@ -188,8 +188,8 @@ Tools executed so far:
                     mode="cloud",
                     provider="xai",
                     model="test-model",
-                    transcript="Current request: email Christine",
-                    query="email Christine",
+                    transcript="Current request: email Riley",
+                    query="email Riley",
                     threshold=0.23,
                     retrieval_limit=15,
                     signal_source="current_request",

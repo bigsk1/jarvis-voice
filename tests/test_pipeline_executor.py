@@ -31,7 +31,7 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
 
     def test_embedded_indexed_placeholders_resolve(self):
         variables = {
-            "location": "Hillsboro, Oregon",
+            "location": "Portland, Oregon",
             "forecast_lows": [33, 36, 41],
             "forecast_dates": ["2026-04-03", "2026-04-04", "2026-04-05"],
         }
@@ -43,13 +43,13 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
 
         self.assertEqual(
             resolved,
-            "Cold watch for Hillsboro, Oregon: tonight 33F on 2026-04-03",
+            "Cold watch for Portland, Oregon: tonight 33F on 2026-04-03",
         )
 
     def test_mixed_placeholder_string_starting_with_placeholder_resolves(self):
         variables = {
             "alert_source": "weather_watch",
-            "location": "Hillsboro, Oregon",
+            "location": "Portland, Oregon",
             "forecast_dates": ["2026-04-03"],
         }
 
@@ -60,7 +60,7 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
 
         self.assertEqual(
             resolved,
-            "weather_watch:cold:Hillsboro, Oregon:2026-04-03",
+            "weather_watch:cold:Portland, Oregon:2026-04-03",
         )
 
     def test_deterministic_numeric_condition(self):
