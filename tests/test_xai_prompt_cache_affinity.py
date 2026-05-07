@@ -17,8 +17,9 @@ from llm_provider import XAIProvider
 
 
 class _FakeCompletions:
-    def __init__(self):
+    def __init__(self, usage=None):
         self.last_kwargs = None
+        self.usage = usage
 
     def create(self, **kwargs):
         self.last_kwargs = kwargs
@@ -28,7 +29,7 @@ class _FakeCompletions:
                     message=SimpleNamespace(content="ok", tool_calls=None),
                 )
             ],
-            usage=None,
+            usage=self.usage,
         )
 
 
@@ -100,6 +101,49 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         self.assertIsNone(usage)
         self.assertIsNone(thinking)
         self.assertEqual(completions.last_kwargs["reasoning_effort"], "low")
+
+    def test_chat_completions_path_exposes_xai_cached_tokens(self):
+        provider = self._provider_shell()
+        completions = _FakeCompletions(
+            usage=SimpleNamespace(
+                prompt_tokens=13650,
+                completion_tokens=42,
+                prompt_tokens_details=SimpleNamespace(
+                    text_tokens=13650,
+                    cached_tokens=0,
+                ),
+            )
+        )
+        provider.client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+        text, tool_call, usage, thinking = provider._chat_with_tools_openai_sdk(
+            messages=[{"role": "user", "content": "hello"}],
+            tools=[],
+            system_prompt="system",
+        )
+
+        self.assertEqual(text, "ok")
+        self.assertIsNone(tool_call)
+        self.assertIsNone(thinking)
+        self.assertEqual(usage["prompt_text_tokens"], 13650)
+        self.assertEqual(usage["cached_prompt_text_tokens"], 0)
+        self.assertEqual(usage["cache_read_tokens"], 0)
+
+    def test_xai_sdk_usage_exposes_zero_cached_tokens(self):
+        provider = self._provider_shell()
+        response = SimpleNamespace(
+            usage=SimpleNamespace(
+                prompt_text_tokens=13650,
+                completion_tokens=42,
+                cached_prompt_text_tokens=0,
+            )
+        )
+
+        usage = provider._extract_xai_sdk_usage(response)
+
+        self.assertEqual(usage["prompt_text_tokens"], 13650)
+        self.assertEqual(usage["cached_prompt_text_tokens"], 0)
+        self.assertEqual(usage["cache_read_tokens"], 0)
 
     def test_reasoning_effort_is_only_for_grok_43_family(self):
         provider = self._provider_shell()

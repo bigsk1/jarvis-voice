@@ -638,6 +638,15 @@ class XAIProvider(LLMProvider):
         return min(2.0, max(0.0, value))
 
     @staticmethod
+    def _usage_field(obj: Any, key: str) -> Any:
+        """Read usage fields from SDK objects or dict-like payloads."""
+        if obj is None:
+            return None
+        if isinstance(obj, dict):
+            return obj.get(key)
+        return getattr(obj, key, None)
+
+    @staticmethod
     def _xai_model_supports_reasoning_effort(model: str) -> bool:
         """Only Grok 4.3 supports configurable reasoning effort today."""
         normalized = (model or "").strip().lower()
@@ -873,6 +882,14 @@ class XAIProvider(LLMProvider):
                     input_tokens=response.usage.prompt_tokens,
                     output_tokens=response.usage.completion_tokens
                 )
+                prompt_details = getattr(response.usage, "prompt_tokens_details", None)
+                prompt_text_tokens = self._usage_field(prompt_details, "text_tokens")
+                cached_tokens = self._usage_field(prompt_details, "cached_tokens")
+                if prompt_text_tokens is not None:
+                    usage_info["prompt_text_tokens"] = prompt_text_tokens
+                if cached_tokens is not None:
+                    usage_info["cached_prompt_text_tokens"] = cached_tokens
+                    usage_info["cache_read_tokens"] = cached_tokens
                 if reasoning_effort:
                     usage_info["xai_reasoning_effort"] = reasoning_effort
             
@@ -1068,9 +1085,11 @@ class XAIProvider(LLMProvider):
             "prompt_image_tokens",
             "num_sources_used",
         ):
-            value = getattr(usage, key, 0) or 0
-            if value:
+            value = getattr(usage, key, None)
+            if value is not None:
                 usage_info[key] = value
+                if key == "cached_prompt_text_tokens":
+                    usage_info["cache_read_tokens"] = value
 
         reasoning_effort = self._xai_reasoning_effort()
         if reasoning_effort:
