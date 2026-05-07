@@ -95,8 +95,8 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 
 Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic**:
 
-- No configuration needed
 - Caches repeated prompt prefixes automatically
+- Jarvis keeps cache-affinity enabled by default with `XAI_PROMPT_CACHE_ENABLED=true`
 - Cache hits can be **90%+** for Jarvis (repeated system prompt + tools)
 - **$0.02/1M** for cached tokens vs **$0.20/1M** regular (90% savings!)
 
@@ -318,6 +318,13 @@ XAI_API_KEY="xai-..."
 # Recommended: grok-4-1-fast-non-reasoning (reasoning + 2M context)
 XAI_MODEL="grok-4-1-fast-non-reasoning"
 
+# Prompt-cache affinity. xAI cache entries are stored per server, so Jarvis
+# routes repeated Grok requests to the same server by default.
+XAI_PROMPT_CACHE_ENABLED=true
+# Optional explicit routing key; otherwise Jarvis derives a stable hashed key.
+# XAI_PROMPT_CACHE_KEY=jarvis-main
+# XAI_PROMPT_CACHE_NAMESPACE=jarvis-voice
+
 # Native Web Search (NEW!)
 # When true: Grok searches web + X posts internally (no external tool calls)
 # When false: Uses external tools (Brave Search) like before
@@ -430,6 +437,16 @@ xAI automatically caches **repeated prompt prefixes**:
    ```
 
 **Savings**: **86% cost reduction** on subsequent requests!
+
+### Cache Affinity
+
+xAI cache entries are stored per server. Jarvis now sends a stable cache-affinity key so repeated requests are routed to the same server:
+
+- Chat Completions path (`XAI_SEARCH=false` or SDK fallback): sends `x-grok-conv-id` as an HTTP header via OpenAI SDK `extra_headers`.
+- xAI SDK / gRPC path (`XAI_SEARCH=true`): passes `x-grok-conv-id` through `xai_sdk.Client(..., metadata=...)`.
+- Responses API: Jarvis does not currently use xAI `/v1/responses`; if that adapter is added later, it should send the same key as `prompt_cache_key` in the request body.
+
+`XAI_PROMPT_CACHE_ENABLED=true` is the default. Set `XAI_PROMPT_CACHE_KEY` for an explicit routing key, or leave it unset and Jarvis derives a stable hashed key from `XAI_PROMPT_CACHE_NAMESPACE` and `XAI_API_KEY` without exposing the raw API key.
 
 ### Cache Monitoring
 
@@ -681,6 +698,7 @@ This entry captures the exact current state so future work can resume without re
 - `_chat_with_tools_xai_sdk(...)` no longer falls back just because messages contain `role="tool"`. It supports OpenAI-style assistant `tool_calls` and `role="tool"` results via `xai_sdk.chat.tool_result(...)`.
 - xAI client-side tool calls now preserve `id`, `tool_call_id`, and `response_id` in the returned Jarvis tool-call payload.
 - `_extract_xai_sdk_usage(...)` prefers xAI SDK `response.cost_usd` when available and carries richer xAI usage fields such as `server_side_tools`, `reasoning_tokens`, cached prompt text tokens, image prompt tokens, and source counts.
+- xAI prompt-cache affinity is enabled by default: Chat Completions calls send `x-grok-conv-id`, and the SDK/gRPC client sends the same key as gRPC metadata.
 - `_xai_sdk_create_kwargs(...)` centralizes `model`, `tools`, `max_tokens`, `temperature`, `max_turns`, `parallel_tool_calls`, `store_messages`, `use_encrypted_content`, and guarded `previous_response_id`.
 - `previous_response_id` is sent to xAI only when both conditions are true: a response id exists and `XAI_STORE_MESSAGES=true`.
 - `_chat_with_tools_xai_sdk(...)` uses the same stored-continuation condition to skip re-adding the routing system prompt. When `previous_response_id` is active, xAI prepends the stored conversation, including the original system prompt, server-side.

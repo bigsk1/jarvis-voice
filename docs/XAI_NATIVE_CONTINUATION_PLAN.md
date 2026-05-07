@@ -218,7 +218,7 @@ The implementation must log and compare:
 - xAI server-side tool counts
 - duplicate guard frequency
 
-Prompt caching docs recommend stable prefixes and conversation affinity. For xAI SDK / gRPC, investigate `x-grok-conv-id` metadata only after structural continuation works.
+Prompt caching docs recommend stable prefixes and conversation affinity. Jarvis now sends `x-grok-conv-id` on the Chat Completions path and as xAI SDK / gRPC metadata by default. If a future xAI Responses API adapter is added, send the same cache-affinity key as `prompt_cache_key` in that request body.
 
 ## Architecture Change
 

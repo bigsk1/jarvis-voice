@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import time
+import hashlib
 from typing import Any
 from abc import ABC, abstractmethod
 
@@ -519,7 +520,10 @@ class XAIProvider(LLMProvider):
         if self.enable_search:
             try:
                 from xai_sdk import Client as XAIClient
-                self.xai_client = XAIClient(api_key=api_key)
+                self.xai_client = XAIClient(
+                    api_key=api_key,
+                    metadata=self._xai_sdk_metadata(),
+                )
                 if os.environ.get('JARVIS_DEBUG'):
                     print(f"DEBUG: xAI Agent Tools API enabled (web_search + x_search)", file=sys.stderr)
             except ImportError:
@@ -545,6 +549,9 @@ class XAIProvider(LLMProvider):
             temperature = self._xai_temperature()
             if temperature is not None:
                 params["temperature"] = temperature
+            extra_headers = self._xai_chat_extra_headers()
+            if extra_headers:
+                params["extra_headers"] = extra_headers
             
             response = self.client.chat.completions.create(**params)
             return response.choices[0].message.content or ""
@@ -626,6 +633,37 @@ class XAIProvider(LLMProvider):
         except ValueError:
             return 0.7
         return min(2.0, max(0.0, value))
+
+    def _xai_prompt_cache_key(self) -> str | None:
+        """Stable xAI cache-affinity key for Chat Completions and SDK/gRPC paths."""
+        explicit = (
+            os.environ.get("XAI_PROMPT_CACHE_KEY")
+            or os.environ.get("XAI_GROK_CONV_ID")
+            or os.environ.get("XAI_CONV_ID")
+            or ""
+        ).strip()
+        if explicit:
+            return explicit
+
+        if not self._xai_env_bool("XAI_PROMPT_CACHE_ENABLED", True):
+            return None
+
+        namespace = (os.environ.get("XAI_PROMPT_CACHE_NAMESPACE") or "jarvis-voice").strip()
+        seed = f"{namespace}|{self.api_key or ''}"
+        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
+        return f"jarvis_{digest}"
+
+    def _xai_chat_extra_headers(self) -> dict[str, str] | None:
+        cache_key = self._xai_prompt_cache_key()
+        if not cache_key:
+            return None
+        return {"x-grok-conv-id": cache_key}
+
+    def _xai_sdk_metadata(self) -> tuple[tuple[str, str], ...] | None:
+        cache_key = self._xai_prompt_cache_key()
+        if not cache_key:
+            return None
+        return (("x-grok-conv-id", cache_key),)
 
     def _sample_xai_chat_with_retry(self, chat: Any):
         """Give transient xAI SDK DNS/gRPC failures one quick retry."""
@@ -754,6 +792,9 @@ class XAIProvider(LLMProvider):
             temperature = self._xai_temperature()
             if temperature is not None:
                 request_params["temperature"] = temperature
+            extra_headers = self._xai_chat_extra_headers()
+            if extra_headers:
+                request_params["extra_headers"] = extra_headers
             
             # Only add tools if provided
             if tools:
