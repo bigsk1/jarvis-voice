@@ -99,6 +99,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
   - "Ghost tools" always available for core functionality
   - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
 - **Advanced Tool Calling**: LLM-powered routing with 60+ skills
+- **OpenAI Responses API support**: Optional `/v1/responses` routing for OpenAI tool-capable turns, in-flight client-tool continuation, hosted-tool gates, prompt-cache hints, and safe Chat Completions fallback
 - **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
 - **Auto-Context System**: Automatic short-term memory of recent conversations
   - Remembers what you just discussed without needing explicit "remember" commands
@@ -205,6 +206,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
 
 ### Dual Mode Operation
 - **Cloud Mode**: **xAI Grok** (`grok-4.3` default, 1M context), Anthropic Claude, OpenAI GPT
+  - OpenAI can use Chat Completions by default or opt into Responses API routing for tool-capable turns with `OPENAI_API_MODE=responses` + `OPENAI_RESPONSES_TOOLS=true`
 - **Local Mode**: Ollama (qwen3-coder, mistral-nemo) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
 - **Model Prompt Overrides**: Small provider/model-specific YAML prompt overlays in `config/models/`
   - Lets you patch stable model quirks without changing the global prompts for every provider
@@ -1368,6 +1370,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
+**Completed (May 2026) — v2.50.0:**
+- ✅ **OpenAI Responses API routing** — Optional `/v1/responses` path for OpenAI tool-capable routing, gated by `OPENAI_API_MODE=responses` + `OPENAI_RESPONSES_TOOLS=true`, with Chat Completions still the default/fallback path
+- ✅ **OpenAI in-flight continuation** — `previous_response_id` + `function_call_output` can continue one active Jarvis client-tool loop without replacing Jarvis memory, Web UI history, follow-up extraction, or canonical tool traces
+- ✅ **OpenAI-hosted tools lane** — Separate config and budgets for Responses-hosted `web_search`, `file_search`, and `code_interpreter`, with normalized server-side tool usage and diagnostics
+- ✅ **Responses observability + safety** — Adapter-local tool conversion, non-strict schemas, cached-input/reasoning token accounting, prompt-cache hints, continuation fallback reasons, and guardrails so Responses-only payloads do not leak into Chat Completions fallback
+- ✅ **Provider result previews + OpenAI vision cleanup** — Tool previews preserve exact source candidates and valid bounded JSON; OpenAI image upload analysis now follows the active OpenAI model and forwards supported `VISION_DETAIL`
+- ✅ **Docs + tests** — Added `docs/OPENAI_PROVIDER.md`, refreshed the Responses plan and conversation-state architecture, and covered adapter/continuation/vision preview behavior in tests
+
 **Completed (May 2026) — v2.49.0 → v2.49.1:**
 - ✅ **Models & providers** — GPT-5.4 mini support with OpenAI reasoning guardrails; catalog refresh (e.g. `gpt-4o-mini`); Grok 4.3 controls; OpenAI-compatible usage now preserves cached prompt tokens where the API reports them; Anthropic accounting refresh and SDK updates
 - ✅ **xAI / Grok** — More stable web chat and calmer native tool use; conversation cache affinity and native continuation; hybrid tool handling and SDK DNS hardening; planning/docs brought in line with current options
@@ -1810,6 +1820,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.49.1 (May 2026)
+**Current Version:** v2.50.0 (May 2026)
 **Status:** Production Ready ✅  
-**Latest Features:** v2.49.1: multi-coin crypto pricing and native charts (market/status/canvas), memory/intel UI (memory ID search, badges, markdown intel preview), dual-database forget/mirror fixes and safer bulk-forget caps, Jarvis Docs Assistant + standalone docs reader (mobile + QMD/ripgrep retrieval), Grok/xAI tuning (chat stability, cache affinity, native continuation, hybrid tools, DNS hardening), GPT-5.4 mini plus catalog tweaks and usage/caching reporting fixes, broader tool permissions + `complementary_tools`, `tool_search` discovery flow, Home Depot via SerpAPI, web conversations pin/archive + reconnect delivery, logging/orchestrator refinements (routing provenance, prompt token visibility, Completion Guard refactor) — on top of v2.49.0 xAI native TTS + Tool RAG traces, follow-up extractor, intelligence provenance/dashboard pagination, Canvas public links, `/logs`, alerts & Weather Watch, and v2.48 Tool RAG hash skip + related polish
+**Latest Features:** v2.50.0: optional OpenAI Responses API routing for tool-capable turns, OpenAI in-flight `previous_response_id` continuation, hosted OpenAI tool gates (`web_search`, `file_search`, `code_interpreter`), prompt-cache/usage diagnostics, safe Responses-to-Chat fallback boundaries, provider result previews that preserve exact source candidates, and OpenAI upload-image vision cleanup — on top of v2.49.1 crypto charts, memory/intel UI polish, Jarvis Docs Assistant, Grok/xAI continuation/search hardening, GPT-5.4 catalog updates, `tool_search` discovery, Home Depot via SerpAPI, web conversation pin/archive, and logging/orchestrator refinements

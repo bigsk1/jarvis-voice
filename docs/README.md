@@ -11,6 +11,7 @@
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` default, native search/TTS, in-flight tool continuation) ⭐ RECOMMENDED
+- **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
 
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.10** (Completion Guard eval overrides, Ollama cloud judge fixes, tightened auto-repair behavior, server logs) ⭐ ENHANCED
@@ -315,6 +316,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-05-10:**
+- ✅ **OpenAI Responses API routing support (v2.50.0)**
+  - OpenAI tool-capable router turns can now use `/v1/responses` when `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true` are enabled.
+  - Optional in-flight continuation supports `previous_response_id` + `function_call_output` for Jarvis client tool loops without making saved Web UI follow-ups depend on provider-side state.
+  - Responses tools are converted through a dedicated adapter with non-strict function schemas, usage/cost parsing, cached-input/reasoning token reporting, diagnostics, and safe Chat Completions fallback boundaries.
+  - Optional OpenAI-hosted tools (`web_search`, `file_search`, `code_interpreter`) have separate config gates and budgets so they do not piggyback on xAI native-search controls.
+  - Provider-facing tool result previews now preserve exact source candidates and valid JSON when bounded, reducing repeated search/canvas hallucination risk.
+  - OpenAI upload-image vision now follows `OPENAI_MODEL` when `VISION_MODEL` is blank or provider-mismatched and forwards `VISION_DETAIL` where supported.
+  - See: [`docs/OPENAI_PROVIDER.md`](OPENAI_PROVIDER.md), [`docs/OPENAI_RESPONSES_ADAPTER_PLAN.md`](OPENAI_RESPONSES_ADAPTER_PLAN.md), [`docs/CONVERSATION_STATE_ARCHITECTURE.md`](CONVERSATION_STATE_ARCHITECTURE.md)
 
 **2026-05-03:**
 - ✅ **xAI SDK client-tool routing + in-flight continuation**
@@ -1580,6 +1591,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-05-03
-**Latest:** xAI SDK client-tool routing, in-flight `previous_response_id` tool continuation, OpenAI-compatible fallback preservation, and updated provider-state documentation
+**Last Updated:** 2026-05-10
+**Latest:** OpenAI Responses API routing, optional OpenAI in-flight `previous_response_id` continuation, hosted-tool config gates, provider result previews, and OpenAI vision model/detail cleanup
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

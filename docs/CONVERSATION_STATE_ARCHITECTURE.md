@@ -25,9 +25,10 @@ Understanding how Jarvis handles conversation state between interactions is crit
 - ✅ **Prompt caching** (Anthropic, OpenAI, xAI when cache hits apply) - system/tool prompts can be discounted
 - ✅ **Auto-context** provides conversation continuity from Jarvis' own saved state
 - ✅ **xAI in-flight continuation** can avoid resending the same Jarvis tool result during one multi-tool request
+- ✅ **OpenAI Responses in-flight continuation** can do the same for OpenAI when explicitly enabled
 
 **Q: What about OpenAI's Responses API with `store=True` and `previous_response_id`?**  
-**A:** OpenAI Responses continuation is not implemented. xAI has a narrower provider-native continuation path for in-flight Jarvis tool loops only. Saved Web UI follow-ups still use Jarvis local context and follow-up extraction.
+**A:** OpenAI Responses is now wired as an optional routing backend, including in-flight `previous_response_id` continuation for one active Jarvis client-tool loop. It is not used as persistent Web UI conversation memory. Saved Web UI follow-ups still use Jarvis local context and follow-up extraction.
 
 ---
 
@@ -58,7 +59,7 @@ Understanding how Jarvis handles conversation state between interactions is crit
          │ 3. Route & Execute Tools
          ▼
 ┌─────────────────────────────────────────────────┐
-│  LLM Provider (OpenAI/Anthropic/Ollama)         │
+│  LLM Provider (xAI/OpenAI/Anthropic/Ollama)     │
 │  - System prompt (FULL)                         │
 │  - All tool definitions (FULL)                  │
 │  - User query (ONLY current transcript)         │
@@ -282,7 +283,7 @@ res2 = client.responses.create(
 
 **Current Jarvis status:**
 
-- **OpenAI Responses API:** not wired for chat/tool routing. OpenAI still uses the existing provider path.
+- **OpenAI Responses API:** optional for OpenAI tool-capable routing when `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true`. It can also use in-flight `previous_response_id` + `function_call_output` when `OPENAI_RESPONSES_INFLIGHT_CONTINUATION=true`.
 - **xAI SDK stored continuation:** wired only for in-flight Jarvis client-side tool loops. After Grok asks for a Jarvis tool and Jarvis executes it, the next router turn can send `previous_response_id` plus a structural `tool_result(...)`.
 - **Saved Web UI follow-ups:** do not pass persisted provider `previous_response_id` yet. They use Jarvis recent conversation context plus compact structured follow-up data from `followup_extractor.py`.
 
