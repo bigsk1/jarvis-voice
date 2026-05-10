@@ -568,6 +568,130 @@ class Orchestrator:
             "result_meta": result_meta,
         }
 
+    def _openai_provider_result_max_chars(self) -> int:
+        return max(800, self._config_int("OPENAI_RESPONSES_RESULT_MAX_CHARS", 6000))
+
+    def _openai_previous_response_max_age_days(self) -> int:
+        return max(1, self._config_int("OPENAI_PREVIOUS_RESPONSE_MAX_AGE_DAYS", 25))
+
+    def _openai_responses_tracking_enabled(self) -> bool:
+        """Track OpenAI response ids whenever Responses tool routing is enabled."""
+        if getattr(getattr(self, "router", None), "provider_type", "") != "openai":
+            return False
+        from openai_responses_adapter import openai_responses_router_enabled
+
+        return openai_responses_router_enabled()
+
+    def _openai_native_continuation_allowed(self) -> bool:
+        if not self._openai_responses_tracking_enabled():
+            return False
+        from openai_responses_adapter import openai_responses_inflight_continuation_enabled
+
+        return openai_responses_inflight_continuation_enabled()
+
+    def _openai_continuation_fallback_reason(self, continuation: dict[str, Any] | None) -> str | None:
+        """Return None when OpenAI Responses continuation metadata is usable for this turn."""
+        if not self._openai_native_continuation_allowed():
+            return "disabled"
+        if not continuation:
+            return "missing_continuation"
+        if continuation.get("provider") != "openai":
+            return "provider_mismatch"
+        if not continuation.get("response_id"):
+            return "missing_response_id"
+        if not continuation.get("tool_call_id"):
+            return "missing_tool_call_id"
+        model = continuation.get("model")
+        current_model = getattr(getattr(self, "router", None), "model_name", None)
+        if not model or not current_model or model != current_model:
+            return "model_mismatch"
+        created_raw = continuation.get("response_created_at_iso")
+        created_dt = self._safe_iso_to_local_datetime(created_raw)
+        if not created_dt:
+            return "missing_response_created_at"
+        max_age = timedelta(days=self._openai_previous_response_max_age_days())
+        if datetime.now(self.timezone) - created_dt > max_age:
+            return "response_id_expired"
+        if not continuation.get("result_message"):
+            return "missing_result_message"
+        return None
+
+    def _build_openai_responses_route_input(
+        self,
+        *,
+        retrieval_query: str,
+        continuation: dict[str, Any],
+    ) -> ProviderRouteInput:
+        items: list[dict[str, Any]] = [
+            {
+                "type": "function_call_output",
+                "call_id": continuation["tool_call_id"],
+                "output": continuation["result_message"],
+            }
+        ]
+        if self._config_bool("OPENAI_RESPONSES_CONTINUATION_DELTA_MESSAGE", False):
+            items.append({
+                "role": "user",
+                "content": (
+                    "Continue the original Jarvis request. Use the completed tool result above. "
+                    "Choose the next required tool only if the original request is not complete; "
+                    "otherwise answer directly."
+                ),
+            })
+        mode = (
+            "responses_with_delta"
+            if self._config_bool("OPENAI_RESPONSES_CONTINUATION_DELTA_MESSAGE", False)
+            else "responses_structural"
+        )
+        return ProviderRouteInput(
+            tool_retrieval_query=retrieval_query,
+            messages=[],
+            system_prompt=None,
+            previous_response_id=continuation["response_id"],
+            continuation_mode=mode,
+            responses_continuation_input=items,
+        )
+
+    def _build_openai_provider_continuation(
+        self,
+        *,
+        route: dict[str, Any],
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        duration_ms: int,
+    ) -> dict[str, Any] | None:
+        response_id = route.get("response_id")
+        tool_call_id = route.get("tool_call_id") or route.get("id")
+        if not response_id or not tool_call_id:
+            return None
+        created_at = route.get("response_created_at_iso") or datetime.now(self.timezone).isoformat()
+        created_dt = self._safe_iso_to_local_datetime(created_at) or datetime.now(self.timezone)
+        expires_at = created_dt + timedelta(days=30)
+        safe_until = created_dt + timedelta(days=self._openai_previous_response_max_age_days())
+        result_message, result_meta = self._get_context_assembler().build_provider_tool_result_message(
+            tool_name=tool_name,
+            arguments=arguments,
+            result=result,
+            tool_call_id=tool_call_id,
+            duration_ms=duration_ms,
+            max_chars=self._openai_provider_result_max_chars(),
+        )
+        return {
+            "provider": "openai",
+            "response_id": response_id,
+            "model": route.get("response_model") or getattr(self.router, "model_name", None),
+            "model_alias": get_config_value("OPENAI_MODEL", getattr(self.router, "model_name", "")),
+            "response_created_at_iso": created_dt.isoformat(),
+            "response_expires_at_iso": expires_at.isoformat(),
+            "safe_until_iso": safe_until.isoformat(),
+            "tool_call_id": tool_call_id,
+            "tool_name": tool_name,
+            "arguments": arguments,
+            "result_message": result_message,
+            "result_meta": result_meta,
+        }
+
     def _format_age_seconds(self, seconds: float | int | None) -> str:
         """Human-friendly age text."""
         if seconds is None:
@@ -960,10 +1084,22 @@ Mode: {self.mode}
         
         # Multi-turn context tracking
         max_turns = get_int('MAX_TOOL_TURNS', 15)  # Configurable, default 15 for deep research
-        native_search_request_budget = get_int(
-            'XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST',
-            get_int('XAI_SERVER_SIDE_MAX_TOOL_TURNS', 0),
-        )
+        if (
+            getattr(self.router, "provider_type", "") == "openai"
+            and self._openai_responses_tracking_enabled()
+        ):
+            from openai_responses_adapter import openai_env_bool as _oar_ss_bool
+
+            native_search_request_budget = self._config_int(
+                "OPENAI_RESPONSES_SERVER_SIDE_MAX_TOOL_CALLS", 0
+            )
+            if not _oar_ss_bool("OPENAI_RESPONSES_SERVER_SIDE_TOOLS", False):
+                native_search_request_budget = 0
+        else:
+            native_search_request_budget = get_int(
+                'XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST',
+                get_int('XAI_SERVER_SIDE_MAX_TOOL_TURNS', 0),
+            )
         retry_state = _retry_state or {}
         conversation_context = retry_state.get("conversation_context") or []
         tools_used = retry_state.get("tools_used") or []
@@ -991,7 +1127,20 @@ Mode: {self.mode}
             else None
         )
         xai_text_fallback_retry_used = bool(retry_state.get("xai_text_fallback_retry_used"))
-        
+        openai_responses_tracking_enabled = self._openai_responses_tracking_enabled()
+        openai_native_continuation_enabled = self._openai_native_continuation_allowed()
+        openai_previous_response_id = (
+            retry_state.get("openai_previous_response_id")
+            if openai_responses_tracking_enabled
+            else None
+        )
+        openai_provider_continuation = (
+            retry_state.get("openai_provider_continuation")
+            if openai_responses_tracking_enabled
+            else None
+        )
+        openai_text_fallback_retry_used = bool(retry_state.get("openai_text_fallback_retry_used"))
+
         # If retrying, augment transcript with error context
         if error_context and retry_count > 0:
             enhanced_transcript = f"{enhanced_transcript}\n\n===PREVIOUS ATTEMPT FAILED WITH ERROR===: {error_context}\nPlease try again with corrected parameters or check logs if needed."
@@ -1090,8 +1239,34 @@ Mode: {self.mode}
             route_payload: str | ProviderRouteInput = turn_input
             route_previous_response_id = None
             continuation_fallback_reason = None
+            used_openai_structural = False
             if (
-                xai_native_continuation_enabled
+                openai_native_continuation_enabled
+                and turn_num > 0
+                and not blocked_duplicate_calls
+                and not disable_server_side_tools
+            ):
+                oai_reason = self._openai_continuation_fallback_reason(openai_provider_continuation)
+                if oai_reason is None and openai_provider_continuation:
+                    route_payload = self._build_openai_responses_route_input(
+                        retrieval_query=enhanced_transcript,
+                        continuation=openai_provider_continuation,
+                    )
+                    used_openai_structural = True
+                    route_previous_response_id = openai_provider_continuation.get("response_id")
+                elif oai_reason and openai_native_continuation_enabled:
+                    routing_provenance["openai_continuation_fallback_reason"] = oai_reason
+            elif (
+                blocked_duplicate_calls
+                and openai_native_continuation_enabled
+            ):
+                routing_provenance["openai_continuation_fallback_reason"] = "duplicate_guard_active"
+            elif disable_server_side_tools and openai_native_continuation_enabled:
+                routing_provenance["openai_continuation_fallback_reason"] = "server_side_tools_disabled"
+
+            if (
+                not used_openai_structural
+                and xai_native_continuation_enabled
                 and turn_num > 0
                 and not blocked_duplicate_calls
                 and not disable_server_side_tools
@@ -1124,6 +1299,35 @@ Mode: {self.mode}
                 previous_response_id=route_previous_response_id,
             )
             if (
+                route.get("intent") == "error"
+                and isinstance(route_payload, ProviderRouteInput)
+                and getattr(route_payload, "responses_continuation_input", None)
+                and route.get("openai_continuation_error")
+                and route_previous_response_id
+                and not openai_text_fallback_retry_used
+            ):
+                openai_text_fallback_retry_used = True
+                openai_previous_response_id = None
+                openai_provider_continuation = None
+                routing_provenance["openai_continuation_fallback_reason"] = (
+                    "previous_response_error"
+                    if "previous_response" in str(route.get("provider_error_raw", "")).lower()
+                    else "openai_structural_error"
+                )
+                route = self.router.route(
+                    turn_input,
+                    excluded_tools=excluded_tools,
+                    typo_hint_source=transcript,
+                    disable_server_side_tools=disable_server_side_tools,
+                    routing_provenance=routing_provenance,
+                    server_side_max_tool_turns=(
+                        native_search_remaining
+                        if native_search_remaining is not None and native_search_remaining > 0
+                        else None
+                    ),
+                    previous_response_id=None,
+                )
+            elif (
                 route.get("intent") == "error"
                 and route_previous_response_id
                 and not xai_text_fallback_retry_used
@@ -1196,7 +1400,14 @@ Mode: {self.mode}
             if route["intent"] == "tool":
                 tool_name = route["tool_name"]
                 arguments = route["arguments"]
-                route_response_id = route.get("response_id") if xai_store_messages_enabled else None
+                route_response_id = (
+                    route.get("response_id")
+                    if (
+                        xai_store_messages_enabled
+                        or openai_responses_tracking_enabled
+                    )
+                    else None
+                )
                 
                 # Apply forced overrides from web UI (e.g. aspect_ratio, duration)
                 # The LLM generates the creative prompt, but technical params are
@@ -1442,10 +1653,17 @@ Mode: {self.mode}
                         "authoritative_live": ttl_seconds is not None
                     }
                     if route_response_id:
-                        tool_meta["xai_response_id"] = route_response_id
-                        xai_previous_response_id = route_response_id
+                        if xai_store_messages_enabled:
+                            tool_meta["xai_response_id"] = route_response_id
+                            xai_previous_response_id = route_response_id
+                        if openai_responses_tracking_enabled:
+                            tool_meta["openai_response_id"] = route_response_id
+                            openai_previous_response_id = route_response_id
                     if route.get("tool_call_id"):
-                        tool_meta["xai_tool_call_id"] = route["tool_call_id"]
+                        if xai_store_messages_enabled:
+                            tool_meta["xai_tool_call_id"] = route["tool_call_id"]
+                        if openai_responses_tracking_enabled:
+                            tool_meta["openai_tool_call_id"] = route["tool_call_id"]
                     context_item = {
                         "tool": tool_name,
                         "arguments": arguments,
@@ -1466,6 +1684,19 @@ Mode: {self.mode}
                             context_item["provider_continuation"] = provider_continuation
                             xai_provider_continuation = provider_continuation
                             xai_previous_response_id = provider_continuation["response_id"]
+                    openai_cont = None
+                    if openai_responses_tracking_enabled and route_response_id:
+                        openai_cont = self._build_openai_provider_continuation(
+                            route=route,
+                            tool_name=tool_name,
+                            arguments=arguments,
+                            result=result,
+                            duration_ms=tool_duration_ms,
+                        )
+                        if openai_cont:
+                            context_item["openai_provider_continuation"] = openai_cont
+                            openai_provider_continuation = openai_cont
+                            openai_previous_response_id = openai_cont["response_id"]
                     conversation_context.append(context_item)
 
                     if tool_name == "stash":
@@ -1565,6 +1796,9 @@ Mode: {self.mode}
                                 "xai_previous_response_id": xai_previous_response_id,
                                 "xai_provider_continuation": xai_provider_continuation,
                                 "xai_text_fallback_retry_used": xai_text_fallback_retry_used,
+                                "openai_previous_response_id": openai_previous_response_id,
+                                "openai_provider_continuation": openai_provider_continuation,
+                                "openai_text_fallback_retry_used": openai_text_fallback_retry_used,
                             }
                         )
                     

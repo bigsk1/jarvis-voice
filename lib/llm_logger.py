@@ -91,7 +91,27 @@ class LLMLogger:
             "xai_previous_response_id_present": provider_route.get("xai_previous_response_id_present"),
             "xai_previous_response_id_used": provider_route.get("xai_previous_response_id_used"),
             "provider_messages_shape": provider_route.get("provider_messages_shape"),
-            
+            "openai_responses_continuation_payload_items": provider_route.get(
+                "openai_responses_continuation_payload_items",
+            ),
+            "openai_api_mode": provider_route.get("openai_api_mode"),
+            "openai_responses_tools_enabled": provider_route.get("openai_responses_tools_enabled"),
+            "openai_responses_previous_id_present": provider_route.get(
+                "openai_responses_previous_id_present",
+            ),
+            "openai_responses_previous_id_used": provider_route.get(
+                "openai_responses_previous_id_used",
+            ),
+            "openai_responses_continuation_input_items": provider_route.get(
+                "openai_responses_continuation_input_items",
+            ),
+            "openai_responses_output_items_by_type": provider_route.get(
+                "openai_responses_output_items_by_type",
+            ),
+            "openai_responses_fallback_reason": provider_route.get("openai_responses_fallback_reason"),
+            "openai_prompt_cache_key_set": provider_route.get("openai_prompt_cache_key_set"),
+            "openai_prompt_cache_retention": provider_route.get("openai_prompt_cache_retention"),
+
             # xAI native search usage (web_search, x_search)
             "xai_search_calls": sum(usage_info.get("server_side_tools", {}).values()) if usage_info else 0,
             "xai_search_tools": list(usage_info.get("server_side_tools", {}).keys()) if usage_info and usage_info.get("server_side_tools") else None,

@@ -53,6 +53,7 @@ class ProviderRouteInput:
     previous_response_id: str | None = None
     continuation_mode: str = "text_fallback"
     continuation_fallback_reason: str | None = None
+    responses_continuation_input: list[dict[str, Any]] | None = None
 
 
 _REQUEST_BOUNDARY_MARKERS = (
@@ -1296,6 +1297,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             provider_messages = route_input.messages
             provider_system_prompt = route_input.system_prompt
             route_previous_response_id = route_input.previous_response_id
+            responses_continuation_input = route_input.responses_continuation_input
             provider_shape = _provider_message_shape(provider_messages)
             continuation_meta = {
                 "xai_continuation_mode": route_input.continuation_mode,
@@ -1303,12 +1305,16 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 "xai_previous_response_id_present": bool(route_input.previous_response_id),
                 "xai_previous_response_id_used": bool(route_input.previous_response_id),
                 "provider_messages_shape": provider_shape,
+                "openai_responses_continuation_payload_items": len(responses_continuation_input or [])
+                if responses_continuation_input
+                else 0,
             }
         else:
             transcript_text = transcript
             provider_messages = [{"role": "user", "content": transcript_text}]
             provider_system_prompt = self.system_prompt
             route_previous_response_id = previous_response_id
+            responses_continuation_input = None
             provider_shape = _provider_message_shape(provider_messages)
             continuation_meta = {
                 "xai_continuation_mode": "text_fallback",
@@ -1316,6 +1322,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 "xai_previous_response_id_present": bool(previous_response_id),
                 "xai_previous_response_id_used": bool(previous_response_id),
                 "provider_messages_shape": provider_shape,
+                "openai_responses_continuation_payload_items": 0,
             }
         
         # Only print if in interactive mode
@@ -1482,8 +1489,12 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             
             previous_max_tool_turns = os.environ.get("XAI_SERVER_SIDE_MAX_TOOL_TURNS")
             previous_disable_server_side_tools = os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS")
+            previous_disable_openai_server_side_tools = os.environ.get(
+                "OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS"
+            )
             if disable_server_side_tools:
                 os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = "true"
+                os.environ["OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS"] = "true"
             if server_side_max_tool_turns is not None:
                 os.environ["XAI_SERVER_SIDE_MAX_TOOL_TURNS"] = str(max(1, int(server_side_max_tool_turns)))
             try:
@@ -1493,6 +1504,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     system_prompt=provider_system_prompt,
                     enable_thinking=enable_thinking,
                     previous_response_id=route_previous_response_id,
+                    responses_continuation_input=responses_continuation_input,
                 )
             finally:
                 if disable_server_side_tools:
@@ -1500,11 +1512,27 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                         os.environ.pop("XAI_DISABLE_SERVER_SIDE_TOOLS", None)
                     else:
                         os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = previous_disable_server_side_tools
+                    if previous_disable_openai_server_side_tools is None:
+                        os.environ.pop("OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS", None)
+                    else:
+                        os.environ["OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS"] = (
+                            previous_disable_openai_server_side_tools
+                        )
                 if server_side_max_tool_turns is not None:
                     if previous_max_tool_turns is None:
                         os.environ.pop("XAI_SERVER_SIDE_MAX_TOOL_TURNS", None)
                     else:
                         os.environ["XAI_SERVER_SIDE_MAX_TOOL_TURNS"] = previous_max_tool_turns
+
+            dh = getattr(self.provider, "_openai_responses_diag_holder", None)
+            if isinstance(dh, dict) and dh:
+                continuation_meta.update(
+                    {
+                        key: dh[key]
+                        for key in dh
+                        if str(key).startswith("openai_")
+                    }
+                )
             
             llm_duration_ms = (time.time() - llm_start_time) * 1000
             provider_error = text_response if is_provider_error_text(text_response) else None
@@ -1541,6 +1569,20 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 print(f"DEBUG: Provider returned: tool_call={tool_call is not None}, usage={usage_info is not None}, thinking={thinking is not None}", file=sys.stderr)
 
             if provider_error:
+                openai_structural = bool(responses_continuation_input) and bool(route_previous_response_id)
+                if openai_structural:
+                    return {
+                        "intent": "error",
+                        "error": provider_error_info.friendly_message if provider_error_info else friendly_provider_error(provider_error),
+                        "text_response": provider_error_info.friendly_message if provider_error_info else friendly_provider_error(provider_error),
+                        "confidence": 0.0,
+                        "usage_info": usage_info,
+                        "available_tools": tool_names,
+                        "provider_error_raw": provider_error_info.raw_preview if provider_error_info else provider_error,
+                        "openai_continuation_error": True,
+                        "xai_continuation_error": False,
+                        **continuation_meta,
+                    }
                 xai_continuation_error = bool(route_previous_response_id)
                 if xai_continuation_error:
                     return {

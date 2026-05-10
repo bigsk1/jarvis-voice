@@ -30,6 +30,7 @@ class LLMProvider(ABC):
         system_prompt: str | None = None,
         enable_thinking: bool = False,
         previous_response_id: str | None = None,
+        responses_continuation_input: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat request with tool calling capability.
@@ -40,6 +41,7 @@ class LLMProvider(ABC):
             system_prompt: System prompt for the conversation
             enable_thinking: Enable extended thinking mode (if supported by model)
             previous_response_id: Provider-specific continuation handle, if supported
+            responses_continuation_input: OpenAI Responses-only continuation payloads
             
         Returns:
             Tuple of (text_response, tool_call, usage_info, thinking)
@@ -77,8 +79,57 @@ class OpenAIProvider(LLMProvider):
         
         self.client = OpenAI(api_key=api_key)
         self.model = model
+        self._openai_api_key_material = str(api_key or "")
+        self._openai_responses_diag_holder: dict[str, Any] = {}
+        self._last_openai_responses_error_was_continuation = False
 
-    def _openai_reasoning_effort(self, *, uses_tools: bool = False) -> str | None:
+    def _openai_prompt_cache_key_for_responses(self) -> str | None:
+        """
+        Optional prompt_cache_key on /v1/responses — see OpenAI prompt caching guide.
+
+        Explicit OPENAI_PROMPT_CACHE_KEY wins. Otherwise an implicit stable key derived
+        from OPENAI_PROMPT_CACHE_NAMESPACE and the configured API key (same idea as xAI
+        Grok conversation affinity): improves bucket stability for router-shaped traffic.
+        """
+        from config_loader import get_bool, get_config_value
+
+        explicit = (get_config_value("OPENAI_PROMPT_CACHE_KEY", "") or "").strip()
+        if explicit:
+            if len(explicit) > 256:
+                explicit = explicit[:256]
+            return explicit
+
+        if not get_bool("OPENAI_PROMPT_CACHE_ENABLED", True):
+            return None
+
+        namespace = (get_config_value("OPENAI_PROMPT_CACHE_NAMESPACE", "jarvis-voice") or "jarvis-voice").strip()
+        seed = f"{namespace}|{self._openai_api_key_material}"
+        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
+        return f"jarvis_router_{digest}"
+
+    @staticmethod
+    def _openai_prompt_cache_retention_for_responses() -> str | None:
+        """Optional Responses prompt_cache_retention: \"in-memory\" or \"24h\"."""
+        from config_loader import get_config_value
+
+        raw = (get_config_value("OPENAI_PROMPT_CACHE_RETENTION", "") or "").strip().lower()
+        if not raw:
+            return None
+        normalized = raw.replace("_", "").replace(" ", "")
+        if normalized == "inmemory":
+            return "in-memory"
+        if normalized in {"24h", "24hours"}:
+            return "24h"
+        print(
+            f"WARNING: Ignoring invalid OPENAI_PROMPT_CACHE_RETENTION={raw!r}; "
+            "expected in-memory or 24h",
+            file=sys.stderr,
+        )
+        return None
+
+    def _openai_reasoning_effort(
+        self, *, uses_tools: bool = False, use_responses_path: bool = False
+    ) -> str | None:
         """
         Optional reasoning-effort override for reasoning-capable OpenAI models.
 
@@ -113,9 +164,12 @@ class OpenAIProvider(LLMProvider):
 
         # Current OpenAI behavior: gpt-5.4-mini rejects the combination of
         # reasoning_effort + function tools on /v1/chat/completions and asks
-        # callers to use /v1/responses instead. Jarvis still uses Chat
-        # Completions for tool orchestration, so skip the env override here.
-        if uses_tools and self.model.startswith("gpt-5.4-mini"):
+        # callers to use /v1/responses instead.
+        if (
+            uses_tools
+            and not use_responses_path
+            and self.model.startswith("gpt-5.4-mini")
+        ):
             print(
                 f"INFO: Skipping reasoning_effort for {self.model} tool calls on "
                 "/v1/chat/completions (unsupported by OpenAI for this model)",
@@ -156,21 +210,36 @@ class OpenAIProvider(LLMProvider):
         system_prompt: str | None = None,
         enable_thinking: bool = False,
         previous_response_id: str | None = None,
+        responses_continuation_input: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
-        Send chat with OpenAI function calling.
+        Send chat with OpenAI function calling (Chat Completions) or Responses API.
         
         Returns:
             Tuple of (text_response, tool_call, usage_info, thinking)
             - usage_info contains token counts and cost estimates
             - thinking is None for non-reasoning OpenAI models
         """
-        # Add system message if provided
+        from openai_responses_adapter import openai_should_use_responses_for_tools
+
+        continuation_attempt = bool(previous_response_id and responses_continuation_input)
+        responses_mode = continuation_attempt or openai_should_use_responses_for_tools(tools=tools)
+
+        if responses_mode:
+            return self._openai_chat_with_tools_responses(
+                messages=messages,
+                tools=tools,
+                system_prompt=system_prompt,
+                previous_response_id=previous_response_id,
+                continuation_attempt=continuation_attempt,
+                responses_continuation_input=responses_continuation_input,
+            )
+
         full_messages = []
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages)
-        
+
         try:
             request_params = {
                 "model": self.model,
@@ -186,8 +255,7 @@ class OpenAIProvider(LLMProvider):
             response = self.client.chat.completions.create(**request_params)
 
             message = response.choices[0].message
-            
-            # Extract usage info
+
             usage_info = None
             if hasattr(response, 'usage') and response.usage:
                 from cost_estimator import estimate_cost
@@ -197,21 +265,158 @@ class OpenAIProvider(LLMProvider):
                     input_tokens=response.usage.prompt_tokens,
                     output_tokens=response.usage.completion_tokens
                 )
-            
-            # Check if tool was called
+
             if message.tool_calls:
                 tool_call = message.tool_calls[0]
-                return None, {
+                raw_id = getattr(tool_call, "id", None)
+                parsed = json.loads(tool_call.function.arguments or "{}")
+                payload_tc: dict[str, Any] = {
                     "name": tool_call.function.name,
-                    "arguments": json.loads(tool_call.function.arguments)
-                }, usage_info, None  # No thinking for standard models
-            
-            # Otherwise return text response
-            return message.content, None, usage_info, None  # No thinking for standard models
-            
+                    "arguments": parsed if isinstance(parsed, dict) else {},
+                }
+                if raw_id:
+                    payload_tc["id"] = raw_id
+                    payload_tc["tool_call_id"] = raw_id
+                return None, payload_tc, usage_info, None
+
+            return message.content, None, usage_info, None
+
         except Exception as e:
             print(f"OpenAI API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None, None, None
+
+    def _openai_chat_with_tools_responses(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None,
+        previous_response_id: str | None,
+        continuation_attempt: bool,
+        responses_continuation_input: list[dict[str, Any]] | None,
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
+        """Execute OpenAI `/v1/responses` behind Jarvis gates."""
+        from openai_responses_adapter import (
+            build_responses_input_from_chat,
+            build_openai_builtin_responses_tools,
+            chat_tools_to_responses_tools,
+            is_openai_previous_response_error,
+            openai_env_bool,
+            openai_env_int,
+            openai_responses_storage_flag,
+            parse_responses_result,
+            responses_output_type_counts,
+        )
+
+        inflight_continue = openai_env_bool("OPENAI_RESPONSES_INFLIGHT_CONTINUATION", False)
+        store_flag = openai_responses_storage_flag(inflight_continuation_enabled=inflight_continue)
+
+        use_structural_continuation = bool(
+            continuation_attempt
+            and inflight_continue
+            and previous_response_id
+            and responses_continuation_input
+        )
+
+        combined_tools = chat_tools_to_responses_tools(tools) + build_openai_builtin_responses_tools()
+        parallel_ok = openai_env_bool("OPENAI_RESPONSES_PARALLEL_TOOL_CALLS", False)
+
+        if use_structural_continuation:
+            input_payload: list[Any] = list(responses_continuation_input or [])
+        else:
+            if continuation_attempt and os.environ.get("JARVIS_DEBUG"):
+                print(
+                    "DEBUG: OpenAI Responses dropping structural continuation "
+                    "(OPENAI_RESPONSES_INFLIGHT_CONTINUATION or ids incomplete)",
+                    file=sys.stderr,
+                )
+            input_payload = build_responses_input_from_chat(
+                system_prompt=system_prompt,
+                messages=list(messages),
+            )
+
+        reasoning_effort = self._openai_reasoning_effort(
+            uses_tools=bool(combined_tools), use_responses_path=True
+        )
+
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "input": input_payload,
+            "store": store_flag,
+            "parallel_tool_calls": parallel_ok,
+        }
+        if combined_tools:
+            kwargs["tools"] = combined_tools
+            kwargs["tool_choice"] = "auto"
+        if use_structural_continuation:
+            kwargs["previous_response_id"] = previous_response_id
+
+        ss_max = openai_env_int("OPENAI_RESPONSES_SERVER_SIDE_MAX_TOOL_CALLS", 0)
+        if ss_max > 0:
+            kwargs["max_tool_calls"] = ss_max
+
+        include_bits: list[str] = []
+        if openai_env_bool("OPENAI_RESPONSES_INCLUDE_WEB_SEARCH_SOURCES", False):
+            include_bits.append("web_search_call.action.sources")
+        if include_bits:
+            kwargs["include"] = include_bits
+
+        if reasoning_effort:
+            kwargs["reasoning"] = {"effort": reasoning_effort}
+
+        pck = self._openai_prompt_cache_key_for_responses()
+        if pck:
+            kwargs["prompt_cache_key"] = pck
+        pcr = OpenAIProvider._openai_prompt_cache_retention_for_responses()
+        if pcr:
+            kwargs["prompt_cache_retention"] = pcr
+
+        dh = self._openai_responses_diag_holder
+        dh.clear()
+        dh["openai_api_mode"] = "responses"
+        dh["openai_responses_tools_enabled"] = True
+        dh["openai_prompt_cache_key_set"] = bool(pck)
+        dh["openai_prompt_cache_retention"] = pcr
+        dh["openai_responses_previous_id_present"] = bool(previous_response_id)
+        dh["openai_responses_previous_id_used"] = bool(kwargs.get("previous_response_id"))
+        dh["openai_responses_continuation_input_items"] = (
+            len(responses_continuation_input or []) if use_structural_continuation else 0
+        )
+        dh["openai_responses_output_items_by_type"] = {}
+
+        debug_ids = os.environ.get("JARVIS_DEBUG")
+        setattr(self, "_last_openai_responses_error_was_continuation", False)
+
+        try:
+            response = self.client.responses.create(**kwargs)
+            out_counts = responses_output_type_counts(response.output)
+            dh["openai_responses_output_items_by_type"] = out_counts
+
+            txt, tc, usage_info, _srv = parse_responses_result(
+                response,
+                model=self.model,
+                parallel_tool_calls_allowed=parallel_ok,
+            )
+            return txt, tc, usage_info if usage_info is not None else {}, None
+
+        except Exception as e:
+            err_text = f"Error: {str(e)}"
+            dh["openai_responses_fallback_reason"] = "responses_api_error"
+            if use_structural_continuation and is_openai_previous_response_error(e):
+                dh["openai_responses_fallback_reason"] = "previous_response_error"
+                setattr(self, "_last_openai_responses_error_was_continuation", True)
+                if debug_ids:
+                    print(
+                        "DEBUG: OpenAI Responses continuation error (upstream may text-fallback): "
+                        f"{e}",
+                        file=sys.stderr,
+                    )
+            elif debug_ids:
+                print(f"DEBUG: OpenAI Responses error: {e}", file=sys.stderr)
+            else:
+                print(f"OpenAI Responses API error: {e}", file=sys.stderr)
+
+            return err_text, None, {}, None
 
 
 class AnthropicProvider(LLMProvider):
@@ -293,6 +498,7 @@ class AnthropicProvider(LLMProvider):
         system_prompt: str | None = None,
         enable_thinking: bool = False,
         previous_response_id: str | None = None,
+        responses_continuation_input: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with Anthropic tool calling.
@@ -797,6 +1003,7 @@ class XAIProvider(LLMProvider):
         system_prompt: str | None = None,
         enable_thinking: bool = False,
         previous_response_id: str | None = None,
+        responses_continuation_input: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with xAI function calling and optional reasoning mode.
@@ -1484,6 +1691,7 @@ class OllamaProvider(LLMProvider):
         system_prompt: str | None = None,
         enable_thinking: bool = False,
         previous_response_id: str | None = None,
+        responses_continuation_input: list[dict[str, Any]] | None = None,
     ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
         """
         Send chat with Ollama using native tool calling API with structured prompting fallback.

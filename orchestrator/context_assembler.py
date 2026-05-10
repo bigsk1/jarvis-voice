@@ -664,6 +664,103 @@ class ContextAssembler:
             return 2048
         return 240
 
+    def build_source_candidates_preview(
+        self,
+        data: Any,
+        *,
+        max_items: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Lift exact result handles out of bulky search/item arrays.
+
+        Generic preview ranking intentionally pushes large arrays down, but
+        follow-up tool calls often need the exact URLs/IDs from those arrays.
+        Keep a small provider-facing candidate list so models do not have to
+        reconstruct links from prose summaries.
+        """
+        if not isinstance(data, dict):
+            return []
+
+        candidate_keys = (
+            "candidates",
+            "top_results",
+            "results",
+            "video_results",
+            "organic_results",
+            "shopping_results",
+            "items",
+        )
+        source_key = ""
+        raw_items: Any = None
+        for key in candidate_keys:
+            value = data.get(key)
+            if isinstance(value, list) and value:
+                source_key = key
+                raw_items = value
+                break
+
+        if not isinstance(raw_items, list):
+            return []
+
+        exact_fields = (
+            "title",
+            "name",
+            "url",
+            "link",
+            "youtube_url",
+            "video_id",
+            "asin",
+            "product_id",
+            "channel",
+            "source",
+            "published_date",
+            "date",
+            "duration",
+            "price",
+            "rating",
+            "thumbnail",
+            "image",
+            "image_url",
+        )
+        url_aliases = ("url", "link", "youtube_url", "watch_url", "product_link")
+
+        candidates: list[dict[str, Any]] = []
+        for index, item in enumerate(raw_items[:max_items], 1):
+            if not isinstance(item, dict):
+                continue
+
+            candidate: dict[str, Any] = {
+                "rank": index,
+                "source_list": source_key,
+            }
+            for key in exact_fields:
+                value = item.get(key)
+                if value in (None, ""):
+                    continue
+                candidate[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    depth=0,
+                    max_depth=1,
+                )
+
+            if "url" not in candidate:
+                for alias in url_aliases:
+                    value = item.get(alias)
+                    if value not in (None, ""):
+                        candidate["url"] = self.build_preview_value(
+                            value,
+                            parent_key="url",
+                            depth=0,
+                            max_depth=1,
+                        )
+                        break
+
+            if len(candidate) > 2:
+                candidates.append(candidate)
+
+        return candidates
+
     def build_preview_value(
         self,
         value: Any,
@@ -732,6 +829,9 @@ class ContextAssembler:
                 "data_preview": self.build_preview_value(data, parent_key="data"),
             },
         }
+        source_candidates = self.build_source_candidates_preview(data)
+        if source_candidates:
+            preview_payload["llm_context_preview"]["source_candidates"] = source_candidates
         if result.get("error"):
             preview_payload["error"] = self.truncate_preview_text(result["error"], 300)
 

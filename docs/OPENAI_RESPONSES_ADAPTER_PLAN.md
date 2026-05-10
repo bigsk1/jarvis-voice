@@ -159,7 +159,9 @@ Do not change the working xAI flow as part of the first OpenAI Responses experim
 - Do not alter xAI `XAI_STORE_MESSAGES`, `XAI_NATIVE_CONTINUATION`, SDK fallback, cache affinity, or server-side tool behavior.
 - Do not require xAI tests to change for the OpenAI adapter to land.
 
-Do not use `previous_response_id` for normal Q&A turns.
+Do not use `previous_response_id` for normal Q&A/direct-answer turns.
+
+This does not mean every Q&A/direct-answer turn must use Chat Completions. In Jarvis, the router often calls `OpenAIProvider.chat_with_tools(...)` with a non-empty ghost-tool set before the model decides whether to answer directly or call a tool. When `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true`, those tool-capable routing calls may use `/v1/responses` even if the model returns final text. The non-goal is provider-native continuation for Q&A, not Responses transport for a tool-capable routing call.
 
 Do not persist OpenAI response ids across saved Web UI follow-up turns.
 
@@ -186,7 +188,7 @@ Do not migrate these APIs in the first pass:
 
 ## Proposed Scope
 
-Start with OpenAI tool routing only.
+Start with OpenAI tool-capable routing only.
 
 The first implementation should live inside `OpenAIProvider` as an adapter-local path:
 
@@ -241,7 +243,7 @@ Use the normal Jarvis path:
 - Web UI or CLI user message context
 - no `previous_response_id`
 
-If OpenAI Responses is enabled for tools, the adapter calls `client.responses.create(...)`.
+If OpenAI Responses is enabled for tool-capable routing and the provider receives a non-empty tool list, the adapter calls `client.responses.create(...)`. A direct final-text response from that call is still a normal Jarvis Q&A/direct-answer result; it does not imply any provider continuation state should be reused.
 
 If the model returns final text, Jarvis answers and discards the provider response id.
 
@@ -697,7 +699,7 @@ Manual smoke tests:
 - Should OpenAI Responses be enabled only when tools are present, or also for no-tool OpenAI chat once stable? Current lean: yes, move no-tool OpenAI chat to Responses after tool routing is stable.
 - Should OpenAI in-flight continuation use `store=true` explicitly, or rely on default storage behavior when enabled? Current lean: Jarvis remains the source of truth; only use provider storage for explicit in-flight continuation, never as memory.
 - What is the safest retention window for OpenAI in-flight response ids if they are never persisted beyond one request?
-- Should the adapter set `prompt_cache_key` to improve cache routing for repeated Jarvis router prefixes?
+- **Resolved:** The adapter passes OpenAI **`prompt_cache_key`** (and optional **`prompt_cache_retention`**) on `responses.create` per the prompt caching docs. Use explicit **`OPENAI_PROMPT_CACHE_KEY`** or leave it empty for a derived stable key (**`OPENAI_PROMPT_CACHE_NAMESPACE`** + API-key–based digest). Telemetry logs whether a key was set, not its value.
 - Which OpenAI server-side tools should Jarvis expose first after web search proves stable?
 - Should OpenAI web search use `include=["web_search_call.action.sources"]` by default, debug-only, or never?
 - Should OpenAI server-side tool budgets count output items, provider usage counters, or both?

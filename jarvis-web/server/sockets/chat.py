@@ -4287,7 +4287,7 @@ Mode: {mode}
         return None
     
     def _vision_openai(self, image_base64: str, prompt: str, model: str = None) -> str:
-        """Use OpenAI GPT-4V for vision"""
+        """Use OpenAI multimodal models for vision."""
         import requests
         from ..config import get_jarvis_setting
         
@@ -4296,8 +4296,23 @@ Mode: {mode}
             print("[VISION] OPENAI_API_KEY not configured")
             return None
         
-        model = model or 'gpt-4o'
+        # VISION_MODEL is global and may be configured for another provider.
+        # When it is blank or provider-specific elsewhere, use the active
+        # OpenAI chat model so image analysis tracks the selected LLM.
+        requested_model = (model or get_jarvis_setting('VISION_MODEL', '') or '').strip()
+        if requested_model and self._looks_like_openai_model(requested_model):
+            model = requested_model
+        else:
+            if requested_model:
+                print(f"[VISION] Ignoring non-OpenAI VISION_MODEL for OpenAI vision: {requested_model}")
+            model = (
+                get_jarvis_setting('OPENAI_MODEL', '')
+                or get_provider_fallback_model('openai')
+                or 'gpt-4o'
+            )
         print(f"[VISION] OpenAI model: {model}")
+
+        detail = self._openai_vision_detail(model, get_jarvis_setting('VISION_DETAIL', 'high'))
         
         payload = {
             "model": model,
@@ -4307,7 +4322,8 @@ Mode: {mode}
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
+                            "url": f"data:image/jpeg;base64,{image_base64}",
+                            "detail": detail
                         }
                     },
                     {
@@ -4315,9 +4331,12 @@ Mode: {mode}
                         "text": prompt
                     }
                 ]
-            }],
-            "max_tokens": 1024
+            }]
         }
+        if self._openai_model_uses_max_completion_tokens(model):
+            payload["max_completion_tokens"] = 1024
+        else:
+            payload["max_tokens"] = 1024
         
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
@@ -4337,3 +4356,35 @@ Mode: {mode}
         else:
             print(f"[VISION] OpenAI error: {response.status_code} - {response.text[:200]}")
         return None
+
+    @staticmethod
+    def _looks_like_openai_model(model: str | None) -> bool:
+        """Return true for OpenAI text/vision model ids, false for xAI/Claude/Gemini ids."""
+        lowered = str(model or '').strip().lower()
+        return lowered.startswith(('gpt-', 'o1', 'o3', 'o4'))
+
+    @staticmethod
+    def _openai_model_uses_max_completion_tokens(model: str | None) -> bool:
+        """Newer OpenAI chat/reasoning models reject legacy max_tokens."""
+        lowered = str(model or '').strip().lower()
+        return lowered.startswith(('gpt-5', 'o1', 'o3', 'o4'))
+
+    @staticmethod
+    def _openai_model_supports_original_detail(model: str | None) -> bool:
+        """OpenAI original-detail image inputs are only documented for full GPT-5.4+ models."""
+        lowered = str(model or '').strip().lower()
+        if any(marker in lowered for marker in ('mini', 'nano', 'codex')):
+            return False
+        return lowered.startswith(('gpt-5.4', 'gpt-5.5'))
+
+    @classmethod
+    def _openai_vision_detail(cls, model: str | None, configured_detail: str | None) -> str:
+        """Return an OpenAI-supported image detail value for the selected model."""
+        detail = str(configured_detail or 'high').strip().lower()
+        if detail in ('low', 'high', 'auto'):
+            return detail
+        if detail == 'original' and cls._openai_model_supports_original_detail(model):
+            return detail
+        if detail == 'original':
+            print(f"[VISION] OpenAI model {model} does not support VISION_DETAIL=original; using high")
+        return 'high'
