@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_home_depot",
-  "description": "Search The Home Depot products through SerpApi with normalized product fields like product_id, brand, model_number, price, rating, reviews, thumbnail, image_url, delivery, pickup, and stock information. Use this for Home Depot product searches, focused product details by product_id, store/ZIP-specific availability, price-sorted comparisons, and follow-up product references. For US searches, delivery_zip defaults to JARVIS_DEFAULT_POSTAL_CODE when omitted. In detailed/display mode, show product images from image_url/top_image_url when present. Keep normal searches cached and lightweight; only use no_cache or include_product_details when the user explicitly needs fresh availability or full product-page details.",
+  "description": "Search The Home Depot products through SerpApi with normalized product fields like product_id, brand, model_number, price, rating, reviews, thumbnail, image_url, delivery, pickup, and stock information. Use this for Home Depot product searches, focused product details by product_id, store/ZIP-specific availability, price-sorted comparisons, and follow-up product references. For US searches, delivery_zip defaults to JARVIS_DEFAULT_POSTAL_CODE when omitted. In detailed/display mode, show product images from image_url/top_image_url when present. Uses SerpApi cached results only (fast path) and always calls SerpApi directly (no HTTP proxy). Use include_product_details when the user needs full product-page detail (adds a second cached request).",
   "complementary_tools": [
     "canvas",
     "stash"
@@ -84,10 +84,6 @@
       "include_product_details": {
         "type": "boolean",
         "description": "If true, make an additional Home Depot Product API call for the selected/top US product, including larger image_url, description, highlights, bullets, and specifications. This is slower. Default: false for normal search; use true only when the user asks for full product-page details."
-      },
-      "no_cache": {
-        "type": "boolean",
-        "description": "If true, bypass SerpApi cache for a fresh live Home Depot fetch. This can be much slower and should only be used when the user explicitly asks for current/live availability or fresh pricing."
       },
       "extra_params": {
         "type": "object",

@@ -7,12 +7,12 @@ import json
 import os
 import sys
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config, get_config_value
 from serpapi_client import (
     clamp_results_count,
-    get_proxy_enabled,
     merge_extra_params,
     parse_bool,
     request_serpapi,
@@ -74,6 +74,10 @@ CA_SORT_MAP = {
 }
 
 HOME_DEPOT_SERPAPI_TIMEOUT = 90
+
+# Home Depot SerpApi is slow; avoid LOCAL_PROXY — it burns full TCP timeouts per hop.
+def _home_depot_serpapi(params: dict[str, Any], timeout: int = HOME_DEPOT_SERPAPI_TIMEOUT) -> dict[str, Any]:
+    return request_serpapi(params, timeout=timeout, use_proxy=False, fallback_on_proxy_fail=False)
 
 
 def return_success(speech: str, data: dict[str, Any] | None = None) -> None:
@@ -163,7 +167,31 @@ def _normalize_brand(brand: Any) -> str | None:
     return None
 
 
-def extract_home_depot_results(payload: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+def _storefront_homedepot_url(url: Any, country: str) -> str | None:
+    """SerpApi often returns apionline.homedepot.com links; those 403 in a normal browser (Akamai). Use www storefront."""
+    if url is None:
+        return None
+    if not isinstance(url, str):
+        return None
+    text = url.strip()
+    if not text:
+        return text
+    try:
+        parsed = urlparse(text)
+    except Exception:
+        return text
+    host = (parsed.netloc or "").lower()
+    c = (country or "us").lower()
+    if host in ("apionline.homedepot.com", "apionline.homedepot.ca"):
+        new_host = "www.homedepot.ca" if c == "ca" else "www.homedepot.com"
+        return urlunparse(("https", new_host, parsed.path, parsed.params, parsed.query, parsed.fragment))
+    if host.endswith("homedepot.com") or host.endswith("homedepot.ca"):
+        if parsed.scheme == "http":
+            return urlunparse(("https", parsed.netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+    return text
+
+
+def extract_home_depot_results(payload: dict[str, Any], limit: int, country: str = "us") -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     products = payload.get("products") or []
     if not isinstance(products, list):
@@ -177,7 +205,7 @@ def extract_home_depot_results(payload: dict[str, Any], limit: int) -> list[dict
             "position": item.get("position"),
             "product_id": item.get("product_id"),
             "title": item.get("title"),
-            "url": item.get("link"),
+            "url": _storefront_homedepot_url(item.get("link"), country),
             "serpapi_link": item.get("serpapi_link"),
             "model_number": item.get("model_number"),
             "brand": item.get("brand"),
@@ -208,7 +236,7 @@ def extract_home_depot_results(payload: dict[str, Any], limit: int) -> list[dict
     return results
 
 
-def extract_home_depot_product(payload: dict[str, Any]) -> dict[str, Any] | None:
+def extract_home_depot_product(payload: dict[str, Any], country: str = "us") -> dict[str, Any] | None:
     item = payload.get("product_results")
     if not isinstance(item, dict) or not item:
         return None
@@ -217,7 +245,7 @@ def extract_home_depot_product(payload: dict[str, Any]) -> dict[str, Any] | None
         "product_id": item.get("product_id"),
         "title": item.get("title"),
         "description": item.get("description"),
-        "url": item.get("link"),
+        "url": _storefront_homedepot_url(item.get("link"), country),
         "upc": item.get("upc"),
         "model_number": item.get("model_number"),
         "store_sku_number": item.get("store_sku_number"),
@@ -241,16 +269,11 @@ def extract_home_depot_product(payload: dict[str, Any]) -> dict[str, Any] | None
     return product
 
 
-def build_product_params(
-    product_id: str,
-    delivery_zip: str,
-    store_id: str,
-    no_cache: bool,
-) -> dict[str, Any]:
+def build_product_params(product_id: str, delivery_zip: str, store_id: str) -> dict[str, Any]:
     params: dict[str, Any] = {
         "engine": "home_depot_product",
         "product_id": product_id,
-        "no_cache": "true" if no_cache else "false",
+        "no_cache": "false",
     }
     if delivery_zip:
         params["delivery_zip"] = delivery_zip
@@ -305,7 +328,6 @@ def main() -> int:
         ps = input_data.get("ps")
         pagesize = input_data.get("pagesize")
         num_results = clamp_results_count(input_data.get("num_results", 5), default=5)
-        no_cache = parse_bool(input_data.get("no_cache", False))
         include_product_details = parse_bool(input_data.get("include_product_details", False), default=False)
         include_raw = parse_bool(input_data.get("include_raw", False))
         extra_params = input_data.get("extra_params", {}) or {}
@@ -315,11 +337,8 @@ def main() -> int:
             return 1
 
         if product_id and not query:
-            product_payload = request_serpapi(
-                build_product_params(product_id, delivery_zip, store_id, no_cache),
-                timeout=HOME_DEPOT_SERPAPI_TIMEOUT,
-            )
-            product = extract_home_depot_product(product_payload)
+            product_payload = _home_depot_serpapi(build_product_params(product_id, delivery_zip, store_id))
+            product = extract_home_depot_product(product_payload, country=country)
             results = [product] if product else []
             data: dict[str, Any] = {
                 "engine": "home_depot_product",
@@ -333,7 +352,7 @@ def main() -> int:
                 "product_details": product,
                 "search_metadata": product_payload.get("search_metadata", {}),
                 "search_information": product_payload.get("search_information", {}),
-                "proxy_enabled": get_proxy_enabled(),
+                "proxy_enabled": False,
                 "source": "SerpApi",
             }
             if include_raw:
@@ -345,7 +364,7 @@ def main() -> int:
             "engine": "home_depot",
             "q": query,
             "country": country,
-            "no_cache": "true" if no_cache else "false",
+            "no_cache": "false",
         }
 
         sort_key, sort_value = normalize_sort(country, sort_by)
@@ -381,19 +400,18 @@ def main() -> int:
             params["page"] = page
 
         merge_extra_params(params, extra_params, reserved_keys=RESERVED_KEYS)
-        payload = request_serpapi(params, timeout=HOME_DEPOT_SERPAPI_TIMEOUT)
-        results = extract_home_depot_results(payload, limit=num_results)
+        payload = _home_depot_serpapi(params)
+        results = extract_home_depot_results(payload, limit=num_results, country=country)
         product_details = None
         product_details_error = None
         selected_product_id = product_id or (str(results[0].get("product_id")) if results and results[0].get("product_id") else "")
 
         if include_product_details and country == "us" and selected_product_id:
             try:
-                product_payload = request_serpapi(
-                    build_product_params(selected_product_id, delivery_zip, store_id, no_cache),
-                    timeout=HOME_DEPOT_SERPAPI_TIMEOUT,
+                product_payload = _home_depot_serpapi(
+                    build_product_params(selected_product_id, delivery_zip, store_id),
                 )
-                product_details = extract_home_depot_product(product_payload)
+                product_details = extract_home_depot_product(product_payload, country=country)
                 if product_details and results:
                     results[0] = {**results[0], **{k: v for k, v in product_details.items() if v not in (None, "", [], {})}}
             except Exception as e:
@@ -417,7 +435,7 @@ def main() -> int:
             "serpapi_pagination": payload.get("serpapi_pagination", {}),
             "search_metadata": payload.get("search_metadata", {}),
             "search_information": payload.get("search_information", {}),
-            "proxy_enabled": get_proxy_enabled(),
+            "proxy_enabled": False,
             "source": "SerpApi",
         }
         if product_details_error:

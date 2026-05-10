@@ -49,6 +49,10 @@ class SerpApiHomeDepotTests(unittest.TestCase):
         }
 
         results = extract_home_depot_results(payload, limit=5)
+        self.assertEqual(
+            results[0]["url"],
+            "https://www.homedepot.com/p/example/304602833",
+        )
         self.assertEqual(results[0]["product_id"], "304602833")
         self.assertEqual(results[0]["brand"], "Lifestyle Solutions")
         self.assertEqual(results[0]["model_number"], "LK-LGFSP1GU3051")
@@ -98,14 +102,74 @@ class SerpApiHomeDepotTests(unittest.TestCase):
             ]
         }
 
-        results = extract_home_depot_results(payload, limit=5)
+        results = extract_home_depot_results(payload, limit=5, country="ca")
         self.assertEqual(results[0]["price_formatted"], "CAD 16.98")
         self.assertEqual(results[0]["thumbnail"], "https://images.example.com/chair.jpg")
+
+    def test_extract_rewrites_apionline_to_www_storefront_us(self):
+        payload = {
+            "products": [
+                {
+                    "product_id": "100074405",
+                    "title": "Hardie Panel",
+                    "link": "https://apionline.homedepot.com/p/James-Hardie-Example/100074405",
+                    "thumbnails": [["https://images.example.com/p.jpg"]],
+                }
+            ]
+        }
+        results = extract_home_depot_results(payload, limit=5, country="us")
+        self.assertEqual(
+            results[0]["url"],
+            "https://www.homedepot.com/p/James-Hardie-Example/100074405",
+        )
+
+    def test_extract_rewrites_apionline_to_www_storefront_ca(self):
+        payload = {
+            "products": [
+                {
+                    "product_id": "1001580444",
+                    "title": "Chair",
+                    "link": "https://apionline.homedepot.ca/p/example-chair/1001580444",
+                    "thumbnails": [["https://images.example.com/c.jpg"]],
+                }
+            ]
+        }
+        results = extract_home_depot_results(payload, limit=5, country="ca")
+        self.assertEqual(
+            results[0]["url"],
+            "https://www.homedepot.ca/p/example-chair/1001580444",
+        )
+
+    def test_extract_upgrades_http_homedepot_to_https(self):
+        payload = {
+            "products": [
+                {
+                    "product_id": "1",
+                    "title": "x",
+                    "link": "http://www.homedepot.com/p/a/1",
+                    "thumbnails": [["https://images.example.com/i.jpg"]],
+                }
+            ]
+        }
+        results = extract_home_depot_results(payload, limit=5)
+        self.assertEqual(results[0]["url"], "https://www.homedepot.com/p/a/1")
+
+    def test_extract_home_depot_product_rewrites_apionline(self):
+        payload = {
+            "product_results": {
+                "product_id": "206667220",
+                "title": "Coffee Maker",
+                "link": "https://apionline.homedepot.com/p/slug/206667220",
+                "images": [["https://images.example.com/z.jpg"]],
+            }
+        }
+        product = extract_home_depot_product(payload, country="us")
+        self.assertEqual(product["url"], "https://www.homedepot.com/p/slug/206667220")
 
     def test_main_defaults_us_delivery_zip_from_env(self):
         captured = {}
 
-        def fake_request(params, timeout=25):
+        def fake_request(params, timeout=25, **kwargs):
             captured["params"] = dict(params)
             captured["timeout"] = timeout
             return {"products": []}
@@ -114,18 +178,17 @@ class SerpApiHomeDepotTests(unittest.TestCase):
             "serpapi_home_depot.load_config"
         ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
-        ), patch(
-            "serpapi_home_depot.get_proxy_enabled", return_value=False
         ):
             self.assertEqual(main(), 0)
 
         self.assertEqual(captured["params"]["delivery_zip"], "97201")
+        self.assertEqual(captured["params"]["no_cache"], "false")
         self.assertEqual(captured["timeout"], 90)
 
     def test_main_does_not_fetch_product_details_by_default(self):
         calls = []
 
-        def fake_request(params, timeout=25):
+        def fake_request(params, timeout=25, **kwargs):
             calls.append(dict(params))
             return {
                 "products": [
@@ -142,18 +205,17 @@ class SerpApiHomeDepotTests(unittest.TestCase):
             "serpapi_home_depot.load_config"
         ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
-        ), patch(
-            "serpapi_home_depot.get_proxy_enabled", return_value=False
         ):
             self.assertEqual(main(), 0)
 
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["engine"], "home_depot")
+        self.assertEqual(calls[0]["no_cache"], "false")
 
     def test_main_can_lookup_product_id_details_without_query(self):
         captured = {}
 
-        def fake_request(params, timeout=25):
+        def fake_request(params, timeout=25, **kwargs):
             captured["params"] = dict(params)
             captured["timeout"] = timeout
             return {
@@ -170,20 +232,19 @@ class SerpApiHomeDepotTests(unittest.TestCase):
             "serpapi_home_depot.load_config"
         ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
-        ), patch(
-            "serpapi_home_depot.get_proxy_enabled", return_value=False
         ):
             self.assertEqual(main(), 0)
 
         self.assertEqual(captured["params"]["engine"], "home_depot_product")
         self.assertEqual(captured["params"]["product_id"], "206667220")
         self.assertEqual(captured["params"]["delivery_zip"], "97201")
+        self.assertEqual(captured["params"]["no_cache"], "false")
         self.assertEqual(captured["timeout"], 90)
 
     def test_main_keeps_explicit_delivery_zip(self):
         captured = {}
 
-        def fake_request(params, timeout=25):
+        def fake_request(params, timeout=25, **kwargs):
             captured["params"] = dict(params)
             captured["timeout"] = timeout
             return {"products": []}
@@ -193,8 +254,6 @@ class SerpApiHomeDepotTests(unittest.TestCase):
             "serpapi_home_depot.load_config"
         ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
-        ), patch(
-            "serpapi_home_depot.get_proxy_enabled", return_value=False
         ):
             self.assertEqual(main(), 0)
 
@@ -204,7 +263,7 @@ class SerpApiHomeDepotTests(unittest.TestCase):
     def test_main_does_not_apply_us_zip_to_canada_search(self):
         captured = {}
 
-        def fake_request(params, timeout=25):
+        def fake_request(params, timeout=25, **kwargs):
             captured["params"] = dict(params)
             captured["timeout"] = timeout
             return {"products": []}
@@ -214,8 +273,6 @@ class SerpApiHomeDepotTests(unittest.TestCase):
             "serpapi_home_depot.load_config"
         ), patch("serpapi_home_depot.get_config_value", return_value="97201"), patch(
             "serpapi_home_depot.request_serpapi", side_effect=fake_request
-        ), patch(
-            "serpapi_home_depot.get_proxy_enabled", return_value=False
         ):
             self.assertEqual(main(), 0)
 

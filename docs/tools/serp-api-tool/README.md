@@ -153,7 +153,7 @@ For US searches, `delivery_zip` defaults to `JARVIS_DEFAULT_POSTAL_CODE` when om
 
 Home Depot search results include `thumbnail`, `image_url`, and top-level `top_image_url` when SerpApi returns product images. Keep normal searches lightweight: `include_product_details` defaults to false because it makes a second `home_depot_product` request. Use `include_product_details=true` only when the user asks for full product-page details, larger images, bullets, specifications, or similar focused detail.
 
-Avoid `no_cache=true` unless the user explicitly asks for fresh/live availability or pricing. Home Depot live fetches can be slow compared with cached SerpApi responses.
+The `serpapi_home_depot` tool always uses SerpApi's cached responses (`no_cache=false`) and always connects to SerpApi directly (it does not use `LOCAL_PROXY` / `LOCAL_PROXY2`), which avoids slow proxy timeouts on this engine. Product `url` / `top_url` values rewrite `apionline.homedepot.com` (SerpApi/API host) to `www.homedepot.com` or `www.homedepot.ca` so links open in a normal browser instead of Akamai "Access Denied".
 
 ### Home Depot product details by product ID
 

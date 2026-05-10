@@ -88,7 +88,13 @@ def merge_extra_params(
     return params
 
 
-def request_serpapi(params: dict[str, Any], timeout: int = 25) -> dict[str, Any]:
+def request_serpapi(
+    params: dict[str, Any],
+    timeout: int = 25,
+    *,
+    use_proxy: bool = True,
+    fallback_on_proxy_fail: bool = True,
+) -> dict[str, Any]:
     final_params = dict(params)
     final_params["api_key"] = get_api_key()
     final_params.setdefault("output", "json")
@@ -98,8 +104,8 @@ def request_serpapi(params: dict[str, Any], timeout: int = 25) -> dict[str, Any]
         SERPAPI_ENDPOINT,
         params=final_params,
         timeout=timeout,
-        use_proxy=True,
-        fallback_on_proxy_fail=True,
+        use_proxy=use_proxy,
+        fallback_on_proxy_fail=fallback_on_proxy_fail,
     )
 
     if response.status_code >= 400:

@@ -82,7 +82,7 @@ class ToolExecutor:
         if tool_name == "weather":
             return 90  # Weather API can be slow with proxy fallback
         if tool_name == "serpapi_home_depot":
-            return 300  # SerpApi request timeout is 90s; proxy chain may try proxy1/proxy2/direct
+            return 200  # Direct SerpApi only; up to two sequential 90s HTTP calls if include_product_details
         if tool_name == "status_recap":
             return 180  # 3 minutes - calls multiple tools including generate_image
         if tool_name == "crawl_url":
