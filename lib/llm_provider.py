@@ -70,7 +70,7 @@ class LLMProvider(ABC):
 class OpenAIProvider(LLMProvider):
     """OpenAI provider using function calling."""
     
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str | None = None):
         """Initialize OpenAI provider."""
         try:
             from openai import OpenAI
@@ -78,7 +78,7 @@ class OpenAIProvider(LLMProvider):
             raise ImportError("openai package not installed. Run: pip install openai")
         
         self.client = OpenAI(api_key=api_key)
-        self.model = model
+        self.model = model or get_provider_fallback_model("openai")
         self._openai_api_key_material = str(api_key or "")
         self._openai_responses_diag_holder: dict[str, Any] = {}
         self._last_openai_responses_error_was_continuation = False
@@ -429,7 +429,7 @@ class AnthropicProvider(LLMProvider):
     - Web search tool when ANTHROPIC_SEARCH=true (requires beta header)
     """
     
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-5-20250929"):
+    def __init__(self, api_key: str, model: str | None = None):
         """Initialize Anthropic provider."""
         try:
             from anthropic import Anthropic
@@ -437,7 +437,7 @@ class AnthropicProvider(LLMProvider):
             raise ImportError("anthropic package not installed. Run: pip install anthropic")
         
         self.client = Anthropic(api_key=api_key)
-        self.model = model
+        self.model = model or get_provider_fallback_model("anthropic")
         
         # Check if web search is enabled (ANTHROPIC_SEARCH=true in cloud.env)
         # When enabled, Claude can search the web for real-time info
@@ -515,7 +515,7 @@ class AnthropicProvider(LLMProvider):
         """
         try:
             # Enable prompt caching for system prompt
-            # Cache everything in the system prompt (saves 90% on cache hits) the embedded date/time in system prompt can invalid cache fyi, look at later
+            # Cache everything in the system prompt (saves 90% on cache hits) top of system prompt is static and only bottom is dynamic.
             system_blocks = [
                 {
                     "type": "text",
