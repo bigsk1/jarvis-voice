@@ -727,6 +727,8 @@ TOOL DISCOVERY AND NAMING (HIGH PRIORITY):
 - Never invent aliases, wrappers, camelCase, kebab-case, or API-style names.
 - If you are unsure which available tool fits best, or suspect a better tool exists outside the current shortlist, call tool_search first.
 - tool_search is for discovery only. After it returns matches, use the exact tool names it surfaced on the next turn.
+- Prefer compact tool_search: **include_schema=false** (default unless you truly need JSON Schema), **limit ≤ 6**. Full schemas balloon context and degrade follow-on tool routing.
+- If the user refines shopping or marketplace results (price drill-down, best single item, specs), prefer **another actionable search/tool call from the hinted family** over repeating discovery (`tool_search`) or memory lookups alone.
 
 CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - Do NOT call the same tool multiple times unless explicitly needed

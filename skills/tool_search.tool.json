@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "tool_search",
-  "description": "Discover enabled tools without exposing every full schema up front. Use this to search or browse live available tools, then pick exact tool names for the next step.",
+  "description": "Discover enabled tools via compact summaries. Omit full schemas by default (leave include_schema false) unless you truly need exact parameter shapes—schemas are token-heavy. Prefer limit 6 or fewer unless browsing many options. After matches return, call the surfaced tools by exact name; do not loop on tool_search alone.",
   "script": "tool_search.py",
   "parameters": {
     "type": "object",
@@ -12,7 +12,7 @@
       },
       "limit": {
         "type": "integer",
-        "description": "Maximum number of matching tools to return. Defaults to 8 and is capped at 25."
+        "description": "Maximum number of matching tools to return. Defaults to 6 (server cap 20). Prefer 4–6 unless you need broad browse."
       },
       "tool_names": {
         "type": "array",
@@ -23,7 +23,7 @@
       },
       "include_schema": {
         "type": "boolean",
-        "description": "When true, include the parameter schema for the returned tools."
+        "description": "Defaults to false (recommended). Only set true when you must read exact parameter keys/types; each schema adds substantial context."
       }
     },
     "additionalProperties": false

@@ -23,6 +23,26 @@ const Utils = {
   },
 
   /**
+   * Sanitize http(s) URLs for HTML attributes (src/href).
+   * Do not run generic escapeHtml() on whole URLs — it can break valid image links.
+   */
+  safeHttpUrlForAttr(raw) {
+    if (raw === null || raw === undefined) return '';
+    const s = String(raw).trim();
+    if (!s) return '';
+    try {
+      const u = new URL(s);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+      return u.href
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    } catch {
+      return '';
+    }
+  },
+
+  /**
    * Escape HTML and convert URLs to clickable links (target="_blank")
    */
   escapeHtmlAndLinkify(text) {

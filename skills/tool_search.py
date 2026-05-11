@@ -31,7 +31,7 @@ def main() -> int:
     result = search_tools_runtime(
         registry=registry,
         query=payload.get("query", ""),
-        limit=payload.get("limit", 8),
+        limit=payload.get("limit", 6),
         excluded_tools=payload.get("_excluded_tools") or [],
         tool_names=payload.get("tool_names"),
         include_schema=bool(payload.get("include_schema")),

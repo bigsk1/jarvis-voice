@@ -1,0 +1,103 @@
+{
+  "enabled": true,
+  "name": "serpapi_ebay_search",
+  "description": "Search eBay listings via SerpApi (engine ebay). Returns normalized organic_results (title, url, product_id, serpapi_link for ebay_product drill-down, price, condition, shipping line, seller, thumbnail). Prefer default caching: only set no_cache=true when you need freshly scraped pages (fresh listing state); omitting no_cache uses SerpApi cache and is faster. Docs: https://serpapi.com/ebay-search-api",
+  "complementary_tools": [
+    "canvas",
+    "stash",
+    "serpapi_ebay_product"
+  ],
+  "script": "serpapi_ebay_search.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "eBay search keywords (maps to SerpApi _nkw). Optional when category_id is set."
+      },
+      "category_id": {
+        "type": "string",
+        "description": "Optional eBay category id to constrain the search (_nkw can be omitted)."
+      },
+      "ebay_domain": {
+        "type": "string",
+        "description": "eBay site host, default ebay.com (see SerpApi eBay domains list)."
+      },
+      "_salic": {
+        "type": "string",
+        "description": "Optional country/location id for localization (SerpApi _salic)."
+      },
+      "_pgn": {
+        "type": "integer",
+        "description": "Page number for pagination (1-based)."
+      },
+      "_ipg": {
+        "type": "integer",
+        "description": "Page size: 25, 50 (default API), 100, or 200."
+      },
+      "_blrs": {
+        "type": "string",
+        "description": "Exclude auto-corrected query; recommended value spell_auto_correct when needed."
+      },
+      "show_only": {
+        "type": "string",
+        "description": "Comma-separated filters: Complete, Sold, FR, RPA, AS, Savings, SaleItems, Lots, Charity, AV, FS, LPickup, etc."
+      },
+      "buying_format": {
+        "type": "string",
+        "description": "Auction, BIN, BO (comma-separated allowed by API)."
+      },
+      "_udlo": {
+        "type": "number",
+        "description": "Minimum price filter."
+      },
+      "_udhi": {
+        "type": "number",
+        "description": "Maximum price filter."
+      },
+      "_sop": {
+        "type": "string",
+        "description": "Sort option code (SerpApi eBay sort options)."
+      },
+      "_dmd": {
+        "type": "string",
+        "description": "Layout: Grid or List."
+      },
+      "_stpos": {
+        "type": "string",
+        "description": "ZIP or postal code for shipping-area bias."
+      },
+      "LH_ItemCondition": {
+        "type": "string",
+        "description": "Condition id(s), pipe-separated for multiple (eBay condition id values)."
+      },
+      "LH_PrefLoc": {
+        "type": "string",
+        "description": "Preferred seller location: Domestic, Regional, or Worldwide."
+      },
+      "num_results": {
+        "type": "integer",
+        "description": "Max listings to normalize for the LLM (clamped 1–5, default 3). Raising wastes context; widen only when the user explicitly needs more rows."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "If true, bypass SerpApi cache. Default false (faster, cached responses do not consume quota)."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Additional SerpApi parameters forwarded as-is except reserved keys."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include full SerpApi JSON under data.raw."
+      }
+    }
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

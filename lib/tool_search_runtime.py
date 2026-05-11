@@ -49,7 +49,7 @@ def _parameter_preview(parameters: dict[str, Any]) -> tuple[list[str], list[str]
     return required_names, optional_names
 
 
-def _parameter_details(parameters: dict[str, Any], max_items: int = 8) -> list[dict[str, Any]]:
+def _parameter_details(parameters: dict[str, Any], max_items: int = 6) -> list[dict[str, Any]]:
     """Return a compact parameter summary for discovery UI/LLM use."""
     if not isinstance(parameters, dict):
         return []
@@ -93,7 +93,7 @@ def _tool_summary(tool, *, similarity: float | None = None, include_schema: bool
     return summary
 
 
-def _coerce_limit(limit: Any, default: int = 8, minimum: int = 1, maximum: int = 25) -> int:
+def _coerce_limit(limit: Any, default: int = 6, minimum: int = 1, maximum: int = 20) -> int:
     """Parse loose tool-call input safely and clamp it to the supported range."""
     raw_value = default
 

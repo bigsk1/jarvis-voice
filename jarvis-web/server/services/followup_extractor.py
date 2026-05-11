@@ -23,6 +23,8 @@ _BRAVE_URL_RE = re.compile(r'https?://[^\s"\'<>)]+')
 _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_search',
     'serpapi_home_depot',
+    'serpapi_ebay_search',
+    'serpapi_ebay_product',
     'serpapi_youtube_search',
     'serpapi_yelp_search',
     'crawl_url',
@@ -104,6 +106,8 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'api_call': ['url', 'method', 'status_code'],
     'serpapi_search': ['engine', 'query', 'asin', 'results_count', 'top_url'],
     'serpapi_home_depot': ['engine', 'query', 'country', 'product_id', 'results_count', 'top_url', 'top_image_url'],
+    'serpapi_ebay_search': ['engine', 'query', 'category_id', 'ebay_domain', 'product_id', 'results_count', 'top_url'],
+    'serpapi_ebay_product': ['engine', 'product_id', 'ebay_domain', 'results_count', 'top_url', 'top_image_url'],
     'serpapi_maps_search': ['engine', 'query', 'results_count'],
     'serpapi_hotel_search': ['engine', 'query', 'destination', 'check_in_date', 'check_out_date', 'results_count'],
     'spotify': ['name', 'artist'],
@@ -513,6 +517,92 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         candidate['thumbnail'] = item['thumbnail']
                     if item.get('image_url'):
                         candidate['image_url'] = item['image_url']
+                    candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+        if key == 'serpapi_ebay_search':
+            results = value.get('results') or value.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = value.get('results_count', len(results))
+                first = results[0] if isinstance(results[0], dict) else {}
+                if isinstance(first, dict):
+                    if first.get('title'):
+                        extracted['title'] = first['title']
+                    if first.get('url') and 'top_url' not in extracted:
+                        extracted['top_url'] = first['url']
+                    if first.get('product_id') and 'product_id' not in extracted:
+                        extracted['product_id'] = first['product_id']
+                    price = first.get('price')
+                    if isinstance(price, dict) and price.get('raw') and 'price' not in extracted:
+                        extracted['price'] = price['raw']
+                    elif isinstance(price, dict) and price.get('extracted') is not None:
+                        extracted['price'] = price['extracted']
+                    if first.get('condition'):
+                        extracted['condition'] = first['condition']
+                    if first.get('thumbnail'):
+                        extracted['thumbnail'] = first['thumbnail']
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    title = item.get('title')
+                    url = item.get('url')
+                    pid = item.get('product_id')
+                    if not (title or url or pid):
+                        continue
+                    candidate = {}
+                    if title:
+                        candidate['title'] = title
+                    if url:
+                        candidate['url'] = url
+                    if pid:
+                        candidate['product_id'] = pid
+                    price = item.get('price')
+                    if isinstance(price, dict) and price.get('raw'):
+                        candidate['price'] = price['raw']
+                    elif isinstance(price, dict) and price.get('extracted') is not None:
+                        candidate['price'] = price['extracted']
+                    if item.get('condition'):
+                        candidate['condition'] = item['condition']
+                    if item.get('thumbnail'):
+                        candidate['thumbnail'] = item['thumbnail']
+                    candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+        if key == 'serpapi_ebay_product':
+            results = value.get('results') or value.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = value.get('results_count', len(results))
+                first = results[0] if isinstance(results[0], dict) else {}
+                if isinstance(first, dict):
+                    if first.get('title'):
+                        extracted['title'] = first['title']
+                    if first.get('url') and 'top_url' not in extracted:
+                        extracted['top_url'] = first['url']
+                    if first.get('product_id') and 'product_id' not in extracted:
+                        extracted['product_id'] = first['product_id']
+                    if first.get('thumbnail'):
+                        extracted['thumbnail'] = first['thumbnail']
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    title = item.get('title')
+                    url = item.get('url')
+                    pid = item.get('product_id')
+                    if not (title or url or pid):
+                        continue
+                    candidate = {}
+                    if title:
+                        candidate['title'] = title
+                    if url:
+                        candidate['url'] = url
+                    if pid:
+                        candidate['product_id'] = pid
+                    if item.get('thumbnail'):
+                        candidate['thumbnail'] = item['thumbnail']
                     candidates.append(candidate)
                 if candidates:
                     extracted['candidates'] = candidates

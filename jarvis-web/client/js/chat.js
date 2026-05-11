@@ -3131,6 +3131,82 @@ class ChatUI {
       }
     }
 
+    const ebayProductPayload = toolResultsData.serpapi_ebay_product || data.serpapi_ebay_product;
+    const latestEbayProduct = Array.isArray(ebayProductPayload)
+      ? ebayProductPayload[ebayProductPayload.length - 1]
+      : ebayProductPayload;
+
+    if (!shoppingHtml && latestEbayProduct && typeof latestEbayProduct === 'object') {
+      const results = Array.isArray(latestEbayProduct.top_results) && latestEbayProduct.top_results.length > 0
+        ? latestEbayProduct.top_results
+        : (Array.isArray(latestEbayProduct.results) ? latestEbayProduct.results : []);
+      const summary = latestEbayProduct.product_summary;
+      const product = (summary && typeof summary === 'object') ? summary : results[0];
+
+      if (product && product.title) {
+        const linkRaw = product.url || (results[0] && results[0].url);
+        if (linkRaw) {
+          const title = Utils.escapeHtml(product.title);
+          const link = Utils.safeHttpUrlForAttr(linkRaw) || Utils.escapeHtml(linkRaw);
+          let image = '';
+          if (summary && Array.isArray(summary.image_urls) && summary.image_urls.length > 0) {
+            image = Utils.safeHttpUrlForAttr(summary.image_urls[summary.image_urls.length - 1])
+              || Utils.safeHttpUrlForAttr(summary.image_urls[0]);
+          }
+          if (!image && product.thumbnail) {
+            image = Utils.safeHttpUrlForAttr(product.thumbnail);
+          }
+          if (!image && latestEbayProduct.top_image_url) {
+            image = Utils.safeHttpUrlForAttr(latestEbayProduct.top_image_url);
+          }
+
+          let priceStr = '';
+          const buy = summary && typeof summary.buy === 'object' ? summary.buy : null;
+          if (buy && buy.buy_it_now && typeof buy.buy_it_now === 'object') {
+            const pr = buy.buy_it_now.price;
+            if (pr && pr.amount != null && pr.currency) {
+              priceStr = `${pr.currency} ${pr.amount}`;
+            }
+          }
+          if (!priceStr && buy && buy.bid && typeof buy.bid === 'object') {
+            const pr = buy.bid.price;
+            if (pr && pr.amount != null && pr.currency) {
+              priceStr = `Bid ${pr.currency} ${pr.amount}`;
+            }
+          }
+
+          const rating = product.rating != null ? Utils.escapeHtml(String(product.rating)) : '';
+          const reviews = product.review_count != null ? Utils.escapeHtml(String(product.review_count)) : '';
+          const productId = (latestEbayProduct.product_id || product.product_id)
+            ? Utils.escapeHtml(String(latestEbayProduct.product_id || product.product_id))
+            : '';
+          const metaParts = [];
+          if (priceStr) metaParts.push(`<span class="product-chip price">${Utils.escapeHtml(priceStr)}</span>`);
+          if (rating) metaParts.push(`<span class="product-chip">⭐ ${rating}</span>`);
+          if (reviews) metaParts.push(`<span class="product-chip">${reviews} reviews</span>`);
+          if (productId) metaParts.push(`<span class="product-chip">Item ${productId}</span>`);
+
+          shoppingHtml = `
+          <div class="product-preview-card">
+            ${image ? `
+              <a class="product-preview-image" href="${link}" target="_blank" rel="noopener noreferrer">
+                <img src="${image}" alt="${title}" loading="lazy">
+              </a>
+            ` : ''}
+            <div class="product-preview-body">
+              <div class="product-preview-label">eBay Product</div>
+              <a class="product-preview-title" href="${link}" target="_blank" rel="noopener noreferrer">${title}</a>
+              ${metaParts.length ? `<div class="product-preview-meta">${metaParts.join('')}</div>` : ''}
+              <div class="product-preview-actions">
+                <a class="product-preview-link" href="${link}" target="_blank" rel="noopener noreferrer">Open listing</a>
+              </div>
+            </div>
+          </div>
+        `;
+        }
+      }
+    }
+
     let chartHtml = '';
     const cryptoChartResult = toolResultsData.crypto_chart;
     const cryptoChartData = cryptoChartResult?.data?.series?.prices

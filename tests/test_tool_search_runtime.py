@@ -134,7 +134,7 @@ class ToolSearchRuntimeTests(unittest.TestCase):
                 limit="eight",
             )
 
-        self.assertEqual(db.last_limit, 32)
+        self.assertEqual(db.last_limit, 24)
         self.assertEqual(result["data"]["count"], 1)
         self.assertEqual(result["data"]["selected_tool_hints"], ["weather"])
 

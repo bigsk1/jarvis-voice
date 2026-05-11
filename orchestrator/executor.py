@@ -327,7 +327,7 @@ class ToolExecutor:
         result = search_tools_runtime(
             registry=self.registry,
             query=args.get("query", ""),
-            limit=args.get("limit", 8),
+            limit=args.get("limit", 6),
             excluded_tools=self.excluded_tools,
             tool_names=args.get("tool_names"),
             include_schema=bool(args.get("include_schema")),

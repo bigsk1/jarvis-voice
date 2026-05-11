@@ -1051,30 +1051,137 @@ class JarvisApp {
    * Get emoji for tool based on name
    */
   _getToolEmoji(name) {
+    const n = String(name || '').trim();
+    /** @type {Record<string, string>} */
     const emojiMap = {
-      'phone_call': '📞',
-      'spotify': '🎵',
-      'generate_image': '🖼️',
-      'send_email': '✉️',
-      'printer': '🖨️',
-      'weather': '🌤️',
-      'remember': '💾',
-      'recall': '🧠',
-      'search_memory': '🔍',
-      'semantic_recall': '🔍',
-      'canvas': '📝',
-      'stash': '📦',
-      'pdf_create': '📄',
-      'crypto_price': '💰',
-      'opencode': '💻',
-      'serpapi_home_depot': '🛒',
-      'list_reminders': '⏰',
-      'set_reminder': '⏰',
-      'system_monitor': '📊',
-      'network_tools': '🌐',
-      'speaker_volume': '🔊',
+      phone_call: '📞',
+      spotify: '🎵',
+      generate_image: '🖼️',
+      generate_music: '🎵',
+      generate_video: '🎬',
+      send_email: '✉️',
+      send_webhook: '🔗',
+      printer: '🖨️',
+      weather: '🌤️',
+      remember: '💾',
+      recall: '🧠',
+      forget: '🗑️',
+      search_memory: '🔍',
+      semantic_recall: '🔍',
+      deep_memory_search: '🧠',
+      update_memory: '✏️',
+      memory_deduper: '🧹',
+      canvas: '📝',
+      stash: '📦',
+      pdf_create: '📄',
+      pdf_read: '📖',
+      crypto_price: '💰',
+      crypto_chart: '📈',
+      stock_price: '📊',
+      price_alert: '🔔',
+      opencode: '💻',
+      check_opencode_sessions: '🖥️',
+      serpapi_search: '🔎',
+      serpapi_maps_search: '🗺️',
+      serpapi_hotel_search: '🏨',
+      serpapi_youtube: '▶️',
+      serpapi_youtube_search: '▶️',
+      serpapi_yelp_search: '⭐',
+      serpapi_home_depot: '🛒',
+      serpapi_ebay_search: '🛒',
+      serpapi_ebay_product: '🛒',
+      brave_llm_context: '🦁',
+      crawl_url: '🕷️',
+      bookmark_search: '🔖',
+      search_docs: '📚',
+      search_conversations: '💬',
+      get_recent_conversations: '📜',
+      youtube_transcript: '📝',
+      youtube_video: '📺',
+      ingest_intel: '📥',
+      manage_intel: '🗂️',
+      supa_crawl_knowledge: '🔍',
+      git_release_notes: '📌',
+      list_reminders: '📋',
+      create_reminder: '⏰',
+      acknowledge_reminders: '✅',
+      create_alert: '🔔',
+      list_alerts: '📋',
+      acknowledge_alerts: '✅',
+      system_monitor: '📊',
+      network_tools: '🌐',
+      docker_control: '🐳',
+      ssh_remote: '🔐',
+      execute_bash: '⌨️',
+      speaker_volume: '🔊',
+      calculator: '🔢',
+      get_time: '🕐',
+      schedule_task: '📅',
+      api_call: '🌐',
+      analyze_image: '🖼️',
+      screenshot_url: '📸',
+      convert_file: '🔄',
+      text_summarizer: '📃',
+      qr_code_generator: '🔳',
+      generate_password: '🔑',
+      upload_cloudflare: '☁️',
+      tool_search: '🧰',
+      check_tool_logs: '📋',
+      query_service_logs: '📋',
+      evolution_test: '🧬',
+      samantha: '🤖',
+      status_recap: '📋',
     };
-    return emojiMap[name] || '🔧';
+
+    if (emojiMap[n]) {
+      return emojiMap[n];
+    }
+
+    if (n.startsWith('mcp_')) {
+      return '🔌';
+    }
+    if (n.startsWith('serpapi_')) {
+      if (n.includes('maps')) return '🗺️';
+      if (n.includes('hotel')) return '🏨';
+      if (n.includes('youtube')) return '▶️';
+      if (n.includes('yelp')) return '⭐';
+      if (n.includes('ebay') || n.includes('home_depot')) return '🛒';
+      return '🔎';
+    }
+    if (n.startsWith('generate_')) {
+      if (n.includes('music')) return '🎵';
+      if (n.includes('video')) return '🎬';
+      if (n.includes('image')) return '🖼️';
+      if (n.includes('password')) return '🔑';
+      return '✨';
+    }
+    if (n.includes('memory') || n === 'forget' || n === 'recall') {
+      return '🧠';
+    }
+    if (n.includes('reminder') || n.includes('alert')) {
+      if (n.startsWith('list_') || n.startsWith('acknowledge')) return '✅';
+      return '⏰';
+    }
+    if (n.startsWith('search_') || n.endsWith('_search')) {
+      return '🔍';
+    }
+    if (n.startsWith('crypto_') || n.startsWith('stock_')) {
+      return '📈';
+    }
+    if (n.startsWith('pdf_')) {
+      return '📄';
+    }
+    if (n.startsWith('youtube_')) {
+      return '📺';
+    }
+    if (n.includes('docker')) {
+      return '🐳';
+    }
+    if (n.includes('ssh') || n.includes('bash')) {
+      return '⌨️';
+    }
+
+    return '🔧';
   }
 
   _getCachedEffectiveResponseStyle() {

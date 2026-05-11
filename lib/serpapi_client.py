@@ -46,16 +46,17 @@ def parse_bool(value: Any, default: bool = False) -> bool:
     return default
 
 
-def clamp_results_count(value: Any, default: int = 5) -> int:
+def clamp_results_count(value: Any, default: int = 5, *, maximum: int = 10) -> int:
     try:
         count = int(value)
     except (TypeError, ValueError):
         count = default
 
+    cap = max(1, int(maximum))
     if count < 1:
         return 1
-    if count > 10:
-        return 10
+    if count > cap:
+        return cap
     return count
 
 
