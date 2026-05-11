@@ -12,37 +12,42 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Deep Search** - Search across all conversation messages
 - **Export/Import** - Export to JSON or Markdown, import previous conversations
 - **Auto-title Generation** - Conversations are auto-titled based on content
+- **Completion Guard** - Per-turn card to confirm tasks completed correctly (manual feedback), optional auto-evaluation path, bounded repair, follow-up ticket flow; streamed via WebSocket (`completion_guard:*`)
+- **Token usage** - Footer hint with cumulative tokens and estimated cost when the model returns usage (hover for context-percent tooltip on long threads)
 
 ### 🎤 Voice I/O
 - **Speech-to-Text (STT)** - Browser microphone recording
   - Cloud: OpenAI Whisper API
   - Local: faster-whisper
-- **Text-to-Speech (TTS)** - Audio playback in browser
-  - Cloud: ElevenLabs (high quality)
-  - Local: Kokoro (fast, local)
-- **Audio Toggle** - Enable/disable voice responses
+- **Text-to-Speech (TTS)** - Audio playback in browser (provider from `TTS_PROVIDER` in env)
+  - Cloud: ElevenLabs, **xAI TTS**, or others as configured in `config/cloud.env`
+  - Local: **Qwen3-TTS**, Kokoro via `TTS_URL`, etc. per `config/local.env`
+  - ElevenLabs character quota surfaced in Settings when relevant (`GET /api/tts/usage`)
+- **Audio Toggle** - Enable/disable voice responses with pause/resume/stop on playback
 
 ### 🖼️ Vision & Images
 - **Image Upload** - Attach images for LLM vision analysis
 - **Smart Resize** - Auto-optimizes uploaded images (max 1024px)
-- **Image Generation** - Generate images via DALL-E or Gemini
+- **Image Generation** - Tool-backed generation with provider selection in Settings (**OpenAI**, **Google Gemini**, **xAI**) — not tied to one vendor
+- **Music generation** - `generate_music` (e.g. ElevenLabs music) plays inline when returned as audio
 - **Lightbox Viewer** - Full-size image preview with download
 
 ### ⚙️ Settings & Configuration
 - **Mode Switching** - Toggle between Cloud and Local mode
-- **AI Config** - Select LLM provider, model, image provider
+- **AI Config** - Select LLM provider, model, **image** generation provider, **video** generation provider
 - **Tool Management** - Block/unblock specific tools for web
 - **System Config** - View read-only env settings
 - **API Key Status** - Check which APIs are configured
 - **Glow Intensity** - Customize holographic effects (off/low/medium/high)
 
 ### 🔧 Developer Features
-- **Real-time Server Logs** - Stream logs with source filters:
+- **Real-time Server Logs** - Stream logs with source filters (`logs:subscribe` / `log:entry`):
   - 🤖 LLM API calls
   - 🔧 Tool executions
   - 🔄 Workflow executions
   - 💻 OpenCode sessions
   - ⭐ Feedback ratings
+- **Proactive alerts** - WebSocket `proactive:*` for pending API alerts/reminders; optional desktop notifications when enabled in the UI
 - **Dedicated `/logs` Viewer** - Read-only log browser for `.jsonl`, `.log`, and `.md`
   - Folder list stays A→Z for predictable navigation
   - Files default to newest-first inside each folder
@@ -59,7 +64,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Dark Cyberpunk Theme** - Blade Runner-inspired aesthetic
 - **Holographic Glow Effects** - Customizable intensity
 - **Mobile Responsive** - Hamburger menu at ≤768px
-- **Cross-UI Navigation** - Quick links to Canvas 📄, Memory 🧠, Intelligence 📊
+- **Cross-UI Navigation** - Quick links to Canvas 📄, Memory 🧠, Intelligence 📊, Jarvis Docs 📚 (`./bin/jarvis-docs`, port **5004**)
 
 ## Quick Start
 
@@ -88,41 +93,35 @@ pip install -r requirements.txt
 
 ```
 jarvis-web/
-├── server/                    # Flask + SocketIO backend
-│   ├── app.py                # Main application
+├── server/                    # Flask + SocketIO (eventlet async)
+│   ├── app.py                # App factory, `/`, `/logs`, `/login`, `/stash/view/...`
 │   ├── config.py             # Configuration loader
 │   ├── routes/
-│   │   └── api.py            # REST API endpoints (chat, settings, /logs, media)
+│   │   ├── api.py            # REST API (tools, settings, conversations, media, workflows, prompts)
+│   │   └── auth.py           # Optional auth: `/api/auth/login`, `/api/auth/status`, …
 │   ├── sockets/
-│   │   └── chat.py           # WebSocket handlers
+│   │   └── chat.py           # WebSocket: chat, tools, completion guard, logs, proactive
 │   └── services/
-│       ├── tool_discovery.py # Tool loading & filtering
-│       ├── settings_manager.py # Web-specific settings
-│       ├── conversation_store.py # Conversation persistence
-│       └── log_explorer.py   # Read-only log browser service for /logs
-├── client/                    # Frontend (vanilla JS)
-│   ├── index.html            # Main page
-│   ├── logs.html             # Dedicated log browser page
-│   ├── css/
-│   │   ├── variables.css     # CSS custom properties
-│   │   ├── main.css          # Core styles
-│   │   ├── glow-refinements.css # Holographic effects
-│   │   └── log-viewer.css    # /logs layout and viewer styles
-│   └── js/
-│       ├── app.js            # Main application
-│       ├── chat.js           # Chat UI logic
-│       ├── socket.js         # WebSocket connection
-│       ├── logs.js           # Server log panel
-│       ├── log-viewer.js     # /logs folder/file/viewer client
-│       ├── proactive.js      # Proactive features
-│       └── utils.js          # Utility functions
-├── config/
-│   └── web_config.json       # Web UI configuration
-├── data/
-│   ├── conversations/        # Conversation JSON files
-│   ├── prompts/              # @prompt templates (*.md)
-│   └── uploads/              # Uploaded images
+│       ├── tool_discovery.py
+│       ├── settings_manager.py
+│       ├── conversation_store.py
+│       ├── log_explorer.py   # /logs file browser
+│       ├── log_streamer.py   # Live tail to clients
+│       ├── proactive_service.py
+│       ├── completion_guard.py
+│       └── followup_extractor.py
+├── client/
+│   ├── index.html
+│   ├── login.html
+│   ├── logs.html
+│   ├── stash-viewer.html     # Render stash text/markdown via `/stash/view/<space>/<file>`
+│   ├── css/ …
+│   └── js/ (app, chat, socket, logs, log-viewer, proactive, utils, …)
+├── config/web_config.json
+├── data/                     # Per-UI: conversations, prompts, uploads
 └── requirements.txt
+
+Workflow definitions live at repo root: ../data/workflows/*.json (not under jarvis-web/).
 ```
 
 ## API Endpoints
@@ -145,7 +144,8 @@ jarvis-web/
 | `/api/settings/system` | GET | Get read-only system config |
 | `/api/settings/web` | PUT | Update web UI overrides |
 | `/api/settings/reset` | POST | Reset to cloud.env defaults |
-| `/api/settings/models/:provider` | GET | Get available models for provider |
+| `/api/settings/models/:provider` | GET | Models for provider (`openai`, `anthropic`, `xai`, `ollama`, …) |
+| `/api/tts/usage` | GET | ElevenLabs subscription usage (when that provider is active) |
 | `/api/settings/blocked-tools` | GET/PUT | Manage blocked tools |
 | `/api/mode` | GET/PUT | Get/set current mode |
 
@@ -158,6 +158,8 @@ jarvis-web/
 | `/api/conversations/:id` | GET | Get conversation with messages |
 | `/api/conversations/:id` | DELETE | Delete conversation |
 | `/api/conversations/:id/title` | PUT | Update conversation title |
+| `/api/conversations/:id/state` | PATCH | Update stored UI/orchestrator conversation state |
+| `/api/conversations/:id/clear` | POST | Clear messages while keeping the conversation |
 | `/api/conversations/search` | GET | Search across all messages |
 | `/api/conversations/:id/export` | GET | Export as JSON or Markdown |
 | `/api/conversations/import` | POST | Import conversation |
@@ -169,9 +171,21 @@ jarvis-web/
 | `/api/stt` | POST | Speech-to-text (upload audio) |
 | `/api/tts` | POST | Text-to-speech (get audio) |
 | `/api/upload-image` | POST | Upload image for vision |
-| `/api/images/:filename` | GET | Serve generated images |
+| `/api/images/:filename` | GET | Serve stored generated images |
 | `/api/uploads/:filename` | GET | Serve uploaded images |
-| `/api/audio/:filename` | GET | Serve audio files |
+| `/api/music/:filename` | GET | Serve generated music assets |
+| `/api/videos/:filename` | GET | Serve generated video assets |
+| `/api/audio/:filename` | GET | Serve other audio files |
+| `/api/stash/:space_id/:file_id` | GET | Download stash artifact raw |
+| `/api/stash/upload` | POST | Upload into stash (multipart) |
+| `/api/intel/upload` | POST | Upload intel Markdown/text into jarvis-intel |
+
+### Authentication (when enabled)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/status` | GET | Whether auth is required + metadata |
+| `/api/auth/login` | POST | Password login → JWT for session |
 
 ### Workflows & Prompts
 
@@ -194,24 +208,39 @@ jarvis-web/
 
 ### WebSocket Events
 
+Event names below are what the **server** emits / the **client** sends (see `client/js/socket.js` for any aliasing to camelCase app events).
+
 **Client → Server:**
+
 | Event | Description |
 |-------|-------------|
 | `chat:send` | Send a message (supports image attachment) |
 | `chat:cancel` | Cancel current processing |
+| `completion_guard:submit` | Completion Guard feedback / repair flow |
+| `conversation:load` | Load a conversation by id |
 | `mode:set` | Change mode (cloud/local) |
 | `tools:refresh` | Refresh tools list |
+| `logs:subscribe` / `logs:unsubscribe` / `logs:set_sources` | Log panel subscription |
+| `proactive:subscribe` / `proactive:check` / `proactive:ack_alert` / `proactive:ack_reminder` | Proactive API polling and acks |
 
 **Server → Client:**
+
 | Event | Description |
 |-------|-------------|
 | `connected` | Session established |
 | `chat:thinking` | Processing started |
-| `tool:start` | Tool execution started |
-| `tool:complete` | Tool execution finished |
-| `chat:response` | Final response |
-| `chat:error` | Error occurred |
-| `log:entry` | Real-time log stream |
+| `chat:status` | Intermediate status / TTS lines during a turn |
+| `tool:start` / `tool:progress` / `tool:complete` / `tool:error` | Tool execution lifecycle |
+| `chat:response` | Final response payload (text, usage, completion guard snapshot, …) |
+| `chat:error` / `chat:cancelled` | Errors and user cancel |
+| `conversation:created` / `conversation:loaded` | Sidebar sync |
+| `mode:changed` / `tools:updated` | Settings-driven updates |
+| `cancel:ack` | Ack after cancel |
+| `completion_guard:updated` / `completion_guard:ticket_created` / `completion_guard:error` | Completion Guard UI |
+| `log:entry` | Real-time log stream line |
+| `logs:*` | Subscribe/sources ack helpers |
+| `proactive:counts` / `proactive:alert` / `proactive:reminder` | Proactive notifications |
+| `feedback:start` / `feedback:complete` | Optional post-turn feedback trigger |
 
 ## Configuration
 
@@ -241,26 +270,42 @@ jarvis-web/
 
 ### Workflows System
 
-Workflows are deterministic multi-tool pipelines defined in `data/workflows/`:
+Workflows are deterministic pipelines defined at the **repository root**: `data/workflows/*.json` (same files the CLI orchestrator uses). The Web UI lists them via `/api/workflows`; slash commands autocomplete from each workflow's `triggers`.
+
+**Examples of explicit slash triggers** (see each JSON for full patterns/keywords):
+
+| Slash (examples) | Workflow file |
+|------------------|----------------|
+| `/research` | `deep_research.json` |
+| `/archive` | `web_archive.json` |
+| `/note`, `/quicknote` | `quick_note.json` |
+| `/health`, `/server_check` | `server_health_check.json` |
+| `/serpapi` | `serpapi_search.json` |
+| `/youtube_research`, `/yt_research` | `youtube_research.json` |
+| `/youtube_ingest`, `/yt_ingest` | `youtube_ingest.json` |
+| `/url_ingest`, `/learn_url` | `url_ingest.json` |
+| `/deep_dive`, `/dive` | `deep_dive.json` |
+| `/crypto` | `crypto_market_report.json` |
+| `/status`, `/daily`, `/briefing`, `/recap` | `daily_status.json` |
+| `/status_visual`, `/daily_visual`, `/status_image` | `daily_status_visual.json` |
+| `/weather_watch`, `/garden_watch` | `weather_watch.json` |
+| `/memory_scan`, `/dedupe_memory` | `memory_scan.json` |
+
+Authoring guide: [`data/workflows/AGENTS.md`](../data/workflows/AGENTS.md) · Overview: [`docs/WORKFLOW_ORCHESTRATION.md`](../docs/WORKFLOW_ORCHESTRATION.md)
+
+Minimal shape (abbreviated):
 
 ```json
 {
-  "id": "deep_research",
-  "name": "Deep Research Workflow",
-  "description": "Comprehensive research with validation",
+  "id": "example",
+  "name": "Example Workflow",
   "enabled": true,
-  "triggers": {
-    "explicit": ["/research"]
-  },
+  "triggers": { "explicit": ["/example"] },
   "steps": [
-    {"step": 1, "tool": "stash.open_space", "params": {"name": "${topic}"}},
-    {"step": 2, "tool": "brave_search", "params": {"query": "${topic}"}},
-    {"step": 3, "tool": "crawl_url", "params": {"url": "${urls[:3]}"}}
+    { "step": 1, "tool": "weather", "params": { "location": "Seattle" } }
   ]
 }
 ```
-
-Available workflows: `/research`, `/note`, `/archive`, `/health`
 
 ### Prompts System
 
@@ -299,8 +344,6 @@ The UI features customizable cyberpunk glow effects:
 
 Change in Settings → General → Holographic Glow Intensity.
 
-See [GLOW_IMPROVEMENTS_README.md](./GLOW_IMPROVEMENTS_README.md) for technical details.
-
 ## Mobile Support
 
 At screen widths ≤768px:
@@ -312,7 +355,7 @@ At screen widths ≤768px:
 ## Security Notes
 
 - **Local Network**: Binds to all interfaces (`0.0.0.0`) by default
-- **No Authentication**: Auth is disabled (planned for future)
+- **Optional authentication**: Shared with other Jarvis web UIs via `lib/webui_auth.py`. Set **`WEBUI_PASSWORD`** (and optionally **`WEBUI_SECRET`** for JWT signing — if unset, a secret is persisted under `data/.webui_secret`). Without `WEBUI_PASSWORD`, the UI stays open access.
 - **API Keys**: Never exposed to frontend; shown as "configured/not configured"
 - **Image Processing**: Uploaded images are auto-resized and stored locally
 - **Path Security**: File serving prevents directory traversal
@@ -323,6 +366,7 @@ Quick access to other Jarvis UIs via header icons:
 - 📄 **Canvas** (port 8890) - Document creation and editing
 - 🧠 **Memory Browser** (port 5002) - View/edit memories and intel
 - 📊 **Intelligence Dashboard** (port 5003) - Self-learning insights
+- 📚 **Jarvis Docs** (port **5004**) - Browse repo `docs/` — [`jarvis-docs/README.md`](../jarvis-docs/README.md)
 
 ## Troubleshooting
 
@@ -334,24 +378,18 @@ Check that you're accessing via the correct IP (not localhost if remote).
 - Local: Ensure faster-whisper is installed and ffmpeg is available
 
 ### TTS not playing
-- Cloud: Verify `ELEVENLABS_API_KEY` is set
-- Local: Check `TTS_URL` points to running Kokoro instance
+- Check **`TTS_PROVIDER`** in `config/cloud.env` or `config/local.env` (`elevenlabs`, `xai`, `kokoro`, `qwen3-tts`, …).
+- ElevenLabs: `ELEVENLABS_API_KEY`
+- xAI TTS: `XAI_API_KEY`
+- Local Qwen3-TTS / Kokoro: **`TTS_URL`** and matching service reachable from the browser host
 
 ### Images not generating
-- Verify `IMAGE_TOOL_PROVIDER` is set (gemini/openai)
-- Check corresponding API key is configured
+- Set **`IMAGE_TOOL_PROVIDER`** (`openai`, `gemini`, or `xai`) and the matching vendor API keys / env vars (`OPENAI_*`, `GEMINI_*`, `XAI_*` as documented in main config).
 
-## Future Enhancements
-
-- [ ] Authentication (password/token)
-- [ ] PWA support for mobile
-- [ ] Voice activity detection (VAD)
-- [ ] Conversation branching
-- [ ] Custom themes
 
 ## Related Documentation
 
-- [Glow Improvements](./GLOW_IMPROVEMENTS_README.md) - Holographic effect details
+- [Jarvis Web UI (full)](../docs/JARVIS_WEB_UI.md) - Long-form feature reference and phased checklist
 - [Memory Browser](../jarvis-memory/README.md) - Memory management UI
 - [Intelligence Dashboard](../jarvis-intelligence/README.md) - Self-learning UI
-- [Canvas](../bin/jarvis-canvas) - Document generation
+- [Canvas](../jarvis-canvas/README.md) - Canvas viewer README
