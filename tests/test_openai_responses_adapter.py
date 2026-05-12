@@ -127,6 +127,8 @@ class OpenAIResponsesAdapterTests(unittest.TestCase):
         self.assertEqual(tool["response_id"], "resp_abc")
         self.assertEqual(usage_info.get("reasoning_tokens"), 1)
         self.assertEqual(usage_info.get("cached_input_tokens"), 2)
+        self.assertEqual(usage_info.get("cached_prompt_text_tokens"), 2)
+        self.assertEqual(usage_info.get("cache_read_tokens"), 2)
 
     def test_accumulate_web_search_calls(self) -> None:
         item = SimpleNamespace(type="web_search_call")
@@ -170,6 +172,7 @@ class OpenAIResponsesAdapterTests(unittest.TestCase):
             resp, model="gpt-4o-mini", parallel_tool_calls_allowed=False
         )
         self.assertEqual(usage_info.get("reasoning_tokens"), 3)
+        self.assertEqual(usage_info.get("cached_input_tokens"), 0)
 
 
 class OpenAIPromptCacheKeyTests(unittest.TestCase):

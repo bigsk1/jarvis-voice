@@ -65,6 +65,24 @@ class LLMLogger:
             error: Error message (if call failed)
         """
         provider_route = (routing_provenance or {}).get("provider_route", {}) if routing_provenance else {}
+        usage_info = usage_info or {}
+
+        def usage_value(*keys: str) -> Any:
+            for key in keys:
+                value = usage_info.get(key)
+                if value is not None:
+                    return value
+            return None
+
+        cached_input_tokens = usage_value(
+            "cached_input_tokens",
+            "cached_prompt_text_tokens",
+            "cache_read_tokens",
+        )
+        server_side_tools = usage_info.get("server_side_tools") or {}
+        is_xai = provider == "xai"
+        is_openai = provider == "openai"
+
         log_entry = {
             "timestamp": datetime.now().isoformat(),
             "mode": mode,
@@ -76,45 +94,19 @@ class LLMLogger:
             "routing_provenance": routing_provenance,
             
             # Flatten usage fields for easier Loki/Grafana querying
-            "input_tokens": usage_info.get("input_tokens") if usage_info else None,
-            "output_tokens": usage_info.get("output_tokens") if usage_info else None,
-            "total_tokens": usage_info.get("total_tokens") if usage_info else None,
-            "cost_usd": usage_info.get("cost_usd") if usage_info else None,
-            "prompt_text_tokens": usage_info.get("prompt_text_tokens") if usage_info else None,
-            "xai_prompt_text_tokens": usage_info.get("prompt_text_tokens") if usage_info else None,
-            "cached_prompt_text_tokens": usage_info.get("cached_prompt_text_tokens") if usage_info else None,
-            "xai_cached_prompt_text_tokens": usage_info.get("cached_prompt_text_tokens") if usage_info else None,
-            "reasoning_tokens": usage_info.get("reasoning_tokens") if usage_info else None,
-            "xai_reasoning_effort": usage_info.get("xai_reasoning_effort") if usage_info else None,
-            "xai_continuation_mode": provider_route.get("xai_continuation_mode"),
-            "xai_continuation_fallback_reason": provider_route.get("xai_continuation_fallback_reason"),
-            "xai_previous_response_id_present": provider_route.get("xai_previous_response_id_present"),
-            "xai_previous_response_id_used": provider_route.get("xai_previous_response_id_used"),
+            "input_tokens": usage_value("input_tokens"),
+            "output_tokens": usage_value("output_tokens"),
+            "total_tokens": usage_value("total_tokens"),
+            "cost_usd": usage_value("cost_usd"),
+            "prompt_text_tokens": usage_value("prompt_text_tokens"),
+            "cached_input_tokens": cached_input_tokens,
+            "cached_prompt_text_tokens": usage_value("cached_prompt_text_tokens", "cached_input_tokens"),
+            "reasoning_tokens": usage_value("reasoning_tokens"),
+            "provider_continuation_mode": provider_route.get("provider_continuation_mode"),
+            "provider_continuation_fallback_reason": provider_route.get("provider_continuation_fallback_reason"),
+            "provider_previous_response_id_present": provider_route.get("provider_previous_response_id_present"),
+            "provider_previous_response_id_used": provider_route.get("provider_previous_response_id_used"),
             "provider_messages_shape": provider_route.get("provider_messages_shape"),
-            "openai_responses_continuation_payload_items": provider_route.get(
-                "openai_responses_continuation_payload_items",
-            ),
-            "openai_api_mode": provider_route.get("openai_api_mode"),
-            "openai_responses_tools_enabled": provider_route.get("openai_responses_tools_enabled"),
-            "openai_responses_previous_id_present": provider_route.get(
-                "openai_responses_previous_id_present",
-            ),
-            "openai_responses_previous_id_used": provider_route.get(
-                "openai_responses_previous_id_used",
-            ),
-            "openai_responses_continuation_input_items": provider_route.get(
-                "openai_responses_continuation_input_items",
-            ),
-            "openai_responses_output_items_by_type": provider_route.get(
-                "openai_responses_output_items_by_type",
-            ),
-            "openai_responses_fallback_reason": provider_route.get("openai_responses_fallback_reason"),
-            "openai_prompt_cache_key_set": provider_route.get("openai_prompt_cache_key_set"),
-            "openai_prompt_cache_retention": provider_route.get("openai_prompt_cache_retention"),
-
-            # xAI native search usage (web_search, x_search)
-            "xai_search_calls": sum(usage_info.get("server_side_tools", {}).values()) if usage_info else 0,
-            "xai_search_tools": list(usage_info.get("server_side_tools", {}).keys()) if usage_info and usage_info.get("server_side_tools") else None,
             
             "response": {
                 "type": "tool_call" if tool_call else ("text" if response_text else "error"),
@@ -126,6 +118,55 @@ class LLMLogger:
             "success": error is None,
             "error": error
         }
+
+        if is_xai:
+            log_entry.update({
+                "xai_prompt_text_tokens": usage_value("prompt_text_tokens"),
+                "xai_cached_prompt_text_tokens": usage_value("cached_prompt_text_tokens"),
+                "xai_reasoning_effort": usage_value("xai_reasoning_effort"),
+                "xai_continuation_mode": provider_route.get("xai_continuation_mode"),
+                "xai_continuation_fallback_reason": provider_route.get("xai_continuation_fallback_reason"),
+                "xai_previous_response_id_present": provider_route.get("xai_previous_response_id_present"),
+                "xai_previous_response_id_used": provider_route.get("xai_previous_response_id_used"),
+                "xai_search_calls": sum(server_side_tools.values()),
+                "xai_search_tools": list(server_side_tools.keys()) if server_side_tools else None,
+            })
+
+        if is_openai:
+            log_entry.update({
+                "openai_cached_input_tokens": cached_input_tokens,
+                "openai_cache_read_tokens": usage_value("cache_read_tokens"),
+                "openai_cache_hit": usage_value("cache_hit"),
+                "openai_responses_continuation_payload_items": provider_route.get(
+                    "openai_responses_continuation_payload_items",
+                ),
+                "openai_responses_continuation_mode": provider_route.get(
+                    "openai_responses_continuation_mode",
+                ),
+                "openai_responses_continuation_fallback_reason": provider_route.get(
+                    "openai_responses_continuation_fallback_reason",
+                ),
+                "openai_api_mode": provider_route.get("openai_api_mode"),
+                "openai_responses_tools_enabled": provider_route.get("openai_responses_tools_enabled"),
+                "openai_responses_previous_id_present": provider_route.get(
+                    "openai_responses_previous_id_present",
+                ),
+                "openai_responses_previous_id_used": provider_route.get(
+                    "openai_responses_previous_id_used",
+                ),
+                "openai_responses_continuation_input_items": provider_route.get(
+                    "openai_responses_continuation_input_items",
+                ),
+                "openai_responses_output_items_by_type": provider_route.get(
+                    "openai_responses_output_items_by_type",
+                ),
+                "openai_responses_fallback_reason": provider_route.get("openai_responses_fallback_reason"),
+                "openai_prompt_cache_key_set": provider_route.get("openai_prompt_cache_key_set"),
+                "openai_prompt_cache_retention": provider_route.get("openai_prompt_cache_retention"),
+                "openai_server_side_tool_calls": sum(server_side_tools.values()),
+                "openai_server_side_tools": list(server_side_tools.keys()) if server_side_tools else None,
+            })
+
         if routing_provenance:
             auto_context = routing_provenance.get("auto_context", {})
             memory = routing_provenance.get("memory_injection", {})

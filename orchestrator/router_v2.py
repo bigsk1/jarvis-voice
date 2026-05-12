@@ -605,6 +605,42 @@ def _provider_message_shape(messages: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _provider_continuation_meta(
+    *,
+    provider_type: str,
+    continuation_mode: str,
+    continuation_fallback_reason: str | None,
+    previous_response_id: str | None,
+    provider_shape: dict[str, Any],
+    responses_continuation_payload_items: int = 0,
+) -> dict[str, Any]:
+    """Build provider-scoped continuation log metadata without cross-provider aliases."""
+    previous_present = bool(previous_response_id)
+    meta: dict[str, Any] = {
+        "provider_continuation_mode": continuation_mode,
+        "provider_continuation_fallback_reason": continuation_fallback_reason,
+        "provider_previous_response_id_present": previous_present,
+        "provider_previous_response_id_used": previous_present,
+        "provider_messages_shape": provider_shape,
+    }
+
+    if provider_type == "xai":
+        meta.update({
+            "xai_continuation_mode": continuation_mode,
+            "xai_continuation_fallback_reason": continuation_fallback_reason,
+            "xai_previous_response_id_present": previous_present,
+            "xai_previous_response_id_used": previous_present,
+        })
+    elif provider_type == "openai":
+        meta.update({
+            "openai_responses_continuation_payload_items": responses_continuation_payload_items,
+            "openai_responses_continuation_mode": continuation_mode,
+            "openai_responses_continuation_fallback_reason": continuation_fallback_reason,
+        })
+
+    return meta
+
+
 class LLMRouter:
     """Intelligent router using LLM tool calling."""
     
@@ -1301,16 +1337,16 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             route_previous_response_id = route_input.previous_response_id
             responses_continuation_input = route_input.responses_continuation_input
             provider_shape = _provider_message_shape(provider_messages)
-            continuation_meta = {
-                "xai_continuation_mode": route_input.continuation_mode,
-                "xai_continuation_fallback_reason": route_input.continuation_fallback_reason,
-                "xai_previous_response_id_present": bool(route_input.previous_response_id),
-                "xai_previous_response_id_used": bool(route_input.previous_response_id),
-                "provider_messages_shape": provider_shape,
-                "openai_responses_continuation_payload_items": len(responses_continuation_input or [])
+            continuation_meta = _provider_continuation_meta(
+                provider_type=getattr(self, "provider_type", ""),
+                continuation_mode=route_input.continuation_mode,
+                continuation_fallback_reason=route_input.continuation_fallback_reason,
+                previous_response_id=route_input.previous_response_id,
+                provider_shape=provider_shape,
+                responses_continuation_payload_items=len(responses_continuation_input or [])
                 if responses_continuation_input
                 else 0,
-            }
+            )
         else:
             transcript_text = transcript
             provider_messages = [{"role": "user", "content": transcript_text}]
@@ -1318,14 +1354,14 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             route_previous_response_id = previous_response_id
             responses_continuation_input = None
             provider_shape = _provider_message_shape(provider_messages)
-            continuation_meta = {
-                "xai_continuation_mode": "text_fallback",
-                "xai_continuation_fallback_reason": None,
-                "xai_previous_response_id_present": bool(previous_response_id),
-                "xai_previous_response_id_used": bool(previous_response_id),
-                "provider_messages_shape": provider_shape,
-                "openai_responses_continuation_payload_items": 0,
-            }
+            continuation_meta = _provider_continuation_meta(
+                provider_type=getattr(self, "provider_type", ""),
+                continuation_mode="text_fallback",
+                continuation_fallback_reason=None,
+                previous_response_id=previous_response_id,
+                provider_shape=provider_shape,
+                responses_continuation_payload_items=0,
+            )
         
         # Only print if in interactive mode
         if sys.stdout.isatty():

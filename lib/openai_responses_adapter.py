@@ -349,15 +349,22 @@ def parse_responses_result(
         usage_info.update(base)
         usage_info["total_tokens"] = int(in_tok or 0) + int(out_tok or 0)
 
-        if cached_in:
+        cached_count = int(cached_in or 0)
+        usage_info["cached_input_tokens"] = cached_count
+        # Keep the shared cache-read field populated so existing log/UI code can
+        # show OpenAI cache hits alongside xAI/Anthropic without inspecting
+        # provider-specific usage objects.
+        usage_info["cached_prompt_text_tokens"] = cached_count
+        usage_info["cache_read_tokens"] = cached_count
+
+        if cached_count:
             cache_bits = estimate_cache_cost(
                 provider="openai",
                 model=model,
                 cache_creation_tokens=0,
-                cache_read_tokens=int(cached_in),
+                cache_read_tokens=cached_count,
             )
             usage_info.update(cache_bits)
-            usage_info["cached_input_tokens"] = int(cached_in)
 
         if reasoning_tok:
             usage_info["reasoning_tokens"] = int(reasoning_tok)

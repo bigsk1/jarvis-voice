@@ -13,7 +13,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
 
-from router_v2 import ProviderRouteInput  # noqa: E402
+from router_v2 import ProviderRouteInput, _provider_continuation_meta  # noqa: E402
 
 
 class OpenAIContinuationShapeTests(unittest.TestCase):
@@ -63,6 +63,36 @@ class OpenAIContinuationShapeTests(unittest.TestCase):
         payload = route_input.responses_continuation_input or []
         self.assertGreaterEqual(len(payload), 2)
         self.assertEqual(payload[0]["type"], "function_call_output")
+
+    def test_openai_continuation_meta_does_not_emit_xai_aliases(self) -> None:
+        meta = _provider_continuation_meta(
+            provider_type="openai",
+            continuation_mode="responses_structural",
+            continuation_fallback_reason=None,
+            previous_response_id="resp_42",
+            provider_shape={"count": 0, "roles": {}},
+            responses_continuation_payload_items=1,
+        )
+
+        self.assertEqual(meta["provider_continuation_mode"], "responses_structural")
+        self.assertTrue(meta["provider_previous_response_id_used"])
+        self.assertEqual(meta["openai_responses_continuation_mode"], "responses_structural")
+        self.assertNotIn("xai_previous_response_id_used", meta)
+
+    def test_xai_continuation_meta_keeps_xai_aliases(self) -> None:
+        meta = _provider_continuation_meta(
+            provider_type="xai",
+            continuation_mode="stored_structural",
+            continuation_fallback_reason=None,
+            previous_response_id="resp_42",
+            provider_shape={"count": 1, "roles": {"tool": 1}},
+            responses_continuation_payload_items=0,
+        )
+
+        self.assertEqual(meta["provider_continuation_mode"], "stored_structural")
+        self.assertTrue(meta["xai_previous_response_id_used"])
+        self.assertNotIn("openai_responses_continuation_payload_items", meta)
+        self.assertNotIn("openai_responses_previous_id_used", meta)
 
 
 if __name__ == "__main__":

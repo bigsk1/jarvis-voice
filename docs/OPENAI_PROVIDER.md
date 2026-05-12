@@ -83,12 +83,12 @@ If the orchestrator sends continuation handles but **`OPENAI_RESPONSES_INFLIGHT_
 
 - Reads **assistant text** from `output_text` or from `message` items with `output_text` blocks.
 - Detects **client tool calls** from `function_call` items; attaches **`response_id`** from the top-level response `id` and **`call_id`** as `tool_call_id` / `id` for router compatibility.
-- Merges **usage** into the same cost style as Chat Completions where possible, plus **cached input** and **reasoning tokens** when present.
+- Merges **usage** into the same cost style as Chat Completions where possible, plus **cached input** (`usage.input_tokens_details.cached_tokens`, logged as `openai_cached_input_tokens`) and **reasoning tokens** when present.
 - Counts **hosted** activity into `usage_info["server_side_tools"]` using the same normalized keys as other providers where applicable, e.g. `SERVER_SIDE_TOOL_WEB_SEARCH`, `SERVER_SIDE_TOOL_FILE_SEARCH`, `SERVER_SIDE_TOOL_CODE_INTERPRETER` (from output types `web_search_call`, `file_search_call`, `code_interpreter_call`).
 
 ### Diagnostics
 
-After each Responses call, `OpenAIProvider` fills **`_openai_responses_diag_holder`** (counts by output type, whether `previous_response_id` was used, fallback reason, etc.). The router merges **`openai_*`** fields into **`continuation_meta` / `provider_route`** for LLM logs (see [`lib/llm_logger.py`](../lib/llm_logger.py)). Raw ids should only appear in debug-oriented logs unless you widen logging policy.
+After each Responses call, `OpenAIProvider` fills **`_openai_responses_diag_holder`** (counts by output type, whether `previous_response_id` was used, fallback reason, etc.). The router merges **`openai_*`** fields into **`continuation_meta` / `provider_route`** for LLM logs (see [`lib/llm_logger.py`](../lib/llm_logger.py)). OpenAI continuation state is logged under `openai_responses_*` and generic `provider_*` fields; xAI-specific aliases are reserved for xAI calls. Raw ids should only appear in debug-oriented logs unless you widen logging policy.
 
 ### Fallback rule (critical)
 
