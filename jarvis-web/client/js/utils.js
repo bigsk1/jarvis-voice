@@ -23,6 +23,18 @@ const Utils = {
   },
 
   /**
+   * Remove BMP private-use citation placeholders (e.g. wrapped turn0search0 tokens)
+   * that some models emit; keeps normal text and URLs intact.
+   */
+  stripLlmCitationArtifacts(text) {
+    if (text === null || text === undefined) return '';
+    let s = String(text).replace(/[\uE000-\uF8FF]/g, '');
+    s = s.replace(/\bcite\s*turn\d+\w*/gi, '');
+    s = s.replace(/\bturn\d+(?:search|news)\d+\b/gi, '');
+    return s.replace(/[ \t]{2,}/g, ' ');
+  },
+
+  /**
    * Sanitize http(s) URLs for HTML attributes (src/href).
    * Do not run generic escapeHtml() on whole URLs — it can break valid image links.
    */

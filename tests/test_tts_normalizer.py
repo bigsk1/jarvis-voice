@@ -14,10 +14,30 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from security_utils import sanitize_for_speech
-from tts_normalizer import normalize_tts_text, strip_speech_tags_for_display, validate_tts_profile
+from tts_normalizer import (
+    normalize_tts_text,
+    strip_llm_citation_artifacts,
+    strip_speech_tags_for_display,
+    validate_tts_profile,
+)
 
 
 class TtsNormalizerTests(unittest.TestCase):
+    def test_strip_llm_citation_artifacts_removes_pua_and_turn_refs(self):
+        self.assertEqual(strip_llm_citation_artifacts("A\ue200\ue202B"), "AB")
+        cite_turn = "See Foo cite turn0search0 bar."
+        ct = strip_llm_citation_artifacts(cite_turn)
+        self.assertNotIn("turn0search0", ct.lower())
+        self.assertNotIn("cite", ct.lower())
+        standalone = "x turn0news0 y"
+        self.assertEqual(strip_llm_citation_artifacts(standalone).strip(), "x y")
+
+    def test_strip_speech_tags_for_display_applies_citation_cleanup(self):
+        messy = "Hello.\ue200cite\ue201turn0search0\ue202 Done."
+        cleaned = strip_speech_tags_for_display(messy)
+        self.assertNotIn("\ue200", cleaned)
+        self.assertNotIn("turn0search0", cleaned.lower())
+
     def test_default_normalizer_removes_links_and_visual_noise(self):
         normalized = normalize_tts_text(
             "Weather update. Sources: https://example.com/report\n"

@@ -3029,8 +3029,11 @@ class ChatUI {
     
     // raw_llm_response is inside data.data (nested), also check top level for loaded conversations
     const innerData = data.data || data || {};
-    const rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
-    const storedSpeech = innerData.speech || data.speech || '';
+    let rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
+    if (typeof rawResponse !== 'string') rawResponse = '';
+    rawResponse = Utils.stripLlmCitationArtifacts(rawResponse);
+    const storedSpeech = Utils.stripLlmCitationArtifacts(String(innerData.speech || data.speech || ''));
+    text = Utils.stripLlmCitationArtifacts(text);
 
     // Shopping/product preview card for focused SerpApi product lookups
     // and single clear product results where a link + image is helpful.
@@ -3383,6 +3386,24 @@ class ChatUI {
     return null;
   }
 
+  /** Pull SerpApi YouTube tool payloads (possibly arrays) for iframe embedding. */
+  _youtubeToolPayloadsForEmbeds(toolResultsData = {}) {
+    const out = [];
+    if (!toolResultsData || typeof toolResultsData !== 'object') return out;
+    for (const key of ['serpapi_youtube_search', 'serpapi_youtube']) {
+      const tr = toolResultsData[key];
+      if (!tr) continue;
+      if (Array.isArray(tr)) {
+        for (const item of tr) {
+          if (item && typeof item === 'object') out.push(item);
+        }
+      } else if (typeof tr === 'object') {
+        out.push(tr);
+      }
+    }
+    return out;
+  }
+
   _collectYouTubeEmbeds(displayText, rawResponse, toolResultsData = {}) {
     const maxEmbeds = 5;
     const urlRegex = /https?:\/\/[^\s<>"')\]]+/gi;
@@ -3401,6 +3422,50 @@ class ChatUI {
 
     const embeds = [];
     const seenIds = new Set();
+
+    const pushEmbed = (videoId, titleHint = '') => {
+      if (!videoId || seenIds.has(videoId) || downloadedIds.has(videoId)) return;
+      if (embeds.length >= maxEmbeds) return;
+      seenIds.add(videoId);
+      const t = typeof titleHint === 'string' ? titleHint.trim() : '';
+      embeds.push({
+        videoId,
+        title: t,
+        watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
+      });
+    };
+
+    for (const payload of this._youtubeToolPayloadsForEmbeds(toolResultsData)) {
+      const primaryTitle = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (payload.top_url) {
+        const vid = this._extractYouTubeVideoId(payload.top_url);
+        if (vid) pushEmbed(vid, primaryTitle);
+      }
+      if (typeof payload.url === 'string') {
+        const vid = this._extractYouTubeVideoId(payload.url);
+        if (vid) pushEmbed(vid, primaryTitle);
+      }
+      if (payload.video_id != null && String(payload.video_id).trim()) {
+        pushEmbed(String(payload.video_id).trim(), primaryTitle);
+      }
+      for (const listKey of ['results', 'top_results', 'candidates']) {
+        const list = payload[listKey];
+        if (!Array.isArray(list)) continue;
+        for (const item of list) {
+          if (!item || typeof item !== 'object') continue;
+          const itemTitle = typeof item.title === 'string' ? item.title.trim() : '';
+          const hint = itemTitle || primaryTitle;
+          if (typeof item.url === 'string') {
+            const vid = this._extractYouTubeVideoId(item.url);
+            if (vid) pushEmbed(vid, hint);
+          } else if (item.video_id != null && String(item.video_id).trim()) {
+            pushEmbed(String(item.video_id).trim(), hint);
+          }
+        }
+      }
+    }
+
     const sources = [displayText, rawResponse];
 
     for (const source of sources) {
@@ -3413,19 +3478,15 @@ class ChatUI {
         const videoId = this._extractYouTubeVideoId(rawUrl);
         if (!videoId || seenIds.has(videoId) || downloadedIds.has(videoId)) continue;
 
-        seenIds.add(videoId);
-        embeds.push({
-          videoId,
-          title: `YouTube Video ${embeds.length + 1}`,
-          watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
-          embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
-        });
+        pushEmbed(videoId, '');
       }
     }
 
     return embeds.map((embed, index) => ({
       ...embed,
-      title: embeds.length === 1 ? 'YouTube Video' : `YouTube Video ${index + 1}`,
+      title: embed.title && embed.title.trim()
+        ? embed.title.trim()
+        : (embeds.length === 1 ? 'YouTube Video' : `YouTube Video ${index + 1}`),
     }));
   }
 

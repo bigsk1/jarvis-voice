@@ -46,6 +46,23 @@ XAI_WRAPPING_SPEECH_TAGS = {
     "emphasis",
 }
 
+# BMP private-use area — some providers emit invisible citation markers here
+# (e.g. wrapped tokens like turn0search0) that must not appear in UI or TTS.
+_LLM_BMP_PUA_CITATION_RE = re.compile(r"[\uE000-\uF8FF]")
+
+
+def strip_llm_citation_artifacts(text: str) -> str:
+    """Strip BMP private-use citation placeholders from model output."""
+    if not text:
+        return ""
+    text = _LLM_BMP_PUA_CITATION_RE.sub("", text)
+    # Leftover citation refs after marker stripping (xAI / browsing-style leaks)
+    text = re.sub(r"\bcite\s*turn\d+\w*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bturn\d+(?:search|news)\d+\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text
+
+
 MONTH_ABBREVIATIONS = {
     "jan": "January",
     "feb": "February",
@@ -125,6 +142,7 @@ def strip_speech_tags_for_display(text: str) -> str:
     if not text:
         return ""
 
+    text = strip_llm_citation_artifacts(text)
     text = _repair_malformed_xai_speech_tags(text)
     text = _strip_speech_tag_markup(text)
     text = re.sub(r'[ \t]+([,.;:!?])', r'\1', text)
@@ -498,6 +516,7 @@ def normalize_tts_text(
         return ""
 
     text = _repair_malformed_xai_speech_tags(text)
+    text = strip_llm_citation_artifacts(text)
     protected_tags: dict[str, str] = {}
     if preserve_xai_tags:
         text, protected_tags = _protect_xai_speech_tags(text)
