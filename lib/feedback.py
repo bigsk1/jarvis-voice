@@ -28,6 +28,16 @@ from config_loader import load_config, get_config_value
 from model_catalog import get_provider_fallback_model
 
 
+def _config_bool(name: str, default: str = "false") -> bool:
+    """Read env/config booleans using the same loose truthy values as provider adapters."""
+    return str(get_config_value(name, default) or default).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 FEEDBACK_PROMPT = """A task was just completed as a voice assistant. Now provide HONEST, SPECIFIC FEEDBACK to help improve the system.
 
 📅 CRITICAL - TODAY'S DATE: {current_date}
@@ -452,16 +462,25 @@ class FeedbackCollector:
         
         # Determine native search status for prominent display
         # Check config_context for native search status or check environment
-        native_search_enabled = False
+        native_search_enabled = any(
+            str(name) in {"SERVER_SIDE_TOOL_WEB_SEARCH", "SERVER_SIDE_TOOL_X_SEARCH"}
+            for name in server_side_tools
+        )
         if config_context and "Native Search: ENABLED" in config_context:
             native_search_enabled = True
-        else:
+        elif not native_search_enabled:
             # Fallback to checking environment
             llm_provider = get_config_value("LLM_PROVIDER", "anthropic")
             if llm_provider == "xai":
-                native_search_enabled = get_config_value("XAI_SEARCH", "false").lower() == "true"
+                native_search_enabled = _config_bool("XAI_SEARCH")
             elif llm_provider == "anthropic":
-                native_search_enabled = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
+                native_search_enabled = _config_bool("ANTHROPIC_SEARCH")
+            elif llm_provider == "openai":
+                native_search_enabled = (
+                    str(get_config_value("OPENAI_API_MODE", "chat") or "chat").strip().lower() == "responses"
+                    and _config_bool("OPENAI_RESPONSES_SERVER_SIDE_TOOLS")
+                    and _config_bool("OPENAI_RESPONSES_WEB_SEARCH")
+                )
         
         if native_search_enabled:
             native_search_status = "🟢 ENABLED - LLM has built-in web search"
