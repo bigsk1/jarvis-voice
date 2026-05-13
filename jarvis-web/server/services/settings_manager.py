@@ -75,7 +75,7 @@ TTS_PROVIDERS = {
     'kokoro': {'name': 'Kokoro', 'description': 'Fast, local Kokoro TTS server'},
     'openai': {'name': 'OpenAI', 'description': 'OpenAI TTS API ($15/1M chars)'},
     'elevenlabs': {'name': 'ElevenLabs', 'description': 'ElevenLabs TTS API (best quality, paid)'},
-    'xai': {'name': 'xAI', 'description': 'xAI native TTS API (uses XAI_API_KEY)'},
+    'xai': {'name': 'xAI', 'description': 'xAI TTS API (uses XAI_API_KEY)'},
     'qwen3-tts': {'name': 'Qwen3-TTS', 'description': 'Local network Qwen3-TTS server (free, 28 cloned voices)'},
 }
 
