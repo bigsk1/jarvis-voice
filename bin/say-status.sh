@@ -1,11 +1,11 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Status Update TTS (Cloud - OpenAI, ElevenLabs, xAI, or Qwen3-TTS)
+# Jarvis Voice Assistant - Status Update TTS (Cloud - OpenAI, ElevenLabs, xAI, Qwen3-TTS, or Kokoro URL)
 # Lightweight TTS for short status messages during long tasks
 # 
 # Features:
 # - Audio caching: Repeated phrases play instantly (no API call)
 # - Silence padding: Helps speakers wake up before speech
-# - Cloud provider support: OpenAI, ElevenLabs, xAI, or Qwen3-TTS
+# - Cloud provider support: OpenAI, ElevenLabs, xAI, Qwen3-TTS, Kokoro (HTTP)
 # 
 # Usage: say-status.sh "message" [blocking]
 #   blocking: "true" (wait for playback) or "false" (background)
@@ -54,6 +54,8 @@ generate_cache_key() {
     elif [ "$TTS_PROVIDER" = "xai" ]; then
         # Include xAI TTS settings in hash
         echo -n "${text}|xai|${XAI_TTS_VOICE:-eve}|${XAI_TTS_LANGUAGE:-en}|${XAI_TTS_CODEC:-mp3}|${XAI_TTS_SAMPLE_RATE:-24000}|${XAI_TTS_BIT_RATE:-128000}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+    elif [ "$TTS_PROVIDER" = "kokoro" ]; then
+        echo -n "${text}|kokoro|${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}|${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}|${KOKORO_TTS_URL:-${TTS_URL:-}}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
         # Include OpenAI settings in hash
         echo -n "${text}|openai|${VOICE}|${TTS_MODEL}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
@@ -232,6 +234,37 @@ else
 
         ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
         rm -f "$TEMP_AUDIO"
+    elif [ "$TTS_PROVIDER" = "kokoro" ]; then
+        KOKORO_URL="${KOKORO_TTS_URL:-${TTS_URL:-}}"
+        KOKORO_VOICE="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
+        KOKORO_SPEED="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
+
+        if [ -z "$KOKORO_URL" ]; then
+            echo "⚠️ TTS_URL or KOKORO_TTS_URL not set for kokoro" >&2
+            exit 1
+        fi
+
+        TTS_JSON=$(jq -n \
+          --arg model "kokoro" \
+          --arg voice "$KOKORO_VOICE" \
+          --arg input "$TEXT" \
+          --arg speed "$KOKORO_SPEED" \
+          '{model:$model, voice:$voice, input:$input, speed:($speed|tonumber)}')
+
+        TEMP_RAW="/tmp/jarvis-status-kokoro-$$.rawaudio"
+        HTTP_CODE=$(curl -sS -w "%{http_code}" -o "$TEMP_RAW" \
+          -X POST "$KOKORO_URL" \
+          -H "Content-Type: application/json" \
+          -d "$TTS_JSON")
+
+        if [ "$HTTP_CODE" != "200" ]; then
+            echo "⚠️ Kokoro TTS failed (HTTP $HTTP_CODE)" >&2
+            rm -f "$TEMP_RAW"
+            exit 1
+        fi
+
+        ffmpeg -hide_banner -loglevel error -i "$TEMP_RAW" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+        rm -f "$TEMP_RAW"
     else
         # ============================================================================
         # OPENAI TTS (default)

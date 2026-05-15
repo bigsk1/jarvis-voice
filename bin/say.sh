@@ -1,5 +1,5 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Cloud TTS (OpenAI, ElevenLabs, xAI, or Qwen3-TTS)
+# Jarvis Voice Assistant - Cloud TTS (OpenAI, ElevenLabs, xAI, Qwen3-TTS, or Kokoro URL)
 set -euo pipefail
 
 # Load configuration
@@ -59,6 +59,41 @@ if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
     # Convert to wav with proper format
     ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
     rm -f "$TEMP_AUDIO"
+
+elif [ "$TTS_PROVIDER" = "kokoro" ]; then
+    # ============================================================================
+    # Kokoro (OpenAI-compatible HTTP — same payload as jarvis-web / say-local URL mode)
+    # ============================================================================
+    KOKORO_URL="${KOKORO_TTS_URL:-${TTS_URL:-}}"
+    KOKORO_VOICE="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
+    KOKORO_SPEED="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
+
+    if [ -z "$KOKORO_URL" ]; then
+        echo "❌ TTS_URL or KOKORO_TTS_URL not set in cloud.env (required for kokoro)" >&2
+        exit 1
+    fi
+
+    TTS_JSON=$(jq -n \
+      --arg model "kokoro" \
+      --arg voice "$KOKORO_VOICE" \
+      --arg input "$TEXT" \
+      --arg speed "$KOKORO_SPEED" \
+      '{model:$model, voice:$voice, input:$input, speed:($speed|tonumber)}')
+
+    HTTP_CODE=$(curl -sS -w "%{http_code}" -o "$OUTFILE.raw" \
+      -X POST "$KOKORO_URL" \
+      -H "Content-Type: application/json" \
+      -d "$TTS_JSON")
+
+    if [ "$HTTP_CODE" != "200" ]; then
+        echo "❌ Kokoro TTS API error (HTTP $HTTP_CODE)" >&2
+        cat "$OUTFILE.raw" >&2
+        rm -f "$OUTFILE.raw"
+        exit 1
+    fi
+
+    ffmpeg -hide_banner -loglevel error -i "$OUTFILE.raw" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
+    rm -f "$OUTFILE.raw"
 
 elif [ "$TTS_PROVIDER" = "elevenlabs" ]; then
     # ============================================================================
