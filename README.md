@@ -1822,6 +1822,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.50.0 (May 2026)
+**Current Version:** v2.50.1 (May 2026)
 **Status:** Production Ready ✅  
 **Latest Features:** v2.50.0: optional OpenAI Responses API routing for tool-capable turns, OpenAI in-flight `previous_response_id` continuation, hosted OpenAI tool gates (`web_search`, `file_search`, `code_interpreter`), prompt-cache/usage diagnostics, safe Responses-to-Chat fallback boundaries, provider result previews that preserve exact source candidates, and OpenAI upload-image vision cleanup — on top of v2.49.1 crypto charts, memory/intel UI polish, Jarvis Docs Assistant, Grok/xAI continuation/search hardening, GPT-5.4 catalog updates, `tool_search` discovery, Home Depot via SerpAPI, web conversation pin/archive, and logging/orchestrator refinements
