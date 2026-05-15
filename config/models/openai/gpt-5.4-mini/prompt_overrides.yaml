@@ -25,3 +25,9 @@ tool_calling_prepend: |
 
 completion_guard_eval_prepend: |
   Treat answers as incomplete when the user asked for multiple concrete items or sub-questions and the response only covered some of them despite more tool work being possible.
+
+intelligence_reflection_prepend: |
+  Do not put the same exact tool in both preferred_tool/preferred_tools and avoided_tool/avoided_tools.
+  If the correct tool was used but the arguments, provider limits, validation, or retry strategy were wrong, keep the tool as preferred and describe the bad pattern in why_or_why_not/reasoning instead of avoided_tool.
+  Use avoided_tool only when a different tool or no tool should have been chosen for that class of request.
+  Mark one-off provider quirks or single-session failures as low generalizability unless the failure clearly repeats.

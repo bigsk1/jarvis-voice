@@ -39,7 +39,12 @@ class ModelPromptOverrideTests(unittest.TestCase):
             override_dir = root / "openai" / "gpt-5.4-nano"
             override_dir.mkdir(parents=True)
             (override_dir / "prompt_overrides.yaml").write_text(
-                "enabled: true\nrouting_prepend: |\n  Prefer direct links.\n",
+                (
+                    "enabled: true\n"
+                    "routing_prepend: |\n  Prefer direct links.\n"
+                    "intelligence_reflection_prepend: |\n"
+                    "  Avoid contradictory tool preferences.\n"
+                ),
                 encoding="utf-8",
             )
 
@@ -53,6 +58,10 @@ class ModelPromptOverrideTests(unittest.TestCase):
             self.assertTrue(override.enabled)
             self.assertEqual(override.matched_model, "gpt-5.4-nano")
             self.assertEqual(override.get("routing_prepend"), "Prefer direct links.")
+            self.assertEqual(
+                override.get("intelligence_reflection_prepend"),
+                "Avoid contradictory tool preferences.",
+            )
 
     def test_mode_filter_skips_override(self):
         with tempfile.TemporaryDirectory() as tmpdir:

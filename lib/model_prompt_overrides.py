@@ -27,6 +27,7 @@ SUPPORTED_SECTIONS = {
     "qa_append",
     "tool_calling_prepend",
     "completion_guard_eval_prepend",
+    "intelligence_reflection_prepend",
 }
 
 _KNOWN_RUNTIME_SUFFIXES = {"latest", "cloud"}

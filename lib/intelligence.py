@@ -1347,6 +1347,10 @@ Example for FACTUAL (should NOT be stored here):
         try:
             from llm_provider import create_provider
             from model_catalog import get_provider_fallback_model
+            from model_prompt_overrides import (
+                apply_prompt_override_sections,
+                load_model_prompt_override,
+            )
             from config_loader import load_config, get_config_value
 
             # Ensure config is loaded
@@ -1385,6 +1389,17 @@ Example for FACTUAL (should NOT be stored here):
 
             # Get model name for logging
             model_name = getattr(provider, 'model', 'unknown')
+            override_mode = "local" if provider_type == "ollama" else "cloud"
+            override = load_model_prompt_override(
+                provider=provider_type,
+                model=model_name,
+                mode=override_mode,
+            )
+            prompt = apply_prompt_override_sections(
+                prompt,
+                override,
+                prepend_sections=("intelligence_reflection_prepend",),
+            )
             system_prompt = (
                 "You are a self-reflective AI analyzing your own behavior to learn and improve. "
                 "Output valid JSON only, no markdown formatting."
@@ -1493,6 +1508,8 @@ Example for FACTUAL (should NOT be stored here):
         if not preferred_tool_names and not suppress_preferred_tool:
             final_tool = _row_value(experience, 'final_tool')
             if final_tool:
+                # TODO: If the reflection also avoided this same tool, reshape the
+                # insight instead of creating contradictory prefer/avoid metadata.
                 preferred_tool_names = [str(final_tool)]
         for tool in preferred_tool_names:
             preferred_tools[tool] = confidence

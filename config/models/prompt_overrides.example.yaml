@@ -67,3 +67,13 @@ tool_calling_prepend: |
 # - "do not penalize answers only for style if the task outcome was correct"
 completion_guard_eval_prepend: |
   Judge whether the requested outcome was actually delivered.
+
+# intelligence_reflection_prepend:
+# Added BEFORE the Intelligence Layer reflection prompt.
+# Use this only if a specific model creates poor learned insights from completed experiences.
+# Good for:
+# - "never put the same exact tool in preferred_tool and avoided_tool"
+# - "when the right tool had bad arguments, learn the argument/recovery rule instead of avoiding the tool"
+# - "mark one-off provider quirks as low generalizability unless they clearly repeat"
+intelligence_reflection_prepend: |
+  Learn reusable routing or recovery rules, not broad tool bans.

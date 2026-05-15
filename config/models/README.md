@@ -25,6 +25,7 @@ Notes:
   - runtime suffixes like `:latest` and `:cloud`
 - Missing files are skipped silently.
 - Invalid YAML logs a warning and is ignored.
+- Supported sections include routing, QA, tool-calling, Completion Guard evaluation, and Intelligence Layer reflection prompt overlays.
 
 Use the template file here as a starting point:
 
