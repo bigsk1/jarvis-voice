@@ -45,12 +45,12 @@ fi
 generate_cache_key() {
     local text="$1"
     if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
-        echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_FORMAT:-mp3}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_SPEED:-1.0}|${QWEN3_TTS_FORMAT:-mp3}|${QWEN3_TTS_URL:-http://localhost:8881/v1/audio/speech}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
-        # Kokoro - use either new or legacy variable names
-        local voice="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
-        local speed="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
-        echo -n "${text}|kokoro|${voice}|${speed}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        # Kokoro
+        local voice="${KOKORO_TTS_VOICE:-af_nicole}"
+        local speed="${KOKORO_TTS_SPEED:-1.0}"
+        echo -n "${text}|kokoro|${voice}|${speed}|${KOKORO_TTS_URL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     fi
 }
 
@@ -112,13 +112,12 @@ else
         # ============================================================================
         # KOKORO TTS (default)
         # ============================================================================
-        # Support both new and legacy variable names
-        KOKORO_URL="${KOKORO_TTS_URL:-${TTS_URL:-}}"
-        KOKORO_VOICE="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
-        KOKORO_SPEED="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
+        KOKORO_URL="${KOKORO_TTS_URL:-}"
+        KOKORO_VOICE="${KOKORO_TTS_VOICE:-af_nicole}"
+        KOKORO_SPEED="${KOKORO_TTS_SPEED:-1.0}"
         
         if [ -z "$KOKORO_URL" ]; then
-            echo "❌ TTS_URL or KOKORO_TTS_URL not set" >&2
+            echo "❌ KOKORO_TTS_URL not set" >&2
             exit 1
         fi
         

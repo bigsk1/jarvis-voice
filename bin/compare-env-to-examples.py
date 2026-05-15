@@ -109,7 +109,6 @@ def categorize_key(key: str) -> str:
             "PRINTER_",
             "N8N_",
             "QWEN3_",
-            "TTS_URL",
             "KOKORO_TTS_URL",
             "SAMANTHA_URL",
             "CRAWL4AI_URL",

@@ -21,7 +21,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
   - Local: faster-whisper
 - **Text-to-Speech (TTS)** - Audio playback in browser (provider from `TTS_PROVIDER` in env)
   - Cloud: ElevenLabs, **xAI TTS**, or others as configured in `config/cloud.env`
-  - Local: **Qwen3-TTS**, Kokoro via `TTS_URL`, etc. per `config/local.env`
+  - Local: **Qwen3-TTS** via `QWEN3_TTS_URL`, or Kokoro via `KOKORO_TTS_URL`, per `config/local.env`
   - ElevenLabs character quota surfaced in Settings when relevant (`GET /api/tts/usage`)
 - **Audio Toggle** - Enable/disable voice responses with pause/resume/stop on playback
 
@@ -381,7 +381,8 @@ Check that you're accessing via the correct IP (not localhost if remote).
 - Check **`TTS_PROVIDER`** in `config/cloud.env` or `config/local.env` (`elevenlabs`, `xai`, `kokoro`, `qwen3-tts`, …).
 - ElevenLabs: `ELEVENLABS_API_KEY`
 - xAI TTS: `XAI_API_KEY`
-- Local Qwen3-TTS / Kokoro: **`TTS_URL`** and matching service reachable from the browser host
+- Local Qwen3-TTS: `QWEN3_TTS_URL` and matching service reachable from the web server host
+- Local Kokoro: `KOKORO_TTS_URL` and matching service reachable from the web server host
 
 ### Images not generating
 - Set **`IMAGE_TOOL_PROVIDER`** (`openai`, `gemini`, or `xai`) and the matching vendor API keys / env vars (`OPENAI_*`, `GEMINI_*`, `XAI_*` as documented in main config).

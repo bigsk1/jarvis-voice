@@ -64,12 +64,12 @@ elif [ "$TTS_PROVIDER" = "kokoro" ]; then
     # ============================================================================
     # Kokoro (OpenAI-compatible HTTP — same payload as jarvis-web / say-local URL mode)
     # ============================================================================
-    KOKORO_URL="${KOKORO_TTS_URL:-${TTS_URL:-}}"
-    KOKORO_VOICE="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
-    KOKORO_SPEED="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
+    KOKORO_URL="${KOKORO_TTS_URL:-}"
+    KOKORO_VOICE="${KOKORO_TTS_VOICE:-af_nicole}"
+    KOKORO_SPEED="${KOKORO_TTS_SPEED:-1.0}"
 
     if [ -z "$KOKORO_URL" ]; then
-        echo "❌ TTS_URL or KOKORO_TTS_URL not set in cloud.env (required for kokoro)" >&2
+        echo "❌ KOKORO_TTS_URL not set in cloud.env (required for kokoro)" >&2
         exit 1
     fi
 

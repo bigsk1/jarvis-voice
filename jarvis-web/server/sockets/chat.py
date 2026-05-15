@@ -3685,12 +3685,12 @@ Mode: {mode}
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             
-            # Route based on provider (not TTS_URL existence)
+            # Route based on provider (not inferred from URL alone)
             if provider == 'kokoro':
-                # Local TTS via TTS_URL
-                tts_url = get_jarvis_setting('KOKORO_TTS_URL', '') or get_jarvis_setting('TTS_URL', '')
+                # Local Kokoro (OpenAI-compatible HTTP)
+                tts_url = get_jarvis_setting('KOKORO_TTS_URL', '')
                 if not tts_url:
-                    print("[CHAT TTS] Kokoro provider but TTS_URL not set!")
+                    print("[CHAT TTS] Kokoro provider but KOKORO_TTS_URL not set!")
                     return None
                 audio_path = self._local_tts(text, tts_dir, timestamp, tts_url)
             elif provider == 'qwen3-tts':
@@ -3722,8 +3722,8 @@ Mode: {mode}
         import requests
         from ..config import get_jarvis_setting
         
-        voice = get_jarvis_setting('KOKORO_TTS_VOICE', '') or get_jarvis_setting('TTS_VOICE', 'af_nicole')
-        speed = float(get_jarvis_setting('KOKORO_TTS_SPEED', '') or get_jarvis_setting('TTS_SPEED', '1.0'))
+        voice = get_jarvis_setting('KOKORO_TTS_VOICE', 'af_nicole')
+        speed = float(get_jarvis_setting('KOKORO_TTS_SPEED', '1.0'))
         
         payload = {
             "model": "kokoro",
@@ -3752,13 +3752,13 @@ Mode: {mode}
         import requests
         from ..config import get_jarvis_setting
         
-        tts_url = get_jarvis_setting('QWEN3_TTS_URL', '') or get_jarvis_setting('TTS_URL', '')
+        tts_url = get_jarvis_setting('QWEN3_TTS_URL', '')
         if not tts_url:
             print("[CHAT TTS] Qwen3-TTS provider but QWEN3_TTS_URL not set!")
             return None
         
-        voice = get_jarvis_setting('QWEN3_TTS_VOICE', '') or get_jarvis_setting('TTS_VOICE', 'Jarvis')
-        speed = float(get_jarvis_setting('QWEN3_TTS_SPEED', '') or get_jarvis_setting('TTS_SPEED', '1.0'))
+        voice = get_jarvis_setting('QWEN3_TTS_VOICE', 'Jarvis')
+        speed = float(get_jarvis_setting('QWEN3_TTS_SPEED', '1.0'))
         audio_format = get_jarvis_setting('QWEN3_TTS_FORMAT', 'mp3')
         
         print(f"[CHAT TTS] Qwen3-TTS: url={tts_url}, voice={voice}, format={audio_format}")

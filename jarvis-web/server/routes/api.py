@@ -270,9 +270,6 @@ def get_system_config():
     if mode == 'local':
         config['OLLAMA_MODEL'] = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
         config['OLLAMA_BASE_URL'] = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
-        config['TTS_URL'] = get_jarvis_setting('TTS_URL', '')
-        config['TTS_VOICE'] = get_jarvis_setting('TTS_VOICE', '')
-        # Kokoro doesn't have models, but Qwen3-TTS might
         config['KOKORO_TTS_URL'] = get_jarvis_setting('KOKORO_TTS_URL', '')
         config['KOKORO_TTS_VOICE'] = get_jarvis_setting('KOKORO_TTS_VOICE', '')
         config['QWEN3_TTS_URL'] = get_jarvis_setting('QWEN3_TTS_URL', '')
@@ -1203,13 +1200,13 @@ def text_to_speech():
         
         # Qwen3-TTS (OpenAI-compatible voice cloning on local network)
         if provider == 'qwen3-tts':
-            tts_url = get_jarvis_setting('QWEN3_TTS_URL', '') or get_jarvis_setting('TTS_URL', '')
+            tts_url = get_jarvis_setting('QWEN3_TTS_URL', '')
             if not tts_url:
                 return jsonify({'ok': False, 'error': 'QWEN3_TTS_URL not configured'}), 500
             
-            tts_voice = get_jarvis_setting('QWEN3_TTS_VOICE', '') or get_jarvis_setting('TTS_VOICE', 'Jarvis')
+            tts_voice = get_jarvis_setting('QWEN3_TTS_VOICE', 'Jarvis')
             tts_format = get_jarvis_setting('QWEN3_TTS_FORMAT', 'mp3')
-            tts_speed = get_jarvis_setting('QWEN3_TTS_SPEED', '') or get_jarvis_setting('TTS_SPEED', '1.0')
+            tts_speed = get_jarvis_setting('QWEN3_TTS_SPEED', '1.0')
             
             print(f"[TTS] Calling Qwen3-TTS at {tts_url} with voice={tts_voice}", flush=True)
             
@@ -1234,12 +1231,12 @@ def text_to_speech():
         
         # Kokoro TTS (local)
         if provider == 'kokoro':
-            tts_url = get_jarvis_setting('KOKORO_TTS_URL', '') or get_jarvis_setting('TTS_URL', '')
+            tts_url = get_jarvis_setting('KOKORO_TTS_URL', '')
             if not tts_url:
-                return jsonify({'ok': False, 'error': 'TTS_URL not configured for local mode'}), 500
+                return jsonify({'ok': False, 'error': 'KOKORO_TTS_URL not configured'}), 500
             
-            tts_voice = get_jarvis_setting('KOKORO_TTS_VOICE', '') or get_jarvis_setting('TTS_VOICE', 'af_nicole')
-            tts_speed = get_jarvis_setting('KOKORO_TTS_SPEED', '') or get_jarvis_setting('TTS_SPEED', '1.0')
+            tts_voice = get_jarvis_setting('KOKORO_TTS_VOICE', 'af_nicole')
+            tts_speed = get_jarvis_setting('KOKORO_TTS_SPEED', '1.0')
             
             print(f"[TTS] Calling Kokoro at {tts_url} with voice={tts_voice}", flush=True)
             

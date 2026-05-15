@@ -50,12 +50,12 @@ generate_cache_key() {
         echo -n "${text}|elevenlabs|${ELEVENLABS_TTS_VOICE:-}|${ELEVENLABS_TTS_MODEL:-}|${ELEVENLABS_TTS_STABILITY:-0.5}|${ELEVENLABS_TTS_SIMILARITY_BOOST:-0.75}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     elif [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
         # Include Qwen3-TTS settings in hash
-        echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_FORMAT:-mp3}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_SPEED:-1.0}|${QWEN3_TTS_FORMAT:-mp3}|${QWEN3_TTS_URL:-http://localhost:8881/v1/audio/speech}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     elif [ "$TTS_PROVIDER" = "xai" ]; then
         # Include xAI TTS settings in hash
         echo -n "${text}|xai|${XAI_TTS_VOICE:-eve}|${XAI_TTS_LANGUAGE:-en}|${XAI_TTS_CODEC:-mp3}|${XAI_TTS_SAMPLE_RATE:-24000}|${XAI_TTS_BIT_RATE:-128000}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     elif [ "$TTS_PROVIDER" = "kokoro" ]; then
-        echo -n "${text}|kokoro|${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}|${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}|${KOKORO_TTS_URL:-${TTS_URL:-}}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        echo -n "${text}|kokoro|${KOKORO_TTS_VOICE:-af_nicole}|${KOKORO_TTS_SPEED:-1.0}|${KOKORO_TTS_URL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
         # Include OpenAI settings in hash
         echo -n "${text}|openai|${VOICE}|${TTS_MODEL}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
@@ -235,12 +235,12 @@ else
         ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
         rm -f "$TEMP_AUDIO"
     elif [ "$TTS_PROVIDER" = "kokoro" ]; then
-        KOKORO_URL="${KOKORO_TTS_URL:-${TTS_URL:-}}"
-        KOKORO_VOICE="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
-        KOKORO_SPEED="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
+        KOKORO_URL="${KOKORO_TTS_URL:-}"
+        KOKORO_VOICE="${KOKORO_TTS_VOICE:-af_nicole}"
+        KOKORO_SPEED="${KOKORO_TTS_SPEED:-1.0}"
 
         if [ -z "$KOKORO_URL" ]; then
-            echo "⚠️ TTS_URL or KOKORO_TTS_URL not set for kokoro" >&2
+            echo "⚠️ KOKORO_TTS_URL not set for kokoro" >&2
             exit 1
         fi
 

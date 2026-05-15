@@ -71,12 +71,12 @@ else
     # KOKORO TTS (default - legacy format)
     # ============================================================================
     # Support both new and legacy variable names
-    KOKORO_URL="${KOKORO_TTS_URL:-${TTS_URL:-}}"
-    KOKORO_VOICE="${KOKORO_TTS_VOICE:-${TTS_VOICE:-af_nicole}}"
-    KOKORO_SPEED="${KOKORO_TTS_SPEED:-${TTS_SPEED:-1.0}}"
+    KOKORO_URL="${KOKORO_TTS_URL:-}"
+    KOKORO_VOICE="${KOKORO_TTS_VOICE:-af_nicole}"
+    KOKORO_SPEED="${KOKORO_TTS_SPEED:-1.0}"
     
     if [ -z "$KOKORO_URL" ]; then
-        echo "❌ TTS_URL or KOKORO_TTS_URL not set in local.env" >&2
+        echo "❌ KOKORO_TTS_URL not set in local.env" >&2
         exit 1
     fi
     

@@ -1570,11 +1570,11 @@ class JarvisApp {
           ? `
             <div class="config-item">
               <span class="config-label">QWEN3_TTS_URL</span>
-              <span class="config-value">${c.QWEN3_TTS_URL || c.TTS_URL || '(not set)'}</span>
+              <span class="config-value">${c.QWEN3_TTS_URL || '(not set)'}</span>
             </div>
             <div class="config-item">
               <span class="config-label">QWEN3_TTS_VOICE</span>
-              <span class="config-value">${c.QWEN3_TTS_VOICE || c.TTS_VOICE || '(default)'}</span>
+              <span class="config-value">${c.QWEN3_TTS_VOICE || '(default)'}</span>
             </div>
             <div class="config-item">
               <span class="config-label">QWEN3_TTS_FORMAT</span>
@@ -1584,11 +1584,11 @@ class JarvisApp {
           : isLocal ? `
             <div class="config-item">
               <span class="config-label">KOKORO_TTS_URL</span>
-              <span class="config-value">${c.KOKORO_TTS_URL || c.TTS_URL || '(not set)'}</span>
+              <span class="config-value">${c.KOKORO_TTS_URL || '(not set)'}</span>
             </div>
             <div class="config-item">
               <span class="config-label">KOKORO_TTS_VOICE</span>
-              <span class="config-value">${c.KOKORO_TTS_VOICE || c.TTS_VOICE || '(default)'}</span>
+              <span class="config-value">${c.KOKORO_TTS_VOICE || '(default)'}</span>
             </div>
           `
           : ttsProvider === 'xai' ? `

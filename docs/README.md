@@ -1207,7 +1207,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 **2025-12-17:**
 - ✅ **Jarvis Web UI v1.2** - Mode-aware web interface ⭐ ENHANCED
-  - **Mode-aware TTS**: Cloud=ElevenLabs, Local=Kokoro (via TTS_URL)
+  - **Mode-aware TTS**: Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS via provider-specific URL settings
   - **Per-mode settings**: `cloud`/`local` sections in web_config.json
   - **Dynamic Ollama models**: Fetches available models from Ollama server
   - **Clean mode switching**: Intelligence singleton resets on mode change

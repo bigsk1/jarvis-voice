@@ -60,7 +60,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Feature | Status | Details |
 |---------|--------|---------|
 | TTS playback | ✅ | Toggle audio, plays responses in browser |
-| Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS (via TTS_URL) |
+| Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS via provider-specific URL settings |
 | Status TTS | ✅ | Status updates play as TTS when audio enabled |
 | **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send |
 | **Mode-aware STT** | ✅ | Cloud=OpenAI Whisper, Local=faster-whisper |
@@ -615,7 +615,7 @@ TTS provider is determined by the current mode's `.env` file:
 | Mode | Provider | Config |
 |------|----------|--------|
 | **Cloud** | ElevenLabs, xAI, or OpenAI | `TTS_PROVIDER=elevenlabs`, `xai`, or `openai` in cloud.env |
-| **Local** | Kokoro or Qwen3-TTS | `TTS_PROVIDER=kokoro` or `TTS_PROVIDER=qwen3-tts` + `TTS_URL` in local.env |
+| **Local** | Kokoro or Qwen3-TTS | `TTS_PROVIDER=kokoro` + `KOKORO_TTS_URL`, or `TTS_PROVIDER=qwen3-tts` + `QWEN3_TTS_URL`, in local.env |
 
 ```python
 # In api.py - mode-aware TTS
@@ -626,8 +626,11 @@ def text_to_speech():
     
     provider = get_jarvis_setting('TTS_PROVIDER')
     if provider == 'kokoro':
-        # Local: call TTS_URL directly (OpenAI-compatible)
+        # Local Kokoro: call KOKORO_TTS_URL directly (OpenAI-compatible)
         return call_kokoro_tts(text)
+    elif provider == 'qwen3-tts':
+        # Local Qwen3-TTS: call QWEN3_TTS_URL directly (OpenAI-compatible)
+        return call_qwen3_tts(text)
     else:
         # Cloud: ElevenLabs or OpenAI API
         return call_cloud_tts(text)
@@ -1476,7 +1479,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 ### TTS
 | Issue | Workaround |
 |-------|------------|
-| Local TTS fails silently | Check Kokoro or Qwen3-TTS server is running at TTS_URL |
+| Local TTS fails silently | Check the selected provider server is running at `KOKORO_TTS_URL` or `QWEN3_TTS_URL` |
 | Audio doesn't play | Check browser autoplay policy, click somewhere first |
 | TTS too slow | Status updates have 1s delay by design |
 

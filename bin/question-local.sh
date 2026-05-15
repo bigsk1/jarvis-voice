@@ -5,7 +5,7 @@ source "$SCRIPT_DIR/../lib/config_loader.sh"
 load_config "local"
 TTS_NORMALIZE="$SCRIPT_DIR/tts-normalize.py"
 
-# Ask locally via Ollama; sanitize; TTS via Kokoro; save artifacts
+# Ask locally via Ollama; sanitize; TTS via configured local provider; save artifacts
 set -euo pipefail
 
 QUESTION="${*:-}"
@@ -150,18 +150,54 @@ fi
 
 echo "$SANITIZED" | tee "$TXT_A"
 
-# --- TTS via Kokoro, with safe JSON packaging
-jq -n --arg voice "$TTS_VOICE" --arg input "$SANITIZED" --arg speed "$TTS_SPEED" '{voice:$voice, input:$input, speed:$speed}' \
-| curl -sS -X POST "$TTS_URL" \
+# --- TTS via selected local provider
+TTS_PROVIDER="${TTS_PROVIDER:-kokoro}"
+
+if [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
+  QWEN3_TTS_URL="${QWEN3_TTS_URL:-http://localhost:8881/v1/audio/speech}"
+  QWEN3_TTS_VOICE="${QWEN3_TTS_VOICE:-Jarvis}"
+  QWEN3_TTS_FORMAT="${QWEN3_TTS_FORMAT:-mp3}"
+  QWEN3_TTS_SPEED="${QWEN3_TTS_SPEED:-1.0}"
+
+  TTS_JSON=$(jq -n \
+    --arg model "tts-1" \
+    --arg voice "$QWEN3_TTS_VOICE" \
+    --arg input "$SANITIZED" \
+    --arg format "$QWEN3_TTS_FORMAT" \
+    --arg speed "$QWEN3_TTS_SPEED" \
+    '{model:$model, voice:$voice, input:$input, response_format:$format, speed:($speed|tonumber)}')
+
+  TEMP_AUDIO="/tmp/jarvis-question-local-$$.${QWEN3_TTS_FORMAT}"
+  HTTP_CODE=$(curl -sS -w "%{http_code}" -o "$TEMP_AUDIO" \
+    -X POST "$QWEN3_TTS_URL" \
     -H "Content-Type: application/json" \
-    -d @- \
-| ffmpeg -hide_banner -loglevel error -i - -ar 48000 -ac 2 -f wav -y "$WAV_A"
+    -d "$TTS_JSON")
+
+  if [ "$HTTP_CODE" != "200" ]; then
+    echo "❌ Qwen3-TTS API error (HTTP $HTTP_CODE)" >&2
+    cat "$TEMP_AUDIO" >&2
+    rm -f "$TEMP_AUDIO"
+    exit 1
+  fi
+
+  ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar 48000 -ac 2 -f wav -y "$WAV_A"
+  rm -f "$TEMP_AUDIO"
+elif [ "$TTS_PROVIDER" = "kokoro" ]; then
+  jq -n --arg voice "${KOKORO_TTS_VOICE:-af_nicole}" --arg input "$SANITIZED" --arg speed "${KOKORO_TTS_SPEED:-1.0}" '{voice:$voice, input:$input, speed:$speed}' \
+  | curl -sS -X POST "${KOKORO_TTS_URL:?KOKORO_TTS_URL not set in local.env}" \
+      -H "Content-Type: application/json" \
+      -d @- \
+  | ffmpeg -hide_banner -loglevel error -i - -ar 48000 -ac 2 -f wav -y "$WAV_A"
+else
+  echo "❌ Unsupported local TTS_PROVIDER: $TTS_PROVIDER" >&2
+  exit 1
+fi
 
 # add ~120ms of lead-in silence to avoid cut-ins
 sox "$WAV_A" -t wav "$WAV_A.pad.wav" pad 0.2
 mv "$WAV_A.pad.wav" "$WAV_A"
 
-aplay -D $OUT_DEV "$WAV_A" || true
+aplay -D "$OUT_DEV" "$WAV_A" || true
 
 echo "✅ Saved:"
 echo "   Q: $TXT_Q"
