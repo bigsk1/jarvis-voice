@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.40.0",
     "openai>=2.14.0,<3",
-    "xai-sdk>=1.12.0",
+    "xai-sdk>=1.12.2",
     "google-genai>=1.0.0",
     # API Server
     "fastapi>=0.100.0",

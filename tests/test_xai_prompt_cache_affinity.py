@@ -102,6 +102,24 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         self.assertIsNone(thinking)
         self.assertEqual(completions.last_kwargs["reasoning_effort"], "low")
 
+    def test_grok_43_reasoning_effort_none_is_sent_to_chat_completions(self):
+        provider = self._provider_shell()
+        provider.model = "grok-4.3"
+        completions = _FakeCompletions()
+        provider.client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "none"}, clear=True):
+            text, tool_call, usage, thinking = provider._chat_with_tools_openai_sdk(
+                messages=[{"role": "user", "content": "hello"}],
+                tools=[],
+                system_prompt="system",
+            )
+
+        self.assertEqual(text, "ok")
+        self.assertIsNone(tool_call)
+        self.assertIsNone(thinking)
+        self.assertEqual(completions.last_kwargs["reasoning_effort"], "none")
+
     def test_chat_completions_path_exposes_xai_cached_tokens(self):
         provider = self._provider_shell()
         completions = _FakeCompletions(
@@ -163,6 +181,14 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "xhigh"}, clear=True):
             self.assertIsNone(provider._xai_reasoning_effort())
+
+    def test_xai_sdk_create_kwargs_passes_none_and_medium_strings(self):
+        provider = self._provider_shell()
+        provider.model = "grok-4.3"
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "none"}, clear=True):
+            self.assertEqual(provider._xai_sdk_create_kwargs(tools=[])["reasoning_effort"], "none")
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "medium"}, clear=True):
+            self.assertEqual(provider._xai_sdk_create_kwargs(tools=[])["reasoning_effort"], "medium")
 
     def test_xai_reasoning_model_detection_does_not_match_non_reasoning(self):
         self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.3"))

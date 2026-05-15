@@ -868,18 +868,22 @@ class XAIProvider(LLMProvider):
         """
         Optional Grok 4.3 reasoning-effort override.
 
-        xAI docs currently support low/medium/high only for grok-4.3. Other
-        Grok reasoning models reason automatically and reject this parameter.
+        xAI documents grok-4.3 as supporting none/low/medium/high (none disables
+        reasoning). Other Grok reasoning models may reject this parameter.
+        See https://docs.x.ai/developers/model-capabilities/text/reasoning
+
+        Requires ``xai-sdk>=1.12.2`` for SDK (gRPC) chat: older releases only
+        accepted ``low``/``high`` strings.
         """
         raw = os.environ.get("XAI_REASONING_EFFORT", "").strip().lower()
         if not raw:
             return None
 
-        allowed = {"low", "medium", "high"}
+        allowed = {"none", "low", "medium", "high"}
         if raw not in allowed:
             print(
                 f"WARNING: Ignoring invalid XAI_REASONING_EFFORT={raw!r}; "
-                "expected low, medium, or high",
+                "expected none, low, medium, or high",
                 file=sys.stderr,
             )
             return None
