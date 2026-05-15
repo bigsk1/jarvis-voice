@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for portable protected / allowed paths (security_utils + paths)."""
 
-import os
 import sys
 import unittest
 from pathlib import Path

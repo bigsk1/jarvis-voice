@@ -1,7 +1,7 @@
 """
 Authentication routes for Jarvis Canvas
 """
-from flask import Blueprint, request, jsonify, redirect, render_template
+from flask import Blueprint, request, jsonify
 import sys
 from pathlib import Path
 

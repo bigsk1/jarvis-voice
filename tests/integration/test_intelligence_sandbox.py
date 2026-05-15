@@ -21,10 +21,8 @@ Usage:
 
 import os
 import sys
-import json
 import argparse
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+from typing import Dict, List, Any
 from dataclasses import dataclass
 
 # Add lib to path
@@ -33,8 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
 from config_loader import load_config
 from intelligence_hooks import (
     get_routing_insights,
-    _evaluate_insight_helpfulness,
-    format_insights_for_prompt
+    _evaluate_insight_helpfulness
 )
 
 # ============================================

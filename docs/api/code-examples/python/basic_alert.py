@@ -4,7 +4,6 @@ Basic Jarvis Alert - Python Example
 Send a simple alert to Jarvis API
 """
 import requests
-import json
 
 # Jarvis API endpoint
 JARVIS_API = "http://localhost:8880/api/alerts"

@@ -13,13 +13,13 @@ import asyncio
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 
 # Load config
 load_config('cloud')
 
 from intelligence import IntelligenceLayer
-from intelligence_hooks import get_routing_insights, format_insights_for_prompt, get_learning_stats
+from intelligence_hooks import get_routing_insights, get_learning_stats
 
 def test_scenario(name: str, query: str, expected_prefer: list = None, expected_avoid: list = None):
     """Test a specific query scenario."""

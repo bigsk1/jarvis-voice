@@ -6,7 +6,6 @@ Run:
     python3 tests/test_tool_executor_cancel.py
 """
 
-import json
 import sys
 import tempfile
 import time

@@ -15,13 +15,12 @@ Options:
 """
 
 import sys
-import os
 import json
 import sqlite3
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Any
 from datetime import datetime
 
 # Colors for terminal output

@@ -1492,7 +1492,6 @@ class OllamaProvider(LLMProvider):
     
     def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
-        import requests
         import sys
         
         messages = []
@@ -1858,7 +1857,6 @@ class OllamaProvider(LLMProvider):
         This is used for models like deepseek-r1 that don't have native tool calling support.
         Tools are described in the system prompt and the model is asked to output JSON.
         """
-        import requests
         import os
         
         # Build tool descriptions for prompt

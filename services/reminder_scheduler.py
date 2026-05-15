@@ -11,7 +11,7 @@ import time
 import sqlite3
 import subprocess
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Dict, Any
 
 # Add lib to path

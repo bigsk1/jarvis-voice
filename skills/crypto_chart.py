@@ -12,7 +12,6 @@ Input: {
 Output: { "ok": bool, "speech": str, "data": dict }
 """
 import json
-import math
 import os
 import sys
 from datetime import datetime, timezone

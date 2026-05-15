@@ -9,7 +9,10 @@ from pathlib import Path
 # Add parent lib to path for shared utilities
 JARVIS_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
-from config_loader import DEFAULT_JARVIS_QA_WORD_LIMIT, DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT
+from config_loader import (
+    DEFAULT_JARVIS_QA_WORD_LIMIT as DEFAULT_JARVIS_QA_WORD_LIMIT,
+    DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT as DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
+)
 
 # Web app paths
 WEB_ROOT = Path(__file__).parent.parent

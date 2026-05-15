@@ -14,7 +14,6 @@ import json
 import re
 import time
 from pathlib import Path
-from datetime import datetime
 
 from lib.rate_limiter import get_docs_search_rate_limit_per_minute
 

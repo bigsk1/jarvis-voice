@@ -6,8 +6,7 @@ import sqlite3
 import json
 import os
 from pathlib import Path
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 DATA_PATH = JARVIS_ROOT / 'data'

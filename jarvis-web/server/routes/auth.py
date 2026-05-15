@@ -1,7 +1,7 @@
 """
 Authentication routes for Jarvis Web UI
 """
-from flask import Blueprint, request, jsonify, redirect, send_from_directory
+from flask import Blueprint, request, jsonify
 from pathlib import Path
 import sys
 

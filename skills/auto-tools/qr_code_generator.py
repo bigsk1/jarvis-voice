@@ -7,6 +7,7 @@ import sys
 import os
 import json
 import io
+from importlib.util import find_spec
 
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
@@ -59,12 +60,8 @@ def main():
                 }))
                 sys.exit(1)
         
-        # Try to import PIL for better rendering
-        try:
-            from PIL import Image
-            has_pil = True
-        except ImportError:
-            has_pil = False
+        # Prefer PIL rendering when qrcode was installed with image support.
+        has_pil = find_spec("PIL") is not None
         
         # Extract parameters
         qr_type = args.get('type', 'text').lower()  # text, url, wifi, email

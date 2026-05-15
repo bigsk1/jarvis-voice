@@ -7,7 +7,6 @@ Create, list, update, or cancel scheduled Jarvis tasks.
 import json
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'api'))

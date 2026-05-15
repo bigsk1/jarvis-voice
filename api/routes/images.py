@@ -17,7 +17,7 @@ shareable infographics, public content meant for distribution.
 """
 import sys
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 # Add lib and skills to path

@@ -228,7 +228,7 @@ def require_auth(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        from flask import request, redirect, url_for, jsonify
+        from flask import request, redirect, jsonify
         
         # Skip if auth not enabled
         if not is_auth_enabled():

@@ -15,7 +15,6 @@ Usage examples:
 import asyncio
 import sys
 import json
-from pathlib import Path
 
 # Version check
 MIN_CRAWL4AI_VERSION = "0.7.4"
@@ -30,8 +29,7 @@ except ImportError:
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 from crawl4ai.extraction_strategy import (
     LLMExtractionStrategy,
-    JsonCssExtractionStrategy,
-    CosineStrategy
+    JsonCssExtractionStrategy
 )
 
 # =============================================================================

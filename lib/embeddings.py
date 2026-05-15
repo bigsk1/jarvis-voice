@@ -6,6 +6,7 @@ Supports:
 - Ollama nomic-embed-text (local mode)
 """
 import threading
+from importlib.util import find_spec
 
 from config_loader import get_config_value, get_int
 from ollama_utils import get_ollama_base_urls, request_ollama
@@ -199,10 +200,7 @@ def _get_fallback_embedding(text: str, dimensions: int = 1536) -> list[float]:
 
 def _get_ollama_embedding(text: str) -> list[float]:
     """Generate embedding using Ollama with nomic-embed-text, with fallback."""
-    try:
-        import requests
-    except ImportError:
-        # Fallback if requests not installed
+    if find_spec("requests") is None:
         _record_embedding_fallback("ollama", text, "requests package not installed")
         return _get_fallback_embedding(text, dimensions=768)
     

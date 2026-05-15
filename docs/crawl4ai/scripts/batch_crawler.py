@@ -8,7 +8,7 @@ import asyncio
 import sys
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
 # Version check
 MIN_CRAWL4AI_VERSION = "0.7.4"

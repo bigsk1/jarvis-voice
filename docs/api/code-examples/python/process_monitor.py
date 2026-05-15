@@ -13,7 +13,6 @@ import subprocess
 import requests
 import time
 import sys
-import re
 
 # Configuration
 JARVIS_API = "http://localhost:8880/api/alerts"
