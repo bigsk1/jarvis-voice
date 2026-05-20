@@ -105,7 +105,14 @@
             <button class="footer-action-btn" id="clearChatBtn" title="Clear current chat">🧻</button>
             <button class="footer-action-btn" id="importKnowledgeBtn" title="Import knowledge (txt/md)">📚</button>
             <button class="footer-action-btn" id="exportImportBtn" title="Export/Import">📤</button>
-            <button class="footer-action-btn" id="openLogsBtn" title="Open logs viewer" onclick="window.location.href='/logs'">📜</button>
+            <a
+              href="#"
+              target="_blank"
+              class="footer-action-btn footer-action-btn-link"
+              id="openLogsBtn"
+              title="Open logs viewer"
+              onclick="window.open(window.location.origin + '/logs', '_blank'); return false;"
+            >📜</a>
             <a
               href="#"
               target="_blank"
