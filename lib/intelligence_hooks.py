@@ -588,6 +588,36 @@ def update_experience_from_user_correction(
             "Experience %s: corrected to FAILURE based on next-turn user correction",
             previous_experience_id,
         )
+
+        try:
+            from user_profile import append_correction_to_learned_lessons
+            lesson_result = append_correction_to_learned_lessons(
+                correction_query,
+                signals,
+                previous_experience_id,
+            )
+            if lesson_result.get("appended"):
+                correction_record = raw_data.get("user_correction", {})
+                if isinstance(correction_record, dict):
+                    latest = correction_record.get("latest")
+                    if isinstance(latest, dict):
+                        latest["learned_lesson"] = {
+                            "file": lesson_result.get("file"),
+                            "ingested": bool((lesson_result.get("ingest") or {}).get("ingested")),
+                        }
+                        raw_payload = json.dumps(redact_sensitive_data(raw_data), default=str)
+                        cursor.execute(
+                            "UPDATE experiences SET raw_data = ? WHERE id = ?",
+                            (raw_payload, previous_experience_id),
+                        )
+                        intel.conn.commit()
+        except Exception as lesson_err:
+            logger.warning(
+                "Failed to append correction lesson for experience %s: %s",
+                previous_experience_id,
+                lesson_err,
+            )
+
         return rows_updated > 0
 
     except Exception as e:

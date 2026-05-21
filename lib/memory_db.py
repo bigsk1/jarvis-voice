@@ -192,6 +192,9 @@ class MemoryDB:
         # Structured user model - compact behavioral/profile traits for
         # user-facing synthesis. This is intentionally separate from
         # knowledge_base so scalar traits do not pollute semantic recall.
+        #
+        # Primary use: cache compiled Profile Card text from user_profile.md
+        # (key profile_card_cache). Not parallel verbosity/technical_depth storage.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_model (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -702,10 +705,10 @@ class MemoryDB:
         last_reconciled_at: str = None,
     ) -> int:
         """
-        Insert or update a compact user-model trait.
+        Insert or update a user_model row.
 
-        This table is for learned behavioral traits used by user-facing
-        synthesis, not for semantic recall or tool routing.
+        Primary production use: `profile_card_cache` (compiled Profile Card text).
+        Generic API retained for future typed entries if needed.
         """
         key = (key or "").strip()
         if not key:

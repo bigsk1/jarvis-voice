@@ -29,6 +29,7 @@ from model_prompt_overrides import load_model_prompt_override, apply_prompt_over
 from tool_schema import ToolRegistry, _merged_ghost_tool_names
 from llm_provider import create_provider
 from provider_errors import classify_provider_error, friendly_provider_error, is_provider_error_text
+from user_profile import append_profile_card_for_router_direct_answer
 
 
 @dataclass
@@ -1257,12 +1258,13 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             )
             if part and part.strip()
         )
-        return apply_prompt_override_sections(
+        prompt = apply_prompt_override_sections(
             base_prompt,
             self.prompt_override,
             prepend_sections=("routing_prepend", "tool_calling_prepend"),
             append_sections=("routing_append",),
         )
+        return append_profile_card_for_router_direct_answer(prompt)
     
     def _create_provider(self):
         """Create appropriate LLM provider based on config or overrides."""

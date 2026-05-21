@@ -334,60 +334,27 @@ Intel logs: search for `user_correction_shadow_candidate` events.
 
 **Files:** `lib/intelligence_hooks.py`, `orchestrator/orchestrator_v2.py`, `jarvis-web/server/sockets/chat.py`, `lib/memory_db.py`
 
-### 2) Structured User Model / Compact Profile Card (Phase 2A)
+### 2) Profile Card + user_model cache (Phase 2A)
 **Priority:** High  
-**Status:** Partial — dedicated `user_model` table implemented in memory DB; prompt injection/update reconciliation not active
+**Status:** Implemented — Profile Card at router direct-answer + synthesis boundaries; human reconcile script added
 
-This is the key idea: a fixed-budget, compressed, durable "how to treat this user" profile that improves over time. It should preserve important stable preferences even if they are six months old, while allowing noisy or recent-only signals to decay.
+**Source of truth:** `jarvis-intel/user_profile.md` → `## Profile Card` (~15 lines). `## Profile Reference` below is Tier 3 (on-demand only).
 
-**Already in place (not intel files):** discrete preferences like "call me sir" are stored in `knowledge_base` via the `remember` tool (`how_to_address_user`, etc.) and injected every turn by auto-memory - not semantic search:
+**Cache:** `user_model.profile_card_cache` stores compiled card text + source hash + `last_reconciled_at` — **not** parallel scalar traits (`verbosity`, `technical_depth`). See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) for Tier 0–3 conflict order.
 
-- `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT` + `get_addressing_preferences()` in `lib/memory_db.py`
-- Key patterns: `address`, `how_to`, `response_tone`, `response_style`, `preferred_language`
-- Orchestrator merges these as pinned prefs before query-based semantic recall (`orchestrator/orchestrator_v2.py` → `_get_relevant_memories_bundle()`)
+**Implemented:**
+- `lib/user_profile.py` — extract, cache, router + synthesis append
+- `USER_PROFILE_CARD_ENABLED` — router direct-text answers + `ResponseFormatter.apply_qa_prompt_overrides()`
+- `bin/reconcile-profile` — monthly human review suggestions (no auto-write)
+- Apply-mode corrections append **`jarvis-learned-lessons.md`** (`USER_CORRECTION_APPEND_LESSONS`), not `user_profile.md`
 
-See [AUTO_MEMORY_INJECTION_FEATURE.md](AUTO_MEMORY_INJECTION_FEATURE.md) and `config/cloud.env` (`AUTO_MEMORY_*` knobs).
+**Still open:**
+- Explicit approval UI for suggested profile edits
+- Enforce memory_type filtering on recall (Phase 3)
 
-**What `user_model` would add:** a complementary layer for **learned behavioral traits** that are not discrete remember/forget key-value pairs:
+**Updates:** Profile Card edited by you or explicit "update my profile" via `manage_intel`. Jarvis does **not** auto-edit Profile Card.
 
-| Field | Example |
-|-------|---------|
-| `verbosity` | 0.25 = concise by default; expand when asked |
-| `technical_depth` | 0.8 = comfortable with code paths, architecture, and tradeoffs |
-| `formality` | 0.35 = warm/casual, not stiff |
-| `prefers_code_first` | 0.7 = implementation details are useful, but research first for risky changes |
-| `confidence` | confidence per trait, based on number/quality of signals |
-| `evidence` | recent correction IDs, feedback IDs, or memory keys that justify the trait |
-| `last_reconciled_at` | last compaction/reconciliation time |
-
-The injected prompt should stay tiny, roughly a 5-line profile card:
-
-```text
-User profile:
-- Addressing/style prefs: pulled from always-include knowledge_base memories.
-- Interaction style: concise but source-faithful; prefers surgical changes after gap analysis.
-- Technical depth: high; include code paths and verification when relevant.
-- Adaptation hints: update only from strong corrections, repeated behavior, or explicit preference.
-```
-
-**Update model:** do not let every new turn rewrite the profile. Prefer one or both:
-
-- rolling reconciliation after a threshold such as 20 tasks/queries, using only strong signals
-- event-driven updates when feedback, Completion Guard, or cross-turn corrections provide high-confidence evidence
-
-Important long-term preferences should survive time decay. Recent signals should not automatically override stable traits unless repeated or explicit.
-
-**Storage decision:** use a dedicated `user_model` table in the memory DB, not jarvis-intel files. The remaining open work is reconciliation policy and prompt injection through the existing system-prompt assembly path, not loading raw markdown files.
-
-**Injection boundary:** the full profile card belongs only in user-facing generation:
-
-- pure Q&A / no-tool chat
-- final synthesis after single-tool or multi-tool results are available
-- clarification questions when Jarvis needs to ask the user something
-
-Do **not** inject the full interaction profile into deterministic routing, tool-choice loops, or tool-argument generation. Those paths may receive only relevant operational preferences, such as location, units, selected account/calendar, safety constraints, or explicit user preferences that materially affect execution. This keeps routing crisp while still letting final answers adapt to the user.
-
-**Not a replacement for:** existing `remember`/`forget` preference flow or auto-memory always-include. **Complements** them for softer, inferred style adaptation.
+**Not a replacement for:** `JARVIS_RESPONSE_STYLE`, model prompt overrides, auto-memory always-include, or full intel reference files.
 
 ### 3) Memory Quality Gates
 **Priority:** High  
@@ -397,7 +364,7 @@ Before auto-memory writes to knowledge base, classify entries:
 
 | Type | Route | Notes |
 |------|-------|-------|
-| `preference` | `knowledge_base` or `user_model` | Explicit durable preference stays in `knowledge_base`; inferred soft trait feeds `user_model` |
+| `preference` | `knowledge_base` | Explicit durable preference; profile card cache is separate (`user_model`) |
 | `fact` | `knowledge_base` | Stable user/world/project fact with provenance |
 | `artifact` | stash or intel only | Generated pages, canvas text, temporary outputs, intermediate notes |
 | `transient` | session/task context only | Short-lived state, one-off planning, recent-only reminders |
@@ -503,4 +470,4 @@ Want to implement something? Here's how:
 ---
 
 **Last Updated:** May 21, 2026
-**Version:** 2.5 (Phase 1 shadow/apply + wake-word experience_id bridge documented)
+**Version:** 2.6 (Profile Card synthesis injection + user_model cache + reconcile script)

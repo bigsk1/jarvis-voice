@@ -19,11 +19,14 @@ This README is skipped during ingestion.
 |------|---------|------------|-------------|
 | `jarvis-tool-knowledge.md` | Curated tool knowledge, provider limits, best practices | Human | Yes |
 | `jarvis-learned-lessons.md` | Lessons Jarvis discovers during operation | Jarvis (via manage_intel append) | Yes |
+| `user_profile.md` | **Profile Card** (always-injected synthesis contract) + Profile Reference | Human | No (gitignored) |
 | Everything else | Personal knowledge (network, servers, etc.) | Human | No (gitignored) |
 
 **jarvis-tool-knowledge.md** is the source of truth for tool behavior. Contains provider quirks, common failure patterns, parameter gotchas, and operational guidelines. Edit this file directly when you learn something new about how tools or providers work.
 
 **jarvis-learned-lessons.md** is where Jarvis writes autonomously. When Jarvis discovers a new limitation or recurring failure, it appends a timestamped entry. Review periodically and promote good lessons to jarvis-tool-knowledge.md.
+
+**user_profile.md** contains a short **`## Profile Card`** section at the top (code-injected at synthesis only) and **`## Profile Reference`** below for on-demand retrieval. Jarvis must not auto-edit Profile Card — only you, or explicit "update my profile" requests via `manage_intel`.
 
 ## How It Works
 

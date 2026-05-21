@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""
+Suggest profile-card consolidations for human review (no auto-write).
+
+Reads:
+- ## Profile Card from jarvis-intel/user_profile.md
+- Recent jarvis-learned-lessons.md entries
+- High-importance profile/preference rows from knowledge_base
+
+Outputs markdown suggestions to stdout for manual merge into Profile Card.
+
+Usage (run with -h / --help for full flags):
+
+  ./bin/reconcile-profile
+      Print markdown report to stdout (default).
+
+  ./bin/reconcile-profile --limit 20
+      Include more high-importance memory rows and a longer lessons tail.
+
+  ./bin/reconcile-profile --json
+      Emit structured JSON (profile_card, source_hash, full report text).
+
+  ./bin/reconcile-profile > /tmp/profile-reconcile.md
+      Save report for offline review before editing user_profile.md.
+
+After editing Profile Card, ingest intel so memory stays in sync:
+  ./skills/ingest_intel.py '{"path":"jarvis-intel"}'
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+
+from memory_db import MemoryDB
+from user_profile import (
+    default_profile_path,
+    load_profile_card_from_disk,
+)
+
+
+def _read_tail(path: Path, max_lines: int = 40) -> list[str]:
+    if not path.is_file():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return lines[-max_lines:]
+
+
+def _load_profile_memories(db: MemoryDB, limit: int = 15) -> list[dict]:
+    cursor = db.conn.cursor()
+    rows = cursor.execute(
+        """
+        SELECT category, key, value, importance, updated_at
+        FROM knowledge_base
+        WHERE importance >= 7
+          AND (
+              category IN ('profile', 'preference', 'preferences', 'personal_preference')
+              OR key LIKE '%prefer%'
+              OR key LIKE '%address%'
+              OR key LIKE '%how_to%'
+          )
+        ORDER BY importance DESC, updated_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def build_reconcile_report(limit: int = 10) -> str:
+    profile_path = default_profile_path(PROJECT_ROOT)
+    card_text, _, _ = load_profile_card_from_disk(profile_path)
+    lessons_path = PROJECT_ROOT / "jarvis-intel" / "jarvis-learned-lessons.md"
+    lesson_tail = _read_tail(lessons_path, max_lines=limit * 4)
+
+    db = MemoryDB()
+    try:
+        memories = _load_profile_memories(db, limit=limit)
+    finally:
+        db.close()
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines = [
+        f"# Profile Reconcile Suggestions ({now})",
+        "",
+        "Review only — nothing is written automatically.",
+        "",
+        "## Current Profile Card",
+        "",
+        "```text",
+        card_text or "(empty — add ## Profile Card to user_profile.md)",
+        "```",
+        "",
+        "## Recent learned-lessons tail (candidates to promote into card or tool-knowledge)",
+        "",
+    ]
+
+    if lesson_tail:
+        lines.extend(f"- {line}" if line.strip().startswith("-") else line for line in lesson_tail)
+    else:
+        lines.append("- (no learned-lessons file or empty)")
+
+    lines.extend(["", "## High-importance profile/preference memories", ""])
+    if memories:
+        for row in memories:
+            lines.append(
+                f"- `{row.get('category')}/{row.get('key')}` (importance {row.get('importance')}): "
+                f"{str(row.get('value', ''))[:200]}"
+            )
+    else:
+        lines.append("- (none found)")
+
+    lines.extend([
+        "",
+        "## Suggested manual actions",
+        "",
+        "1. Promote stable lessons into Profile Card only if they are about **how Jarvis should behave**, not provider quirks.",
+        "2. Move provider/tool quirks to `jarvis-tool-knowledge.md`, not Profile Card.",
+        "3. Leave ephemeral project focus in memories; do not bloat Profile Card.",
+        "4. After editing Profile Card, run: `./skills/ingest_intel.py '{\"path\":\"jarvis-intel\"}'`",
+        "5. Profile card cache refreshes automatically on next synthesis (source hash change).",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Suggest profile card consolidations for human review")
+    parser.add_argument("--limit", type=int, default=10, help="Max memory rows to include")
+    parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown")
+    args = parser.parse_args()
+
+    profile_path = default_profile_path(PROJECT_ROOT)
+    card_text, source_hash, _ = load_profile_card_from_disk(profile_path)
+
+    if args.json:
+        payload = {
+            "profile_path": str(profile_path),
+            "profile_card": card_text,
+            "source_hash": source_hash,
+            "report": build_reconcile_report(limit=args.limit),
+        }
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    print(build_reconcile_report(limit=args.limit))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -16,6 +16,7 @@ from config_loader import (
 )
 from model_prompt_overrides import apply_prompt_override_sections
 from provider_errors import is_provider_error_text
+from user_profile import append_user_profile_card_to_prompt
 
 
 class ResponseFormatter:
@@ -38,13 +39,14 @@ class ResponseFormatter:
         return is_provider_error_text(text)
 
     def apply_qa_prompt_overrides(self, base_prompt: str) -> str:
-        """Apply model-specific QA overlays to synthesis-style prompts."""
-        return apply_prompt_override_sections(
+        """Apply model-specific QA overlays and synthesis-only profile card."""
+        prompt = apply_prompt_override_sections(
             base_prompt,
             self.prompt_override,
             prepend_sections=("qa_prepend",),
             append_sections=("qa_append",),
         )
+        return append_user_profile_card_to_prompt(prompt)
 
     def xai_tts_style_tags_enabled(self) -> bool:
         """Return True when final speech may include xAI TTS style tags."""

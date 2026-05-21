@@ -1205,6 +1205,9 @@ crontab -e
 
 # Jarvis weekly cleanup (logs 60d, audio 30d, images 90d, stash TTL)
 0 3 * * 0 $HOME/jarvis-voice/bin/cleanup-all >> $HOME/jarvis-voice/logs/cleanup.log 2>&1
+
+# Monthly profile reconcile report, review-only, no auto-write
+0 9 1 * * cd $HOME/jarvis-voice && . $HOME/jarvis-venv/bin/activate && ./bin/reconcile-profile > logs/profile-reconcile-$(date +\%Y\%m\%d).md 2>&1
 ```
 
 ---
