@@ -238,6 +238,121 @@ A single command that checks:
 
 ---
 
+## 🧭 Strategic Direction (2026-05-21)
+
+Jarvis is past the "add more features" phase. The next gains come from **tighter feedback loops**, **cross-surface continuity**, and **memory quality** — not pivoting to SOUL.md/MEMORY.md-style harnesses. Code-driven orchestration stays; borrow the *idea* of always-loaded persona/preferences (~500 tokens) via a structured user model, not unstructured markdown files.
+
+Guiding bet: keep Jarvis' canonical state local (sessions, tool traces, completion guard, feedback). Use provider continuation (xAI, OpenAI Responses) only as an in-flight optimization — see [XAI_NATIVE_CONTINUATION_PLAN.md](XAI_NATIVE_CONTINUATION_PLAN.md) and [CONVERSATION_STATE_ARCHITECTURE.md](CONVERSATION_STATE_ARCHITECTURE.md).
+
+### What Already Partially Covers the Learning Loop
+
+Several post-turn hooks already update the intelligence DB before reflection runs. These are **same-turn** corrections, not cross-turn:
+
+| Hook | Function | What it does |
+|------|----------|--------------|
+| **Completion Guard (auto + manual)** | `update_experience_from_completion_guard()` | Writes guard status onto the linked experience; `repaired` / `unresolved` / `ticket_created` adjust `outcome_success`, `user_satisfied`, `had_to_retry`; folds corrected answer/tools into `raw_data.context` for reflection |
+| **Feedback (LLM-as-QA)** | `update_experience_from_feedback()` | All ratings store metadata in `raw_data.feedback.latest`; ratings ≤ 2 retroactively mark `outcome_success=false` and bump reflection priority |
+| **Same-turn signal inference** | `_infer_user_signals()` in `intelligence_hooks.py` | Pattern-matches the **current** query ("try again", "what I meant", "not that") at record time — does **not** look back at the previous turn |
+
+See [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) and [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) for the full bridge docs.
+
+**Remaining gap:** a user correction on turn 2 does not retroactively downgrade turn 1's experience. Turn 1 is still recorded as `outcome_success=true` (HTTP 200 / LLM responded) unless Completion Guard or Feedback catches it on that same turn.
+
+### 1) Retroactive Satisfaction Detection (Cross-Turn Learning Loop)
+**Priority:** High  
+**Status:** Not implemented — highest-ROI intelligence improvement
+
+Cheapest path to a real self-improvement loop without "dreaming" or sandboxes:
+
+```
+Turn 1: Jarvis answers → experience recorded (success=true)
+Turn 2: User says "no I meant Portland OR not Portland ME"
+         → detect correction pattern on NEW query
+         → UPDATE turn 1 experience: outcome_success=false, had_to_clarify=true
+         → queue reflection with high priority
+```
+
+**Why this matters:** today, `ok: True` + no guard failure + no feedback run = success. Many real failures only show up when the user rephrases on the next message. Completion Guard and Feedback help but are limited to the turn they run on.
+
+**Implementation sketch:**
+- Post-turn hook (orchestrator entry or web chat pre-route): compare new query against previous experience in the same session/auto-context window
+- Reuse/extend correction patterns from `_infer_user_signals()` (`what i meant`, `no i want`, `not that`, `too long`, `you forgot`, etc.)
+- Call new `update_experience_from_user_correction(previous_experience_id, signals)` — same shape as feedback/guard bridges
+- Optionally nudge `user_model` traits (verbosity, etc.) when style corrections are detected
+- Wire `experience_id` through session/auto-context so turn N+1 can find turn N's row
+
+**Files likely involved:** `lib/intelligence_hooks.py`, `orchestrator/orchestrator_v2.py`, `jarvis-web/server/sockets/chat.py`
+
+### 2) Structured User Model (Phase 2A)
+**Priority:** High  
+**Status:** Documented in [Psychological-Profile-Ideas.md](Psychological-Profile-Ideas.md) — not implemented
+
+Replace scattered "always call me sir" intel files with a `user_model` table in memory DB (`verbosity`, `technical_depth`, `formality`, `prefers_code_first` as 0.0–1.0 scalars). Inject ~5 lines into the system prompt every turn — no semantic search needed. Update from correction patterns + explicit preferences. Respects existing `JARVIS_RESPONSE_STYLE=auto`; nudges within mode rather than overriding it.
+
+### 3) Memory Quality Gates
+**Priority:** High  
+**Status:** Partial — score thresholds raised for auto-memory injection; no write-time type taxonomy
+
+Before auto-memory writes to knowledge base, classify entries: `preference | fact | artifact | transient`. Route `artifact`/`transient` to stash/intel only; `preference` → user_model + small intel file; `fact` → knowledge base with source tag. Stops canvas pages and misc junk from polluting routing recall.
+
+### 4) Unified Session / Task Layer
+**Priority:** High (architectural)  
+**Status:** Not implemented — see [personal/app-next-steps-roadmap.md](personal/app-next-steps-roadmap.md)
+
+First-class `session` and `task` objects shared across voice, CLI, and Web UI. Auto-context handles wake-word continuity; Web UI has its own client-side history — no shared resumable work model yet. Unlocks cross-surface handoff, proactive "open tasks", and cleaner attachment of OpenCode session IDs, stash refs, and guard tickets.
+
+### 5) OpenCode Supervised Subprocess
+**Priority:** Medium–High  
+**Status:** Phase 2 memory integration planned; interactive supervision loop not built
+
+Jarvis should stream OpenCode session logs, track progress, and interrupt/redirect like a user in the TUI — not fire-and-forget. Needs `opencode_interrupt`, `opencode_send_message`, and task-layer linkage. See [opencode/OPENCODE_PHASE2_STATUS.md](opencode/OPENCODE_PHASE2_STATUS.md).
+
+### 6) Personal Corpus Ingestion
+**Priority:** Medium (visible product win)  
+**Status:** Building blocks exist — not unified
+
+Bookmarks + URL ingest + intel files → one searchable personal corpus with dedup, tags, and provenance. Reuses `bookmark_search`, `url_ingest`, `deep_research` workflows.
+
+### 7) Daily Recap
+**Priority:** Medium  
+**Status:** Idea only
+
+On-demand or scheduled: short voice summary + full canvas detail (services, alerts, weather, crypto/stocks, stale reminders). Good workflow candidate — mostly glue.
+
+### 8) Routing Evals + Regression Suite
+**Priority:** Medium  
+**Status:** Listed above (section C) — not built
+
+~50 curated prompts with expected tool/no-tool behavior; CI-friendly runner for cloud + local. Prevents silent regressions as tool count and providers change.
+
+### Defer / Keep Minimal
+
+| Idea | Verdict |
+|------|---------|
+| "Dreaming" / offline simulation | High complexity — wait until cross-turn learning works |
+| Full emotion/urgency classification | User model scalars get ~80% there |
+| Orchestrator kernel refactor | Extract modules **during** session/task work, not as a standalone sprint |
+| Smart home | Low unless used daily |
+
+### Suggested Next Four Weeks
+
+```
+Week 1: Retroactive satisfaction (cross-turn) + memory type gates
+Week 2: User model table + prompt injection
+Week 3: Session/task schema + Web UI wiring
+Week 4: Daily recap workflow OR OpenCode streaming (pick daily-use winner)
+```
+
+### Updated Priority Stack (May 2026)
+
+1. **Retroactive satisfaction detection** — closes the biggest intelligence gap; complements existing guard/feedback hooks
+2. **User model + memory quality gates** — SOUL.md benefits without harness drift
+3. **Session/task layer** — cross-surface continuity and foundation for everything else
+4. **OpenCode supervision OR personal corpus** — pick by daily usage
+5. **Routing evals** — insurance as tool surface grows
+
+---
+
 ## 🤝 Contributing
 
 Want to implement something? Here's how:
@@ -271,5 +386,5 @@ Want to implement something? Here's how:
 
 ---
 
-**Last Updated:** January 2026
-**Version:** 2.1 (Added workflow orchestration reference)
+**Last Updated:** May 21, 2026
+**Version:** 2.2 (Added strategic direction section — learning loop, session layer, user model)
