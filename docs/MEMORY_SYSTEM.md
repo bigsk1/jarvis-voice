@@ -231,6 +231,7 @@ sqlite3 data/jarvis_memory.db "DELETE FROM knowledge_base WHERE key='favorite_co
 
 - **Always-include** (1–2 items): Addressing/response-style only (`how_to_address_user`, `response_tone`, etc.). E.g. "call me sir" appears in every chat.
 - **Semantic search**: Topic-specific memories (dog name, Spotify playlist, etc.) only when relevant to the current query.
+- **Type filter** (`AUTO_MEMORY_TYPE_FILTER_ENABLED`): Excludes `artifact` and `transient` rows (stash/canvas uploads, session scratch). Legacy rows without labels are classified on the fly; run `./bin/backfill-memory-types` once to stamp metadata.
 - **Recency weighting**: Recent memories rank slightly higher; older ones fade.
 
 Config: `AUTO_MEMORY_*` in cloud.env / local.env. See `docs/AUTO_MEMORY_INJECTION_FEATURE.md`.

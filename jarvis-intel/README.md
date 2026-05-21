@@ -19,14 +19,49 @@ This README is skipped during ingestion.
 |------|---------|------------|-------------|
 | `jarvis-tool-knowledge.md` | Curated tool knowledge, provider limits, best practices | Human | Yes |
 | `jarvis-learned-lessons.md` | Lessons Jarvis discovers during operation | Jarvis (via manage_intel append) | Yes |
-| `user_profile.md` | **Profile Card** (always-injected synthesis contract) + Profile Reference | Human | No (gitignored) |
+| `user_profile.md` | **Profile Card** (short, always injected) + optional **Profile Reference** (searchable detail) | Human | No (gitignored) |
+| `user_profile.md.example` | Blank starter — copy to `user_profile.md` on first install | Repo | Yes (not ingested) |
 | Everything else | Personal knowledge (network, servers, etc.) | Human | No (gitignored) |
 
 **jarvis-tool-knowledge.md** is the source of truth for tool behavior. Contains provider quirks, common failure patterns, parameter gotchas, and operational guidelines. Edit this file directly when you learn something new about how tools or providers work.
 
 **jarvis-learned-lessons.md** is where Jarvis writes autonomously. When Jarvis discovers a new limitation or recurring failure, it appends a timestamped entry. Review periodically and promote good lessons to jarvis-tool-knowledge.md.
 
-**user_profile.md** contains a short **`## Profile Card`** section at the top (code-injected at synthesis only) and **`## Profile Reference`** below for on-demand retrieval. Jarvis must not auto-edit Profile Card — only you, or explicit "update my profile" requests via `manage_intel`.
+**user_profile.md** — optional personal profile (see [User profile](#user-profile) below). Jarvis does not auto-edit it.
+
+**user_profile.md.example** — copy once to create your own file. Not ingested (`ingest_intel` only picks up `*.md` and `*.txt`, not `*.md.example`).
+
+## User profile
+
+On a fresh clone, create your profile from the example:
+
+```bash
+cp jarvis-intel/user_profile.md.example jarvis-intel/user_profile.md
+```
+
+Edit **`## Profile Card`** only (~4–8 bullets). If the file is missing, Jarvis still runs — profile injection is simply skipped.
+
+### Profile Card vs Reference vs remember
+
+| Section | What it's for | When Jarvis sees it |
+|---------|---------------|---------------------|
+| **Profile Card** | Stable personal context: who you are, how you work, tone expectations | Every turn (appended to system prompt) |
+| **Profile Reference** | Longer notes: projects, infra, background | When a query matches — search/recall, not every turn |
+| **`remember` / memory DB** | Specific facts: pet name, "call me sir", URLs, preferences | Pinned prefs every turn; other facts when relevant |
+
+**Do put in Profile Card:** "Homelab operator, technical, direct answers, self-hosted bias."
+
+**Do not put in Profile Card:** tool instructions, response-mode settings, pet names, IP addresses, credentials — those belong in memory, other intel files, or env config.
+
+Optional: ingest reference material after editing:
+
+```bash
+./skills/ingest_intel.py '{"path":"jarvis-intel"}'
+```
+
+Review or tidy monthly: `./bin/reconcile-profile` (human-readable report only; does not auto-edit files).
+
+More detail for maintainers: `docs/USER_PROFILE_SYSTEM.md`.
 
 ## How It Works
 
@@ -101,4 +136,4 @@ The `manage_intel` tool is the only way Jarvis can write to this folder. OpenCod
 
 ## Security
 
-Most files in this folder are NOT tracked by git (`.gitignore` has `jarvis-intel/*`). Only `jarvis-tool-knowledge.md` and `jarvis-learned-lessons.md` are git-tracked via `!` exceptions. Safe to store sensitive information in any other file.
+Most files in this folder are NOT tracked by git (`.gitignore` has `jarvis-intel/*`). Git-tracked exceptions: `jarvis-tool-knowledge.md`, `jarvis-learned-lessons.md`, `user_profile.md.example`, and this README. Safe to store sensitive information in any other file.

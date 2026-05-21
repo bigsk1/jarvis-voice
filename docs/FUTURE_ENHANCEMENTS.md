@@ -270,11 +270,11 @@ Several post-turn hooks already update the intelligence DB before reflection run
 
 See [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) and [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) for the full bridge docs.
 
-**Cross-turn gap (default):** with `USER_CORRECTION_LEARNING_MODE=shadow` (default), turn 1 is **not** downgraded when turn 2 looks like a correction. Shadow candidates are persisted on the **current** turn for review. With `USER_CORRECTION_LEARNING_MODE=apply`, turn 1 is retroactively marked failed via `update_experience_from_user_correction()`.
+**Cross-turn learning:** `USER_CORRECTION_LEARNING_MODE=shadow|apply`. **Shadow** (safe default for new installs): records candidates only — turn 1 unchanged. **Apply**: downgrades linked prior experience + optional lesson append. Production config uses **apply** after shadow review; set back to `shadow` if false positives appear.
 
 ### 1) Retroactive Satisfaction Detection (Cross-Turn Learning Loop)
 **Priority:** High  
-**Status:** Partial — shadow + apply implemented; default shadow; live evidence review before apply
+**Status:** Implemented — shadow + apply live; production on `apply` (May 2026); tune guardrails as needed
 
 Cheapest path to a real self-improvement loop without "dreaming" or sandboxes:
 
@@ -294,15 +294,15 @@ Turn 2: User says "no I meant Portland OR not Portland ME"
 - `extract_user_correction_signals()` — conservative correction/retry/style patterns
 - `update_experience_from_user_correction()` — apply-mode bridge (mirrors feedback/guard)
 - `record_user_correction_shadow_candidate()` — shadow persistence + `get_intel_logger()` event
-- `USER_CORRECTION_LEARNING_MODE=shadow|apply` in `config/cloud.env` / `local.env` (+ examples)
+- `USER_CORRECTION_LEARNING_MODE=shadow|apply` — examples default `shadow`; flip to `apply` after review
+- Apply + `USER_CORRECTION_APPEND_LESSONS=true` → `jarvis-learned-lessons.md` (dedup by experience id)
 - Web UI: `experience_id` on assistant history → `_previous_experience_id_from_history()`
 - Wake word / CLI: `experience_id` in conversation metadata → `get_previous_experience_id_from_recent_conversations()` within `AUTO_CONTEXT_MINUTES`
 
-**Still open:**
-- Live shadow evidence review and false-positive tuning before flipping to apply
+**Still open (nice-to-have):**
 - Task-change guardrails ("I meant to ask something else" vs real correction)
-- Optional `user_model` trait nudge from style corrections (apply mode)
-- Some exit paths (duplicate-prevented, max-turns) do not yet log `experience_id`
+- `experience_id` on some exit paths (duplicate-prevented, max-turns)
+- Optional `user_model` trait nudge from style corrections (deferred)
 
 **Guardrails:**
 - Only downgrade when the correction clearly refers to Jarvis' previous answer, not when the user changes tasks naturally
@@ -336,46 +336,50 @@ Intel logs: search for `user_correction_shadow_candidate` events.
 
 ### 2) Profile Card + user_model cache (Phase 2A)
 **Priority:** High  
-**Status:** Implemented — Profile Card at router direct-answer + synthesis boundaries; human reconcile script added
+**Status:** Complete (core) — injection, cache, reconcile script, install template
 
-**Source of truth:** `jarvis-intel/user_profile.md` → `## Profile Card` (~15 lines). `## Profile Reference` below is Tier 3 (on-demand only).
+**Source of truth:** `jarvis-intel/user_profile.md` → `## Profile Card` (~4–8 bullets, personal context). `## Profile Reference` below is on-demand only (search/intel).
 
-**Cache:** `user_model.profile_card_cache` stores compiled card text + source hash + `last_reconciled_at` — **not** parallel scalar traits (`verbosity`, `technical_depth`). See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) for Tier 0–3 conflict order.
+**Cache:** `user_model.profile_card_cache` stores compiled card text + source hash — **not** scalar traits. See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md).
 
 **Implemented:**
 - `lib/user_profile.py` — extract, cache, router + synthesis append
-- `USER_PROFILE_CARD_ENABLED` — router direct-text answers + `ResponseFormatter.apply_qa_prompt_overrides()`
-- `bin/reconcile-profile` — monthly human review suggestions (no auto-write)
-- Apply-mode corrections append **`jarvis-learned-lessons.md`** (`USER_CORRECTION_APPEND_LESSONS`), not `user_profile.md`
+- `USER_PROFILE_CARD_ENABLED` — router + `ResponseFormatter.apply_qa_prompt_overrides()`
+- `jarvis-intel/user_profile.md.example` + README first-install notes
+- `bin/reconcile-profile` — human review report (stdout only; no auto-write)
+- Apply-mode corrections → **`jarvis-learned-lessons.md`**, not `user_profile.md`
 
-**Still open:**
-- Explicit approval UI for suggested profile edits
-- Enforce memory_type filtering on recall (Phase 3)
+**Deferred:** Web UI “approve profile edit” flow — not needed; edit `user_profile.md` directly or use `manage_intel` when you ask. `reconcile-profile` is the review aid.
 
-**Updates:** Profile Card edited by you or explicit "update my profile" via `manage_intel`. Jarvis does **not** auto-edit Profile Card.
+**Optional later:** Filter `search_memory` / `semantic_recall` by `memory_type` (Phase 3B) — only if manual search noise becomes a problem.
 
-**Not a replacement for:** `JARVIS_RESPONSE_STYLE`, model prompt overrides, auto-memory always-include, or full intel reference files.
+**Updates:** Profile Card edited by you. Jarvis does **not** auto-edit Profile Card.
+
+**Not a replacement for:** `JARVIS_RESPONSE_STYLE`, model prompt overrides, auto-memory always-include, or Profile Reference / intel files.
 
 ### 3) Memory Quality Gates
 **Priority:** High  
-**Status:** Partial - write-time classification metadata on `remember()`; recall enforcement not yet active
+**Status:** Complete (auto-inject scope) — write labels + filter + backfill; artifacts stay in DB by design
 
-Before auto-memory writes to knowledge base, classify entries:
+All rows still land in `knowledge_base` on write. **Auto-memory injection** filters by label; explicit `search_memory` / `semantic_recall` unchanged so stash/canvas rows remain findable when you ask.
 
-| Type | Route | Notes |
-|------|-------|-------|
-| `preference` | `knowledge_base` | Explicit durable preference; profile card cache is separate (`user_model`) |
-| `fact` | `knowledge_base` | Stable user/world/project fact with provenance |
-| `artifact` | stash or intel only | Generated pages, canvas text, temporary outputs, intermediate notes |
-| `transient` | session/task context only | Short-lived state, one-off planning, recent-only reminders |
+| Type | Storage | Auto-inject | Notes |
+|------|---------|-------------|-------|
+| `preference` | `knowledge_base` | Yes | Durable prefs; Profile Card is separate |
+| `fact` | `knowledge_base` | Yes | Stable facts with provenance |
+| `artifact` | `knowledge_base` | **No** | Stash/canvas/generated — searchable on demand |
+| `transient` | `knowledge_base` | **No** | e.g. `intel_hash_*` bookkeeping rows |
 
-This prevents canvas pages, one-off artifacts, and misc junk from polluting routing recall while preserving real preferences and durable facts.
+**Implemented:**
+- `classify_memory_entry()` on every `MemoryDB.remember()` write
+- `AUTO_MEMORY_TYPE_FILTER_ENABLED` — excludes artifact/transient from auto-inject (legacy rows classified on the fly)
+- Wider FTS/semantic candidate pool when filter on (so facts aren't crowded out by artifacts pre-filter)
+- `./bin/backfill-memory-types` — stamp `memory_type` metadata on existing rows (metadata only; no deletes)
 
-**Research-first implementation sketch:**
-- Audit current memory write paths before changing filters
-- Add classification metadata without dropping writes at first
-- Run a small review set of remembered entries to tune labels and false positives
-- Only then enforce routing differences between `knowledge_base`, stash, intel, and `user_model`
+**Deferred (not planned unless needed):**
+- Reroute artifact writes away from `knowledge_base`
+- Phase 3B: filter tool-based recall by type
+- Session/task store for `transient` (Phase 4)
 
 ### 4) Unified Session / Task Layer
 **Priority:** High (architectural)  
@@ -416,21 +420,21 @@ On-demand or scheduled: short voice summary + full canvas detail (services, aler
 | Orchestrator kernel refactor | Extract modules **during** session/task work, not as a standalone sprint |
 | Smart home | Low unless used daily |
 
-### Suggested Next Four Weeks
+### Suggested Next Steps (May 2026)
 
 ```
-Week 1: Live shadow evidence run (Web UI + wake word); review SQL + intel logs
-Week 2: Tune false positives; flip USER_CORRECTION_LEARNING_MODE=apply when satisfied
-Week 3: user_model prompt injection (final synthesis only) + one trait update path
-Week 4: Memory recall enforcement for artifact/transient types OR session/task schema start
+Done: Profile Card injection, memory type auto-inject filter, backfill, correction apply mode
+Now:  Run apply-mode corrections in production; watch intel logs + learned-lessons for false positives
+Next: Phase 4 session/task layer OR routing evals — pick by daily pain
+Optional: Phase 3B tool recall filter only if search_memory noise returns
 ```
 
 ### Updated Priority Stack (May 2026)
 
-1. **Structured user model / compact profile card** — defines the stable target for how Jarvis should treat the user over time
-2. **Retroactive satisfaction detection** — supplies high-confidence correction evidence and closes the biggest cross-turn learning gap
-3. **Memory quality gates** — protects recall and the user model from artifact/transient pollution
-4. **Session/task layer** — cross-surface continuity and foundation for everything else
+1. ~~Structured user model / Profile Card~~ — **shipped**
+2. ~~Memory quality gates (auto-inject)~~ — **shipped**
+3. **Cross-turn correction loop** — **shipped (apply)** — monitor false positives
+4. **Session/task layer** — cross-surface continuity (Phase 4)
 5. **OpenCode supervision OR personal corpus** — pick by daily usage
 6. **Routing evals** — insurance as tool surface grows
 
@@ -469,5 +473,5 @@ Want to implement something? Here's how:
 
 ---
 
-**Last Updated:** May 21, 2026
-**Version:** 2.6 (Profile Card synthesis injection + user_model cache + reconcile script)
+**Last Updated:** May 21, 2026  
+**Version:** 2.7 (Phases 1–3 core shipped: correction apply, Profile Card, memory type auto-inject + backfill)

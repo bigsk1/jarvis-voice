@@ -54,9 +54,33 @@ When guidance conflicts, **higher tier wins**:
 
 ## Profile Card (Tier 2)
 
+### What it is (and isn't)
+
+The Profile Card is **not** a duplicate system prompt. Router instructions already cover tools, response style, OpenCode scope, and provider behavior.
+
+It is **not** a memory file. Discrete facts ("French bulldog named Jessi", "call me sir", webhook URLs) belong in **`remember`** — Tier 1 pinned prefs auto-inject; other facts surface via semantic auto-memory when relevant.
+
+The Profile Card is a **short, human-edited lens**: who you are to Jarvis, how to interpret you, and cross-cutting habits that should shape **every** answer without re-stating tool mechanics.
+
+| Layer | Example content |
+|-------|-----------------|
+| **System prompt** | Tool calling, JARVIS_RESPONSE_STYLE, native search, completion guard hints |
+| **Profile Card (Tier 2)** | "Advanced engineer; homelab context; self-hosted bias; direct communication" |
+| **remember (Tier 1)** | "Call me sir", addressing, explicit one-line prefs |
+| **remember + semantic (Tier 3-ish)** | Jessi, favorite color, project-specific facts — when query matches |
+| **Profile Reference / intel** | GPU lists, network tables, long philosophy — on-demand only |
+
 ### Location
 
 `jarvis-intel/user_profile.md` → section `## Profile Card` (~15 lines)
+
+**Fresh install:** file is gitignored. Copy the tracked starter and edit:
+
+```bash
+cp jarvis-intel/user_profile.md.example jarvis-intel/user_profile.md
+```
+
+No file → no error; injection is skipped until you create it. The `.example` template is not ingested (`ingest_intel` only picks up `*.md` and `*.txt`).
 
 Everything under `## Profile Reference` is **Tier 3** (on-demand via search/intel read).
 

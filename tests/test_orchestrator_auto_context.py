@@ -78,6 +78,81 @@ class OrchestratorAutoContextTests(unittest.TestCase):
         self.assertEqual(bundle["meta"]["injected_count"], 0)
         self.assertEqual(bundle["meta"]["top_candidates"][0]["key"], "gift_query_memory")
 
+    def test_auto_memory_type_filter_overfetches_and_keeps_eligible_facts(self):
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.timezone = ZoneInfo("America/Los_Angeles")
+        orch._safe_iso_to_local_datetime = lambda value: None
+
+        class FakeDb:
+            def __init__(self):
+                self.semantic_limit = None
+
+            def get_addressing_preferences(self, limit):
+                return []
+
+            def fts_search(self, transcript, limit):
+                return []
+
+            def semantic_search(self, query, limit, similarity_threshold):
+                self.semantic_limit = limit
+                artifact_rows = [
+                    {
+                        "key": f"stash_item_{idx}",
+                        "value": f"Generated image {idx}. STASH: stash://space/file{idx}",
+                        "category": "stash_artifact",
+                        "source": "generate_image",
+                        "metadata": {"stash_ref": f"stash://space/file{idx}", "type": "image"},
+                        "similarity": 0.95,
+                        "importance": 5,
+                        "updated_at": _sqlite_utc(datetime.now(timezone.utc)),
+                    }
+                    for idx in range(8)
+                ]
+                fact_row = {
+                    "key": "durable_fact",
+                    "value": "Jarvis should preserve this eligible fact.",
+                    "category": "fact",
+                    "source": "remember",
+                    "metadata": {"memory_type": "fact"},
+                    "similarity": 0.90,
+                    "importance": 8,
+                    "updated_at": _sqlite_utc(datetime.now(timezone.utc)),
+                }
+                return artifact_rows + [fact_row]
+
+        fake_db = FakeDb()
+
+        def fake_get_config_value(key, default=None):
+            values = {
+                "AUTO_MEMORY_INJECTION_ENABLED": "true",
+                "AUTO_MEMORY_RECENCY_ENABLED": "false",
+                "AUTO_MEMORY_TYPE_FILTER_ENABLED": "true",
+            }
+            return values.get(key, default)
+
+        def fake_get_int(key, default=0):
+            values = {
+                "AUTO_MEMORY_LIMIT": 2,
+                "AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT": 0,
+            }
+            return values.get(key, default)
+
+        def fake_get_float(key, default=0.0):
+            values = {
+                "AUTO_MEMORY_SIMILARITY_THRESHOLD": 0.42,
+            }
+            return values.get(key, default)
+
+        with patch("orchestrator_v2.get_memory_db", return_value=fake_db), \
+             patch("orchestrator_v2.get_config_value", side_effect=fake_get_config_value), \
+             patch("orchestrator_v2.get_int", side_effect=fake_get_int), \
+             patch("orchestrator_v2.get_float", side_effect=fake_get_float):
+            bundle = orch._get_relevant_memories_bundle("durable fact")
+
+        self.assertEqual(fake_db.semantic_limit, 10)
+        self.assertIn("durable_fact", bundle["context"])
+        self.assertNotIn("stash_item_", bundle["context"])
+
     def test_auto_context_instructions_are_compact_and_tool_agnostic(self):
         orch = Orchestrator.__new__(Orchestrator)
         orch.auto_context_window = 2

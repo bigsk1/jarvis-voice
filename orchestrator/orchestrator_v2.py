@@ -24,7 +24,7 @@ from config_loader import (
     DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
 )
 from time_utils import safe_iso_to_local_datetime, parse_utc_timestamp, now_utc
-from memory_db import get_memory_db
+from memory_db import get_memory_db, is_eligible_for_auto_memory_inject
 from model_catalog import get_provider_fallback_model
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
@@ -2832,7 +2832,13 @@ Your synthesized response:"""
             threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.42)
             recency_enabled = get_config_value('AUTO_MEMORY_RECENCY_ENABLED', 'true').lower() == 'true'
             addressing_limit = get_int('AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT', 2)
+            type_filter_enabled = get_config_value('AUTO_MEMORY_TYPE_FILTER_ENABLED', 'true').lower() == 'true'
             transcript_lower = transcript.lower()
+
+            def _include_memory(row: dict) -> bool:
+                if not type_filter_enabled:
+                    return True
+                return is_eligible_for_auto_memory_inject(row)
 
             def _is_intel_source(source: str) -> bool:
                 return bool(source and str(source).startswith('intel/'))
@@ -2875,7 +2881,12 @@ Your synthesized response:"""
                 for m in db.get_addressing_preferences(limit=addressing_limit):
                     key = m.get('key', '')
                     value = m.get('value', '')
-                    if key and key not in seen_keys and not _is_no_preference(value):
+                    if (
+                        key
+                        and key not in seen_keys
+                        and not _is_no_preference(value)
+                        and _include_memory(m)
+                    ):
                         seen_keys.add(key)
                         merged.append((1.1, m.get('importance', 5), m, 'always'))
 
@@ -2883,12 +2894,17 @@ Your synthesized response:"""
             # especially when exact tool names or provider quirks are involved.
             if _is_tooling_query(transcript_lower):
                 intel_keyword_matches = [
-                    m for m in db.fts_search(transcript, limit=max(limit, 6))
+                    m for m in db.fts_search(
+                        transcript,
+                        limit=max(limit * (4 if type_filter_enabled else 1), 12),
+                    )
                     if _is_intel_source(m.get('source', ''))
                 ]
                 for m in intel_keyword_matches:
                     key = m.get('key', '')
                     if key and key in seen_keys:
+                        continue
+                    if not _include_memory(m):
                         continue
                     if key:
                         seen_keys.add(key)
@@ -2898,7 +2914,7 @@ Your synthesized response:"""
             
             # Semantic search: cast a slightly wider net, then keep rows with adjusted >= threshold
             # (AUTO_MEMORY_SIMILARITY_THRESHOLD applies to the recency-weighted score, not raw embed alone).
-            candidate_limit = min(limit * 2, 20)
+            candidate_limit = min(limit * (5 if type_filter_enabled else 2), 50)
             candidate_threshold = min(threshold - 0.05, 0.30)
             memories = db.semantic_search(
                 query=transcript,
@@ -2913,6 +2929,8 @@ Your synthesized response:"""
             for m in memories:
                 key = m.get('key', '')
                 if key and key in seen_keys:
+                    continue
+                if not _include_memory(m):
                     continue
                 sim = m.get('similarity', 0)
                 importance = m.get('importance', 5)

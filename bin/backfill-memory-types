@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""
+Backfill memory_type metadata on existing knowledge_base rows.
+
+New writes via MemoryDB.remember() are classified automatically; this script
+updates legacy rows so auto-memory type filtering can exclude artifacts/transients.
+
+Usage (run with -h / --help for full flags):
+
+  ./bin/backfill-memory-types
+      Classify rows in the active DB (cloud or local per config).
+
+  ./bin/backfill-memory-types --mode cloud
+  ./bin/backfill-memory-types --mode local
+  ./bin/backfill-memory-types --mode both
+      Target a specific memory DB (both = cloud then local).
+
+  ./bin/backfill-memory-types --dry-run
+      Report counts without writing metadata.
+
+  ./bin/backfill-memory-types --force
+      Re-run classification on every row. Removes only memory_type,
+      memory_type_confidence, and memory_type_reason from metadata, then
+      writes fresh labels. Does not delete memories or other metadata keys.
+
+  ./bin/backfill-memory-types --limit 100
+      Process only the first N rows (smoke test).
+
+After backfill, auto-inject respects types when AUTO_MEMORY_TYPE_FILTER_ENABLED=true.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+
+from config_loader import load_config
+from memory_db import MemoryDB
+
+
+def _db_path(mode: str) -> Path:
+    data_dir = PROJECT_ROOT / "data"
+    if mode == "local":
+        return data_dir / "jarvis_memory_local.db"
+    return data_dir / "jarvis_memory.db"
+
+
+def _run_backfill(db_path: Path, *, dry_run: bool, force: bool, limit: int | None) -> dict:
+    if not db_path.is_file():
+        return {"ok": False, "error": f"database not found: {db_path}"}
+
+    db = MemoryDB(str(db_path))
+    try:
+        if dry_run:
+            from memory_db import classify_memory_entry, parse_memory_metadata
+
+            cursor = db.conn.cursor()
+            query = "SELECT id, category, key, value, source, metadata FROM knowledge_base ORDER BY id"
+            if limit is not None and limit > 0:
+                query += f" LIMIT {int(limit)}"
+            rows = cursor.execute(query).fetchall()
+            counts = {"scanned": 0, "would_update": 0, "skipped": 0, "by_type": {}}
+            for row in rows:
+                counts["scanned"] += 1
+                row_dict = dict(row)
+                metadata = parse_memory_metadata(row_dict.get("metadata"))
+                if metadata.get("memory_type") and not force:
+                    counts["skipped"] += 1
+                    memory_type = metadata["memory_type"]
+                else:
+                    counts["would_update"] += 1
+                    if force:
+                        for class_key in (
+                            "memory_type",
+                            "memory_type_confidence",
+                            "memory_type_reason",
+                        ):
+                            metadata.pop(class_key, None)
+                    memory_type = classify_memory_entry(
+                        row_dict.get("category", ""),
+                        row_dict.get("key", ""),
+                        row_dict.get("value", ""),
+                        row_dict.get("source"),
+                        metadata,
+                    )["memory_type"]
+                counts["by_type"][memory_type] = counts["by_type"].get(memory_type, 0) + 1
+            return {"ok": True, "db": str(db_path), "dry_run": True, **counts}
+
+        counts = db.backfill_memory_type_metadata(force=force, limit=limit)
+        return {"ok": True, "db": str(db_path), "dry_run": False, **counts}
+    finally:
+        db.close()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Backfill memory_type metadata on knowledge_base rows",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("auto", "cloud", "local", "both"),
+        default="auto",
+        help="Which memory DB to update (default: active config mode)",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Report only; do not write")
+    parser.add_argument("--force", action="store_true", help="Reclassify rows that already have memory_type")
+    parser.add_argument("--limit", type=int, default=None, help="Max rows to scan")
+    parser.add_argument("--json", action="store_true", help="Emit JSON summary")
+    args = parser.parse_args()
+
+    load_config()
+
+    if args.mode == "auto":
+        from config_loader import get_config_value
+
+        provider = get_config_value("LLM_PROVIDER", "openai").strip().lower()
+        modes = ["local"] if provider == "ollama" else ["cloud"]
+    elif args.mode == "both":
+        modes = ["cloud", "local"]
+    else:
+        modes = [args.mode]
+
+    summaries = []
+    for mode in modes:
+        summaries.append(_run_backfill(_db_path(mode), dry_run=args.dry_run, force=args.force, limit=args.limit))
+
+    if args.json:
+        print(json.dumps({"results": summaries}, indent=2))
+    else:
+        for summary in summaries:
+            if not summary.get("ok"):
+                print(f"ERROR: {summary.get('error')}")
+                continue
+            db_name = Path(summary["db"]).name
+            action = "would update" if summary.get("dry_run") else "updated"
+            changed = summary.get("would_update", summary.get("updated", 0))
+            print(
+                f"{db_name}: scanned={summary.get('scanned', 0)} "
+                f"{action}={changed} skipped={summary.get('skipped', 0)}"
+            )
+            by_type = summary.get("by_type") or {}
+            if by_type:
+                parts = ", ".join(f"{k}={v}" for k, v in sorted(by_type.items()))
+                print(f"  by_type: {parts}")
+
+    failed = any(not s.get("ok") for s in summaries)
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

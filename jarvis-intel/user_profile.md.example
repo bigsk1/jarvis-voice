@@ -1,0 +1,27 @@
+# User Profile
+
+## Profile Card
+
+Short personal context Jarvis sees every turn. Keep it to a few bullets about who you are and how you like to work — not tool rules (those are already in Jarvis's system prompt) and not individual facts like pet names or URLs (use `remember` for those).
+
+- **Who**: (your name or callsign) — (what you mainly use Jarvis for, e.g. homelab, coding, home automation)
+- **Treat me as**: (e.g. technical — skip beginner explanations)
+- **How I work**: (e.g. prefer CLI, self-hosted when possible, check logs first)
+- **Honesty**: (e.g. say when a tool failed or data might be stale)
+
+## Profile Reference
+
+Optional longer notes. Searchable via memory/intel when relevant — not injected every turn.
+
+### About me
+
+**Name**:  
+**Role**:
+
+### Projects
+
+-
+
+### Infrastructure
+
+-

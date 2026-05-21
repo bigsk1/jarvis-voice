@@ -60,9 +60,11 @@ def classify_memory_entry(
     if (
         "stash_ref" in metadata
         or "file_id" in metadata
-        or category_l in {"stash_artifact", "artifact"}
+        or category_l in {"stash_artifact", "artifact", "canvas"}
+        or key_l.startswith("canvas_page_")
         or any(term in category_l for term in ("stash", "artifact"))
         or any(term in source_l for term in ("web_upload", "stash", "canvas"))
+        or any(term in key_l for term in ("stash_", "canvas_page_"))
         or explicit_type in {"image", "video", "audio", "pdf", "file", "document"}
         or tags & artifact_terms
         or "stash://" in value_l
@@ -78,6 +80,7 @@ def classify_memory_entry(
         metadata.get("expires_at")
         or metadata.get("ttl_seconds")
         or category_l in {"transient", "session", "scratch"}
+        or (category_l == "system" and key_l.startswith("intel_hash_"))
         or tags & transient_terms
     ):
         return {
@@ -106,6 +109,60 @@ def classify_memory_entry(
         "memory_type_confidence": 0.55,
         "memory_type_reason": "default_fact",
     }
+
+
+AUTO_INJECT_ELIGIBLE_MEMORY_TYPES = frozenset({"preference", "fact"})
+
+
+def parse_memory_metadata(raw) -> dict:
+    """Parse knowledge_base.metadata JSON (or pass through dict)."""
+    if isinstance(raw, dict):
+        return raw
+    if not raw:
+        return {}
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def resolve_memory_type(
+    category: str,
+    key: str,
+    value: str,
+    source: str = None,
+    metadata=None,
+) -> str:
+    """Return memory_type for a row, classifying on the fly when metadata lacks it."""
+    metadata = parse_memory_metadata(metadata)
+    explicit = metadata.get("memory_type")
+    if explicit in AUTO_INJECT_ELIGIBLE_MEMORY_TYPES | {"artifact", "transient"}:
+        return str(explicit)
+    return classify_memory_entry(category, key, value, source, metadata)["memory_type"]
+
+
+def is_eligible_for_auto_memory_inject(memory: dict) -> bool:
+    """
+    Whether a knowledge_base row may appear in auto-memory injection.
+
+    Allows preference/fact; excludes artifact/transient and internal system rows.
+    Legacy rows without memory_type are classified on the fly.
+    """
+    category = (memory.get("category") or "").lower()
+    key = (memory.get("key") or "").lower()
+    if category == "system" or key.startswith("intel_hash_"):
+        return False
+    memory_type = resolve_memory_type(
+        memory.get("category", ""),
+        memory.get("key", ""),
+        memory.get("value", ""),
+        memory.get("source"),
+        memory.get("metadata"),
+    )
+    return memory_type in AUTO_INJECT_ELIGIBLE_MEMORY_TYPES
 
 
 class MemoryDB:
@@ -356,6 +413,57 @@ class MemoryDB:
             """, (category, key, value, importance, source, embedding_blob, metadata_json))
             self.conn.commit()
             return cursor.lastrowid
+
+    def backfill_memory_type_metadata(self, *, force: bool = False, limit: int | None = None) -> dict:
+        """
+        Stamp memory_type metadata on existing knowledge_base rows.
+
+        Skips rows that already have memory_type unless force=True.
+        force=True drops only the three classification keys and re-runs
+        classify_memory_entry; all other metadata is preserved.
+        """
+        cursor = self.conn.cursor()
+        query = "SELECT id, category, key, value, source, metadata FROM knowledge_base ORDER BY id"
+        if limit is not None and limit > 0:
+            query += f" LIMIT {int(limit)}"
+        rows = cursor.execute(query).fetchall()
+
+        counts = {"scanned": 0, "updated": 0, "skipped": 0, "by_type": {}}
+        for row in rows:
+            counts["scanned"] += 1
+            row_dict = dict(row)
+            metadata = parse_memory_metadata(row_dict.get("metadata"))
+            if metadata.get("memory_type") and not force:
+                counts["skipped"] += 1
+                memory_type = metadata["memory_type"]
+            else:
+                if force:
+                    for class_key in (
+                        "memory_type",
+                        "memory_type_confidence",
+                        "memory_type_reason",
+                    ):
+                        metadata.pop(class_key, None)
+                classification = classify_memory_entry(
+                    row_dict.get("category", ""),
+                    row_dict.get("key", ""),
+                    row_dict.get("value", ""),
+                    row_dict.get("source"),
+                    metadata,
+                )
+                for class_key, class_value in classification.items():
+                    metadata[class_key] = class_value
+                memory_type = classification["memory_type"]
+                cursor.execute(
+                    "UPDATE knowledge_base SET metadata = ? WHERE id = ?",
+                    (json.dumps(metadata), row_dict["id"]),
+                )
+                counts["updated"] += 1
+            counts["by_type"][memory_type] = counts["by_type"].get(memory_type, 0) + 1
+
+        if counts["updated"]:
+            self.conn.commit()
+        return counts
     
     def recall(self, query: str, category: str = None, limit: int = 5) -> list[dict]:
         """

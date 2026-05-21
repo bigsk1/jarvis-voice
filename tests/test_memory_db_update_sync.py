@@ -8,7 +8,12 @@ import unittest
 import json
 from pathlib import Path
 
-from lib.memory_db import MemoryDB, classify_memory_entry
+from lib.memory_db import (
+    MemoryDB,
+    classify_memory_entry,
+    is_eligible_for_auto_memory_inject,
+    resolve_memory_type,
+)
 
 
 class MemoryDBUpdateSyncTests(unittest.TestCase):
@@ -76,6 +81,96 @@ class MemoryDBUpdateSyncTests(unittest.TestCase):
         )
 
         self.assertEqual(classification["memory_type"], "artifact")
+
+    def test_memory_quality_classifies_canvas_page(self) -> None:
+        classification = classify_memory_entry(
+            "canvas",
+            "canvas_page_abc123",
+            "Canvas page 'Camera comparison' - research. View at http://localhost/canvas/abc123",
+            source="user_conversation",
+            metadata={"page_id": "abc123", "tags": ["research"]},
+        )
+        self.assertEqual(classification["memory_type"], "artifact")
+
+    def test_auto_inject_eligibility_excludes_artifacts(self) -> None:
+        stash_row = {
+            "category": "stash_artifact",
+            "key": "stash_image_space1",
+            "value": "Generated image. STASH: stash://space1/file1",
+            "source": "generate_image",
+            "metadata": {"stash_ref": "stash://space1/file1", "type": "image"},
+        }
+        pref_row = {
+            "category": "preference",
+            "key": "how_to_address_user",
+            "value": "Call me sir",
+            "source": "remember",
+            "metadata": {},
+        }
+        self.assertFalse(is_eligible_for_auto_memory_inject(stash_row))
+        self.assertTrue(is_eligible_for_auto_memory_inject(pref_row))
+
+    def test_resolve_memory_type_classifies_legacy_rows_without_metadata(self) -> None:
+        memory_type = resolve_memory_type(
+            "canvas",
+            "canvas_page_old",
+            "Canvas page 'notes'",
+            source="user_conversation",
+            metadata=None,
+        )
+        self.assertEqual(memory_type, "artifact")
+
+    def test_backfill_memory_type_metadata(self) -> None:
+        db = MemoryDB(str(self.cloud_path))
+        try:
+            memory_id = db.remember(
+                "fact",
+                "legacy_fact_no_type",
+                "Jarvis homelab runs on port 8880",
+                generate_embedding=False,
+                metadata={"created_by": "test"},
+            )
+            db.conn.execute(
+                "UPDATE knowledge_base SET metadata = ? WHERE id = ?",
+                (json.dumps({"created_by": "test"}), memory_id),
+            )
+            db.conn.commit()
+
+            result = db.backfill_memory_type_metadata(force=False)
+            self.assertGreaterEqual(result["updated"], 1)
+
+            row = db.conn.execute(
+                "SELECT metadata FROM knowledge_base WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
+            metadata = json.loads(row["metadata"])
+            self.assertEqual(metadata["memory_type"], "fact")
+        finally:
+            db.close()
+
+    def test_backfill_force_reclassifies_existing_memory_type(self) -> None:
+        db = MemoryDB(str(self.cloud_path))
+        try:
+            memory_id = db.remember(
+                "stash_artifact",
+                "stash_image_space1",
+                "Generated image. STASH: stash://space1/file1",
+                generate_embedding=False,
+                metadata={"memory_type": "fact", "stash_ref": "stash://space1/file1"},
+            )
+
+            result = db.backfill_memory_type_metadata(force=True)
+            self.assertGreaterEqual(result["updated"], 1)
+
+            row = db.conn.execute(
+                "SELECT metadata FROM knowledge_base WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
+            metadata = json.loads(row["metadata"])
+            self.assertEqual(metadata["memory_type"], "artifact")
+            self.assertEqual(metadata["memory_type_reason"], "artifact_or_stash_marker")
+        finally:
+            db.close()
 
     def test_recent_conversation_metadata_links_previous_experience_id(self) -> None:
         db = MemoryDB(str(self.cloud_path))
