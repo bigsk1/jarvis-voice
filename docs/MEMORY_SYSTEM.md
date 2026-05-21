@@ -39,6 +39,22 @@ Logs all interactions with Jarvis.
 - `session_id` - Groups related conversations
 - `success` - Whether the task completed successfully
 
+### 3. `user_model`
+Stores compact behavioral traits for how Jarvis should respond to the user over time.
+
+This table is separate from `knowledge_base` so scalar traits like verbosity or technical depth do not pollute semantic memory recall or tool routing.
+
+**Fields:**
+- `key` - Trait name, such as `verbosity` or `technical_depth`
+- `value` - Trait value as text, usually a scalar encoded as `0.0`-`1.0`
+- `value_type` - `scalar`, `text`, or `json`
+- `confidence` - Confidence in the trait, `0.0`-`1.0`
+- `evidence` - JSON evidence refs from feedback, corrections, or memory keys
+- `source` - How the trait was updated
+- `metadata` - Additional context (JSON)
+- `last_reconciled_at` - Last profile compaction/reconciliation timestamp
+- `created_at` / `updated_at` - Timestamps
+
 ## Memory Tools
 
 Jarvis has 5 memory management tools that it uses intelligently:
@@ -363,4 +379,3 @@ See `FUTURE_ENHANCEMENTS.md` for planned improvements:
 - Memory expiration policies
 - Contextual importance scoring
 - Memory visualization dashboard
-

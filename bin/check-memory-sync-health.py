@@ -6,6 +6,7 @@ Reports:
 - DB availability (cloud/local present, missing, or unreadable)
 - Intel hash drift (on-disk file hash vs cloud/local intel_hash_* rows)
 - Logical memory drift (rows only in one DB, plus conflicting values for same key/source)
+- Structured user_model drift (traits only in one DB, plus conflicting values)
 
 Examples:
     ./bin/check-memory-sync-health.py
@@ -54,6 +55,17 @@ def _connect_db(path: Path) -> tuple[sqlite3.Connection | None, str | None]:
         return None, str(exc)
 
 
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone() is not None
+
+
+def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+
+
 def _load_intel_hashes(conn: sqlite3.Connection) -> dict[str, str]:
     rows = conn.execute(
         """
@@ -67,6 +79,41 @@ def _load_intel_hashes(conn: sqlite3.Connection) -> dict[str, str]:
         filename = row["key"].replace("intel_hash_", "", 1)
         hashes[filename] = row["value"]
     return hashes
+
+
+def _load_user_model_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    if not _table_exists(conn, "user_model"):
+        return []
+    columns = _table_columns(conn, "user_model")
+    select_columns = [
+        "key",
+        "value",
+        "value_type" if "value_type" in columns else "'scalar' AS value_type",
+        "confidence" if "confidence" in columns else "0.5 AS confidence",
+        "evidence" if "evidence" in columns else "NULL AS evidence",
+        "source" if "source" in columns else "NULL AS source",
+        "metadata" if "metadata" in columns else "NULL AS metadata",
+        "last_reconciled_at" if "last_reconciled_at" in columns else "NULL AS last_reconciled_at",
+    ]
+    rows = conn.execute(
+        f"""
+        SELECT {', '.join(select_columns)}
+        FROM user_model
+        """
+    ).fetchall()
+    return [
+        {
+            "key": row["key"] or "",
+            "value": row["value"] or "",
+            "value_type": row["value_type"] or "",
+            "confidence": float(row["confidence"] or 0),
+            "evidence": row["evidence"] or "",
+            "source": row["source"] or "",
+            "metadata": row["metadata"] or "",
+            "last_reconciled_at": row["last_reconciled_at"] or "",
+        }
+        for row in rows
+    ]
 
 
 def _load_memory_rows(conn: sqlite3.Connection, include_system: bool = False) -> list[dict[str, Any]]:
@@ -218,6 +265,75 @@ def _compare_memory_rows(
     }
 
 
+def _user_model_signature(row: dict[str, Any]) -> tuple[str, str, str, float, str, str, str, str]:
+    return (
+        row["key"],
+        row["value"],
+        row["value_type"],
+        row["confidence"],
+        row["evidence"],
+        row["source"],
+        row["metadata"],
+        row["last_reconciled_at"],
+    )
+
+
+def _compare_user_model_rows(
+    cloud_rows: list[dict[str, Any]] | None,
+    local_rows: list[dict[str, Any]] | None,
+    limit: int,
+) -> dict[str, Any]:
+    if cloud_rows is None or local_rows is None:
+        return {
+            "comparable": False,
+            "cloud_count": 0,
+            "local_count": 0,
+            "only_in_cloud_count": 0,
+            "only_in_local_count": 0,
+            "value_conflict_count": 0,
+            "samples": {"only_in_cloud": [], "only_in_local": [], "value_conflicts": []},
+        }
+
+    cloud_by_sig = {_user_model_signature(row): row for row in cloud_rows}
+    local_by_sig = {_user_model_signature(row): row for row in local_rows}
+    only_cloud = sorted(set(cloud_by_sig) - set(local_by_sig))
+    only_local = sorted(set(local_by_sig) - set(cloud_by_sig))
+
+    cloud_by_key = {row["key"]: row for row in cloud_rows}
+    local_by_key = {row["key"]: row for row in local_rows}
+    conflicts = []
+    for key in sorted(set(cloud_by_key) & set(local_by_key)):
+        if _user_model_signature(cloud_by_key[key]) == _user_model_signature(local_by_key[key]):
+            continue
+        conflicts.append({
+            "key": key,
+            "cloud_value": cloud_by_key[key]["value"],
+            "local_value": local_by_key[key]["value"],
+            "cloud_confidence": cloud_by_key[key]["confidence"],
+            "local_confidence": local_by_key[key]["confidence"],
+        })
+
+    return {
+        "comparable": True,
+        "cloud_count": len(cloud_rows),
+        "local_count": len(local_rows),
+        "only_in_cloud_count": len(only_cloud),
+        "only_in_local_count": len(only_local),
+        "value_conflict_count": len(conflicts),
+        "samples": {
+            "only_in_cloud": [
+                {"key": cloud_by_sig[sig]["key"], "value": cloud_by_sig[sig]["value"]}
+                for sig in only_cloud[:limit]
+            ],
+            "only_in_local": [
+                {"key": local_by_sig[sig]["key"], "value": local_by_sig[sig]["value"]}
+                for sig in only_local[:limit]
+            ],
+            "value_conflicts": conflicts[:limit],
+        },
+    }
+
+
 def build_sync_health_report(
     project_root: Path,
     *,
@@ -240,6 +356,8 @@ def build_sync_health_report(
         local_hashes = _load_intel_hashes(local_conn) if local_conn else None
         cloud_rows = _load_memory_rows(cloud_conn, include_system=include_system) if cloud_conn else None
         local_rows = _load_memory_rows(local_conn, include_system=include_system) if local_conn else None
+        cloud_user_model = _load_user_model_rows(cloud_conn) if cloud_conn else None
+        local_user_model = _load_user_model_rows(local_conn) if local_conn else None
     finally:
         if cloud_conn:
             cloud_conn.close()
@@ -248,6 +366,7 @@ def build_sync_health_report(
 
     intel_report = _compare_intel_hashes(intel_dir, cloud_hashes, local_hashes)
     memory_report = _compare_memory_rows(cloud_rows, local_rows, limit)
+    user_model_report = _compare_user_model_rows(cloud_user_model, local_user_model, limit)
 
     db_status = {
         "cloud": {
@@ -267,6 +386,9 @@ def build_sync_health_report(
         + memory_report["only_in_cloud_count"]
         + memory_report["only_in_local_count"]
         + memory_report["value_conflict_count"]
+        + user_model_report["only_in_cloud_count"]
+        + user_model_report["only_in_local_count"]
+        + user_model_report["value_conflict_count"]
     )
 
     warnings = []
@@ -283,6 +405,16 @@ def build_sync_health_report(
         )
     if memory_report["value_conflict_count"] > 0:
         warnings.append(f"{memory_report['value_conflict_count']} memory value conflict(s)")
+    if (
+        user_model_report["only_in_cloud_count"] > 0
+        or user_model_report["only_in_local_count"] > 0
+        or user_model_report["value_conflict_count"] > 0
+    ):
+        warnings.append(
+            f"user_model drift: cloud-only={user_model_report['only_in_cloud_count']}, "
+            f"local-only={user_model_report['only_in_local_count']}, "
+            f"conflicts={user_model_report['value_conflict_count']}"
+        )
 
     return {
         "ok": mismatch_count == 0 and all(status["available"] for status in db_status.values()),
@@ -291,6 +423,7 @@ def build_sync_health_report(
         "db_status": db_status,
         "intel": intel_report,
         "memories": memory_report,
+        "user_model": user_model_report,
     }
 
 
@@ -364,6 +497,32 @@ def _print_status(report: dict[str, Any], limit: int) -> None:
             )
             print(f"      cloud: {conflict['cloud_values']}")
             print(f"      local: {conflict['local_values']}")
+
+    user_model = report["user_model"]
+    print()
+    print(f"{BOLD}User Model:{NC}")
+    if not user_model["comparable"]:
+        print(f"  {YELLOW}!{NC} Skipped cloud/local comparison because one DB is unavailable")
+        return
+    print(f"  Cloud traits: {user_model['cloud_count']}")
+    print(f"  Local traits: {user_model['local_count']}")
+    print(f"  Cloud-only traits: {user_model['only_in_cloud_count']}")
+    print(f"  Local-only traits: {user_model['only_in_local_count']}")
+    print(f"  Trait conflicts: {user_model['value_conflict_count']}")
+
+    for label in ("only_in_cloud", "only_in_local"):
+        samples = user_model["samples"][label]
+        if not samples:
+            continue
+        heading = "Cloud-only traits" if label == "only_in_cloud" else "Local-only traits"
+        print(f"  {BOLD}{heading}:{NC}")
+        for row in samples[:limit]:
+            print(f"    - {row['key']} = {row['value']}")
+
+    if user_model["samples"]["value_conflicts"]:
+        print(f"  {BOLD}Trait conflict samples:{NC}")
+        for conflict in user_model["samples"]["value_conflicts"][:limit]:
+            print(f"    - {conflict['key']}: cloud={conflict['cloud_value']} local={conflict['local_value']}")
 
 
 def main() -> int:

@@ -35,21 +35,58 @@ def _table_columns(cursor, table_name):
     return {row[1] for row in cursor.execute(f"PRAGMA table_info({table_name})").fetchall()}
 
 
+def _table_exists(cursor, table_name):
+    """Return True when a SQLite table exists."""
+    return cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone() is not None
+
+
 def _ensure_column(cursor, table_name, column_name, definition):
     """Add a missing column to an existing SQLite table."""
     if column_name not in _table_columns(cursor, table_name):
         cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
-def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
+
+def _ensure_user_model_schema(cursor):
+    """Create/repair the structured user_model table."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_model (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            value TEXT NOT NULL,
+            value_type TEXT DEFAULT 'scalar',
+            confidence REAL DEFAULT 0.5,
+            evidence TEXT,
+            source TEXT,
+            metadata TEXT,
+            last_reconciled_at TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    _ensure_column(cursor, "user_model", "value_type", "TEXT DEFAULT 'scalar'")
+    _ensure_column(cursor, "user_model", "confidence", "REAL DEFAULT 0.5")
+    _ensure_column(cursor, "user_model", "evidence", "TEXT")
+    _ensure_column(cursor, "user_model", "source", "TEXT")
+    _ensure_column(cursor, "user_model", "metadata", "TEXT")
+    _ensure_column(cursor, "user_model", "last_reconciled_at", "TEXT")
+    _ensure_column(cursor, "user_model", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    _ensure_column(cursor, "user_model", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_model_key ON user_model(key)")
+
+
+def sync_databases(source_mode='cloud', target_mode='local', verbose=True, project_root: Path | None = None):
     """
-    Sync knowledge_base and conversations from source DB to target DB.
+    Sync knowledge_base, conversations, and user_model from source DB to target DB.
     Regenerates embeddings for target mode's embedding model.
     
     Future: Will also sync alerts, reminders, and tasks tables
     (see docs/PROACTIVE_ASSISTANT_SYSTEM.md)
     """
     
-    project_root = Path(__file__).parent.parent
+    project_root = project_root or Path(__file__).parent.parent
     
     # Database paths
     if source_mode == 'cloud':
@@ -123,6 +160,7 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
         )
     """)
     _ensure_column(target_cursor, "conversations", "metadata", "TEXT")
+    _ensure_user_model_schema(target_cursor)
     
     # Get all memories from source
     memories = source_cursor.execute("""
@@ -241,6 +279,91 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
         except Exception as e:
             if verbose:
                 print(f"⚠️  Skipping conversation: {e}")
+
+    # Sync structured user model traits (no embeddings needed)
+    user_model_synced = 0
+    user_model_skipped = 0
+    if _table_exists(source_cursor, "user_model"):
+        source_user_columns = _table_columns(source_cursor, "user_model")
+        user_select_columns = [
+            "key",
+            "value",
+            "value_type" if "value_type" in source_user_columns else "'scalar' AS value_type",
+            "confidence" if "confidence" in source_user_columns else "0.5 AS confidence",
+            "evidence" if "evidence" in source_user_columns else "NULL AS evidence",
+            "source" if "source" in source_user_columns else "NULL AS source",
+            "metadata" if "metadata" in source_user_columns else "NULL AS metadata",
+            "last_reconciled_at" if "last_reconciled_at" in source_user_columns else "NULL AS last_reconciled_at",
+            "created_at" if "created_at" in source_user_columns else "CURRENT_TIMESTAMP AS created_at",
+            "updated_at" if "updated_at" in source_user_columns else "CURRENT_TIMESTAMP AS updated_at",
+        ]
+        user_traits = source_cursor.execute(f"""
+            SELECT {', '.join(user_select_columns)}
+            FROM user_model
+        """).fetchall()
+
+        if verbose and len(user_traits) > 0:
+            print()
+            print(f"Syncing {len(user_traits)} user model trait(s)...")
+
+        for trait in user_traits:
+            try:
+                existing = target_cursor.execute(
+                    "SELECT id, updated_at FROM user_model WHERE key = ?",
+                    (trait["key"],),
+                ).fetchone()
+
+                if existing:
+                    if trait["updated_at"] > existing[1]:
+                        target_cursor.execute("""
+                            UPDATE user_model
+                            SET value = ?,
+                                value_type = ?,
+                                confidence = ?,
+                                evidence = ?,
+                                source = ?,
+                                metadata = ?,
+                                last_reconciled_at = ?,
+                                created_at = ?,
+                                updated_at = ?
+                            WHERE id = ?
+                        """, (
+                            trait["value"],
+                            trait["value_type"],
+                            trait["confidence"],
+                            trait["evidence"],
+                            trait["source"],
+                            trait["metadata"],
+                            trait["last_reconciled_at"],
+                            trait["created_at"],
+                            trait["updated_at"],
+                            existing[0],
+                        ))
+                        user_model_synced += 1
+                    else:
+                        user_model_skipped += 1
+                else:
+                    target_cursor.execute("""
+                        INSERT INTO user_model (
+                            key, value, value_type, confidence, evidence,
+                            source, metadata, last_reconciled_at, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        trait["key"],
+                        trait["value"],
+                        trait["value_type"],
+                        trait["confidence"],
+                        trait["evidence"],
+                        trait["source"],
+                        trait["metadata"],
+                        trait["last_reconciled_at"],
+                        trait["created_at"],
+                        trait["updated_at"],
+                    ))
+                    user_model_synced += 1
+            except Exception as e:
+                if verbose:
+                    print(f"⚠️  Skipping user_model trait {trait['key']}: {e}")
     
     # Sync alerts (if table exists)
     try:
@@ -463,6 +586,8 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True):
         print(f"✅ Sync Complete!")
         print(f"   Synced: {synced}")
         print(f"   Skipped: {skipped} (already current)")
+        print(f"   User model synced: {user_model_synced}")
+        print(f"   User model skipped: {user_model_skipped} (already current)")
         print(f"   Errors: {errors}")
         print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print()

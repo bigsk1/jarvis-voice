@@ -60,6 +60,9 @@ Starting LOCAL mode:
   - User queries and responses
   - Tools used, session IDs
   - No embeddings (plain text)
+- **user_model** table
+  - Compact behavioral/profile traits such as verbosity and technical depth
+  - No embeddings; rows sync by `key` with newer `updated_at` winning
 
 ### ❌ Not synced by `sync-memory-db.py`
 
@@ -69,6 +72,7 @@ Starting LOCAL mode:
 
 - **New memories**: Inserted into target DB
 - **Updated memories**: Updated if source is newer
+- **User model traits**: Inserted/updated by `key` if source is newer
 - **Deleted memories**: Not removed from target (manual)
 - **Conflicts**: Source wins (last-write wins)
 

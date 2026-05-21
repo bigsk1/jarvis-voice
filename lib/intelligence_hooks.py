@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import json
+import sqlite3
 import asyncio
 import logging
 import concurrent.futures
@@ -393,6 +394,326 @@ def update_experience_from_feedback(
         return False
 
 
+def extract_user_correction_signals(query: str) -> dict[str, Any]:
+    """
+    Detect explicit user correction language in a new turn.
+
+    This is intentionally conservative: it only flags phrases that strongly
+    imply the user is correcting the previous assistant response or asking for
+    a retry/style adjustment. Broader intent detection should stay in routing.
+    """
+    text = (query or "").strip().lower()
+    signals: dict[str, Any] = {
+        "is_correction": False,
+        "had_to_clarify": False,
+        "had_to_retry": False,
+        "style_correction": False,
+        "matched_patterns": [],
+        "categories": [],
+    }
+    if not text:
+        return signals
+
+    pattern_groups = {
+        "clarification": [
+            r"\bwhat i meant\b",
+            r"\bi meant\b",
+            r"\bi said\b",
+            r"\bno[, ]+i (mean|meant|want|wanted|asked)\b",
+            r"\bnot that\b",
+            r"\bthat's not what i (mean|meant|asked|wanted)\b",
+            r"\byou misunderstood\b",
+            r"\bwrong (one|thing|answer|place|file|person)\b",
+        ],
+        "retry": [
+            r"\btry again\b",
+            r"\bretry\b",
+            r"\bdo it again\b",
+            r"\bone more time\b",
+            r"\brerun\b",
+            r"\bredo\b",
+            r"\bfix that\b",
+        ],
+        "style": [
+            r"\btoo long\b",
+            r"\btoo short\b",
+            r"\bbe more concise\b",
+            r"\bmore detail\b",
+            r"\bless detail\b",
+            r"\byou forgot\b",
+            r"\bdon't (?:do|say|use) that\b",
+        ],
+    }
+
+    for category, patterns in pattern_groups.items():
+        for pattern in patterns:
+            if re.search(pattern, text):
+                signals["matched_patterns"].append(pattern)
+                if category not in signals["categories"]:
+                    signals["categories"].append(category)
+
+    if signals["matched_patterns"]:
+        signals["is_correction"] = True
+        signals["had_to_clarify"] = "clarification" in signals["categories"]
+        signals["had_to_retry"] = "retry" in signals["categories"]
+        signals["style_correction"] = "style" in signals["categories"]
+
+    return signals
+
+
+def update_experience_from_user_correction(
+    previous_experience_id: int,
+    correction_query: str,
+    signals: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    """
+    Retroactively update a previous experience when the next user turn clearly
+    corrects it.
+
+    This is the USER_CORRECTION -> INTELLIGENCE bridge. It mirrors the
+    feedback/completion-guard bridges but is meant for cross-turn signals.
+    """
+    if previous_experience_id < 0:
+        return False
+
+    intel = _get_intel()
+    if not intel:
+        return False
+
+    signals = signals or extract_user_correction_signals(correction_query)
+    if not signals.get("is_correction"):
+        return False
+
+    correction_query = redact_sensitive_text(correction_query or "")
+    metadata = redact_sensitive_data(metadata or {})
+    signals = redact_sensitive_data(signals)
+
+    try:
+        cursor = intel.conn.cursor()
+        cursor.execute("""
+            SELECT outcome_success, user_satisfied, had_to_retry, raw_data
+            FROM experiences
+            WHERE id = ?
+        """, (previous_experience_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        raw_data = {}
+        if row["raw_data"]:
+            try:
+                raw_data = json.loads(row["raw_data"])
+            except Exception:
+                raw_data = {}
+
+        correction_record = raw_data.get("user_correction", {})
+        if not isinstance(correction_record, dict):
+            correction_record = {}
+        previous_latest = correction_record.get("latest")
+        history = correction_record.get("history", [])
+        if not isinstance(history, list):
+            history = []
+        if isinstance(previous_latest, dict):
+            history.append(previous_latest)
+
+        correction_record["latest"] = {
+            "source": "next_turn_user_correction",
+            "query": correction_query[:1500],
+            "signals": signals,
+            "metadata": metadata,
+            "updated_at": datetime.now().isoformat(),
+        }
+        correction_record["history"] = history[-4:]
+        raw_data["user_correction"] = correction_record
+
+        raw_signals = raw_data.get("user_signals", {})
+        if not isinstance(raw_signals, dict):
+            raw_signals = {}
+        raw_signals["cross_turn_correction"] = True
+        if signals.get("had_to_clarify"):
+            raw_signals["clarified"] = True
+        if signals.get("had_to_retry"):
+            raw_signals["retried"] = True
+        if signals.get("style_correction"):
+            raw_signals["style_corrected"] = True
+        raw_data["user_signals"] = raw_signals
+
+        # Older fake/test schemas may not have had_to_clarify; real intel DBs do.
+        columns = {
+            column["name"] if isinstance(column, sqlite3.Row) else column[1]
+            for column in cursor.execute("PRAGMA table_info(experiences)").fetchall()
+        }
+        had_to_retry = 1 if signals.get("had_to_retry") or signals.get("is_correction") else int(row["had_to_retry"] or 0)
+        raw_payload = json.dumps(redact_sensitive_data(raw_data), default=str)
+
+        if "had_to_clarify" in columns:
+            cursor.execute("""
+                UPDATE experiences
+                SET outcome_success = 0,
+                    user_satisfied = 0,
+                    had_to_retry = ?,
+                    had_to_clarify = MAX(COALESCE(had_to_clarify, 0), ?),
+                    raw_data = ?
+                WHERE id = ?
+            """, (
+                had_to_retry,
+                1 if signals.get("had_to_clarify") or signals.get("is_correction") else 0,
+                raw_payload,
+                previous_experience_id,
+            ))
+        else:
+            cursor.execute("""
+                UPDATE experiences
+                SET outcome_success = 0,
+                    user_satisfied = 0,
+                    had_to_retry = ?,
+                    raw_data = ?
+                WHERE id = ?
+            """, (
+                had_to_retry,
+                raw_payload,
+                previous_experience_id,
+            ))
+        rows_updated = cursor.rowcount
+
+        cursor.execute("""
+            UPDATE reflection_queue
+            SET priority = MAX(priority, 0.9)
+            WHERE experience_id = ?
+        """, (previous_experience_id,))
+        intel.conn.commit()
+
+        logger.info(
+            "Experience %s: corrected to FAILURE based on next-turn user correction",
+            previous_experience_id,
+        )
+        return rows_updated > 0
+
+    except Exception as e:
+        logger.warning(
+            f"Failed to update experience {previous_experience_id} from user correction: {e}"
+        )
+        return False
+
+
+def record_user_correction_shadow_candidate(
+    current_experience_id: int,
+    previous_experience_id: int,
+    correction_query: str,
+    signals: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    """
+    Persist cross-turn correction evidence on the current experience without
+    retroactively downgrading the previous turn.
+
+    Used when USER_CORRECTION_LEARNING_MODE=shadow so candidates can be
+    reviewed from the intelligence DB and intel logs before apply mode.
+    """
+    if current_experience_id < 0 or previous_experience_id < 0:
+        return False
+    if current_experience_id == previous_experience_id:
+        return False
+
+    intel = _get_intel()
+    if not intel:
+        return False
+
+    signals = signals or extract_user_correction_signals(correction_query)
+    if not signals.get("is_correction"):
+        return False
+
+    correction_query = redact_sensitive_text(correction_query or "")
+    metadata = redact_sensitive_data(metadata or {})
+    signals = redact_sensitive_data(signals)
+
+    try:
+        cursor = intel.conn.cursor()
+        cursor.execute(
+            "SELECT raw_data FROM experiences WHERE id = ?",
+            (current_experience_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        raw_data = {}
+        if row["raw_data"]:
+            try:
+                raw_data = json.loads(row["raw_data"])
+            except Exception:
+                raw_data = {}
+
+        shadow_record = raw_data.get("user_correction_shadow", {})
+        if not isinstance(shadow_record, dict):
+            shadow_record = {}
+        previous_latest = shadow_record.get("latest")
+        history = shadow_record.get("history", [])
+        if not isinstance(history, list):
+            history = []
+        if isinstance(previous_latest, dict):
+            history.append(previous_latest)
+
+        shadow_record["latest"] = {
+            "source": "next_turn_user_correction_shadow",
+            "previous_experience_id": previous_experience_id,
+            "query": correction_query[:1500],
+            "signals": signals,
+            "metadata": metadata,
+            "updated_at": datetime.now().isoformat(),
+        }
+        shadow_record["history"] = history[-4:]
+        raw_data["user_correction_shadow"] = shadow_record
+
+        user_signals = raw_data.get("user_signals", {})
+        if not isinstance(user_signals, dict):
+            user_signals = {}
+        user_signals["cross_turn_correction_candidate"] = True
+        user_signals["previous_experience_id_candidate"] = previous_experience_id
+        if signals.get("categories"):
+            user_signals["correction_categories"] = signals.get("categories")
+        if signals.get("matched_patterns"):
+            user_signals["correction_matched_patterns"] = signals.get("matched_patterns")
+        raw_data["user_signals"] = user_signals
+
+        raw_payload = json.dumps(redact_sensitive_data(raw_data), default=str)
+        cursor.execute(
+            "UPDATE experiences SET raw_data = ? WHERE id = ?",
+            (raw_payload, current_experience_id),
+        )
+        rows_updated = cursor.rowcount
+        intel.conn.commit()
+
+        try:
+            from intelligence import get_intel_logger
+            get_intel_logger().log("user_correction_shadow_candidate", {
+                "current_experience_id": current_experience_id,
+                "previous_experience_id": previous_experience_id,
+                "categories": signals.get("categories", []),
+                "matched_patterns": (signals.get("matched_patterns") or [])[:5],
+                "query_preview": correction_query[:200],
+                "metadata": metadata,
+            })
+        except Exception:
+            pass
+
+        logger.info(
+            "Experience %s: recorded shadow user-correction candidate for previous %s",
+            current_experience_id,
+            previous_experience_id,
+        )
+        return rows_updated > 0
+
+    except Exception as e:
+        logger.warning(
+            "Failed to record shadow user correction on experience %s: %s",
+            current_experience_id,
+            e,
+        )
+        return False
+
+
 def update_experience_from_completion_guard(
     experience_id: int,
     status: str,
@@ -571,23 +892,20 @@ def _infer_user_signals(
     if result.get('max_turns_reached'):
         signals['clarified'] = True  # Task was complex
     
-    # Check conversation context for patterns
-    if conversation_context:
-        query_lower = query.lower()
-        
-        # Look for clarification patterns
-        clarification_patterns = ['what i meant', 'no i want', 'not that', 'i said']
-        for pattern in clarification_patterns:
-            if pattern in query_lower:
-                signals['clarified'] = True
-                break
-        
-        # Look for retry patterns
-        retry_patterns = ['try again', 'one more time', 'retry', 'do it again']
-        for pattern in retry_patterns:
-            if pattern in query_lower:
-                signals['retried'] = True
-                break
+    # Check current query for correction/retry/style patterns. These are stored
+    # on the current experience as shadow evidence even before a previous turn
+    # is retroactively updated.
+    correction_signals = extract_user_correction_signals(query)
+    if correction_signals.get("is_correction"):
+        signals["cross_turn_correction_candidate"] = True
+        signals["correction_categories"] = correction_signals.get("categories", [])
+        signals["correction_matched_patterns"] = correction_signals.get("matched_patterns", [])
+    if correction_signals.get("had_to_clarify"):
+        signals['clarified'] = True
+    if correction_signals.get("had_to_retry"):
+        signals['retried'] = True
+    if correction_signals.get("style_correction"):
+        signals["style_corrected"] = True
     
     return signals
 

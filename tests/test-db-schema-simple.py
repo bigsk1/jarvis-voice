@@ -26,6 +26,15 @@ def _tool_definitions_column_names(db_path: Path) -> list[str]:
         conn.close()
 
 
+def _table_names(db_path: Path) -> list[str]:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+        return [row[0] for row in rows]
+    finally:
+        conn.close()
+
+
 def check_long_form_column(db_path: Path, db_name: str):
     """Check if long_form column exists in knowledge_base table."""
     conn = sqlite3.connect(str(db_path))
@@ -87,6 +96,9 @@ def main():
     assert "embedding_input_hash" in _tool_definitions_column_names(cloud_db), (
         "tool_definitions.embedding_input_hash missing after fresh MemoryDB init (cloud)"
     )
+    assert "user_model" in _table_names(cloud_db), (
+        "user_model table missing after fresh MemoryDB init (cloud)"
+    )
     
     if not check_long_form_column(cloud_db, "Cloud DB"):
         all_passed = False
@@ -109,6 +121,9 @@ def main():
     
     assert "embedding_input_hash" in _tool_definitions_column_names(local_db), (
         "tool_definitions.embedding_input_hash missing after fresh MemoryDB init (local)"
+    )
+    assert "user_model" in _table_names(local_db), (
+        "user_model table missing after fresh MemoryDB init (local)"
     )
     
     if not check_long_form_column(local_db, "Local DB"):
@@ -149,10 +164,10 @@ def main():
     sync_script = project_root / 'bin' / 'sync-memory-db.py'
     if sync_script.exists():
         content = sync_script.read_text()
-        if 'long_form' in content:
-            print("✅ sync-memory-db.py includes long_form column")
+        if 'long_form' in content and 'user_model' in content:
+            print("✅ sync-memory-db.py includes long_form column and user_model table")
         else:
-            print("❌ sync-memory-db.py missing long_form column")
+            print("❌ sync-memory-db.py missing long_form column or user_model table")
             all_passed = False
     else:
         print("⚠️  sync-memory-db.py not found")
@@ -182,8 +197,9 @@ def main():
         print("  ✅ long_form column in memory_db.py schema")
         print("  ✅ long_form column created on fresh init")
         print("  ✅ tool_definitions.embedding_input_hash on fresh cloud/local init")
+        print("  ✅ user_model table on fresh cloud/local init")
         print("  ✅ long_form data can be inserted and retrieved")
-        print("  ✅ sync-memory-db.py updated for long_form")
+        print("  ✅ sync-memory-db.py updated for long_form and user_model")
         print()
         return 0
     else:
@@ -192,4 +208,3 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
-

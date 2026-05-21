@@ -240,9 +240,23 @@ A single command that checks:
 
 ## 🧭 Strategic Direction (2026-05-21)
 
-Jarvis is past the "add more features" phase. The next gains come from **tighter feedback loops**, **cross-surface continuity**, and **memory quality** — not pivoting to SOUL.md/MEMORY.md-style harnesses. Code-driven orchestration stays; borrow the *idea* of always-loaded persona/preferences (~500 tokens) via a structured user model, not unstructured markdown files.
+Jarvis is past the "add more features" phase. The next gains come from **tighter feedback loops**, **cross-surface continuity**, and **memory quality** - not pivoting to SOUL.md/MEMORY.md-style harnesses. Code-driven orchestration stays; borrow the *idea* of always-loaded persona/preferences via a structured user model, not unstructured markdown files.
 
 Guiding bet: keep Jarvis' canonical state local (sessions, tool traces, completion guard, feedback). Use provider continuation (xAI, OpenAI Responses) only as an in-flight optimization — see [XAI_NATIVE_CONTINUATION_PLAN.md](XAI_NATIVE_CONTINUATION_PLAN.md) and [CONVERSATION_STATE_ARCHITECTURE.md](CONVERSATION_STATE_ARCHITECTURE.md).
+
+**Important framing:** the following phases are hypotheses from code exploration, not a command to plow ahead with implementation. Treat them as a research-first roadmap: verify the actual gap, check for regressions or existing partial coverage, then make the smallest code change that proves the improvement.
+
+**Note:** user-facing preferences (e.g. "call me sir") already live in `knowledge_base` with auto-memory always-include - not in jarvis-intel files. See `AUTO_MEMORY_*` in `config/cloud.env` and [AUTO_MEMORY_INJECTION_FEATURE.md](AUTO_MEMORY_INJECTION_FEATURE.md).
+
+### Phase Relationship
+
+The structured user model is the center of gravity:
+
+- **Phase 2 defines the target:** a compact, durable profile of how Jarvis should act toward the user over time.
+- **Phase 1 supplies correction evidence:** cross-turn dissatisfaction and style corrections become signals that can update the profile or downgrade prior experiences.
+- **Phase 3 protects memory quality:** write-time classification decides which facts/preferences are allowed to affect recall, routing, or the user model.
+
+This is similar in spirit to Hermes/OpenClaw-style `SOUL.md` or `MEMORY.md` profile compaction, but not in storage or orchestration. Jarvis should keep the profile structured, local, queryable, and code-governed.
 
 ### What Already Partially Covers the Learning Loop
 
@@ -256,44 +270,145 @@ Several post-turn hooks already update the intelligence DB before reflection run
 
 See [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) and [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) for the full bridge docs.
 
-**Remaining gap:** a user correction on turn 2 does not retroactively downgrade turn 1's experience. Turn 1 is still recorded as `outcome_success=true` (HTTP 200 / LLM responded) unless Completion Guard or Feedback catches it on that same turn.
+**Cross-turn gap (default):** with `USER_CORRECTION_LEARNING_MODE=shadow` (default), turn 1 is **not** downgraded when turn 2 looks like a correction. Shadow candidates are persisted on the **current** turn for review. With `USER_CORRECTION_LEARNING_MODE=apply`, turn 1 is retroactively marked failed via `update_experience_from_user_correction()`.
 
 ### 1) Retroactive Satisfaction Detection (Cross-Turn Learning Loop)
 **Priority:** High  
-**Status:** Not implemented — highest-ROI intelligence improvement
+**Status:** Partial — shadow + apply implemented; default shadow; live evidence review before apply
 
 Cheapest path to a real self-improvement loop without "dreaming" or sandboxes:
 
 ```
-Turn 1: Jarvis answers → experience recorded (success=true)
+Turn 1: Jarvis answers -> experience recorded (success=true)
+         -> conversation log stores experience_id in metadata (wake-word/CLI)
 Turn 2: User says "no I meant Portland OR not Portland ME"
-         → detect correction pattern on NEW query
-         → UPDATE turn 1 experience: outcome_success=false, had_to_clarify=true
-         → queue reflection with high priority
+         -> detect correction pattern on NEW query
+         -> shadow: persist candidate on turn 2 + intel log (no turn 1 mutation)
+         -> apply: UPDATE turn 1 experience: outcome_success=false, had_to_clarify=true
+         -> queue reflection with high priority
 ```
 
 **Why this matters:** today, `ok: True` + no guard failure + no feedback run = success. Many real failures only show up when the user rephrases on the next message. Completion Guard and Feedback help but are limited to the turn they run on.
 
-**Implementation sketch:**
-- Post-turn hook (orchestrator entry or web chat pre-route): compare new query against previous experience in the same session/auto-context window
-- Reuse/extend correction patterns from `_infer_user_signals()` (`what i meant`, `no i want`, `not that`, `too long`, `you forgot`, etc.)
-- Call new `update_experience_from_user_correction(previous_experience_id, signals)` — same shape as feedback/guard bridges
-- Optionally nudge `user_model` traits (verbosity, etc.) when style corrections are detected
-- Wire `experience_id` through session/auto-context so turn N+1 can find turn N's row
+**Implemented (2026-05-21):**
+- `extract_user_correction_signals()` — conservative correction/retry/style patterns
+- `update_experience_from_user_correction()` — apply-mode bridge (mirrors feedback/guard)
+- `record_user_correction_shadow_candidate()` — shadow persistence + `get_intel_logger()` event
+- `USER_CORRECTION_LEARNING_MODE=shadow|apply` in `config/cloud.env` / `local.env` (+ examples)
+- Web UI: `experience_id` on assistant history → `_previous_experience_id_from_history()`
+- Wake word / CLI: `experience_id` in conversation metadata → `get_previous_experience_id_from_recent_conversations()` within `AUTO_CONTEXT_MINUTES`
 
-**Files likely involved:** `lib/intelligence_hooks.py`, `orchestrator/orchestrator_v2.py`, `jarvis-web/server/sockets/chat.py`
+**Still open:**
+- Live shadow evidence review and false-positive tuning before flipping to apply
+- Task-change guardrails ("I meant to ask something else" vs real correction)
+- Optional `user_model` trait nudge from style corrections (apply mode)
+- Some exit paths (duplicate-prevented, max-turns) do not yet log `experience_id`
 
-### 2) Structured User Model (Phase 2A)
+**Guardrails:**
+- Only downgrade when the correction clearly refers to Jarvis' previous answer, not when the user changes tasks naturally
+- Store the correction text/evidence in `raw_data` so reflection can inspect it later
+- Keep mutation local to the linked previous experience; do not rewrite broad history
+- Shadow mode should be used to measure false positives before enabling apply mode; phrases like "I meant to ask something else" can be a natural topic change rather than dissatisfaction with the previous answer
+
+**Current linkage:**
+
+| Surface | How turn N finds turn N-1 `experience_id` |
+|---------|---------------------------------------------|
+| **Web UI** | Assistant message `experience_id` in client history → `_previous_experience_id_from_history()` |
+| **Wake word / CLI** | Prior conversation row `metadata.experience_id` → `_resolve_previous_experience_id_for_auto_context()` |
+| **Same process** | `_last_experience_id` fallback when orchestrator instance persists |
+
+**Shadow review queries:**
+
+```sql
+-- Intelligence DB: shadow candidates (current turn)
+SELECT id, query,
+       json_extract(raw_data, '$.user_signals.previous_experience_id_candidate') AS prev_id,
+       json_extract(raw_data, '$.user_correction_shadow.latest.signals') AS signals
+FROM experiences
+WHERE raw_data LIKE '%user_correction_shadow%'
+ORDER BY id DESC LIMIT 20;
+```
+
+Intel logs: search for `user_correction_shadow_candidate` events.
+
+**Files:** `lib/intelligence_hooks.py`, `orchestrator/orchestrator_v2.py`, `jarvis-web/server/sockets/chat.py`, `lib/memory_db.py`
+
+### 2) Structured User Model / Compact Profile Card (Phase 2A)
 **Priority:** High  
-**Status:** Documented in [Psychological-Profile-Ideas.md](Psychological-Profile-Ideas.md) — not implemented
+**Status:** Partial — dedicated `user_model` table implemented in memory DB; prompt injection/update reconciliation not active
 
-Replace scattered "always call me sir" intel files with a `user_model` table in memory DB (`verbosity`, `technical_depth`, `formality`, `prefers_code_first` as 0.0–1.0 scalars). Inject ~5 lines into the system prompt every turn — no semantic search needed. Update from correction patterns + explicit preferences. Respects existing `JARVIS_RESPONSE_STYLE=auto`; nudges within mode rather than overriding it.
+This is the key idea: a fixed-budget, compressed, durable "how to treat this user" profile that improves over time. It should preserve important stable preferences even if they are six months old, while allowing noisy or recent-only signals to decay.
+
+**Already in place (not intel files):** discrete preferences like "call me sir" are stored in `knowledge_base` via the `remember` tool (`how_to_address_user`, etc.) and injected every turn by auto-memory - not semantic search:
+
+- `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT` + `get_addressing_preferences()` in `lib/memory_db.py`
+- Key patterns: `address`, `how_to`, `response_tone`, `response_style`, `preferred_language`
+- Orchestrator merges these as pinned prefs before query-based semantic recall (`orchestrator/orchestrator_v2.py` → `_get_relevant_memories_bundle()`)
+
+See [AUTO_MEMORY_INJECTION_FEATURE.md](AUTO_MEMORY_INJECTION_FEATURE.md) and `config/cloud.env` (`AUTO_MEMORY_*` knobs).
+
+**What `user_model` would add:** a complementary layer for **learned behavioral traits** that are not discrete remember/forget key-value pairs:
+
+| Field | Example |
+|-------|---------|
+| `verbosity` | 0.25 = concise by default; expand when asked |
+| `technical_depth` | 0.8 = comfortable with code paths, architecture, and tradeoffs |
+| `formality` | 0.35 = warm/casual, not stiff |
+| `prefers_code_first` | 0.7 = implementation details are useful, but research first for risky changes |
+| `confidence` | confidence per trait, based on number/quality of signals |
+| `evidence` | recent correction IDs, feedback IDs, or memory keys that justify the trait |
+| `last_reconciled_at` | last compaction/reconciliation time |
+
+The injected prompt should stay tiny, roughly a 5-line profile card:
+
+```text
+User profile:
+- Addressing/style prefs: pulled from always-include knowledge_base memories.
+- Interaction style: concise but source-faithful; prefers surgical changes after gap analysis.
+- Technical depth: high; include code paths and verification when relevant.
+- Adaptation hints: update only from strong corrections, repeated behavior, or explicit preference.
+```
+
+**Update model:** do not let every new turn rewrite the profile. Prefer one or both:
+
+- rolling reconciliation after a threshold such as 20 tasks/queries, using only strong signals
+- event-driven updates when feedback, Completion Guard, or cross-turn corrections provide high-confidence evidence
+
+Important long-term preferences should survive time decay. Recent signals should not automatically override stable traits unless repeated or explicit.
+
+**Storage decision:** use a dedicated `user_model` table in the memory DB, not jarvis-intel files. The remaining open work is reconciliation policy and prompt injection through the existing system-prompt assembly path, not loading raw markdown files.
+
+**Injection boundary:** the full profile card belongs only in user-facing generation:
+
+- pure Q&A / no-tool chat
+- final synthesis after single-tool or multi-tool results are available
+- clarification questions when Jarvis needs to ask the user something
+
+Do **not** inject the full interaction profile into deterministic routing, tool-choice loops, or tool-argument generation. Those paths may receive only relevant operational preferences, such as location, units, selected account/calendar, safety constraints, or explicit user preferences that materially affect execution. This keeps routing crisp while still letting final answers adapt to the user.
+
+**Not a replacement for:** existing `remember`/`forget` preference flow or auto-memory always-include. **Complements** them for softer, inferred style adaptation.
 
 ### 3) Memory Quality Gates
 **Priority:** High  
-**Status:** Partial — score thresholds raised for auto-memory injection; no write-time type taxonomy
+**Status:** Partial - write-time classification metadata on `remember()`; recall enforcement not yet active
 
-Before auto-memory writes to knowledge base, classify entries: `preference | fact | artifact | transient`. Route `artifact`/`transient` to stash/intel only; `preference` → user_model + small intel file; `fact` → knowledge base with source tag. Stops canvas pages and misc junk from polluting routing recall.
+Before auto-memory writes to knowledge base, classify entries:
+
+| Type | Route | Notes |
+|------|-------|-------|
+| `preference` | `knowledge_base` or `user_model` | Explicit durable preference stays in `knowledge_base`; inferred soft trait feeds `user_model` |
+| `fact` | `knowledge_base` | Stable user/world/project fact with provenance |
+| `artifact` | stash or intel only | Generated pages, canvas text, temporary outputs, intermediate notes |
+| `transient` | session/task context only | Short-lived state, one-off planning, recent-only reminders |
+
+This prevents canvas pages, one-off artifacts, and misc junk from polluting routing recall while preserving real preferences and durable facts.
+
+**Research-first implementation sketch:**
+- Audit current memory write paths before changing filters
+- Add classification metadata without dropping writes at first
+- Run a small review set of remembered entries to tune labels and false positives
+- Only then enforce routing differences between `knowledge_base`, stash, intel, and `user_model`
 
 ### 4) Unified Session / Task Layer
 **Priority:** High (architectural)  
@@ -337,19 +452,20 @@ On-demand or scheduled: short voice summary + full canvas detail (services, aler
 ### Suggested Next Four Weeks
 
 ```
-Week 1: Retroactive satisfaction (cross-turn) + memory type gates
-Week 2: User model table + prompt injection
-Week 3: Session/task schema + Web UI wiring
-Week 4: Daily recap workflow OR OpenCode streaming (pick daily-use winner)
+Week 1: Live shadow evidence run (Web UI + wake word); review SQL + intel logs
+Week 2: Tune false positives; flip USER_CORRECTION_LEARNING_MODE=apply when satisfied
+Week 3: user_model prompt injection (final synthesis only) + one trait update path
+Week 4: Memory recall enforcement for artifact/transient types OR session/task schema start
 ```
 
 ### Updated Priority Stack (May 2026)
 
-1. **Retroactive satisfaction detection** — closes the biggest intelligence gap; complements existing guard/feedback hooks
-2. **User model + memory quality gates** — SOUL.md benefits without harness drift
-3. **Session/task layer** — cross-surface continuity and foundation for everything else
-4. **OpenCode supervision OR personal corpus** — pick by daily usage
-5. **Routing evals** — insurance as tool surface grows
+1. **Structured user model / compact profile card** — defines the stable target for how Jarvis should treat the user over time
+2. **Retroactive satisfaction detection** — supplies high-confidence correction evidence and closes the biggest cross-turn learning gap
+3. **Memory quality gates** — protects recall and the user model from artifact/transient pollution
+4. **Session/task layer** — cross-surface continuity and foundation for everything else
+5. **OpenCode supervision OR personal corpus** — pick by daily usage
+6. **Routing evals** — insurance as tool surface grows
 
 ---
 
@@ -387,4 +503,4 @@ Want to implement something? Here's how:
 ---
 
 **Last Updated:** May 21, 2026
-**Version:** 2.2 (Added strategic direction section — learning loop, session layer, user model)
+**Version:** 2.5 (Phase 1 shadow/apply + wake-word experience_id bridge documented)

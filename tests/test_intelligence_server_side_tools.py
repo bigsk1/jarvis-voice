@@ -24,7 +24,10 @@ sys.modules.setdefault("numpy", fake_numpy)
 import intelligence_hooks
 from intelligence_hooks import (
     _evaluate_insight_helpfulness,
+    extract_user_correction_signals,
     normalize_server_side_tools_for_reflection,
+    record_user_correction_shadow_candidate,
+    update_experience_from_user_correction,
     update_experience_from_feedback,
 )
 from intelligence import should_suppress_preferred_tool_for_native_search
@@ -41,6 +44,7 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
                 outcome_success BOOLEAN,
                 user_satisfied BOOLEAN,
                 had_to_retry BOOLEAN,
+                had_to_clarify BOOLEAN,
                 raw_data TEXT
             )
         """)
@@ -68,8 +72,8 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
     def _insert_experience(self, conn, raw_data=None, outcome_success=1, user_satisfied=0, had_to_retry=0, priority=0.4):
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO experiences (outcome_success, user_satisfied, had_to_retry, raw_data)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO experiences (outcome_success, user_satisfied, had_to_retry, had_to_clarify, raw_data)
+            VALUES (?, ?, ?, 0, ?)
         """, (
             outcome_success,
             user_satisfied,
@@ -95,6 +99,87 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
             normalized,
             ["native:x_search", "native:x_search", "native:view_image", "native:code_interpreter"]
         )
+
+    def test_extract_user_correction_signals(self):
+        signals = extract_user_correction_signals("No, what I meant was Portland OR, not Portland ME")
+
+        self.assertTrue(signals["is_correction"])
+        self.assertTrue(signals["had_to_clarify"])
+        self.assertIn("clarification", signals["categories"])
+
+    def test_user_correction_marks_previous_experience_for_reflection(self):
+        conn = self._install_fake_intel()
+        exp_id = self._insert_experience(
+            conn,
+            raw_data={"context": {"final_speech": "Portland, Maine details"}},
+            outcome_success=1,
+            user_satisfied=1,
+            had_to_retry=0,
+            priority=0.2,
+        )
+
+        updated = update_experience_from_user_correction(
+            previous_experience_id=exp_id,
+            correction_query="No, I meant Portland OR, not Portland ME.",
+        )
+
+        self.assertTrue(updated)
+        row = conn.execute("SELECT * FROM experiences WHERE id = ?", (exp_id,)).fetchone()
+        self.assertEqual(row["outcome_success"], 0)
+        self.assertEqual(row["user_satisfied"], 0)
+        self.assertEqual(row["had_to_retry"], 1)
+        self.assertEqual(row["had_to_clarify"], 1)
+
+        raw_data = json.loads(row["raw_data"])
+        self.assertEqual(raw_data["user_correction"]["latest"]["source"], "next_turn_user_correction")
+        self.assertTrue(raw_data["user_signals"]["cross_turn_correction"])
+
+        priority = conn.execute(
+            "SELECT priority FROM reflection_queue WHERE experience_id = ?",
+            (exp_id,),
+        ).fetchone()["priority"]
+        self.assertEqual(priority, 0.9)
+
+    def test_shadow_candidate_persists_link_to_previous_experience(self):
+        conn = self._install_fake_intel()
+        previous_id = self._insert_experience(
+            conn,
+            raw_data={"context": {"final_speech": "Portland, Maine details"}},
+            outcome_success=1,
+            user_satisfied=1,
+            had_to_retry=0,
+            priority=0.2,
+        )
+        current_id = self._insert_experience(
+            conn,
+            raw_data={},
+            outcome_success=1,
+            user_satisfied=0,
+            had_to_retry=0,
+            priority=0.2,
+        )
+
+        updated = record_user_correction_shadow_candidate(
+            current_experience_id=current_id,
+            previous_experience_id=previous_id,
+            correction_query="No, I meant Portland OR, not Portland ME.",
+        )
+
+        self.assertTrue(updated)
+        row = conn.execute("SELECT raw_data FROM experiences WHERE id = ?", (current_id,)).fetchone()
+        raw_data = json.loads(row["raw_data"])
+        self.assertEqual(
+            raw_data["user_correction_shadow"]["latest"]["previous_experience_id"],
+            previous_id,
+        )
+        self.assertEqual(raw_data["user_signals"]["previous_experience_id_candidate"], previous_id)
+        self.assertTrue(raw_data["user_signals"]["cross_turn_correction_candidate"])
+
+        previous_row = conn.execute(
+            "SELECT outcome_success FROM experiences WHERE id = ?",
+            (previous_id,),
+        ).fetchone()
+        self.assertEqual(previous_row["outcome_success"], 1)
 
     def test_suppresses_external_search_preference_when_native_search_was_used(self):
         experience = {

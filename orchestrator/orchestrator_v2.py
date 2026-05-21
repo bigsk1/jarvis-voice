@@ -316,6 +316,8 @@ class Orchestrator:
         self.cancel_check = None
         # Web conversation ID for tracking web UI chat sessions (stored in metadata)
         self.web_conversation_id = None
+        self._last_experience_id = None
+        self._previous_experience_id_for_correction = None
         # Internal repair/meta passes can disable learning to avoid polluting experiences.
         self.learning_enabled = True
     
@@ -1012,7 +1014,9 @@ Mode: {self.mode}
         
         # Auto-inject recent conversation context
         auto_context_source = "none"
+        self._previous_experience_id_for_correction = None
         if conversation_history:
+            self._previous_experience_id_for_correction = self._previous_experience_id_from_history(conversation_history)
             # Use provided conversation history (from web app)
             enhanced_transcript = self._format_conversation_context(transcript, conversation_history)
             auto_context_source = "provided_history"
@@ -1020,8 +1024,13 @@ Mode: {self.mode}
             # Fall back to memory_db auto_context (terminal/TUI mode)
             enhanced_transcript = self._build_conversation_context(transcript)
             auto_context_source = "auto_context"
+            self._previous_experience_id_for_correction = (
+                self._resolve_previous_experience_id_for_auto_context()
+                or self._last_experience_id
+            )
         else:
             enhanced_transcript = transcript
+            self._previous_experience_id_for_correction = self._last_experience_id
         
         # Debug: Show what's being sent to LLM
         if os.environ.get('JARVIS_DEBUG') and enhanced_transcript != transcript:
@@ -1881,9 +1890,7 @@ Mode: {self.mode}
                     turn_marker = f" after {len(tools_used)} tool(s)" if turn_num > 0 else ""
                     print(f"💬 Task complete{turn_marker}: {speech}")
                 
-                # Auto-log conversation with all tools used and usage info
                 token_info = total_usage if self._has_usage_data(total_usage) else None
-                self._log_conversation(transcript, speech, tools_used, success=True, token_info=token_info)
                 
                 # Build response
                 response = {
@@ -1923,6 +1930,16 @@ Mode: {self.mode}
                 experience_id = self._record_learning_experience(transcript, tools_used, response, conversation_context, applied_insights)
                 if experience_id > 0:
                     response["experience_id"] = experience_id
+
+                # Auto-log conversation after experience_id is known (wake-word linkage)
+                self._log_conversation(
+                    transcript,
+                    speech,
+                    tools_used,
+                    success=True,
+                    token_info=token_info,
+                    experience_id=experience_id if experience_id > 0 else None,
+                )
                 
                 # Mark status updates complete before final TTS
                 self.status_updater.mark_complete()
@@ -2630,6 +2647,41 @@ Your synthesized response:"""
             Enhanced query with conversation context
         """
         return self._get_context_assembler().format_conversation_context(current_query, history)
+
+    def _previous_experience_id_from_history(self, history: list | None) -> int | None:
+        """Find the most recent assistant experience ID in provided history."""
+        for msg in reversed(history or []):
+            if not isinstance(msg, dict) or msg.get("role") != "assistant":
+                continue
+            exp_id = msg.get("experience_id")
+            if exp_id is None and isinstance(msg.get("data"), dict):
+                exp_id = msg["data"].get("experience_id")
+            try:
+                exp_id_int = int(exp_id)
+            except (TypeError, ValueError):
+                continue
+            if exp_id_int > 0:
+                return exp_id_int
+        return None
+
+    def _resolve_previous_experience_id_for_auto_context(self) -> int | None:
+        """Resolve prior experience_id from recent conversation logs (wake-word/CLI)."""
+        try:
+            db = get_memory_db()
+            within_minutes = get_int('AUTO_CONTEXT_MINUTES', 10)
+            exp_id = db.get_previous_experience_id_from_recent_conversations(
+                within_minutes=within_minutes,
+                session_id=self.session_id,
+            )
+            if not exp_id:
+                exp_id = db.get_previous_experience_id_from_recent_conversations(
+                    within_minutes=within_minutes,
+                    session_id=None,
+                )
+            db.close()
+            return exp_id
+        except Exception:
+            return None
     
     def _try_workflow(self, transcript: str) -> dict[str, Any] | None:
         """
@@ -3124,6 +3176,53 @@ Your synthesized response:"""
                 result=learning_result,
                 conversation_context=conversation_context
             )
+
+            previous_experience_id = getattr(self, "_previous_experience_id_for_correction", None)
+            if previous_experience_id and previous_experience_id != experience_id:
+                try:
+                    from intelligence_hooks import (
+                        extract_user_correction_signals,
+                        record_user_correction_shadow_candidate,
+                        update_experience_from_user_correction,
+                    )
+
+                    signals = extract_user_correction_signals(transcript)
+                    if signals.get("is_correction"):
+                        correction_metadata = {
+                            "current_experience_id": experience_id,
+                            "previous_experience_id": previous_experience_id,
+                            "jarvis_session_id": self.session_id,
+                            "web_conversation_id": self.web_conversation_id,
+                        }
+                        mode = get_config_value("USER_CORRECTION_LEARNING_MODE", "shadow").strip().lower()
+                        if mode in {"apply", "enabled", "true", "1", "on"}:
+                            update_experience_from_user_correction(
+                                previous_experience_id,
+                                transcript,
+                                signals=signals,
+                                metadata={**correction_metadata, "mode": mode},
+                            )
+                        else:
+                            record_user_correction_shadow_candidate(
+                                current_experience_id=experience_id,
+                                previous_experience_id=previous_experience_id,
+                                correction_query=transcript,
+                                signals=signals,
+                                metadata={**correction_metadata, "mode": mode or "shadow"},
+                            )
+                            if os.environ.get("JARVIS_DEBUG"):
+                                print(
+                                    f"🧠 User correction shadow candidate: current={experience_id}, "
+                                    f"previous={previous_experience_id}, "
+                                    f"categories={signals.get('categories')}",
+                                    file=sys.stderr,
+                                )
+                except Exception as correction_err:
+                    if os.environ.get('JARVIS_DEBUG'):
+                        print(f"⚠️ User correction detection failed: {correction_err}", file=sys.stderr)
+
+            if experience_id > 0:
+                self._last_experience_id = experience_id
             
             # Track insight usage if insights were applied
             if applied_insights:
@@ -3141,7 +3240,8 @@ Your synthesized response:"""
             return -1
     
     def _log_conversation(self, user_query: str, response: str, tools_used: list, success: bool = True, 
-                          execution_time_ms: float = None, token_info: dict = None):
+                          execution_time_ms: float = None, token_info: dict = None,
+                          experience_id: int | None = None):
         """Auto-log conversation to memory database with metadata."""
         try:
             # Build metadata
@@ -3173,6 +3273,9 @@ Your synthesized response:"""
             # Add web conversation ID if this is a web UI request
             if self.web_conversation_id:
                 metadata["web_conversation_id"] = self.web_conversation_id
+
+            if experience_id and int(experience_id) > 0:
+                metadata["experience_id"] = int(experience_id)
             
             db = get_memory_db()
             db.log_conversation(

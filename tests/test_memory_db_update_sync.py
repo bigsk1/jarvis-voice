@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
-from lib.memory_db import MemoryDB
+from lib.memory_db import MemoryDB, classify_memory_entry
 
 
 class MemoryDBUpdateSyncTests(unittest.TestCase):
@@ -44,6 +45,78 @@ class MemoryDBUpdateSyncTests(unittest.TestCase):
         finally:
             cloud_db.close()
             local_db.close()
+
+    def test_remember_adds_memory_quality_classification_metadata(self) -> None:
+        db = MemoryDB(str(self.cloud_path))
+        try:
+            memory_id = db.remember(
+                "preference",
+                "response_style",
+                "I prefer concise answers",
+                generate_embedding=False,
+            )
+            row = db.conn.execute(
+                "SELECT metadata FROM knowledge_base WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
+            metadata = json.loads(row["metadata"])
+
+            self.assertEqual(metadata["memory_type"], "preference")
+            self.assertEqual(metadata["memory_type_reason"], "preference_marker")
+        finally:
+            db.close()
+
+    def test_memory_quality_classifies_stash_artifact(self) -> None:
+        classification = classify_memory_entry(
+            "stash_artifact",
+            "uploaded_image",
+            "Uploaded image. STASH: stash://space/file",
+            source="web_upload",
+            metadata={"stash_ref": "stash://space/file", "type": "image"},
+        )
+
+        self.assertEqual(classification["memory_type"], "artifact")
+
+    def test_recent_conversation_metadata_links_previous_experience_id(self) -> None:
+        db = MemoryDB(str(self.cloud_path))
+        try:
+            db.log_conversation(
+                user_query="What about Portland?",
+                jarvis_response="Portland, Maine has several options.",
+                tools_used=["serpapi_yelp_search"],
+                session_id="wake-session-1",
+                success=True,
+                metadata={"experience_id": 4242, "mode": "cloud"},
+            )
+            exp_id = db.get_previous_experience_id_from_recent_conversations(
+                within_minutes=10,
+                session_id="wake-session-1",
+            )
+            self.assertEqual(exp_id, 4242)
+        finally:
+            db.close()
+
+    def test_user_model_trait_round_trips_from_dedicated_table(self) -> None:
+        db = MemoryDB(str(self.cloud_path))
+        try:
+            trait_id = db.upsert_user_model_trait(
+                "verbosity",
+                0.25,
+                confidence=0.8,
+                evidence=[{"type": "correction", "id": 123}],
+                source="test",
+                metadata={"note": "prefers concise default"},
+            )
+            self.assertGreater(trait_id, 0)
+
+            model = db.get_user_model()
+            self.assertIn("verbosity", model)
+            self.assertEqual(model["verbosity"]["value"], 0.25)
+            self.assertEqual(model["verbosity"]["confidence"], 0.8)
+            self.assertEqual(model["verbosity"]["evidence"][0]["id"], 123)
+            self.assertEqual(model["verbosity"]["metadata"]["note"], "prefers concise default")
+        finally:
+            db.close()
 
     def test_update_memory_skips_missing_sibling_db(self) -> None:
         cloud_db = MemoryDB(str(self.cloud_path))

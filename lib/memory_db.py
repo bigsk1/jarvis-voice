@@ -10,6 +10,7 @@ import json
 import os
 import pickle
 import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -17,6 +18,94 @@ def _tool_definition_content_hash(name: str, description: str, schema_json: str,
     """SHA-256 of inputs that affect Tool RAG embedding and tool identity."""
     payload = f"{name}\x00{description}\x00{schema_json}\x00{1 if enabled else 0}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def classify_memory_entry(
+    category: str,
+    key: str,
+    value: str,
+    source: str = None,
+    metadata: dict = None,
+) -> dict:
+    """
+    Classify a memory write before recall enforcement exists.
+
+    Phase 3 starts as metadata-only: callers still store the memory normally,
+    but each row records the likely type so we can audit quality before routing
+    artifacts/transients away from knowledge recall.
+    """
+    category_l = (category or "").lower()
+    key_l = (key or "").lower()
+    value_l = (value or "").lower()
+    source_l = (source or "").lower()
+    metadata = metadata if isinstance(metadata, dict) else {}
+    tags = {
+        str(tag).lower()
+        for tag in metadata.get("tags", [])
+        if tag is not None
+    } if isinstance(metadata.get("tags"), list) else set()
+    explicit_type = str(metadata.get("type", "")).lower()
+
+    if metadata.get("memory_type") in {"preference", "fact", "artifact", "transient"}:
+        return {
+            "memory_type": metadata["memory_type"],
+            "memory_type_confidence": 1.0,
+            "memory_type_reason": "explicit_metadata",
+        }
+
+    artifact_terms = {
+        "artifact", "stash", "upload", "image", "video", "canvas", "pdf",
+        "document", "file", "generated", "attachment",
+    }
+    if (
+        "stash_ref" in metadata
+        or "file_id" in metadata
+        or category_l in {"stash_artifact", "artifact"}
+        or any(term in category_l for term in ("stash", "artifact"))
+        or any(term in source_l for term in ("web_upload", "stash", "canvas"))
+        or explicit_type in {"image", "video", "audio", "pdf", "file", "document"}
+        or tags & artifact_terms
+        or "stash://" in value_l
+    ):
+        return {
+            "memory_type": "artifact",
+            "memory_type_confidence": 0.9,
+            "memory_type_reason": "artifact_or_stash_marker",
+        }
+
+    transient_terms = {"transient", "temporary", "session", "draft", "scratch", "todo_now"}
+    if (
+        metadata.get("expires_at")
+        or metadata.get("ttl_seconds")
+        or category_l in {"transient", "session", "scratch"}
+        or tags & transient_terms
+    ):
+        return {
+            "memory_type": "transient",
+            "memory_type_confidence": 0.8,
+            "memory_type_reason": "expiration_or_session_marker",
+        }
+
+    preference_key_terms = (
+        "prefer", "preference", "address", "how_to", "response_tone",
+        "response_style", "preferred_language", "call_me",
+    )
+    if (
+        category_l in {"preference", "preferences", "personal_preference"}
+        or any(term in key_l for term in preference_key_terms)
+        or any(term in value_l for term in ("i prefer", "call me", "address me"))
+    ):
+        return {
+            "memory_type": "preference",
+            "memory_type_confidence": 0.85,
+            "memory_type_reason": "preference_marker",
+        }
+
+    return {
+        "memory_type": "fact",
+        "memory_type_confidence": 0.55,
+        "memory_type_reason": "default_fact",
+    }
 
 
 class MemoryDB:
@@ -99,6 +188,33 @@ class MemoryDB:
 
         # Self-heal older DBs created before newer conversation metadata support.
         self._ensure_column(cursor, "conversations", "metadata", "TEXT")
+
+        # Structured user model - compact behavioral/profile traits for
+        # user-facing synthesis. This is intentionally separate from
+        # knowledge_base so scalar traits do not pollute semantic recall.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_model (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL UNIQUE,
+                value TEXT NOT NULL,
+                value_type TEXT DEFAULT 'scalar',
+                confidence REAL DEFAULT 0.5,
+                evidence TEXT,
+                source TEXT,
+                metadata TEXT,
+                last_reconciled_at TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self._ensure_column(cursor, "user_model", "value_type", "TEXT DEFAULT 'scalar'")
+        self._ensure_column(cursor, "user_model", "confidence", "REAL DEFAULT 0.5")
+        self._ensure_column(cursor, "user_model", "evidence", "TEXT")
+        self._ensure_column(cursor, "user_model", "source", "TEXT")
+        self._ensure_column(cursor, "user_model", "metadata", "TEXT")
+        self._ensure_column(cursor, "user_model", "last_reconciled_at", "TEXT")
+        self._ensure_column(cursor, "user_model", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        self._ensure_column(cursor, "user_model", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
         
         # Note: tool_patterns and preferences tables removed (not used)
         # Memory now uses metadata field in knowledge_base for flexible data
@@ -107,6 +223,7 @@ class MemoryDB:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge_base(category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_key ON knowledge_base(key)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_model_key ON user_model(key)")
         
         # FTS5 Full-Text Search Virtual Table (BM25 ranking)
         cursor.execute("""
@@ -203,8 +320,15 @@ class MemoryDB:
                 # Silently fail - memory still gets stored without embedding
                 pass
         
+        # Phase 3 memory quality gate groundwork: classify writes without
+        # enforcing routing changes yet.
+        memory_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        classification = classify_memory_entry(category, key, value, source, memory_metadata)
+        for class_key, class_value in classification.items():
+            memory_metadata.setdefault(class_key, class_value)
+
         # Serialize metadata to JSON string
-        metadata_json = json.dumps(metadata) if metadata else None
+        metadata_json = json.dumps(memory_metadata) if memory_metadata else None
         
         # Check if similar memory exists
         existing = cursor.execute(
@@ -562,6 +686,132 @@ class MemoryDB:
             (limit,),
         ).fetchall()
         return [dict(row) for row in results]
+
+    # ========== Structured User Model ==========
+
+    def upsert_user_model_trait(
+        self,
+        key: str,
+        value,
+        *,
+        value_type: str = "scalar",
+        confidence: float = 0.5,
+        evidence: list | dict | None = None,
+        source: str = None,
+        metadata: dict = None,
+        last_reconciled_at: str = None,
+    ) -> int:
+        """
+        Insert or update a compact user-model trait.
+
+        This table is for learned behavioral traits used by user-facing
+        synthesis, not for semantic recall or tool routing.
+        """
+        key = (key or "").strip()
+        if not key:
+            raise ValueError("user_model key is required")
+
+        value_type = (value_type or "scalar").strip().lower()
+        if value_type == "scalar":
+            value_text = str(float(value))
+        elif isinstance(value, str):
+            value_text = value
+        else:
+            value_text = json.dumps(value, default=str)
+
+        try:
+            confidence_value = max(0.0, min(1.0, float(confidence)))
+        except Exception:
+            confidence_value = 0.5
+
+        evidence_json = json.dumps(evidence, default=str) if evidence is not None else None
+        metadata_json = json.dumps(metadata, default=str) if metadata is not None else None
+
+        cursor = self.conn.cursor()
+        existing = cursor.execute(
+            "SELECT id FROM user_model WHERE key = ?",
+            (key,),
+        ).fetchone()
+
+        if existing:
+            cursor.execute("""
+                UPDATE user_model
+                SET value = ?,
+                    value_type = ?,
+                    confidence = ?,
+                    evidence = ?,
+                    source = ?,
+                    metadata = ?,
+                    last_reconciled_at = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE key = ?
+            """, (
+                value_text,
+                value_type,
+                confidence_value,
+                evidence_json,
+                source,
+                metadata_json,
+                last_reconciled_at,
+                key,
+            ))
+            self.conn.commit()
+            return existing["id"]
+
+        cursor.execute("""
+            INSERT INTO user_model (
+                key, value, value_type, confidence, evidence, source, metadata,
+                last_reconciled_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            key,
+            value_text,
+            value_type,
+            confidence_value,
+            evidence_json,
+            source,
+            metadata_json,
+            last_reconciled_at,
+        ))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_user_model(self) -> dict[str, dict]:
+        """Return all user-model traits keyed by trait name."""
+        cursor = self.conn.cursor()
+        rows = cursor.execute("""
+            SELECT id, key, value, value_type, confidence, evidence, source,
+                   metadata, last_reconciled_at, created_at, updated_at
+            FROM user_model
+            ORDER BY key ASC
+        """).fetchall()
+
+        model: dict[str, dict] = {}
+        for row in rows:
+            record = dict(row)
+            value_type = record.get("value_type") or "scalar"
+            if value_type == "scalar":
+                try:
+                    record["value"] = float(record["value"])
+                except Exception:
+                    pass
+            elif value_type in {"json", "list", "dict"}:
+                try:
+                    record["value"] = json.loads(record["value"])
+                except Exception:
+                    pass
+            for field in ("evidence", "metadata"):
+                if record.get(field):
+                    try:
+                        record[field] = json.loads(record[field])
+                    except Exception:
+                        pass
+            model[record["key"]] = record
+        return model
+
+    def get_user_model_trait(self, key: str) -> dict | None:
+        """Return a single user-model trait by key."""
+        return self.get_user_model().get(key)
     
     def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = None) -> list[dict]:
         """
@@ -704,6 +954,62 @@ class MemoryDB:
             """, (limit,)).fetchall()
         
         return [dict(row) for row in results]
+
+    def get_previous_experience_id_from_recent_conversations(
+        self,
+        within_minutes: int = 10,
+        session_id: str = None,
+    ) -> int | None:
+        """
+        Return experience_id from the most recent conversation within the window.
+
+        Used by wake-word / CLI auto-context to link cross-turn correction learning
+        when each activation creates a fresh Orchestrator instance.
+        """
+        try:
+            within_minutes = max(1, int(within_minutes))
+        except Exception:
+            within_minutes = 10
+
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=within_minutes)
+        recent = self.get_recent_conversations(limit=max(5, within_minutes), session_id=session_id)
+
+        try:
+            from time_utils import parse_utc_timestamp
+        except ImportError:
+            from lib.time_utils import parse_utc_timestamp
+
+        for conv in recent:
+            ts_value = conv.get("timestamp", "")
+            try:
+                ts = parse_utc_timestamp(ts_value)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                else:
+                    ts = ts.astimezone(timezone.utc)
+            except Exception:
+                continue
+
+            if ts <= cutoff:
+                continue
+
+            metadata_raw = conv.get("metadata")
+            metadata = {}
+            if metadata_raw:
+                try:
+                    metadata = json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
+                except Exception:
+                    metadata = {}
+
+            exp_id = metadata.get("experience_id")
+            try:
+                exp_id_int = int(exp_id)
+            except (TypeError, ValueError):
+                continue
+            if exp_id_int > 0:
+                return exp_id_int
+
+        return None
     
     def search_conversations(self, query: str, limit: int = 5, 
                              web_conversation_id: str = None) -> list[dict]:

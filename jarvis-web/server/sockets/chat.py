@@ -2414,6 +2414,10 @@ Previous structured data:
                     # Include tools_used for assistant messages so LLM knows what tools were run
                     if role == 'assistant' and msg.get('tools_used'):
                         entry['tools_used'] = msg.get('tools_used')
+                    if role == 'assistant' and isinstance(msg.get('data'), dict):
+                        exp_id = msg['data'].get('experience_id')
+                        if exp_id:
+                            entry['experience_id'] = exp_id
                     # Include key tool result data for follow-up capability
                     if role == 'assistant' and msg.get('data'):
                         tool_data = self._extract_followup_data(msg.get('data', {}))

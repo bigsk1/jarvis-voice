@@ -45,6 +45,29 @@ def _init_db(path: Path) -> None:
     conn.close()
 
 
+def _init_user_model(path: Path) -> None:
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_model (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            value TEXT NOT NULL,
+            value_type TEXT DEFAULT 'scalar',
+            confidence REAL DEFAULT 0.5,
+            evidence TEXT,
+            source TEXT,
+            metadata TEXT,
+            last_reconciled_at TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
 def _insert_row(
     path: Path,
     *,
@@ -62,6 +85,19 @@ def _insert_row(
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         (category, key, value, importance, source, long_form),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _insert_user_trait(path: Path, key: str, value: str, confidence: float = 0.5) -> None:
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        INSERT INTO user_model (key, value, value_type, confidence, source)
+        VALUES (?, ?, 'scalar', ?, 'test')
+        """,
+        (key, value, confidence),
     )
     conn.commit()
     conn.close()
@@ -174,6 +210,32 @@ class MemorySyncHealthTests(unittest.TestCase):
             self.assertEqual(conflict["key"], "birthday")
             self.assertIn("January 2", conflict["cloud_values"][0])
             self.assertIn("January 1", conflict["local_values"][0])
+
+    def test_detects_user_model_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            data_dir = root / "data"
+            intel_dir = root / "jarvis-intel"
+            data_dir.mkdir()
+            intel_dir.mkdir()
+
+            cloud_db = data_dir / "jarvis_memory.db"
+            local_db = data_dir / "jarvis_memory_local.db"
+            _init_db(cloud_db)
+            _init_db(local_db)
+            _init_user_model(cloud_db)
+            _init_user_model(local_db)
+            _insert_user_trait(cloud_db, "verbosity", "0.25", 0.8)
+            _insert_user_trait(local_db, "verbosity", "0.75", 0.8)
+
+            report = self.module.build_sync_health_report(root, limit=5)
+
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["user_model"]["value_conflict_count"], 1)
+            conflict = report["user_model"]["samples"]["value_conflicts"][0]
+            self.assertEqual(conflict["key"], "verbosity")
+            self.assertEqual(conflict["cloud_value"], "0.25")
+            self.assertEqual(conflict["local_value"], "0.75")
 
 
 if __name__ == "__main__":

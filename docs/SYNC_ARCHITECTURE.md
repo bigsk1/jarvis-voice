@@ -18,11 +18,12 @@ This document explains how these systems work together and when they run.
 ## 1. Memory Database Sync (`sync-memory-db.py`)
 
 ### Purpose
-Synchronizes **memories** (knowledge_base) and **conversations** between cloud and local databases, while **regenerating embeddings** to match the target mode's embedding model.
+Synchronizes **memories** (`knowledge_base`), **conversations**, and the structured **`user_model`** between cloud and local databases, while **regenerating memory embeddings** to match the target mode's embedding model.
 
 ### What it Syncs
 - ✅ Knowledge base entries (memories from `remember` and `ingest_intel`)
 - ✅ Conversations (recent 100 exchanges)
+- ✅ User model traits (compact behavioral profile, no embeddings)
 - ✅ Alerts (proactive system notifications)
 - ✅ Reminders
 - ✅ Scheduled tasks and recent scheduled-task runs
