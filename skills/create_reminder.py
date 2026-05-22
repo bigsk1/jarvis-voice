@@ -562,6 +562,9 @@ def parse_time_expression(when: str, default_hour: int = 10):
 
 def format_local_time(dt: datetime) -> str:
     """Format datetime in human-readable local time."""
+    dt = ensure_local(dt, get_app_timezone())
+    if dt.year != now_local().year:
+        return dt.strftime("%A, %B %d, %Y at %I:%M %p %Z")
     return dt.strftime("%A, %B %d at %I:%M %p %Z")
 
 

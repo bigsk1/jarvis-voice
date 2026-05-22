@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from skills.create_reminder import create_single_reminder, parse_time_expression
+from skills.create_reminder import create_single_reminder, format_local_time, parse_time_expression
 
 
 class CreateReminderTests(unittest.TestCase):
@@ -66,6 +66,27 @@ class CreateReminderTests(unittest.TestCase):
         self.assertEqual(len(trigger_result), 14)
         self.assertEqual(trigger_result[0], datetime(2026, 4, 3, 17, 0, tzinfo=tz))
         self.assertEqual(trigger_result[-1], datetime(2026, 4, 16, 17, 0, tzinfo=tz))
+
+    def test_format_local_time_omits_year_within_current_year(self):
+        tz = ZoneInfo("America/Los_Angeles")
+        dt = datetime(2026, 5, 1, 18, 0, tzinfo=tz)
+        now = datetime(2026, 4, 26, 17, 59, 7, tzinfo=tz)
+
+        with patch("skills.create_reminder.get_app_timezone", return_value=tz), \
+             patch("skills.create_reminder.now_local", return_value=now):
+            self.assertEqual(format_local_time(dt), "Friday, May 01 at 06:00 PM PDT")
+
+    def test_format_local_time_includes_year_when_outside_current_year(self):
+        tz = ZoneInfo("America/Los_Angeles")
+        dt = datetime(2027, 4, 1, 10, 0, tzinfo=tz)
+        now = datetime(2026, 5, 21, 10, 0, tzinfo=tz)
+
+        with patch("skills.create_reminder.get_app_timezone", return_value=tz), \
+             patch("skills.create_reminder.now_local", return_value=now):
+            self.assertEqual(
+                format_local_time(dt),
+                "Thursday, April 01, 2027 at 10:00 AM PDT",
+            )
 
     def test_duplicate_single_reminder_is_suppressed(self):
         schema = """

@@ -317,6 +317,31 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-05-21:**
+- ✅ **Cross-turn correction learning (v2.50.2)**
+  - `USER_CORRECTION_LEARNING_MODE=shadow|apply` — shadow records correction candidates without changing routing; apply downgrades the linked prior experience and can append deduped lessons to `jarvis-learned-lessons.md`.
+  - Web UI and wake-word paths pass `experience_id` so turn-2 corrections can reach the prior turn's experience record.
+  - Topic-pivot guard skips new questions that look like corrections without an explicit correction cue.
+  - See: [`docs/FUTURE_ENHANCEMENTS.md`](FUTURE_ENHANCEMENTS.md), [`docs/USER_PROFILE_SYSTEM.md`](USER_PROFILE_SYSTEM.md)
+- ✅ **Profile Card + `user_model` cache**
+  - `jarvis-intel/user_profile.md` → `## Profile Card` injects a compact operator lens at router and synthesis boundaries without affecting Tool RAG embeddings.
+  - Compiled card text is cached in `user_model.profile_card_cache` (hash + timestamp); `bin/reconcile-profile` prints drift vs memories/lessons for human review.
+  - Git-tracked `jarvis-intel/user_profile.md.example` for first install; copy and edit before ingest.
+  - See: [`docs/USER_PROFILE_SYSTEM.md`](USER_PROFILE_SYSTEM.md), [`docs/INSTALL_GUIDE.md`](INSTALL_GUIDE.md)
+- ✅ **Memory type auto-inject filtering**
+  - Every `remember()` stamps `memory_type` metadata (`preference`, `fact`, `artifact`, `transient`) with confidence and reason.
+  - `AUTO_MEMORY_TYPE_FILTER_ENABLED` excludes `artifact` and `transient` rows from auto-memory injection; legacy unlabeled rows are classified on the fly.
+  - `./bin/backfill-memory-types` stamps metadata on existing rows; manual `search_memory` / `semantic_recall` still see all types.
+  - See: [`docs/MEMORY_SYSTEM.md`](MEMORY_SYSTEM.md), [`docs/FUTURE_ENHANCEMENTS.md`](FUTURE_ENHANCEMENTS.md)
+- ✅ **Memory sync health + `user_model` sync**
+  - `./bin/check-memory-sync-health.py` reports intel hash drift, memory row drift, and structured `user_model` drift between cloud/local DBs.
+  - `./bin/sync-memory-db.py` now syncs the `user_model` table alongside memories and conversations.
+  - See: [`docs/SYNC_ARCHITECTURE.md`](SYNC_ARCHITECTURE.md), [`docs/DUAL_DATABASE_SYSTEM.md`](DUAL_DATABASE_SYSTEM.md)
+- ✅ **xAI model catalog: `grok-build-0.1`**
+  - Added Grok Build 0.1 (256K context; $1.00 / 1M input, $2.00 / 1M output) to `lib/model_catalog.py` for UI dropdowns, context labels, and cost estimation.
+  - Catalog is the source of truth for `XAI_REASONING_EFFORT` — only grok-4.3-family models send it; Build 0.1 omits the parameter.
+  - See: [`docs/XAI_PROVIDER.md`](XAI_PROVIDER.md)
+
 **2026-05-10:**
 - ✅ **OpenAI Responses API routing support (v2.50.2)**
   - OpenAI tool-capable router turns can now use `/v1/responses` when `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true` are enabled.
@@ -1591,6 +1616,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-05-10
-**Latest:** OpenAI Responses API routing, optional OpenAI in-flight `previous_response_id` continuation, hosted-tool config gates, provider result previews, and OpenAI vision model/detail cleanup
+**Last Updated:** 2026-05-21
+**Latest:** Cross-turn correction learning, Profile Card injection, memory type auto-inject filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog entry
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
