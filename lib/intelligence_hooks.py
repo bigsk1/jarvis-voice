@@ -452,6 +452,18 @@ def extract_user_correction_signals(query: str) -> dict[str, Any]:
                 if category not in signals["categories"]:
                     signals["categories"].append(category)
 
+    topic_pivot = re.search(
+        r"\bi (?:meant|wanted) to ask (?:you )?(?:about|something else|another|a different)\b",
+        text,
+    )
+    correction_cue = re.search(
+        r"\b(no|not|wrong|instead|rather|misunderstood|forgot|fix|redo|retry)\b",
+        text,
+    ) or re.search(r"\bwhat i meant\b", text)
+    if topic_pivot and not correction_cue:
+        signals["matched_patterns"] = []
+        signals["categories"] = []
+
     if signals["matched_patterns"]:
         signals["is_correction"] = True
         signals["had_to_clarify"] = "clarification" in signals["categories"]

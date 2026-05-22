@@ -107,6 +107,12 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
         self.assertTrue(signals["had_to_clarify"])
         self.assertIn("clarification", signals["categories"])
 
+    def test_extract_user_correction_ignores_topic_pivot(self):
+        signals = extract_user_correction_signals("I meant to ask about something else entirely")
+
+        self.assertFalse(signals["is_correction"])
+        self.assertEqual(signals["categories"], [])
+
     def test_user_correction_marks_previous_experience_for_reflection(self):
         conn = self._install_fake_intel()
         exp_id = self._insert_experience(
