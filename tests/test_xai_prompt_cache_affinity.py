@@ -179,6 +179,11 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
             self.assertIsNone(provider._xai_reasoning_effort())
             self.assertNotIn("reasoning_effort", provider._xai_sdk_create_kwargs(tools=[]))
 
+        provider.model = "grok-build-0.1"
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "low"}, clear=True):
+            self.assertIsNone(provider._xai_reasoning_effort())
+            self.assertNotIn("reasoning_effort", provider._xai_sdk_create_kwargs(tools=[]))
+
         with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "xhigh"}, clear=True):
             self.assertIsNone(provider._xai_reasoning_effort())
 

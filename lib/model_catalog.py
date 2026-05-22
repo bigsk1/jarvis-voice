@@ -41,13 +41,23 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "context_tokens": 1_000_000,
             "default": True,
             "pricing": {"input": 1.25, "output": 2.50, "cached": 0.20},
+            "reasoning_effort": True,
             "aliases": ["grok-4.3-latest"],
+        },
+        {
+            "id": "grok-build-0.1",
+            "name": "Grok Build 0.1 (Coding)",
+            "context_tokens": 256_000,
+            "pricing": {"input": 1.00, "output": 2.00},
+            "reasoning_effort": False,
+            "aliases": ["grok-build-0.1-latest"],
         },
         {
             "id": "grok-4.20-reasoning",
             "name": "Grok 4.20 Reasoning",
             "context_tokens": 2_000_000,
             "pricing": {"input": 2.00, "output": 6.00, "cached": 0.20},
+            "reasoning_effort": False,
             "aliases": [
                 "grok-4.20-reasoning-latest",
                 "grok-4-20-reasoning",
@@ -316,3 +326,17 @@ def get_model_pricing(provider: str, model: str | None) -> dict[str, float] | No
     metadata = get_model_metadata(provider, model)
     pricing = metadata.get("pricing") if metadata else None
     return dict(pricing) if pricing else None
+
+
+def get_model_supports_xai_reasoning_effort(provider: str, model: str | None) -> bool:
+    """
+    Whether XAI_REASONING_EFFORT may be sent for this model.
+
+    Only grok-4.3 family supports the API parameter today; catalog is source of truth.
+    """
+    if provider != "xai":
+        return False
+    metadata = get_model_metadata(provider, model)
+    if not metadata:
+        return False
+    return bool(metadata.get("reasoning_effort"))

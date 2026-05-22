@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 # environment already chose something else explicitly.
 os.environ.setdefault("GRPC_DNS_RESOLVER", "native")
 
-from model_catalog import get_provider_fallback_model
+from model_catalog import get_model_supports_xai_reasoning_effort, get_provider_fallback_model
 from ollama_utils import parse_ollama_base_urls, request_ollama
 
 
@@ -853,9 +853,8 @@ class XAIProvider(LLMProvider):
 
     @staticmethod
     def _xai_model_supports_reasoning_effort(model: str) -> bool:
-        """Only Grok 4.3 supports configurable reasoning effort today."""
-        normalized = (model or "").strip().lower()
-        return normalized == "grok-4.3" or normalized.startswith("grok-4.3-")
+        """Whether this model accepts XAI_REASONING_EFFORT (see lib/model_catalog.py)."""
+        return get_model_supports_xai_reasoning_effort("xai", model)
 
     @classmethod
     def _xai_model_is_reasoning(cls, model: str) -> bool:
