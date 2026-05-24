@@ -237,10 +237,26 @@ function preserveSingleTildes(content) {
 }
 
 /**
+ * LLMs often wrap the entire page in ```markdown ... ```. Nested fences like
+ * ```crypto-chart break marked parsing (first inner ``` closes the outer block).
+ */
+function unwrapOuterMarkdownFence(content) {
+    if (!content) return content;
+    const trimmed = content.trim();
+    const openMatch = trimmed.match(/^```(?:markdown|md)(?:\s*\n|\s*$)/i);
+    if (!openMatch) return content;
+    const start = openMatch[0].length;
+    const end = trimmed.lastIndexOf('```');
+    if (end <= start) return content;
+    return trimmed.slice(start, end).trim();
+}
+
+/**
  * Render markdown with stash URL resolution
  */
 function renderMarkdown(content) {
-    let resolved = stripBogusTrailingStashFileSuffixes(content || '');
+    let resolved = unwrapOuterMarkdownFence(content || '');
+    resolved = stripBogusTrailingStashFileSuffixes(resolved);
     resolved = insertMissingClosingBacktickBeforeParenAfterStashPath(resolved);
     resolved = normalizeMangledStashLinks(resolved);
     resolved = resolveStashUrls(resolved);

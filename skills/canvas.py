@@ -68,6 +68,26 @@ def get_canvas_page_url(page_id: str | None) -> str:
     return f"{base}/{page_id}"
 
 
+def _unwrap_outer_markdown_fence(content: str) -> str:
+    """
+    Strip LLM-style outer ```markdown ... ``` wrapper when present.
+
+    Nested fences like ```crypto-chart break client-side marked parsing because
+    the first inner ``` closes the outer block prematurely.
+    """
+    if not content:
+        return content
+    trimmed = content.strip()
+    match = re.match(r"^```(?:markdown|md)(?:\s*\n|\s*$)", trimmed, flags=re.IGNORECASE)
+    if not match:
+        return content
+    start = match.end()
+    end = trimmed.rfind("```")
+    if end <= start:
+        return content
+    return trimmed[start:end].strip()
+
+
 def _normalize_bare_urls_in_sources_sections(content: str) -> str:
     """
     Prepend https:// to schemeless host[/path] tokens in Sources blocks so markdown renders clickable links.
@@ -340,6 +360,7 @@ def create_page(title: str, content: str, tags: list[str] = None,
         content = content.replace('\\n', '\n')
 
     content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
+    content = _unwrap_outer_markdown_fence(content)
     content = _normalize_bare_urls_in_sources_sections(content)
 
     truncated_urls = _find_truncated_urls(content or "")
@@ -424,6 +445,7 @@ def update_page(page_id: str, title: str = None, content: str = None,
         data['title'] = title
     if content is not None:
         content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
+        content = _unwrap_outer_markdown_fence(content)
         content = _normalize_bare_urls_in_sources_sections(content)
         truncated_urls = _find_truncated_urls(content)
         if truncated_urls:

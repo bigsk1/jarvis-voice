@@ -131,6 +131,21 @@ const Utils = {
   },
 
   /**
+   * Strip LLM-style outer ```markdown ... ``` wrapper when present.
+   * Nested fences (e.g. ```crypto-chart) break marked if the wrapper remains.
+   */
+  unwrapOuterMarkdownFence(text) {
+    if (!text) return text;
+    const trimmed = String(text).trim();
+    const openMatch = trimmed.match(/^```(?:markdown|md)(?:\s*\n|\s*$)/i);
+    if (!openMatch) return text;
+    const start = openMatch[0].length;
+    const end = trimmed.lastIndexOf('```');
+    if (end <= start) return text;
+    return trimmed.slice(start, end).trim();
+  },
+
+  /**
    * Parse markdown to HTML (simple version)
    */
   parseMarkdown(text) {
@@ -147,6 +162,7 @@ const Utils = {
       }
     }
 
+    text = this.unwrapOuterMarkdownFence(text);
     text = this.normalizePlainTextTables(text);
     text = this.escapeStandaloneTildes(text);
     
