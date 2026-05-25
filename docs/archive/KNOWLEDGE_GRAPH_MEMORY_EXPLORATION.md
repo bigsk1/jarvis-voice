@@ -1,6 +1,6 @@
 # Knowledge Graph Memory Exploration
 
-**Status**: Exploration / Analysis  
+**Status**: Historical exploration; MCP memory not adopted; learning vision → INTELLIGENCE_LAYER.md 
 **Date**: 2025-11-27  
 **MCP Server**: [mcp/memory](https://hub.docker.com/mcp/server/memory/overview) | [GitHub](https://github.com/modelcontextprotocol/servers/tree/main/src/memory)
 

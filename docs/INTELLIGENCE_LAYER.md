@@ -2004,7 +2004,7 @@ This is the difference between a tool and a true assistant.
 
 ## Related Documentation
 
-- [KNOWLEDGE_GRAPH_MEMORY_EXPLORATION.md](KNOWLEDGE_GRAPH_MEMORY_EXPLORATION.md) - Vision doc
+- [archive/KNOWLEDGE_GRAPH_MEMORY_EXPLORATION.md](archive/KNOWLEDGE_GRAPH_MEMORY_EXPLORATION.md) - Vision doc (historical)
 - [MEMORY_SYSTEM.md](MEMORY_SYSTEM.md) - Main memory system
 - [MEMORY_SYSTEM_TUNING.md](MEMORY_SYSTEM_TUNING.md) - Memory optimization
 - [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) - Feedback system
