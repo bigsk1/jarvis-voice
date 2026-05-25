@@ -770,7 +770,7 @@ Include `example` field for complex webhooks:
 
 - **Email System Details:** `docs/n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md`
 - **Google Calendar Sync:** `docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`
-- **n8n Integration:** `docs/n8n/docs/N8N_INTEGRATION.md`
+- **n8n Integration:** `docs/n8n/n8n-mcp.md`
 - **Tool Development:** `docs/TOOL_CALLING_SYSTEM.md`
 - **Agent Guidelines:** `.clinerules` (Section: Tool Development)
 

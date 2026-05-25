@@ -124,7 +124,7 @@ nano jarvis-intel/my_info.md
 
 - **Intel System Guide**: `docs/JARVIS_INTEL_SYSTEM.md`
 - **Q&A**: `docs/QUESTIONS_ANSWERED.md`
-- **OpenCode Integration**: `docs/OPENCODE_PHASE2_COMPLETE.md`
+- **OpenCode Integration**: `docs/opencode/OPENCODE.md` (live); phase milestones in `docs/archive/opencode/`
 
 ---
 

@@ -51,7 +51,7 @@ This directory contains configuration files for Jarvis Voice Assistant.
 - **OpenCode**: Can use Claude (recommended) or OpenAI
 
 ### `local.env` (Local Mode)
-- **Uses**: Ollama with local models (qwen3-vl recommended)
+- **Uses**: Ollama with local models (`qwen3.5:latest` recommended; see `local.env.example`)
 - **Requires**: GPU with 8GB+ VRAM
 - **Best for**: Development, offline work, privacy, no API costs
 - **OpenCode**: Can use local Ollama models OR Anthropic (safer)

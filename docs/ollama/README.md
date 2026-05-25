@@ -1,6 +1,9 @@
 # Ollama Cloud Mode: Integration Game Plan
 
-Status: Planning (April 2026)
+**Status:** Planning (still accurate as of **2026-05-25**)  
+**Scope:** Decouple `LLM_PROVIDER=ollama` from `mode=local` so Ollama `:cloud` models can be primary LLM in cloud mode.
+
+> **Quick answer:** Ollama works as **primary LLM in local mode** and as **Completion Guard eval in cloud mode**. Setting `LLM_PROVIDER=ollama` in `cloud.env` as primary LLM is **still blocked** by mode-detection plumbing below.
 
 ## The Problem
 
@@ -31,7 +34,7 @@ dropdowns, and context-window defaults.
 Setting `LLM_PROVIDER=ollama` in cloud mode triggers a chain of incorrect
 assumptions:
 
-1. **`config_loader.py:58`** — `load_config()` auto-detection: `ollama` -> loads `local.env`
+1. **`lib/config_loader.py:91-92`** — `load_config()` auto-detection: `ollama` → loads `local.env`
 2. **~12 daemons/services** — derive `mode = 'local'` from `provider == 'ollama'`
 3. **`settings_manager.py:366`** — locks eval provider dropdown to `['ollama']` in local mode
 4. **`settings_manager.py:552`** — rejects non-ollama providers when mode is local

@@ -171,5 +171,5 @@ conn.close()
 ---
 
 *Last Updated: 2025-11-14*  
-*Related: DATABASE_DEEP_DIVE.md, METADATA_SYSTEM.md*
+*Related: [archive/DATABASE_DEEP_DIVE.md](archive/DATABASE_DEEP_DIVE.md), METADATA_SYSTEM.md*
 

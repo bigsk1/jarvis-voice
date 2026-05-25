@@ -113,7 +113,7 @@ Understanding how Jarvis handles conversation state between interactions is crit
     }
   ],
   "tools": [
-    # ALL tool definitions (50+ tools, ~5000 tokens)
+    # ALL tool definitions (75+ tools, ~5000+ tokens)
     {"name": "get_time", "description": "...", "parameters": {...}},
     {"name": "crypto_price", "description": "...", "parameters": {...}},
     # ... 50+ more tools ...

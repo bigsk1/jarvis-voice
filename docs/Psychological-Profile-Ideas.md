@@ -106,7 +106,7 @@ When Jarvis is idle (e.g., 3 AM), it should process the `failed_interactions` qu
 Before routing to tools, the intelligence layer should classify the **User's State of Mind**.
 
 **Implementation:**
-Add a lightweight classification step (or use a small local model like `mistral-nemo`) before the main router.
+Add a lightweight classification step (or use a small local model like `qwen3.5:latest`) before the main router.
 
 **Output:**
 ```json

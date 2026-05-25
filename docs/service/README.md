@@ -8,7 +8,7 @@ Background services that run 24/7 to manage alerts, auto-resolve issues, monitor
 
 ### Architecture & Design
 - **[Proactive Assistant System](PROACTIVE_ASSISTANT_SYSTEM.md)** - Complete system architecture
-- **[Phase 1 Complete](PHASE_1_COMPLETE.md)** - Alert system implementation details
+- **[Phase 1 Complete (historical)](../archive/service/PHASE_1_COMPLETE.md)** - Alert system milestone write-up
 - **[Service Architecture FAQ](SERVICE_ARCHITECTURE_FAQ.md)** - How services work, concurrency, safety
 
 ### Service Details

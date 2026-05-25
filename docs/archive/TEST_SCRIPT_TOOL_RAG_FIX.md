@@ -174,7 +174,7 @@ rm data/jarvis_memory.db
 
 - `docs/TOOL_RAG_STRATEGY.md` - Technical spec for Tool RAG system
 - `docs/TOOL_RAG_IMPLEMENTATION_SUMMARY.md` - Implementation details
-- `docs/TOOL_RAG_TROUBLESHOOTING.md` - Debug guide
+- `docs/archive/TOOL_RAG_TROUBLESHOOTING.md` - Debug guide
 - `docs/TESTING.md` - Comprehensive testing guide (now updated)
 
 ---

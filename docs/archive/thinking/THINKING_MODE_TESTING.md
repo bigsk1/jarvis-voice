@@ -1,3 +1,9 @@
+# ⚠️ HISTORICAL — Thinking mode milestone (Nov 2025)
+
+**Superseded by:** [EXTENDED_THINKING.md](../../EXTENDED_THINKING.md)
+
+---
+
 # Thinking Mode Testing Guide
 
 **Branch**: `thinking`  
@@ -86,10 +92,10 @@ This tests:
 
 ---
 
-### 5. Test Local with qwen3-vl (Non-Thinking Model)
+### 5. Test Local with qwen3.5:latest (Non-Thinking Model)
 ```bash
-# Keep qwen3-vl in config/local.env
-# OLLAMA_MODEL="qwen3-vl"
+# Keep qwen3.5:latest in config/local.env
+# OLLAMA_MODEL="qwen3.5:latest"
 
 ./orchestrator/orchestrator_v2.py local "What time is it?" --debug-thinking
 ```
@@ -205,7 +211,7 @@ from thinking import is_thinking_supported
 print('Anthropic Sonnet 4.5:', is_thinking_supported('anthropic', 'claude-sonnet-4-5-20250929'))
 print('OpenAI GPT-4:', is_thinking_supported('openai', 'gpt-4o'))
 print('Ollama deepseek-r1:', is_thinking_supported('ollama', 'deepseek-r1'))
-print('Ollama qwen3-vl:', is_thinking_supported('ollama', 'qwen3-vl'))
+print('Ollama qwen3.5:latest:', is_thinking_supported('ollama', 'qwen3.5:latest'))
 "
 ```
 
@@ -223,7 +229,7 @@ python3 lib/thinking.py
 1. **Cloud + Thinking Flag**: Shows thinking section
 2. **Cloud + No Flag**: No thinking section
 3. **Local + DeepSeek R1 + Flag**: Shows thinking (if model supports)
-4. **Local + qwen3-vl + Flag**: Graceful skip (no error)
+4. **Local + qwen3.5:latest + Flag**: Graceful skip (no error)
 5. **Thinking Logs Created**: `logs/thinking/YYYY-MM-DD_decisions.jsonl` exists
 6. **Grey Area Works**: Shows reasoning for save/don't save decisions
 7. **No Errors**: All commands complete successfully

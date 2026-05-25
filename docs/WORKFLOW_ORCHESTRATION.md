@@ -1226,7 +1226,7 @@ Build the full system (no shortcuts):
 
 ```
 FREEFORM (current):
-  LLM sees: 50+ tools, RAG results, insights, history, system prompt
+  LLM sees: 75+ tools, RAG results, insights, history, system prompt
   LLM decides: Which tool to call
   Problem: Too many competing signals
 

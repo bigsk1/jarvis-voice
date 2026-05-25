@@ -1,3 +1,9 @@
+# ⚠️ HISTORICAL — Proactive assistant Phase 1 milestone
+
+**Current guides:** [PROACTIVE_ASSISTANT_SYSTEM.md](../../service/PROACTIVE_ASSISTANT_SYSTEM.md) · [READY_TO_USE.md](../../api/READY_TO_USE.md)
+
+---
+
 # 🎉 Jarvis Proactive Assistant - Phase 1 Complete!
 
 ## What You Now Have
@@ -329,7 +335,7 @@ Keep Phase 1 running, decide later if you need Phase 2.
 ## Documentation
 
 - **Quick Start**: `docs/API_QUICK_START.md` (API usage examples)
-- **Architecture**: `docs/PROACTIVE_ASSISTANT_SYSTEM.md` (full system design)
+- **Architecture**: `docs/service/PROACTIVE_ASSISTANT_SYSTEM.md` (full system design)
 - **Main README**: `README.md` (updated with proactive mode link)
 
 ---

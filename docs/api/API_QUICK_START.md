@@ -527,7 +527,7 @@ curl http://localhost:8880/api/intelligence/stats | jq
 ---
 
 **See Also:**
-- Full architecture: `docs/PROACTIVE_ASSISTANT_SYSTEM.md`
+- Full architecture: `docs/service/PROACTIVE_ASSISTANT_SYSTEM.md`
 - Intelligence Layer: `docs/INTELLIGENCE_LAYER.md`
 - Sync Architecture: `docs/SYNC_ARCHITECTURE.md`
 - Main README: `README.md`

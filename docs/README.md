@@ -10,7 +10,7 @@
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
-- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` default, native search/TTS, in-flight tool continuation) ⭐ RECOMMENDED
+- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` recommended default; also `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
 - **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
 
 ### Main Features
@@ -19,8 +19,8 @@
 - **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice) ⭐ ENHANCED
 - **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support) 
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search + auto-injection
-- **[phone/PHONE_CALLS.md](phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
-- **[spotify/SPOTIFY.md](spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
+- **[tools/phone/PHONE_CALLS.md](tools/phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
+- **[tools/spotify/SPOTIFY.md](tools/spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
 - **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization** ⭐ ENHANCED)
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (tool traces, feedback metadata, Completion Guard outcomes, positive/negative constraints) ⭐ ENHANCED
 - **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results)
@@ -36,7 +36,7 @@
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (deterministic pipelines, variable extraction, WebUI integration) ⭐ IMPLEMENTED
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools in each `*.tool.json`
 - **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); git tracks `default.json` and `skills/profiles/examples/*.json` (copy to `profiles/<name>.json` for use). After changing profile: restart services, then `./bin/sync-tools.py local` or `cloud`
-- **[status-tool/README.md](status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
+- **[tools/status-tool/README.md](tools/status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🛒 **SerpApi Search Tool** (Amazon + engine-based SerpApi queries)
 
 ### Document Processing 
@@ -49,8 +49,8 @@
   - Integrated with `stash.remember` for automatic PDF text extraction
 
 ### Remote & Infrastructure
-- **[ssh/README.md](ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)
-- **[docker-tool/README.md](docker-tool/README.md)** - 🐳 **Docker Control** (containers, compose, images, networks, volumes, exec, prune)
+- **[tools/ssh/README.md](tools/ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)
+- **[tools/docker-tool/README.md](tools/docker-tool/README.md)** - 🐳 **Docker Control** (containers, compose, images, networks, volumes, exec, prune)
 - **[DEEP_MEMORY_SEARCH.md](DEEP_MEMORY_SEARCH.md)** - 🔍 **Deep Memory Search** (unified search across all data sources)
 - **[qmd/README.md](qmd/README.md)** - 📚 **Internal Knowledge Search** (Q&A about Jarvis capabilities via QMD semantic search) 
 
@@ -98,7 +98,7 @@
 ./test-all-tools.sh
 ./test-all-tools-local.sh
 ./tests/integration/test-memory-tools.sh
-./tests/integration/compare-models.sh local qwen3-vl qwen2.5:7b
+./tests/integration/compare-models.sh local qwen3.5:latest qwen2.5:7b
 ```
 
 ## 🛠️ Key Features
@@ -140,12 +140,11 @@
 |----------|---------|
 | **WORKFLOW_ORCHESTRATION.md** | 🔄 **Workflow system** - Deterministic multi-tool pipelines ⭐ IMPLEMENTED |
 | **[../data/workflows/AGENTS.md](../data/workflows/AGENTS.md)** | 📖 **Workflow building guide** - Tool outputs, extract rules, testing |
-| **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval, full-prompt tuning, and typo-hint retrieval behavior  |
+| **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval, ghost tools, `tool_search` discovery, and compact query tuning |
 | **TOOL_RAG_IMPLEMENTATION_SUMMARY.md** | Tool RAG implementation details  |
-| **TOOL_RAG_TROUBLESHOOTING.md** | Tool RAG debugging guide  |
-| **TEST_SCRIPT_TOOL_RAG_FIX.md** | Test script integration fixes  |
+| **[archive/TOOL_RAG_TROUBLESHOOTING.md](archive/TOOL_RAG_TROUBLESHOOTING.md)** | Tool RAG debugging guide (historical)  |
+| **[archive/TEST_SCRIPT_TOOL_RAG_FIX.md](archive/TEST_SCRIPT_TOOL_RAG_FIX.md)** | Test script integration fixes (historical)  |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
-| **TOOL_RAG_STRATEGY.md** | Tool retrieval, ghost tools, `tool_search` discovery, and compact query tuning |
 | **TOOL_MANAGEMENT.md** | Enable/disable tools in each `*.tool.json` |
 | **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
@@ -161,6 +160,7 @@
 | **opencode/OPENCODE_MEMORY_STRATEGY.md** | Memory integration |
 | **opencode/OPENCODE_PERMISSIONS.md** | Permission system |
 | **opencode/OPENCODE_PLUGINS.md** | Plugin system |
+| **[archive/opencode/](archive/opencode/)** | Historical OpenCode phase milestones (Phase 1 / Phase 2) |
 
 ### Testing & Analysis
 | Document | Purpose |
@@ -178,7 +178,7 @@
 | **CONVERSATION_STATE_ARCHITECTURE.md** | State management between cycles  |
 | **[api/INTEL.md](api/INTEL.md)** | 🆕 **Intel API** - CRUD operations for jarvis-intel files |
 | **api/READY_TO_USE.md** | Proactive API (Phase 1 COMPLETE) - Webhook system for alerts |
-| **api/PROACTIVE_ASSISTANT_SYSTEM.md** | Full architecture |
+| **[service/PROACTIVE_ASSISTANT_SYSTEM.md](service/PROACTIVE_ASSISTANT_SYSTEM.md)** | Proactive assistant architecture |
 
 ### Configuration & Setup
 | Document | Purpose |
@@ -192,11 +192,11 @@
 |----------|---------|
 | **PROMPT_CACHING.md** | Anthropic prompt caching |
 | **MODEL_PROMPT_OVERRIDES.md** | Provider/model-specific prompt overlays for surgical behavior tuning |
-| **EXTENDED_THINKING.md** | Extended thinking mode |
+| **EXTENDED_THINKING.md** | Opt-in LLM reasoning (`--debug-thinking`, logs, supported models) |
 | **CASUAL_VS_DETAILED_MODE.md** | Response styles |
 | **AUTO_MODE_EXPLAINED.md** | Auto/casual/detailed response flow, TTS interplay, direct-speech bypass, and future formatter ideas |
 | **METADATA_SYSTEM.md** | Cost tracking and metadata |
-| **VOICE_MODE_FIXES.md** | Voice mode improvements |
+| **[archive/VOICE_MODE_FIXES.md](archive/VOICE_MODE_FIXES.md)** | Voice mode improvements (historical) |
 
 ### Integrations & Webhooks
 | Document | Purpose |
@@ -204,7 +204,7 @@
 | **WEBHOOK_SYSTEM.md** | **Modular webhook system** - Email, n8n, external APIs with auth examples  |
 | **n8n/docs/GOOGLE_CALENDAR_SYNC.md** | Bidirectional Google Calendar sync (reminders ↔ events) |
 | **n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md** | Email tool and webhook registry details |
-| **n8n/docs/N8N_INTEGRATION.md** | n8n setup and workflow management |
+| **[n8n/n8n-mcp.md](n8n/n8n-mcp.md)** | n8n MCP integration and workflow management |
 | **api/REMINDER_SYSTEM.md** | Reminder API and voice commands |
 
 ### Intelligence & Learning
@@ -224,7 +224,7 @@
 |----------|---------|
 | **Command Dashboard** | TUI for all Jarvis commands - `./bin/jarvis-dashboard`  |
 | **Memory Browser** | Web UI for memories/intel/conversations - `./bin/jarvis-memory` (localhost:5002)  |
-| **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8090)  |
+| **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8890)  |
 | **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag  |
 | **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check cloud`  |
 | **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."`  |
@@ -241,10 +241,12 @@
 ### Reference & Archives
 | Document | Purpose |
 |----------|---------|
-| **DATABASE_DEEP_DIVE.md** | Database evolution |
+| **[archive/DATABASE_DEEP_DIVE.md](archive/DATABASE_DEEP_DIVE.md)** | Database evolution (historical) |
 | **JARVIS_INTEL_SYSTEM.md** | Intel file ingestion |
 | **FUTURE_ENHANCEMENTS.md** | Planned features |
-| **archive/** | Historical docs and changelogs |
+| **[DOCS_STATUS.md](DOCS_STATUS.md)** | Documentation health and maintenance checklist |
+| **archive/** | Historical docs, changelogs, and phase milestones |
+| **[archive/thinking/](archive/thinking/)** | Thinking-mode branch notes (see `EXTENDED_THINKING.md`) |
 
 ## 🔧 Configuration
 
@@ -934,7 +936,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - `host.docker.internal` with `extra_hosts` for portable configs
   - Fixed jarvis_api scrape target for Docker environments
 - ✅ **UFW Firewall Documentation** - Added to INSTALL_GUIDE.md
-  - Essential ports for Jarvis services (8880, 5001, 5002, 5003, 8090, etc.)
+  - Essential ports for Jarvis services (8880, 5001, 5002, 5003, 8890, etc.)
   - Example UFW rules for quick setup
 
 **2026-01-28:**
@@ -996,7 +998,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Priority levels: urgent, normal, background
   - Configurable timeout (30-300s) for quick vs complex tasks
   - Fire-and-forget webhook option for Discord/Telegram posting
-  - See: `docs/vps2/JARVIS_SAMANTHA_INTEGRATION.md` (private)
+  - See: [`skills/samantha.tool.json`](../skills/samantha.tool.json), [`docs/api/VOICES.md`](api/VOICES.md)
 - ✅ **Voice API Multi-Agent Support** - Per-request TTS provider/voice override 
   - `/api/voice/speak` now accepts `tts_provider` and `voice` parameters
   - Enables different agents to speak with distinct voices
@@ -1111,7 +1113,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - `/archive <url>` - Archive web pages to stash with Canvas summary
   - `/research <topic>` - Multi-source research with Brave search and crawling
   - `/note <content>` - Quick note to memory with Canvas
-  - `/health [host]` - Server health check via SSH (defaults to vps2)
+  - `/health [host]` - Server health check via SSH (host from `config/ssh.json`)
   - See: `data/workflows/*.json`, `data/workflows/README.md`
 
 **2026-01-18:**

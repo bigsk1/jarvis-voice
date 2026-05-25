@@ -197,5 +197,4 @@ This ensures API call parameters always win over config file settings.
 
 - [TTS Providers Overview](../qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
 - [Qwen3-TTS Voices](../qwen3-tts/voices.md)
-- [Samantha Integration](../vps2/JARVIS_SAMANTHA_INTEGRATION.md) (private)
 - [API Overview](API_OVERVIEW.md)

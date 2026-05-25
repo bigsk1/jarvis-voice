@@ -58,14 +58,11 @@ Jarvis uses SQLite FTS5 (Full-Text Search) for intelligent memory search with BM
    - Updated search tool descriptions
    - Added FTS5 performance comparison
    - Added migration instructions
+   - Memory tool selection guidance (search vs recall vs semantic)
 
 6. **`docs/MEMORY_SYSTEM_TUNING.md`**
    - Updated search strategy section
    - Highlighted FTS5 upgrade benefits
-
-7. **`docs/MEMORY_INTELLIGENCE_FIXES.md`**
-   - Updated memory tool selection guidance
-   - Added FTS5 specificity improvements
 
 ---
 

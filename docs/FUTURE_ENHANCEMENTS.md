@@ -383,7 +383,7 @@ All rows still land in `knowledge_base` on write. **Auto-memory injection** filt
 
 ### 4) Unified Session / Task Layer
 **Priority:** High (architectural)  
-**Status:** Not implemented — see [personal/app-next-steps-roadmap.md](personal/app-next-steps-roadmap.md)
+**Status:** Not implemented — see [WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md) and [CONVERSATION_STATE_ARCHITECTURE.md](CONVERSATION_STATE_ARCHITECTURE.md) for current context handling.
 
 First-class `session` and `task` objects shared across voice, CLI, and Web UI. Auto-context handles wake-word continuity; Web UI has its own client-side history — no shared resumable work model yet. Unlocks cross-surface handoff, proactive "open tasks", and cleaner attachment of OpenCode session IDs, stash refs, and guard tickets.
 
@@ -391,7 +391,7 @@ First-class `session` and `task` objects shared across voice, CLI, and Web UI. A
 **Priority:** Medium–High  
 **Status:** Phase 2 memory integration planned; interactive supervision loop not built
 
-Jarvis should stream OpenCode session logs, track progress, and interrupt/redirect like a user in the TUI — not fire-and-forget. Needs `opencode_interrupt`, `opencode_send_message`, and task-layer linkage. See [opencode/OPENCODE_PHASE2_STATUS.md](opencode/OPENCODE_PHASE2_STATUS.md).
+Jarvis should stream OpenCode session logs, track progress, and interrupt/redirect like a user in the TUI — not fire-and-forget. Needs `opencode_interrupt`, `opencode_send_message`, and task-layer linkage. See [archive/opencode/OPENCODE_PHASE2_STATUS.md](archive/opencode/OPENCODE_PHASE2_STATUS.md) (historical milestone).
 
 ### 6) Personal Corpus Ingestion
 **Priority:** Medium (visible product win)  

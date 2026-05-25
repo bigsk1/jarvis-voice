@@ -1,3 +1,9 @@
+# ⚠️ HISTORICAL — OpenCode phase milestone
+
+**Current guide:** [OPENCODE.md](../../opencode/OPENCODE.md)
+
+---
+
 # OpenCode Phase 2 - Status Update
 
 **Date**: 2025-11-11  

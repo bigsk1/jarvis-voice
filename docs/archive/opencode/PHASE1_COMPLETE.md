@@ -1,3 +1,9 @@
+# ⚠️ HISTORICAL — OpenCode phase milestone
+
+**Current guide:** [OPENCODE.md](../../opencode/OPENCODE.md)
+
+---
+
 # 🎉 Phase 1 Complete: OpenCode Foundation
 
 **Date**: November 11, 2025  

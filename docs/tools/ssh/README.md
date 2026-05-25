@@ -21,13 +21,13 @@ The `ssh_remote` tool allows Jarvis to connect to remote servers, execute comman
 ```json
 {
   "hosts": {
-    "vps2": {
+    "staging": {
       "host": "your.vps.ip.address",
-      "user": "boss",
+      "user": "deploy",
       "port": 22,
-      "key_path": "~/.ssh/vps2/id_ed25519",
-      "sudo_env": "VPS2_SUDO_PASS",
-      "description": "VPS2 remote server"
+      "key_path": "~/.ssh/staging/id_ed25519",
+      "sudo_env": "STAGING_SUDO_PASS",
+      "description": "Staging remote server"
     },
     "production": {
       "host": "prod.example.com",
@@ -52,7 +52,7 @@ The `ssh_remote` tool allows Jarvis to connect to remote servers, execute comman
 
 ```bash
 # SSH Remote Tool - Sudo Passwords
-VPS2_SUDO_PASS="your_sudo_password_here"
+STAGING_SUDO_PASS="your_sudo_password_here"
 PROD_SUDO_PASS="production_sudo_password"
 ```
 
@@ -60,12 +60,12 @@ PROD_SUDO_PASS="production_sudo_password"
 
 ```bash
 # Generate or copy your SSH key
-mkdir -p ~/.ssh/vps2
-cp /path/to/your/key ~/.ssh/vps2/id_ed25519
+mkdir -p ~/.ssh/staging
+cp /path/to/your/key ~/.ssh/staging/id_ed25519
 
 # Set correct permissions
-chmod 600 ~/.ssh/vps2/id_ed25519
-chmod 644 ~/.ssh/vps2/id_ed25519.pub
+chmod 600 ~/.ssh/staging/id_ed25519
+chmod 644 ~/.ssh/staging/id_ed25519.pub
 ```
 
 ## Actions
@@ -81,7 +81,7 @@ Returns all hosts configured in `ssh.json`.
 ### `test` - Test SSH Connectivity
 
 ```json
-{"action": "test", "host": "vps2"}
+{"action": "test", "host": "staging"}
 ```
 
 Connects, runs hostname/uname, reports connection time.
@@ -91,7 +91,7 @@ Connects, runs hostname/uname, reports connection time.
 ```json
 {
   "action": "run",
-  "host": "vps2",
+  "host": "staging",
   "command": "df -h && free -h",
   "sudo": false
 }
@@ -101,7 +101,7 @@ Connects, runs hostname/uname, reports connection time.
 ```json
 {
   "action": "run",
-  "host": "vps2",
+  "host": "staging",
   "command": "systemctl restart nginx",
   "sudo": true
 }
@@ -112,7 +112,7 @@ Connects, runs hostname/uname, reports connection time.
 ```json
 {
   "action": "apt_update",
-  "host": "vps2",
+  "host": "staging",
   "upgrade": true
 }
 ```
@@ -125,7 +125,7 @@ Connects, runs hostname/uname, reports connection time.
 ```json
 {
   "action": "apt_update",
-  "host": "vps2",
+  "host": "staging",
   "upgrade": false
 }
 ```
@@ -135,7 +135,7 @@ Connects, runs hostname/uname, reports connection time.
 ```json
 {
   "action": "multi",
-  "host": "vps2",
+  "host": "staging",
   "commands": [
     "uptime",
     "whoami",
@@ -167,28 +167,28 @@ Executes commands sequentially in a single SSH session.
 ### Via Jarvis (natural language)
 
 ```
-"ssh into vps2 and check disk space"
-"run apt update on vps2"
-"update packages on vps2"
-"check if nginx is running on vps2"
-"run docker ps on vps2"
-"execute 'ls -la /var/log' on vps2"
+"ssh into staging and check disk space"
+"run apt update on staging"
+"update packages on staging"
+"check if nginx is running on staging"
+"run docker ps on staging"
+"execute 'ls -la /var/log' on staging"
 ```
 
 ### Via CLI (direct)
 
 ```bash
 # Test connection
-python3 skills/ssh_remote.py '{"action": "test", "host": "vps2"}'
+python3 skills/ssh_remote.py '{"action": "test", "host": "staging"}'
 
 # Run command
-python3 skills/ssh_remote.py '{"action": "run", "host": "vps2", "command": "uptime"}'
+python3 skills/ssh_remote.py '{"action": "run", "host": "staging", "command": "uptime"}'
 
 # Apt update (check only)
-python3 skills/ssh_remote.py '{"action": "apt_update", "host": "vps2", "upgrade": false}'
+python3 skills/ssh_remote.py '{"action": "apt_update", "host": "staging", "upgrade": false}'
 
 # Multiple commands
-python3 skills/ssh_remote.py '{"action": "multi", "host": "vps2", "commands": ["whoami", "pwd", "ls"]}'
+python3 skills/ssh_remote.py '{"action": "multi", "host": "staging", "commands": ["whoami", "pwd", "ls"]}'
 ```
 
 ## Security Model
@@ -255,18 +255,18 @@ Tool Call → Connect → Execute → Close
 
 ```bash
 # Check SSH key permissions
-ls -la ~/.ssh/vps2/
+ls -la ~/.ssh/staging/
 # Should be: 600 for private key, 644 for public
 
 # Test manual SSH
-ssh -i ~/.ssh/vps2/id_ed25519 user@host
+ssh -i ~/.ssh/staging/id_ed25519 user@host
 ```
 
 ### Sudo Password Not Working
 
 ```bash
 # Verify env var is set
-grep "VPS2_SUDO_PASS" config/cloud.env
+grep "STAGING_SUDO_PASS" config/cloud.env
 
 # Test sudo manually on remote
 ssh user@host "echo 'password' | sudo -S whoami"

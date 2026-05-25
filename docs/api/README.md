@@ -134,7 +134,7 @@ jarvis_intelligence_pending_reflections{mode="cloud"}
 ### Architecture (see `docs/service/`)
 - [Proactive System Architecture](../service/PROACTIVE_ASSISTANT_SYSTEM.md)
 - [Service Architecture FAQ](../service/SERVICE_ARCHITECTURE_FAQ.md)
-- [Phase 1 Complete](../service/PHASE_1_COMPLETE.md)
+- [Phase 1 Complete (historical)](../archive/service/PHASE_1_COMPLETE.md)
 
 ---
 

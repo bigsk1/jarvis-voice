@@ -188,8 +188,9 @@ XAI_API_KEY=your-xai-key
 # or ANTHROPIC_API_KEY=your-anthropic-key
 # or OPENAI_API_KEY=your-openai-key
 
-# Model for your provider
-XAI_MODEL="grok-4.3"
+# Model for your provider (see lib/model_catalog.py for curated options)
+XAI_MODEL="grok-4.3"              # recommended default
+# XAI_MODEL="grok-build-0.1"      # alternative: coding / build-heavy workloads
 # or ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 # or OPENAI_MODEL="gpt-4o"
 
@@ -839,7 +840,7 @@ sudo ufw allow 8880/tcp
 sudo ufw allow 5001/tcp   # Jarvis Web UI
 sudo ufw allow 5002/tcp   # Memory Browser
 sudo ufw allow 5003/tcp   # Intelligence Dashboard
-sudo ufw allow 8090/tcp   # Canvas Viewer
+sudo ufw allow 8890/tcp   # Canvas Viewer
 
 # Optional services
 sudo ufw allow 5050/tcp   # UniFi Protect webhook receiver
@@ -1227,8 +1228,8 @@ crontab -e
 
 ## Version Information
 
-**Last Updated:** 2026-04-12  
-**Jarvis Version:** v2.46.3 
+**Last Updated:** 2026-05-25  
+**Jarvis Version:** v2.50.2 
 **Tested On:** Ubuntu 24.04 LTS  
 **Python Version:** 3.12+  
 **Package Manager:** uv (recommended) or pip
@@ -1251,7 +1252,7 @@ crontab -e
 
 - **Webhook System:** [`docs/WEBHOOK_SYSTEM.md`](WEBHOOK_SYSTEM.md)
 - **Google Calendar Sync:** [`docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md`](n8n/docs/GOOGLE_CALENDAR_SYNC.md)
-- **n8n Integration:** [`docs/n8n/docs/N8N_INTEGRATION.md`](n8n/docs/N8N_INTEGRATION.md)
+- **n8n Integration:** [`docs/n8n/n8n-mcp.md`](n8n/n8n-mcp.md)
 - **OpenCode:** [`docs/opencode/OPENCODE.md`](opencode/OPENCODE.md)
 - **Service Architecture FAQ:** [`docs/service/SERVICE_ARCHITECTURE_FAQ.md`](service/SERVICE_ARCHITECTURE_FAQ.md)
 

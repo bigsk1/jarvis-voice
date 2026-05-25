@@ -523,8 +523,9 @@ jq '[.test_run.tests[].cost_usd] | add / length' logs/test/test-cloud-comprehens
 **Fix:**
 ```bash
 # 1. Verify tool embeddings exist
+find skills -name '*.tool.json' | wc -l   # repo tool count (~77)
 sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embedding IS NOT NULL;"
-# Should return: 32 (or your total tool count)
+# Embedding count should match your enabled tools (after ./bin/sync-tools.py)
 
 # 2. If 0 or low, resync:
 ./bin/sync-tools.py cloud
@@ -579,8 +580,8 @@ sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embed
 
 ### Local Mode Timeout with Weak Models
 **Issue:** Ollama models that aren't tool-optimized may time out  
-**Solution:** Use `qwen3-vl` or similar tool-capable models  
-**Config:** `OLLAMA_MODEL` in `config/local.env`
+**Solution:** Use a tool-capable Ollama model such as `qwen3.5:latest`, `qwen3-coder`, or `gemma4`  
+**Config:** `OLLAMA_MODEL` in `config/local.env` (see `config/local.env.example`)
 
 ### Memory Embedding Generation
 **Issue:** Embeddings only generated on creation, not bulk  
@@ -663,10 +664,10 @@ Use this for a comprehensive test run:
 ### Verify Tool Embeddings
 ```bash
 # Check if tools are indexed
+find skills -name '*.tool.json' | wc -l   # repo tool count (~77)
 sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM tool_definitions WHERE embedding IS NOT NULL;"
 
-# Expected: 32 (or your total tool count)
-# If 0: Run ./bin/sync-tools.py cloud
+# Embedding count should match enabled tools; if 0: Run ./bin/sync-tools.py cloud
 ```
 
 ### Multi-Turn Self-Healing Test

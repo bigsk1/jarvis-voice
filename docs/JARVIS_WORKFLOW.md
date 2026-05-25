@@ -408,10 +408,10 @@ graph TB
 
 | Aspect | Traditional (Pre-RAG) | Tool RAG (Current) |
 |--------|----------------------|-------------------|
-| **Tools Loaded** | All 32+ tools every query | 5-15 relevant tools |
+| **Tools Loaded** | All 75+ tools every query | 5-15 relevant tools |
 | **Context Size** | ~15K tokens | ~3K tokens (80% reduction) |
 | **Scalability** | Limited (context window fills) | Unlimited (100+ tools possible) |
-| **Local Models** | Struggles with 32+ tools | Thrives with 5-9 tools |
+| **Local Models** | Struggles with 75+ tools | Thrives with 5-9 tools |
 | **Selection Accuracy** | Good | Excellent (pre-filtered) |
 | **Cost** | High (more tokens) | Low (fewer tokens) |
 
@@ -477,6 +477,163 @@ graph LR
 
 ---
 
+## Request Pipeline (v2.50.x — Detailed)
+
+This section documents the **actual** orchestrator path in `orchestrator/orchestrator_v2.py`, `router_v2.py`, `context_assembler.py`, and `response_formatter.py`. Use it when debugging routing, turn limits, or provider continuation.
+
+### End-to-end flow
+
+```mermaid
+flowchart TD
+    Q[User query] --> AC[Auto-context injection]
+    AC --> AM[Auto-memory injection]
+    AM --> II[Intelligence insights PREFER/AVOID]
+    II --> PC[Profile Card boundary]
+    PC --> TR[Tool RAG retrieval + ghost tools]
+    TR --> WF{Workflow slash command?}
+    WF -->|yes| PE[PipelineExecutor bypass]
+    WF -->|no| RT[Router LLM turn loop]
+    PE --> RF[ResponseFormatter]
+    RT --> EX[Executor tool calls]
+    EX --> DG{Duplicate guard?}
+    DG -->|blocked| RT
+    DG -->|ok| RT
+    RT -->|done| RF
+    RF --> EXP[Experience + correction hooks]
+```
+
+### Pre-router context stack (order matters)
+
+Before the first router call, context is assembled in this order:
+
+| Step | Module | What it injects |
+|------|--------|-----------------|
+| 1 | `ContextAssembler.build_conversation_context()` | Recent wake-word / web session turns |
+| 2 | Auto-memory (`lib/memory_hooks`) | FTS5 + semantic hits for the query |
+| 3 | `lib/intelligence_hooks.py` | Top matching insights (preferred/avoided tools, negative constraints) |
+| 4 | `lib/user_profile.py` | **Profile Card** — stable user prefs from memory DB `user_model` table |
+| 5 | Tool RAG | Embeddings + ghost tools + `tool_search` discovery |
+| 6 | Router system prompt | Mode, freshness rules, duplicate guard text, memory-first |
+
+See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) and [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) for Profile Card and insight injection details.
+
+### Workflow bypass (slash commands)
+
+`WorkflowLoader` (`orchestrator/workflow_loader.py`, `explicit_only=True`) matches commands like `/research`, `/code`, `/summarize`. When matched, **`PipelineExecutor`** runs a fixed step pipeline instead of open-ended multi-turn routing. The orchestrator still records experiences and applies formatting via `ResponseFormatter`.
+
+### Direct speech bypass tools
+
+These tools return spoken output without a second LLM synthesis pass (`DIRECT_SPEECH_TOOLS` in `orchestrator_v2.py`):
+
+- `status_recap` — session/status summary
+- `generate_music` — music generation with immediate playback path
+- `phone_call` — telephony bridge
+- `create_reminder` — reminder confirmation speech
+
+### Multi-turn limits and retries (code defaults)
+
+| Setting | Env var | Code default | Typical cloud.env | Typical local.env |
+|---------|---------|--------------|-------------------|-------------------|
+| Max tool turns | `MAX_TOOL_TURNS` | **15** | 12 | 8 |
+| Max retries per failed tool | *(hardcoded)* | **1** | 1 | 1 |
+| xAI server-side cap | `XAI_SERVER_SIDE_MAX_TOOL_TURNS` | 0 (unlimited) | varies | — |
+| OpenAI Responses server-side cap | `OPENAI_RESPONSES_SERVER_SIDE_MAX_TOOL_CALLS` | 0 | varies | — |
+
+**Note:** Older docs referenced `MAX_ORCHESTRATION_TURNS=10` and `max_retries=3`. The v2 orchestrator uses **`MAX_TOOL_TURNS`** (default 15) and **`self.max_retries = 1`** in `orchestrator_v2.py`.
+
+When `turns_remaining <= 5`, the orchestrator injects a turn-budget warning so the LLM prioritizes canvas/remember before hitting the cap.
+
+### Duplicate tool guard
+
+Prevents runaway loops within a **single request**:
+
+1. **Exact-arg blocking** — Same tool + identical JSON args cannot run twice in one request.
+2. **Single-call caps** — Tools tagged `@TOOL_CONFIG: single-call` (e.g. `generate_video`, `generate_image`, `generate_music`) limited to one successful call per request.
+3. **Freshness TTL** — Router prompt + `ContextAssembler` inject `FRESHNESS RULES`; stale cached tool output should not be re-fetched without user intent.
+4. **Blocked-call feedback** — When blocked, the next turn input includes `DUPLICATE TOOL GUARD:` with the blocked signatures; repeating triggers synthesis fallback.
+
+Trace logs: `logs/tool-rag/` (retrieval signals, PREFER/AVOID hints, typo corrections).
+
+### Provider continuation (xAI + OpenAI Responses)
+
+**xAI structural continuation** (when both enabled):
+
+```bash
+XAI_STORE_MESSAGES=true
+XAI_NATIVE_CONTINUATION=true
+```
+
+Uses `previous_response_id` from the xAI Responses API so multi-turn tool loops do not resend full history each turn. Requires compatible xAI models (see [XAI_PROVIDER.md](XAI_PROVIDER.md)).
+
+**OpenAI Responses routing** (`lib/openai_responses_adapter.py`):
+
+```bash
+OPENAI_RESPONSES_CONTINUATION_DELTA_MESSAGE=false   # default
+OPENAI_RESPONSES_RESULT_MAX_CHARS=6000              # min enforced 800
+OPENAI_RESPONSES_SERVER_SIDE_TOOLS=false              # optional native search/tools
+OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS=true       # set transiently when budget exhausted
+```
+
+When native server-side tools are enabled, `OPENAI_RESPONSES_SERVER_SIDE_MAX_TOOL_CALLS` caps provider-side tool calls per request.
+
+### Native search budget
+
+Per-request cap on provider-native web/X search (when server-side tools are on). When exhausted or when the user selects a client-side search tool in the web UI, the orchestrator injects `[NATIVE SEARCH DISABLED]` and sets `OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS` / clears xAI server-side caps for remaining turns.
+
+### Web UI vs CLI differences
+
+| Feature | CLI / wake word | Web UI (`api/routes/query.py`) |
+|---------|-----------------|--------------------------------|
+| Conversation history | Auto-context + session | Explicit `conversation_history` array |
+| Tool overrides | Env + ghost tools | `tool_overrides`, `excluded_tools` |
+| Search provider hint | Env | UI can force client-side search → disables native search |
+| Mode | `--mode cloud\|local` | Request `mode` + `JARVIS_OVERRIDE_*` |
+
+### Modular orchestrator split (2.50)
+
+| Module | Responsibility |
+|--------|----------------|
+| `context_assembler.py` | Conversation context, tool result truncation, freshness excerpts, provider result messages |
+| `response_formatter.py` | Final speech/text shaping, canvas hooks, thinking strip |
+| `executor.py` | Tool invocation, MCP bridging, error surfaces |
+| `router_v2.py` | LLM routing, server-side tool orchestration, prompt assembly |
+| `orchestrator_v2.py` | Turn loop, duplicate guard, continuation, experience recording |
+
+### Post-response hooks
+
+After a successful or failed run:
+
+- **Experience recording** — `lib/intelligence_hooks.record_experience()` when `JARVIS_INTELLIGENCE=true`
+- **Correction learning** — `USER_CORRECTION_LEARNING_MODE=shadow|apply` detects user corrections across turns; see [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md#cross-turn-correction-learning-2026)
+- **Feedback bridge** — Low ratings retroactively mark experiences failed (see intelligence doc)
+
+### Key env vars (orchestration)
+
+```bash
+# Turns
+MAX_TOOL_TURNS=15
+
+# xAI continuation
+XAI_STORE_MESSAGES=true
+XAI_NATIVE_CONTINUATION=true
+XAI_SERVER_SIDE_MAX_TOOL_TURNS=0
+
+# OpenAI Responses
+OPENAI_RESPONSES_SERVER_SIDE_TOOLS=false
+OPENAI_RESPONSES_SERVER_SIDE_MAX_TOOL_CALLS=0
+OPENAI_RESPONSES_RESULT_MAX_CHARS=6000
+
+# Intelligence + profile
+JARVIS_INTELLIGENCE=true
+USER_CORRECTION_LEARNING_MODE=shadow   # or apply
+
+# Debug
+JARVIS_DEBUG=1
+--debug-thinking                        # CLI: log thinking blocks
+```
+
+---
+
 ## Multi-Turn Orchestration
 
 Jarvis can chain multiple tools in sequence to complete complex tasks.
@@ -514,8 +671,8 @@ sequenceDiagram
     R-->>O: No (ephemeral info, not personal)
 ```
 
-**Max turns**: 10 (configurable via `MAX_ORCHESTRATION_TURNS`)  
-**Max retries**: 3 per tool
+**Max turns**: Default **15** (`MAX_TOOL_TURNS`; cloud example 12, local example 8)  
+**Max retries**: **1** per failed tool (`orchestrator_v2.py`)
 
 ---
 
@@ -552,16 +709,16 @@ graph LR
 - **Cloud**: OpenAI text-embedding-3-small (1536 dimensions) + FTS5 full-text search
 - **Local**: nomic-embed-text (768 dimensions) + FTS5 full-text search
 - **Search**: Hybrid (FTS5 for keywords, embeddings for concepts)
-- **Models**: xAI Grok 4.3 ⭐, Claude Sonnet 4.5, GPT-4o (cloud) | qwen3.5:latest, qwen3-coder (local)
+- **Models**: xAI Grok 4.3 / grok-build-0.1 ⭐, Claude Sonnet 4.5, GPT-4o (cloud) | qwen3.5:latest, qwen3-coder, gemma4 (local)
 
 ### Key Configuration Variables
 
 | Variable | Impact | Example Values |
 |----------|--------|----------------|
 | `LLM_PROVIDER` | Which LLM to use | `xai`, `anthropic`, `openai`, `ollama` |
-| `XAI_MODEL` | xAI Grok model | `grok-4.3` ⭐ RECOMMENDED |
+| `XAI_MODEL` | xAI Grok model | `grok-4.3` ⭐ (default); `grok-build-0.1` for coding-heavy |
 | `ANTHROPIC_MODEL` | Cloud model selection | `claude-sonnet-4-5-20250929` |
-| `OLLAMA_MODEL` | Local model selection | `qwen3.5:latest`, `qwen3-vl`, `deepseek-r1` |
+| `OLLAMA_MODEL` | Local model selection | `qwen3.5:latest` ⭐, `qwen3-coder`, `gemma4`, `deepseek-r1` |
 | `JARVIS_DEBUG_THINKING` | Show LLM reasoning | `true`, `false` |
 | `SEMANTIC_SIMILARITY_THRESHOLD` | Memory search sensitivity | `0.40` (default), `0.30-0.50` range |
 | `JARVIS_RESPONSE_STYLE` | Output formatting | `casual`, `detailed`, `auto` |
@@ -868,9 +1025,9 @@ a financial advisor for personalized guidance.
 
 **Model Selection:**
 - `LLM_PROVIDER` - Main LLM (`xai`, `anthropic`, `openai`, `ollama`)
-- `XAI_MODEL` - xAI Grok model (`grok-4.3` default) ⭐ RECOMMENDED
+- `XAI_MODEL` - xAI Grok model (`grok-4.3` recommended; see `XAI_PROVIDER.md` for `grok-build-0.1` and alternatives)
 - `ANTHROPIC_MODEL` - Claude model
-- `OLLAMA_MODEL` - Local model
+- `OLLAMA_MODEL` - Local model (`qwen3.5:latest` in `local.env.example`)
 
 ---
 
@@ -922,7 +1079,10 @@ Jarvis is a **multi-modal, memory-aware, tool-orchestrating voice assistant** wi
 ✅ **Tool RAG System** - Dynamic tool retrieval scales to 100+ tools without context flooding  
 ✅ **Memory-First Strategy** - Always checks stored info before asking  
 ✅ **Hybrid Search System** - FTS5 full-text search + AI embeddings for comprehensive results  
-✅ **Intelligent Tool Selection** - LLM-based routing with 32+ skills  
+✅ **Intelligent Tool Selection** - LLM-based routing with 75+ skills  
+✅ **Pre-router stack** - Auto-context, memory, intelligence insights, Profile Card  
+✅ **Duplicate tool guard** - Exact-arg blocking, single-call caps, freshness rules  
+✅ **Provider continuation** - xAI `previous_response_id`, OpenAI Responses routing  
 ✅ **Multi-Turn Orchestration** - Chains tools to complete complex tasks  
 ✅ **MCP Server Integration** - Extensible via Model Context Protocol  
 ✅ **Dual-Database System** - Cloud/local modes with auto-sync  
@@ -942,8 +1102,10 @@ Jarvis is a **multi-modal, memory-aware, tool-orchestrating voice assistant** wi
 - **For Auto-Context**: See [AUTO_CONTEXT_SYSTEM.md](AUTO_CONTEXT_SYSTEM.md)
 - **For Tool Development**: See [TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)
 - **For OpenCode**: See [opencode/OPENCODE.md](opencode/OPENCODE.md)
+- **For Intelligence / Profile**: See [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md), [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md)
+- **For Extended thinking**: See [EXTENDED_THINKING.md](EXTENDED_THINKING.md)
 
 ---
 
-**Last Updated**: 2025-11-22  
-**Version**: 2.2 (Tool RAG system with dynamic tool retrieval + FTS5 search + auto-context)
+**Last Updated**: 2026-05-25  
+**Version**: 2.50.x (Tool RAG, xAI native continuation, OpenAI Responses routing, Profile Card)

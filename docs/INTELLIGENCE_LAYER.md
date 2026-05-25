@@ -1,9 +1,9 @@
 # Jarvis Intelligence Layer
 
-**Status**: Active / Phase 1.5 Complete  
+**Status**: Active / Phase 1.5 Complete + 2026 operational bridges  
 **Created**: 2025-11-27  
-**Updated**: 2026-04-21 (provenance/evidence trails; sync-safe schema; dry-run maintenance; dashboard pagination)
-**Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`
+**Updated**: 2026-05-25 (Pass 4: correction learning, Profile Card, dashboard port 5003, schema, API table, debris cleanup)  
+**Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`, `jarvis-intelligence/` (dashboard)
 
 ## Overview
 
@@ -98,7 +98,7 @@ Fields that track insight health are now **actively updated**:
 - `times_helpful` - Success count when applied ✅ Updated automatically
 - `times_failed` - Failure count when applied ✅ Updated automatically
 - `consecutive_failures` - Rapid decay trigger ✅ Updated automatically
-- `last_outcome` - Most recent result (`helpful`/`not_helpful`) ✅ Updated automatically
+- `last_outcome` - Most recent result (`success` / `failure` / `unused`) ✅ Updated automatically
 
 ### 5. Feedback → Intelligence Bridge (Enhanced 2026-04-18)
 
@@ -337,7 +337,7 @@ When an insight matches a query:
 2. After interaction completes:
    - Success → `times_helpful` +1, `consecutive_failures` = 0
    - Failure → `times_failed` +1, `consecutive_failures` +1
-   - `last_outcome` updated to `helpful` or `not_helpful`
+   - `last_outcome` updated to `success` or `failure`
 
 ### 4. Maintenance Jobs
 
@@ -347,7 +347,7 @@ Three automated maintenance jobs keep the intelligence layer healthy:
 ```bash
 # Config
 INTELLIGENCE_DECAY_RATE=0.95           # 5% decay per week unused
-INTELLIGENCE_DECAY_INTERVAL_DAYS=14    # Minimum days between decay runs
+INTELLIGENCE_DECAY_INTERVAL_DAYS=14    # Minimum days between decay runs (code default: 7 if unset)
 ```
 
 **What it does**:
@@ -843,138 +843,41 @@ print(f'Processed {processed} reflections')
 3. Extracts generalizable insight
 4. Stores as embedding for future matching
 
----
+### Reflection queue (operational detail)
 
-┌─────────────────────────────────────────────────────────────────┐
-│  EVERY USER INTERACTION                                         │
-├─────────────────────────────────────────────────────────────────┤
-│  1. User asks question                                          │
-│  2. LLM routes → Tools execute → Response                       │
-│  3. Experience recorded to `experiences` table                  │
-│  4. Entry added to `reflection_queue` (processed=0)  ← QUEUED   │
-│                                                                 │
-│  ❌ NO automatic reflection! Just queued.                       │
-└─────────────────────────────────────────────────────────────────┘
+Reflection is **queued, not automatic**. Every interaction with `JARVIS_INTELLIGENCE=true` writes an experience and enqueues `reflection_queue` (`processed=0`). Nothing calls the reflection LLM until you trigger it.
 
-┌─────────────────────────────────────────────────────────────────┐
-│  WHEN YOU TRIGGER REFLECTION (manually or scheduled)            │
-├─────────────────────────────────────────────────────────────────┤
-│  trigger_reflection(batch_size=3)                               │
-│     │                                                           │
-│     ├─▶ Fetch 3 pending from queue                              │
-│     │                                                           │
-│     ├─▶ For EACH experience:                                    │
-│     │      └─▶ SEPARATE LLM CALL (reflection prompt)            │
-│     │           - Analyze what worked/didn't                    │
-│     │           - Generate insight JSON                         │
-│     │           - Store in `insights` table                     │
-│     │           - Mark as processed=1                           │
-│     │                                                           │
-│     └─▶ Return count processed                                  │
-└─────────────────────────────────────────────────────────────────┘
+```
+Every interaction:
+  User query → route → tools → response
+  → experiences row inserted
+  → reflection_queue row (processed=0)
 
+When triggered (manual, cron, or maintenance):
+  trigger_reflection(batch_size=N)
+  → fetch N pending rows
+  → for each: separate LLM reflection call → insights table → processed=1
+```
 
-Why It's Not Automatic
-Currently, reflection is on-demand because:
-Each reflection = 1 LLM API call = cost
-Reflection can be slow (2-5 seconds per experience)
-You might want to batch them (cheaper, less interruption)
+**Why on-demand:** each reflection is a paid LLM call (~2–5s each). Batching controls cost and load.
+
+**Trigger options:**
 
 ```bash
-# Manual trigger (process 5 at a time)
-source ~/jarvis-venv/bin/activate && cd ~/jarvis-voice
-python3 -c "
-from lib.intelligence_hooks import trigger_reflection
-processed = trigger_reflection(batch_size=5)
-print(f'Processed {processed} reflections')
-"
+# Python
+python3 -c "from lib.intelligence_hooks import trigger_reflection; print(trigger_reflection(5))"
 
-# Or via API
+# Main API (port 8880)
 curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
+
+# Intelligence dashboard API (port 5003)
+curl -X POST "http://localhost:5003/api/maintenance/reflect?batch_size=5"
+
+# CLI maintenance
+./bin/run-intelligence-maintenance.py --reflect
 ```
 
-Let me check the code to explain exactly how the reflection queue works:
-
-[3 tools called]
-
-## How the Reflection Queue Works
-
-### Current Behavior
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  EVERY USER INTERACTION                                         │
-├─────────────────────────────────────────────────────────────────┤
-│  1. User asks question                                          │
-│  2. LLM routes → Tools execute → Response                       │
-│  3. Experience recorded to `experiences` table                  │
-│  4. Entry added to `reflection_queue` (processed=0)  ← QUEUED   │
-│                                                                 │
-│  ❌ NO automatic reflection! Just queued.                       │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  WHEN YOU TRIGGER REFLECTION (manually or scheduled)            │
-├─────────────────────────────────────────────────────────────────┤
-│  trigger_reflection(batch_size=3)                               │
-│     │                                                           │
-│     ├─▶ Fetch 3 pending from queue                              │
-│     │                                                           │
-│     ├─▶ For EACH experience:                                    │
-│     │      └─▶ SEPARATE LLM CALL (reflection prompt)            │
-│     │           - Analyze what worked/didn't                    │
-│     │           - Generate insight JSON                         │
-│     │           - Store in `insights` table                     │
-│     │           - Mark as processed=1                           │
-│     │                                                           │
-│     └─▶ Return count processed                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### What "3 Pending" Means
-
-- **You've had 3 interactions** that recorded experiences
-- **None have been reflected on yet** (LLM hasn't analyzed them)
-- The experiences are **waiting** for you to trigger reflection
-
-### Why It's Not Automatic
-
-Currently, reflection is **on-demand** because:
-1. Each reflection = 1 LLM API call = cost
-2. Reflection can be slow (2-5 seconds per experience)
-3. You might want to batch them (cheaper, less interruption)
-
-### How to Process the Queue
-
-```bash
-# Manual trigger (process 5 at a time)
-source ~/jarvis-venv/bin/activate && cd ~/jarvis-voice
-python3 -c "
-from lib.intelligence_hooks import trigger_reflection
-processed = trigger_reflection(batch_size=5)
-print(f'Processed {processed} reflections')
-"
-
-# Or via API
-curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
-```
-
-### Future Options
-
-Could add automatic reflection in the future:
-
-| Option | Trigger | Pros | Cons |
-|--------|---------|------|------|
-| **After every N interactions** | Every 5 queries | Fresh insights | More LLM calls |
-| **End of session** | When Jarvis goes idle | Batched, efficient | Delayed learning |
-| **Cron job** | Every hour | Predictable | Could be stale |
-| **Background daemon** | Continuous | Always learning | Resource usage |
-
-Could also tell jarvis to send api to ( leave details in intel file?)
-
-source ~/jarvis-venv/bin/activate && cd ~/jarvis-voice/monitoring && curl -X POST "http://localhost:8880/api/intelligence/reflect?batch_size=5"
-Results
-{"status":"ok","processed":3,"message":"Processed 3 pending reflections"}
+**Future automation options** (not implemented): after every N interactions, end-of-session batch, hourly cron, or background daemon. Phase 2 **reflection gate** would skip trivial queries before spending an LLM call — see [Future Enhancements](#future-enhancements).
 
 ---
 
@@ -1567,40 +1470,31 @@ or use to run manually
 python3 -c "from lib.intelligence_hooks import trigger_reflection; trigger_reflection(10)"
 ```
 
-### Grafana Dashboard Panels
+### Grafana / Prometheus metrics
 
-The Intelligence Layer dashboard (`grafana/dashboards/jarvis-intelligence.json`) includes:
+Prometheus metrics are exposed at **`GET /api/intelligence/metrics`** (port 8880). Example series:
 
-**Panel 1: Key Stats Row**
-- Intelligence enabled status
-- Total experiences
-- Total insights (positive/negative)
-- Pending reflections
-- Average confidence
-- Helpful ratio
-
-**Panel 2: Constraint Type Distribution** (Pie Chart)
-```promql
-jarvis_intelligence_insights_total{constraint_type="positive"}
-jarvis_intelligence_insights_total{constraint_type="negative"}
-```
-
-**Panel 3: Learning Growth Over Time**
 ```promql
 jarvis_intelligence_experiences_total
-sum(jarvis_intelligence_insights_total)
-```
-
-**Panel 4: Confidence Trend**
-```promql
-jarvis_intelligence_avg_confidence
-```
-
-**Panel 5: Pending Reflections Queue**
-```promql
+jarvis_intelligence_insights_total{constraint_type="positive"}
 jarvis_intelligence_pending_reflections
+jarvis_intelligence_avg_confidence
+jarvis_intelligence_helpful_ratio{mode="cloud"}
 ```
-Alert if > 10 (reflections backing up)
+
+**Note:** There is **no** checked-in `monitoring/grafana/dashboards/jarvis-intelligence.json` today. Use the **Intelligence Dashboard** at port **5003** for interactive monitoring, or build a Grafana dashboard from the Prometheus metrics above.
+
+### Intelligence Dashboard (primary UI)
+
+See [jarvis-intelligence/README.md](../jarvis-intelligence/README.md). Key panels equivalent to the old Grafana plan:
+
+**Stats row:** enabled flag, experience/insight counts, pending reflections, avg confidence, helpful ratio
+
+**Constraint distribution:** positive vs negative insight counts (Insights tab filters)
+
+**Growth over time:** experience and insight totals (Stats tab)
+
+**Pending queue alert:** Reflection tab — investigate when pending > 10 (also surfaced in `/api/intelligence/health`)
 
 **Panel 6: Intelligence Event Logs** (Loki)
 ```logql
@@ -1793,23 +1687,29 @@ Reality: Turn 1 had the answer
 
 **Future fix**: Track which tool's output actually appeared in the final response (content attribution).
 
-### 2. User Bias Injection - NOT YET SUPPORTED
+### 2. User preferences — partial support (2026)
 
-Users cannot currently override or inject their own tool preferences. For example:
-- "I prefer execute_bash with curl for server checks" 
-- "Always use crypto_price, never search_memory for prices"
+**Implemented today:**
 
-**Workaround**: Add explicit instructions to `jarvis-intel` files.
+- **Profile Card** — `user_model` table + `lib/user_profile.py` injects stable prefs at routing time. See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md).
+- **Intelligence insights** — learned `preferred_tool` / `avoided_tools` from reflection.
+- **Manual overrides** — `jarvis-intel` files and ghost-tool config.
+- **Correction learning** — `USER_CORRECTION_LEARNING_MODE=apply` downgrades bad prior experiences.
 
-**Future**: User preference injection via config or dedicated preference file.
+**Not yet implemented:**
 
-### 3. Only Tool Selection Learning
+- Dedicated config file for static tool bias (e.g. `ALWAYS_USE=crypto_price` without learning)
+- UI panel for editing Profile Card fields (dashboard is read/edit for experiences/insights, not full profile CRUD)
 
-Current intelligence focuses on **tool routing**. It does NOT learn:
-- When to save things to memory
-- Response verbosity preferences
-- Communication style (formal/casual)
-- User-specific terminology
+### 3. Behavioral learning — partial
+
+Intelligence **does** learn tool routing and negative constraints. It **does not yet** learn:
+
+- Automatic memory-save triggers
+- Response verbosity defaults
+- Communication style (formal/casual) as first-class insights
+
+Profile Card and feedback bridge cover some of this manually; Phase 3 below tracks automated behavioral learning.
 
 ### 4. Rare-But-Valid Insights Decay Problem ⚠️
 
@@ -1846,6 +1746,113 @@ Day 56:  Decay runs → 0.73 × 0.95² = 0.66
 - Category-based decay rates (technical insights decay slower)
 - Minimum confidence floor based on success rate (100% success → can't drop below 0.7)
 - Success-weighted decay (high success rate reduces decay multiplier)
+
+---
+
+## Cross-turn correction learning (2026)
+
+Detects when the user **corrects** Jarvis across turns (e.g. "no, use the other tool", "that's wrong") and links the correction to the prior experience.
+
+```bash
+USER_CORRECTION_LEARNING_MODE=shadow   # record candidates only (safe default)
+USER_CORRECTION_LEARNING_MODE=apply    # downgrade linked experience + optional lesson append
+```
+
+| Mode | Behavior |
+|------|----------|
+| `shadow` | Logs correction candidates to intelligence logs; routing unchanged |
+| `apply` | Marks linked prior experience outcome failed; may append deduped lessons to `jarvis-learned-lessons.md` |
+
+**Code path:** `orchestrator_v2.py` post-response hook → `lib/intelligence_hooks.py` correction handlers.
+
+**Related:** [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md), [FUTURE_ENHANCEMENTS.md](FUTURE_ENHANCEMENTS.md) (Strategic Direction — cross-turn correction learning).
+
+---
+
+## Profile Card boundary (2026)
+
+Stable user preferences are injected **before** intelligence insights via `lib/user_profile.py`:
+
+- Source: memory DB `user_model` table (cloud/local DBs)
+- Injected as a compact **Profile Card** in router context
+- Complements intelligence insights (learned routing) with explicit prefs (tone, tool prefs, boundaries)
+
+Does **not** replace `jarvis-intel` files — those remain the manual override layer. See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) for schema and edit workflow.
+
+---
+
+## Intelligence Dashboard (port 5003)
+
+Dedicated UI at **`http://localhost:5003`** (`jarvis-intelligence/`). Start with `./bin/jarvis-intelligence` or `./bin/start --ui-only`.
+
+| Tab | Capabilities |
+|-----|----------------|
+| **Experiences** | Sort by date/turns/tools/CG status; filter success/fail, tool count, specific tool; server-side pagination; detail modal with raw JSON |
+| **Insights** | Positive/negative constraints; 5-tier confidence filters; preferred/avoided tool badges; re-embed after edits |
+| **Reflection** | Pending queue, trigger reflection, meta-knowledge (blind spots, over-generalization) |
+| **Stats** | Totals, tool performance table, maintenance actions |
+| **Feedback** | Browse `logs/feedback/` with rating filters |
+
+Full API table: [jarvis-intelligence/README.md](../jarvis-intelligence/README.md).
+
+**Mode switch:** Cloud → `data/jarvis_intelligence.db` (1536-dim embeddings). Local → `data/jarvis_intelligence_local.db` (768-dim). Dimensions are **not** interchangeable.
+
+---
+
+## Database schema (core tables)
+
+Defined in `lib/intelligence.py` `_init_db()`:
+
+| Table | Purpose |
+|-------|---------|
+| `experiences` | Raw interactions: query, embeddings, `tools_used`, `tool_sequence`, `turns_taken`, `final_tool`, outcome booleans, `raw_data` JSON |
+| `insights` | Learned rules: `constraint_type` (positive/negative), `preferred_tool` / `avoided_tools`, confidence, decay fields, `times_applied` / `times_helpful` / `times_failed`, `last_outcome` |
+| `insight_evidence` | Provenance links insight ↔ experience with evidence snippets |
+| `meta_knowledge` | Meta-cognition output (blind spots, quality issues); also stores `last_decay_run` for interval protection |
+| `reflection_queue` | Pending experiences awaiting reflection (`processed`, priority) |
+
+Sync between machines: `./bin/sync-intelligence-db.py`. Health: `./bin/check-intelligence-health.py`.
+
+---
+
+## Main API endpoints (port 8880)
+
+Monitoring and maintenance via `api/routes/intelligence.py` (no auth on local LAN — lock down in production):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/intelligence/stats` | Counts, pending reflections, avg confidence |
+| GET | `/api/intelligence/health` | Enabled flag, issues list |
+| GET | `/api/intelligence/metrics` | Prometheus text exposition |
+| GET | `/api/intelligence/insights` | Recent insights (limit 20) |
+| GET | `/api/intelligence/experiences` | Recent experiences |
+| GET | `/api/intelligence/reflections` | Reflection queue |
+| DELETE | `/api/intelligence/reflections/{id}` | Remove queue entry |
+| DELETE | `/api/intelligence/reflections` | Clear queue (careful) |
+| POST | `/api/intelligence/reflect?batch_size=N` | Process reflections |
+| GET | `/api/intelligence/evaluate` | Dry-run evaluation helpers |
+| POST | `/api/intelligence/maintenance/decay` | Run decay job |
+| POST | `/api/intelligence/maintenance/anomaly` | Anomaly detection |
+| POST | `/api/intelligence/maintenance/meta-cognition` | Meta-cognition pass |
+| POST | `/api/intelligence/maintenance/all` | All maintenance jobs |
+| GET | `/api/intelligence/meta-knowledge` | Meta-knowledge rows |
+| GET | `/api/intelligence/logs/recent` | Recent intelligence log events |
+
+---
+
+## Completion Guard bridge (operational notes)
+
+When Completion Guard (CG) is enabled, experiences store CG metadata in `raw_data`:
+
+| CG status | Intelligence treatment |
+|-----------|------------------------|
+| `accepted` / `auto_accepted` | Normal success path |
+| `repaired` | Outcome may still succeed; reflection sees repair context |
+| `ticketed` / `expired` / `superseded` | Often treated as soft failures for learning |
+| `tighten_only` | Guard adjusted phrasing without full reject — not a hard failure |
+| `operational_correction` | User-facing correction — pairs with correction learning mode |
+
+Dashboard filters expose CG facets on the Experiences tab. See [COMPLETION_GUARD.md](COMPLETION_GUARD.md) for guard configuration.
 
 ---
 
@@ -1904,27 +1911,18 @@ Example skip reasons:
 - `insufficient_signal`
 - `private_or_sensitive`
 
-### Phase 3 (User Profile Learning) 🧠
-- [ ] **User bias injection** - Config/file to specify tool preferences
-- [ ] **Behavioral learning** - Not just tool selection:
-  - When to be verbose vs concise
-  - When to save to memory automatically
-  - Understanding vague requests ("the usual")
-- [ ] **Communication style learning**:
-  - Serious vs humor appropriate contexts
-  - Emotional awareness (encouragement, directness)
-  - User-specific terminology and shortcuts
-- [ ] **Auto-parameter tuning** - Run test scenarios, adjust:
-  ```bash
-  INTELLIGENCE_LEARNING_RATE=0.1
-  INTELLIGENCE_DECAY_RATE=0.95
-  INTELLIGENCE_MIN_CONFIDENCE=0.3
-  ```
-  Based on measured performance
+### Phase 3 (User Profile Learning) 🧠 — partially shipped
+- [x] **Profile Card** — `user_model` + injection at routing ([USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md))
+- [x] **Correction learning** — cross-turn `USER_CORRECTION_LEARNING_MODE`
+- [ ] **Config-file tool bias** — static preferences without reflection
+- [ ] **Behavioral learning** — verbosity, auto-memory, "the usual" patterns
+- [ ] **Communication style learning** — tone, humor, terminology
+- [ ] **Auto-parameter tuning** — `INTELLIGENCE_LEARNING_RATE`, decay tuning from measured performance
 
 ### Phase 4 (Advanced)
 - [ ] **Chain caching / Macro-skills** - Learn entire workflows, not just tool preferences
-- [ ] **Grafana dashboard** - Visualize learning metrics
+- [x] **Metrics exposition** - `/api/intelligence/metrics` (Prometheus); interactive UI at port 5003
+- [ ] **Grafana dashboard JSON** - Not checked in; build from metrics or use port 5003 UI
 - [ ] **Explicit user feedback** - `--thumbs-down` flag for explicit negative signal
 - [ ] **A/B testing** - Compare learned vs naive routing
 

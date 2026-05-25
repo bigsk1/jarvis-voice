@@ -1050,7 +1050,7 @@ Instead of hardcoded phrases OR complex log parsing, use a **small/fast/cheap LL
 │     ┌─────────────────────────────────────────┐                │
 │     │   StatusSummarizer (lib/status_llm.py)  │                │
 │     │   ┌───────────────────────────────────┐ │                │
-│     │   │ Small LLM (gpt-4o-mini, grok-4)   │ │                │
+│     │   │ Small LLM (gpt-4o-mini, grok-4.3) │ │                │
 │     │   │ Prompt: "Summarize in 5-8 words"  │ │                │
 │     │   └───────────────────────────────────┘ │                │
 │     │              │                          │                │
@@ -1156,7 +1156,7 @@ Summary (5-8 words):'''
 | Provider | Model | Cost per 1K tokens | Est. per status |
 |----------|-------|-------------------|-----------------|
 | OpenAI | gpt-4o-mini | $0.15 input, $0.60 output | ~$0.0001 |
-| xAI | grok-4 | $0.20 input, $0.50 output | ~$0.0001 |
+| xAI | grok-4.3 | $1.25 input, $2.50 output | ~$0.0001 |
 | Ollama | qwen3.5:latest | Free (local) | $0 |
 
 With ~500 token input + ~30 token output per summary:

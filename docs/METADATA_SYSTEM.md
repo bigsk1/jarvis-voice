@@ -42,7 +42,7 @@ Every conversation logged to the database now includes metadata:
 |-------|------|-------------|------------|
 | `mode` | string | "cloud" or "local" | No |
 | `provider` | string | "openai", "anthropic", or "ollama" | No |
-| `model` | string | Model name (e.g., "qwen3-vl", "gpt-5.4-nano") | No |
+| `model` | string | Model name (e.g., "qwen3.5:latest", "grok-4.3", "gpt-5.4-nano") | No |
 | `execution_time_ms` | float | Total conversation time | No |
 | `tool_count` | int | Number of tools executed | No |
 | `input_tokens` | int | Input token count | Yes |
@@ -270,7 +270,7 @@ EOF
 
 **Module:** `lib/local_model_corrections.py`
 
-Automatically fixes common formatting issues from local LLMs (qwen3-vl, etc.) without breaking legitimate use cases.
+Automatically fixes common formatting issues from local LLMs (`qwen3.5:latest`, etc.) without breaking legitimate use cases.
 
 ### Corrections Applied
 
@@ -415,5 +415,5 @@ LIMIT 1;
 ---
 
 *Last Updated: 2026-03-30*  
-*Related Docs: COMPLETION_GUARD.md, DATABASE_DEEP_DIVE.md, MEMORY_SYSTEM.md*
+*Related Docs: COMPLETION_GUARD.md, [archive/DATABASE_DEEP_DIVE.md](archive/DATABASE_DEEP_DIVE.md), MEMORY_SYSTEM.md*
 

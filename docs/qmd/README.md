@@ -4,7 +4,7 @@ Local search engine for Jarvis documentation using [tobi/qmd](https://github.com
 
 ## Why QMD?
 
-- **153 markdown docs** indexed with rich context descriptions (excludes personal/private dirs)
+- **164 markdown docs** indexed with rich context descriptions (excludes personal/private dirs)
 - **BM25 keyword search** - fast, accurate for exact terms
 - **Semantic search** - find by meaning when keywords fail
 - **33 context annotations** - sections have detailed descriptions to improve relevance
@@ -92,7 +92,7 @@ qmd multi-get "#abc123, #def456"    # Multiple docids
 
 | Path | Description |
 |------|-------------|
-| `/` | Root - all 148 docs for Jarvis voice assistant |
+| `/` | Root - all public docs for Jarvis voice assistant |
 | `/api` | REST API docs for port 8880 (memory, reminders, canvas, etc.) |
 | `/api/code-examples` | Python, Bash, Node.js code snippets |
 | `/n8n` | n8n workflow automation (calendar, email, webhooks) |
@@ -108,7 +108,7 @@ qmd multi-get "#abc123, #def456"    # Multiple docids
 | `INTELLIGENCE_LAYER.md` | Orchestration, routing, conversation state |
 | `MEMORY_SYSTEM.md` | FTS5 search, semantic embeddings, categories |
 | `CANVAS_SYSTEM.md` | Visual artifacts, pins, gallery |
-| `TOOL_MANAGEMENT.md` | 54+ tools, enable/disable, roadmap |
+| `TOOL_MANAGEMENT.md` | 75+ tools, enable/disable, roadmap |
 | `WORKFLOW_ORCHESTRATION.md` | Deterministic multi-tool workflows |
 | `INSTALL_GUIDE.md` | Installation and setup guide |
 | `JARVIS_WEB_UI.md` | Web interface, routes, WebSocket |
@@ -119,6 +119,9 @@ qmd multi-get "#abc123, #def456"    # Multiple docids
 
 ```bash
 # After adding a new markdown file to docs/:
+# WARNING: plain `qmd update` re-scans ALL **/*.md under docs/, including
+# gitignored personal/ vps2/ samantha-skill/ if those folders exist on disk.
+# Use the exclusion procedure below after update if private dirs are present.
 qmd update           # Re-scans for new/changed files
 qmd embed            # Only embeds new/modified files (incremental)
 

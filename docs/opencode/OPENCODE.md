@@ -148,8 +148,9 @@ If they are not set, it falls back to mode-specific defaults.
 
 **Local mode** (when using `jarvis-local`, fallback behavior):
 - Provider: Ollama
-- Model: `qwen3-vl` (8B, best for tool calling on 16GB GPU)
-- Server: Remote at `http://localhost:11434`
+- Model: `qwen3.5:latest` (default in `local.env.example`; tool-capable on 16GB GPU)
+- Alternatives: `qwen3-coder`, `gemma4`, `deepseek-r1` (see comments in `config/local.env.example`)
+- Server: `OLLAMA_BASE_URL` (default `http://localhost:11434`)
 
 Configured across:
 
@@ -443,7 +444,7 @@ OPENAI_API_KEY=sk-proj-...
 OPENCODE_ENABLED=true
 OPENCODE_BASE_URL=http://localhost:4096
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen3-vl
+OLLAMA_MODEL=qwen3.5:latest
 ```
 
 ### OpenCode Config (`~/.config/opencode/opencode.json`)

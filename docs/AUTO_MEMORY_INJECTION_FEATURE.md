@@ -215,4 +215,4 @@ Recency: 7 days = 1.0, 30 days = 0.97, 60 days = 0.94, 120 days = 0.90, older th
 - `AUTO_CONTEXT_SYSTEM.md` – Short-term conversation context
 - `MEMORY_SYSTEM.md` – Memory tools and schema
 - `opencode/OPENCODE_MEMORY_STRATEGY.md` – OpenCode's `get_memory_context`
-- `MEMORY_INTELLIGENCE_FIXES.md` – When to use which memory tool
+- `MEMORY_SYSTEM.md` – Memory tools, schema, and when to use each search tool

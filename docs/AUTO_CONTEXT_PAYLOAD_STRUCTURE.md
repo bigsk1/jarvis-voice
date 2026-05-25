@@ -40,7 +40,7 @@ This document shows **exactly** what gets sent to the LLM when auto-context is e
 ┌─────────────────────────────────────────────────────────┐
 │ 6. LLM Processes:                                       │
 │    - System Prompt (with auto-context instructions)    │
-│    - Tool Definitions (all 50+ tools)                   │
+│    - Tool Definitions (all 75+ tools)                   │
 │    - Enhanced Transcript (with context)                 │
 └─────────────────────────────────────────────────────────┘
                         ↓
@@ -234,7 +234,7 @@ When the LLM receives this, it sees:
    - **Auto-context instructions** (NEW!)
    - Voice output formatting rules
 
-2. **Tool Definitions** (50+ tools):
+2. **Tool Definitions** (75+ tools):
    - JSON schema for each tool
    - When to use each tool
    - Parameter requirements
@@ -325,7 +325,7 @@ AUTO_CONTEXT_MINUTES=10
 
 **What Gets Sent:**
 1. ✅ System prompt (with auto-context instructions)
-2. ✅ Tool definitions (50+ tools)
+2. ✅ Tool definitions (75+ tools)
 3. ✅ **Enhanced transcript** with:
    - Last 3 conversations (configurable)
    - User queries and Jarvis responses

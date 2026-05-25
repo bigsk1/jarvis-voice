@@ -145,7 +145,7 @@ def _discover_tools(self):
 
 In current Tool RAG runtime, token impact is best measured from the final tool list rather than from all enabled tools. Enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; each trace includes `final_tool_count`, `tool_schema_chars`, `tool_schema_est_tokens`, and `tool_schema_top` so you can see which schemas actually reached the LLM.
 
-### Example Reduction (Ollama qwen3-vl)
+### Example Reduction (Ollama qwen3.5:latest)
 
 **All 17 tools + 2 MCP servers:**
 - Baseline tokens: ~6,200
@@ -325,7 +325,7 @@ Automatically disable unused tools after 7 days:
 
 ## Tool Roadmap & Brainstorm
 
-### Current Coverage (54+ Tools)
+### Current Coverage (75+ Tools)
 
 #### Local Tools by Category
 
@@ -345,7 +345,7 @@ Automatically disable unused tools after 7 days:
 | **Auto-Tools** | docker_control, network_tools, system_monitor, text_summarizer, status_recap, generate_password | 6 |
 | **Utility** | calculator | 1 |
 
-**Total: 54+ tools** (47 main + 7 auto-tools)
+**Total: 75+ tools** (~68 main + ~9 auto-tools in `skills/auto-tools/`)
 
 #### MCP Servers (4 configured)
 

@@ -1,8 +1,44 @@
 # Sequential Thinking Architecture - Design Document
 
-> **Status**: Planning Phase  
+> **Status**: **Planning / design reference** — not implemented as described below  
+> **Verified**: 2026-05-25 against `orchestrator/`, `lib/intelligence.py`, `config/mcp-servers.json`  
 > **Goal**: Enhance Jarvis's routing intelligence with conditional thinking steps for better tool selection and self-correction  
 > **Philosophy**: "When in doubt, think. When wrong, learn."
+
+---
+
+## Implementation status (read this first)
+
+This document describes a **future architecture** for conditional multi-step reasoning inside the router. It is **not** the live orchestration path today.
+
+### What is implemented instead
+
+| Capability | Live doc / code | Notes |
+|------------|-----------------|-------|
+| **Extended thinking blocks** | [EXTENDED_THINKING.md](EXTENDED_THINKING.md), `lib/thinking.py` | Provider-native reasoning (`reasoning_content`, `--debug-thinking`). Works on supported cloud models. |
+| **Intelligence reflection** | [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md), `lib/intelligence.py` | Post-hoc LLM analysis of experiences → insights (PREFER/AVOID tools). Queued, not inline. |
+| **Duplicate tool guard + freshness** | [JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md#duplicate-tool-guard) | In-request loop prevention, not sequential MCP thinking. |
+| **Profile Card + correction learning** | [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) | Cross-turn user prefs and correction detection. |
+| **Sequential Thinking MCP** | `config/mcp-servers.json` | **`sequentialthinking` server is disabled** — see [TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md). |
+
+### Partial / stubbed code paths
+
+- `lib/intelligence.py` contains `_call_sequential_thinking()` hooks used during reflection experiments; the MCP call path is largely **commented out / non-operational**.
+- `router_v2.py` does **not** invoke a separate "think then route" MCP step for normal queries.
+- Meta-cognition and anomaly jobs in the intelligence layer provide **batch** analysis, not per-query sequential steps.
+
+### When to use this doc
+
+- Designing a future **inline** thinking step before tool selection
+- Understanding the **original vision** for self-correction loops
+- Comparing against [EXTENDED_THINKING.md](EXTENDED_THINKING.md) (provider reasoning) and intelligence reflection (post-hoc learning)
+
+### Recommended reading order
+
+1. [JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md) — actual request pipeline (v2.50.x)
+2. [EXTENDED_THINKING.md](EXTENDED_THINKING.md) — thinking mode that works today
+3. [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) — learning after the fact
+4. **This file** — historical design for conditional sequential thinking
 
 ---
 

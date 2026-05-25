@@ -527,7 +527,7 @@ http://localhost:4096/openapi
 ## Related Documentation
 
 - [OpenCode Integration](OPENCODE.md) - Overview
-- [OpenCode Phase 2 Complete](OPENCODE_PHASE2_COMPLETE.md) - Current state
+- [OpenCode Phase 2 Complete (historical)](../archive/opencode/OPENCODE_PHASE2_COMPLETE.md)
 - [OpenCode Memory Strategy](OPENCODE_MEMORY_STRATEGY.md) - Context injection
 - [Multi-Turn Orchestration](MULTI_TURN_ORCHESTRATION.md) - How Jarvis chains tools
 

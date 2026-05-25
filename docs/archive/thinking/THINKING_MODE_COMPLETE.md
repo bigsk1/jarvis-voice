@@ -1,3 +1,9 @@
+# ⚠️ HISTORICAL — Thinking mode milestone (Nov 2025)
+
+**Superseded by:** [EXTENDED_THINKING.md](../../EXTENDED_THINKING.md)
+
+---
+
 # 🎉 Thinking Mode - Implementation Complete!
 
 **Branch**: `thinking`  
@@ -103,7 +109,7 @@ JARVIS_DEBUG_THINKING=true
 **Tests**:
 - ✅ Cloud with/without thinking flag
 - ✅ Local with/without thinking flag
-- ✅ DeepSeek R1 vs qwen3-vl detection
+- ✅ DeepSeek R1 vs qwen3.5:latest detection
 - ✅ Grey area decision scenarios
 - ✅ Thinking log creation
 - ✅ Graceful fallbacks
@@ -218,7 +224,7 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq 'select(.decision.tool 
 ✅ `deepseek-r1` (recommended for local)
 ✅ `qwq`
 ✅ `qwen2.5-coder:32b-instruct-q4_K_M`
-❌ `qwen3-vl` (gracefully skips, no error)
+❌ `qwen3.5:latest` (gracefully skips, no error)
 
 ---
 
@@ -260,7 +266,7 @@ docs/MEMORY_SYSTEM_TUNING.md                 UPDATED (real-world results)
 ✅ Cloud + thinking flag = Shows reasoning  
 ✅ Cloud + no flag = Normal output  
 ✅ Local + deepseek-r1 + flag = Shows reasoning  
-✅ Local + qwen3-vl + flag = Graceful skip  
+✅ Local + qwen3.5:latest + flag = Graceful skip  
 ✅ Grey area decisions = Visible reasoning  
 ✅ Thinking logs created  
 ✅ No errors with unsupported models  

@@ -1,3 +1,9 @@
+# ⚠️ HISTORICAL — Thinking mode milestone (Nov 2025)
+
+**Superseded by:** [EXTENDED_THINKING.md](../../EXTENDED_THINKING.md)
+
+---
+
 # Thinking Mode Implementation Status
 
 **Branch**: `thinking`  
@@ -144,7 +150,7 @@ docs/THINKING_MODE_COMPLETE.md            NEW
 - [ ] Anthropic Sonnet 4.5 + thinking = Shows reasoning
 - [ ] Anthropic Sonnet 4.5 + no thinking = Normal output
 - [ ] OpenAI GPT-4 + thinking = Graceful skip (no o1)
-- [ ] Ollama qwen3-vl + thinking = Graceful skip
+- [ ] Ollama qwen3.5:latest + thinking = Graceful skip
 - [ ] Thinking logs created correctly
 - [ ] Log analysis function works
 - [ ] Display formatting looks good

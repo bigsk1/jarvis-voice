@@ -1223,7 +1223,7 @@ tail -f logs/api.log  # If running in background
 ---
 
 **See Also:**
-- Full architecture: `docs/PROACTIVE_ASSISTANT_SYSTEM.md`
+- Full architecture: `docs/service/PROACTIVE_ASSISTANT_SYSTEM.md`
 - Main README: `README.md`
 
 **Status**: Phase 1 Complete ✅  

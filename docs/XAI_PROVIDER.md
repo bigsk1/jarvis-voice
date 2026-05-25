@@ -1,6 +1,6 @@
 # xAI (Grok) Provider - The Best Cloud Option for Jarvis
 
-> **TL;DR**: xAI Grok offers strong agentic tool calling with `grok-4.3` as Jarvis' default, 1M-2M context options across current Grok models, automatic caching, configurable reasoning effort, and native function calling.
+> **TL;DR**: xAI Grok offers strong agentic tool calling. **`grok-4.3`** is the recommended default (1M context, configurable reasoning). **`grok-build-0.1`** is available for coding-heavy workloads (256K context). See [Available Models](#available-models) and `lib/model_catalog.py` for the full curated list.
 
 ---
 
@@ -51,6 +51,7 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 │ MODEL                              INPUT    OUTPUT   CONTEXT    │
 ├─────────────────────────────────────────────────────────────────┤
 │ xAI grok-4.3                       $1.25    $2.50    1M    🏆  │
+│ xAI grok-build-0.1                 $1.00    $2.00    256K       │
 │ xAI grok-4.20 non-reasoning        $2.00    $6.00    2M        │
 │ xAI grok-4.20 reasoning            $2.00    $6.00    2M        │
 │                                                                 │
@@ -364,6 +365,7 @@ XAI_TTS_TIMEOUT="180"
 XAI_TTS_STYLE_TAGS_ENABLED=true
 
 # Alternative models:
+# XAI_MODEL="grok-build-0.1"                  # Coding / build-heavy workloads (256K)
 # XAI_MODEL="grok-4.20-non-reasoning-latest"  # Lower-latency non-reasoning
 # XAI_MODEL="grok-4.20-reasoning"             # Automatic reasoning, no effort knob
 ```
@@ -393,11 +395,14 @@ The provider supports OpenAI-style `assistant.tool_calls` plus `role="tool"` mes
 
 | Model | Context | Use Case | Reasoning |
 |-------|---------|----------|-----------|
-| `grok-4.3` | 1M | **Agentic reasoning/tool use** | ✅ Yes, configurable `low`/`medium`/`high` |
+| `grok-4.3` | 1M | **Default — agentic reasoning/tool use** | ✅ Yes, configurable `low`/`medium`/`high` |
+| `grok-build-0.1` | 256K | **Coding / build-heavy workloads** | ❌ No (`XAI_REASONING_EFFORT` not sent) |
 | `grok-4.20-non-reasoning-latest` | 2M | Lower-latency non-reasoning | ❌ No |
 | `grok-4.20-reasoning` | 2M | Automatic reasoning | ✅ Yes, automatic |
 
-**Recommendation**: Use `grok-4.3` with `XAI_REASONING_EFFORT=low` when you want Grok 4.3 quality but need faster Jarvis tool-routing turns. Use `grok-4.20-non-reasoning-latest` when you want the lower-latency non-reasoning path.
+**Recommendation**: Use **`grok-4.3`** with `XAI_REASONING_EFFORT=low` for most Jarvis tool-routing. Use **`grok-build-0.1`** when you want a coding-tuned Grok model at lower per-token cost. Use **`grok-4.20-non-reasoning-latest`** when you want the lower-latency non-reasoning path with 2M context.
+
+Curated models, pricing, and Web UI labels come from **`lib/model_catalog.py`**. Your active `XAI_MODEL` in `config/cloud.env` can differ from the example default — pick any supported Grok ID.
 
 ---
 
@@ -811,7 +816,7 @@ xAI Grok is a strong cloud provider for Jarvis:
 
 ---
 
-**Last Updated**: 2026-05-03
+**Last Updated**: 2026-05-25
 **Version**: 1.6 (Added xAI SDK hybrid continuation handoff notes)
 
 **See Also**:
