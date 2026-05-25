@@ -14,6 +14,8 @@ applies_to_modes:
 # - "prefer finishing the task before asking a follow-up when enough constraints already exist"
 # - "for Grok duplicate behavior: do not repeat the same tool with the same arguments just to be safe"
 routing_prepend: |
+  Follow the user's explicitly requested source, site, or tool when it is available.
+  Do not repeat the same tool with the same or near-identical arguments.
   For shopping or product-search tasks, converge quickly: after 2-3 materially different searches, synthesize the best results instead of endlessly refining.
   When the user asks for X search, native X search, or the latest posts on X/Twitter, keep that instruction literal and prioritize provider-native x_search over external web search tools.
 
@@ -57,6 +59,9 @@ qa_append: |
 # - "when one search/tool result is sufficient, summarize instead of retrying"
 # - "choose the tool that directly matches the requested action, not a topic-adjacent tool"
 tool_calling_prepend: |
+  Do not call search or shopping tools for conversational follow-ups: reactions, acknowledgments, comments on prior results, or "I ordered/bought X" unless the user explicitly asks for new listings, prices, or alternatives.
+  Learned PREFER/AVOID hints are defaults for active search tasks, not mandates—when the current message is Q&A or commentary, answer from context with no tool call.
+  If Tool RAG surfaced only ghost tools plus one appended preference tool and the user did not request fresh data, treat that as a no-tool turn.
   Tool Rag is only showing a small number of tools, call tool_search to find more tools if the current tool list is weak, we have 70+ tools when using default profile! 
   Do not substitute Brave or other external search tools when the user explicitly requested X search or native X search, unless native x_search is unavailable or clearly insufficient. If native x_search is available, use it first for current X/Twitter post discovery.
   Do not keep reissuing slightly tweaked searches once you already have enough evidence to recommend 2-5 concrete options.

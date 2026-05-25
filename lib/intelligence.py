@@ -1961,7 +1961,7 @@ Example for FACTUAL (should NOT be stored here):
                 # Weight by confidence and similarity
                 relevance = similarity * row['confidence']
 
-                if relevance > 0.2:  # Minimum relevance threshold
+                if relevance > 0.2:  # Minimum relevance threshold Might need to increase if unrelated tools being called or llm not following q&a intent 0.3+
                     insight_data = {
                         'id': row['id'],
                         'insight': row['description'],
