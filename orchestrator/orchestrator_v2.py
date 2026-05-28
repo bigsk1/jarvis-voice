@@ -109,6 +109,14 @@ def _sanitize_error_for_speech(error) -> str:
     return sanitized
 
 
+WEB_UPLOAD_VISION_ANALYSIS_PREFIX = "[User uploaded an image. Vision analysis:"
+
+
+def _request_has_web_vision_analysis(text: str) -> bool:
+    """Detect web UI upload flow where pre-vision text is already in the prompt."""
+    return WEB_UPLOAD_VISION_ANALYSIS_PREFIX in (text or "")
+
+
 def _server_side_tool_call_count(server_side_tools: dict | None) -> int:
     """Count provider-native tool calls from usage metadata."""
     if not isinstance(server_side_tools, dict):
@@ -412,6 +420,32 @@ class Orchestrator:
             and bool(getattr(provider, "xai_client", None))
             and str(get_config_value("XAI_CONTINUATION_CONTEXT_MODE", "structural")).strip().lower() == "structural"
         )
+
+    def _provider_server_side_tools_available(self) -> bool:
+        """Return True when the active router provider can run native server-side tools."""
+        router = getattr(self, "router", None)
+        if router is None:
+            return False
+
+        provider_type = getattr(router, "provider_type", "") or ""
+        provider = getattr(router, "provider", None)
+
+        if provider_type == "xai":
+            return (
+                self._config_bool("XAI_SEARCH", False)
+                and bool(getattr(provider, "enable_search", False))
+                and bool(getattr(provider, "xai_client", None))
+            )
+        if provider_type == "openai":
+            from openai_responses_adapter import openai_env_bool, openai_responses_router_enabled
+
+            return (
+                openai_responses_router_enabled()
+                and openai_env_bool("OPENAI_RESPONSES_SERVER_SIDE_TOOLS", False)
+            )
+        if provider_type == "anthropic":
+            return self._config_bool("ANTHROPIC_SEARCH", False)
+        return False
 
     def _xai_provider_result_max_chars(self) -> int:
         return max(800, self._config_int("XAI_CONTINUATION_RESULT_MAX_CHARS", 6000))
@@ -955,6 +989,7 @@ Mode: {self.mode}
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
                 conversation_history: list = None, excluded_tools: list = None,
                 tool_overrides: dict[str, dict] | None = None,
+                vision_pre_analyzed: bool = False,
                 _retry_state: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
@@ -973,6 +1008,9 @@ Mode: {self.mode}
                            enforce user-selected parameters (e.g. aspect_ratio, duration)
                            that the LLM may otherwise ignore.
                            Used by web app to block tools that don't make sense in web context.
+            vision_pre_analyzed: When True (web upload analyze flow), skip provider-native
+                           server-side tools for this request because vision text is already
+                           injected. No-op for providers without native tools (Ollama, etc.).
             _retry_state: Internal only. Carries in-flight orchestrator state across
                          recursive tool-failure retries so UI events and accumulated
                          results stay consistent within one user request.
@@ -1073,6 +1111,13 @@ Mode: {self.mode}
             for block in [learning_context, memory_context]
             if block and block.strip()
         )
+        client_search_hint_active = _has_client_side_search_tool_hint(enhanced_transcript)
+        if _retry_state and "vision_pre_analyzed" in _retry_state:
+            vision_pre_analyzed_active = bool(_retry_state.get("vision_pre_analyzed"))
+        else:
+            vision_pre_analyzed_active = bool(
+                vision_pre_analyzed or _request_has_web_vision_analysis(transcript)
+            )
         routing_provenance = {
             "auto_context": {
                 "enabled": bool(self.auto_context_enabled),
@@ -1089,7 +1134,8 @@ Mode: {self.mode}
                 ],
             },
         }
-        client_search_hint_active = _has_client_side_search_tool_hint(enhanced_transcript)
+        if vision_pre_analyzed_active and self._provider_server_side_tools_available():
+            routing_provenance["vision_pre_analyzed_disable_native_tools"] = True
         
         # Multi-turn context tracking
         max_turns = get_int('MAX_TOOL_TURNS', 15)  # Configurable, default 15 for deep research
@@ -1232,13 +1278,28 @@ Mode: {self.mode}
             disable_server_side_tools = (
                 client_search_hint_active
                 or (native_search_remaining is not None and native_search_remaining <= 0)
+                or (
+                    vision_pre_analyzed_active
+                    and self._provider_server_side_tools_available()
+                )
             )
             if disable_server_side_tools:
-                reason = (
-                    "A client-side search tool was selected in the UI."
-                    if client_search_hint_active
-                    else "The provider-native search budget is exhausted."
-                )
+                if (
+                    vision_pre_analyzed_active
+                    and self._provider_server_side_tools_available()
+                    and not client_search_hint_active
+                    and not (
+                        native_search_remaining is not None
+                        and native_search_remaining <= 0
+                    )
+                ):
+                    reason = (
+                        "Web upload vision analysis is already attached to this request."
+                    )
+                elif client_search_hint_active:
+                    reason = "A client-side search tool was selected in the UI."
+                else:
+                    reason = "The provider-native search budget is exhausted."
                 turn_input = (
                     "[NATIVE SEARCH DISABLED]\n"
                     f"{reason} Use results already gathered, choose a client-side search tool, "
@@ -1789,7 +1850,9 @@ Mode: {self.mode}
                             conversation_history=conversation_history,
                             excluded_tools=excluded_tools,
                             tool_overrides=tool_overrides,
+                            vision_pre_analyzed=vision_pre_analyzed_active,
                             _retry_state={
+                                "vision_pre_analyzed": vision_pre_analyzed_active,
                                 "conversation_context": conversation_context,
                                 "tools_used": tools_used,
                                 "accumulated_data": accumulated_data,

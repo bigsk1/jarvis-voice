@@ -2742,7 +2742,7 @@ Previous structured data:
                 print(f"[CHAT] Image base64 length: {len(image_data.get('base64', '')) if isinstance(image_data, dict) else 'N/A'}")
             # Import and create orchestrator
             print("[CHAT] Importing orchestrator...")
-            from orchestrator_v2 import Orchestrator
+            from orchestrator_v2 import Orchestrator, WEB_UPLOAD_VISION_ANALYSIS_PREFIX
             
             # Get LLM overrides from web config (per-mode)
             from ..config import get_web_setting, load_web_config
@@ -2979,7 +2979,10 @@ Previous structured data:
                         if stash_info:
                             stash_note = f" Image stashed at: {stash_info.get('stash_ref')}"
                         
-                        message = f"[User uploaded an image. Vision analysis: {vision_result}]{stash_note}\n\nUser's message: {message}"
+                        message = (
+                            f"{WEB_UPLOAD_VISION_ANALYSIS_PREFIX} {vision_result}]"
+                            f"{stash_note}\n\nUser's message: {message}"
+                        )
                         print(f"[CHAT] Image analyzed - passing to orchestrator with vision context")
             
             # Create orchestrator instance with overrides
@@ -3104,13 +3107,17 @@ Previous structured data:
             
             # Process the query with conversation context, excluded tools, and forced overrides
             override_info = f", tool_overrides={list(tool_overrides.keys())}" if tool_overrides else ""
+            vision_pre_analyzed = bool(vision_result)
+            if vision_pre_analyzed:
+                print("[CHAT] Web upload vision complete - native server-side tools disabled for this request")
             print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools{override_info}...")
             try:
                 result = orchestrator.process(
                     enhanced_message,
                     conversation_history=conversation_history,
                     excluded_tools=blocked_tools,
-                    tool_overrides=tool_overrides if tool_overrides else None
+                    tool_overrides=tool_overrides if tool_overrides else None,
+                    vision_pre_analyzed=vision_pre_analyzed,
                 )
             finally:
                 if prev_feedback_random_override is None:
