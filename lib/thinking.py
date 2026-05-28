@@ -17,9 +17,13 @@ logger = logging.getLogger(__name__)
 # TODO: tie in with logic from model_catalog.py? we can add reasoning models to the catalog and then use that to determine if a model supports thinking
 THINKING_MODELS = {
     "anthropic": [
+        "claude-opus-4-8",
+        "claude-opus-4-7",
         "claude-sonnet-4-5-20250929",
-        "claude-sonnet-4-20250514", 
-        "sonnet-4.5"
+        "claude-sonnet-4-20250514",
+        "sonnet-4.5",
+        "opus-4.8",
+        "opus-4.7",
     ],
     "openai": [
         "o1",
@@ -76,6 +80,18 @@ def should_enable_thinking() -> bool:
     return env_value in ("true", "1", "yes", "on")
 
 
+def uses_adaptive_thinking(provider: str, model: str) -> bool:
+    """
+    Opus 4.7+ rejects manual extended thinking (budget_tokens) and requires adaptive thinking.
+    See: https://platform.claude.com/docs/en/about-claude/models/migration-guide
+    """
+    if provider != "anthropic":
+        return False
+    normalized = model.lower().replace("_", "-")
+    adaptive_markers = ("claude-opus-4-7", "claude-opus-4-8", "opus-4.7", "opus-4.8")
+    return any(marker in normalized for marker in adaptive_markers)
+
+
 def get_thinking_config(provider: str, model: str) -> dict[str, Any] | None:
     """
     Get thinking configuration for a specific provider/model.
@@ -85,15 +101,22 @@ def get_thinking_config(provider: str, model: str) -> dict[str, Any] | None:
         model: Model name
         
     Returns:
-        Thinking config dict or None if not supported
+        API params dict (thinking and optional output_config / max_tokens) or None
     """
     if not is_thinking_supported(provider, model):
         return None
     
     if provider == "anthropic":
+        if uses_adaptive_thinking(provider, model):
+            effort = os.getenv("ANTHROPIC_EFFORT", "xhigh").lower()
+            return {
+                "thinking": {"type": "adaptive", "display": "summarized"},
+                "output_config": {"effort": effort},
+                "max_tokens": 64000,
+            }
         return {
-            "type": "enabled",
-            "budget_tokens": 2000  # Tokens allocated for thinking
+            "thinking": {"type": "enabled", "budget_tokens": 2000},
+            "max_tokens": 8000,
         }
     elif provider == "openai":
         # OpenAI o1 models think automatically, no special config needed

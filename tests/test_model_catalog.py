@@ -99,6 +99,23 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(pricing["cached"], 0.075)
         self.assertEqual(pricing["output"], 4.50)
 
+    def test_anthropic_opus_4_8_resolves_with_pricing_and_context(self):
+        self.assertEqual(get_model_context_window("anthropic", "claude-opus-4-8"), 1_000_000)
+        self.assertEqual(get_model_context_label("anthropic", "claude-opus-4-8"), "1M")
+        metadata = get_model_metadata("anthropic", "opus-4.8")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["id"], "claude-opus-4-8")
+        pricing = get_model_pricing("anthropic", "claude-opus-4-8")
+        self.assertEqual(pricing["input"], 5.00)
+        self.assertEqual(pricing["output"], 25.00)
+        self.assertEqual(pricing["cached"], 0.50)
+
+    def test_anthropic_options_include_opus_4_8_first_among_opus(self):
+        models = [entry["id"] for entry in get_provider_model_options("anthropic")]
+        opus_index = models.index("claude-opus-4-8")
+        self.assertLess(opus_index, models.index("claude-opus-4-7"))
+        self.assertLess(opus_index, models.index("claude-opus-4-6"))
+
     def test_catalog_defaults_are_explicit(self):
         self.assertEqual(get_default_model_id("openai"), "gpt-5.4-nano")
         self.assertEqual(get_default_model_id("xai"), "grok-4.3")

@@ -578,13 +578,11 @@ class AnthropicProvider(LLMProvider):
                 if is_thinking_supported("anthropic", self.model):
                     thinking_config = get_thinking_config("anthropic", self.model)
                     if thinking_config:
-                        api_params["thinking"] = thinking_config
-                        # Increase max_tokens to accommodate thinking budget + comprehensive response
-                        # max_tokens must be > budget_tokens (Anthropic API requirement)
-                        # Formula: thinking_budget + generous_response_space
-                        thinking_budget = thinking_config.get("budget_tokens", 2000)
-                        api_params["max_tokens"] = thinking_budget + 6000  # 2000 thinking + 6000 response
-                        
+                        api_params["thinking"] = thinking_config["thinking"]
+                        if thinking_config.get("output_config"):
+                            api_params["output_config"] = thinking_config["output_config"]
+                        api_params["max_tokens"] = thinking_config.get("max_tokens", base_max_tokens)
+
                         if os.environ.get('JARVIS_DEBUG'):
                             print(f"DEBUG: Thinking enabled! Config: {thinking_config}", file=sys.stderr)
                             print(f"DEBUG: max_tokens set to: {api_params['max_tokens']}", file=sys.stderr)
