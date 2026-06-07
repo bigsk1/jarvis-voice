@@ -981,27 +981,6 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 
 ## 🚀 Web-Unique Features to Leverage
 
-### Already Implemented
-- ✅ Visual tool execution cards with timing
-- ✅ Image generation inline display + lightbox
-- ✅ Conversation persistence (save/load/delete)
-- ✅ Per-mode settings without touching .env
-- ✅ Dynamic model discovery (Ollama)
-- ✅ System config visibility (read-only .env view)
-- ✅ Tool blocking for web-only restrictions
-- ✅ Real-time status streaming (WebSocket)
-
-### Planned / Ideas
-- 🔮 **Memory management UI** - View/edit/delete memories visually
-- 🔮 **Intelligence dashboard** - See insights, confidence, decay
-- 🔮 **Canvas embed** - Show canvas pages inline in chat
-- 🔮 **Multi-conversation tabs** - Multiple chats open
-- 🔮 **Export conversations** - JSON/Markdown download
-- 🔮 **Tool execution history** - View past tool calls across sessions
-- 🔮 **Cost tracking display** - Show token usage and $ spent
-- 🔮 **Mobile PWA** - Install as app on phone
-- 🔮 **Cross-tool stash flows** - "Email the image I uploaded" (needs send_email stash support)
-
 ### Canvas Integration
 
 | Feature | Status | Description |
@@ -1095,7 +1074,7 @@ User types: "bitcoin news"
 Clicks ✨ button
        ↓
 LLM enhances with Jarvis context:
-  - Available tools (30+)
+  - Available tools (100+)
   - Native search capabilities
   - Best practices
        ↓
@@ -1324,10 +1303,6 @@ Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_EN
   - Browser notifications (Notifications API) for new items
   - TTS playback when audio is enabled
   - Notification panel with acknowledge buttons
-- [ ] **Test mode switching thoroughly**
-  - Cloud→Local: TTS should use Kokoro
-  - Local→Cloud: TTS should use ElevenLabs
-  - Intelligence insights should work in both modes
 
 ### Medium Priority
 - [x] Conversation search (filter by keyword/date) ✅ DONE
@@ -1335,7 +1310,6 @@ Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_EN
 - [x] Import conversations (JSON) ✅ DONE
 - [ ] Tool enable/disable per-tool in UI
 - [ ] MCP server status indicator (running/stopped/error)
-- [ ] Mobile responsive improvements
 - [ ] Canvas integration (embed pages or link)
 
 ### Low Priority

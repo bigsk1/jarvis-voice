@@ -1012,11 +1012,6 @@ TEST
 ```bash
 # Verify .env file format (no quotes around values unless needed)
 head -20 config/cloud.env
-
-# Should be:
-# XAI_API_KEY=xai-abc123...
-# NOT:
-# XAI_API_KEY="xai-abc123..."
 ```
 
 ### Network Issues
