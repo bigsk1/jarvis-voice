@@ -225,7 +225,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
 Configure via `TTS_PROVIDER` in `cloud.env` or `local.env`. xAI TTS uses its native `/v1/tts` API and supports optional final-speech tags via `XAI_TTS_STYLE_TAGS_ENABLED`; Qwen3-TTS uses an OpenAI-compatible API.
 See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md)
 
-**Voice API** (`/api/voice/speak`): Supports per-request TTS provider/voice overrides for multi-agent voice identity.
+**Voice API** (`/api/voice/speak`): Supports per-request TTS provider/voice overrides for multi-agent voice identity
 See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 
 **Recommended Cloud Provider**: **xAI Grok 4.3** (1M context window, automatic caching, configurable reasoning effort)
