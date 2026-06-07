@@ -2,7 +2,7 @@
 
 A modern, feature-rich web interface for Jarvis with real-time streaming, voice I/O, vision capabilities, and a cyberpunk aesthetic.
 
-![jarvis-web](../docs/images/jarvis-web.png)
+![jarvis-web](../docs/images/jarvis-web.jpg)
 
 ## Features
 

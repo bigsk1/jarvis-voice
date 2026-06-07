@@ -35,7 +35,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
 
 ## ✨ Key Features
 
-![jarvis-web](docs/images/jarvis-web.png)
+![jarvis-web](docs/images/jarvis-web.jpg)
 
 ### Web Interface
 - **Jarvis Web UI** - Full-featured chat interface at localhost:5001
