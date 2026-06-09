@@ -98,7 +98,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
   - Vector-based semantic search for tool discovery
   - "Ghost tools" always available for core functionality
   - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
-- **Advanced Tool Calling**: LLM-powered routing with 60+ skills
+- **Advanced Tool Calling**: LLM-powered routing with 80+ skills
 - **OpenAI Responses API support**: Optional `/v1/responses` routing for OpenAI tool-capable turns, in-flight client-tool continuation, hosted-tool gates, prompt-cache hints, and safe Chat Completions fallback
 - **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
 - **Auto-Context System**: Automatic short-term memory of recent conversations
