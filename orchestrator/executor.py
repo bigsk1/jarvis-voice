@@ -204,29 +204,39 @@ class ToolExecutor:
             stdout = ""
             stderr = ""
 
-            while True:
-                if self.cancel_check:
-                    try:
-                        if self.cancel_check():
-                            cancelled = True
-                            process.terminate()
-                            try:
-                                process.wait(timeout=3)
-                            except subprocess.TimeoutExpired:
-                                process.kill()
-                            break
-                    except Exception:
-                        pass
+            # Read stdout/stderr in a background thread while polling for cancel/timeout.
+            # Without this, tools that print >64KB JSON deadlock: the child blocks on a full
+            # pipe buffer while the parent waits for process exit before calling communicate().
+            with ThreadPoolExecutor(max_workers=1) as io_pool:
+                communicate_future = io_pool.submit(process.communicate)
 
-                if process.poll() is not None:
-                    stdout, stderr = process.communicate()
-                    break
+                while True:
+                    if self.cancel_check:
+                        try:
+                            if self.cancel_check():
+                                cancelled = True
+                                process.terminate()
+                                try:
+                                    process.wait(timeout=3)
+                                except subprocess.TimeoutExpired:
+                                    process.kill()
+                                break
+                        except Exception:
+                            pass
 
-                if time.time() >= deadline:
-                    process.kill()
-                    raise subprocess.TimeoutExpired(cmd, timeout)
+                    if communicate_future.done():
+                        stdout, stderr = communicate_future.result()
+                        break
 
-                time.sleep(0.25)
+                    if time.time() >= deadline:
+                        process.kill()
+                        try:
+                            communicate_future.result(timeout=5)
+                        except Exception:
+                            pass
+                        raise subprocess.TimeoutExpired(cmd, timeout)
+
+                    time.sleep(0.25)
 
             if cancelled:
                 if process.stdout:

@@ -63,6 +63,26 @@ class ToolExecutorCancelTests(unittest.TestCase):
         self.assertTrue(result["cancelled"])
         self.assertLess(elapsed, 3.0)
 
+    def test_large_stdout_does_not_deadlock_on_pipe_buffer(self):
+        """Regression: >64KB stdout must not block until subprocess timeout."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script_path = Path(tmpdir) / "fake_long_tool.py"
+            script_path.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json\n"
+                "payload = 'x' * 100000\n"
+                "print(json.dumps({'ok': True, 'speech': 'big', 'data': {'payload': payload}}))\n"
+            )
+
+            executor = ToolExecutor(mode="cloud", registry=FakeRegistry(str(script_path)))
+            start = time.time()
+            result = executor.execute("fake_long_tool", {})
+            elapsed = time.time() - start
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(result["data"]["payload"]), 100000)
+        self.assertLess(elapsed, 5.0)
+
     def test_session_context_is_passed_to_tool_environment(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             script_path = Path(tmpdir) / "fake_long_tool.py"
