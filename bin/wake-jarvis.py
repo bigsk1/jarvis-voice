@@ -157,7 +157,7 @@ def build_stream():
         device=in_dev,
     )
 
-def audio_callback(indata, frames, time_info, status):
+def audio_callback(indata, _frames, _time_info, status):
     global armed, consec_hits
     if status:
         pass
