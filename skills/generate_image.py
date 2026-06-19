@@ -37,12 +37,12 @@ from config_loader import load_config, get_config_value
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-preview-image-generation"
 
-# Gemini aspect ratios
+# Gemini aspect ratios (alias names + literal ratio strings from tool schema)
 GEMINI_ASPECT_RATIOS = {
     "square": "1:1",
     "landscape": "16:9",
     "portrait": "9:16",
-    "wide": "21:9",
+    "wide": "16:9",
     "cinematic": "16:9",
     "widescreen": "16:9",
     "tall": "9:16",
@@ -51,7 +51,10 @@ GEMINI_ASPECT_RATIOS = {
     "2:3": "2:3",
     "3:2": "3:2",
     "4:5": "4:5",
-    "5:4": "5:4"
+    "5:4": "5:4",
+    "16:9": "16:9",
+    "9:16": "9:16",
+    "1:1": "1:1",
 }
 
 # =============================================================================
