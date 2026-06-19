@@ -70,13 +70,29 @@ if [ -n "${1:-}" ]; then
     TRANSCRIPT="$1"
     echo "📝 Using provided transcript: $TRANSCRIPT"
 else
-    # Record user's question
+    # Record user's question (retry if wake listener still holds the mic)
     echo "🎤 Speak your question… (auto-stops after ${POST_SIL}s silence or ${MAX_RECORD_TIME}s max)"
-    sox -t alsa "$IN_DEV" \
-        -r "$RATE" -c "$CHAN" -b 16 \
-        "$MIC_WAV" \
-        trim 0 "$MAX_RECORD_TIME" \
-        silence 1 "$PRE_SIL" "$THRESH" 1 "$POST_SIL" "$THRESH"
+    SOX_ERR=$(mktemp)
+    for attempt in 1 2 3 4 5; do
+        if sox -t alsa "$IN_DEV" \
+            -r "$RATE" -c "$CHAN" -b 16 \
+            "$MIC_WAV" \
+            trim 0 "$MAX_RECORD_TIME" \
+            silence 1 "$PRE_SIL" "$THRESH" 1 "$POST_SIL" "$THRESH" \
+            2> >(tee "$SOX_ERR" >&2); then
+            break
+        fi
+        if grep -qiE 'busy|resource busy' "$SOX_ERR" && [ "$attempt" -lt 5 ]; then
+            echo "⏳ Mic busy (attempt ${attempt}/5), waiting for wake listener to release…" >&2
+            sleep 0.5
+            continue
+        fi
+        echo "❌ Recording failed:" >&2
+        cat "$SOX_ERR" >&2
+        rm -f "$SOX_ERR"
+        exit 1
+    done
+    rm -f "$SOX_ERR"
     
     # Check file size
     BYTES=$(stat -c%s "$MIC_WAV" || echo 0)
@@ -116,7 +132,17 @@ echo "$TRANSCRIPT" > "$TRANSCRIPT_FILE"
 # Process through orchestrator
 echo "🧠 Processing with orchestrator..."
 configure_wake_response_style
-ORCH_RESULT=$(python3 "$ORCHESTRATOR" cloud "$TRANSCRIPT" --json 2>/dev/null)
+ORCH_ERR_LOG="$AUDIO_DIR/logs/orchestrator-${TIMESTAMP}.stderr"
+ORCH_RESULT=$(python3 "$ORCHESTRATOR" cloud "$TRANSCRIPT" --json 2>"$ORCH_ERR_LOG")
+
+if [ -z "$ORCH_RESULT" ] || ! echo "$ORCH_RESULT" | jq -e . >/dev/null 2>&1; then
+    echo "❌ Orchestrator returned invalid JSON" >&2
+    if [ -s "$ORCH_ERR_LOG" ]; then
+        echo "   stderr (last 20 lines):" >&2
+        tail -20 "$ORCH_ERR_LOG" >&2
+    fi
+    exit 1
+fi
 
 # Extract speech from orchestrator result
 SPEECH=$(echo "$ORCH_RESULT" | jq -r '.speech')
@@ -124,6 +150,9 @@ OK=$(echo "$ORCH_RESULT" | jq -r '.ok')
 
 if [ -z "$SPEECH" ] || [ "$SPEECH" == "null" ]; then
     echo "❌ Orchestrator returned no speech" >&2
+    if [ -s "$ORCH_ERR_LOG" ]; then
+        tail -20 "$ORCH_ERR_LOG" >&2
+    fi
     exit 1
 fi
 

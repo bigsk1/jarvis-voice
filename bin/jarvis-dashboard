@@ -104,8 +104,8 @@ class SystemStatus(Static):
 
 COMMANDS: List[Command] = [
     # === 🎙️ JARVIS CORE ===
-    Command("Start Jarvis (Cloud)", "./jarvis", "Voice assistant - cloud mode", "🎙️ Core", interactive=True),
-    Command("Start Jarvis (Local)", "./jarvis-local", "Voice assistant - local mode", "🎙️ Core", interactive=True),
+    Command("Start Jarvis (Cloud)", "./bin/wake-jarvis.py", "Voice assistant - cloud mode", "🎙️ Core", interactive=True),
+    Command("Start Jarvis (Local)", "./bin/wake-jarvis-local.py", "Voice assistant - local mode", "🎙️ Core", interactive=True),
     Command("CLI Query (Cloud)", './orchestrator/orchestrator_v2.py cloud "What time is it?"', "Single query - cloud", "🎙️ Core"),
     Command("CLI Query (Local)", './orchestrator/orchestrator_v2.py local "What time is it?"', "Single query - local", "🎙️ Core"),
     
@@ -610,8 +610,14 @@ class CommandRunner(App):
             window_name = cmd.name.lower().replace(" ", "-").replace("(", "").replace(")", "")
             
             # Determine session name based on command type
-            if "jarvis" in cmd.command and ("./jarvis" == cmd.command or cmd.command.startswith("./jarvis-local")):
+            if "wake-jarvis" in cmd.command:
                 session_name = "jarvis-voice"  # Wake word loop
+                # Drop stale session so an old wake listener can't hold the mic
+                await asyncio.create_subprocess_shell(
+                    f"tmux kill-session -t {session_name} 2>/dev/null",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
             elif "jarvis-api" in cmd.command:
                 session_name = "jarvis-api-local" if "--local" in cmd.command else "jarvis-api"
             elif "jarvis-web" in cmd.command:
@@ -630,7 +636,7 @@ class CommandRunner(App):
                 session_name = window_name  # Use window name as session name
             
             # Activate venv and run command
-            full_cmd = f"source {VENV_PATH}/bin/activate && cd {PROJECT_ROOT} && {cmd.command}"
+            full_cmd = f"export PYTHONUNBUFFERED=1 && source {VENV_PATH}/bin/activate && cd {PROJECT_ROOT} && {cmd.command}"
             
             if in_tmux:
                 # Create new window in current session

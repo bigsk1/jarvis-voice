@@ -206,7 +206,7 @@ def stop_stream():
         except Exception:
             pass
         stream = None
-        time.sleep(0.15)  # Let ALSA release
+        time.sleep(0.5)  # Let ALSA release before sox opens the mic
 
 def start_stream():
     global stream
@@ -214,7 +214,7 @@ def start_stream():
     stream.start()
 
 def handle_trigger():
-    print("🟢🟢🟢  Wake word detected → Q&A… 🟢🟢🟢")
+    print("🟢🟢🟢  Wake word detected → Q&A… 🟢🟢🟢", flush=True)
     stop_stream()
 
     # Quick acknowledgment with random greeting
@@ -226,15 +226,23 @@ def handle_trigger():
         if greeting:
             subprocess.run([SAY, greeting], check=False)
     except Exception as e:
-        print(f"say.sh failed: {e}", file=sys.stderr)
+        print(f"say.sh failed: {e}", file=sys.stderr, flush=True)
 
     # Run Q&A flow
     should_exit = False
     try:
-        result = subprocess.run([ASK], check=False)
+        print("🎤 Starting question capture…", flush=True)
+        result = subprocess.run(["bash", ASK], check=False)
         should_exit = result.returncode == 20
+        if result.returncode not in (0, 20):
+            print(
+                f"⚠️  Q&A failed (exit {result.returncode}). "
+                f"Check mic access or run: bash {ASK} \"test question\"",
+                file=sys.stderr,
+                flush=True,
+            )
     except Exception as e:
-        print(f"question-mic.sh failed: {e}", file=sys.stderr)
+        print(f"question-orchestrator.sh failed: {e}", file=sys.stderr, flush=True)
 
     if should_exit:
         print("🛑 Wake loop stopped by voice command.")
