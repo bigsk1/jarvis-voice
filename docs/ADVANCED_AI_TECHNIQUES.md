@@ -300,6 +300,56 @@ This closes the “disabled capability leaks into auto-memory context” gap wit
 
 ---
 
+## Design Note: Runtime-Aware Capability Narration (Q&A)
+
+### Problem
+
+When a user asks meta questions (“what can you do?”, “tell me about yourself”), the model often answers with **Q&A intent** and never inspects the live tool list. The reply can mention capabilities—phone calls, OpenCode, Spotify, media generators—that are **disabled** in the active `JARVIS_TOOL_PROFILE` or by an individual `"enabled": false` in `*.tool.json`.
+
+Example: `local_minimal_assistant` sets `"phone_call": false`, but a self-description may still say Jarvis can place calls with Jarvis/James/Jay/Samantha personas because that text appears in curated intel (`intel/jarvis-tool-knowledge.md`) or in the model’s synthesis of the static router prompt.
+
+### What profiles already control
+
+| Layer | Profile-aware today? |
+|-------|----------------------|
+| Tool registry shown to the router | Yes — disabled tools are excluded |
+| Tool execution | Yes — disabled tools cannot run |
+| Learned insight injection | Yes — `format_insights_for_prompt(..., available_tools=...)` drops strategies for unavailable tools |
+
+### What profiles do **not** control today
+
+- **Static router system prompt** (`orchestrator/router_v2.py`, `_system_prompt_base`) — large fixed instruction block with capability examples (OpenCode, Spotify, memory workflows, etc.) that is not trimmed per profile.
+- **Intel / auto-memory injection** — curated intel and related memories can still surface disabled-tool details on tooling-adjacent or semantically similar queries (see [Runtime-Aware Context Gating](#design-note-runtime-aware-context-gating) above).
+- **Pure Q&A self-description** — the model answers from system prompt + injected context + parametric knowledge, not from enumerating `available_tool_names` on the current turn.
+
+Important distinction:
+
+```text
+tool list        = what Jarvis can execute on this turn
+system prompt + intel + memory = what the model thinks Jarvis can do in general
+```
+
+For “what can you do?”, the gap usually shows up as **marketing overshoot**, not unsafe execution: if the user asks to *perform* a disabled action, routing should fail or decline even though the earlier self-summary was too broad.
+
+### Possible future enhancement
+
+Inject a short **runtime capabilities block** derived from the same effective enabled tool set the router already computes (`available_tool_names` after profile overlays, Web UI blocks, and sync state):
+
+1. **Source of truth** — effective enabled tools from `tool_definitions` ∩ active profile ∩ request exclusions (same set used for routing, not a duplicate profile-only list).
+2. **Placement** — append to per-turn router context (e.g. near existing runtime date/style notes), not a separate system prompt fork per profile.
+3. **Content** — compact summary for Q&A/meta queries: grouped categories or one-line descriptions from `*.tool.json`, not a raw dump of every tool name.
+4. **Behavior** — for meta questions, prefer this block over static prompt examples when describing *current* abilities; keep the static prompt for workflows and safety rules.
+
+**Profile-only prompt slices** help coarse modes (`local_minimal_assistant` vs full cloud) but do not cover toggling a single tool under the `default` profile. **Per effective enabled tool set** is the better long-term source of truth because it matches both profile overlays and per-tool `enabled` flags.
+
+### Open questions
+
+- Should capability narration be injected on every turn (small token cost) or only when the router detects a meta/capability query?
+- Should disabled tools be listed explicitly (“not available in this profile: phone_call, opencode, …”) or omitted silently?
+- Should `intel/jarvis-tool-knowledge.md` be split into “always-on architecture” vs “operational capabilities” sections to reduce overshoot before runtime gating lands?
+
+---
+
 ## Design Note: Presentation Artifact Learning
 
 ### Problem

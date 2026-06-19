@@ -45,6 +45,8 @@ Example profile you can copy to `skills/profiles/<your_name>.json` and edit (fil
 - Use `true` to force-enable a tool that is disabled in the tool file (uncommon).
 - Discover exact tool names (including `mcp_*`): `./bin/manage-tools.py list` or `./bin/manage-tools.py profile export` while the tools you care about are registered.
 
+**Known gap:** profiles control which tools the router can *call*, but meta Q&A (“what can you do?”) may still describe disabled capabilities from the static system prompt or injected intel. That is expected today; see [Runtime-Aware Capability Narration (Q&A)](../docs/ADVANCED_AI_TECHNIQUES.md#design-note-runtime-aware-capability-narration-qa) in `docs/ADVANCED_AI_TECHNIQUES.md` for the problem statement and a possible future enhancement.
+
 CLI reference: `./bin/manage-tools.py -h` and the usage block at the top of `bin/manage-tools.py`.
 
 ---
