@@ -221,45 +221,60 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 
 ```
 jarvis-web/
-├── server/
-│   ├── __init__.py
-│   ├── app.py                 # Flask + SocketIO app + /logs page route
-│   ├── config.py              # Config loader (cloud.env + web_config)
+├── server/                         # Flask + SocketIO (eventlet)
+│   ├── app.py                      # App entry; serves /, /logs, /login, /stash/view/...
+│   ├── config.py                   # Loads cloud.env / local.env + web_config
 │   ├── routes/
-│   │   ├── __init__.py
-│   │   └── api.py             # REST endpoints, including /api/logs/*
+│   │   ├── api.py                  # REST: tools, settings, conversations, media, workflows, prompts, logs
+│   │   └── auth.py                 # Optional auth (/api/auth/login, /api/auth/status, …)
 │   ├── sockets/
-│   │   ├── __init__.py
-│   │   └── chat.py            # WebSocket handlers
+│   │   └── chat.py                 # WebSocket: chat stream, tools, completion guard, log tail, proactive
 │   └── services/
-│       ├── __init__.py
-│       ├── tool_discovery.py  # Load tools from skills/
-│       ├── settings_manager.py # Settings with overrides
-│       ├── conversation_store.py # Chat history
-│       └── log_explorer.py    # Read-only log listing/search/content
+│       ├── tool_discovery.py       # Enabled tools from skills/ + MCP + profiles
+│       ├── settings_manager.py     # Web overrides (mode, models, blocked tools)
+│       ├── conversation_store.py   # Chat persistence → ../data/web_conversations/
+│       ├── log_explorer.py         # /logs folder listing, search, file content
+│       ├── log_streamer.py         # Live log tail to connected clients
+│       ├── proactive_service.py    # Proactive alerts / reminders over WebSocket
+│       ├── completion_guard.py     # Post-turn quality check and bounded repair
+│       └── followup_extractor.py   # Follow-up ticket extraction from guard feedback
 │
 ├── client/
-│   ├── index.html             # Main chat UI
-│   ├── logs.html              # Dedicated /logs page
+│   ├── index.html                  # Main chat UI
+│   ├── login.html                  # Optional login gate
+│   ├── logs.html                   # Dedicated /logs log viewer
+│   ├── stash-viewer.html           # Render stash text/markdown at /stash/view/<space>/<file>
 │   ├── css/
-│   │   ├── variables.css      # CSS custom properties
-│   │   ├── main.css           # Main chat UI styles
-│   │   └── log-viewer.css     # /logs styles
-│   └── js/
-│       ├── app.js             # Main app
-│       ├── socket.js          # WebSocket client
-│       ├── chat.js            # Chat UI
-│       ├── log-viewer.js      # /logs folder/file/viewer logic
-│       └── utils.js           # Helpers
+│   │   ├── variables.css           # Theme tokens
+│   │   ├── main.css                # Chat UI
+│   │   ├── glow-refinements.css    # Holographic effects
+│   │   ├── log-viewer.css          # /logs page
+│   │   └── fonts.css               # @font-face for self-hosted fonts
+│   ├── js/
+│   │   ├── app.js                  # Shell, settings, navigation
+│   │   ├── chat.js                 # Messages, tools, uploads, workflows
+│   │   ├── socket.js               # WebSocket client
+│   │   ├── logs.js                 # In-app server log panel
+│   │   ├── log-viewer.js           # /logs folder + file viewer
+│   │   ├── proactive.js            # Proactive notification UI
+│   │   └── utils.js                # Shared helpers
+│   ├── fonts/                      # Self-hosted Inter + JetBrains Mono (woff2)
+│   └── vendor/                     # Bundled socket.io + marked (CDN fallback in HTML)
 │
 ├── config/
-│   └── web_config.json        # Web-specific settings
+│   ├── web_config.json             # Web-specific overrides (copy from example)
+│   └── web_config.json.example
 │
-├── data/
-│   └── conversations/         # Saved chat history
+├── data/                           # Web-local assets (not conversation history)
+│   ├── prompts/                    # @prompt templates (*.md)
+│   └── uploads/                    # Chat image uploads for vision
 │
 ├── requirements.txt
 └── README.md
+
+Repo root (shared with core Jarvis — outside jarvis-web/):
+├── data/web_conversations/         # Saved chats (index.json + <id>.json)
+└── data/workflows/                 # Slash-command workflow definitions (*.json)
 ```
 
 ---
@@ -1543,7 +1558,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - `jarvis-web/server/` - Flask+SocketIO backend
 - `jarvis-web/client/` - Vanilla JS frontend
 - `jarvis-web/config/web_config.json` - Web overrides
-- `jarvis-web/data/conversations/` - Chat history as JSON
+- `data/web_conversations/` - Saved chat history (repo root; one JSON file per conversation + `index.json`)
 
 ---
 

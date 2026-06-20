@@ -5,8 +5,8 @@ This directory contains configuration files for Jarvis Voice Assistant.
 ## Quick Start
 
 1. **Choose your mode:**
-   - **Cloud mode**: Uses Anthropic/OpenAI APIs (requires API keys, best performance)
-   - **Local mode**: Uses Ollama (no API keys, runs offline, requires GPU)
+   - **Cloud mode**: xAI, Anthropic, or OpenAI APIs (requires API keys; best overall capability)
+   - **Local mode**: Ollama on your GPU (offline-capable; no cloud LLM keys required)
 
 2. **Copy the example file:**
    ```bash
@@ -36,30 +36,42 @@ This directory contains configuration files for Jarvis Voice Assistant.
    ./orchestrator/orchestrator_v2.py local "What time is it?"  # CLI
    ```
 
-5. **(Optional) Configure MCP Servers:**
-   - MCP servers add tools like web search (DuckDuckGo), HTTP fetch, etc.
-   - Edit `config/mcp-servers.json` to enable/disable servers
-   - See [MCP Server Configuration](#mcp-server-configuration) and [TOOL RAG IMPLEMENTATION SUMMARY](../docs/TOOL_RAG_IMPLEMENTATION_SUMMARY.md) and [MCP REMOTE TRANSPORT](../docs/MCP_REMOTE_TRANSPORT.md) for details
-   - IF YOU MODIFY MCP SERVERS OR TOOLS MAKE SURE TO RE SYNC DB FOR TOOL RAG TO PICK UP NEW TOOLS
+5. **(Optional) Configure MCP servers:**
+   - MCP servers add tools such as web search, HTTP fetch, and other integrations.
+   - Edit `config/mcp-servers.json` to enable or disable servers.
+   - See [MCP Server Configuration](#mcp-server-configuration), [Tool RAG implementation summary](../docs/TOOL_RAG_IMPLEMENTATION_SUMMARY.md), and [MCP remote transport](../docs/MCP_REMOTE_TRANSPORT.md).
+   - After changing MCP servers or tools, re-sync the tools database: `./bin/sync-tools.py cloud` or `./bin/sync-tools.py local`.
 
 ## Configuration Files
 
+Copy a template to create your live config (both live files are gitignored):
+
+```bash
+cp cloud.env.example cloud.env    # cloud mode
+cp local.env.example local.env    # local mode
+```
+
+| File | Role |
+|------|------|
+| `cloud.env.example` / `local.env.example` | Committed templates — safe to browse in git |
+| `cloud.env` / `local.env` | Your machine-specific settings and secrets (not committed) |
+| `mcp-servers.json` | Jarvis MCP server definitions (committed; no secrets in git) |
+
 ### `cloud.env` (Cloud Mode)
-- **Uses**: Anthropic Claude or OpenAI GPT
-- **Requires**: API keys (costs money per request)
-- **Best for**: Production use, maximum accuracy, complex tasks
-- **OpenCode**: Can use Claude (recommended) or OpenAI
+
+- **LLM providers**: xAI (Grok), Anthropic (Claude), or OpenAI (GPT) via `LLM_PROVIDER`
+- **Also configures**: cloud TTS/STT, image/video APIs, embeddings, and optional paid services
+- **Best for**: production use, complex tool calling, providers with large context windows
+- **OpenCode**: can use the same cloud providers (Anthropic or OpenAI recommended for coding tasks)
+
+See also: [xAI provider guide](../docs/XAI_PROVIDER.md)
 
 ### `local.env` (Local Mode)
-- **Uses**: Ollama with local models (`qwen3.5:latest` recommended; see `local.env.example`)
-- **Requires**: GPU with 8GB+ VRAM
-- **Best for**: Development, offline work, privacy, no API costs
-- **OpenCode**: Can use local Ollama models OR Anthropic (safer)
 
-### Example Files (Safe for Git)
-- `cloud.env.example` - Template for cloud mode
-- `local.env.example` - Template for local mode
-- **Never commit** `cloud.env` or `local.env` (contains API keys!)
+- **Uses**: Ollama with local models (`gemma4`, `qwen3.5:latest`, etc.; see `local.env.example`)
+- **Requires**: GPU with enough VRAM for your chosen model and context window
+- **Best for**: offline work, privacy, avoiding per-request LLM fees
+- **OpenCode**: local Ollama or a cloud provider (cloud is usually more reliable for autonomous coding)
 
 ## Important Settings
 
@@ -88,11 +100,18 @@ Notes:
 - Ollama models are not curated here; they are still discovered/configured dynamically
 - Image/video provider models are still managed in their existing provider-specific code paths
 
-**Jarvis Tool Calling** (main LLM):
+**Jarvis tool calling** (main LLM):
+
 ```bash
-# Cloud mode
-LLM_PROVIDER="anthropic"
-ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
+# Cloud mode — pick one provider
+LLM_PROVIDER="xai"
+XAI_MODEL="grok-build-0.1"
+
+# LLM_PROVIDER="anthropic"
+# ANTHROPIC_MODEL="claude-sonnet-4-6"
+
+# LLM_PROVIDER="openai"
+# OPENAI_MODEL="gpt-5.4-mini"
 
 # Local mode
 LLM_PROVIDER="ollama"
@@ -126,17 +145,8 @@ For networks that require an HTTP(S) proxy for outbound API calls and downloads,
 
 ## Security Notes
 
-1. **API Keys**: Never commit files with real API keys
-2. **Git Ignore**: The `.gitignore` should include:
-   ```
-   config/cloud.env
-   config/local.env
-   ```
-
-3. **OpenCode Safety**: 
-   - Local models can execute arbitrary code
-   - Recommended: Use Claude for OpenCode even in local mode
-   - Workspace is sandboxed to `~/jarvis-workspace`
+1. Keep secrets in `cloud.env` / `local.env` only — both are listed in `.gitignore`.
+2. **OpenCode**: local models can execute arbitrary code; many setups use a cloud provider for OpenCode even when Jarvis runs locally. Workspace is sandboxed to `~/jarvis-workspace`.
 
 ## Troubleshooting
 
@@ -436,15 +446,18 @@ echo $BRAVE_API_KEY  # Should show your API key
 
 ---
 
-## Model Recommendations
-
 ### Cloud Mode
-- **Best overall**: `grok-4.3`
-- **Fastest**: `gpt-5-4-nano`
+
+- **xAI**: `grok-4.3`, `grok-build-0.1` (see `cloud.env.example` and [xAI provider](../docs/XAI_PROVIDER.md))
+- **Anthropic**: `claude-sonnet-4-6` and related Claude models
+- **OpenAI**: `gpt-5.4-mini`, `gpt-5.4-nano`, and related GPT models
+
+Curated metadata for the Web UI and cost helpers lives in `lib/model_catalog.py`.
 
 ### Local Mode (Ollama)
-- **Best for Jarvis**: `gemma4`
-- **Best for OpenCode**: Use Claude or Openai API (more reliable)
+
+- **Jarvis**: `gemma4`, `qwen3.5:latest`, or another tool-capable model you have pulled
+- **OpenCode**: prefer a cloud API for reliability; local Ollama is supported but less dependable for long coding runs
 
 ## Quick Reference
 
@@ -466,11 +479,11 @@ echo $BRAVE_API_KEY  # Should show your API key
 ./bin/test-mcp --all         # Full overview (list + discover)
 ```
 
-## Support
+## Related docs
 
-For issues, see:
-- Main README: `~/jarvis-voice/README.md`
-- MCP Security: `~/jarvis-voice/docs/MCP_SECURITY_AUDIT.md`
-- MCP Quickstart: `~/jarvis-voice/docs/MCP_QUICKSTART.md`
-- Docs: `~/jarvis-voice/docs/`
-- Logs: `~/jarvis-voice/logs/`
+- [Main README](../README.md)
+- [Install guide](../docs/INSTALL_GUIDE.md)
+- [xAI provider](../docs/XAI_PROVIDER.md)
+- [MCP security audit](../docs/MCP_SECURITY_AUDIT.md)
+- [MCP quickstart](../docs/mcp/MCP_QUICKSTART.md)
+- [Documentation index](../docs/README.md)

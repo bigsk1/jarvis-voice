@@ -1,5 +1,3 @@
-# Jarvis Voice Assistant
-
 ![jarvis-social](https://imagedelivery.net/WfhVb8dSNAAvdXUdMfBuPQ/gallery/2026-06-19/generated/professional_wide_github_repository_soci_20260619__da8ee89d/public)
 
 > **Quick start**
