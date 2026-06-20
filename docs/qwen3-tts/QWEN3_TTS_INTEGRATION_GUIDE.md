@@ -4,6 +4,7 @@
 **API**: OpenAI-compatible `/v1/audio/speech`  
 **GPU**: NVIDIA RTX 5060 Ti (16GB VRAM)  
 **Model**: Qwen3-TTS-12Hz-1.7B-Base (Voice Cloning)
+**Github**: https://github.com/bigsk1/Qwen3-TTS-Openai-Fastapi
 
 > **Use Case**: Drop-in replacement for OpenAI TTS or Kokoro TTS. Same API, local GPU inference, 28 custom cloned voices.
 
