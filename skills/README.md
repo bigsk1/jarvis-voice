@@ -21,7 +21,7 @@ skills/
 
 Each profile is `skills/profiles/<name>.json` with `{"description": "...", "overrides": {"tool_name": false}}`. Keys in `overrides` win over the `enabled` flag in `*.tool.json`. Omit a tool to leave the file’s setting unchanged.
 
-Set **`JARVIS_TOOL_PROFILE`** in `config/local.env` or `config/cloud.env` to the profile **name** (stem of the file under `skills/profiles/`, default: `default`). Custom profile JSON files in `skills/profiles/` are gitignored except **`default.json`**. **Copy-paste templates** live in **`skills/profiles/examples/`** (tracked); copy one to `skills/profiles/<name>.json` and set `JARVIS_TOOL_PROFILE=<name>`.
+Set **`JARVIS_TOOL_PROFILE`** in `config/local.env` or `config/cloud.env` to the profile **name** (stem of the file under `skills/profiles/`, default: `default`). Custom profile JSON files in `skills/profiles/` are gitignored except **`default.json`**. **Copy-paste templates** live in **`skills/profiles/examples/`** (tracked); copy one to `skills/profiles/<name>.json` and set `JARVIS_TOOL_PROFILE=<name>`. For Docker Web UI deployments, see **`examples/docker.json`** and [docs/docker/README.md](../docs/docker/README.md).
 
 After changing profile: restart Jarvis services, then run `./bin/sync-tools.py local` or `./bin/sync-tools.py cloud`. Inspect: `./bin/manage-tools.py profile show`.
 

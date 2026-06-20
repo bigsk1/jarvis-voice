@@ -460,6 +460,8 @@ def ssh_execute(command: str, timeout: int = 60) -> dict:
 
 ## Dockerized Jarvis Image (P1)
 
+> **Updated scope:** See **[docker/README.md](docker/README.md)** for the current design — Web UIs + API in Docker, external Ollama/TTS, `JARVIS_TOOL_PROFILE=docker`. The sketch below is the original CLI-only prototype.
+
 ### Purpose
 
 A reproducible, portable Jarvis deployment for:

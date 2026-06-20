@@ -1,0 +1,113 @@
+# Jarvis Docker build context — keep secrets, runtime data, and dev noise OUT of the image.
+# See docs/docker/README.md. Users build locally (`docker compose build`); no published image.
+
+# ===== Git & CI =====
+.git
+.github
+.gitignore
+.gitattributes
+
+# ===== Secrets & live config (mount at runtime) =====
+config/*.env
+config/contacts.json
+config/webhook_registry.json
+config/elevenlabs_voices.json
+config/ssh.json
+config/price-alerts.yaml
+jarvis-monitor/.env
+jarvis-web/config/web_config.json
+data/secrets/
+*.key
+*.pem
+
+# ===== Runtime data (bind-mount from host — never bake into image) =====
+data/*.db
+data/*.db.*
+data/*.db-*
+data/backups/
+data/canvas/
+data/generated_images/
+data/generated_videos/
+data/generated_music/
+data/web_conversations/
+data/stash/
+data/.spotify_cache
+data/.phone_call_lock
+data/.phone_call_in_progress
+data/.webui_secret
+data/.email_rate_limit
+data/.webhook_rate_limit
+data/.scheduled_task_notification_rate_limit
+data/bookmarks.html
+jarvis-web/data/uploads/
+stash/
+logs/
+audio/
+*.wav
+*.mp3
+*.ogg
+*.flac
+
+# ===== User / machine-specific (mount if needed) =====
+jarvis-intel/*
+!jarvis-intel/jarvis-tool-knowledge.md
+!jarvis-intel/jarvis-learned-lessons.md
+!jarvis-intel/user_profile.md.example
+!jarvis-intel/README.md
+docs/personal/
+docs/n8n/workflows/*.json
+.n8n/
+characters/
+opencodetmp/
+.opencode/
+logs/opencode/
+
+# ===== Python / Node caches =====
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+env/
+ENV/
+jarvis-venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+.cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+
+# ===== IDE & local tooling =====
+.vscode/
+.idea/
+.cursor/
+.agents/
+.codex/
+*.swp
+*.swo
+*~
+.DS_Store
+cursor_*.md
+*.cursor.*
+AGENTS.md
+
+# ===== Docs & assets not needed at runtime (optional slimming) =====
+# Keep docs/ in image if log viewer / search_docs needs them; uncomment to shrink:
+# docs/
+# tests/
+# monitoring/
+
+# ===== Misc large or personal paths =====
+docs/Agent-Skills-for-Context-Engineering-main/
+docs/vps2/
+docs/samantha-skill/
+docs/api/code-examples/camera/
+skills/profiles/*
+!skills/profiles/default.json
+!skills/profiles/examples/
+!skills/profiles/examples/**

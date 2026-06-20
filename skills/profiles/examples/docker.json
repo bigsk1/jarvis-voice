@@ -1,0 +1,21 @@
+{
+  "description": "Copy to skills/profiles/docker.json — Web UI / API deployment inside Docker. Disables host-integrated tools (OpenCode, SSH, Docker socket control, MCP sidecars, phone, Spotify OAuth, printer, shell on host). Tune for your setup; re-enable MCP or docker_control only if you mount docker.sock. Set JARVIS_TOOL_PROFILE=docker in cloud.env and local.env (or via compose environment).",
+  "overrides": {
+    "check_opencode_sessions": false,
+    "docker_control": false,
+    "execute_bash": false,
+    "mcp_brave_search_brave_local_search": false,
+    "mcp_brave_search_brave_news_search": false,
+    "mcp_brave_search_brave_web_search": false,
+    "mcp_fetch_fetch": false,
+    "mcp_playwright_browser_navigate": false,
+    "mcp_playwright_browser_snapshot": false,
+    "network_tools": false,
+    "opencode": false,
+    "phone_call": false,
+    "printer": false,
+    "speaker_volume": false,
+    "spotify": false,
+    "ssh_remote": false
+  }
+}
