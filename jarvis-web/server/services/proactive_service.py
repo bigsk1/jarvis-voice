@@ -8,11 +8,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from internal_api import get_internal_api_base_url, get_internal_api_headers
+
 # Polling interval in seconds
 POLL_INTERVAL = 10
-
-# jarvis-api URL (same host, different port)
-API_BASE_URL = "http://localhost:8880"
 
 
 @dataclass
@@ -38,8 +37,9 @@ class ProactiveService:
         """Check for new pending alerts"""
         try:
             response = requests.get(
-                f"{API_BASE_URL}/api/alerts",
+                f"{get_internal_api_base_url()}/api/alerts",
                 params={"status": "pending"},
+                headers=get_internal_api_headers(),
                 timeout=5
             )
             
@@ -69,8 +69,9 @@ class ProactiveService:
         """Check for triggered reminders"""
         try:
             response = requests.get(
-                f"{API_BASE_URL}/api/reminders",
+                f"{get_internal_api_base_url()}/api/reminders",
                 params={"status": "triggered"},
+                headers=get_internal_api_headers(),
                 timeout=5
             )
             
@@ -100,7 +101,8 @@ class ProactiveService:
         """Acknowledge an alert via jarvis-api"""
         try:
             response = requests.put(
-                f"{API_BASE_URL}/api/alerts/{alert_id}/acknowledge",
+                f"{get_internal_api_base_url()}/api/alerts/{alert_id}/acknowledge",
+                headers=get_internal_api_headers(),
                 timeout=5
             )
             if response.status_code == 200:
@@ -115,7 +117,8 @@ class ProactiveService:
         """Acknowledge a reminder via jarvis-api"""
         try:
             response = requests.post(
-                f"{API_BASE_URL}/api/reminders/{reminder_id}/acknowledge",
+                f"{get_internal_api_base_url()}/api/reminders/{reminder_id}/acknowledge",
+                headers=get_internal_api_headers(),
                 timeout=5
             )
             if response.status_code == 200:
@@ -133,8 +136,9 @@ class ProactiveService:
         try:
             # Alerts
             response = requests.get(
-                f"{API_BASE_URL}/api/alerts",
+                f"{get_internal_api_base_url()}/api/alerts",
                 params={"status": "pending"},
+                headers=get_internal_api_headers(),
                 timeout=3
             )
             if response.status_code == 200:
@@ -145,8 +149,9 @@ class ProactiveService:
         try:
             # Reminders
             response = requests.get(
-                f"{API_BASE_URL}/api/reminders",
+                f"{get_internal_api_base_url()}/api/reminders",
                 params={"status": "triggered"},
+                headers=get_internal_api_headers(),
                 timeout=3
             )
             if response.status_code == 200:
@@ -224,4 +229,3 @@ def reset_proactive_service():
     global _proactive_service
     if _proactive_service:
         _proactive_service.clear_notification_cache()
-

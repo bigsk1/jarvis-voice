@@ -1,0 +1,111 @@
+x-jarvis-common: &jarvis-common
+  build:
+    context: .
+  image: jarvis-voice:local
+  user: "${JARVIS_DOCKER_UID:-1000}:${JARVIS_DOCKER_GID:-1000}"
+  networks:
+    - jarvis-net
+  environment: &jarvis-environment
+    HOME: /tmp
+    PYTHONDONTWRITEBYTECODE: "1"
+    PYTHONUNBUFFERED: "1"
+    UMASK: "002"
+    JARVIS_DEPLOYMENT: docker
+    JARVIS_MODE: "${JARVIS_MODE:-cloud}"
+    JARVIS_SYNC_MODES: "${JARVIS_SYNC_MODES:-cloud}"
+    JARVIS_VENV: /opt/venv
+    VIRTUAL_ENV: /opt/venv
+    JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker
+    JARVIS_OVERRIDE_JARVIS_API_INTERNAL_URL: "http://jarvis-api:8880"
+    JARVIS_OVERRIDE_CANVAS_INTERNAL_URL: "http://jarvis-canvas:8890"
+    JARVIS_OVERRIDE_JARVIS_API_AUTH: "${JARVIS_DOCKER_API_AUTH:-false}"
+  volumes: &jarvis-volumes
+    - ./config/cloud.env:/app/config/cloud.env:ro
+    - ./config/local.env:/app/config/local.env:ro
+    - ./data:/app/data
+    - ./logs:/app/logs
+    - ./audio:/app/audio
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  jarvis-api:
+    <<: *jarvis-common
+    command: ["api"]
+    ports:
+      - "127.0.0.1:${JARVIS_API_PORT:-8880}:8880"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8880/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  jarvis-web:
+    <<: *jarvis-common
+    command: ["web"]
+    depends_on:
+      jarvis-api:
+        condition: service_started
+      jarvis-canvas:
+        condition: service_started
+    ports:
+      - "${JARVIS_WEB_PORT:-5001}:5001"
+    volumes:
+      - ./config/cloud.env:/app/config/cloud.env:ro
+      - ./config/local.env:/app/config/local.env:ro
+      - ./jarvis-web/config/web_config.json:/app/jarvis-web/config/web_config.json:rw
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./audio:/app/audio
+      - ./jarvis-web/data/uploads:/app/jarvis-web/data/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5001/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  jarvis-services:
+    <<: *jarvis-common
+    command: ["services"]
+    depends_on:
+      jarvis-api:
+        condition: service_started
+
+  jarvis-canvas:
+    <<: *jarvis-common
+    command: ["canvas"]
+    ports:
+      - "${JARVIS_CANVAS_PORT:-8890}:8890"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8890/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  jarvis-memory:
+    <<: *jarvis-common
+    command: ["memory"]
+    ports:
+      - "127.0.0.1:${JARVIS_MEMORY_PORT:-5002}:5002"
+    profiles: ["extras"]
+
+  jarvis-intelligence:
+    <<: *jarvis-common
+    command: ["intelligence"]
+    ports:
+      - "127.0.0.1:${JARVIS_INTELLIGENCE_PORT:-5003}:5003"
+    profiles: ["extras"]
+
+  jarvis-docs:
+    <<: *jarvis-common
+    command: ["docs"]
+    ports:
+      - "127.0.0.1:${JARVIS_DOCS_PORT:-5004}:5004"
+    profiles: ["extras"]
+
+networks:
+  jarvis-net:
+    name: jarvis-net

@@ -24,6 +24,7 @@ from typing import List, Dict, Any, Optional
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
+from internal_api import get_internal_api_base_url, get_internal_api_headers
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
 from tts_normalizer import normalize_tts_text
@@ -318,7 +319,7 @@ def restart_service(service_name: str) -> bool:
 def send_service_alert(service_name: str, project_root: Path, mode: str) -> bool:
     """Send alert to Jarvis API for a stopped service."""
     try:
-        api_url = "http://localhost:8880/api/alerts"
+        api_url = f"{get_internal_api_base_url()}/api/alerts"
         payload = {
             "title": f"Service Stopped: {service_name}",
             "description": f"Systemd service '{service_name}' is not running. Self-healing restart attempted.",
@@ -330,7 +331,12 @@ def send_service_alert(service_name: str, project_root: Path, mode: str) -> bool
             }
         }
         
-        response = requests.post(api_url, json=payload, timeout=30)
+        response = requests.post(
+            api_url,
+            json=payload,
+            headers=get_internal_api_headers(),
+            timeout=30,
+        )
         return response.ok
     except Exception as e:
         print(f"    ⚠️  Failed to send alert: {e}", file=sys.stderr)
@@ -494,6 +500,8 @@ def main():
     # Load config
     load_config()
     mode = 'local' if get_config_value('LLM_PROVIDER', 'anthropic') == 'ollama' else 'cloud'
+    if get_config_value("JARVIS_DEPLOYMENT", "") == "docker":
+        MONITORED_DAEMONS.pop("jarvis_api", None)
     
     project_root = Path(__file__).parent.parent
     db = MemoryDB()

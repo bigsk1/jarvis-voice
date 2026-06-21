@@ -6,6 +6,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request, send_file, abort, render_template
 
 from config import GENERATED_IMAGES_DIR, STASH_DIR
+from internal_api import get_internal_api_base_url, get_internal_api_headers
 
 gallery_bp = Blueprint('gallery', __name__)
 
@@ -280,8 +281,8 @@ def get_cdn_url(filename):
     
     # Not in catalog - call Jarvis API to upload
     try:
-        api_url = f"http://localhost:8880/api/generated-images/{filename}/cdn-url"
-        response = requests.get(api_url, timeout=60)
+        api_url = f"{get_internal_api_base_url()}/api/generated-images/{filename}/cdn-url"
+        response = requests.get(api_url, headers=get_internal_api_headers(), timeout=60)
         data = response.json()
         return jsonify(data)
     except requests.exceptions.RequestException as e:
@@ -323,8 +324,8 @@ def convert_image_to_video(filename):
         
         # If not in CDN, upload it first
         if not cdn_url:
-            api_url = f"http://localhost:8880/api/generated-images/{filename}/cdn-url"
-            response = req.get(api_url, timeout=60)
+            api_url = f"{get_internal_api_base_url()}/api/generated-images/{filename}/cdn-url"
+            response = req.get(api_url, headers=get_internal_api_headers(), timeout=60)
             result = response.json()
             if result.get('ok'):
                 cdn_url = result.get('url')
@@ -344,10 +345,11 @@ def convert_image_to_video(filename):
         }
         
         # Call generate_video tool via API (it has proper timeout handling)
-        api_url = "http://localhost:8880/api/generated-videos/generate"
+        api_url = f"{get_internal_api_base_url()}/api/generated-videos/generate"
         response = req.post(
             api_url,
             json=tool_args,
+            headers=get_internal_api_headers(),
             timeout=660  # 11 minutes (slightly more than the 10 min internal timeout)
         )
         

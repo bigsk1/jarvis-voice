@@ -1,6 +1,6 @@
 # Jarvis Docker Deployment (Design)
 
-**Status:** Design and operational guide. Jarvis does not ship a production `Dockerfile` or root `docker-compose.yml` yet — this document captures the intended approach before implementation.
+**Status:** Experimental implementation and operational guide. Jarvis ships a root [`Dockerfile`](../../Dockerfile) and [`docker-compose.yml`](../../docker-compose.yml) for local testing, but this is not a production/published image path yet.
 
 **Scope:** Run Jarvis **Web UIs and supporting services** in Docker. Voice wake-word, OpenCode, and host-integrated tooling stay **out of scope for v1** or run on the host separately.
 
@@ -109,7 +109,6 @@ Root is still acceptable for a throwaway test stack or a greenfield install usin
 data/*.db-journal
 logs/*.log
 audio/*/tts/*
-stash/*
 jarvis-intel/*
 jarvis-web/data/uploads/*
 data/generated_*
@@ -119,7 +118,7 @@ jarvis-web/config/web_config.json  # when saved by the Settings UI
 If that happens, fix ownership from the host:
 
 ```bash
-sudo chown -R "$USER:$USER" data logs audio stash jarvis-intel jarvis-web/data/uploads jarvis-web/config/web_config.json
+sudo chown -R "$USER:$USER" data logs audio jarvis-intel jarvis-web/data/uploads jarvis-web/config/web_config.json
 ```
 
 Do **not** combine root containers with privileged mounts like `/var/run/docker.sock` unless this is a trusted single-user host.
@@ -228,7 +227,6 @@ For developers with **months of existing state** (your case), Docker must **atta
 volumes:
   - ./data:/app/data
   - ./logs:/app/logs
-  - ./stash:/app/stash
   - ./jarvis-intel:/app/jarvis-intel   # if you use custom intel files
 ```
 
@@ -237,9 +235,9 @@ volumes:
 | **`data/jarvis_memory.db` already exists** | Use it as-is; entrypoint skips “create empty DB” |
 | **Fresh clone, no DB files** | Same as native: startup / `sync-tools` creates and populates (git never tracked them) |
 | **Switching native → Docker on same host** | Point mounts at existing `./data` — zero migration |
-| **New machine** | Copy `data/`, `logs/`, `stash/`, env files; mount them; build image locally |
+| **New machine** | Copy `data/` (includes stash/canvas/generated artifacts), `logs/`, env files; mount them; build image locally |
 
-**Entrypoint rule (planned):** init and dual `sync-tools` run only when DBs or tool tables are **missing or explicitly forced** (`JARVIS_FORCE_SYNC=1`) — never wipe or replace existing `*.db` on container recreate.
+**Entrypoint rule (planned):** never wipe or replace existing `*.db` on container recreate. Create/migrate only when DBs or required tables are missing. Still run `sync-tools` when the active tool profile changes (for example, native `default` → Docker `docker`) or when explicitly forced (`JARVIS_FORCE_SYNC=1`), so profile-disabled host tools are disabled in Tool RAG. Unchanged tools skip re-embedding by content hash.
 
 Named volumes (`jarvis-data:`) are fine for **brand-new** installs with no prior native tree; bind mounts are better for **testing Docker against a live Jarvis tree**.
 
@@ -256,7 +254,6 @@ volumes:
   - ./jarvis-web/config/web_config.json:/app/jarvis-web/config/web_config.json:rw
   - ./data:/app/data
   - ./logs:/app/logs
-  - ./stash:/app/stash
   - ./audio:/app/audio
   - ./jarvis-web/data/uploads:/app/jarvis-web/data/uploads
 ```
@@ -295,11 +292,11 @@ Set in **both** env files (or only the one you use):
 JARVIS_TOOL_PROFILE="docker"
 ```
 
-Compose can set it uniformly:
+Compose can set it uniformly without editing shared env files by using the runtime override form. Plain `JARVIS_TOOL_PROFILE` from Compose can be overwritten when `load_config()` reads `config/cloud.env` or `config/local.env`.
 
 ```yaml
 environment:
-  JARVIS_TOOL_PROFILE: docker
+  JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker
 ```
 
 Important build-context detail: root `.dockerignore` ignores `skills/profiles/*` except `default.json` and `skills/profiles/examples/**`. Either:
@@ -469,9 +466,9 @@ python orchestrator/orchestrator_v2.py cloud "Hello"
 
 ---
 
-## Illustrative compose sketch
+## Compose sketch
 
-Not shipped yet — reference for implementers:
+The root [`docker-compose.yml`](../../docker-compose.yml) is the runnable source. The sketch below is a trimmed reference for the important wiring:
 
 ```yaml
 networks:
@@ -490,7 +487,7 @@ services:
       HOME: /tmp
       PYTHONDONTWRITEBYTECODE: "1"
       UMASK: "002"
-      JARVIS_TOOL_PROFILE: docker
+      JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker
       JARVIS_VENV: /opt/venv
       VIRTUAL_ENV: /opt/venv
       # JARVIS_API_AUTH: "false"   # see Inter-service networking section
@@ -500,7 +497,6 @@ services:
       - ./skills/profiles/docker.json:/app/skills/profiles/docker.json:ro
       - ./data:/app/data
       - ./logs:/app/logs
-      - ./stash:/app/stash
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -515,7 +511,7 @@ services:
       HOME: /tmp
       PYTHONDONTWRITEBYTECODE: "1"
       UMASK: "002"
-      JARVIS_TOOL_PROFILE: docker
+      JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker
       JARVIS_VENV: /opt/venv
       VIRTUAL_ENV: /opt/venv
       JARVIS_API_INTERNAL_URL: "http://jarvis-api:8880"
@@ -527,7 +523,6 @@ services:
       - ./skills/profiles/docker.json:/app/skills/profiles/docker.json:ro
       - ./data:/app/data
       - ./logs:/app/logs
-      - ./stash:/app/stash
       - ./audio:/app/audio
       - ./jarvis-web/data/uploads:/app/jarvis-web/data/uploads
 
@@ -544,7 +539,7 @@ services:
       HOME: /tmp
       PYTHONDONTWRITEBYTECODE: "1"
       UMASK: "002"
-      JARVIS_TOOL_PROFILE: docker
+      JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker
       JARVIS_VENV: /opt/venv
       VIRTUAL_ENV: /opt/venv
       JARVIS_API_INTERNAL_URL: "http://jarvis-api:8880"
@@ -582,7 +577,7 @@ Startup entrypoint should:
 3. Ensure `/opt/venv` is active via `JARVIS_VENV`, `VIRTUAL_ENV`, and `PATH`
 4. Acquire a simple init lock so API and services do not sync at the same time
 5. If `data/jarvis_memory.db` / `data/jarvis_memory_local.db` missing → run dual `sync-tools` (and memory init same as native)
-6. If DBs **exist** → skip init; optional `JARVIS_FORCE_SYNC=1` to refresh Tool RAG
+6. If DBs **exist** → skip destructive init, but run `sync-tools` when the active profile changed or `JARVIS_FORCE_SYNC=1`
 7. Start the target service in the foreground
 
 The current native `./bin/jarvis-services` script is not a Docker foreground process: it launches daemons with `nohup` and exits. For Docker, either split the four daemons into separate compose services, use a tiny supervisor, or add a Docker wrapper that starts them and `wait`s on the child PIDs.
@@ -632,22 +627,22 @@ Do not let runtime containers install missing packages on boot. Build all depend
 
 ---
 
-## Implementation checklist (future)
+## Implementation checklist
 
 - [x] `.dockerignore` (root — see above)
-- [ ] `Dockerfile` (Python 3.12 + system deps)
-- [ ] `docker-compose.yml` (`jarvis-net`, multi-service)
-- [ ] Run containers as host UID/GID by default for live-checkout bind mounts; keep root only as an explicit throwaway/named-volume fallback
-- [ ] Entrypoint: conditional init (skip if DBs exist) + optional `JARVIS_FORCE_SYNC`
-- [ ] Entrypoint: copy `skills/profiles/examples/docker.json` to `skills/profiles/docker.json` when missing
-- [ ] Set `JARVIS_VENV=/opt/venv`, `VIRTUAL_ENV=/opt/venv`, and `PATH` so `sync-tools.py` passes its venv guard
-- [ ] Replace `jarvis-services` daemonizing behavior with foreground Docker wrapper, split daemon services, or supervisor
-- [ ] Internal URL env vars for cross-container calls (`jarvis-api`, `jarvis-canvas`, …)
-- [ ] Mount `jarvis-web/config/web_config.json` read-write if Web UI Settings should persist
-- [ ] Bind API to `127.0.0.1:8880` or keep it unexposed when `JARVIS_API_AUTH=false`
-- [ ] Auth story: document `JARVIS_API_AUTH` + Bearer on internal clients OR private network default
-- [ ] Document TLS options for browser mic
-- [ ] Optional: `JARVIS_DEPLOYMENT=docker` env flag for logging/health
+- [x] `Dockerfile` (Python 3.12 + system deps)
+- [x] `docker-compose.yml` (`jarvis-net`, multi-service)
+- [x] Run containers as host UID/GID by default for live-checkout bind mounts; keep root only as an explicit throwaway/named-volume fallback
+- [x] Entrypoint: conditional init + optional `JARVIS_FORCE_SYNC`
+- [x] Entrypoint/image build: copy `skills/profiles/examples/docker.json` to `skills/profiles/docker.json`
+- [x] Set `JARVIS_VENV=/opt/venv`, `VIRTUAL_ENV=/opt/venv`, and `PATH` so `sync-tools.py` passes its venv guard
+- [x] Replace `jarvis-services` daemonizing behavior with foreground Docker wrapper
+- [x] Internal URL env vars for cross-container calls (`jarvis-api`, `jarvis-canvas`, …)
+- [x] Mount `jarvis-web/config/web_config.json` read-write if Web UI Settings should persist
+- [x] Bind API to `127.0.0.1:8880` or keep it unexposed when `JARVIS_API_AUTH=false`
+- [x] Auth story: document `JARVIS_API_AUTH` + Bearer on internal clients OR private network default
+- [x] Document TLS options for browser mic
+- [x] Optional: `JARVIS_DEPLOYMENT=docker` env flag for logging/health
 - [ ] Local CI smoke test: `docker compose build && docker compose up -d` + `curl localhost:5001/api/status`
 
 ---
