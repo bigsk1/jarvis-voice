@@ -6,6 +6,7 @@ import sqlite3
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -15,12 +16,22 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from time_utils import utc_string_display_fields
 from security_utils import redact_sensitive_data, redact_sensitive_text
+from intelligence import IntelligenceLayer
 
 # Database paths
 DB_PATHS = {
     'cloud': DATA_PATH / 'jarvis_intelligence.db',
     'local': DATA_PATH / 'jarvis_intelligence_local.db'
 }
+
+REQUIRED_TABLES = {
+    'experiences',
+    'insights',
+    'meta_knowledge',
+    'reflection_queue',
+    'insight_evidence',
+}
+_SCHEMA_INIT_LOCK = threading.Lock()
 
 
 def get_db_path(mode: str) -> Path:
@@ -48,6 +59,7 @@ class IntelligenceService:
     def __init__(self, mode: str = 'cloud'):
         self.mode = mode
         self.db_path = get_db_path(mode)
+        self._ensure_base_schema()
         self._ensure_insight_usage_columns()
     
     def _get_conn(self) -> sqlite3.Connection:
@@ -55,6 +67,30 @@ class IntelligenceService:
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _ensure_base_schema(self) -> None:
+        """Create a fresh mode database using the runtime schema owner."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with _SCHEMA_INIT_LOCK:
+            conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            try:
+                existing = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    ).fetchall()
+                }
+            finally:
+                conn.close()
+
+            if REQUIRED_TABLES.issubset(existing):
+                return
+
+            initializer = IntelligenceLayer(
+                str(self.db_path),
+                load_runtime_config=False,
+            )
+            initializer.close()
 
     def _ensure_insight_usage_columns(self) -> None:
         """Keep UI reads compatible with DBs created before reflection usage tracking."""

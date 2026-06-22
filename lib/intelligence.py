@@ -318,9 +318,10 @@ class IntelligenceLayer:
     3. Meta Memory - Knowledge about the learning process itself
     """
 
-    def __init__(self, db_path: str = None):
-        """Initialize the intelligence layer."""
-        load_config()
+    def __init__(self, db_path: str = None, *, load_runtime_config: bool = True):
+        """Initialize the intelligence layer and ensure its database schema."""
+        if load_runtime_config or db_path is None:
+            load_config()
 
         if db_path is None:
             project_root = Path(__file__).parent.parent.resolve()

@@ -39,6 +39,29 @@ class IntelligenceMaintenanceTests(unittest.TestCase):
         intel._get_embedding = lambda text: np.array([1.0, 0.25, 0.5])
         return intel
 
+    def test_ui_service_initializes_fresh_local_database(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service_module = load_intelligence_service_module()
+            local_db = Path(tmpdir) / "jarvis_intelligence_local.db"
+            service_module.DB_PATHS["local"] = local_db
+
+            service = service_module.IntelligenceService("local")
+            stats = service.get_stats()
+
+            self.assertTrue(local_db.exists())
+            self.assertEqual(stats["experiences"]["total"], 0)
+            self.assertEqual(stats["insights"]["total"], 0)
+
+            conn = sqlite3.connect(local_db)
+            self.addCleanup(conn.close)
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            self.assertTrue(service_module.REQUIRED_TABLES.issubset(tables))
+
     def _insert_insight(
         self,
         intel: IntelligenceLayer,
