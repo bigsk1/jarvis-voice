@@ -1,0 +1,12 @@
+# Linux containers execute these files even when the checkout is on macOS or Windows.
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
+docker-compose*.yml text eol=lf
+bin/* text eol=lf
+
+# Preserve native line endings for future Windows launch helpers.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

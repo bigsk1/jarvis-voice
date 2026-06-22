@@ -289,6 +289,7 @@ Set `JARVIS_DOCKER_UID` / `JARVIS_DOCKER_GID` in `.env` to your host user (`id -
 
 ## Related docs
 
+- [MAC-WINDOWS.md](MAC-WINDOWS.md) - experimental Docker Desktop setup for macOS, PowerShell, and Command Prompt
 - [INSTALL_GUIDE.md](../INSTALL_GUIDE.md) — full native install (watchdog cron notes)
 - [DOCKER_PLANNING.md](DOCKER_PLANNING.md) — design, auth matrix, MCP, TTS/mic TLS
 - [skills/README.md](../../skills/README.md) — tool profiles

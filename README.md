@@ -12,6 +12,8 @@
 > Config details: [config/README.md](config/README.md)  
 > Web UI guide: [docs/JARVIS_WEB_UI.md](docs/JARVIS_WEB_UI.md)
 >
+> **macOS and Windows:** The experimental Docker Desktop path runs the Web UIs without a native Ubuntu or Python installation. See [Mac and Windows Docker Installation](docs/docker/MAC-WINDOWS.md) for Terminal, PowerShell, and Command Prompt steps, limitations, and troubleshooting.
+>
 > No promises, no formal support
 
 ## What is Jarvis?
