@@ -303,6 +303,38 @@ Stop native Jarvis processes or other applications using ports `5001`-`5004`, `8
 
 Use `host.docker.internal` instead of `127.0.0.1` or `localhost`. From inside a container, `localhost` means that container itself.
 
+### Local mode: LLM keeps calling `tool_search` (Tool RAG empty)
+
+**Memory sync ≠ tool sync.** API startup logs such as `Syncing data: local → cloud` come from `sync-memory-db.py`. They do **not** populate `tool_definitions` in `jarvis_memory_local.db`. Tool RAG is filled only by `bin/sync-tools.py local`.
+
+Compose init is supposed to run both modes when root `.env` has `JARVIS_SYNC_MODES="cloud local"`, and `data/.docker_tool_profile_synced` may already show `docker:cloud local:<hash>`. If Web UI **local mode** still loops on `tool_search` (bitcoin price, SerpAPI, etc.), the local tools DB may never have been embedded at first boot — run the checks below from **PowerShell** in the repo directory.
+
+**1. Check local tool embeddings** (expect dozens of tools, 768 dimensions for local/Ollama):
+
+```powershell
+docker compose exec jarvis-api python bin/check-embeddings-health.py local
+```
+
+If **Tool Definitions** shows `Checked: 0 tools` or errors, local Tool RAG was not synced.
+
+**2. Force local tool sync** (safe; re-embeds enabled tools into `jarvis_memory_local.db`):
+
+```powershell
+docker compose exec jarvis-api python bin/sync-tools.py local --force
+```
+
+Then switch Web UI back to **local** mode and retry the request.
+
+**3. Optional — confirm init logged both sync passes:**
+
+```powershell
+docker compose logs jarvis-api jarvis-web 2>&1 | Select-String "Syncing tools"
+```
+
+You should see both `cloud mode` and `local mode`. If only cloud appears, or local mode still misbehaves after a healthy health check, the manual `--force` sync above is the supported fix.
+
+**Note:** `jarvis-api` startup always runs `sync-tools.py` for **cloud only** (container default mode). Do not rely on API logs alone to confirm local Tool RAG.
+
 ### Build fails on Apple Silicon or ARM Windows
 
 Retry with the `DOCKER_DEFAULT_PLATFORM=linux/amd64` fallback shown above. If it works only under emulation, capture the failing package name so native ARM compatibility can be addressed separately.
