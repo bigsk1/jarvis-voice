@@ -251,7 +251,11 @@
       .then(r => r.json())
       .then(data => {
         if (data.ok) {
-          // Token valid, redirect to main app
+          // localStorage is port-specific; restore the host-wide cookie before redirecting.
+          const remainingSeconds = data.expires_at
+            ? Math.max(1, data.expires_at - Math.floor(Date.now() / 1000))
+            : 30 * 86400;
+          document.cookie = `jarvis_auth=${existingToken}; path=/; max-age=${remainingSeconds}; SameSite=Lax`;
           window.location.href = '/';
         } else {
           // Token invalid, clear both localStorage AND cookie
@@ -288,7 +292,7 @@
         const data = await response.json();
         
         if (data.ok && data.token) {
-          // Store token in localStorage (works across ports)
+          // Store token for this origin and use a cookie for sharing across ports.
           localStorage.setItem('jarvis_auth_token', data.token);
           
           // Also set as cookie for server-side checks (match token expiry, default 30 days)

@@ -89,6 +89,10 @@
         .then(r => r.json())
         .then(data => {
           if (data.ok) {
+            const remainingSeconds = data.expires_at
+              ? Math.max(1, data.expires_at - Math.floor(Date.now() / 1000))
+              : 30 * 86400;
+            document.cookie = `jarvis_auth=${existingToken}; path=/; max-age=${remainingSeconds}; SameSite=Lax`;
             window.location.href = new URLSearchParams(window.location.search).get('redirect') || '/';
           } else {
             // Token invalid, clear both localStorage AND cookie

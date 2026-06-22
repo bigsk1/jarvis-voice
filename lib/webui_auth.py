@@ -60,6 +60,19 @@ TOKEN_EXPIRY_SECONDS = 30 * 86400  # Default 30 days (can be overridden at runti
 SECRET_FILE = Path(__file__).parent.parent / 'data' / '.webui_secret'
 
 
+def _read_secret_file(attempts: int = 100, delay: float = 0.01) -> str | None:
+    """Read a non-empty secret, waiting briefly for a concurrent creator."""
+    for _ in range(attempts):
+        try:
+            secret = SECRET_FILE.read_text().strip()
+        except FileNotFoundError:
+            return None
+        if secret:
+            return secret
+        time.sleep(delay)
+    return None
+
+
 def _get_secret() -> str:
     """Get or generate the JWT signing secret"""
     # First check env
@@ -69,12 +82,27 @@ def _get_secret() -> str:
     
     # Check/create secret file
     if SECRET_FILE.exists():
-        return SECRET_FILE.read_text().strip()
+        secret = _read_secret_file()
+        if secret:
+            return secret
     
-    # Generate new secret
+    # Create exactly once. Docker starts several UIs concurrently against the
+    # same bind mount, so a normal exists-then-write sequence can split auth.
     secret = secrets.token_hex(32)
     SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SECRET_FILE.write_text(secret)
+    try:
+        fd = os.open(SECRET_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        existing = _read_secret_file()
+        if existing:
+            return existing
+        raise RuntimeError(f"WebUI secret file is empty: {SECRET_FILE}")
+
+    try:
+        os.write(fd, secret.encode())
+        os.fsync(fd)
+    finally:
+        os.close(fd)
     return secret
 
 

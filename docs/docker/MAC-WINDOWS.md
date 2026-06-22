@@ -201,6 +201,12 @@ docker compose --profile extras up -d
 
 The extra Memory, Intelligence, and Docs UIs require the `extras` profile used in the commands above.
 
+### Use one hostname consistently
+
+Choose one hostname and use it for every Jarvis UI port. For example, use either `localhost` everywhere or the Windows/Mac LAN IP everywhere. Do not mix `localhost`, `127.0.0.1`, and `192.168.x.x` during one browser session.
+
+The shared authentication cookie works across ports on the same hostname, but browsers intentionally isolate cookies between different hostnames. Signing in at `http://localhost:5001` therefore shares authentication with `http://localhost:8890`, but not with `http://127.0.0.1:8890` or a LAN-IP URL.
+
 ## Cloud and local modes
 
 Cloud mode is the simplest Docker Desktop starting point:
@@ -280,6 +286,14 @@ The repository `.gitattributes` forces Linux-executed scripts to use LF endings.
 ### Permission denied under `data`, `logs`, or uploads
 
 On macOS, confirm `.env` contains your `id -u` and `id -g` values. On Windows, confirm the repository drive or directory is available to Docker Desktop and that Docker Desktop is using its WSL 2 Linux backend. Avoid cloning under a protected system directory.
+
+To inspect the Windows host directories mounted into Canvas without PowerShell quoting problems:
+
+```powershell
+docker inspect jarvis-voice-jarvis-canvas-1 --format '{{json .Mounts}}' |
+  ConvertFrom-Json |
+  Select-Object Source, Destination
+```
 
 ### Port already allocated
 
