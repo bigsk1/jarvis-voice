@@ -11,37 +11,37 @@ export PATH="$VIRTUAL_ENV/bin:$PATH"
 export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 export JARVIS_DEPLOYMENT="${JARVIS_DEPLOYMENT:-docker}"
 
-mkdir -p data logs audio jarvis-web/data/uploads
+mkdir -p data logs audio
 
 if [ ! -f skills/profiles/docker.json ] && [ -f skills/profiles/examples/docker.json ]; then
   cp skills/profiles/examples/docker.json skills/profiles/docker.json
 fi
-
-wait_for_init_lock() {
-  local lock_dir="logs/docker-init.lock"
-  while ! mkdir "$lock_dir" 2>/dev/null; do
-    echo "Docker init already running in another Jarvis container; waiting..."
-    sleep 2
-  done
-}
-
-release_init_lock() {
-  rmdir logs/docker-init.lock 2>/dev/null || true
-}
 
 run_init() {
   if [ "${JARVIS_SKIP_INIT:-0}" = "1" ]; then
     return 0
   fi
 
-  wait_for_init_lock
+  local lock_file="logs/docker-init.lock"
+  local init_lock_fd
+  exec {init_lock_fd}>"$lock_file"
+  echo "Waiting for Docker init lock..."
+  flock "$init_lock_fd"
 
   local status=0
   {
     local profile="${JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE:-${JARVIS_TOOL_PROFILE:-default}}"
-    local sync_modes="${JARVIS_SYNC_MODES:-${JARVIS_MODE:-cloud}}"
+    local sync_modes="${JARVIS_SYNC_MODES:-}"
+    if [ -z "$sync_modes" ]; then
+      sync_modes="${JARVIS_MODE:-cloud}"
+    fi
+    local profile_path="skills/profiles/${profile}.json"
+    local profile_hash="missing"
+    if [ -f "$profile_path" ]; then
+      profile_hash="$(sha256sum "$profile_path" | cut -d' ' -f1)"
+    fi
     local marker="data/.docker_tool_profile_synced"
-    local marker_value="${profile}:${sync_modes}"
+    local marker_value="${profile}:${sync_modes}:${profile_hash}"
     local needs_sync=0
 
     if [ "${JARVIS_FORCE_SYNC:-0}" = "1" ]; then
@@ -65,7 +65,8 @@ run_init() {
     fi
   } || status=$?
 
-  release_init_lock
+  flock -u "$init_lock_fd"
+  exec {init_lock_fd}>&-
   return "$status"
 }
 
@@ -80,6 +81,7 @@ case "${1:-web}" in
     exec ./bin/jarvis-api "${mode_args[@]}"
     ;;
   web)
+    mkdir -p jarvis-web/data/uploads
     run_init
     exec ./bin/jarvis-web "${JARVIS_MODE:-cloud}"
     ;;

@@ -35,8 +35,7 @@ RUN pip install --upgrade pip setuptools wheel \
 
 COPY . /app
 
-RUN cp /app/skills/profiles/examples/docker.json /app/skills/profiles/docker.json \
-    && chmod +x /app/docker/entrypoint.sh /app/docker/services.sh
+RUN chmod +x /app/docker/entrypoint.sh /app/docker/services.sh
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
 CMD ["web"]

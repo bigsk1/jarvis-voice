@@ -65,6 +65,7 @@ tests/integration/logs/*
 # Tool profiles: only default.json + profiles/examples/* are tracked; other stems are local
 skills/profiles/*
 !skills/profiles/default.json
+!skills/profiles/docker.json
 !skills/profiles/examples/
 !skills/profiles/examples/**
 
@@ -96,6 +97,7 @@ data/backups
 data/.email_rate_limit
 data/.webhook_rate_limit
 data/.scheduled_task_notification_rate_limit
+data/.docker_tool_profile_synced
 data/canvas/*
 data/generated_videos/*
 data/generated_videos/.thumbnails/

@@ -20,13 +20,19 @@ fi
 
 echo "$mode" > logs/services_mode
 
+# Keep Docker PIDs separate from native logs/*.pid (host cron watchdog reads those).
+mkdir -p logs/docker
+PIDDIR="logs/docker"
+rm -f "${PIDDIR}"/*.pid
+
 pids=()
+stopping=0
 
 start_daemon() {
   local name="$1"
   local script="$2"
   local log_file="logs/${name}.log"
-  local pid_file="logs/${name}.pid"
+  local pid_file="${PIDDIR}/${name}.pid"
 
   echo "Starting ${name}..."
   python -u "$script" >> "$log_file" 2>&1 &
@@ -36,11 +42,16 @@ start_daemon() {
 }
 
 stop_all() {
+  if [ "$stopping" = "1" ]; then
+    return
+  fi
+  stopping=1
   echo "Stopping Jarvis background services..."
   for pid in "${pids[@]:-}"; do
     kill "$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
+  rm -f "${PIDDIR}"/*.pid
 }
 
 trap stop_all TERM INT EXIT

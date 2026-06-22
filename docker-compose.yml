@@ -2,6 +2,7 @@ x-jarvis-common: &jarvis-common
   build:
     context: .
   image: jarvis-voice:local
+  restart: unless-stopped
   user: "${JARVIS_DOCKER_UID:-1000}:${JARVIS_DOCKER_GID:-1000}"
   networks:
     - jarvis-net
@@ -12,10 +13,14 @@ x-jarvis-common: &jarvis-common
     UMASK: "002"
     JARVIS_DEPLOYMENT: docker
     JARVIS_MODE: "${JARVIS_MODE:-cloud}"
-    JARVIS_SYNC_MODES: "${JARVIS_SYNC_MODES:-cloud}"
+    # Optional override for init-time sync-tools only. Leave unset in .env to match JARVIS_MODE.
+    # Use "cloud local" (space-separated) to sync both DBs on first bring-up.
+    JARVIS_SYNC_MODES: "${JARVIS_SYNC_MODES:-}"
     JARVIS_VENV: /opt/venv
     VIRTUAL_ENV: /opt/venv
-    JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker
+    # Use "default" for hybrid native CLI/wake-word access, then block
+    # container-incompatible tools in Web UI Settings.
+    JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: "${JARVIS_DOCKER_TOOL_PROFILE:-docker}"
     JARVIS_OVERRIDE_JARVIS_API_INTERNAL_URL: "http://jarvis-api:8880"
     JARVIS_OVERRIDE_CANVAS_INTERNAL_URL: "http://jarvis-canvas:8890"
     JARVIS_OVERRIDE_JARVIS_API_AUTH: "${JARVIS_DOCKER_API_AUTH:-false}"
@@ -89,21 +94,21 @@ services:
     <<: *jarvis-common
     command: ["memory"]
     ports:
-      - "127.0.0.1:${JARVIS_MEMORY_PORT:-5002}:5002"
+      - "${JARVIS_MEMORY_PORT:-5002}:5002"
     profiles: ["extras"]
 
   jarvis-intelligence:
     <<: *jarvis-common
     command: ["intelligence"]
     ports:
-      - "127.0.0.1:${JARVIS_INTELLIGENCE_PORT:-5003}:5003"
+      - "${JARVIS_INTELLIGENCE_PORT:-5003}:5003"
     profiles: ["extras"]
 
   jarvis-docs:
     <<: *jarvis-common
     command: ["docs"]
     ports:
-      - "127.0.0.1:${JARVIS_DOCS_PORT:-5004}:5004"
+      - "${JARVIS_DOCS_PORT:-5004}:5004"
     profiles: ["extras"]
 
 networks:

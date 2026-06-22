@@ -297,16 +297,19 @@ echo ""
 # Export mode for Python
 export JARVIS_API_MODE="$MODE"
 
-# Run server and save PID
+# Run server and save PID (skip in Docker — API runs in its own container)
 cd "$PROJECT_ROOT/api"
 python3 server.py &
 SERVER_PID=$!
 
-# Save PID to file
-echo $SERVER_PID > "$PID_FILE"
+if [ "${JARVIS_DEPLOYMENT:-}" != "docker" ]; then
+    echo $SERVER_PID > "$PID_FILE"
+fi
 
 # Wait for server
 wait $SERVER_PID
 
 # Cleanup PID file on exit
-rm -f "$PID_FILE" 2>/dev/null
+if [ "${JARVIS_DEPLOYMENT:-}" != "docker" ]; then
+    rm -f "$PID_FILE" 2>/dev/null
+fi

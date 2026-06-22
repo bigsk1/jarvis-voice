@@ -1,5 +1,5 @@
 {
-  "description": "Template for skills/profiles/docker.json — Docker deployment profile. The tracked copy lives at skills/profiles/docker.json.",
+  "description": "Docker deployment profile — disables host-integrated tools (OpenCode, SSH, Docker socket control, MCP sidecars, phone, Spotify OAuth, printer, shell on host). Tune for your setup; re-enable MCP or docker_control only if you mount docker.sock. Applied automatically via JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE in docker-compose.yml.",
   "overrides": {
     "check_opencode_sessions": false,
     "docker_control": false,

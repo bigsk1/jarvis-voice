@@ -1,6 +1,6 @@
 [project]
 name = "jarvis-voice"
-version = "2.50.2"
+version = "2.51.0"
 description = "Self-hosted intelligent voice assistant"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,7 +9,8 @@ dependencies = [
     "xai-sdk>=1.12.2",
     "google-genai>=1.0.0",
     # API Server
-    "fastapi>=0.100.0",
+    # Cap <0.137 until prometheus-fastapi-instrumentator handles _IncludedRouter
+    "fastapi>=0.100.0,<0.137",
     "uvicorn[standard]>=0.23.0",
     "pydantic>=2.0.0",
     "prometheus-fastapi-instrumentator>=6.0.0",

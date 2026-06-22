@@ -676,8 +676,13 @@ After starting services, install the watchdog cron job. This ensures the
 self-healing daemon (which monitors all other background services) auto-restarts
 if it crashes unexpectedly.
 
+> **Running Jarvis in Docker?** Skip this cron entry (or comment it out if already installed).
+> Docker uses `restart: unless-stopped` on containers and separate PID files under
+> `logs/docker/`. The native watchdog reads `logs/self_healing_daemon.pid` and will
+> fight Docker by spawning duplicate host daemons. See [docs/docker/README.md](docker/README.md).
+
 ```bash
-# Add watchdog cron entry
+# Add watchdog cron entry (native tmux install only — not Docker)
 (crontab -l 2>/dev/null; echo "# Jarvis watchdog - restart self_healing_daemon if it crashes"; echo "*/5 * * * * \$HOME/jarvis-voice/bin/watchdog-services.sh >> \$HOME/jarvis-voice/logs/watchdog.log 2>&1") | crontab -
 ```
 
@@ -1089,7 +1094,7 @@ Once everything is working, verify:
 - [ ] OpenCode can create projects in ~/jarvis-workspace (if using OpenCode)
 - [ ] OpenCode plugins installed (~/.config/opencode/plugin/) (if using OpenCode)
 
-**Optional but recommended:**
+**Optional but recommended (native install only — skip if using Docker for the stack):**
 - [ ] Install watchdog cron (`bin/watchdog-services.sh`) for self-healing daemon
 - [ ] Set up cron job for daily database backups
 - [ ] Configure rsync to back up `$HOME` nightly
@@ -1200,8 +1205,8 @@ crontab -e
 
 # Add these lines:
 
-# Jarvis watchdog - restart self_healing_daemon if it crashes
-*/5 * * * * $HOME/jarvis-voice/bin/watchdog-services.sh >> $HOME/jarvis-voice/logs/watchdog.log 2>&1
+# Jarvis watchdog - restart self_healing_daemon if it crashes (native only — skip if using Docker)
+# */5 * * * * $HOME/jarvis-voice/bin/watchdog-services.sh >> $HOME/jarvis-voice/logs/watchdog.log 2>&1
 
 # Daily database backup at 2 AM
 0 2 * * * cp $HOME/jarvis-voice/data/jarvis_memory.db $HOME/jarvis-voice/data/backups/jarvis_memory-$(date +\%Y\%m\%d).db

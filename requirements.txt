@@ -8,7 +8,9 @@ xai-sdk>=1.12.2  # Video generation requires 1.6.0+
 google-genai>=1.0.0
 
 # API Server (Proactive Assistant)
-fastapi>=0.100.0
+# Cap <0.137 until prometheus-fastapi-instrumentator handles FastAPI _IncludedRouter
+# (https://github.com/trallnag/prometheus-fastapi-instrumentator/issues/370)
+fastapi>=0.100.0,<0.137
 uvicorn[standard]>=0.23.0
 pydantic>=2.0.0
 python-multipart>=0.0.22  # Required for form data uploads

@@ -21,6 +21,17 @@ LOGFILE="$PROJECT_ROOT/logs/self_healing_daemon.log"
 API_URL="http://localhost:8880/api/voice/announce"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
+# Background services run in Docker — shared logs/*.pid would false-trigger restarts.
+if docker ps \
+    --filter 'label=com.docker.compose.service=jarvis-services' \
+    --format '{{.ID}}' 2>/dev/null | grep -q .; then
+    exit 0
+fi
+
+# Docker is not running this service. Remove any sentinel PIDs left by an
+# unclean container/runtime shutdown before applying native watchdog logic.
+rm -f "$PROJECT_ROOT"/logs/docker/*.pid 2>/dev/null || true
+
 # No PID file = intentional stop, do nothing
 if [ ! -f "$PIDFILE" ]; then
     exit 0

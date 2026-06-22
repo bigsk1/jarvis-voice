@@ -501,7 +501,9 @@ def main():
     load_config()
     mode = 'local' if get_config_value('LLM_PROVIDER', 'anthropic') == 'ollama' else 'cloud'
     if get_config_value("JARVIS_DEPLOYMENT", "") == "docker":
-        MONITORED_DAEMONS.pop("jarvis_api", None)
+        # Docker runs daemons in a separate container namespace; shared logs/*.pid
+        # files collide with native installs and cause false crash/restart loops.
+        MONITORED_DAEMONS.clear()
     
     project_root = Path(__file__).parent.parent
     db = MemoryDB()

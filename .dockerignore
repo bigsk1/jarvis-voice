@@ -38,6 +38,7 @@ data/.webui_secret
 data/.email_rate_limit
 data/.webhook_rate_limit
 data/.scheduled_task_notification_rate_limit
+data/.docker_tool_profile_synced
 data/bookmarks.html
 jarvis-web/data/uploads/
 stash/
@@ -109,5 +110,6 @@ docs/samantha-skill/
 docs/api/code-examples/camera/
 skills/profiles/*
 !skills/profiles/default.json
+!skills/profiles/docker.json
 !skills/profiles/examples/
 !skills/profiles/examples/**

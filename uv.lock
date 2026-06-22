@@ -1163,7 +1163,7 @@ wheels = [
 
 [[package]]
 name = "jarvis-voice"
-version = "2.50.2"
+version = "2.51.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1244,7 +1244,7 @@ requires-dist = [
     { name = "ctranslate2", specifier = "==4.6.0" },
     { name = "docker", specifier = ">=7.0.0" },
     { name = "eventlet", specifier = ">=0.35.0" },
-    { name = "fastapi", specifier = ">=0.100.0" },
+    { name = "fastapi", specifier = ">=0.100.0,<0.137" },
     { name = "faster-whisper", specifier = "==1.2.0" },
     { name = "filelock", specifier = "==3.19.1" },
     { name = "flask", specifier = ">=3.0.0" },

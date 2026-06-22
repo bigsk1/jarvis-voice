@@ -8,7 +8,8 @@
 - **[JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md)** - 🆕 **Complete workflow guide with visual flowcharts** (START HERE!)
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
-- **[docker/README.md](docker/README.md)** - 🐳 **Docker deployment (design)** — Web UIs + API in containers, external Ollama/TTS, `docker` tool profile
+- **[docker/README.md](docker/README.md)** - 🐳 **Docker guide** — run Web UIs + API in containers (commands, `.env`, hybrid mode)
+- **[docker/DOCKER_PLANNING.md](docker/DOCKER_PLANNING.md)** - Docker design notes (networking, auth matrix, MCP, planning)
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` recommended default; also `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
@@ -320,8 +321,17 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-06-22:**
+- ✅ **Experimental Docker Web stack (v2.51.0)**
+  - Added root `Dockerfile` and `docker-compose.yml` for the Web UI, API, Canvas, Memory, Intelligence, Docs, and background services using the existing host `data/`, config, logs, and audio bind mounts.
+  - Added Docker service DNS/internal API routing with optional Bearer auth, a foreground daemon supervisor, Compose restart policies, crash-safe init locking, and native-watchdog separation.
+  - Added the tracked `skills/profiles/docker.json` baseline plus configurable `JARVIS_DOCKER_TOOL_PROFILE`; hybrid installs can use `default` Tool RAG while blocking container-incompatible tools only in Web UI Settings.
+  - Added in-container shell/CLI examples, Docker-specific environment guidance, LAN UI access notes, and separate planning/design documentation.
+  - Pinned FastAPI below `0.137` pending prometheus instrumentator compatibility and corrected the unavailable `fpdf2` dependency pin.
+  - See: [`docs/docker/README.md`](docker/README.md), [`docs/docker/DOCKER_PLANNING.md`](docker/DOCKER_PLANNING.md)
+
 **2026-05-21:**
-- ✅ **Cross-turn correction learning (v2.50.2)**
+- ✅ **Cross-turn correction learning (v2.51.0)**
   - `USER_CORRECTION_LEARNING_MODE=shadow|apply` — shadow records correction candidates without changing routing; apply downgrades the linked prior experience and can append deduped lessons to `jarvis-learned-lessons.md`.
   - Web UI and wake-word paths pass `experience_id` so turn-2 corrections can reach the prior turn's experience record.
   - Topic-pivot guard skips new questions that look like corrections without an explicit correction cue.
@@ -346,7 +356,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/XAI_PROVIDER.md`](XAI_PROVIDER.md)
 
 **2026-05-10:**
-- ✅ **OpenAI Responses API routing support (v2.50.2)**
+- ✅ **OpenAI Responses API routing support (v2.51.0)**
   - OpenAI tool-capable router turns can now use `/v1/responses` when `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true` are enabled.
   - Optional in-flight continuation supports `previous_response_id` + `function_call_output` for Jarvis client tool loops without making saved Web UI follow-ups depend on provider-side state.
   - Responses tools are converted through a dedicated adapter with non-strict function schemas, usage/cost parsing, cached-input/reasoning token reporting, diagnostics, and safe Chat Completions fallback boundaries.
@@ -1619,6 +1629,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-05-21
-**Latest:** Cross-turn correction learning, Profile Card injection, memory type auto-inject filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog entry
+**Last Updated:** 2026-06-22
+**Latest:** Experimental Docker Web stack, hybrid native/Docker tool-profile guidance, container daemon supervision, internal service routing/auth, and Docker operations documentation
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.
