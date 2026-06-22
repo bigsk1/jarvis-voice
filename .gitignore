@@ -62,10 +62,11 @@ logs/test/*.json
 tmp/
 tests/integration/logs
 tests/integration/logs/*
-# Tool profiles: only default.json + profiles/examples/* are tracked; other stems are local
+# Tool profiles: tracked baselines + profiles/examples/*; other stems are local
 skills/profiles/*
 !skills/profiles/default.json
 !skills/profiles/docker.json
+!skills/profiles/docker-mcp.json
 !skills/profiles/examples/
 !skills/profiles/examples/**
 

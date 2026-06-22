@@ -1,0 +1,13 @@
+services:
+  jarvis-web:
+    build:
+      context: .
+      target: mcp
+    image: jarvis-voice:mcp
+    environment:
+      JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker-mcp
+    group_add:
+      - "${JARVIS_DOCKER_SOCKET_GID:?Set JARVIS_DOCKER_SOCKET_GID to the group ID of /var/run/docker.sock}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config/mcp-servers.json:/app/config/mcp-servers.json:ro

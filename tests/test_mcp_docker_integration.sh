@@ -22,8 +22,8 @@ else
     echo "✅ BRAVE_API_KEY found in environment"
     
     # Test with test-mcp script
-    echo "   Testing with: ./bin/test-mcp --test brave-search brave_web_search"
-    OUTPUT=$(./bin/test-mcp --test brave-search brave_web_search '{"query": "test", "count": 1}' 2>&1)
+    echo "   Testing with: ./bin/test-mcp --test brave_search brave_web_search"
+    OUTPUT=$(./bin/test-mcp --test brave_search brave_web_search '{"query": "test", "count": 1}' 2>&1)
     
     if echo "$OUTPUT" | grep -q "OK:.*True"; then
         echo "✅ Brave Search API key successfully passed to Docker container"
@@ -78,4 +78,3 @@ echo "  • Environment variables load from cloud.env"
 echo "  • Substitution syntax (\${VAR}) works"
 echo "  • Variables pass through to Docker containers"
 echo "  • MCP servers receive API keys correctly"
-

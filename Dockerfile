@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS jarvis-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV JARVIS_VENV=/opt/venv
@@ -39,3 +39,14 @@ RUN chmod +x /app/docker/entrypoint.sh /app/docker/services.sh
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
 CMD ["web"]
+
+# Opt-in target for stdio MCP servers launched through the host Docker daemon.
+# Socket access is added only by docker-compose.mcp.yml at runtime.
+FROM jarvis-base AS mcp
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends docker-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+# Keep the ordinary, socket-free runtime as the default build target.
+FROM jarvis-base AS runtime

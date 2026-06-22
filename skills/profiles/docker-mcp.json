@@ -1,0 +1,15 @@
+{
+  "description": "Docker deployment with stdio MCP enabled through an explicitly mounted host Docker socket. Other host-integrated tools remain disabled.",
+  "overrides": {
+    "check_opencode_sessions": false,
+    "docker_control": false,
+    "execute_bash": false,
+    "network_tools": false,
+    "opencode": false,
+    "phone_call": false,
+    "printer": false,
+    "speaker_volume": false,
+    "spotify": false,
+    "ssh_remote": false
+  }
+}

@@ -122,6 +122,38 @@ This is a layered system:
 
 The `docker` profile remains the safer choice when all requests execute inside containers. The `default` plus Web UI blocklist approach is useful for hybrid operation, but direct API/tool execution outside Web UI does not receive that Web UI-only blocklist.
 
+### Optional Docker MCP tools
+
+Brave Search and Fetch in `config/mcp-servers.json` are stdio MCP servers launched with `docker run`. The normal Jarvis image intentionally has neither the Docker CLI nor access to the host daemon. Use the opt-in Compose override to enable them:
+
+```bash
+# Add the host Docker socket group to root .env (one time).
+printf 'JARVIS_DOCKER_SOCKET_GID=%s\n' \
+  "$(stat -c '%g' /var/run/docker.sock)" >> .env
+
+# Build and start with the MCP override.
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml build jarvis-web
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d
+
+# Confirm Docker access and MCP discovery from jarvis-web.
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml \
+  exec -T jarvis-web docker version
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml \
+  exec -T jarvis-web ./bin/test-mcp --discover
+```
+
+The override selects the tracked `docker-mcp` profile. It enables configured MCP tools while keeping `docker_control`, host shell, SSH, Spotify, printer, phone, and OpenCode disabled. The MCP config is mounted read-only, so server configuration changes do not require rebuilding the image; recreate `jarvis-web` after changing it.
+
+Remote MCP servers configured with `"type": "http"` or `"type": "sse"` do not need Docker socket access. Use a Compose service URL such as `http://my-mcp:PORT/mcp` for a server on `jarvis-net`, or `http://host.docker.internal:PORT/mcp` for a server running directly on the Docker host.
+
+`/var/run/docker.sock` is effectively root-level control of the Docker host. Use this only on a trusted single-user machine with MCP images you trust. The socket is mounted only into `jarvis-web`; the API, background daemons, and other UIs do not receive it. Ordinary `docker compose up` remains socket-free.
+
+To return to the standard image and profile:
+
+```bash
+docker compose up -d --build --force-recreate jarvis-web
+```
+
 ---
 
 ## Native install vs Docker

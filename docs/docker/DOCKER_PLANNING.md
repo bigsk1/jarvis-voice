@@ -328,11 +328,11 @@ Default MCP config launches **`docker run ... --network host`**, which assumes a
 | Approach | Pros | Cons |
 |----------|------|------|
 | **Disable MCP** (docker profile default) | Simple, secure | No Brave/fetch MCP tools |
-| **Mount `docker.sock`** | Works with existing `mcp-servers.json` | High privilege; DooD risk |
+| **Mount `docker.sock`** | Works with existing `mcp-servers.json`; implemented as the opt-in `docker-compose.mcp.yml` override | High privilege; DooD risk |
 | **MCP as sibling compose services** | Clean networking | Requires config changes (future) |
 | **MCP on host, Jarvis via `host.docker.internal`** | Split responsibility | Manual wiring |
 
-v1 recommendation: **disable MCP tools in the docker profile**; rely on provider-native search (xAI, etc.) and HTTP-based skills (`crawl_url`, SerpApi, …).
+The default remains to disable MCP tools in the `docker` profile. Trusted single-user hosts can opt in with `docker-compose.mcp.yml`, which gives only `jarvis-web` the Docker CLI and socket and selects the `docker-mcp` profile. Remote HTTP/SSE MCP servers do not need the socket; they only need a URL reachable from `jarvis-net` or `host.docker.internal`.
 
 ---
 
