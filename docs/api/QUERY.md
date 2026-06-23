@@ -11,6 +11,8 @@ The Query API lets you interact with Jarvis the same way you would via voice or 
 
 **Base URL:** `http://localhost:8880/api/query`
 
+**Image/Vision note:** `/api/query` does not accept raw image payload fields such as `image` or `images`. To analyze images through the FastAPI query server, put the image URL, file path, or stash reference in the natural-language `query` so Jarvis can call the `analyze_image` tool. The Web UI's drag/drop image uploads use separate WebSocket and `/api/upload-image(s)` routes, not this FastAPI endpoint.
+
 ---
 
 ## Quick Start
@@ -67,6 +69,8 @@ Full-featured query endpoint with all options.
 | `mode` | string | ❌ | "cloud" | LLM mode: "cloud" or "local" |
 | `session_id` | string | ❌ | - | Optional ID for tracking |
 | `context` | object | ❌ | - | Conversation history for multi-turn |
+
+Unknown JSON fields are not part of the query contract. Image bytes/base64 should not be sent here; use an image URL/file/stash ref in `query`, or use the Web UI upload flow.
 
 **Response:**
 ```json
@@ -373,6 +377,23 @@ curl -X POST http://localhost:8880/api/query \
     }
   }'
 ```
+
+---
+
+## Vision Examples
+
+Use `analyze_image` through natural language when calling the FastAPI query endpoint:
+
+```bash
+curl -X POST http://localhost:8880/api/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Compare these two images with analyze_image: https://example.com/before.png and https://example.com/after.png",
+    "mode": "cloud"
+  }'
+```
+
+The tool supports up to 6 images in cloud mode and 2 images in local mode. `/api/images` is only for uploading images to the Cloudflare CDN; it does not run vision analysis.
 
 ---
 

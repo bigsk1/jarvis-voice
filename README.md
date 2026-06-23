@@ -55,7 +55,7 @@ Profiles = different sets of tools and settings for different purposes. Example 
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export
   - **Completion Guard**: Manual `Completed correctly?` card plus auto-evaluator mode, one bounded repair pass, stop/cancel support for repair runs, follow-up tickets, workflow/fire-and-forget exclusions, exported metadata, and intelligence-layer corrected-path learning
-  - **Image upload**: Drag-drop/paste/click with vision analysis
+  - **Image upload**: Drag-drop/paste/click with multi-image vision analysis (up to 6 cloud / 2 local)
   - **Mode-aware TTS/STT**: Cloud vs Local providers
   - Dynamic LLM/model switching on-the-fly
   - Launch: `./bin/jarvis-web`
@@ -778,11 +778,12 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
   - Gemini: 4/6/8s, native audio, up to 4K resolution ($0.15/s)
   - Text-to-video and image-to-video modes (all providers)
   - Auto-saves to stash + memory for cross-session recall
-- `analyze_image` - **Vision analysis**: Analyze images from URLs, files, or stash refs
+- `analyze_image` - **Vision analysis**: Analyze one or more images from URLs, files, or stash refs
   - Cloud=Grok/Claude/GPT-4o, Local=llava
+  - Multi-image analysis and comparison: up to 6 images in cloud mode, 2 in local mode
   - SSRF protection (blocks private IPs), path traversal protection
   - Auto-stashes analyzed images + creates memory_db entry
-  - Example: "Analyze this image https://example.com/chart.png"
+  - Example: "Compare these images https://example.com/a.png and https://example.com/b.png"
 - `stash` - **Artifact storage**: download URLs, store files/images/JSON for multi-step workflows
   - Central workshop for temporary files (7-day TTL)
   - `stash://` references work across tools (printer, email, pdf_create, analyze_image)
@@ -1665,13 +1666,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - **✨ Enhance with AI**: Magic button transforms rough input into optimal prompts
   - **Conversation search**: Quick filter + deep search across all messages
   - **Export/Import**: Download as JSON/Markdown, restore from JSON
-  - **Image upload**: Drag-drop/paste/click with vision analysis
+  - **Image upload**: Drag-drop/paste/click with multi-image vision analysis
   - Real-time WebSocket chat with tool streaming
   - See: [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md)
 - ✅ **AI Image Generation & Editing (Gemini/OpenAI/xAI)** - Multi-provider image generation ⭐ ENHANCED
   - **3 providers**: Gemini (grounding), OpenAI (best text), xAI (fast & cheap!)
   - **Image-to-image editing**: Upload image → describe changes → edited image (all 3 providers)
-  - **Image Action Modal**: Upload image → choose Analyze, Image-to-Image, or Image-to-Video
+  - **Image Action Modal**: Upload images → choose Analyze (multi-image), Image-to-Image, or Image-to-Video
   - **xAI Grok Imagine**: $0.02/image, batch generation `n=1-10` for variations
   - "Generate a bitcoin infographic with current price" → Gemini creates with real data
   - Aspect ratios (1:1, 16:9, 9:16, 3:4, etc.), styles, negative prompts

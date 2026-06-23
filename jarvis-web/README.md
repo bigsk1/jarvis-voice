@@ -26,7 +26,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Audio Toggle** - Enable/disable voice responses with pause/resume/stop on playback
 
 ### 🖼️ Vision & Images
-- **Image Upload** - Attach images for LLM vision analysis
+- **Image Upload** - Attach one or more images for LLM vision analysis
 - **Smart Resize** - Auto-optimizes uploaded images (max 1024px)
 - **Image Generation** - Tool-backed generation with provider selection in Settings (**OpenAI**, **Google Gemini**, **xAI**) — not tied to one vendor
 - **Music generation** - `generate_music` (e.g. ElevenLabs music) plays inline when returned as audio
@@ -170,7 +170,8 @@ Workflow definitions live at repo root: ../data/workflows/*.json (not under jarv
 |----------|--------|-------------|
 | `/api/stt` | POST | Speech-to-text (upload audio) |
 | `/api/tts` | POST | Text-to-speech (get audio) |
-| `/api/upload-image` | POST | Upload image for vision |
+| `/api/upload-image` | POST | Upload one image for Web UI vision staging |
+| `/api/upload-images` | POST | Upload multiple images for Web UI vision staging |
 | `/api/images/:filename` | GET | Serve stored generated images |
 | `/api/uploads/:filename` | GET | Serve uploaded images |
 | `/api/music/:filename` | GET | Serve generated music assets |

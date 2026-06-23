@@ -204,6 +204,7 @@ class JarvisApp {
     this.modeSelect.addEventListener('change', async (e) => {
       const newMode = e.target.value;
       this.socket.setMode(newMode);
+      window.chatUI?._handleImageAttachmentsForMode?.(newMode, { toast: false });
       // Suggest refresh for clean state (embeddings, caches, etc. are mode-specific)
       Utils.toast(`Switched to ${newMode} mode. Refresh page for cleanest state.`, 'info', 5000);
       
@@ -2458,8 +2459,9 @@ class JarvisApp {
     for (const msg of conversation.messages || []) {
       if (msg.role === 'user') {
         // Check if user message had an attached image
-        const imageData = msg.data && msg.data.image_url 
-          ? { url: msg.data.image_url } 
+        const imageUrls = msg.data?.image_urls || (msg.data?.image_url ? [msg.data.image_url] : []);
+        const imageData = imageUrls.length
+          ? { images: imageUrls.map((url) => ({ url })) }
           : null;
         this.chat.addUserMessage(msg.content, imageData);
       } else if (msg.role === 'assistant') {
@@ -2630,6 +2632,7 @@ class JarvisApp {
         if (newMode !== this.socket.mode) {
           this.socket.setMode(newMode);
           this.modeSelect.value = newMode;
+          window.chatUI?._handleImageAttachmentsForMode?.(newMode, { toast: false });
         }
         
         // Update audio setting

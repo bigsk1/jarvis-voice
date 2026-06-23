@@ -110,11 +110,16 @@ def _sanitize_error_for_speech(error) -> str:
 
 
 WEB_UPLOAD_VISION_ANALYSIS_PREFIX = "[User uploaded an image. Vision analysis:"
+WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX = "[User uploaded multiple images"
 
 
 def _request_has_web_vision_analysis(text: str) -> bool:
     """Detect web UI upload flow where pre-vision text is already in the prompt."""
-    return WEB_UPLOAD_VISION_ANALYSIS_PREFIX in (text or "")
+    haystack = text or ""
+    return (
+        WEB_UPLOAD_VISION_ANALYSIS_PREFIX in haystack
+        or WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX in haystack
+    )
 
 
 def _server_side_tool_call_count(server_side_tools: dict | None) -> int:

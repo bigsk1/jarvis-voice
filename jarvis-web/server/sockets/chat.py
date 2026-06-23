@@ -1780,7 +1780,7 @@ Previous structured data:
             conversation_id = data.get('conversation_id')
             
             # Image data (with optional action routing and settings)
-            image_data = data.get('image')  # {base64, url, filename, action?, settings?}
+            image_data = data.get('image')  # {images: [...], action?, settings?} or legacy single shape
             
             # Text file context (read client-side, no server upload needed)
             file_context = data.get('file_context')  # {name, content, size}
@@ -1798,7 +1798,10 @@ Previous structured data:
                 'tool_hints': self._sanitize_tool_hints(data.get('tool_hints'))
             }
             
-            if not message and not image_data and not file_context:
+            from vision_multimodal import max_vision_images, normalize_web_image_payload
+            normalized_image = normalize_web_image_payload(image_data)
+
+            if not message and not normalized_image and not file_context:
                 emit('chat:error', {
                     'error': 'Empty message',
                     'conversation_id': conversation_id
@@ -1806,12 +1809,40 @@ Previous structured data:
                 return
             
             # Default message for image-only
-            if not message and image_data:
-                message = "What's in this image?"
+            if not message and normalized_image:
+                image_count = len(normalized_image.get('images', []))
+                message = "What's in these images?" if image_count > 1 else "What's in this image?"
             
             # Default message for file-only
             if not message and file_context:
                 message = "Summarize this file."
+
+            image_limit = max_vision_images(mode)
+            if normalized_image:
+                image_action = normalized_image.get('action', 'analyze')
+                image_count = len(normalized_image.get('images', []))
+                if image_action in ('video', 'image') and image_count > 1:
+                    normalized_image['images'] = normalized_image['images'][:1]
+                    emit('chat:status', {
+                        'conversation_id': conversation_id,
+                        'status': 'Video/Image mode uses one reference image; extra images ignored.',
+                        'timestamp': time.time()
+                    })
+                elif image_action == 'analyze' and image_count > image_limit:
+                    emit('chat:error', {
+                        'error': f'Maximum {image_limit} images allowed in {mode} mode',
+                        'conversation_id': conversation_id
+                    })
+                    return
+                if image_action == 'analyze':
+                    hydrate_error = self._hydrate_uploaded_image_payload(normalized_image)
+                    if hydrate_error:
+                        emit('chat:error', {
+                            'error': hydrate_error,
+                            'conversation_id': conversation_id
+                        })
+                        return
+                image_data = normalized_image
             
             # Create or get conversation
             from ..services.conversation_store import get_conversation_store
@@ -1829,10 +1860,15 @@ Previous structured data:
 
             self._supersede_pending_completion_guards(session_id, conversation_id)
             
-            # Save user message (include image URL, file info, and prompt info if present)
+            # Save user message (include image URL(s), file info, and prompt info if present)
             user_msg_data = {}
             if image_data:
-                user_msg_data['image_url'] = image_data.get('url')
+                image_urls = [img.get('url') for img in image_data.get('images', []) if img.get('url')]
+                if image_urls:
+                    user_msg_data['image_urls'] = image_urls
+                    user_msg_data['image_url'] = image_urls[0]
+                if image_data.get('action'):
+                    user_msg_data['image_action'] = image_data.get('action')
             if file_context:
                 user_msg_data['attached_file'] = file_context.get('name')
             if prompt_meta.get('prompt_name'):
@@ -2738,11 +2774,18 @@ Previous structured data:
 
             # Debug image data
             if image_data:
+                image_list = image_data.get('images', [])
                 print(f"[CHAT] Image data keys: {image_data.keys() if isinstance(image_data, dict) else 'not a dict'}")
-                print(f"[CHAT] Image base64 length: {len(image_data.get('base64', '')) if isinstance(image_data, dict) else 'N/A'}")
+                print(f"[CHAT] Image count: {len(image_list)}")
+                if image_list:
+                    print(f"[CHAT] First image base64 length: {len(image_list[0].get('base64', ''))}")
             # Import and create orchestrator
             print("[CHAT] Importing orchestrator...")
-            from orchestrator_v2 import Orchestrator, WEB_UPLOAD_VISION_ANALYSIS_PREFIX
+            from orchestrator_v2 import (
+                Orchestrator,
+                WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX,
+                WEB_UPLOAD_VISION_ANALYSIS_PREFIX,
+            )
             
             # Get LLM overrides from web config (per-mode)
             from ..config import get_web_setting, load_web_config
@@ -2839,10 +2882,19 @@ Previous structured data:
             stash_info = None
             tool_overrides = {}  # Forced param overrides that bypass LLM decisions
             
-            if image_data and image_data.get('base64'):
+            if image_data and image_data.get('images'):
                 image_action = image_data.get('action', 'analyze')
                 image_settings = image_data.get('settings', {})
-                print(f"[CHAT] Image action: {image_action}, settings: {image_settings}")
+                image_items = image_data.get('images', [])
+                primary_image = image_items[0]
+                primary_payload = {
+                    'base64': primary_image.get('base64'),
+                    'url': primary_image.get('url'),
+                    'filename': primary_image.get('filename'),
+                    'action': image_action,
+                    'settings': image_settings,
+                }
+                print(f"[CHAT] Image action: {image_action}, count: {len(image_items)}, settings: {image_settings}")
                 
                 if image_action == 'video':
                     # IMAGE TO VIDEO: Skip vision, stash image, force params via overrides
@@ -2854,7 +2906,7 @@ Previous structured data:
                         'timestamp': time.time()
                     }, room=delivery_room)
                     
-                    stash_info = self._auto_stash_image(image_data, '', mode)
+                    stash_info = self._auto_stash_image(primary_payload, '', mode)
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
                     
                     if stash_ref:
@@ -2900,7 +2952,7 @@ Previous structured data:
                         'timestamp': time.time()
                     }, room=delivery_room)
                     
-                    stash_info = self._auto_stash_image(image_data, '', mode)
+                    stash_info = self._auto_stash_image(primary_payload, '', mode)
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
                     
                     if stash_ref:
@@ -2949,40 +3001,77 @@ Previous structured data:
                     print(f"[CHAT] Image-to-image editing - forced overrides: {img_overrides}")
                     
                 else:
-                    # ANALYZE (default): Current vision analysis flow
-                    print(f"[CHAT] Processing image with vision model...")
+                    # ANALYZE (default): Vision analysis flow (supports multiple images)
+                    image_count = len(image_items)
+                    status_label = f'Analyzing {image_count} images...' if image_count > 1 else 'Analyzing image...'
+                    print(f"[CHAT] Processing {image_count} image(s) with vision model...")
                     self.socketio.emit('chat:status', {
                         'message_id': message_id,
                         'conversation_id': conversation_id,
-                        'status': 'Analyzing image...',
+                        'status': status_label,
                         'timestamp': time.time()
                     }, room=delivery_room)
                     
+                    images_base64 = [img['base64'] for img in image_items if img.get('base64')]
                     vision_result = self._process_vision(
-                        image_data['base64'], 
+                        images_base64,
                         message, 
                         mode
                     )
                     
                     if vision_result:
-                        # Auto-stash the uploaded image for future tool access
-                        stash_info = self._auto_stash_image(
-                            image_data, 
-                            vision_result, 
-                            mode
-                        )
-                        if stash_info:
-                            print(f"[CHAT] Auto-stashed image: {stash_info.get('stash_ref')}")
+                        stash_refs = []
+                        uploaded_images = []
+                        batch_total = len(image_items)
+                        batch_id = None
+                        if batch_total > 1:
+                            batch_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+                        for index, img in enumerate(image_items, start=1):
+                            stash_payload = {
+                                'base64': img.get('base64'),
+                                'url': img.get('url'),
+                                'filename': img.get('filename'),
+                                'action': image_action,
+                                'settings': image_settings,
+                            }
+                            if batch_id:
+                                stash_payload.update({
+                                    'batch_id': batch_id,
+                                    'batch_index': index,
+                                    'batch_total': batch_total,
+                                    'vision_analysis_scope': 'batch',
+                                })
+                            stashed = self._auto_stash_image(
+                                stash_payload,
+                                vision_result,
+                                mode
+                            )
+                            if stashed and stashed.get('stash_ref'):
+                                stashed_image = dict(stashed)
+                                stashed_image['ordinal'] = len(uploaded_images) + 1
+                                if img.get('filename'):
+                                    stashed_image['source_filename'] = img.get('filename')
+                                uploaded_images.append(stashed_image)
+                                stash_refs.append(stashed_image.get('stash_ref'))
+                                print(f"[CHAT] Auto-stashed image: {stashed.get('stash_ref')}")
+                        if uploaded_images:
+                            stash_info = dict(uploaded_images[0])
+                            stash_info['uploaded_images'] = uploaded_images
+                            if len(stash_refs) > 1:
+                                stash_info['stash_refs'] = stash_refs
                         
-                        # Prepend vision analysis to message for orchestrator
                         stash_note = ""
-                        if stash_info:
-                            stash_note = f" Image stashed at: {stash_info.get('stash_ref')}"
+                        if stash_refs:
+                            if len(stash_refs) == 1:
+                                stash_note = f" Image stashed at: {stash_refs[0]}"
+                            else:
+                                joined = ', '.join(stash_refs)
+                                stash_note = f" Images stashed at: {joined}"
                         
-                        message = (
-                            f"{WEB_UPLOAD_VISION_ANALYSIS_PREFIX} {vision_result}]"
-                            f"{stash_note}\n\nUser's message: {message}"
-                        )
+                        vision_prefix = WEB_UPLOAD_VISION_ANALYSIS_PREFIX
+                        if image_count > 1:
+                            vision_prefix = f"{WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX} ({image_count}). Vision analysis:"
+                        message = f"{vision_prefix} {vision_result}]{stash_note}\n\nUser's message: {message}"
                         print(f"[CHAT] Image analyzed - passing to orchestrator with vision context")
             
             # Create orchestrator instance with overrides
@@ -3974,11 +4063,10 @@ Mode: {mode}
         
         try:
             # Get the uploaded image path
-            image_url = image_data.get('url', '')
-            image_filename = image_data.get('filename', '')
-            
-            if not image_url or not image_filename:
-                print("[STASH] No image URL/filename to stash")
+            image_filename = self._filename_from_upload_image(image_data)
+
+            if not image_filename:
+                print("[STASH] No image filename to stash")
                 return None
             
             # Find the uploaded image file
@@ -3995,9 +4083,22 @@ Mode: {mode}
             # Create stash space for web uploads
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             has_vision = bool(vision_analysis)
+            batch_id = str(image_data.get('batch_id') or '').strip()
+            batch_index = image_data.get('batch_index')
+            batch_total = image_data.get('batch_total')
+            try:
+                batch_index = int(batch_index) if batch_index is not None else None
+                batch_total = int(batch_total) if batch_total is not None else None
+            except (TypeError, ValueError):
+                batch_index = None
+                batch_total = None
+            is_multi_image_batch = bool(batch_id and batch_index and batch_total and batch_total > 1)
+            batch_tags = self._stash_image_batch_tags(batch_id, batch_index, batch_total) if is_multi_image_batch else []
+            vision_scope = 'batch' if is_multi_image_batch else 'image'
             space_labels = ['web_upload', 'image']
             if has_vision:
                 space_labels.append('vision_analyzed')
+            space_labels.extend(batch_tags)
             space, is_new = open_space(
                 labels=space_labels,
                 scope='session',
@@ -4018,6 +4119,10 @@ Mode: {mode}
                 file_hash = hashlib.sha256(f.read()).hexdigest()
             
             file_id = f"f_{file_hash[:12]}"
+            file_tags = ['user_upload']
+            if has_vision:
+                file_tags.append('vision_analyzed')
+            file_tags.extend(batch_tags)
             file_meta = {
                 'file_id': file_id,
                 'name': dest_filename,
@@ -4025,11 +4130,19 @@ Mode: {mode}
                 'mime_type': 'image/jpeg',
                 'size_bytes': file_size,
                 'hash_sha256': file_hash,
-                'tags': ['user_upload', 'vision_analyzed'] if has_vision else ['user_upload'],
+                'tags': file_tags,
                 'tool_origin': 'web_upload',
                 'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z',
-                'vision_analysis': vision_analysis[:500] if has_vision else ''
+                'vision_analysis': vision_analysis[:500] if has_vision else '',
+                'vision_analysis_scope': vision_scope,
             }
+            if is_multi_image_batch:
+                file_meta.update({
+                    'batch_id': batch_id,
+                    'batch_index': batch_index,
+                    'batch_total': batch_total,
+                    'batch_label': f'image_{batch_index}_of_{batch_total}',
+                })
             
             # Update space meta
             space.meta.setdefault('files', []).append(file_meta)
@@ -4047,7 +4160,13 @@ Mode: {mode}
                 # Build memory value based on whether vision was performed
                 if has_vision:
                     short_analysis = vision_analysis[:200] + "..." if len(vision_analysis) > 200 else vision_analysis
-                    memory_value = f"Uploaded image: {short_analysis}. STASH: {stash_ref}. FILE: {dest_filename}"
+                    if is_multi_image_batch:
+                        memory_value = (
+                            f"Uploaded image {batch_index} of {batch_total} from multi-image batch {batch_id}: "
+                            f"{short_analysis}. STASH: {stash_ref}. FILE: {dest_filename}"
+                        )
+                    else:
+                        memory_value = f"Uploaded image: {short_analysis}. STASH: {stash_ref}. FILE: {dest_filename}"
                 else:
                     image_action = image_data.get('action', 'upload')
                     memory_value = f"Uploaded image for {image_action}. STASH: {stash_ref}. FILE: {dest_filename}"
@@ -4055,6 +4174,23 @@ Mode: {mode}
                 memory_tags = ["image", "user_upload"]
                 if has_vision:
                     memory_tags.append("vision_analyzed")
+                memory_tags.extend(batch_tags)
+                memory_metadata = {
+                    "stash_ref": stash_ref,
+                    "space_id": space.space_id,
+                    "file_id": file_id,
+                    "filename": dest_filename,
+                    "tags": memory_tags,
+                    "type": "image",
+                    "vision_analysis_scope": vision_scope,
+                }
+                if is_multi_image_batch:
+                    memory_metadata.update({
+                        "batch_id": batch_id,
+                        "batch_index": batch_index,
+                        "batch_total": batch_total,
+                        "batch_label": f"image_{batch_index}_of_{batch_total}",
+                    })
                 
                 db.remember(
                     key=memory_key,
@@ -4062,20 +4198,13 @@ Mode: {mode}
                     category="stash_artifact",
                     importance=6,  # Same as generate_image
                     source="web_upload",
-                    metadata={
-                        "stash_ref": stash_ref,
-                        "space_id": space.space_id,
-                        "file_id": file_id,
-                        "filename": dest_filename,
-                        "tags": memory_tags,
-                        "type": "image"
-                    }
+                    metadata=memory_metadata
                 )
                 print(f"[STASH] Added to memory_db: {memory_key}")
             except Exception as mem_err:
                 print(f"[STASH] Memory save failed (non-fatal): {mem_err}")
             
-            return {
+            result = {
                 'space_id': space.space_id,
                 'file_id': file_id,
                 'stash_ref': stash_ref,
@@ -4085,40 +4214,126 @@ Mode: {mode}
                 'action': image_data.get('action', 'upload'),
                 'tool_origin': 'web_upload',
                 'has_vision_analysis': has_vision,
-                'vision_analysis': vision_analysis[:500] if has_vision else ''
+                'vision_analysis': vision_analysis[:500] if has_vision else '',
+                'vision_analysis_scope': vision_scope,
             }
-            
+            if is_multi_image_batch:
+                result.update({
+                    'batch_id': batch_id,
+                    'batch_index': batch_index,
+                    'batch_total': batch_total,
+                    'batch_label': f'image_{batch_index}_of_{batch_total}',
+                })
+            return result
+
         except Exception as e:
             print(f"[STASH] Auto-stash failed: {e}")
             import traceback
             traceback.print_exc()
             return None
 
-    def _process_vision(self, image_base64: str, prompt: str, mode: str) -> str:
+    @staticmethod
+    def _stash_image_batch_tags(batch_id: str, batch_index: int, batch_total: int) -> list[str]:
+        """Return searchable tags/labels for one image in a multi-image upload batch."""
+        safe_batch_id = re.sub(r'[^A-Za-z0-9_]+', '_', str(batch_id or '').strip()).strip('_')
+        tags = [
+            'multi_image_upload',
+            'batch_vision_analysis',
+            f'image_{batch_index}_of_{batch_total}',
+            f'image_index_{batch_index}',
+            f'image_total_{batch_total}',
+        ]
+        if safe_batch_id:
+            tags.append(f'upload_batch_{safe_batch_id}')
+        ordinal_words = {
+            1: 'first',
+            2: 'second',
+            3: 'third',
+            4: 'fourth',
+            5: 'fifth',
+            6: 'sixth',
+        }
+        ordinal = ordinal_words.get(batch_index)
+        if ordinal:
+            tags.append(f'{ordinal}_image')
+        return tags
+
+    def _filename_from_upload_image(self, image: dict) -> str | None:
+        """Extract a server-generated upload filename from socket image metadata."""
+        filename = (image.get('filename') or '').strip()
+        if not filename:
+            image_url = (image.get('url') or '').strip()
+            parsed_path = urlparse(image_url).path
+            if parsed_path.startswith('/api/uploads/'):
+                filename = parsed_path.rsplit('/', 1)[-1]
+
+        if not filename or filename != Path(filename).name:
+            return None
+        return filename
+
+    def _hydrate_uploaded_image_payload(self, image_data: dict) -> str | None:
+        """Load base64 for uploaded web images from disk before vision analysis."""
+        import base64
+
+        uploads_root = (JARVIS_ROOT / 'jarvis-web' / 'data' / 'uploads').resolve()
+        hydrated_images = []
+
+        for index, image in enumerate(image_data.get('images', [])):
+            hydrated = dict(image)
+            if hydrated.get('base64'):
+                hydrated_images.append(hydrated)
+                continue
+
+            filename = self._filename_from_upload_image(hydrated)
+            if not filename:
+                return f'Image {index + 1} is missing upload metadata'
+
+            upload_path = (uploads_root / filename).resolve()
+            if not upload_path.is_relative_to(uploads_root) or not upload_path.exists():
+                return f'Uploaded image not found: {filename}'
+
+            try:
+                hydrated['filename'] = filename
+                hydrated['url'] = hydrated.get('url') or f'/api/uploads/{filename}'
+                hydrated['base64'] = base64.b64encode(upload_path.read_bytes()).decode('utf-8')
+            except Exception as exc:
+                print(f"[VISION] Failed to load uploaded image {filename}: {exc}")
+                return f'Could not load uploaded image: {filename}'
+
+            hydrated_images.append(hydrated)
+
+        image_data['images'] = hydrated_images
+        return None
+
+    def _process_vision(self, images_base64: list[str], prompt: str, mode: str) -> str:
         """
-        Process an image with a vision model.
+        Process one or more images with a vision model.
         Returns the vision model's description/analysis.
         """
         from ..config import load_jarvis_config
+
+        if not images_base64:
+            return None
         
         # Load mode-specific config
         load_jarvis_config(mode)
         
         try:
             if mode == 'local':
-                return self._vision_ollama(image_base64, prompt)
+                return self._vision_ollama(images_base64, prompt)
             else:
-                return self._vision_cloud(image_base64, prompt, mode)
+                return self._vision_cloud(images_base64, prompt, mode)
         except Exception as e:
             print(f"[VISION] Error: {e}")
             import traceback
             traceback.print_exc()
             return None
     
-    def _vision_ollama(self, image_base64: str, prompt: str) -> str:
+    def _vision_ollama(self, images_base64: list[str], prompt: str) -> str:
         """Use Ollama vision model (llava, llama3.2-vision, etc.)"""
         from ..config import get_jarvis_setting
         from ollama_utils import get_ollama_base_urls, get_primary_ollama_base_url, request_ollama
+        from vision_multimodal import build_ollama_prompt
         
         try:
             base_url = get_primary_ollama_base_url()
@@ -4126,12 +4341,12 @@ Mode: {mode}
             vision_model = get_jarvis_setting('OLLAMA_VISION_MODEL', 'llava:latest')
             
             print(f"[VISION] Using Ollama: {vision_model} at {base_url}")
-            print(f"[VISION] Image base64 length: {len(image_base64)}")
+            print(f"[VISION] Image count: {len(images_base64)}")
             
             payload = {
                 "model": vision_model,
-                "prompt": prompt,
-                "images": [image_base64],
+                "prompt": build_ollama_prompt(prompt, len(images_base64)),
+                "images": images_base64,
                 "stream": False
             }
             
@@ -4160,29 +4375,30 @@ Mode: {mode}
             traceback.print_exc()
             return None
     
-    def _vision_cloud(self, image_base64: str, prompt: str, mode: str) -> str:
+    def _vision_cloud(self, images_base64: list[str], prompt: str, mode: str) -> str:
         """Use cloud provider's vision model (Anthropic, xAI, OpenAI)"""
         from ..config import get_jarvis_setting
         
         provider = get_jarvis_setting('LLM_PROVIDER', 'xai')
         vision_model = get_jarvis_setting('VISION_MODEL', '')  # Empty = use main model
         
-        print(f"[VISION] Using cloud provider: {provider}")
+        print(f"[VISION] Using cloud provider: {provider}, image count: {len(images_base64)}")
         
         if provider == 'anthropic':
-            return self._vision_anthropic(image_base64, prompt, vision_model)
+            return self._vision_anthropic(images_base64, prompt, vision_model)
         elif provider == 'xai':
-            return self._vision_xai(image_base64, prompt, vision_model)
+            return self._vision_xai(images_base64, prompt, vision_model)
         elif provider == 'openai':
-            return self._vision_openai(image_base64, prompt, vision_model)
+            return self._vision_openai(images_base64, prompt, vision_model)
         else:
             print(f"[VISION] Unknown provider: {provider}, trying xAI format")
-            return self._vision_xai(image_base64, prompt, vision_model)
+            return self._vision_xai(images_base64, prompt, vision_model)
     
-    def _vision_anthropic(self, image_base64: str, prompt: str, model: str = None) -> str:
+    def _vision_anthropic(self, images_base64: list[str], prompt: str, model: str = None) -> str:
         """Use Anthropic Claude for vision. No detail parameter - Claude API does not support high/low."""
         import requests
         from ..config import get_jarvis_setting
+        from vision_multimodal import build_anthropic_content
         
         api_key = get_jarvis_setting('ANTHROPIC_API_KEY', '')
         if not api_key:
@@ -4202,20 +4418,7 @@ Mode: {mode}
             "max_tokens": 1024,
             "messages": [{
                 "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": image_base64
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
+                "content": build_anthropic_content(images_base64, prompt)
             }]
         }
         
@@ -4239,10 +4442,11 @@ Mode: {mode}
             print(f"[VISION] Anthropic error: {response.status_code} - {response.text[:200]}")
         return None
     
-    def _vision_xai(self, image_base64: str, prompt: str, model: str = None) -> str:
+    def _vision_xai(self, images_base64: list[str], prompt: str, model: str = None) -> str:
         """Use xAI Grok for vision (grok-4.3 or newer)"""
         import requests
         from ..config import get_jarvis_setting
+        from vision_multimodal import build_openai_style_content
         
         api_key = get_jarvis_setting('XAI_API_KEY', '')
         if not api_key:
@@ -4261,19 +4465,7 @@ Mode: {mode}
             "model": model,
             "messages": [{
                 "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}",
-                            "detail": detail
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
+                "content": build_openai_style_content(images_base64, prompt, detail)
             }],
             "max_tokens": 2048
         }
@@ -4297,10 +4489,11 @@ Mode: {mode}
             print(f"[VISION] xAI error: {response.status_code} - {response.text[:500]}")
         return None
     
-    def _vision_openai(self, image_base64: str, prompt: str, model: str = None) -> str:
+    def _vision_openai(self, images_base64: list[str], prompt: str, model: str = None) -> str:
         """Use OpenAI multimodal models for vision."""
         import requests
         from ..config import get_jarvis_setting
+        from vision_multimodal import build_openai_style_content
         
         api_key = get_jarvis_setting('OPENAI_API_KEY', '')
         if not api_key:
@@ -4329,19 +4522,7 @@ Mode: {mode}
             "model": model,
             "messages": [{
                 "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}",
-                            "detail": detail
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
+                "content": build_openai_style_content(images_base64, prompt, detail)
             }]
         }
         if self._openai_model_uses_max_completion_tokens(model):
@@ -4383,19 +4564,13 @@ Mode: {mode}
     @staticmethod
     def _openai_model_supports_original_detail(model: str | None) -> bool:
         """OpenAI original-detail image inputs are only documented for full GPT-5.4+ models."""
-        lowered = str(model or '').strip().lower()
-        if any(marker in lowered for marker in ('mini', 'nano', 'codex')):
-            return False
-        return lowered.startswith(('gpt-5.4', 'gpt-5.5'))
+        from vision_multimodal import openai_model_supports_original_detail
+
+        return openai_model_supports_original_detail(model)
 
     @classmethod
     def _openai_vision_detail(cls, model: str | None, configured_detail: str | None) -> str:
         """Return an OpenAI-supported image detail value for the selected model."""
-        detail = str(configured_detail or 'high').strip().lower()
-        if detail in ('low', 'high', 'auto'):
-            return detail
-        if detail == 'original' and cls._openai_model_supports_original_detail(model):
-            return detail
-        if detail == 'original':
-            print(f"[VISION] OpenAI model {model} does not support VISION_DETAIL=original; using high")
-        return 'high'
+        from vision_multimodal import openai_vision_detail
+
+        return openai_vision_detail(model, configured_detail, log_fn=lambda msg: print(f"[VISION] {msg}"))

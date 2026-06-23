@@ -28,6 +28,7 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 # Ensure shared lib helpers are importable in this module
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from model_catalog import get_provider_fallback_model
+from vision_multimodal import max_vision_images
 
 
 def _get_jarvis_version():
@@ -1730,43 +1731,61 @@ def upload_to_stash():
 # =============================================================================
 
 UPLOADS_PATH = JARVIS_ROOT / 'jarvis-web' / 'data' / 'uploads'
+UPLOAD_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+UPLOAD_MAX_FILE_BYTES = 10 * 1024 * 1024
 
-@api_bp.route('/upload-image', methods=['POST'])
-def upload_image():
+
+def _uploaded_file_size_bytes(file) -> int | None:
+    """Return upload size without consuming the stream when possible."""
+    content_length = getattr(file, 'content_length', None)
+    if content_length:
+        return content_length
+
+    stream = getattr(file, 'stream', None)
+    if not stream or not hasattr(stream, 'tell') or not hasattr(stream, 'seek'):
+        return None
+
+    try:
+        position = stream.tell()
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+        stream.seek(position)
+        return size
+    except Exception:
+        return None
+
+
+def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = True) -> dict:
     """
-    Upload an image for vision analysis.
+    Process one uploaded image file for vision analysis.
     Resizes large images and stores for conversation history.
-    Returns URL and base64 for immediate use.
+    Returns {ok, filename, url, base64, ...} or {ok: False, error}.
     """
-    import base64
     from datetime import datetime
     from PIL import Image, ImageOps
     import io
     
-    if 'image' not in request.files:
-        return jsonify({'ok': False, 'error': 'No image file provided'}), 400
+    if not file or file.filename == '':
+        return {'ok': False, 'error': 'No file selected'}
     
-    file = request.files['image']
-    if file.filename == '':
-        return jsonify({'ok': False, 'error': 'No file selected'}), 400
-    
-    # Check file type
-    allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-    if ext not in allowed_extensions:
-        return jsonify({'ok': False, 'error': f'Invalid file type. Allowed: {", ".join(allowed_extensions)}'}), 400
-    
+    if ext not in UPLOAD_ALLOWED_EXTENSIONS:
+        return {
+            'ok': False,
+            'error': f'Invalid file type. Allowed: {", ".join(sorted(UPLOAD_ALLOWED_EXTENSIONS))}',
+        }
+
+    upload_size = _uploaded_file_size_bytes(file)
+    if upload_size is not None and upload_size > UPLOAD_MAX_FILE_BYTES:
+        return {'ok': False, 'error': 'Image too large (max 10MB)'}
+
     try:
-        # Read and process image
         img = Image.open(file.stream)
-        # Apply EXIF orientation (iPhone photos often have Orientation tag; PIL doesn't auto-apply)
         img = ImageOps.exif_transpose(img)
         
-        # Convert to RGB if necessary (for JPEG output)
         if img.mode in ('RGBA', 'P'):
             img = img.convert('RGB')
         
-        # Smart resize - max 1024px on longest side (reduces base64 size for socket)
         max_size = 1024
         if max(img.size) > max_size:
             ratio = max_size / max(img.size)
@@ -1774,36 +1793,103 @@ def upload_image():
             img = img.resize(new_size, Image.Resampling.LANCZOS)
             print(f"[Upload] Resized image from {file.filename} to {new_size}")
         
-        # Save to uploads directory
         UPLOADS_PATH.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"upload_{timestamp}.jpg"
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')
+        filename = f"upload_{timestamp}{suffix}.jpg"
         filepath = UPLOADS_PATH / filename
         
-        # Save with quality optimization
         img.save(filepath, 'JPEG', quality=85, optimize=True)
-        
-        # Generate base64 for immediate use
-        buffer = io.BytesIO()
-        img.save(buffer, 'JPEG', quality=85)
-        base64_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
         
         file_size_kb = filepath.stat().st_size / 1024
         print(f"[Upload] Saved {filename} ({img.size[0]}x{img.size[1]}, {file_size_kb:.1f}KB)")
-        
-        return jsonify({
+
+        result = {
             'ok': True,
             'filename': filename,
             'url': f'/api/uploads/{filename}',
-            'base64': base64_data,
             'width': img.size[0],
             'height': img.size[1],
-            'size_kb': round(file_size_kb, 1)
-        })
-        
+            'size_kb': round(file_size_kb, 1),
+        }
+        if include_base64:
+            import base64
+
+            buffer = io.BytesIO()
+            img.save(buffer, 'JPEG', quality=85)
+            result['base64'] = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        return result
     except Exception as e:
         print(f"[Upload] Error processing image: {e}")
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        return {'ok': False, 'error': str(e)}
+
+
+@api_bp.route('/upload-image', methods=['POST'])
+def upload_image():
+    """Upload a single image for vision analysis."""
+    if 'image' not in request.files:
+        return jsonify({'ok': False, 'error': 'No image file provided'}), 400
+
+    mode = request.form.get('mode', 'cloud')
+    image_limit = max_vision_images(mode)
+    current_count = max(0, request.form.get('current_image_count', 0, type=int))
+    if current_count + 1 > image_limit:
+        return jsonify({
+            'ok': False,
+            'error': f'Maximum {image_limit} images allowed in {mode} mode',
+            'limit': image_limit,
+            'provided': current_count + 1,
+        }), 400
+
+    include_base64 = request.form.get('include_base64', 'true').lower() in {'1', 'true', 'yes', 'on'}
+    result = _process_uploaded_image_file(request.files['image'], include_base64=include_base64)
+    if not result.get('ok'):
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@api_bp.route('/upload-images', methods=['POST'])
+def upload_images():
+    """Upload one or more images for vision analysis."""
+    files = request.files.getlist('images')
+    if not files:
+        files = request.files.getlist('image')
+    if not files:
+        return jsonify({'ok': False, 'error': 'No image files provided'}), 400
+
+    mode = request.form.get('mode', 'cloud')
+    include_base64 = request.form.get('include_base64', 'true').lower() in {'1', 'true', 'yes', 'on'}
+    image_limit = max_vision_images(mode)
+    current_count = max(0, request.form.get('current_image_count', 0, type=int))
+    provided = current_count + len(files)
+    if provided > image_limit:
+        return jsonify({
+            'ok': False,
+            'error': f'Maximum {image_limit} images allowed in {mode} mode',
+            'limit': image_limit,
+            'provided': provided,
+        }), 400
+
+    uploaded = []
+    errors = []
+    for index, file in enumerate(files):
+        result = _process_uploaded_image_file(
+            file,
+            suffix=f'_{index}' if index else '',
+            include_base64=include_base64,
+        )
+        if result.get('ok'):
+            uploaded.append(result)
+        else:
+            label = file.filename or f'file {index + 1}'
+            errors.append(f'{label}: {result.get("error", "upload failed")}')
+
+    if not uploaded:
+        return jsonify({'ok': False, 'error': errors[0] if errors else 'Upload failed', 'errors': errors}), 400
+
+    payload = {'ok': True, 'images': uploaded}
+    if errors:
+        payload['errors'] = errors
+    return jsonify(payload)
 
 
 @api_bp.route('/uploads/<filename>', methods=['GET'])

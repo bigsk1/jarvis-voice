@@ -37,9 +37,10 @@ def _debug(msg: str):
 
 
 def analyze_image(
-    image: str,
+    image: str = None,
     question: str = "Describe this image in detail.",
-    stash_after: bool = False
+    stash_after: bool = False,
+    images: list = None,
 ) -> dict:
     """
     Analyze an image using vision model.
@@ -51,6 +52,7 @@ def analyze_image(
             - Stash reference (stash://space_id/file_id)
         question: What to ask about the image (default: general description)
         stash_after: If True and image is from URL, save to stash for future access
+        images: Optional list of image sources for multi-image analysis
         
     Returns:
         dict with analysis results, image info, and optional stash reference
@@ -61,23 +63,46 @@ def analyze_image(
     # Determine mode from environment
     mode = get_config_value('JARVIS_MODE', 'cloud')
     
+    from vision_multimodal import max_vision_images
+
     try:
-        # Resolve image source and get base64
-        image_data = _resolve_image(image)
-        
-        if not image_data:
+        sources = []
+        if images:
+            if isinstance(images, str):
+                sources = [images]
+            else:
+                sources = [src for src in images if src]
+        elif image:
+            sources = [image]
+
+        if not sources:
             return {
                 "ok": False,
-                "speech": f"Could not load image from: {image[:50]}...",
-                "data": {"error": "Failed to load image", "source": image}
+                "speech": "No image source provided.",
+                "data": {"error": "Missing image source"}
             }
         
-        # Perform vision analysis
-        analysis = _analyze_with_vision(
-            image_data['base64'],
-            question,
-            mode
-        )
+        image_limit = max_vision_images(mode)
+        if len(sources) > image_limit:
+            return {
+                "ok": False,
+                "speech": f"Maximum {image_limit} images allowed in {mode} mode.",
+                "data": {"error": "Too many images", "limit": image_limit, "provided": len(sources)}
+            }
+
+        resolved_images = []
+        for source in sources:
+            resolved = _resolve_image(source)
+            if not resolved:
+                return {
+                    "ok": False,
+                    "speech": f"Could not load image from: {source[:50]}...",
+                    "data": {"error": "Failed to load image", "source": source}
+                }
+            resolved_images.append(resolved)
+
+        images_base64 = [item['base64'] for item in resolved_images if item.get('base64')]
+        analysis = _analyze_with_vision(images_base64, question, mode)
         
         if not analysis:
             return {
@@ -86,10 +111,14 @@ def analyze_image(
                 "data": {"error": "Vision model returned no result"}
             }
         
-        # Optionally stash the image (for URLs)
-        stash_info = None
-        if stash_after and image_data.get('source_type') == 'url':
-            stash_info = _stash_image(image_data, analysis, mode)
+        # Optionally stash URL-sourced images
+        stash_results = []
+        if stash_after:
+            for resolved in resolved_images:
+                if resolved.get('source_type') == 'url':
+                    stashed = _stash_image(resolved, analysis, mode)
+                    if stashed:
+                        stash_results.append(stashed)
         
         # Build response
         # Create short speech version
@@ -97,28 +126,34 @@ def analyze_image(
         
         response_data = {
             "analysis": analysis,
-            "source": image_data.get('source_type'),
-            "original_path": image,
+            "source_count": len(resolved_images),
+            "sources": [item.get('original_path') for item in resolved_images],
         }
 
-        for field in (
-            'filename',
-            'mime_type',
-            'size_bytes',
-            'processed_size_bytes',
-            'original_width',
-            'original_height',
-            'processed_width',
-            'processed_height',
-            'resized_for_vision',
-            'recompressed_for_vision',
-        ):
-            if field in image_data:
-                response_data[field] = image_data[field]
-        
-        if stash_info:
-            response_data["stash"] = stash_info
-            response_data["stash_ref"] = stash_info.get('stash_ref')
+        if len(resolved_images) == 1:
+            primary = resolved_images[0]
+            response_data["source"] = primary.get('source_type')
+            response_data["original_path"] = primary.get('original_path')
+            for field in (
+                'filename',
+                'mime_type',
+                'size_bytes',
+                'processed_size_bytes',
+                'original_width',
+                'original_height',
+                'processed_width',
+                'processed_height',
+                'resized_for_vision',
+                'recompressed_for_vision',
+            ):
+                if field in primary:
+                    response_data[field] = primary[field]
+
+        if stash_results:
+            response_data["stash"] = stash_results[0]
+            response_data["stash_ref"] = stash_results[0].get('stash_ref')
+            if len(stash_results) > 1:
+                response_data["stash_refs"] = [item.get('stash_ref') for item in stash_results if item.get('stash_ref')]
         
         return {
             "ok": True,
@@ -130,7 +165,7 @@ def analyze_image(
         return {
             "ok": False,
             "speech": f"Error analyzing image: {str(e)[:100]}",
-            "data": {"error": str(e), "source": image}
+            "data": {"error": str(e), "source": image or images}
         }
 
 
@@ -440,25 +475,29 @@ def _sanitize_vision_prompt(question: str) -> str:
     return question
 
 
-def _analyze_with_vision(image_base64: str, question: str, mode: str) -> str | None:
+def _analyze_with_vision(images_base64: list[str], question: str, mode: str) -> str | None:
     """Perform vision analysis using configured model."""
     
     # SECURITY: Sanitize the question prompt
     question = _sanitize_vision_prompt(question)
     
+    if not images_base64:
+        return None
+
     if mode == 'local':
-        return _vision_ollama(image_base64, question)
+        return _vision_ollama(images_base64, question)
     else:
-        return _vision_cloud(image_base64, question)
+        return _vision_cloud(images_base64, question)
 
 
-def _vision_ollama(image_base64: str, question: str) -> str | None:
+def _vision_ollama(images_base64: list[str], question: str) -> str | None:
     """Use Ollama vision model (llava, etc)."""
+    from vision_multimodal import build_ollama_prompt
     try:
         base_urls = get_ollama_base_urls()
         model = get_config_value('OLLAMA_VISION_MODEL', 'llava:latest')
         
-        _debug(f"[ANALYZE_IMAGE] Using Ollama vision: {model}")
+        _debug(f"[ANALYZE_IMAGE] Using Ollama vision: {model}, count={len(images_base64)}")
         
         response, _ = request_ollama(
             "post",
@@ -466,8 +505,8 @@ def _vision_ollama(image_base64: str, question: str) -> str | None:
             base_urls=base_urls,
             json={
                 "model": model,
-                "prompt": question,
-                "images": [image_base64],
+                "prompt": build_ollama_prompt(question, len(images_base64)),
+                "images": images_base64,
                 "stream": False
             },
             timeout=120
@@ -483,26 +522,42 @@ def _vision_ollama(image_base64: str, question: str) -> str | None:
         return None
 
 
-def _vision_cloud(image_base64: str, question: str) -> str | None:
+def _vision_cloud(images_base64: list[str], question: str) -> str | None:
     """Use cloud vision model (xAI Grok, Anthropic Claude, OpenAI GPT-4V)."""
     provider = get_config_value('LLM_PROVIDER', 'xai')
     vision_model = get_config_value('VISION_MODEL', '')
     
-    _debug(f"[ANALYZE_IMAGE] Using cloud vision: {provider}")
+    _debug(f"[ANALYZE_IMAGE] Using cloud vision: {provider}, count={len(images_base64)}")
     
     if provider == 'xai':
-        return _vision_xai(image_base64, question, vision_model)
+        return _vision_xai(images_base64, question, vision_model)
     elif provider == 'anthropic':
-        return _vision_anthropic(image_base64, question, vision_model)
+        return _vision_anthropic(images_base64, question, vision_model)
     elif provider == 'openai':
-        return _vision_openai(image_base64, question, vision_model)
+        return _vision_openai(images_base64, question, vision_model)
     else:
         # Default to xAI
-        return _vision_xai(image_base64, question, vision_model)
+        return _vision_xai(images_base64, question, vision_model)
+
+def _vision_detail() -> str:
+    detail = get_config_value('VISION_DETAIL', 'high').lower()
+    return detail if detail in ('low', 'high') else 'high'
 
 
-def _vision_xai(image_base64: str, question: str, model: str = None) -> str | None:
+def _openai_vision_detail(model: str | None) -> str:
+    """Return an OpenAI-supported image detail value for the selected model."""
+    from vision_multimodal import openai_vision_detail
+
+    return openai_vision_detail(
+        model,
+        get_config_value('VISION_DETAIL', 'high'),
+        log_fn=lambda msg: _debug(f"[ANALYZE_IMAGE] {msg}"),
+    )
+
+
+def _vision_xai(images_base64: list[str], question: str, model: str = None) -> str | None:
     """Use xAI Grok for vision."""
+    from vision_multimodal import build_openai_style_content
     try:
         api_key = get_config_value('XAI_API_KEY', '')
         if not api_key:
@@ -510,6 +565,7 @@ def _vision_xai(image_base64: str, question: str, model: str = None) -> str | No
             return None
         
         model = model or get_config_value('VISION_MODEL') or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
+        detail = _vision_detail()
         
         response = requests.post(
             "https://api.x.ai/v1/chat/completions",
@@ -521,16 +577,7 @@ def _vision_xai(image_base64: str, question: str, model: str = None) -> str | No
                 "model": model,
                 "messages": [{
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_base64}",
-                                "detail": "high"
-                            }
-                        },
-                        {"type": "text", "text": question}
-                    ]
+                    "content": build_openai_style_content(images_base64, question, detail)
                 }],
                 "max_tokens": 1000
             },
@@ -547,8 +594,9 @@ def _vision_xai(image_base64: str, question: str, model: str = None) -> str | No
         return None
 
 
-def _vision_anthropic(image_base64: str, question: str, model: str = None) -> str | None:
+def _vision_anthropic(images_base64: list[str], question: str, model: str = None) -> str | None:
     """Use Anthropic Claude for vision."""
+    from vision_multimodal import build_anthropic_content
     try:
         api_key = get_config_value('ANTHROPIC_API_KEY', '')
         if not api_key:
@@ -569,17 +617,7 @@ def _vision_anthropic(image_base64: str, question: str, model: str = None) -> st
                 "max_tokens": 1000,
                 "messages": [{
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": image_base64
-                            }
-                        },
-                        {"type": "text", "text": question}
-                    ]
+                    "content": build_anthropic_content(images_base64, question)
                 }]
             },
             timeout=120
@@ -595,8 +633,9 @@ def _vision_anthropic(image_base64: str, question: str, model: str = None) -> st
         return None
 
 
-def _vision_openai(image_base64: str, question: str, model: str = None) -> str | None:
+def _vision_openai(images_base64: list[str], question: str, model: str = None) -> str | None:
     """Use OpenAI GPT-4V for vision."""
+    from vision_multimodal import build_openai_style_content
     try:
         api_key = get_config_value('OPENAI_API_KEY', '')
         if not api_key:
@@ -604,6 +643,7 @@ def _vision_openai(image_base64: str, question: str, model: str = None) -> str |
             return None
         
         model = model or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
+        detail = _openai_vision_detail(model)
         
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
@@ -615,16 +655,7 @@ def _vision_openai(image_base64: str, question: str, model: str = None) -> str |
                 "model": model,
                 "messages": [{
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_base64}",
-                                "detail": "high"
-                            }
-                        },
-                        {"type": "text", "text": question}
-                    ]
+                    "content": build_openai_style_content(images_base64, question, detail)
                 }],
                 "max_tokens": 1000
             },
@@ -746,14 +777,20 @@ def main():
         
         # Extract parameters
         image = args.get('image')
-        if not image:
-            raise ValueError("image parameter is required")
+        images = args.get('images')
+        if not image and not images:
+            raise ValueError("image or images parameter is required")
         
         question = args.get('question', 'Describe this image in detail.')
         stash_after = args.get('stash_after', False)
         
         # Run the tool
-        result = analyze_image(image, question, stash_after)
+        result = analyze_image(
+            image=image,
+            question=question,
+            stash_after=stash_after,
+            images=images,
+        )
         
         # Output result as JSON
         print(json.dumps(result))

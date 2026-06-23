@@ -728,19 +728,20 @@ def speech_to_text():
 
 ### Image Upload & Vision Analysis (Built-in, NOT a tool)
 
-The web UI has **native image upload** - this is NOT a tool call, it's built directly into the chat:
+The web UI has **native image upload** - this is NOT a tool call, it's built directly into the chat. Analyze mode supports multiple images in one message: up to 6 images in cloud mode and 2 images in local mode. Image-to-image and image-to-video still use the first uploaded image as the reference image.
 
 **How to Upload:**
 1. **Click** the 🖼️ button next to input
-2. **Drag-drop** an image onto the chat
-3. **Paste** from clipboard (Ctrl+V)
+2. **Drag-drop** one or more images onto the chat
+3. **Paste** images from clipboard (Ctrl+V)
 
 **What Happens:**
-1. Image is resized to max 1024px (keeps base64 small for socket)
-2. Image is saved to `jarvis-web/data/uploads/`
-3. Vision model analyzes the image (mode-aware)
-4. For simple questions ("what is this?") → returns analysis directly
-5. For complex requests ("save to canvas") → passes analysis to orchestrator
+1. Each upload is resized/compressed before storage when needed
+2. Images are saved to `jarvis-web/data/uploads/`
+3. The socket message sends lightweight upload metadata (`url`, `filename`); the server reloads image bytes from disk for analysis
+4. Vision model analyzes the image set (mode-aware)
+5. For simple questions ("what is this?") → returns analysis directly
+6. For complex requests ("save to canvas") → passes analysis to orchestrator
 
 **Vision Models (Mode-Aware):**
 
@@ -764,16 +765,18 @@ Simple patterns: "what is this", "describe", "identify", "who/where/when is this
 Action keywords: "create", "save", "canvas", "generate", "similar", "search"
 
 **Uploaded Images Persist:**
-- Saved in conversation history with `image_url`
+- Saved in conversation history with `image_urls` plus first-image `image_url` compatibility
 - Thumbnails display when you reload the conversation
 - Vision analysis stored in `data.vision_analysis` for expand details
 
-**Auto-Stash (NEW):**
-- After vision analysis, images are automatically stashed to `data/stash/`
+**Auto-Stash:**
+- After vision analysis, uploaded images are automatically stashed to `data/stash/`
 - A `stash_artifact` entry is created in `memory_db` with:
   - `source="web_upload"`
   - `metadata` (stash_ref, file_id, tags, vision_analysis snippet)
 - This enables cross-tool workflows: "Email the image I uploaded earlier"
+- Multi-image uploads store `uploaded_images[]` follow-up metadata so requests like "look at the second image again" can map to the exact stash reference
+- Multi-image stash artifacts also get searchable labels/tags such as `multi_image_upload`, `batch_vision_analysis`, and `image_2_of_4`
 - Stash has 7-day TTL, but memory entry persists for recall
 
 ---
@@ -835,6 +838,7 @@ A dedicated tool for analyzing images from various sources:
 **Example Usage:**
 ```
 "Analyze this image https://example.com/chart.png"
+"Compare these images https://example.com/before.png and https://example.com/after.png"
 "What's in stash://space_20251218_094432/f_abc123?"
 "Analyze ~/photos/vacation.jpg and tell me where it was taken"
 ```

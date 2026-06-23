@@ -22,7 +22,7 @@ Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks,
 |-----|---------------|-------------|
 | **Memory** | [MEMORY.md](MEMORY.md) | CRUD, search (keyword/semantic), categories |
 | **Intel** | [INTEL.md](INTEL.md) | Knowledge base file management (jarvis-intel/) |
-| **Query** | [QUERY.md](QUERY.md) | Send queries to Jarvis programmatically |
+| **Query** | [QUERY.md](QUERY.md) | Send text queries to Jarvis programmatically; use `analyze_image` in the query for vision |
 | **Workflows** | [WORKFLOWS.md](WORKFLOWS.md) | Execute multi-tool pipelines (e.g., /crypto, /archive) |
 | **Conversations** | [CONVERSATIONS.md](CONVERSATIONS.md) | Browse conversation history |
 | **Stash** | [STASH.md](STASH.md) | Access stored artifacts and files |
@@ -50,7 +50,7 @@ POST /api/intel/ingest        # Trigger ingestion
 
 # Query
 POST /api/query               # Full query with options
-POST /api/query/quick         # Simple query {"q": "what time is it"}
+POST /api/query/quick         # Simple query {"query": "what time is it"}
 
 # Workflows
 GET  /api/workflows           # List available workflows

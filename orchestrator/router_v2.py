@@ -1014,6 +1014,7 @@ CRITICAL EXAMPLES:
 **Image Re-Analysis (follow-up questions about uploaded image):**
 ❌ BAD: User corrects vision result or asks "look again" → analyze_image with image="1" or "image ID 1" (fails)
 ✅ GOOD: Use stash_ref from uploaded_image in context: analyze_image with image="stash://space_id/file_id"
+✅ GOOD: For multi-image uploads, map "first/second/third image" to the matching uploaded_images ordinal and use that stash_ref
 ✅ GOOD: User asks to compare/review original upload vs generated image → call analyze_image on the uploaded_image stash_ref and generate_image stash_ref
 ❌ BAD: Use provider-native/server-side image viewing for stash:// refs. Native image viewing cannot access local Jarvis stash files.
 

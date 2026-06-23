@@ -2,6 +2,8 @@
 
 Upload images to Cloudflare Images CDN and get permanent, publicly-accessible URLs.
 
+This API is for hosting/sharing images. It does **not** run LLM vision analysis. For vision, use the Web UI image upload flow or ask `/api/query` to call the `analyze_image` tool with image URLs, file paths, or stash references.
+
 ## Overview
 
 The Images API allows Jarvis and external agents (like Samantha) to upload images to Cloudflare's global CDN. This solves the base64 size limitation problem when sharing images across systems.
@@ -11,6 +13,8 @@ The Images API allows Jarvis and external agents (like Samantha) to upload image
 - Share status visuals across systems
 - Store canvas images externally for faster loading
 - Enable multi-agent image sharing (Samantha → Jarvis)
+
+**Not for:** "What is in this image?" style analysis. Use `analyze_image` instead.
 
 ## ⚠️ Privacy Warning
 

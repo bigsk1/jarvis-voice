@@ -152,7 +152,7 @@ class JarvisSocket {
   /**
    * Send a chat message (with optional image, prompt metadata, and text file)
    * @param {string} message - The message text
-   * @param {Object} imageData - Optional image data {base64, url, filename}
+   * @param {Object} imageData - Optional image payload {action, settings, images: [{url, filename}]}
    * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name, tool_hints}
    * @param {boolean} requestFeedback - Whether to request feedback analysis after response
    * @param {Object} fileContext - Optional text file data {name, content, size, type}

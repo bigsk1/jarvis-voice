@@ -876,6 +876,31 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         )
     ):
         stash = data['stash']
+        uploaded_images = []
+        if isinstance(stash.get('uploaded_images'), list):
+            for item in stash['uploaded_images']:
+                if not isinstance(item, dict) or not item.get('stash_ref'):
+                    continue
+                uploaded_images.append({
+                    'stash_ref': item.get('stash_ref'),
+                    'space_id': item.get('space_id'),
+                    'file_id': item.get('file_id'),
+                    'filename': item.get('filename'),
+                    'source_filename': item.get('source_filename'),
+                    'mime_type': item.get('mime_type'),
+                    'action': item.get('action'),
+                    'tool_origin': item.get('tool_origin'),
+                    'ordinal': item.get('ordinal'),
+                    'batch_id': item.get('batch_id'),
+                    'batch_index': item.get('batch_index'),
+                    'batch_total': item.get('batch_total'),
+                    'batch_label': item.get('batch_label'),
+                    'vision_analysis_scope': item.get('vision_analysis_scope'),
+                    'has_vision_analysis': bool(item.get('has_vision_analysis')),
+                })
+                if item.get('vision_analysis'):
+                    uploaded_images[-1]['vision_analysis'] = item.get('vision_analysis')
+
         followup['uploaded_image'] = {
             'stash_ref': stash.get('stash_ref'),
             'space_id': stash.get('space_id'),
@@ -888,6 +913,8 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         }
         if stash.get('vision_analysis'):
             followup['uploaded_image']['vision_analysis'] = stash.get('vision_analysis')
+        if uploaded_images:
+            followup['uploaded_images'] = uploaded_images
 
     # Extract error details (enables "what went wrong?" follow-ups)
     if data.get('_error') and isinstance(data['_error'], dict):

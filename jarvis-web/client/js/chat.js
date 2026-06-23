@@ -15,7 +15,7 @@ class CommandSystem {
     this.loaded = false;
     this._loadRegistry();
   }
-  
+
   /**
    * Load prompts and workflows from server
    */
@@ -351,8 +351,9 @@ class ChatUI {
     this.uploadBtn = document.getElementById('uploadBtn');
     this.fileInput = document.getElementById('fileInput');
     this.imagePreviewContainer = document.getElementById('imagePreviewContainer');
-    this.imagePreview = document.getElementById('imagePreview');
-    this.removeImageBtn = document.getElementById('removeImageBtn');
+    this.imagePreviewStrip = document.getElementById('imagePreviewStrip');
+    this.imageActionBadge = document.getElementById('imageActionBadge');
+    this.clearAllImagesBtn = document.getElementById('clearAllImagesBtn');
     
     // Text file preview elements
     this.filePreviewContainer = document.getElementById('filePreviewContainer');
@@ -372,7 +373,7 @@ class ChatUI {
     // Image action modal elements
     this.imageActionModal = document.getElementById('imageActionModal');
     this.imageActionPreview = document.getElementById('imageActionPreview');
-    this.pendingImageData = null;  // Temp storage while modal is open
+    this.pendingImageBatch = null;  // Upload results awaiting modal confirm
     
     this.currentMessageId = null;
     this.pendingTools = {};
@@ -389,7 +390,9 @@ class ChatUI {
     this.recordingIndicator = null;
     
     // Image upload state
-    this.attachedImage = null;  // {base64, url, filename}
+    this.attachedImages = [];  // [{ url, filename }]
+    this.imageAttachmentAction = 'analyze';
+    this.imageAttachmentSettings = {};
     
     // Autocomplete state
     this.autocompleteEl = null;
@@ -1400,6 +1403,10 @@ class ChatUI {
       const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
       this.updateToolCard(cardId, data.tool, 'error', { error: data.error });
     });
+
+    socket.on('modeChanged', (data) => {
+      this._handleImageAttachmentsForMode(data.mode);
+    });
     
     socket.on('response', (data) => {
       this.hideThinking();
@@ -1526,17 +1533,18 @@ class ChatUI {
     
     // Handle file selection (routes by type)
     this.fileInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        await this.attachFile(file);
+      const files = Array.from(e.target.files || []);
+      if (files.length === 1) {
+        await this.attachFile(files[0]);
+      } else if (files.length > 1) {
+        await this._attachMultipleFiles(files);
       }
       // Reset input so same file can be selected again
       this.fileInput.value = '';
     });
     
-    // Remove image button
-    if (this.removeImageBtn) {
-      this.removeImageBtn.addEventListener('click', () => {
+    if (this.clearAllImagesBtn) {
+      this.clearAllImagesBtn.addEventListener('click', () => {
         this.clearAttachedImage();
       });
     }
@@ -1565,9 +1573,11 @@ class ChatUI {
         e.preventDefault();
         container.classList.remove('drag-over');
         
-        const file = e.dataTransfer.files[0];
-        if (file) {
-          await this.attachFile(file);
+        const files = Array.from(e.dataTransfer.files || []);
+        if (files.length === 1) {
+          await this.attachFile(files[0]);
+        } else if (files.length > 1) {
+          await this._attachMultipleFiles(files);
         }
       });
     }
@@ -1644,21 +1654,34 @@ class ChatUI {
   /**
    * Show the image action modal with preview
    */
-  _showImageActionModal(uploadData) {
+  _showImageActionModal(uploadDataOrArray) {
     if (!this.imageActionModal) return;
     
-    // Store upload data temporarily
-    this.pendingImageData = uploadData;
+    const uploads = Array.isArray(uploadDataOrArray) ? uploadDataOrArray : [uploadDataOrArray];
+    this.pendingImageBatch = uploads;
     
-    // Show image preview
+    // Show image preview(s) — order in batch = upload order (first is used for Video/Image)
     if (this.imageActionPreview) {
       this.imageActionPreview.innerHTML = '';
-      const img = document.createElement('img');
-      img.src = uploadData.url;
-      img.style.maxWidth = '200px';
-      img.style.maxHeight = '150px';
-      img.style.borderRadius = 'var(--radius-md)';
-      this.imageActionPreview.appendChild(img);
+      uploads.forEach((uploadData, index) => {
+        const item = document.createElement('div');
+        item.className = 'image-action-preview-item';
+        item.dataset.index = String(index);
+
+        const img = document.createElement('img');
+        img.src = uploadData.url;
+        img.alt = `Upload ${index + 1}`;
+        item.appendChild(img);
+
+        if (index === 0) {
+          const badge = document.createElement('span');
+          badge.className = 'image-action-preview-primary';
+          badge.textContent = '1st';
+          item.appendChild(badge);
+        }
+
+        this.imageActionPreview.appendChild(item);
+      });
     }
     
     // Reset to default (Analyze)
@@ -1680,7 +1703,7 @@ class ChatUI {
     if (this.imageActionModal) {
       this.imageActionModal.classList.remove('active');
     }
-    this.pendingImageData = null;
+    this.pendingImageBatch = null;
   }
   
   /**
@@ -1695,10 +1718,33 @@ class ChatUI {
     if (videoOpts) videoOpts.style.display = selected === 'video' ? 'block' : 'none';
     if (imageOpts) imageOpts.style.display = selected === 'image' ? 'block' : 'none';
     
+    this._updateImageActionPreviewHighlight(selected);
+
     // Update provider-specific options if image panel is now visible
     if (selected === 'image') {
       this._updateImageProviderOptions();
     }
+  }
+
+  /**
+   * Grey out non-first modal previews when Video/Image only uses the first upload.
+   */
+  _updateImageActionPreviewHighlight(selectedAction = null) {
+    const selected = selectedAction
+      || this.imageActionModal?.querySelector('input[name="imageAction"]:checked')?.value
+      || 'analyze';
+    const singleOnly = selected === 'video' || selected === 'image';
+    const items = this.imageActionPreview?.querySelectorAll('.image-action-preview-item') || [];
+
+    items.forEach((item, index) => {
+      item.classList.toggle('is-unused', singleOnly && index > 0);
+      item.classList.toggle('is-primary', singleOnly && index === 0);
+
+      const badge = item.querySelector('.image-action-preview-primary');
+      if (badge) {
+        badge.textContent = singleOnly ? 'Used' : '1st';
+      }
+    });
   }
   
   /**
@@ -1824,68 +1870,284 @@ class ChatUI {
    * Confirm the image action and attach image with settings
    */
   _confirmImageAction() {
-    if (!this.pendingImageData) return;
+    if (!this.pendingImageBatch?.length) return;
     
     const { action, settings } = this._collectImageActionSettings();
+    let batch = this.pendingImageBatch;
     
-    // Store the image data with action and settings
-    this.attachedImage = {
-      base64: this.pendingImageData.base64,
-      url: this.pendingImageData.url,
-      filename: this.pendingImageData.filename,
-      action: action,
-      settings: settings
-    };
+    if (action === 'video' || action === 'image') {
+      if (batch.length > 1) {
+        Utils.toast('Using first image for Video/Image mode', 'info', 2000);
+      }
+      batch = [batch[0]];
+      this.attachedImages = [];
+    }
     
-    // Show preview with action badge
-    this._showImagePreviewWithBadge(this.pendingImageData.url, action, settings);
+    this.imageAttachmentAction = action;
+    this.imageAttachmentSettings = settings;
     
-    // Close modal and focus input
+    batch.forEach((uploadData) => {
+      this.attachedImages.push({
+        url: uploadData.url,
+        filename: uploadData.filename
+      });
+    });
+
+    this._renderImagePreviews();
     this._hideImageActionModal();
     this.inputField.focus();
     
-    // Toast with action info
     const actionLabels = { analyze: 'Analyze', video: 'Video', image: 'Image' };
-    Utils.toast(`Image attached: ${actionLabels[action] || action}`, 'success', 1500);
+    const countLabel = batch.length > 1 ? `${batch.length} images` : 'Image';
+    Utils.toast(`${countLabel} attached: ${actionLabels[action] || action}`, 'success', 1500);
   }
   
-  /**
-   * Show image preview with an action badge overlay
-   */
-  _showImagePreviewWithBadge(url, action, settings) {
-    if (this.imagePreview && this.imagePreviewContainer) {
-      this.imagePreview.src = url;
-      this.imagePreviewContainer.style.display = 'block';
+  _getMaxImages() {
+    const mode = window.jarvisSocket?.mode || 'cloud';
+    return mode === 'local' ? 2 : 6;
+  }
       
-      // Remove any existing badge
-      const existingBadge = this.imagePreviewContainer.querySelector('.image-action-badge');
-      if (existingBadge) existingBadge.remove();
+  _hasAttachedImages() {
+    return this.attachedImages.length > 0;
+  }
       
-      // Build badge text
-      let badgeText = '';
-      if (action === 'video') {
-        badgeText = `VIDEO ${settings.aspect_ratio || ''} ${settings.duration || 5}s`;
-      } else if (action === 'image') {
-        badgeText = `IMAGE ${settings.provider || ''}`;
-      } else {
-        badgeText = 'ANALYZE';
+  _canAppendWithoutModal() {
+    return this._hasAttachedImages()
+      && this.imageAttachmentAction === 'analyze'
+      && this.attachedImages.length < this._getMaxImages();
+  }
+
+  _getImageAttachmentPayload() {
+    if (!this.attachedImages.length) return null;
+    return {
+      action: this.imageAttachmentAction,
+      settings: { ...this.imageAttachmentSettings },
+      images: this.attachedImages.map(({ url, filename }) => ({ url, filename }))
+    };
+  }
+
+  _normalizeMessageImages(imageData) {
+    if (!imageData) return [];
+    if (Array.isArray(imageData)) return imageData.filter((img) => img?.url);
+    if (Array.isArray(imageData.images)) return imageData.images.filter((img) => img?.url);
+    if (imageData.url) return [imageData];
+    return [];
+  }
+
+  _buildActionBadgeText(action, settings) {
+    if (action === 'video') {
+      return `VIDEO ${settings.aspect_ratio || ''} ${settings.duration || 5}s`;
+    }
+    if (action === 'image') {
+      return `IMAGE ${settings.provider || ''}`;
+    }
+    return 'ANALYZE';
+  }
+
+  _renderImagePreviews() {
+    const strip = this.imagePreviewStrip;
+    const container = this.imagePreviewContainer;
+    if (!strip || !container) return;
+
+    strip.innerHTML = '';
+
+    if (!this.attachedImages.length) {
+      container.style.display = 'none';
+      if (this.imageActionBadge) {
+        this.imageActionBadge.textContent = '';
       }
-      
-      // Add badge
-      const badge = document.createElement('span');
-      badge.className = 'image-action-badge';
-      badge.textContent = badgeText;
-      badge.style.cssText = 'position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;';
-      
-      // Make sure container is positioned for absolute badge
-      const previewDiv = this.imagePreviewContainer.querySelector('.image-preview');
-      if (previewDiv) {
-        previewDiv.style.position = 'relative';
-        previewDiv.appendChild(badge);
-      }
+      return;
+    }
+
+    container.style.display = 'block';
+
+    this.attachedImages.forEach((img, index) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'image-preview-thumb';
+
+      const imageEl = document.createElement('img');
+      imageEl.src = img.url;
+      imageEl.alt = `Preview ${index + 1}`;
+      thumb.appendChild(imageEl);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'remove-image-btn';
+      removeBtn.title = 'Remove image';
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => this._removeAttachedImageAt(index));
+      thumb.appendChild(removeBtn);
+
+      strip.appendChild(thumb);
+    });
+
+    if (this.imageActionBadge) {
+      const badgeText = this._buildActionBadgeText(this.imageAttachmentAction, this.imageAttachmentSettings);
+      const countSuffix = this.attachedImages.length > 1 ? ` (${this.attachedImages.length})` : '';
+      this.imageActionBadge.textContent = `${badgeText}${countSuffix}`;
+    }
+  }
+
+  _removeAttachedImageAt(index) {
+    if (index < 0 || index >= this.attachedImages.length) return;
+    this.attachedImages.splice(index, 1);
+    if (!this.attachedImages.length) {
+      this.imageAttachmentAction = 'analyze';
+      this.imageAttachmentSettings = {};
+    }
+    this._renderImagePreviews();
+  }
+
+  _handleImageAttachmentsForMode(mode, options = {}) {
+    if (!this._hasAttachedImages() || this.imageAttachmentAction !== 'analyze') return;
+    const maxImages = mode === 'local' ? 2 : 6;
+    if (this.attachedImages.length <= maxImages) return;
+
+    this.attachedImages = this.attachedImages.slice(0, maxImages);
+    this._renderImagePreviews();
+    if (options.toast !== false) {
+      Utils.toast(`Kept first ${maxImages} image(s) for ${mode} mode`, 'info', 2500);
     }
   }
   
+  async _uploadImageFiles(files) {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (!imageFiles.length) return [];
+
+    const formData = new FormData();
+    imageFiles.forEach((file) => formData.append('images', file));
+    formData.append('mode', window.jarvisSocket?.mode || 'cloud');
+    formData.append('include_base64', 'false');
+    formData.append('current_image_count', String(this.attachedImages.length));
+
+    try {
+      const response = await fetch('/api/upload-images', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (data.ok && Array.isArray(data.images) && data.images.length) {
+        if (data.errors?.length) {
+          Utils.toast(data.errors[0], 'warning', 2500);
+        }
+        return data.images;
+      }
+      if (data.error) {
+        Utils.toast(data.error, 'error');
+        return [];
+      }
+    } catch (err) {
+      console.warn('[Chat] Batch upload failed, falling back to single uploads:', err);
+    }
+
+    const uploaded = [];
+    for (const file of imageFiles) {
+      const singleForm = new FormData();
+      singleForm.append('image', file);
+      singleForm.append('mode', window.jarvisSocket?.mode || 'cloud');
+      singleForm.append('include_base64', 'false');
+      singleForm.append('current_image_count', String(this.attachedImages.length + uploaded.length));
+      const response = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: singleForm
+      });
+      const data = await response.json();
+      if (data.ok) {
+        uploaded.push(data);
+      } else if (data.error) {
+        Utils.toast(data.error, 'error');
+      }
+    }
+    return uploaded;
+  }
+
+  _appendAnalyzeImages(uploadResults) {
+    uploadResults.forEach((uploadData) => {
+      this.attachedImages.push({
+        url: uploadData.url,
+        filename: uploadData.filename
+      });
+    });
+    this.imageAttachmentAction = 'analyze';
+    this.imageAttachmentSettings = {};
+    this._renderImagePreviews();
+  }
+
+  async attachImageFiles(files) {
+    const imageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    if (!imageFiles.length) {
+      Utils.toast('Please select image files', 'error');
+      return;
+    }
+
+    this.clearAttachedFile();
+
+    if (this._hasAttachedImages() && this.imageAttachmentAction !== 'analyze') {
+      Utils.toast('Video/Image mode allows one reference image only', 'error');
+      return;
+    }
+
+    const maxTotal = this._getMaxImages();
+    const slots = maxTotal - this.attachedImages.length;
+    if (slots <= 0) {
+      Utils.toast(`Maximum ${maxTotal} images (${window.jarvisSocket?.mode === 'local' ? 'local' : 'cloud'} mode)`, 'error');
+      return;
+    }
+
+    const toUpload = imageFiles.slice(0, slots);
+    if (imageFiles.length > slots) {
+      Utils.toast(`Only ${slots} more image(s) allowed (max ${maxTotal})`, 'info', 2500);
+    }
+
+    for (const file of toUpload) {
+      if (file.size > 10 * 1024 * 1024) {
+        Utils.toast(`${file.name} too large (max 10MB)`, 'error');
+        return;
+      }
+    }
+
+    try {
+      Utils.toast(`Uploading ${toUpload.length} image(s)...`, 'info', 1500);
+      const uploads = await this._uploadImageFiles(toUpload);
+      if (!uploads.length) {
+        Utils.toast('Failed to upload images', 'error');
+        return;
+      }
+
+      if (this._canAppendWithoutModal()) {
+        this._appendAnalyzeImages(uploads);
+        Utils.toast(`Added ${uploads.length} image(s)`, 'success', 1500);
+        this.inputField.focus();
+        return;
+      }
+
+      this._showImageActionModal(uploads);
+    } catch (err) {
+      console.error('[Chat] Image upload error:', err);
+      Utils.toast('Failed to upload image', 'error');
+    }
+  }
+
+  async _attachMultipleFiles(files) {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    const textFiles = files.filter((file) => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      return ext === 'md' || ext === 'txt' || file.type === 'text/plain' || file.type === 'text/markdown';
+    });
+
+    if (imageFiles.length && !textFiles.length) {
+      await this.attachImageFiles(imageFiles);
+      return;
+    }
+
+    if (files.length === 1) {
+      await this.attachFile(files[0]);
+      return;
+    }
+
+    Utils.toast('Select either images or a single text file', 'error');
+  }
+
   /**
    * Setup file conversion functionality (bypasses vision analysis)
    */
@@ -2348,78 +2610,26 @@ class ChatUI {
    * Attach an image file (upload to server, then show action modal)
    */
   async attachImage(file) {
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      Utils.toast('Please select an image file', 'error');
-      return;
-    }
-    
-    // Clear any existing text file attachment
-    this.clearAttachedFile();
-    
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      Utils.toast('Image too large (max 10MB)', 'error');
-      return;
-    }
-    
-    try {
-      Utils.toast('Uploading image...', 'info', 1500);
-      
-      const formData = new FormData();
-      formData.append('image', file);
-      
-      const response = await fetch('/api/upload-image', {
-        method: 'POST',
-        body: formData
-      });
-      
-      const data = await response.json();
-      
-      if (data.ok) {
-        // Show image action modal to let user choose what to do
-        this._showImageActionModal(data);
-      } else {
-        Utils.toast(data.error || 'Failed to upload image', 'error');
-      }
-    } catch (err) {
-      console.error('[Chat] Image upload error:', err);
-      Utils.toast('Failed to upload image', 'error');
-    }
+    await this.attachImageFiles([file]);
   }
   
   /**
-   * Show image preview in input area
-   */
-  showImagePreview(url) {
-    if (this.imagePreview && this.imagePreviewContainer) {
-      this.imagePreview.src = url;
-      this.imagePreviewContainer.style.display = 'block';
-    }
-  }
-  
-  /**
-   * Clear attached image
+   * Clear attached images
    */
   clearAttachedImage() {
-    this.attachedImage = null;
-    if (this.imagePreviewContainer) {
-      this.imagePreviewContainer.style.display = 'none';
-      // Remove any action badge
-      const badge = this.imagePreviewContainer.querySelector('.image-action-badge');
-      if (badge) badge.remove();
-    }
-    if (this.imagePreview) {
-      this.imagePreview.src = '';
-    }
+    this.attachedImages = [];
+    this.imageAttachmentAction = 'analyze';
+    this.imageAttachmentSettings = {};
+    this._renderImagePreviews();
   }
 
   /**
-   * Send a message (with optional attached image or text file)
+   * Send a message (with optional attached image(s) or text file)
    */
   sendMessage() {
     let rawMessage = this.inputField.value.trim();
-    const hasImage = this.attachedImage !== null;
+    const hasImage = this._hasAttachedImages();
+    const imagePayload = this._getImageAttachmentPayload();
     const hasFile = this.attachedFile !== null;
     const hasSelectedToolHints = this.selectedToolHints.length > 0;
     
@@ -2471,8 +2681,8 @@ class ChatUI {
       displayMessage = displayMessage ? `${fileLabel}\n${displayMessage}` : fileLabel;
     }
     
-    // Add user message to UI (with image if attached)
-    this.addUserMessage(displayMessage, this.attachedImage, activeBadge);
+    // Add user message to UI (with image(s) if attached)
+    this.addUserMessage(displayMessage, imagePayload, activeBadge);
     
     // Clear input
     this.inputField.value = '';
@@ -2487,7 +2697,7 @@ class ChatUI {
     this.pendingTools = {};
     
     // Pass parsed data to socket (workflows are handled by orchestrator via /trigger)
-    window.jarvisSocket.sendMessage(parsed.message, this.attachedImage, {
+    window.jarvisSocket.sendMessage(parsed.message, imagePayload, {
       system_instruction: parsed.instruction,
       prompt_name: parsed.prompt,
       tool_hints: toolHints
@@ -2499,21 +2709,30 @@ class ChatUI {
   }
 
   /**
-   * Add user message to chat (with optional image and active badge)
+   * Add user message to chat (with optional image(s) and active badge)
    */
   addUserMessage(text, imageData = null, activeBadge = '') {
     const messageEl = document.createElement('div');
     messageEl.className = 'message user';
     
+    const images = this._normalizeMessageImages(imageData);
     let imageHtml = '';
-    if (imageData && imageData.url) {
+    if (images.length === 1) {
       imageHtml = `
-        <div class="message-image" onclick="window.showImageLightbox('${imageData.url}')">
-          <img src="${imageData.url}" alt="Attached image" loading="lazy">
+        <div class="message-image" onclick="window.showImageLightbox('${images[0].url}')">
+          <img src="${images[0].url}" alt="Attached image" loading="lazy">
           <div class="image-overlay">
             <span>🔍 Click to expand</span>
           </div>
         </div>`;
+    } else if (images.length > 1) {
+      imageHtml = `<div class="message-images">${images.map((img, index) => `
+        <div class="message-image" onclick="window.showImageLightbox('${img.url}')">
+          <img src="${img.url}" alt="Attached image ${index + 1}" loading="lazy">
+          <div class="image-overlay">
+            <span>🔍 ${index + 1}/${images.length}</span>
+          </div>
+        </div>`).join('')}</div>`;
     }
     
     let badgeHtml = '';
@@ -2522,11 +2741,13 @@ class ChatUI {
       badgeHtml = `<div class="command-badge">${activeBadge}</div>`;
     }
     
+    const defaultPrompt = images.length > 1 ? '<em>What\'s in these images?</em>' : '<em>What\'s in this image?</em>';
+
     messageEl.innerHTML = `
       <div class="message-bubble">
         ${badgeHtml}
         ${imageHtml}
-        ${text ? Utils.escapeHtml(text) : '<em>What\'s in this image?</em>'}
+        ${text ? Utils.escapeHtml(text) : defaultPrompt}
       </div>
     `;
     

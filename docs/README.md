@@ -362,7 +362,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Responses tools are converted through a dedicated adapter with non-strict function schemas, usage/cost parsing, cached-input/reasoning token reporting, diagnostics, and safe Chat Completions fallback boundaries.
   - Optional OpenAI-hosted tools (`web_search`, `file_search`, `code_interpreter`) have separate config gates and budgets so they do not piggyback on xAI native-search controls.
   - Provider-facing tool result previews now preserve exact source candidates and valid JSON when bounded, reducing repeated search/canvas hallucination risk.
-  - OpenAI upload-image vision now follows `OPENAI_MODEL` when `VISION_MODEL` is blank or provider-mismatched and forwards `VISION_DETAIL` where supported.
+  - Web upload vision supports multi-image analysis, keeps socket payloads lightweight, and OpenAI vision follows `OPENAI_MODEL` when `VISION_MODEL` is blank or provider-mismatched while forwarding supported `VISION_DETAIL`.
   - See: [`docs/OPENAI_PROVIDER.md`](OPENAI_PROVIDER.md), [`docs/OPENAI_RESPONSES_ADAPTER_PLAN.md`](OPENAI_RESPONSES_ADAPTER_PLAN.md), [`docs/CONVERSATION_STATE_ARCHITECTURE.md`](CONVERSATION_STATE_ARCHITECTURE.md)
 
 **2026-05-03:**
@@ -1235,10 +1235,10 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 **2025-12-18:**
 - ✅ **Jarvis Web UI v1.6** - Image upload, vision, analyze_image tool
-  - **Image upload**: Drag-drop/paste/click to attach images
+  - **Image upload**: Drag-drop/paste/click to attach one or more images
   - **Mode-aware vision**: Cloud=Grok/Claude, Local=llava
   - **Auto-stash uploads**: Images saved to stash + memory_db for cross-tool use
-  - **analyze_image tool**: Analyze URLs, files, stash refs with SSRF protection
+  - **analyze_image tool**: Analyze URLs, files, stash refs, and multi-image comparisons with SSRF protection
   - **Expand details button**: Show full LLM response before voice shortening
   - **generate_image fix**: Now saves source + metadata for semantic recall
   - See: `docs/JARVIS_WEB_UI.md`

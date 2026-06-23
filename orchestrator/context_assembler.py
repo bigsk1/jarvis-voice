@@ -268,6 +268,30 @@ class ContextAssembler:
 
         for message in recent:
             tool_results = message.get("tool_results", {}) or {}
+            uploaded_images = tool_results.get("uploaded_images", []) if isinstance(tool_results, dict) else []
+            if isinstance(uploaded_images, list):
+                image_refs = []
+                for index, image_info in enumerate(uploaded_images):
+                    if not isinstance(image_info, dict):
+                        continue
+                    stash_ref = image_info.get("stash_ref")
+                    if stash_ref and str(stash_ref).startswith("stash://"):
+                        ordinal = image_info.get("ordinal") or index + 1
+                        batch_label = image_info.get("batch_label")
+                        image_refs.append((ordinal, str(stash_ref), str(batch_label or "")))
+                if image_refs:
+                    context_lines.append("")
+                    context_lines.append(
+                        "IMAGE RE-ANALYSIS: If the user asks to look again, correct, compare, or re-identify uploaded images: use analyze_image with the exact stash ref for the referenced image."
+                    )
+                    for ordinal, stash_ref, batch_label in image_refs:
+                        label_note = f" ({batch_label})" if batch_label else ""
+                        context_lines.append(f"  Uploaded image {ordinal}{label_note}: analyze_image with image=\"{stash_ref}\".")
+                    context_lines.append(
+                        "  If the user says first/second/third image or photo, map that ordinal to the matching uploaded image stash ref above."
+                    )
+                    break
+
             uploaded_image = tool_results.get("uploaded_image", {}) if isinstance(tool_results, dict) else {}
             stash_ref = uploaded_image.get("stash_ref") if isinstance(uploaded_image, dict) else None
             if stash_ref and str(stash_ref).startswith("stash://"):
@@ -275,7 +299,7 @@ class ContextAssembler:
                 context_lines.append(
                     "IMAGE RE-ANALYSIS: If the user asks to look again, correct, or re-identify the image: use analyze_image with image=\""
                     + str(stash_ref)
-                    + "\". Do NOT use '1', 'image ID 1', or attachment indices."
+                    + "\"."
                 )
                 break
 

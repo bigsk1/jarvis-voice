@@ -155,12 +155,13 @@
         
         <!-- Input Area -->
         <div class="chat-input-container">
-          <!-- Image Preview (shown when image attached) -->
+          <!-- Image Preview (shown when image(s) attached) -->
           <div class="image-preview-container" id="imagePreviewContainer" style="display: none;">
-            <div class="image-preview">
-              <img id="imagePreview" src="" alt="Preview">
-              <button class="remove-image-btn" id="removeImageBtn" title="Remove image">&times;</button>
+            <div class="image-preview-header">
+              <span class="image-action-badge-strip" id="imageActionBadge"></span>
+              <button class="clear-images-btn" id="clearAllImagesBtn" type="button" title="Remove all images">Clear all</button>
             </div>
+            <div class="image-preview-strip" id="imagePreviewStrip"></div>
           </div>
           <!-- Text File Preview (shown when .md/.txt attached) -->
           <div class="file-preview-container" id="filePreviewContainer" style="display: none;">
@@ -199,7 +200,7 @@
               <button class="icon-btn upload-btn" id="uploadBtn" title="Attach file">
                 📎
               </button>
-              <input type="file" id="fileInput" accept="image/*,.md,.txt,text/plain,text/markdown" style="display: none;">
+              <input type="file" id="fileInput" accept="image/*,.md,.txt,text/plain,text/markdown" multiple style="display: none;">
               <button class="icon-btn convert-btn" id="convertBtn" title="Convert file format (image/video/audio)">
                 🔄
               </button>

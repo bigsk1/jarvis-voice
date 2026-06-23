@@ -617,6 +617,8 @@ POST /api/memory/rebuild-fts
 
 Programmatically send queries to Jarvis (for n8n, scripts, integrations).
 
+`/api/query` accepts text/query context only. It does not accept raw `image` or `images` payload fields; for vision, put the image URL, local path, or `stash://` reference in the query and let Jarvis call `analyze_image`.
+
 ```bash
 # Full query with options
 POST /api/query
@@ -768,7 +770,7 @@ See [CANVAS.md](./CANVAS.md) for detailed documentation.
 
 ### Images (Cloudflare CDN) 
 
-Upload images to Cloudflare Images CDN for permanent, public hosting.
+Upload images to Cloudflare Images CDN for permanent, public hosting. These routes are for hosting/sharing images, not for vision analysis.
 
 ```bash
 # Upload image (file, URL, base64, or stash reference)
@@ -1228,4 +1230,3 @@ tail -f logs/api.log  # If running in background
 
 **Status**: Phase 1 Complete ✅  
 **Next**: Phase 2 (Intel Management + Voice Tools)
-

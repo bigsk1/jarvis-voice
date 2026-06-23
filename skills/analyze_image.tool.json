@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "analyze_image",
-  "description": "👁️ Analyze images using AI vision. Understands photos, screenshots, documents, artwork. Accepts: URLs (https://...), local files (/path/to/image.jpg), stash references (stash://space_id/file_id). Use for: identifying objects, reading text in images, describing scenes, answering questions about visual content. Can optionally save web images to stash for future tool access.",
+  "description": "👁️ Analyze images using AI vision. Understands photos, screenshots, documents, artwork. Accepts: URLs (https://...), local files (/path/to/image.jpg), stash references (stash://space_id/file_id). Supports multiple images in one request (up to 6 cloud / 2 local). Use for: identifying objects, reading text in images, describing scenes, comparing images, answering questions about visual content. Can optionally save web images to stash for future tool access.",
   "complementary_tools": [
     "canvas",
     "stash",
@@ -13,7 +13,12 @@
     "properties": {
       "image": {
         "type": "string",
-        "description": "Image source - URL (https://example.com/pic.jpg), local path (/home/user/photo.png, ~/images/pic.jpg), or stash reference (stash://space_id/file_id)"
+        "description": "Single image source - URL (https://example.com/pic.jpg), local path (/home/user/photo.png, ~/images/pic.jpg), or stash reference (stash://space_id/file_id). Use `images` instead when analyzing multiple images together."
+      },
+      "images": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Optional list of image sources for multi-image analysis (compare, describe together). Max 6 in cloud mode, 2 in local mode. Overrides single `image` when provided."
       },
       "question": {
         "type": "string",
@@ -24,7 +29,7 @@
         "description": "If true and image is from URL, download and save to stash for future access by other tools (email, print, canvas). Default: false"
       }
     },
-    "required": ["image"]
+    "required": []
   },
   "permissions": {
     "dangerous": false,
