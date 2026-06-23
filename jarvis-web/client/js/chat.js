@@ -1777,6 +1777,27 @@ class ChatUI {
   }
   
   /**
+   * Effective image/video provider from AI config (env + web override), for modal defaults.
+   */
+  _getEffectiveImageProvider() {
+    const select = document.getElementById('setting-image-provider');
+    if (select?.value && ['gemini', 'openai', 'xai'].includes(select.value)) {
+      return select.value;
+    }
+    const value = window.jarvisApp?._settingsData?.image?.provider?.value;
+    return ['gemini', 'openai', 'xai'].includes(value) ? value : 'gemini';
+  }
+
+  _getEffectiveVideoProvider() {
+    const select = document.getElementById('setting-video-provider');
+    if (select?.value && ['xai', 'openai', 'gemini'].includes(select.value)) {
+      return select.value;
+    }
+    const value = window.jarvisApp?._settingsData?.video?.provider?.value;
+    return ['xai', 'openai', 'gemini'].includes(value) ? value : 'xai';
+  }
+
+  /**
    * Reset all image action options to defaults
    */
   _resetImageActionOptions() {
@@ -1785,7 +1806,7 @@ class ChatUI {
     const videoRatio = document.getElementById('imgActionVideoRatio');
     const videoDuration = document.getElementById('imgActionVideoDuration');
     const videoResolution = document.getElementById('imgActionVideoResolution');
-    if (videoProvider) videoProvider.value = 'xai';
+    if (videoProvider) videoProvider.value = this._getEffectiveVideoProvider();
     if (videoRatio) videoRatio.value = '16:9';
     if (videoDuration) videoDuration.value = '5';
     if (videoResolution) videoResolution.value = '720p';
@@ -1795,7 +1816,7 @@ class ChatUI {
     const imageRatio = document.getElementById('imgActionImageRatio');
     const imageSize = document.getElementById('imgActionImageSize');
     const imageStyle = document.getElementById('imgActionImageStyle');
-    if (imageProvider) imageProvider.value = 'gemini';
+    if (imageProvider) imageProvider.value = this._getEffectiveImageProvider();
     if (imageRatio) imageRatio.value = '';
     if (imageSize) imageSize.value = '2K';
     if (imageStyle) imageStyle.value = '';

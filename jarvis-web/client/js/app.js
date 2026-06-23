@@ -2647,6 +2647,9 @@ class JarvisApp {
         
         Utils.toast(saveToast, 'success');
         this.settingsModal.classList.remove('active');
+
+        // Refresh cached settings so image modal and other UI pick up overrides immediately
+        await this._loadSettings();
         
         // Refresh token counter context window for new provider/model
         if (window.chatUI) {
