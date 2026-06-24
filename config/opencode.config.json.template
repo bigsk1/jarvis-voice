@@ -32,8 +32,8 @@
         "apiKey": "{env:ANTHROPIC_API_KEY}"
       },
       "models": {
-        "claude-sonnet-4-20250514": {
-          "name": "Claude Sonnet 4"
+        "claude-sonnet-4-6": {
+          "name": "Claude Sonnet 4.6"
         },
         "claude-sonnet-4-5-20250929": {
           "name": "Claude Sonnet 4.5"

@@ -99,6 +99,38 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(pricing["cached"], 0.075)
         self.assertEqual(pricing["output"], 4.50)
 
+    def test_anthropic_sonnet_4_6_resolves_with_pricing_and_context(self):
+        self.assertEqual(get_model_context_window("anthropic", "claude-sonnet-4-6"), 1_000_000)
+        self.assertEqual(get_model_context_label("anthropic", "claude-sonnet-4-6"), "1M")
+        metadata = get_model_metadata("anthropic", "sonnet-4.6")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["id"], "claude-sonnet-4-6")
+        pricing = get_model_pricing("anthropic", "claude-sonnet-4-6")
+        self.assertEqual(pricing["input"], 3.00)
+        self.assertEqual(pricing["output"], 15.00)
+        self.assertEqual(pricing["cached"], 0.30)
+
+    def test_anthropic_options_include_sonnet_4_6(self):
+        models = [entry["id"] for entry in get_provider_model_options("anthropic")]
+        self.assertIn("claude-sonnet-4-6", models)
+        self.assertLess(models.index("claude-sonnet-4-6"), models.index("claude-opus-4-8"))
+
+    def test_retired_anthropic_models_resolve_to_replacements(self):
+        sonnet = get_model_metadata("anthropic", "claude-sonnet-4-20250514")
+        self.assertIsNotNone(sonnet)
+        self.assertEqual(sonnet["id"], "claude-sonnet-4-6")
+
+        opus = get_model_metadata("anthropic", "claude-opus-4-20250514")
+        self.assertIsNotNone(opus)
+        self.assertEqual(opus["id"], "claude-opus-4-8")
+
+        self.assertEqual(get_model_metadata("anthropic", "sonnet-4")["id"], "claude-sonnet-4-6")
+        self.assertEqual(get_model_metadata("anthropic", "opus-4")["id"], "claude-opus-4-8")
+
+        retired_sonnet = [entry["id"] for entry in get_provider_model_options("anthropic")]
+        self.assertNotIn("claude-sonnet-4-20250514", retired_sonnet)
+        self.assertNotIn("claude-4-opus", retired_sonnet)
+
     def test_anthropic_opus_4_8_resolves_with_pricing_and_context(self):
         self.assertEqual(get_model_context_window("anthropic", "claude-opus-4-8"), 1_000_000)
         self.assertEqual(get_model_context_label("anthropic", "claude-opus-4-8"), "1M")

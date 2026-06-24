@@ -82,11 +82,18 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "aliases": ["claude-4-5", "sonnet-4.5"],
         },
         {
+            "id": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
+            "context_tokens": 1_000_000,
+            "pricing": {"input": 3.00, "output": 15.00, "cached": 0.30},
+            "aliases": ["sonnet-4.6", "sonnet-4", "claude-sonnet-4-20250514"],
+        },
+        {
             "id": "claude-opus-4-8",
             "name": "Claude Opus 4.8",
             "context_tokens": 1_000_000,
             "pricing": {"input": 5.00, "output": 25.00, "cached": 0.50},
-            "aliases": ["opus-4.8"],
+            "aliases": ["opus-4.8", "opus-4", "claude-opus-4-20250514", "claude-4-opus"],
         },
         {
             "id": "claude-opus-4-7",
@@ -110,24 +117,10 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "aliases": ["opus-4.5"],
         },
         {
-            "id": "claude-4-opus",
-            "name": "Claude 4 Opus",
-            "context_tokens": 200_000,
-            "pricing": {"input": 15.00, "output": 75.00},
-            "aliases": ["opus-4"],
-        },
-        {
             "id": "claude-4-5",
             "name": "Claude 4.5",
             "context_tokens": 200_000,
             "pricing": {"input": 3.00, "output": 15.00},
-        },
-        {
-            "id": "claude-sonnet-4-20250514",
-            "name": "Claude Sonnet 4",
-            "context_tokens": 200_000,
-            "pricing": {"input": 3.00, "output": 15.00},
-            "aliases": ["sonnet-4"],
         },
     ],
     "openai": [
