@@ -3073,32 +3073,17 @@ class ChatUI {
         : 'Generated Video';
     }
     
-    // Method 1.5: Generic stash_ref video for non-generate tools (e.g., youtube_video)
-    const toolsWithOwnVideoDisplay = ['generate_video', 'convert_file'];
+    // Method 1.5: Generic video from any tool (youtube_video, create_social_clip, etc.)
+    // Modular: detects video by filename/mime/stash_ref — not by tool name
     if (!videoUrl) {
-      const videoExtensions = /\.(mp4|webm|mov|avi|mkv|m4v)$/i;
-      for (const [toolName, toolResult] of Object.entries(toolResultsData)) {
-        if (toolsWithOwnVideoDisplay.includes(toolName)) continue;
-        if (!toolResult || typeof toolResult !== 'object') continue;
-
-        const ref = toolResult.stash_ref || toolResult.ref;
-        if (!ref) continue;
-
-        const fn = toolResult.filename || toolResult.name || '';
-        const mime = (toolResult.mime_type || '').toLowerCase();
-        const isVideo = videoExtensions.test(fn) || mime.startsWith('video/');
-        if (!isVideo) continue;
-
-        const stashMatch = ref.match(/stash:\/\/([^/]+)\/(.+)/);
-        if (!stashMatch) continue;
-
-        videoUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
-        videoTitle = toolResult.video_title || toolResult.title || (fn ? `Video: ${fn}` : 'Video');
-        videoDuration = toolResult.duration_seconds || toolResult.duration || '';
-        videoHasAudio = toolResult.has_audio || false;
-        videoProvider = toolResult.provider || '';
-        videoMimeType = this._inferVideoMimeType(videoUrl, fn, mime);
-        break;
+      const genericVideo = this._findVideoFromToolResults(toolResultsData, ['convert_file']);
+      if (genericVideo) {
+        videoUrl = genericVideo.videoUrl;
+        videoTitle = genericVideo.videoTitle;
+        videoDuration = genericVideo.videoDuration;
+        videoHasAudio = genericVideo.videoHasAudio;
+        videoProvider = genericVideo.videoProvider;
+        videoMimeType = genericVideo.videoMimeType;
       }
     }
 
@@ -3596,6 +3581,87 @@ class ChatUI {
     if (candidate.endsWith('.mkv')) return 'video/x-matroska';
     if (candidate.endsWith('.m4v')) return 'video/mp4';
     return 'video/mp4';
+  }
+
+  /** Pull stash/media fields from tool results (supports nested saved objects). */
+  _extractMediaFieldsFromToolResult(toolResult) {
+    if (!toolResult || typeof toolResult !== 'object') return null;
+
+    const saved = toolResult.saved || toolResult.data?.saved || {};
+    const filePath = toolResult.file_path || saved.path || saved.file_path || '';
+    const filename = toolResult.filename
+      || toolResult.name
+      || saved.filename
+      || (filePath ? String(filePath).split('/').pop() : '');
+
+    return {
+      stashRef: toolResult.stash_ref || toolResult.ref || saved.stash_ref || saved.ref || null,
+      filename,
+      mimeType: String(toolResult.mime_type || saved.mime_type || '').toLowerCase(),
+      directUrl: toolResult.video_url || toolResult.file_url || toolResult.url || null,
+      title: toolResult.video_title
+        || toolResult.title
+        || toolResult.prompt
+        || toolResult.subject
+        || null,
+      duration: toolResult.duration_seconds || toolResult.duration || toolResult.data?.duration || '',
+      hasAudio: toolResult.has_audio || false,
+      provider: toolResult.provider || '',
+    };
+  }
+
+  _isVideoMedia(filename = '', mimeType = '', directUrl = '') {
+    const videoExtensions = /\.(mp4|webm|mov|avi|mkv|m4v)(\?|$|#)/i;
+    if (mimeType.startsWith('video/')) return true;
+    if (videoExtensions.test(String(filename))) return true;
+    if (directUrl && videoExtensions.test(String(directUrl))) return true;
+    return false;
+  }
+
+  /** Modular video lookup: any tool with stash/video fields, no hardcoded tool names. */
+  _findVideoFromToolResults(toolResultsData, excludeTools = []) {
+    if (!toolResultsData || typeof toolResultsData !== 'object') return null;
+
+    for (const [toolName, toolResult] of Object.entries(toolResultsData)) {
+      if (excludeTools.includes(toolName)) continue;
+
+      const candidates = Array.isArray(toolResult) ? toolResult : [toolResult];
+      for (const candidate of candidates) {
+        const media = this._extractMediaFieldsFromToolResult(candidate);
+        if (!media) continue;
+        if (!this._isVideoMedia(media.filename, media.mimeType, media.directUrl)) continue;
+
+        let videoUrl = null;
+        if (media.stashRef) {
+          const stashMatch = media.stashRef.match(/stash:\/\/([^/]+)\/(.+)/);
+          if (stashMatch) {
+            videoUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
+          }
+        }
+        if (!videoUrl && media.directUrl) {
+          videoUrl = media.directUrl;
+        }
+        if (!videoUrl && media.filename && media.filename.includes('.')) {
+          videoUrl = `/api/videos/${media.filename}`;
+        }
+        if (!videoUrl) continue;
+
+        const titlePrefix = media.title
+          ? `${media.title.substring(0, 50)}${media.title.length > 50 ? '...' : ''}`
+          : (media.filename ? `Video: ${media.filename}` : 'Video');
+
+        return {
+          videoUrl,
+          videoTitle: media.title ? titlePrefix : (media.filename ? `Video: ${media.filename}` : 'Video'),
+          videoDuration: media.duration,
+          videoHasAudio: media.hasAudio,
+          videoProvider: media.provider,
+          videoMimeType: this._inferVideoMimeType(videoUrl, media.filename, media.mimeType),
+        };
+      }
+    }
+
+    return null;
   }
 
   _extractYouTubeVideoId(url) {

@@ -1,0 +1,77 @@
+{
+  "enabled": true,
+  "name": "create_social_clip",
+  "description": "Create stock-footage social media clips (B-roll + voiceover + subtitles + background music) via MoneyPrinterTurbo. Use for TikTok, Reels, Shorts, faceless YouTube, or 'b-roll video' requests. NOT for AI-generated video from a text prompt — use generate_video for Grok/Sora/Veo AI animation instead. Triggers: 'social clip', 'b-roll', 'reel', 'tiktok video', 'shorts video', 'faceless video', 'stock footage video with narration'. Output saves to stash for web UI playback.",
+  "complementary_tools": [
+    "stash",
+    "convert_file"
+  ],
+  "script": "create_social_clip.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "subject": {
+        "type": "string",
+        "description": "Topic or keyword for the clip. AI writes the script and picks stock footage from this. Example: 'french bulldog care tips', 'morning productivity habits'"
+      },
+      "script": {
+        "type": "string",
+        "description": "Optional custom narration script. If omitted, MoneyPrinterTurbo generates one from the subject."
+      },
+      "aspect_ratio": {
+        "type": "string",
+        "enum": ["9:16", "16:9", "1:1"],
+        "description": "Video shape. Default 9:16 (vertical TikTok/Reels/Shorts). Use 16:9 for YouTube landscape."
+      },
+      "voice": {
+        "type": "string",
+        "description": "TTS voice name. Default from MONEYPRINTER_VOICE in env (fallback en-CA-LiamNeural-Male). Examples: en-US-JennyNeural-Female, en-GB-RyanNeural-Male"
+      },
+      "language": {
+        "type": "string",
+        "description": "Narration language code. Default en-US."
+      },
+      "video_source": {
+        "type": "string",
+        "enum": ["pexels", "pixabay", "coverr", "local"],
+        "description": "Stock footage provider. Default pexels."
+      },
+      "clip_duration": {
+        "type": "integer",
+        "description": "Seconds per stock clip segment before switching. Default 5."
+      },
+      "subtitles": {
+        "type": "boolean",
+        "description": "Burn in subtitles. Default true."
+      },
+      "paragraph_number": {
+        "type": "integer",
+        "description": "Number of narration paragraphs (1-10). More paragraphs = longer script. Default 1 (MPT server default)."
+      },
+      "match_materials_to_script": {
+        "type": "boolean",
+        "description": "Align stock clip order to script beats instead of random. Default false (MPT server default)."
+      },
+      "bgm_type": {
+        "type": "string",
+        "description": "Background music mode: 'random' (default), '' (none), or 'custom' (requires bgm_file on MPT server)."
+      },
+      "video_count": {
+        "type": "integer",
+        "description": "Batch render count (usually 1). MPT returns multiple final-*.mp4 variants when >1."
+      },
+      "save": {
+        "type": "boolean",
+        "description": "Download finished video and save to stash (default true)."
+      }
+    },
+    "required": ["subject"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}

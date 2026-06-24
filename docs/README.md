@@ -321,6 +321,22 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-06-24:**
+- ✅ **`create_social_clip` tool** — MoneyPrinterTurbo B-roll social videos (stock footage + narration + subtitles + BGM)
+  - Added `skills/create_social_clip.py` + `create_social_clip.tool.json`; distinct from `generate_video` (xAI/Sora/Veo AI animation)
+  - POST `/api/v1/videos` → poll task → download `final-*.mp4` → stash; 20-minute executor timeout, 429 retry, relative URL safety net
+  - Env: `MONEYPRINTER_API_URL`, `MONEYPRINTER_VOICE`, `MONEYPRINTER_MAX_WAIT_SEC` in `config/cloud.env`
+  - Web UI: modular inline `<video>` player for any tool result with stash video / `video/*` mime (not hardcoded per tool)
+  - Cursor skill: `.cursor/skills/social-clip-video/SKILL.md`
+- ✅ **Multi-image vision (Web UI)** — upload and analyze several images in one turn
+  - Web UI supports multi-image analyze (up to 6 cloud / 2 local); image-to-image and image-to-video stay single-reference
+  - Lightweight socket upload metadata with server-side hydration from disk; limits enforced on upload and send paths
+  - Centralized multimodal request building in `lib/vision_multimodal.py`; `analyze_image` accepts an `images` list
+  - Follow-up grounding: batch stash labels/tags, `uploaded_images` metadata, ordinal stash-ref hints in context
+  - Skip native server-side tools when web-upload vision is pre-attached (avoids redundant xAI `view_image` loops on analyze flows)
+  - Image Action Modal provider defaults respect AI config overrides after settings save
+  - See: [`docs/JARVIS_WEB_UI.md`](JARVIS_WEB_UI.md), [`docs/api/QUERY.md`](api/QUERY.md), [`docs/api/IMAGES.md`](api/IMAGES.md)
+
 **2026-06-22:**
 - ✅ **Experimental Docker Web stack (v2.51.0)**
   - Added root `Dockerfile` and `docker-compose.yml` for the Web UI, API, Canvas, Memory, Intelligence, Docs, and background services using the existing host `data/`, config, logs, and audio bind mounts.
@@ -1629,6 +1645,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-06-22
-**Latest:** Experimental Docker Web stack, hybrid native/Docker tool-profile guidance, container daemon supervision, internal service routing/auth, and Docker operations documentation
+**Last Updated:** 2026-06-24
+**Latest:** `create_social_clip` (MoneyPrinterTurbo B-roll), multi-image Web UI vision, modular stash video playback, and modular inline media display improvements
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

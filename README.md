@@ -698,7 +698,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (70+)
+### Available Skills (80+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -778,6 +778,10 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
   - Gemini: 4/6/8s, native audio, up to 4K resolution ($0.15/s)
   - Text-to-video and image-to-video modes (all providers)
   - Auto-saves to stash + memory for cross-session recall
+- `create_social_clip` - **Social B-roll clips**: MoneyPrinterTurbo (self-hosted Docker) — stock footage + AI script + TTS + subtitles + BGM
+  - TikTok, Reels, Shorts, faceless YouTube — **not** `generate_video` (that tool is xAI/Sora/Veo AI animation)
+  - Configure `MONEYPRINTER_API_URL`, `MONEYPRINTER_VOICE`, `MONEYPRINTER_MAX_WAIT_SEC` in `config/cloud.env`
+  - Polls MPT `/api/v1/videos`, downloads `final-*.mp4`, saves to stash; web UI inline player for stash videos
 - `analyze_image` - **Vision analysis**: Analyze one or more images from URLs, files, or stash refs
   - Cloud=Grok/Claude/GPT-4o, Local=llava
   - Multi-image analysis and comparison: up to 6 images in cloud mode, 2 in local mode
@@ -1838,4 +1842,4 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.51.0 (June 2026)
 **Status:** Production Ready ✅  
-**Latest Features:** v2.51.0 adds the experimental local Docker Web stack, hybrid Docker/native tool-profile workflow, internal container routing/auth, foreground daemon supervision, and Docker operations documentation — alongside cross-turn correction learning, Profile Card injection, memory-type filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog support.
+**Latest Features:** v2.51.0 adds `create_social_clip` (MoneyPrinterTurbo B-roll social videos), multi-image Web UI vision, the experimental local Docker Web stack, hybrid Docker/native tool-profile workflow, internal container routing/auth, foreground daemon supervision, and Docker operations documentation — alongside cross-turn correction learning, Profile Card injection, memory-type filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog support.

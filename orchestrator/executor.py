@@ -79,6 +79,8 @@ class ToolExecutor:
             return 600  # 10 minutes for music generation (can take 3-5min for longer tracks)
         if tool_name == "generate_video":
             return 600  # 10 minutes for video generation (typically 2-3 min, up to 5 min for 4k)
+        if tool_name == "create_social_clip":
+            return 1200  # 20 minutes — MoneyPrinterTurbo script + stock + TTS + render + download
         if tool_name == "weather":
             return 90  # Weather API can be slow with proxy fallback
         if tool_name == "serpapi_home_depot":
