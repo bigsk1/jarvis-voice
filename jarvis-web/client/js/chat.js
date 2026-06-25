@@ -2121,8 +2121,8 @@ class ChatUI {
     }
 
     for (const file of toUpload) {
-      if (file.size > 10 * 1024 * 1024) {
-        Utils.toast(`${file.name} too large (max 10MB)`, 'error');
+      if (file.size > 30 * 1024 * 1024) {
+        Utils.toast(`${file.name} too large (max 30MB)`, 'error');
         return;
       }
     }

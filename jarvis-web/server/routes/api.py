@@ -1732,7 +1732,7 @@ def upload_to_stash():
 
 UPLOADS_PATH = JARVIS_ROOT / 'jarvis-web' / 'data' / 'uploads'
 UPLOAD_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-UPLOAD_MAX_FILE_BYTES = 10 * 1024 * 1024
+UPLOAD_MAX_FILE_BYTES = 30 * 1024 * 1024
 
 
 def _uploaded_file_size_bytes(file) -> int | None:
@@ -1777,7 +1777,7 @@ def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = 
 
     upload_size = _uploaded_file_size_bytes(file)
     if upload_size is not None and upload_size > UPLOAD_MAX_FILE_BYTES:
-        return {'ok': False, 'error': 'Image too large (max 10MB)'}
+        return {'ok': False, 'error': 'Image too large (max 30MB)'}
 
     try:
         img = Image.open(file.stream)
