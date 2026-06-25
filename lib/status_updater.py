@@ -475,10 +475,16 @@ class StatusUpdater:
         try:
             import requests
             opencode_url = get_config_value('OPENCODE_BASE_URL', 'http://localhost:4096')
+            server_password = get_config_value('OPENCODE_SERVER_PASSWORD', '').strip()
+            server_username = get_config_value('OPENCODE_SERVER_USERNAME', 'opencode').strip() or 'opencode'
+
+            request_kwargs: dict[str, Any] = {'timeout': 3}
+            if server_password:
+                request_kwargs['auth'] = (server_username, server_password)
             
             response = requests.get(
                 f'{opencode_url}/session/{session_id}',
-                timeout=3
+                **request_kwargs,
             )
             
             if response.status_code != 200:
@@ -610,4 +616,3 @@ if __name__ == "__main__":
     # Try update after complete (should be blocked)
     result = updater.update(category='progress')
     print(f"Post-complete update: {'sent' if result else 'blocked'}")
-

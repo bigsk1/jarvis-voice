@@ -7,7 +7,7 @@
  * 1. BLOCK write/edit/delete outside $HOME/jarvis-workspace (override: JARVIS_WORKSPACE_ROOT)
  * 2. BLOCK all access to $HOME/jarvis-voice (override: JARVIS_VOICE_ROOT)
  * 3. BLOCK system directories (/etc, /usr, /bin, /sys, /proc, etc.)
- * 4. ALLOW read-only access for reference (can read Jarvis code to understand APIs)
+ * 4. Keep OpenCode focused on generated projects; Jarvis should provide any codebase context it needs.
  *
  * Defaults match a clone at ~/jarvis-voice and workspace at ~/jarvis-workspace (see lib/paths.py).
  */

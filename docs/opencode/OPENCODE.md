@@ -98,11 +98,46 @@ sudo systemctl stop opencode-jarvis.service
 journalctl -u opencode-jarvis.service -f
 ```
 
+Before running `./bin/install-opencode-service.sh` or `./bin/update-opencode-service.sh`, make sure the provider keys and optional OpenCode server auth values are present in the source env file. By default, the scripts copy from `config/cloud.env` into `~/.config/opencode/jarvis-env.env`.
+
+For a local-mode-only setup, point the generator at `config/local.env`:
+
+```bash
+OPENCODE_ENV_FILE=config/local.env ./bin/update-opencode-service.sh
+```
+
 **Configuration:**
 - Port: `4096`
 - Host: `0.0.0.0` (accessible from local network)
 - Config: `~/.config/opencode/opencode.json`
-- API Keys: `~/.config/opencode/jarvis-env.env`
+- Git-safe example: `config/opencode.config.json.template`
+- Runtime env/API keys: `~/.config/opencode/jarvis-env.env`
+
+To seed a new host with the tracked example:
+
+```bash
+install -D -m 600 config/opencode.config.json.template ~/.config/opencode/opencode.json
+```
+
+The template is safe to commit because API keys are referenced as environment variables such as `{env:OPENAI_API_KEY}` and `{env:ANTHROPIC_API_KEY}`. The built-in xAI provider reads `XAI_API_KEY` from the environment when `xai` is enabled.
+
+Optional server authentication:
+
+```bash
+OPENCODE_SERVER_PASSWORD=your-password
+# OPENCODE_SERVER_USERNAME=opencode
+```
+
+OpenCode applies this as HTTP Basic auth to both `opencode serve` and `opencode web`. Put the values in `config/cloud.env`, then run `./bin/update-opencode-service.sh` so they are copied into `~/.config/opencode/jarvis-env.env` and the service is restarted. Jarvis' `opencode` tool also reads these values and sends Basic auth when calling the OpenCode API.
+
+Verify auth after restarting:
+
+```bash
+curl -i http://localhost:4096/config
+curl -u opencode:your-password http://localhost:4096/config | jq '{model, small_model, enabled_providers}'
+```
+
+The first command should be rejected when auth is active. If you set `OPENCODE_SERVER_USERNAME`, use that username instead of `opencode`. Keep the username/password in the Jarvis env file and `~/.config/opencode/jarvis-env.env` in sync; the OpenCode server reads `jarvis-env.env`, while Jarvis' `opencode` tool reads the active Jarvis config.
 
 ### 2. Workspace Structure
 
@@ -121,16 +156,9 @@ journalctl -u opencode-jarvis.service -f
 ```
 
 **Security:**
-- OpenCode can only write to `~/jarvis-workspace`
-- `~/jarvis-voice` is read-only
-- Defined in `~/.config/opencode/opencode.json`:
-  ```json
-  "workspace": {
-    "root": "~/jarvis-workspace",
-    "allowedPaths": ["~/jarvis-workspace"],
-    "readOnlyPaths": ["~/jarvis-voice"]
-  }
-  ```
+- The systemd service starts OpenCode in `~/jarvis-workspace`
+- The workspace-protection plugin blocks writes outside `~/jarvis-workspace`
+- `~/jarvis-voice` is protected from OpenCode edits
 
 ### 3. Model Configuration
 
@@ -144,7 +172,9 @@ If they are not set, it falls back to mode-specific defaults.
 
 **Cloud mode**:
 - Provider/model come from `OPENCODE_PROVIDER` and `OPENCODE_MODEL`
-- Example current setup: OpenAI + `gpt-5.3-codex`
+- Example current setup: xAI + `grok-build-0.1`
+- xAI options such as `grok-build-0.1` and `grok-4.3` are available when `XAI_API_KEY` is in the OpenCode environment
+- OpenAI Codex-specific models may require API-account support; ChatGPT-account auth can reject them.
 
 **Local mode** (when using `jarvis-local`, fallback behavior):
 - Provider: Ollama
@@ -449,11 +479,19 @@ OLLAMA_MODEL=qwen3.5:latest
 
 ### OpenCode Config (`~/.config/opencode/opencode.json`)
 
+Use the tracked example at `config/opencode.config.json.template` as the starting point for a new host:
+
+```bash
+install -D -m 600 config/opencode.config.json.template ~/.config/opencode/opencode.json
+```
+
 **Key sections:**
-- `provider`: Model providers (Anthropic, OpenAI, Ollama)
-- `permission`: Requires user approval for edits and bash commands
-- `workspace`: Enforces file system boundaries
-- `disabled_providers`: Providers to skip
+- `model`: Default model for new OpenCode sessions, for example `xai/grok-build-0.1`
+- `small_model`: Cheaper model for title and small helper tasks
+- `enabled_providers`: Restricts auto-loaded providers while keeping selected options such as `xai`
+- `provider`: Custom provider entries for Ollama, OpenAI, and Anthropic
+- `permission`: Uses `allow` for headless Jarvis integration; workspace boundaries are enforced by the plugin and service working directory
+- `disabled_providers`: Providers to skip when not using `enabled_providers`
 
 ---
 

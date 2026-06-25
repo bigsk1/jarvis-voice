@@ -643,9 +643,10 @@ def _should_speak_error(self, error_msg):
 **Test**: Multi-turn task with errors gets appropriate updates.
 
 ### Phase 3: OpenCode Integration
-**Files**: `skills/opencode.py`
+**Files**: `skills/opencode.py`, `lib/opencode_logger.py`, `lib/status_updater.py`
 
 - [ ] Add log polling during OpenCode execution
+- [ ] Add an early-session side channel: `session_start` is logged immediately after OpenCode `create_session()` returns, before the blocking task response. Record that `session_id` by `JARVIS_SESSION_ID` / `JARVIS_WEB_CONVERSATION_ID` so `StatusUpdater` can poll `/session/{session_id}` while the tool subprocess is still running.
 - [ ] Implement log summarization for status
 - [ ] Style-aware summaries (casual vs detailed)
 
@@ -1301,4 +1302,3 @@ STATUS_UPDATES_ENABLED=false
 *Created: 2025-11-29*
 *Updated: 2025-11-29 - All 3 phases complete and tested*
 *Status: ✅ COMPLETE - Production Ready*
-

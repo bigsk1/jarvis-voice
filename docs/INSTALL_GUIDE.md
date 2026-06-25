@@ -503,7 +503,7 @@ Get API keys from:
 - **GitHub Personal Access Tokens**: https://github.com/settings/tokens
 
 For self-hosted or optional integrations:
-- **OpenCode**: no external API key for Jarvis itself; set up your local OpenCode server and use `OPENCODE_SERVER_PASSWORD` plus provider keys in the OpenCode environment. See `docs/opencode/OPENCODE.md`.
+- **OpenCode**: no external API key is required for Jarvis itself; set provider keys such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `XAI_API_KEY` in the OpenCode service environment. Optional `OPENCODE_SERVER_PASSWORD` protects both the OpenCode web UI and API with HTTP Basic auth. See `docs/opencode/OPENCODE.md`.
 - **n8n**: generate the API key from your own n8n instance at `Settings -> API` after n8n is running. Used by `N8N_LOCAL_API_KEY`.
 - **Crawl4AI**: if using a hosted Crawl4AI service, use the key issued by that service/provider.
 

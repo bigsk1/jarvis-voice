@@ -26,6 +26,12 @@ echo "📦 Installing OpenCode systemd service..."
 echo "🔧 Creating environment file..."
 "$PROJECT_ROOT/bin/create-opencode-env.sh"
 
+# Sync OpenCode plugins from the tracked repo copies.
+echo "🧩 Installing OpenCode plugins..."
+install -d -m 755 "$HOME/.config/opencode/plugin"
+install -m 644 "$PROJECT_ROOT"/docs/opencode/plugin/*.js "$HOME/.config/opencode/plugin/"
+install -m 644 "$PROJECT_ROOT/docs/opencode/plugin/README.md" "$HOME/.config/opencode/plugin/"
+
 # Render and install service file for the current account
 "$RENDER_SCRIPT" "$SERVICE_FILE" "$RENDERED_FILE"
 sudo install -m 644 "$RENDERED_FILE" /etc/systemd/system/opencode-jarvis.service

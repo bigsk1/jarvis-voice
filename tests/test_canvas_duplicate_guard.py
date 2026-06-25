@@ -27,7 +27,7 @@ fake_flask = types.ModuleType("flask")
 fake_flask.request = object()
 sys.modules.setdefault("flask", fake_flask)
 
-from orchestrator.orchestrator_v2 import Orchestrator
+from orchestrator.orchestrator_v2 import Orchestrator, SINGLE_CALL_TOOLS
 from server.sockets.chat import ChatHandler
 
 
@@ -67,6 +67,9 @@ class _SummaryExecutor:
 
 
 class CanvasDuplicateGuardTests(unittest.TestCase):
+    def test_opencode_is_single_call_capped(self):
+        self.assertIn("opencode", SINGLE_CALL_TOOLS)
+
     def test_completion_guard_avoids_artifact_loop_when_user_complains_about_tool_churn(self):
         handler = ChatHandler.__new__(ChatHandler)
         record = {

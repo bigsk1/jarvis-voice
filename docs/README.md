@@ -337,6 +337,15 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Image Action Modal provider defaults respect AI config overrides after settings save
   - See: [`docs/JARVIS_WEB_UI.md`](JARVIS_WEB_UI.md), [`docs/api/QUERY.md`](api/QUERY.md), [`docs/api/IMAGES.md`](api/IMAGES.md)
 
+**2026-06-25:**
+- ✅ **OpenCode service/auth/workspace hardening**
+  - OpenCode systemd rendering now uses the target user's home instead of root expansion, starts the server in `~/jarvis-workspace`, creates `projects/`, `temp/`, and `deployments/`, and points temp env vars at `~/jarvis-workspace/temp`.
+  - Jarvis OpenCode API calls, read-only session checks, and status polling helpers now support `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD` Basic auth.
+  - Added a git-safe `config/opencode.config.json.template`, xAI/Grok Build examples, provider-key setup notes, and install/update syncing for workspace-protection plugins.
+  - `opencode` is single-call capped per user request to prevent duplicate build/summary passes; `check_opencode_sessions` is documented as fallback-only.
+  - `check_opencode_sessions` now enriches OpenCode's weak `/session` metadata with Jarvis JSONL log summaries: original task, response preview, duration, token usage, model, and completion status.
+  - See: [`opencode/OPENCODE.md`](opencode/OPENCODE.md), [`opencode/OPENCODE_PLUGINS.md`](opencode/OPENCODE_PLUGINS.md), [`FUTURE_ENHANCEMENTS.md`](FUTURE_ENHANCEMENTS.md)
+
 **2026-06-22:**
 - ✅ **Experimental Docker Web stack (v2.51.0)**
   - Added root `Dockerfile` and `docker-compose.yml` for the Web UI, API, Canvas, Memory, Intelligence, Docs, and background services using the existing host `data/`, config, logs, and audio bind mounts.

@@ -39,17 +39,46 @@ class OpenCodeClient:
             from config_loader import get_config_value
             self.default_model_id = get_config_value("OPENCODE_MODEL", "claude-sonnet-4-6")
             self.default_provider_id = get_config_value("OPENCODE_PROVIDER", "anthropic")
+            server_password = get_config_value("OPENCODE_SERVER_PASSWORD", "").strip()
+            server_username = get_config_value("OPENCODE_SERVER_USERNAME", "opencode").strip() or "opencode"
         except:
             self.default_model_id = "claude-sonnet-4-6"
             self.default_provider_id = "anthropic"
+            server_password = ""
+            server_username = "opencode"
+
+        self.auth = (server_username, server_password) if server_password else None
         
         self._verify_connection()
+
+    def _request_kwargs(self, timeout: int | float) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {"timeout": timeout}
+        if self.auth:
+            kwargs["auth"] = self.auth
+        return kwargs
+
+    def _get(self, path: str, timeout: int | float | None = None):
+        return requests.get(
+            f"{self.base_url}{path}",
+            **self._request_kwargs(timeout or self.timeout),
+        )
+
+    def _post(
+        self,
+        path: str,
+        json_payload: dict[str, Any] | None = None,
+        timeout: int | float | None = None,
+    ):
+        kwargs = self._request_kwargs(timeout or self.timeout)
+        if json_payload is not None:
+            kwargs["json"] = json_payload
+        return requests.post(f"{self.base_url}{path}", **kwargs)
 
     def _verify_connection(self, max_retries: int = 3) -> bool:
         """Verify OpenCode server is accessible."""
         for attempt in range(max_retries):
             try:
-                response = requests.get(f"{self.base_url}/config", timeout=5)
+                response = self._get("/config", timeout=5)
                 if response.status_code == 200:
                     return True
             except requests.exceptions.ConnectionError:
@@ -66,11 +95,11 @@ class OpenCodeClient:
     def health_check(self) -> dict[str, Any]:
         """Check OpenCode server health."""
         try:
-            response = requests.get(f"{self.base_url}/config", timeout=5)
+            response = self._get("/config", timeout=5)
             if response.status_code != 200:
                 return {"healthy": False, "status": "error"}
 
-            sessions_response = requests.get(f"{self.base_url}/session", timeout=5)
+            sessions_response = self._get("/session", timeout=5)
             sessions = (
                 sessions_response.json() if sessions_response.status_code == 200 else []
             )
@@ -93,23 +122,19 @@ class OpenCodeClient:
         if agent_mode:
             payload["agent"] = agent_mode
 
-        response = requests.post(
-            f"{self.base_url}/session", json=payload, timeout=self.timeout
-        )
+        response = self._post("/session", json_payload=payload)
         response.raise_for_status()
         return response.json()
 
     def get_session(self, session_id: str) -> dict[str, Any]:
         """Get session information."""
-        response = requests.get(
-            f"{self.base_url}/session/{session_id}", timeout=self.timeout
-        )
+        response = self._get(f"/session/{session_id}")
         response.raise_for_status()
         return response.json()
 
     def list_sessions(self) -> list[dict[str, Any]]:
         """List all sessions."""
-        response = requests.get(f"{self.base_url}/session", timeout=self.timeout)
+        response = self._get("/session")
         response.raise_for_status()
         return response.json()
 
@@ -135,10 +160,9 @@ class OpenCodeClient:
         else:
             payload["model"] = {"providerID": provider_id, "modelID": model_id}
 
-        response = requests.post(
-            f"{self.base_url}/session/{session_id}/message",
-            json=payload,
-            timeout=self.timeout,
+        response = self._post(
+            f"/session/{session_id}/message",
+            json_payload=payload,
         )
         response.raise_for_status()
         return response.json()
@@ -222,6 +246,7 @@ You are executing tasks on behalf of Jarvis. The user spoke to Jarvis via voice,
    - Projects: `{_proj_str}/`
    - Temp files: `{_temp_str}/`
    - Deployments: `{_dep_str}/`
+   - Do not use `/tmp`; use `{_temp_str}/` for scratch files, temporary scripts, test artifacts, and command output.
 
 3. **If asked to work outside workspace:**
    - Politely refuse
@@ -338,18 +363,14 @@ All file operations must be within this directory. DO NOT access `{_repo_str}`.
 
     def get_providers(self) -> dict[str, Any]:
         """Get available LLM providers and models."""
-        response = requests.get(
-            f"{self.base_url}/config/providers", timeout=self.timeout
-        )
+        response = self._get("/config/providers")
         response.raise_for_status()
         return response.json()
 
     def abort_session(self, session_id: str) -> bool:
         """Abort a running session."""
         try:
-            response = requests.post(
-                f"{self.base_url}/session/{session_id}/abort", timeout=self.timeout
-            )
+            response = self._post(f"/session/{session_id}/abort")
             response.raise_for_status()
             return True
         except Exception as e:

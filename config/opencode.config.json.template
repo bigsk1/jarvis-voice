@@ -1,5 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "model": "xai/grok-build-0.1",
+  "small_model": "ollama/gemma4",
+  "enabled_providers": ["ollama", "openai", "anthropic", "xai"],
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
@@ -20,8 +23,8 @@
         "apiKey": "{env:OPENAI_API_KEY}"
       },
       "models": {
-        "gpt-4o": {
-          "name": "GPT-4o"
+        "gpt-5.4-mini": {
+          "name": "GPT-5.4 Mini"
         }
       }
     },
@@ -44,8 +47,7 @@
   "disabled_providers": ["cloudflare-workers", "amazon-bedrock", "nvidia", "workers-ai", "bedrock", "huggingface"],
   "autoupdate": true,
   "permission": {
-    "edit": "ask",
-    "bash": "ask"
+    "edit": "allow",
+    "bash": "allow"
   }
 }
-

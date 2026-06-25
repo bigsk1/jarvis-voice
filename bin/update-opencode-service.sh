@@ -15,6 +15,12 @@ echo "🔧 Updating OpenCode service environment..."
 # Create/update environment file
 "$PROJECT_ROOT/bin/create-opencode-env.sh"
 
+# Sync OpenCode plugins from the tracked repo copies.
+echo "🧩 Updating OpenCode plugins..."
+install -d -m 755 "$HOME/.config/opencode/plugin"
+install -m 644 "$PROJECT_ROOT"/docs/opencode/plugin/*.js "$HOME/.config/opencode/plugin/"
+install -m 644 "$PROJECT_ROOT/docs/opencode/plugin/README.md" "$HOME/.config/opencode/plugin/"
+
 # Render and install updated service file
 echo "📦 Updating systemd service..."
 "$RENDER_SCRIPT" "$SERVICE_FILE" "$RENDERED_FILE"

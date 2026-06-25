@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "check_opencode_sessions",
-  "description": "Check OpenCode build sessions and progress via API. Lists recent OpenCode projects, shows session details, token usage, and build history. READ-ONLY - does not trigger new builds. Use this to see what OpenCode has built recently or check on build progress.",
+  "description": "Fallback-only OpenCode session lookup via API. Lists recent OpenCode sessions or returns metadata for a specific session. READ-ONLY - does not trigger new builds. Use only when OpenCode produced no usable final result, timed out, or the user explicitly asks about OpenCode session status/logs. Do not call after a successful OpenCode build reply.",
   "script": "check_opencode_sessions.py",
   "parameters": {
     "type": "object",

@@ -11,7 +11,13 @@ OpenCode plugins extend OpenCode's capabilities and enforce safety boundaries wh
 
 ## Quick Setup
 
-Copy plugin files from repo to OpenCode config:
+The OpenCode install/update scripts sync plugin files automatically:
+
+```bash
+./bin/update-opencode-service.sh
+```
+
+Manual copy, if needed:
 
 ```bash
 # Create plugin directory if it doesn't exist
@@ -276,4 +282,3 @@ This plugin infrastructure was added in branch: `opencode-plugins`
 ---
 
 **Architecture Reminder**: Jarvis is the boss, OpenCode is the specialist, plugins are the guardrails. Information flows up, decisions flow down.
-

@@ -43,8 +43,8 @@ class OpenCodeToolTests(unittest.TestCase):
         def fake_get_config(key, default=None):
             values = {
                 "OPENCODE_BASE_URL": "http://localhost:4096",
-                "OPENCODE_PROVIDER": "openai",
-                "OPENCODE_MODEL": "gpt-5.3-codex",
+                "OPENCODE_PROVIDER": "xai",
+                "OPENCODE_MODEL": "grok-build-0.1",
             }
             return values.get(key, default)
 
@@ -63,8 +63,8 @@ class OpenCodeToolTests(unittest.TestCase):
         result = json.loads(stdout.getvalue())
         self.assertEqual(exit_code, 0)
         self.assertTrue(result["ok"])
-        self.assertEqual(FakeClient.captured["model"]["providerID"], "openai")
-        self.assertEqual(FakeClient.captured["model"]["modelID"], "gpt-5.3-codex")
+        self.assertEqual(FakeClient.captured["model"]["providerID"], "xai")
+        self.assertEqual(FakeClient.captured["model"]["modelID"], "grok-build-0.1")
         self.assertNotIn("memory", FakeClient.captured["context"])
 
     def test_memory_context_is_only_included_when_enabled(self):
@@ -87,8 +87,8 @@ class OpenCodeToolTests(unittest.TestCase):
         def fake_get_config(key, default=None):
             values = {
                 "OPENCODE_BASE_URL": "http://localhost:4096",
-                "OPENCODE_PROVIDER": "openai",
-                "OPENCODE_MODEL": "gpt-5.3-codex",
+                "OPENCODE_PROVIDER": "xai",
+                "OPENCODE_MODEL": "grok-build-0.1",
                 "OPENCODE_INCLUDE_MEMORY": "true",
             }
             return values.get(key, default)

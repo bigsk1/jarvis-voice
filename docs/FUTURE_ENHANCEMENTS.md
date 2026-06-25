@@ -393,6 +393,22 @@ First-class `session` and `task` objects shared across voice, CLI, and Web UI. A
 
 Jarvis should stream OpenCode session logs, track progress, and interrupt/redirect like a user in the TUI — not fire-and-forget. Needs `opencode_interrupt`, `opencode_send_message`, and task-layer linkage. See [archive/opencode/OPENCODE_PHASE2_STATUS.md](archive/opencode/OPENCODE_PHASE2_STATUS.md) (historical milestone).
 
+**TODO: early session bridge for live status.** The OpenCode tool writes
+`logs/opencode/opencode-YYYY-MM-DD.jsonl` immediately after `create_session()`
+returns, before the long blocking task message completes:
+
+```json
+{"event":"session_start","session_id":"ses_...","task":"..."}
+```
+
+Explore a small side channel where `skills/opencode.py` or `OpenCodeLogger.log_session_start()`
+records the active OpenCode `session_id` keyed by `JARVIS_SESSION_ID` /
+`JARVIS_WEB_CONVERSATION_ID`. `StatusUpdater` could then discover that id while
+the subprocess is still running and poll `/session/{session_id}` with Basic auth.
+Current OpenCode API details are metadata-heavy, so first verify whether a newer
+endpoint or event stream exposes useful step/tool progress before building a full
+supervision UI.
+
 ### 6) Personal Corpus Ingestion
 **Priority:** Medium (visible product win)  
 **Status:** Building blocks exist — not unified

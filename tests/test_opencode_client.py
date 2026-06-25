@@ -31,8 +31,21 @@ class FakeResponse:
 
 
 class OpenCodeClientTests(unittest.TestCase):
-    def _make_client(self):
+    def _make_client(self, config=None):
+        config = config or {}
+
+        def fake_get_config(key, default=None):
+            values = {
+                "OPENCODE_MODEL": "grok-build-0.1",
+                "OPENCODE_PROVIDER": "xai",
+                "OPENCODE_SERVER_PASSWORD": "",
+                "OPENCODE_SERVER_USERNAME": "opencode",
+            }
+            values.update(config)
+            return values.get(key, default)
+
         with patch("opencode_client.requests.get", return_value=FakeResponse({"ok": True})), \
+             patch("config_loader.get_config_value", side_effect=fake_get_config), \
              patch("opencode_client.OpenCodeLogger", return_value=MagicMock()):
             return OpenCodeClient(base_url="http://opencode.test")
 
@@ -47,6 +60,22 @@ class OpenCodeClientTests(unittest.TestCase):
             "http://opencode.test/session",
             json={"title": "Jarvis: demo", "agent": "build"},
             timeout=client.timeout,
+        )
+
+    def test_uses_basic_auth_when_server_password_is_configured(self):
+        client = self._make_client({
+            "OPENCODE_SERVER_USERNAME": "jarvis",
+            "OPENCODE_SERVER_PASSWORD": "secret",
+        })
+
+        with patch("opencode_client.requests.post", return_value=FakeResponse({"sessionId": "ses_123"})) as mock_post:
+            client.create_session(title="Jarvis: demo", agent_mode="build")
+
+        mock_post.assert_called_once_with(
+            "http://opencode.test/session",
+            json={"title": "Jarvis: demo", "agent": "build"},
+            timeout=client.timeout,
+            auth=("jarvis", "secret"),
         )
 
     def test_execute_task_accepts_session_id_response_key(self):

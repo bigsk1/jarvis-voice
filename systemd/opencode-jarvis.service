@@ -1,5 +1,4 @@
-# Template: render with ./bin/render-systemd-unit.sh before installing so User/Group match the target account.
-# Path specifiers use %h (that user's home) after User= is set.
+# Template: render with ./bin/render-systemd-unit.sh before installing so User/Group/Home match the target account.
 [Unit]
 Description=OpenCode Server for Jarvis Voice Assistant
 After=network.target
@@ -9,12 +8,18 @@ Wants=network-online.target
 Type=simple
 User=__JARVIS_USER__
 Group=__JARVIS_GROUP__
-WorkingDirectory=%h
+WorkingDirectory=__JARVIS_HOME__/jarvis-workspace
 # Load environment variables (API keys for OpenCode providers)
-EnvironmentFile=%h/.config/opencode/jarvis-env.env
+EnvironmentFile=__JARVIS_HOME__/.config/opencode/jarvis-env.env
 # Also ensure PATH includes opencode binary location
-Environment="PATH=%h/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=%h/.opencode/bin/opencode serve --port 4096 --hostname 0.0.0.0
+Environment="PATH=__JARVIS_HOME__/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
+# Keep OpenCode shell temp files inside the allowed workspace. This avoids
+# permission prompts for /tmp access during unattended Jarvis tool runs.
+Environment="TMPDIR=__JARVIS_HOME__/jarvis-workspace/temp"
+Environment="TMP=__JARVIS_HOME__/jarvis-workspace/temp"
+Environment="TEMP=__JARVIS_HOME__/jarvis-workspace/temp"
+ExecStartPre=/usr/bin/mkdir -p __JARVIS_HOME__/jarvis-workspace/projects __JARVIS_HOME__/jarvis-workspace/temp __JARVIS_HOME__/jarvis-workspace/deployments
+ExecStart=__JARVIS_HOME__/.opencode/bin/opencode serve --port 4096 --hostname 0.0.0.0
 Restart=always
 RestartSec=5
 StandardOutput=journal

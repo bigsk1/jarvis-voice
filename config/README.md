@@ -120,13 +120,19 @@ OLLAMA_MODEL="gemma4"
 
 **OpenCode Agent** (coding tasks):
 ```bash
-# Recommended: Use Claude even in local mode (safer for code execution)
-OPENCODE_PROVIDER="anthropic"
-OPENCODE_MODEL="claude-sonnet-4-5-20250929"
+# Recommended default for the OpenCode web UI and Jarvis tool
+OPENCODE_PROVIDER="xai"
+OPENCODE_MODEL="grok-build-0.1"
+
+# Other cloud options
+# OPENCODE_PROVIDER="anthropic"
+# OPENCODE_MODEL="claude-sonnet-4-5-20250929"
+# OPENCODE_PROVIDER="openai"
+# OPENCODE_MODEL="gpt-5.4-mini"
 
 # Experimental: Local Ollama models (less safe, less reliable)
 OPENCODE_PROVIDER="ollama"
-OPENCODE_MODEL="qwen3.5:latest"
+OPENCODE_MODEL="gemma4"
 ```
 
 ### Response Style
@@ -204,9 +210,9 @@ OLLAMA_EMBEDDING_CONTEXT_WINDOW=8192
 
 ### Hybrid Mode
 ```bash
-# Use Ollama for Jarvis, Claude for OpenCode
+# Use Ollama for Jarvis, a cloud provider for OpenCode
 LLM_PROVIDER="ollama"  # Free, offline
-OPENCODE_PROVIDER="anthropic"  # Paid, safer
+OPENCODE_PROVIDER="xai"  # Paid, coding-oriented Grok model
 ```
 
 ---
@@ -464,7 +470,8 @@ Curated metadata for the Web UI and cost helpers lives in `lib/model_catalog.py`
 **Configuration Files:**
 - `cloud.env` / `local.env` - Main config (API keys, settings)
 - `mcp-servers.json` - MCP server configuration (Jarvis)
-- `~/.config/opencode/opencode.json` - OpenCode config (including MCP)
+- `config/opencode.config.json.template` - Git-safe OpenCode config example for new installs
+- `~/.config/opencode/opencode.json` - Live OpenCode config (copy from the template and customize)
 
 **Key Concepts:**
 - API keys go in `.env` files

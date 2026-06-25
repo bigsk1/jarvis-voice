@@ -1395,6 +1395,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
+**Completed (June 2026) — v2.51.x OpenCode hardening:**
+- ✅ **OpenCode service isolation** — The systemd unit now renders user-specific paths, starts in `~/jarvis-workspace`, creates workspace subdirectories up front, and pins `TMPDIR` / `TMP` / `TEMP` to `~/jarvis-workspace/temp` so generated projects and scratch files stay out of `~/jarvis-voice` and `/tmp`
+- ✅ **OpenCode server auth** — Jarvis and read-only session tools now send HTTP Basic auth from `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD`; install/update scripts copy provider keys and server auth into `~/.config/opencode/jarvis-env.env`
+- ✅ **OpenCode model/config defaults** — Added a git-safe `config/opencode.config.json.template`, xAI/Grok Build examples, provider-key setup notes, and safer docs for OpenCode config seeding
+- ✅ **OpenCode duplicate-call guard** — `opencode` is now single-call capped per user request, so Jarvis answers from the completed build result instead of launching a second OpenCode pass for summaries or verification
+- ✅ **OpenCode observability** — `check_opencode_sessions` remains fallback-only, but now enriches weak OpenCode `/session` metadata with Jarvis JSONL log summaries: task, model, response preview, duration, token usage, and completion status
+- ✅ **OpenCode plugin sync** — Install/update scripts sync tracked workspace-protection plugins into `~/.config/opencode/plugin/`, keeping the live OpenCode guardrails aligned with the repo copy
+
 **Completed (May 2026) — v2.50.0:**
 - ✅ **OpenAI Responses API routing** — Optional `/v1/responses` path for OpenAI tool-capable routing, gated by `OPENAI_API_MODE=responses` + `OPENAI_RESPONSES_TOOLS=true`, with Chat Completions still the default/fallback path
 - ✅ **OpenAI in-flight continuation** — `previous_response_id` + `function_call_output` can continue one active Jarvis client-tool loop without replacing Jarvis memory, Web UI history, follow-up extraction, or canonical tool traces
@@ -1847,4 +1855,4 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.51.0 (June 2026)
 **Status:** Production Ready ✅  
-**Latest Features:** v2.51.0 adds `create_social_clip` (MoneyPrinterTurbo B-roll social videos), multi-image Web UI vision, the experimental local Docker Web stack, hybrid Docker/native tool-profile workflow, internal container routing/auth, foreground daemon supervision, and Docker operations documentation — alongside cross-turn correction learning, Profile Card injection, memory-type filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog support.
+**Latest Features:** v2.51.0 adds `create_social_clip` (MoneyPrinterTurbo B-roll social videos), multi-image Web UI vision, OpenCode service/auth/workspace hardening, the experimental local Docker Web stack, hybrid Docker/native tool-profile workflow, internal container routing/auth, foreground daemon supervision, and Docker operations documentation — alongside cross-turn correction learning, Profile Card injection, memory-type filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog support.

@@ -37,6 +37,18 @@ from workflow_loader import WorkflowLoader
 from pipeline_executor import PipelineExecutor
 
 
+SINGLE_CALL_TOOLS = frozenset({
+    # Expensive/side-effecting tools that should complete once per user request.
+    # If the model asks for another pass, duplicate_guard should recover from
+    # the existing result instead of spending another long-running tool call.
+    "generate_video",
+    "generate_image",
+    "generate_music",
+    "send_email",
+    "opencode",
+})
+
+
 def _sanitize_error_for_speech(error) -> str:
     """
     Sanitize technical error messages for voice output.
@@ -1505,14 +1517,11 @@ Mode: {self.mode}
                     transcript, tool_name, arguments, conversation_context
                 )
                 
-                # @TOOL_CONFIG: single-call cap — expensive tools limited to 1 successful call per request
-                # These are slow (30-120s), costly, and the LLM tends to loop when
-                # the result doesn't match expectations (e.g. duration ignored by provider)
+                # @TOOL_CONFIG: single-call cap — expensive tools limited to
+                # one successful call per request.
+                # These are slow/costly/side-effecting, and the LLM can loop
+                # when it wants verification or a longer summary.
                 # NOTE: failures don't hit this — they go through recursive retry with fresh counts
-                SINGLE_CALL_TOOLS = {
-                    'generate_video', 'generate_image', 'generate_music',
-                    'send_email',
-                }
                 is_over_cap = (
                     tool_name in SINGLE_CALL_TOOLS
                     and tool_call_counts.get(tool_name, 0) >= 1
