@@ -489,6 +489,9 @@
             <div style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary);">
               Completion Guard
             </div>
+            <p class="setting-desc" style="margin-top: var(--space-sm); margin-bottom: 0;">
+              Manual: you judge via the card; auto: the eval model below judges in the background. Either way, repair passes use your main chat provider — not the eval model. Tickets are markdown only.
+            </p>
             <div class="setting-group" style="margin-top: var(--space-md);">
               <label class="setting-label">
                 Completion Guard Enabled
@@ -499,7 +502,7 @@
                 <option value="true">Enabled</option>
                 <option value="false">Disabled</option>
               </select>
-              <span class="setting-desc">Adds a completion check after responses, supports manual or auto repair, and can create a follow-up ticket if Jarvis still cannot finish the task correctly.</span>
+              <span class="setting-desc">Adds a completion check after responses. Can run one repair pass or create a follow-up ticket if the task still looks wrong.</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">
@@ -512,7 +515,7 @@
                 <option value="manual">Manual</option>
                 <option value="auto">Auto</option>
               </select>
-              <span class="setting-desc">Manual asks you to confirm. Auto evaluates the raw result in the background and only intervenes when it sees a likely miss.</span>
+              <span class="setting-desc">Manual: you confirm on the card. Auto: the eval model scores the raw answer and may trigger repair when the audit score is high enough.</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">
@@ -534,7 +537,7 @@
                 <option value="openai">OpenAI (GPT)</option>
                 <option value="ollama">Ollama (Local)</option>
               </select>
-              <span class="setting-desc">LLM used only for Completion Guard auto evaluation. In local mode this stays on Ollama and you can just swap the model.</span>
+              <span class="setting-desc">Auto mode only. Background judge — not used in manual mode. Ollama :cloud model cards (e.g. minimax-m2.5:cloud) use your normal Ollama URL. Repair still uses the main chat provider.</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">
@@ -544,6 +547,7 @@
               <select class="setting-input" id="setting-completion-guard-eval-model">
                 <option value="">Use default for provider</option>
               </select>
+              <span class="setting-desc">Auto mode only. Ignored when mode is manual.</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">
