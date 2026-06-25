@@ -1,5 +1,27 @@
 ![jarvis-social](https://imagedelivery.net/WfhVb8dSNAAvdXUdMfBuPQ/gallery/2026-06-19/generated/professional_wide_github_repository_soci_20260619__da8ee89d/public)
 
+## What is Jarvis?
+
+Jarvis is a self-hosted AI assistant for voice, chat, automation, memory, and coding. It can answer questions, call tools, run repeatable workflows, manage local knowledge, create and organize artifacts, control external services, and hand larger software tasks to an autonomous coding workspace.
+
+At its core, Jarvis is an orchestration layer. A request can be handled as simple Q&A, routed to one tool, expanded into a multi-tool plan, executed through a deterministic workflow, or delegated to an autonomous agent. Tool RAG keeps the active tool list focused, MCP support makes the system extensible, and persistent memory lets Jarvis reuse what it learns across sessions.
+
+Jarvis can run with cloud LLMs or in a fully local/offline mode using local models, speech-to-text, text-to-speech, self-hosted assets, and tool profiles that disable internet-dependent capabilities. Profiles let you swap between setups such as full cloud power, local-first privacy, development, Docker-safe tools, or a locked-down offline assistant.
+
+The project includes several ways to use and inspect the system:
+
+- **Voice, CLI, Web UI, and TUI** entry points for talking to Jarvis, sending commands, and running workflows.
+- **Chat UI** with streaming tools, mode switching, prompt enhancement, file/image uploads, conversation search, exports, and live logs.
+- **Canvas, Image Gallery, and Video Gallery** for saved notes, generated artifacts, media browsing, and visual reports.
+- **Memory Dashboard** for knowledge, conversations, scheduled tasks, reminders, and database maintenance.
+- **Intelligence Dashboard** for self-learning insights, tool performance, experience history, confidence tracking, and repair feedback.
+- **Docs Viewer** for browsing the project documentation with an assistant grounded in the local `docs/` folder.
+- **Logs Viewer and full API** for debugging, automation, webhooks, monitoring, reminders, workflows, images, Canvas, memory, and intelligence data.
+
+The `jarvis-dashboard` TUI is the terminal control center: one place to launch commands, inspect status, reach common tools, and operate Jarvis without opening a browser.
+
+Deterministic workflows are Jarvis's reliable automation path. Instead of asking an LLM to improvise every step, a workflow defines the exact tools, order, retries, timeouts, validation, and output handling. That makes repeated jobs predictable, inspectable, and easier to debug.
+
 > **Quick start**
 > 1. Clone the repo so it ends up at **`$HOME/jarvis-voice`**
 > 2. Run **`./install.sh`** on Ubuntu 24.04+ with Python 3.12+
@@ -13,23 +35,6 @@
 > Web UI guide: [docs/JARVIS_WEB_UI.md](docs/JARVIS_WEB_UI.md)
 >
 > **macOS and Windows:** The experimental Docker Desktop path runs the Web UIs without a native Ubuntu or Python installation. See [Mac and Windows Docker Installation](docs/docker/MAC-WINDOWS.md) for Terminal, PowerShell, and Command Prompt steps, limitations, and troubleshooting.
->
-> No promises, no formal support
-
-## What is Jarvis?
-
-A self-hosted voice assistant with rag based tool calling, mcp support, memory and autonomous coding capabilities in dedicated workspace to start.
-
-Routes queries through Q&A, single tools, multi-tool pipelines, or autonomous workflows — all with persistent memory. Run via voice, CLI, or Web UI. Cloud LLMs or fully local. 
-
-UI's include Chat, Canvas, Image Gallery, Video Gallery, Intellegence Dashboard, Memory Dashboard, Logs viewer, Docs viewer, full API and more!
-
-TUI = Terminal User Interface = Jarvis-dashboard a place to send commands to Jarvis in a centalized way.
-
-Deterministic = more reliable because the control flow is fixed by code and you can see the exact steps and tools that will be used.
-You decide the steps, tool, order, retries, timeouts, and validation—so runs are predictable and failures are contained.
-
-Profiles = different sets of tools and settings for different purposes. Example 100% offline no internet mode with local models, tts and tools that don't require the internet. Serving local fonts and js files from the repo.
 
 ![jarvis-info-graph](docs/images/jarvis-info-graph.jpeg)
 
