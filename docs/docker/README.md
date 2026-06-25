@@ -78,6 +78,34 @@ docker compose build
 docker compose up -d --force-recreate
 ```
 
+### Pulling updates from Git
+
+The image contains the app code (`COPY . /app` in `Dockerfile`). Bind mounts are for live config and runtime state: `config/*.env`, `data/`, `logs/`, `audio/`, Web UI settings, and uploads.
+
+After changing only bind-mounted config or runtime files, recreate containers without rebuilding:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+After pulling code, frontend, route, tool, script, Dockerfile, or dependency changes, rebuild the image:
+
+```bash
+docker compose down
+git pull
+docker compose build --pull
+docker compose up -d --force-recreate
+```
+
+If the change adds or modifies tools, refresh Tool RAG after the stack is up:
+
+```bash
+docker compose exec jarvis-api python bin/sync-tools.py cloud --force
+docker compose exec jarvis-api python bin/sync-tools.py local --force
+```
+
+Compose uses `--force-recreate`; there is no `--force-restart` flag.
+
 ---
 
 ## Configuration files

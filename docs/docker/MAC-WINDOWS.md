@@ -252,12 +252,31 @@ docker compose down
 
 From the repository directory:
 
+If you only changed bind-mounted config or runtime files, recreate containers without rebuilding:
+
+```bash
+docker compose --profile extras up -d --force-recreate
+```
+
+Bind-mounted files include `config/cloud.env`, `config/local.env`, root `.env`, `jarvis-web/config/web_config.json`, `data/`, `logs/`, `audio/`, and uploads.
+
+After pulling app code, frontend, route, tool, script, Dockerfile, or dependency changes from GitHub, rebuild the image:
+
 ```bash
 docker compose down
 git pull
 docker compose build --pull
-docker compose --profile extras up -d
+docker compose --profile extras up -d --force-recreate
 ```
+
+If the update adds or changes tools, refresh Tool RAG after the stack is up:
+
+```bash
+docker compose exec jarvis-api python bin/sync-tools.py cloud --force
+docker compose exec jarvis-api python bin/sync-tools.py local --force
+```
+
+Compose uses `--force-recreate`; there is no `--force-restart` flag.
 
 Back up `data/` and your live configuration files before major upgrades. Never commit `config/cloud.env`, `config/local.env`, root `.env`, `jarvis-web/config/web_config.json`, or database files.
 
