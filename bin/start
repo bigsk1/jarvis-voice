@@ -5,7 +5,8 @@
 #
 # Usage:
 #   ./bin/start              # Start all services (API first, wait, then others)
-#   ./bin/start --ui-only    # Start only UI services (web, canvas, memory)
+#   ./bin/start <service>    # Start one service by name
+#   ./bin/start --ui-only    # Start only UI services (web, canvas, memory, intelligence, docs)
 #   ./bin/start --no-api     # Start everything except API (skip sync)
 #   ./bin/start --list       # Show tmux session status
 #   ./bin/start --stop       # Stop all Jarvis sessions
@@ -47,6 +48,14 @@ declare -A SESSIONS=(
     ["memory"]="jarvis-memory"
     ["intelligence"]="jarvis-intelligence"
     ["docs"]="jarvis-docs"
+)
+
+# Short-lived sessions created by the TUI while startup is in progress.
+CONTROL_SESSIONS=(
+    "jarvis-start-all"
+    "jarvis-start-ui"
+    "🚀-start-all-services"  # Legacy dashboard session name
+    "🚀-start-ui-only"       # Legacy dashboard session name
 )
 
 # Commands for each service
@@ -150,6 +159,13 @@ wait_for_health() {
 
 stop_all() {
     log "Stopping all Jarvis sessions..."
+
+    # Stop an in-progress dashboard launch before it can create more sessions.
+    for session in "${CONTROL_SESSIONS[@]}"; do
+        if is_session_running "$session"; then
+            tmux kill-session -t "$session" 2>/dev/null && success "Stopped $session" || true
+        fi
+    done
     
     # Stop background service daemons first (they run via nohup, not just tmux)
     local running_daemons=$(check_services_pids)
@@ -340,6 +356,7 @@ show_help() {
     echo ""
     echo "Usage:"
     echo "  ./bin/start              Start all services (API first, wait for sync, then others)"
+    echo "  ./bin/start <service>    Start one service: api, services, web, canvas, memory, intelligence, or docs"
     echo "  ./bin/start --ui-only    Start only UI services (web, canvas, memory, intelligence, docs)"
     echo "  ./bin/start --no-api     Start everything except API (skip sync wait)"
     echo "  ./bin/start --list       Show tmux session status"
@@ -373,6 +390,9 @@ case "${1:-}" in
         ;;
     --help|-h)
         show_help
+        ;;
+    api|services|web|canvas|memory|intelligence|docs)
+        start_service "$1"
         ;;
     "")
         start_all

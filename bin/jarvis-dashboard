@@ -610,7 +610,11 @@ class CommandRunner(App):
             window_name = cmd.name.lower().replace(" ", "-").replace("(", "").replace(")", "")
             
             # Determine session name based on command type
-            if "wake-jarvis" in cmd.command:
+            if cmd.command == "./bin/start":
+                session_name = "jarvis-start-all"
+            elif cmd.command == "./bin/start --ui-only":
+                session_name = "jarvis-start-ui"
+            elif "wake-jarvis" in cmd.command:
                 session_name = "jarvis-voice"  # Wake word loop
                 # Drop stale session so an old wake listener can't hold the mic
                 await asyncio.create_subprocess_shell(
@@ -638,14 +642,19 @@ class CommandRunner(App):
             # Activate venv and run command
             full_cmd = f"export PYTHONUNBUFFERED=1 && source {VENV_PATH}/bin/activate && cd {PROJECT_ROOT} && {cmd.command}"
             
+            # Startup commands finish after creating the service sessions. Let their
+            # control window/session close automatically instead of waiting for input.
+            keep_open = not cmd.command.startswith("./bin/start")
+            close_prompt = "; read -p 'Press Enter to close...'" if keep_open else ""
+
             if in_tmux:
                 # Create new window in current session
-                tmux_cmd = f'tmux new-window -n "{window_name}" "{full_cmd}; read -p \'Press Enter to close...\'"'
+                tmux_cmd = f'tmux new-window -n "{window_name}" "{full_cmd}{close_prompt}"'
                 log.write(f"[cyan]🖥️  Opening in new tmux window: {window_name}[/cyan]")
                 log.write(f"[dim]Switch windows: Ctrl+B then n (next) or p (prev)[/dim]")
             else:
                 # Create new detached session (unique per service type)
-                tmux_cmd = f'tmux new-session -d -s {session_name} -n "{window_name}" "{full_cmd}; read -p \'Press Enter to close...\'"'
+                tmux_cmd = f'tmux new-session -d -s {session_name} -n "{window_name}" "{full_cmd}{close_prompt}"'
                 log.write(f"[cyan]🖥️  Started in tmux session: {session_name}[/cyan]")
                 log.write(f"[yellow]To attach: tmux attach -t {session_name}[/yellow]")
             

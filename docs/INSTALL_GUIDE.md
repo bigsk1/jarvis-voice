@@ -333,31 +333,34 @@ You can skip this entire section if you only want the core Jarvis install.
 
 ### OpenCode (Optional)
 
-See [OPENCODE.md](docs/opencode/OPENCODE.md) for more information.
+See [OPENCODE.md](opencode/OPENCODE.md) for the full setup and configuration reference.
 
 If you want OpenCode for autonomous coding:
+
+1. Add the provider keys OpenCode will use, such as `OPENAI_API_KEY`,
+   `ANTHROPIC_API_KEY`, or `XAI_API_KEY`, to `config/cloud.env`.
+2. Run the setup commands below. The service installer automatically copies the
+   supported provider keys and OpenCode authentication values from
+   `config/cloud.env` to `~/.config/opencode/jarvis-env.env`.
+
+`config/cloud.env` is the default source. For a local-mode-only setup, run the
+installer with `OPENCODE_ENV_FILE=config/local.env`.
 
 ```bash
 # Create OpenCode workspace
 ./setup_opencode_workspace.sh
 
-# Create plugin directory
-mkdir -p ~/.config/opencode/plugin
-
-# Copy safety plugins from repo
-cp ~/jarvis-voice/docs/opencode/plugin/*.js ~/.config/opencode/plugin/
-cp ~/jarvis-voice/docs/opencode/plugin/README.md ~/.config/opencode/plugin/
-
-# Verify
-ls ~/.config/opencode/plugin/
-# Should show: 00-workspace-protection.js  README.md
-```
-
-Optional OpenCode systemd service:
-
-```bash
+# Create the service environment, sync plugins, and install the service
 ./bin/install-opencode-service.sh
+
+# Local-mode-only alternative:
+# OPENCODE_ENV_FILE=config/local.env ./bin/install-opencode-service.sh
 ```
+
+The installer creates `~/.config/opencode/jarvis-env.env`, syncs the tracked
+workspace-protection plugin to `~/.config/opencode/plugin/`, and starts the
+service. Use `./bin/update-opencode-service.sh` after changing provider keys,
+server authentication, the service definition, or the tracked plugin.
 
 ### n8n (Optional)
 
@@ -416,11 +419,11 @@ source ~/jarvis-venv/bin/activate
 # Test orchestrator
 ./orchestrator/orchestrator_v2.py cloud "what time is it"
 
-# Start all services background services, web ui, api, in tmux
-./bin/start
+# Open the command dashboard
+jarvis-d
 
-# Check status
-./bin/start --list
+# If you are not using aliases, start with:
+./bin/jarvis-dashboard
 ```
 
 If you get warnings about a provider SDK missing, install the SDK for the provider you enabled in `config/cloud.env`, for example:
@@ -430,14 +433,16 @@ source ~/jarvis-venv/bin/activate
 pip install xai-sdk
 ```
 
+From the dashboard, select **Start All Services**, then use **Service Status**
+until the services report healthy. This is the recommended day-to-day workflow;
+the equivalent command-line operations are `./bin/start`, `./bin/start --list`,
+and `./bin/start --stop`.
+
 **Test voice mode:**
 ```bash
 # Start wake word listener
 ./jarvis
 # Say "Hey Jarvis" followed by a question
-
-# Or use dashboard for TUI jarvis-d alias and then start all services, then click services status and wait for everything to be green. I control the whole app from TUI basiclly. 
-./bin/jarvis-dashboard
 ```
 
 **Test web UI:**
@@ -503,7 +508,7 @@ Get API keys from:
 - **GitHub Personal Access Tokens**: https://github.com/settings/tokens
 
 For self-hosted or optional integrations:
-- **OpenCode**: no external API key is required for Jarvis itself; set provider keys such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `XAI_API_KEY` in the OpenCode service environment. Optional `OPENCODE_SERVER_PASSWORD` protects both the OpenCode web UI and API with HTTP Basic auth. See `docs/opencode/OPENCODE.md`.
+- **OpenCode**: no separate Jarvis-specific provider key is required. Add the provider keys OpenCode will use, such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `XAI_API_KEY`, to `config/cloud.env` before running `./bin/install-opencode-service.sh`. The installer copies them to the systemd environment file at `~/.config/opencode/jarvis-env.env`. It uses `config/cloud.env` by default; set `OPENCODE_ENV_FILE=config/local.env` for a local-mode-only service. Optional `OPENCODE_SERVER_PASSWORD` protects both the OpenCode web UI and API with HTTP Basic auth. See `docs/opencode/OPENCODE.md`.
 - **n8n**: generate the API key from your own n8n instance at `Settings -> API` after n8n is running. Used by `N8N_LOCAL_API_KEY`.
 - **Crawl4AI**: if using a hosted Crawl4AI service, use the key issued by that service/provider.
 
@@ -653,7 +658,7 @@ source ~/jarvis-venv/bin/activate
 # Or start specific services
 ./bin/start api        # API server only
 ./bin/start web        # Web UI only
-./bin/start --ui-only  # Web, Canvas, Memory (no API)
+./bin/start --ui-only  # All web UIs (no API or background services)
 
 # Check status
 ./bin/start --list
@@ -669,6 +674,7 @@ source ~/jarvis-venv/bin/activate
 - `jarvis-canvas` - Canvas service (port 8890)
 - `jarvis-memory` - Memory service (port 5002)
 - `jarvis-intelligence` - Intelligence service (port 5003)
+- `jarvis-docs` - Docs service (port 5004)
 
 ### Service Watchdog (Cron)
 
@@ -701,24 +707,41 @@ tmux attach -t jarvis-web    # View web UI logs
 
 ### TUI Dashboard
 
-For monitoring all services:
+The dashboard is the recommended terminal control center, not just a monitor. It
+can start and stop the full stack, show service health, launch individual
+components, and run common maintenance and debugging commands.
+
 ```bash
 ./bin/jarvis-dashboard
 # Or with alias:
 jarvis-d
 ```
 
+A simple daily workflow:
+
+1. Run `jarvis-d`.
+2. Select **Start All Services**.
+3. Select **Service Status** while startup completes; wait for the services to
+   report healthy before opening the web UIs.
+4. Attach to a service session when you need live output, for example
+   `tmux attach -t jarvis-web`. Detach with `Ctrl+B`, then `D`.
+5. When finished, return to `jarvis-d` and select **Stop All Services**.
+
+While dashboard startup is running, its temporary control session is named
+`jarvis-start-all`. It closes automatically when startup finishes. **Stop All
+Services** also closes that control session first if startup is still underway,
+then stops the API, background services, and UI sessions.
+
 ### Systemd Service (Optional - OpenCode Only)
 
 Only one systemd service exists for OpenCode server:
 
 ```bash
-# Install (if using OpenCode integration)
-./bin/render-systemd-unit.sh ./systemd/opencode-jarvis.service /tmp/opencode-jarvis.service
-sudo cp /tmp/opencode-jarvis.service /etc/systemd/system/opencode-jarvis.service
-sudo systemctl daemon-reload
-sudo systemctl enable opencode-jarvis.service
-sudo systemctl start opencode-jarvis.service
+# First install
+./bin/install-opencode-service.sh
+
+# Apply later config, plugin, or service changes
+./bin/update-opencode-service.sh
 
 # Check status
 sudo systemctl status opencode-jarvis.service
@@ -727,7 +750,6 @@ sudo journalctl -u opencode-jarvis.service -n 50 --no-pager
 
 **Note:** The main Jarvis services (API, Web, etc.) run via tmux, not systemd.
 This allows easy log viewing, debugging, and manual restarts during development.
-could always run on systemd later
 
 ---
 
@@ -1045,7 +1067,7 @@ tmux attach -t jarvis-api
 curl http://localhost:8880/api/health
 
 # Restart API
-./bin/start --stop
+tmux kill-session -t jarvis-api
 ./bin/start api
 ```
 
@@ -1078,29 +1100,18 @@ tail -f logs/tools/tool-calls-$(date +%Y-%m-%d).jsonl
 
 ---
 
-## Post-Recovery Checklist
+## Post-Installation Checklist
 
-Once everything is working, verify:
+After the core installation is complete, verify:
 
 - [ ] Voice mode responds to "Hey Jarvis"
-- [ ] Can query time, weather, etc. via voice
+- [ ] A basic voice or web query returns a response
 - [ ] Memory system stores and recalls information
-- [ ] Reminders sync to Google Calendar
-- [ ] Email tool sends emails successfully
-- [ ] API server responds on port 8880
-- [ ] All tmux sessions running (./bin/start --list)
-- [ ] n8n workflows active and webhooks responding (if using n8n)
-- [ ] Logs being written to logs/ directory
-- [ ] OpenCode can create projects in ~/jarvis-workspace (if using OpenCode)
-- [ ] OpenCode plugins installed (~/.config/opencode/plugin/) (if using OpenCode)
-
-**Optional but recommended (native install only — skip if using Docker for the stack):**
-- [ ] Install watchdog cron (`bin/watchdog-services.sh`) for self-healing daemon
-- [ ] Set up cron job for daily database backups
-- [ ] Configure rsync to back up `$HOME` nightly
-- [ ] Test disaster recovery on a VM (validate these docs!)
-- [ ] Document any hardware-specific changes you made
-- [ ] Update this doc with lessons learned
+- [ ] API health responds at `http://localhost:8880/api/health`
+- [ ] Web UI opens at `http://localhost:5001`
+- [ ] Core tmux sessions report healthy in **Service Status** or `./bin/start --list`
+- [ ] Runtime logs are being written under `logs/`
+- [ ] **Stop All Services** brings the tmux-managed stack down cleanly
 
 ---
 
@@ -1121,7 +1132,7 @@ Once everything is working, verify:
 ./bin/jarvis-dashboard
 
 # Restart API only
-./bin/start --stop
+tmux kill-session -t jarvis-api
 ./bin/start api
 
 # Attach to session for debugging
