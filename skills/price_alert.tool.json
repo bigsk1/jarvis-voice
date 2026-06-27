@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "price_alert",
-  "description": "View and modify price alert THRESHOLDS in config/price-alerts.yaml. This manages the CONDITIONS that n8n monitors - NOT the triggered alerts (use list_alerts for those). Actions: 'list' shows monitoring thresholds, 'update' changes a threshold value (e.g., 'change my BTC alert to 110k'), 'add'/'remove' modify thresholds. NOTE: Adding NEW assets requires manual n8n workflow changes; this tool only updates existing thresholds. For 'what triggered alerts do I have?', use list_alerts instead.",
+  "description": "View and modify price alert THRESHOLDS in data/price-alerts.yaml. This manages the CONDITIONS that n8n monitors - NOT the triggered alerts (use list_alerts for those). Actions: 'list' shows monitoring thresholds, 'update' changes a threshold value (e.g., 'change my BTC alert to 110k'), 'add'/'remove' modify thresholds. NOTE: Adding NEW assets requires manual n8n workflow changes; this tool only updates existing thresholds. For 'what triggered alerts do I have?', use list_alerts instead.",
   "script": "price_alert.py",
   "parameters": {
     "type": "object",

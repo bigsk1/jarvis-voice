@@ -9,16 +9,18 @@ Output: { "ok": bool, "speech": str, "data": dict }
 import sys
 import os
 import json
-import yaml
-from pathlib import Path
-from datetime import datetime
 
-# Add lib to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
-
-# Config file path
-CONFIG_FILE = Path(__file__).parent.parent / "config" / "price-alerts.yaml"
+# Add the project and lib directories to the import path. Import the price-alert
+# owner through ``lib`` so API, tool, and tests share one module identity.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'lib'))
+from config_loader import load_config  # noqa: E402
+from lib.price_alert_config import (  # noqa: E402
+    PRICE_ALERT_PATH,
+    load_price_alert_config,
+    save_price_alert_config,
+)
 
 # Symbol mappings (common names to ticker symbols)
 SYMBOL_MAP = {
@@ -61,40 +63,13 @@ def normalize_symbol(symbol: str) -> str:
 
 def load_config_file() -> dict:
     """Load the price alerts YAML config."""
-    if not CONFIG_FILE.exists():
-        return {
-            "settings": {
-                "check_interval_minutes": 10,
-                "cooldown_hours": 4,
-                "jarvis_api_url": "http://localhost:8880"
-            },
-            "watchlist": {
-                "crypto": [],
-                "stocks": []
-            }
-        }
-    
-    with open(CONFIG_FILE, 'r') as f:
-        return yaml.safe_load(f)
+    return load_price_alert_config()
 
 def save_config_file(config: dict):
     """Save the price alerts YAML config."""
     # Remove internal tracking fields before save
-    if '_last_triggered' in config:
-        del config['_last_triggered']
-    
-    # Add header comment
-    header = """# Price Alert Configuration
-# ========================
-# Edit values here - n8n workflow will pick up changes
-# 
-# Last updated: {date}
-
-""".format(date=datetime.now().strftime("%Y-%m-%d %H:%M"))
-    
-    with open(CONFIG_FILE, 'w') as f:
-        f.write(header)
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    config.pop('_last_triggered', None)
+    save_price_alert_config(config)
 
 def is_crypto(symbol: str) -> bool:
     """Check if symbol is a cryptocurrency."""
@@ -360,7 +335,7 @@ def main():
                 "data": {
                     "alerts": alerts,
                     "count": len(alerts),
-                    "config_file": str(CONFIG_FILE)
+                    "config_file": str(PRICE_ALERT_PATH)
                 }
             }))
         

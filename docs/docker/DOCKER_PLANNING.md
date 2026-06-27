@@ -272,9 +272,9 @@ volumes:
 - No `docker compose down && build` for a config tweak
 - Restart the affected service (or entire stack) to pick up env changes — Python loads env at process start
 
-Keep this directory read-only. Writable exceptions such as price-alert
-threshold management belong in a narrow optional override; see
-[`docker-compose.price-alerts.yml`](../../docker-compose.price-alerts.yml).
+Keep this directory read-only. Mutable application state belongs under the
+read-write `data/` mount; price-alert thresholds use
+`data/price-alerts.yaml`.
 
 **Why mount `web_config.json` read-write?**
 

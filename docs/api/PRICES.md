@@ -198,7 +198,9 @@ The Config API serves the price alert configuration to n8n workflows.
 GET /api/config/price-alerts
 ```
 
-Returns the full `config/price-alerts.yaml` as JSON.
+Returns the live `data/price-alerts.yaml` configuration as JSON. Jarvis creates
+an empty configuration on first use or migrates the legacy
+`config/price-alerts.yaml` file when present.
 
 **Response:**
 ```json
@@ -231,7 +233,7 @@ Returns the full `config/price-alerts.yaml` as JSON.
       }
     ]
   },
-  "source": "config/price-alerts.yaml"
+  "source": "data/price-alerts.yaml"
 }
 ```
 

@@ -17,6 +17,8 @@ config/webhook_registry.json.template
 config/price-alerts.yaml
 data/secrets/
 data/bookmarks.html
+data/price-alerts.yaml
+data/.price-alerts-*.tmp
 
 # ===== n8n Workflows (contain personal emails, keep .example versions) =====
 docs/n8n/workflows/*.json

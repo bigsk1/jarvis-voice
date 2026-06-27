@@ -299,12 +299,11 @@ The tracked `docker` tool profile disables the existing stdio MCP servers becaus
 ### A configuration path became a directory
 
 The base stack mounts the existing `config/` directory and no longer creates
-missing env paths as directories. A separate single-file override can still
-fail when its source is missing. Stop the stack, remove any incorrectly created
-directory, and create the required file before retrying:
+missing env paths as directories. The Web settings file is still a direct bind
+mount. If its source became a directory, stop the stack, remove the directory,
+and copy the example before retrying:
 
 - `jarvis-web/config/web_config.json.example` to `jarvis-web/config/web_config.json`
-- `config/price-alerts.yaml` before using `docker-compose.price-alerts.yml`
 
 Then rerun `docker compose up -d`.
 

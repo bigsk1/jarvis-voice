@@ -1,12 +1,13 @@
 """Config API - Serve configuration files for external systems like n8n"""
 
+import logging
+
 from fastapi import APIRouter, HTTPException
-from pathlib import Path
-import yaml
+
+from lib.price_alert_config import load_price_alert_config
 
 router = APIRouter(prefix="/api/config", tags=["config"])
-
-CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
+logger = logging.getLogger(__name__)
 
 
 @router.get("/price-alerts")
@@ -14,27 +15,25 @@ async def get_price_alerts_config():
     """
     Get price alert configuration for n8n workflow.
     
-    Edit config/price-alerts.yaml to change thresholds.
+    Edit data/price-alerts.yaml to change thresholds.
     n8n fetches this at each run for single source of truth.
     """
-    config_file = CONFIG_DIR / "price-alerts.yaml"
-    
-    if not config_file.exists():
-        raise HTTPException(status_code=404, detail="price-alerts.yaml not found")
-    
     try:
-        with open(config_file, 'r') as f:
-            config = yaml.safe_load(f)
+        config = load_price_alert_config()
         
         # Return just the watchlist for n8n
         return {
             "ok": True,
             "settings": config.get("settings", {}),
             "watchlist": config.get("watchlist", {}),
-            "source": "config/price-alerts.yaml"
+            "source": "data/price-alerts.yaml"
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Unable to load price-alert configuration: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load price-alert configuration",
+        ) from e
 
 
 @router.get("/price-alerts/thresholds")
@@ -42,14 +41,8 @@ async def get_price_thresholds():
     """
     Get just the thresholds in a format ready for n8n Code node.
     """
-    config_file = CONFIG_DIR / "price-alerts.yaml"
-    
-    if not config_file.exists():
-        raise HTTPException(status_code=404, detail="price-alerts.yaml not found")
-    
     try:
-        with open(config_file, 'r') as f:
-            config = yaml.safe_load(f)
+        config = load_price_alert_config()
         
         watchlist = config.get("watchlist", {})
         
@@ -85,7 +78,12 @@ async def get_price_thresholds():
         
         return {
             "ok": True,
-            "thresholds": thresholds
+            "thresholds": thresholds,
+            "source": "data/price-alerts.yaml",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Unable to load price-alert thresholds: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load price-alert configuration",
+        ) from e

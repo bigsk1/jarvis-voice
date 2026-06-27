@@ -121,26 +121,16 @@ Compose mounts the `config/` directory read-only and validates only the file
 selected by `JARVIS_MODE`. A local-only checkout therefore needs
 `config/local.env` but does not need an empty `config/cloud.env` placeholder.
 
-Read-only consumers such as the API price-alert endpoints can use other files
-from that directory without additional mounts. To let the Web UI `price_alert`
-tool update thresholds, opt in to a writable mount for that file only:
+Mutable price-alert thresholds live in `data/price-alerts.yaml`, which Jarvis
+creates or migrates automatically and the base stack already mounts read-write.
+The Web tool and API therefore share the same file without an additional
+Compose override. MCP still uses its optional override:
 
 ```bash
-test -f config/price-alerts.yaml
-docker compose -f docker-compose.yml -f docker-compose.price-alerts.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d
 ```
 
-Compose overrides are additive, so MCP plus writable price alerts uses all
-three files:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.mcp.yml \
-  -f docker-compose.price-alerts.yml up -d
-```
-
-This leaves env files, `ssh.json`, and the rest of `config/` read-only. The
-override refuses to start if `config/price-alerts.yaml` is absent rather than
-letting Docker create a directory at that path.
+This leaves env files, `ssh.json`, and the rest of `config/` read-only.
 
 ### `JARVIS_MODE` vs `JARVIS_SYNC_MODES`
 

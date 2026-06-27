@@ -2,8 +2,8 @@
 
 > Monitor crypto and stock prices, send TTS alerts to Jarvis when thresholds are hit.
 
-**Version**: 5.0  
-**Last Updated**: January 2026  
+**Version**: 5.1
+**Last Updated**: June 2026
 **Workflow File**: `docs/n8n/workflows/Price Alert Monitor.json`
 
 ---
@@ -11,13 +11,13 @@
 ## Overview
 
 The Price Alert Monitor workflow:
-1. Fetches config from Jarvis API (`config/price-alerts.yaml`)
+1. Fetches config from Jarvis API (`data/price-alerts.yaml`)
 2. Gets crypto prices from CoinGecko
 3. Gets stock/futures prices from Jarvis `/api/prices`
 4. Compares against YAML thresholds
 5. Sends TTS-friendly alerts to Jarvis
 
-**Single Source of Truth**: Edit `config/price-alerts.yaml` to change thresholds!
+**Single Source of Truth**: Edit `data/price-alerts.yaml` to change thresholds!
 
 ---
 
@@ -72,7 +72,10 @@ The Price Alert Monitor workflow:
 
 ## Configuration
 
-### YAML Config File: `config/price-alerts.yaml`
+### YAML Config File: `data/price-alerts.yaml`
+
+Jarvis creates this file with an empty watchlist on first use. Existing installs
+automatically copy a valid legacy `config/price-alerts.yaml` into this location.
 
 ```yaml
 settings:
@@ -148,7 +151,7 @@ watchlist:
 
 ### Step 1: Update YAML Config
 
-Add the asset to `config/price-alerts.yaml`:
+Add the asset to `data/price-alerts.yaml`:
 
 **For Crypto:**
 ```yaml
@@ -379,7 +382,8 @@ const aboveThresh = getThreshold(config.watchlist, 'stocks', 'TSLA', 'above');
 
 | File | Purpose |
 |------|---------|
-| `config/price-alerts.yaml` | Threshold configuration |
+| `data/price-alerts.yaml` | Live threshold configuration |
+| `config/price-alerts.yaml.example` | Safe empty template |
 | `docs/n8n/workflows/Price Alert Monitor.json` | Workflow export |
 | `api/routes/prices.py` | Direct price API |
 | `api/routes/config.py` | Config serving API |
@@ -392,6 +396,7 @@ const aboveThresh = getThreshold(config.watchlist, 'stocks', 'TSLA', 'above');
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 5.1 | Jun 2026 | Move mutable threshold storage to `data/price-alerts.yaml` |
 | 5.0 | Jan 2026 | TTS-friendly titles, no fallback config |
 | 4.0 | Jan 2026 | Fetch config from YAML API |
 | 3.0 | Jan 2026 | Direct /api/prices endpoints |

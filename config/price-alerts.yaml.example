@@ -1,0 +1,17 @@
+# Price Alert Configuration
+# ========================
+# Copying is optional; Jarvis creates data/price-alerts.yaml automatically.
+
+settings:
+  check_interval_minutes: 10
+  cooldown_hours: 4
+  jarvis_api_url: http://localhost:8880
+sources:
+  crypto:
+    api: coingecko
+    base_url: https://api.coingecko.com/api/v3
+  stocks:
+    api: yfinance
+watchlist:
+  crypto: []
+  stocks: []

@@ -40,6 +40,8 @@ data/.webhook_rate_limit
 data/.scheduled_task_notification_rate_limit
 data/.docker_tool_profile_synced
 data/bookmarks.html
+data/price-alerts.yaml
+data/.price-alerts-*.tmp
 jarvis-web/data/uploads/
 stash/
 logs/

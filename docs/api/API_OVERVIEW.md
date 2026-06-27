@@ -926,11 +926,13 @@ GET /api/config/price-alerts/thresholds
     "crypto": [{ "symbol": "BTC", "conditions": [...] }],
     "stocks": [{ "symbol": "TSLA", "conditions": [...] }]
   },
-  "source": "config/price-alerts.yaml"
+  "source": "data/price-alerts.yaml"
 }
 ```
 
-**Single Source of Truth**: Edit `config/price-alerts.yaml`, n8n fetches via this API.
+**Single Source of Truth**: Edit `data/price-alerts.yaml`; n8n fetches it through
+this API. Jarvis creates an empty file on first use and migrates a legacy
+`config/price-alerts.yaml` automatically.
 
 ### Health
 
