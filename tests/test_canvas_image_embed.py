@@ -31,6 +31,17 @@ def test_embed_image_markdown_no_duplicate_if_url_already_present():
     assert result.count("https://example.com/product.jpg") == 1
 
 
+def test_embed_image_markdown_does_not_confuse_plain_stash_note_with_image():
+    stash_ref = "stash://space_20260622_205701_7d28320e/f_c8f620d42d44"
+    content = f"# Bug Identification\n\nStash reference preserved: {stash_ref}"
+
+    result = _embed_image_markdown(content, stash_ref, "Boxelder bug photo")
+
+    assert result.startswith(f"![Boxelder bug photo]({stash_ref})")
+    assert f"Stash reference preserved: {stash_ref}" in result
+    assert result.count(stash_ref) == 2
+
+
 def test_embed_image_markdown_allows_image_only_canvas_page():
     result = _embed_image_markdown("", "stash://space_xxx/file_yyy", "Generated image")
     assert result == "![Generated image](stash://space_xxx/file_yyy)"

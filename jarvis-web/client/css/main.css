@@ -560,6 +560,150 @@ body {
   opacity: 0.65;
 }
 
+/* Compact, clickable Canvas page preview */
+.canvas-inline-preview {
+  width: min(238px, 72vw);
+  margin: 2px 0 4px;
+}
+
+.canvas-preview-thumbnail {
+  display: block;
+  aspect-ratio: 3 / 4;
+  padding: 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 80% 10%, rgba(99, 102, 241, 0.24), transparent 35%),
+    linear-gradient(145deg, var(--bg-tertiary), var(--bg-secondary));
+  color: var(--text-primary);
+  text-decoration: none;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.canvas-preview-thumbnail:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-primary);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28), var(--shadow-glow);
+}
+
+.canvas-preview-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: var(--bg-card);
+}
+
+.canvas-preview-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.canvas-preview-icon {
+  font-size: 0.9rem;
+}
+
+.canvas-preview-image {
+  height: 112px;
+  margin: 12px -2px 10px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--bg-primary);
+}
+
+.canvas-preview-image[hidden] {
+  display: none;
+}
+
+.canvas-preview-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.canvas-preview-copy {
+  min-height: 0;
+  margin-top: 18px;
+}
+
+.canvas-inline-preview.has-image .canvas-preview-copy {
+  margin-top: 0;
+}
+
+.canvas-preview-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.canvas-preview-excerpt {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.canvas-preview-excerpt span {
+  display: block;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border-primary);
+}
+
+.canvas-preview-excerpt span:nth-child(2) { width: 88%; }
+.canvas-preview-excerpt span:nth-child(3) { width: 94%; }
+.canvas-preview-excerpt span:nth-child(4) { width: 66%; }
+
+.canvas-preview-excerpt.has-content {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.canvas-preview-page-id {
+  margin-top: auto;
+  padding-top: 10px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-preview-open-link {
+  display: inline-flex;
+  gap: 5px;
+  margin: 7px 4px 0;
+  color: var(--text-link-chat);
+  font-size: var(--text-xs);
+  text-decoration: none;
+}
+
+.canvas-preview-open-link:hover {
+  color: var(--text-link-chat-hover);
+  text-decoration: underline;
+}
+
 /* Restore readable markdown list spacing inside chat bubbles */
 .message-bubble ul,
 .message-bubble ol {

@@ -3443,6 +3443,11 @@ class ChatUI {
       }
     }
 
+    const canvasPreview = this._extractCanvasPreview(toolResultsData, data);
+    const canvasPreviewHtml = canvasPreview
+      ? this._renderCanvasPreviewHtml(canvasPreview)
+      : '';
+
     let chartHtml = '';
     const cryptoChartResult = toolResultsData.crypto_chart;
     const cryptoChartData = cryptoChartResult?.data?.series?.prices
@@ -3520,19 +3525,29 @@ class ChatUI {
       `;
     }
     
+    const hideCanvasReceipt = Boolean(
+      canvasPreview
+      && !chartHtml
+      && this._isCanvasReceiptOnly(text)
+    );
+    const messageBubbleHtml = hideCanvasReceipt ? '' : `
+      <div class="message-bubble">
+        ${chartHtml}
+        ${parsedText}
+        ${detailsHtml}
+      </div>
+    `;
+
     messageEl.innerHTML = `
       ${toolCardsHtml}
+      ${canvasPreviewHtml}
       ${shoppingHtml}
       ${imageHtml}
       ${convertedFileHtml}
       ${audioHtml}
       ${videoHtml}
       ${youtubeEmbedsHtml}
-      <div class="message-bubble">
-        ${chartHtml}
-        ${parsedText}
-        ${detailsHtml}
-      </div>
+      ${messageBubbleHtml}
       ${toolsUsed.includes('canvas') ? '' : `
         <div class="message-actions send-to-canvas-actions">
           <button type="button" class="message-action-btn send-to-canvas-btn" title="Create a Canvas page from this response and its supporting context">
@@ -3575,6 +3590,9 @@ class ChatUI {
     
     this.messagesContainer.appendChild(messageEl);
     Utils.hydrateRichContent(messageEl);
+    if (canvasPreview) {
+      this._hydrateCanvasPreview(messageEl, canvasPreview);
+    }
     Utils.scrollToBottom(this.messagesContainer);
     
     // Clear pending tools
@@ -3622,6 +3640,155 @@ class ChatUI {
       false,
       null
     );
+  }
+
+  _extractCanvasPreview(toolResultsData = {}, data = {}) {
+    const rawCanvas = toolResultsData?.canvas ?? data?.canvas;
+    const candidates = Array.isArray(rawCanvas) ? [...rawCanvas].reverse() : [rawCanvas];
+
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const payload = candidate.data && typeof candidate.data === 'object'
+        ? candidate.data
+        : candidate;
+      const pageId = payload.page_id || payload.id || payload.canvas_page_id;
+      if (!pageId) continue;
+
+      const title = String(payload.title || 'Canvas Page').trim() || 'Canvas Page';
+      const configuredBase = String(payload.base_url || '').trim().replace(/\/$/, '');
+      let pageUrl = String(payload.url || '').trim();
+      if (!pageUrl && configuredBase) {
+        pageUrl = `${configuredBase}/${encodeURIComponent(pageId)}`;
+      }
+      if (!pageUrl) {
+        pageUrl = `http://${window.location.hostname}:8890/${encodeURIComponent(pageId)}`;
+      }
+
+      try {
+        const parsed = new URL(pageUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol)) continue;
+        return {
+          pageId: String(pageId),
+          title,
+          url: parsed.href,
+          apiUrl: `${parsed.origin}/api/pages/${encodeURIComponent(pageId)}`,
+          tags: Array.isArray(payload.tags) ? payload.tags : []
+        };
+      } catch (error) {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  _renderCanvasPreviewHtml(preview) {
+    const pageUrl = Utils.safeHttpUrlForAttr(preview.url);
+    if (!pageUrl) return '';
+
+    return `
+      <div class="canvas-inline-preview" data-canvas-preview="${Utils.escapeHtml(preview.pageId)}">
+        <a class="canvas-preview-thumbnail" href="${pageUrl}" target="_blank" rel="noopener noreferrer" aria-label="Open Canvas page: ${Utils.escapeHtml(preview.title)}">
+          <div class="canvas-preview-sheet">
+            <div class="canvas-preview-kicker">
+              <span class="canvas-preview-icon">📄</span>
+              <span>Jarvis Canvas</span>
+            </div>
+            <div class="canvas-preview-image" hidden>
+              <img alt="" loading="lazy">
+            </div>
+            <div class="canvas-preview-copy">
+              <div class="canvas-preview-title">${Utils.escapeHtml(preview.title)}</div>
+              <div class="canvas-preview-excerpt" data-canvas-preview-excerpt>
+                <span></span><span></span><span></span><span></span>
+              </div>
+            </div>
+            <div class="canvas-preview-page-id">${Utils.escapeHtml(preview.pageId)}</div>
+          </div>
+        </a>
+        <a class="canvas-preview-open-link" href="${pageUrl}" target="_blank" rel="noopener noreferrer">
+          Open in Canvas <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    `;
+  }
+
+  _isCanvasReceiptOnly(text) {
+    const raw = String(text || '').trim();
+    if (!raw || raw.length > 800) return false;
+    if (/```|(^|\n)\s*#{1,6}\s|(^|\n)\s*[-*]\s+/m.test(raw)) return false;
+
+    const normalized = raw.replace(/\s+/g, ' ').toLowerCase();
+    return /^(?:canvas page (?:created|updated|saved)(?: successfully)?|a new canvas page|i(?:'ve| have) saved|i created (?:a )?canvas page|created (?:a )?canvas page|updated (?:the )?canvas page)/.test(normalized);
+  }
+
+  _canvasPreviewImageUrl(content, preview) {
+    const match = String(content || '').match(/!\[[^\]]*\]\(([^)\s]+)\)/);
+    if (!match) return '';
+    const raw = match[1].trim();
+
+    const stashMatch = raw.match(/^stash:\/\/([^/\s?#]+)\/([^/\s?#]+)/);
+    if (stashMatch) {
+      try {
+        const origin = new URL(preview.url).origin;
+        return `${origin}/api/stash/${encodeURIComponent(stashMatch[1])}/${encodeURIComponent(stashMatch[2])}`;
+      } catch (error) {
+        return '';
+      }
+    }
+
+    try {
+      const resolved = new URL(raw, preview.url);
+      return ['http:', 'https:'].includes(resolved.protocol) ? resolved.href : '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  _canvasPreviewExcerpt(content) {
+    return String(content || '')
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/https?:\/\/\S+/g, ' ')
+      .replace(/(^|\n)\s*#{1,6}\s*/g, ' ')
+      .replace(/[*_`>~\[\]]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 220);
+  }
+
+  async _hydrateCanvasPreview(messageEl, preview) {
+    const container = messageEl.querySelector('.canvas-inline-preview');
+    if (!container) return;
+
+    try {
+      const response = await fetch(preview.apiUrl);
+      if (!response.ok) return;
+      const page = await response.json();
+      if (!container.isConnected) return;
+
+      const titleEl = container.querySelector('.canvas-preview-title');
+      if (titleEl && page.title) titleEl.textContent = page.title;
+
+      const excerpt = this._canvasPreviewExcerpt(page.content || '');
+      const excerptEl = container.querySelector('[data-canvas-preview-excerpt]');
+      if (excerptEl && excerpt) {
+        excerptEl.textContent = excerpt;
+        excerptEl.classList.add('has-content');
+      }
+
+      const imageUrl = this._canvasPreviewImageUrl(page.content || '', preview);
+      const imageWrap = container.querySelector('.canvas-preview-image');
+      const image = imageWrap?.querySelector('img');
+      if (imageWrap && image && imageUrl) {
+        image.src = imageUrl;
+        image.alt = page.title ? `${page.title} preview` : 'Canvas page preview';
+        imageWrap.hidden = false;
+        container.classList.add('has-image');
+      }
+    } catch (error) {
+      console.warn('Could not hydrate Canvas preview:', error);
+    }
   }
 
   _normalizeDisplayText(text) {

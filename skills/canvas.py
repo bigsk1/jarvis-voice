@@ -201,8 +201,12 @@ def _embed_image_markdown(content: str, image_url: str | None = None, image_alt:
     if not image_url:
         return content
 
-    if image_url in content:
-        return content
+    # A plain-text URL or "stash reference" note is not an image embed. Only
+    # suppress insertion when the same URL is already used by Markdown image
+    # syntax; otherwise uploaded images disappear from the rendered page.
+    for match in re.finditer(r'!\[[^\]]*\]\(\s*<?([^\s)>]+)>?', content):
+        if match.group(1).strip() == image_url:
+            return content
 
     image_block = f"![{image_alt}]({image_url})"
     if not content.strip():
