@@ -11,7 +11,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'orchestrator'))
 from config_loader import load_config, get_config_value
-from memory_db import MemoryDB
+from memory_db import get_memory_db
 from schedule_parser import calculate_next_run, parse_schedule_expression
 from time_utils import format_utc_db, now_utc
 from workflow_loader import WorkflowLoader
@@ -32,7 +32,7 @@ class ScheduledTaskManager:
             provider = get_config_value('LLM_PROVIDER', 'anthropic')
             self.mode = 'local' if provider == 'ollama' else 'cloud'
 
-        self.db = MemoryDB()
+        self.db = get_memory_db(self.mode)
         self._ensure_tables()
 
     def _ensure_tables(self):

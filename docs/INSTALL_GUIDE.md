@@ -433,10 +433,11 @@ source ~/jarvis-venv/bin/activate
 pip install xai-sdk
 ```
 
-From the dashboard, select **Start All Services**, then use **Service Status**
-until the services report healthy. This is the recommended day-to-day workflow;
-the equivalent command-line operations are `./bin/start`, `./bin/start --list`,
-and `./bin/start --stop`.
+From the dashboard, select **Start All Services** for cloud/default startup or
+**Start All Services (Local)** for a local-only install, then use **Service
+Status** until the services report healthy. The equivalent command-line
+operations are `./bin/start`, `./bin/start --local`, `./bin/start --list`, and
+`./bin/start --stop`.
 
 **Test voice mode:**
 ```bash
@@ -655,10 +656,14 @@ source ~/jarvis-venv/bin/activate
 # Start all services
 ./bin/start
 
+# Local-only install (requires config/local.env; config/cloud.env may be absent)
+./bin/start --local
+
 # Or start specific services
 ./bin/start api        # API server only
 ./bin/start web        # Web UI only
 ./bin/start --ui-only  # All web UIs (no API or background services)
+./bin/start --ui-only --local  # All web UIs loading config/local.env
 
 # Check status
 ./bin/start --list
@@ -666,6 +671,11 @@ source ~/jarvis-venv/bin/activate
 # Stop all
 ./bin/start --stop
 ```
+
+Cloud remains the native default. `--local` may appear before or after the
+action or service name (for example, `./bin/start memory --local`). Native
+launchers honor an exported `JARVIS_MODE`, but they never read the repo-root
+`.env`; that file is reserved for Docker Compose.
 
 **tmux session names:**
 - `jarvis-api` - Main API server (port 8880)
@@ -720,7 +730,8 @@ jarvis-d
 A simple daily workflow:
 
 1. Run `jarvis-d`.
-2. Select **Start All Services**.
+2. Select **Start All Services**, or **Start All Services (Local)** when this
+   install uses `config/local.env`.
 3. Select **Service Status** while startup completes; wait for the services to
    report healthy before opening the web UIs.
 4. Attach to a service session when you need live output, for example
@@ -728,8 +739,9 @@ A simple daily workflow:
 5. When finished, return to `jarvis-d` and select **Stop All Services**.
 
 While dashboard startup is running, its temporary control session is named
-`jarvis-start-all`. It closes automatically when startup finishes. **Stop All
-Services** also closes that control session first if startup is still underway,
+`jarvis-start-all` or `jarvis-start-all-local`. UI-only controllers use
+`jarvis-start-ui` or `jarvis-start-ui-local`. They close automatically when
+startup finishes. **Stop All Services** closes any active controller first,
 then stops the API, background services, and UI sessions.
 
 ### Systemd Service (Optional - OpenCode Only)

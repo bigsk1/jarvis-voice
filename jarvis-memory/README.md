@@ -30,6 +30,9 @@ source ~/jarvis-venv/bin/activate
 # Run the server
 ./bin/jarvis-memory
 
+# Load auth/runtime settings from config/local.env
+./bin/jarvis-memory local
+
 # Or with options
 ./bin/jarvis-memory --port 5002 --debug
 ```
@@ -44,6 +47,11 @@ Open http://localhost:5002 in your browser (or your server IP).
 | Local | `data/jarvis_memory_local.db` | Nomic (768-dim) |
 
 Use the mode selector in the header to switch databases.
+
+Startup env mode and database mode are separate. On a first visit, the UI uses
+the server's `startup_mode`; an explicit `?mode=cloud|local` URL or saved browser
+preference takes precedence. Starting locally also initializes a pristine local
+Memory database before requests are served.
 
 ## UI Features
 
@@ -116,7 +124,7 @@ Use the mode selector in the header to switch databases.
 
 ### Stats
 - `GET /api/stats` - Full statistics
-- `GET /api/status` - Health check
+- `GET /api/status` - Health check, `startup_mode`, and cloud/local DB paths
 
 All endpoints accept `?mode=cloud|local` query parameter.
 

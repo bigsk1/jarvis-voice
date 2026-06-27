@@ -3,6 +3,7 @@
 Jarvis Docs launcher
 Run the standalone docs reader for markdown files under docs/
 """
+import os
 import sys
 from pathlib import Path
 
@@ -24,6 +25,7 @@ def main():
         epilog="""
 Examples:
   jarvis-docs                    # Start on port 5004
+  jarvis-docs local              # Load config/local.env
   jarvis-docs --port 8084        # Use custom port
   jarvis-docs --debug            # Enable debug mode
 
@@ -31,15 +33,24 @@ Editing:
   DOCS_UI_EDIT_ENABLED=true jarvis-docs
         """,
     )
+    parser.add_argument('mode', nargs='?', default=None, choices=['cloud', 'local'],
+                        help='Startup env mode: cloud (default) or local')
     parser.add_argument('--host', default='0.0.0.0', help='Host to bind to (default: 0.0.0.0)')
     parser.add_argument('--port', type=int, default=5004, help='Port to bind to (default: 5004)')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
 
     args = parser.parse_args()
+    from jarvis_mode import JarvisModeError, require_local_config, resolve_jarvis_mode
+    try:
+        mode = resolve_jarvis_mode(args.mode)
+        require_local_config(mode, JARVIS_ROOT)
+        os.environ['JARVIS_MODE'] = mode
+    except JarvisModeError as exc:
+        parser.error(str(exc))
 
     try:
         from server.app import run_server
-        run_server(host=args.host, port=args.port, debug=args.debug)
+        run_server(host=args.host, port=args.port, mode=mode, debug=args.debug)
     except ImportError as exc:
         print(f'Error importing jarvis-docs: {exc}')
         print('\nMake sure dependencies are installed:')

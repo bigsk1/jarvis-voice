@@ -1,6 +1,7 @@
 """Health and status endpoints"""
 
 from fastapi import APIRouter
+import os
 import sys
 from pathlib import Path
 import time
@@ -21,7 +22,8 @@ async def health_check():
     return {
         "status": "ok",
         "service": "jarvis-api",
-        "version": JARVIS_VERSION
+        "version": JARVIS_VERSION,
+        "startup_mode": os.environ.get('JARVIS_MODE', os.environ.get('JARVIS_API_MODE', 'cloud')),
     }
 
 @router.get("/status")
@@ -41,8 +43,8 @@ async def get_status():
         "uptime_seconds": uptime,
         "pending_alerts": pending_alerts,
         "mode": alert_manager.mode,
+        "startup_mode": os.environ.get('JARVIS_MODE', os.environ.get('JARVIS_API_MODE', 'cloud')),
         "database": db_path,
         "env_mode": os.environ.get('JARVIS_API_MODE', 'not set'),
         "llm_provider": os.environ.get('LLM_PROVIDER', 'not set')
     }
-

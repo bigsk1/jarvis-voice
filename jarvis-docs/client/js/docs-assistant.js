@@ -91,10 +91,19 @@
         const m = localStorage.getItem(STORAGE_MODE);
         if (m === 'local' || m === 'cloud') {
           this.elements.modeSelect.value = m;
+          return;
         }
       } catch (_) {
         /* ignore */
       }
+      fetch('/api/status')
+        .then((response) => response.ok ? response.json() : null)
+        .then((status) => {
+          if (status && (status.startup_mode === 'local' || status.startup_mode === 'cloud')) {
+            this.elements.modeSelect.value = status.startup_mode;
+          }
+        })
+        .catch(() => {});
     }
 
     _currentMode() {

@@ -4,6 +4,11 @@
 
 **Status:** Experimental. Jarvis ships a root [`Dockerfile`](../../Dockerfile) and [`docker-compose.yml`](../../docker-compose.yml) for local testing, but this is not a production/published image path yet.
 
+> **Implemented mode plumbing (2026-06-27):** Compose injects `JARVIS_MODE`
+> into every service, the entrypoint validates `config/<mode>.env` before init,
+> and all UIs report `startup_mode`. The runnable Compose file—not older
+> sketches in this design record—is authoritative.
+
 **Scope:** Run Jarvis **Web UIs and supporting services** in Docker. Voice wake-word, OpenCode, and host-integrated tooling stay **out of scope for v1** or run on the host separately.
 
 **Distribution:** **Local build only** — clone the repo, `docker compose build`, run on your own machine. Jarvis is not planned as a public image on Docker Hub or `ghcr.io`. Too much is machine-specific (secrets, DBs, intel, stash), and a published image would either bloat or leak patterns users should keep private.
@@ -247,12 +252,11 @@ Named volumes (`jarvis-data:`) are fine for **brand-new** installs with no prior
 
 ## Configuration: bind mounts
 
-Mount live config files so you can **edit keys and URLs without rebuilding the image**:
+Mount the live config directory so you can **edit keys and URLs without rebuilding the image** while allowing one-mode-only installs to omit the other env file:
 
 ```yaml
 volumes:
-  - ./config/cloud.env:/app/config/cloud.env:ro   # or :rw if you prefer editing in place
-  - ./config/local.env:/app/config/local.env:ro
+  - ./config:/app/config:ro
   - ./jarvis-web/config/web_config.json:/app/jarvis-web/config/web_config.json:rw
   - ./data:/app/data
   - ./logs:/app/logs
@@ -260,11 +264,17 @@ volumes:
   - ./jarvis-web/data/uploads:/app/jarvis-web/data/uploads
 ```
 
-**Why bind-mount env files?**
+**Why bind-mount the config directory?**
 
 - API keys and `OLLAMA_BASE_URL` change often
+- `mcp-servers.json`, contacts, webhook registry, and other read-only config are available without rebuilding
+- A local-only install does not need a placeholder `cloud.env` (and vice versa)
 - No `docker compose down && build` for a config tweak
 - Restart the affected service (or entire stack) to pick up env changes — Python loads env at process start
+
+Keep this directory read-only. Writable exceptions such as price-alert
+threshold management belong in a narrow optional override; see
+[`docker-compose.price-alerts.yml`](../../docker-compose.price-alerts.yml).
 
 **Why mount `web_config.json` read-write?**
 
@@ -481,8 +491,8 @@ services:
     user: "${JARVIS_DOCKER_UID:-1000}:${JARVIS_DOCKER_GID:-1000}"
     ports: ["127.0.0.1:8880:8880"]
     networks: [jarvis-net]
-    env_file: [./config/cloud.env]
     environment:
+      JARVIS_MODE: "${JARVIS_MODE:-cloud}"
       HOME: /tmp
       PYTHONDONTWRITEBYTECODE: "1"
       UMASK: "002"
@@ -491,8 +501,7 @@ services:
       VIRTUAL_ENV: /opt/venv
       # JARVIS_API_AUTH: "false"   # see Inter-service networking section
     volumes:
-      - ./config/cloud.env:/app/config/cloud.env:ro
-      - ./config/local.env:/app/config/local.env:ro
+      - ./config:/app/config:ro
       - ./skills/profiles/docker.json:/app/skills/profiles/docker.json:ro
       - ./data:/app/data
       - ./logs:/app/logs
@@ -516,8 +525,7 @@ services:
       JARVIS_API_INTERNAL_URL: "http://jarvis-api:8880"
       CANVAS_INTERNAL_URL: "http://jarvis-canvas:8890"
     volumes:
-      - ./config/cloud.env:/app/config/cloud.env:ro
-      - ./config/local.env:/app/config/local.env:ro
+      - ./config:/app/config:ro
       - ./jarvis-web/config/web_config.json:/app/jarvis-web/config/web_config.json:rw
       - ./skills/profiles/docker.json:/app/skills/profiles/docker.json:ro
       - ./data:/app/data
@@ -543,8 +551,7 @@ services:
       VIRTUAL_ENV: /opt/venv
       JARVIS_API_INTERNAL_URL: "http://jarvis-api:8880"
     volumes:
-      - ./config/cloud.env:/app/config/cloud.env:ro
-      - ./config/local.env:/app/config/local.env:ro
+      - ./config:/app/config:ro
       - ./skills/profiles/docker.json:/app/skills/profiles/docker.json:ro
       - ./data:/app/data
       - ./logs:/app/logs
@@ -561,8 +568,7 @@ services:
       UMASK: "002"
       JARVIS_API_INTERNAL_URL: "http://jarvis-api:8880"
     volumes:
-      - ./config/cloud.env:/app/config/cloud.env:ro
-      - ./config/local.env:/app/config/local.env:ro
+      - ./config:/app/config:ro
       - ./data:/app/data
       - ./logs:/app/logs
 
@@ -642,6 +648,9 @@ Do not let runtime containers install missing packages on boot. Build all depend
 - [x] Auth story: document `JARVIS_API_AUTH` + Bearer on internal clients OR private network default
 - [x] Document TLS options for browser mic
 - [x] Optional: `JARVIS_DEPLOYMENT=docker` env flag for logging/health
+- [x] Inject and validate `JARVIS_MODE` before init; pass it to every UI launcher
+- [x] Mount `config/` read-only so the unselected env file may be absent
+- [x] Expose `startup_mode` from UI health/status endpoints
 - [ ] Local CI smoke test: `docker compose build && docker compose up -d` + `curl localhost:5001/api/status`
 
 ---

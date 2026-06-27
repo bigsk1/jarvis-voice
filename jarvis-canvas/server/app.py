@@ -34,6 +34,7 @@ def create_app(mode='cloud'):
     )
     
     CORS(app)
+    app.config['JARVIS_STARTUP_MODE'] = mode
     
     # Load Jarvis config for auth
     load_config(mode)
@@ -93,8 +94,7 @@ def create_app(mode='cloud'):
 def run_server(host='0.0.0.0', port=8890, mode='cloud', debug=False):
     """Run the Flask server with startup banner."""
     
-    # Load config first
-    load_config(mode)
+    app = create_app(mode)
     
     # Count content
     page_count = len(load_pages())
@@ -122,5 +122,4 @@ def run_server(host='0.0.0.0', port=8890, mode='cloud', debug=False):
 ╚═══════════════════════════════════════════════════════════════╝
     """)
     
-    app = create_app(mode)
     app.run(host=host, port=port, debug=debug, threaded=True)

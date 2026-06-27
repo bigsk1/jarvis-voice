@@ -34,6 +34,11 @@ This directory contains configuration files for Jarvis Voice Assistant.
    # Local mode
    ./jarvis-local  # voice mode
    ./orchestrator/orchestrator_v2.py local "What time is it?"  # CLI
+
+   # Full service stack / Web UIs
+   ./bin/start                 # cloud.env (default)
+   ./bin/start --local         # local.env
+   ./bin/start --ui-only --local
    ```
 
 5. **(Optional) Configure MCP servers:**
@@ -44,7 +49,8 @@ This directory contains configuration files for Jarvis Voice Assistant.
 
 ## Configuration Files
 
-Copy a template to create your live config (both live files are gitignored):
+Copy the template for each mode you intend to run (both live filenames are
+gitignored, but a one-mode-only install needs only its selected file):
 
 ```bash
 cp cloud.env.example cloud.env    # cloud mode
@@ -56,6 +62,18 @@ cp local.env.example local.env    # local mode
 | `cloud.env.example` / `local.env.example` | Committed templates — safe to browse in git |
 | `cloud.env` / `local.env` | Your machine-specific settings and secrets (not committed) |
 | `mcp-servers.json` | Jarvis MCP server definitions (committed; no secrets in git) |
+
+### Startup env mode
+
+Top-level launchers resolve startup mode in this order: explicit CLI selection,
+the process `JARVIS_MODE`, then the backward-compatible `cloud` default. Valid
+values are only `cloud` and `local`; provider/model settings do not choose the
+startup env file.
+
+Native launchers never parse the repo-root `.env`. That file is reserved for
+Docker Compose interpolation, which injects `JARVIS_MODE` into containers.
+Memory, Intelligence, Docs Assistant, and Web chat retain their independent
+request/browser data or LLM mode selectors after startup.
 
 ### `cloud.env` (Cloud Mode)
 

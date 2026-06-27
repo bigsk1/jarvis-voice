@@ -256,6 +256,7 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - Browse, search, and run any Jarvis command from one place
   - Organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
   - Live system status (CPU, RAM, API health)
+  - Separate full-stack and UI-only startup actions for cloud/default and local env modes
   - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
 - **Intelligence Dashboard**: Visual dashboard for self-learning at localhost:5003
   - Experience sorting (date, turns, tool count) and filtering (success/fail, tool count, specific tool)
@@ -615,11 +616,20 @@ Start everything with one command using tmux sessions (make sure they are all se
 # Start ALL services (API, background services, all UIs)
 ./bin/start
 
+# Local-only startup (uses config/local.env)
+./bin/start --local
+
 # Or start only what you need:
 ./bin/start --ui-only    # Just the web UIs (no API/services)
+./bin/start --ui-only --local  # Local-env web UIs
 ./bin/start --list       # Check status of all sessions
 ./bin/start --stop       # Stop everything
 ```
+
+The command dashboard exposes the same choices as **Start All Services**,
+**Start All Services (Local)**, **Start UI Only**, and **Start UI Only
+(Local)**. Cloud remains the default; local actions require
+`config/local.env`.
 
 **Services started:**
 | Session | Port | Description |
@@ -1395,7 +1405,11 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
-**Completed (June 2026) — v2.51.x OpenCode hardening:**
+**Completed (June 2026) — v2.52.0 mode plumbing and OpenCode hardening:**
+- ✅ **Predictable cloud/local startup** — Shared mode resolution keeps cloud as the default while `./bin/start --local` and per-service launchers load `config/local.env` explicitly
+- ✅ **Local-only TUI workflows** — Dedicated Start All and UI-only Local actions retain separate, stoppable tmux controller sessions
+- ✅ **Mode-aware UIs and fresh databases** — Every UI reports `startup_mode`; Memory and Intelligence initialize pristine selected-mode databases and default browser selectors accordingly
+- ✅ **Docker mode/config parity** — Compose mode reaches every UI, local-only checkouts can omit `cloud.env`, and read-only `config/` plus narrow opt-in overrides expose live configuration safely
 - ✅ **OpenCode service isolation** — The systemd unit now renders user-specific paths, starts in `~/jarvis-workspace`, creates workspace subdirectories up front, and pins `TMPDIR` / `TMP` / `TEMP` to `~/jarvis-workspace/temp` so generated projects and scratch files stay out of `~/jarvis-voice` and `/tmp`
 - ✅ **OpenCode server auth** — Jarvis and read-only session tools now send HTTP Basic auth from `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD`; install/update scripts copy provider keys and server auth into `~/.config/opencode/jarvis-env.env`
 - ✅ **OpenCode model/config defaults** — Added a git-safe `config/opencode.config.json.template`, xAI/Grok Build examples, provider-key setup notes, and safer docs for OpenCode config seeding
@@ -1853,6 +1867,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.51.0 (June 2026)
+**Current Version:** v2.52.0 (June 2026)
 **Status:** Production Ready ✅  
 **Latest Features:** v2.51.0 adds `create_social_clip` (MoneyPrinterTurbo B-roll social videos), multi-image Web UI vision, OpenCode service/auth/workspace hardening, the experimental local Docker Web stack, hybrid Docker/native tool-profile workflow, internal container routing/auth, foreground daemon supervision, and Docker operations documentation — alongside cross-turn correction learning, Profile Card injection, memory-type filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog support.

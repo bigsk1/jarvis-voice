@@ -20,9 +20,16 @@ From the **jarvis-voice** repo root:
 ```bash
 source ~/jarvis-venv/bin/activate   # if you use the standard venv
 ./bin/jarvis-docs
+
+# Load auth/assistant defaults from config/local.env
+./bin/jarvis-docs local
 ```
 
 Open **http://localhost:5004** (or your host IP). Custom port: `./bin/jarvis-docs --port 8084`.
+
+`GET /api/status` reports `startup_mode`. With no saved assistant-mode
+preference, the Docs Assistant starts in that mode; users can still switch its
+per-request LLM mode independently.
 
 ## Layout
 

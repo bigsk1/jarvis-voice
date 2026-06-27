@@ -12,8 +12,12 @@ The Intelligence Dashboard provides a web interface to monitor, inspect, and man
 # Start the dashboard
 ./bin/jarvis-intelligence
 
+# Load auth/runtime settings from config/local.env
+./bin/jarvis-intelligence local
+
 # Or via the start script
-./bin/start --ui-only   # Starts web, canvas, memory, and intelligence
+./bin/start --ui-only          # Cloud/default: Web, Canvas, Memory, Intelligence, Docs
+./bin/start --ui-only --local  # Same UI stack loading config/local.env
 
 # Access at
 http://localhost:5003
@@ -94,6 +98,11 @@ http://localhost:5003
 - No more terminal/log file browsing required
 
 ## API Endpoints
+
+`GET /api/status` reports the server's `startup_mode` and both database paths.
+The URL `?mode=`, saved browser preference, and then `startup_mode` determine
+the initial data selector. A pristine selected-mode DB is initialized through
+the canonical Intelligence schema owner before serving requests.
 
 ### Experiences
 | Method | Endpoint | Description |

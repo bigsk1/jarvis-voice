@@ -30,7 +30,7 @@ Examples:
   jarvis-web --debug            # Enable debug mode
         """
     )
-    parser.add_argument('mode', nargs='?', default='cloud', choices=['cloud', 'local'],
+    parser.add_argument('mode', nargs='?', default=None, choices=['cloud', 'local'],
                         help='Run mode: cloud (default) or local')
     parser.add_argument('--host', default='0.0.0.0',
                         help='Host to bind to (default: 0.0.0.0)')
@@ -40,6 +40,13 @@ Examples:
                         help='Enable debug mode')
     
     args = parser.parse_args()
+    from jarvis_mode import JarvisModeError, require_local_config, resolve_jarvis_mode
+    try:
+        mode = resolve_jarvis_mode(args.mode)
+        require_local_config(mode, JARVIS_ROOT)
+        os.environ['JARVIS_MODE'] = mode
+    except JarvisModeError as exc:
+        parser.error(str(exc))
     
     # Check if eventlet is available
     try:
@@ -57,7 +64,7 @@ Examples:
         run_server(
             host=args.host,
             port=args.port,
-            mode=args.mode,
+            mode=mode,
             debug=args.debug
         )
     except ImportError as e:
@@ -69,4 +76,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

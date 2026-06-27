@@ -85,11 +85,14 @@ def get_status():
     current_mode = get_web_setting('defaults.mode', 'cloud')
     settings = get_settings_manager(current_mode)
     
+    from ..app import get_startup_mode
+
     return jsonify({
         'ok': True,
         'status': 'running',
         'version': _get_jarvis_version(),
         'mode': settings.mode,
+        'startup_mode': get_startup_mode(),
         'tools_count': tool_service.get_tool_count(),
         'features': {
             'tts': get_web_setting('audio.tts_enabled', False),

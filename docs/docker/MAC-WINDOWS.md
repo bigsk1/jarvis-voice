@@ -47,8 +47,9 @@ Open Terminal and run:
 git clone https://github.com/bigsk1/jarvis-voice.git
 cd jarvis-voice
 
+# Choose the mode you will run; the other file is optional.
 cp config/cloud.env.example config/cloud.env
-cp config/local.env.example config/local.env
+# cp config/local.env.example config/local.env
 cp jarvis-web/config/web_config.json.example jarvis-web/config/web_config.json
 cp docker.env.example .env
 ```
@@ -115,8 +116,9 @@ Open PowerShell. The repository does not have to be under your Windows home dire
 git clone https://github.com/bigsk1/jarvis-voice.git
 Set-Location jarvis-voice
 
+# Choose the mode you will run; the other file is optional.
 Copy-Item config/cloud.env.example config/cloud.env
-Copy-Item config/local.env.example config/local.env
+# Copy-Item config/local.env.example config/local.env
 Copy-Item jarvis-web/config/web_config.json.example jarvis-web/config/web_config.json
 Copy-Item docker.env.example .env
 ```
@@ -217,6 +219,9 @@ JARVIS_MODE=cloud
 
 Set this in root `.env`, then configure the matching provider values in `config/cloud.env`.
 
+Only the selected env file is required. A cloud-only setup may omit
+`config/local.env`; a local-only setup may omit `config/cloud.env`.
+
 For local mode, install and start Ollama on the Mac or Windows host. In `config/local.env`, use the Docker Desktop host address rather than container-local `localhost`:
 
 ```env
@@ -258,7 +263,10 @@ If you only changed bind-mounted config or runtime files, recreate containers wi
 docker compose --profile extras up -d --force-recreate
 ```
 
-Bind-mounted files include `config/cloud.env`, `config/local.env`, root `.env`, `jarvis-web/config/web_config.json`, `data/`, `logs/`, `audio/`, and uploads.
+Bind mounts include the read-only `config/` directory,
+`jarvis-web/config/web_config.json`, `data/`, `logs/`, `audio/`, and uploads.
+Root `.env` is read by Compose for interpolation; it is not mounted into a
+container.
 
 After pulling app code, frontend, route, tool, script, Dockerfile, or dependency changes from GitHub, rebuild the image:
 
@@ -290,11 +298,13 @@ The tracked `docker` tool profile disables the existing stdio MCP servers becaus
 
 ### A configuration path became a directory
 
-Compose short bind-mount syntax can create a directory when a required source file is missing. Stop the stack, remove the incorrectly created directory, and copy the corresponding example file again:
+The base stack mounts the existing `config/` directory and no longer creates
+missing env paths as directories. A separate single-file override can still
+fail when its source is missing. Stop the stack, remove any incorrectly created
+directory, and create the required file before retrying:
 
-- `config/cloud.env.example` to `config/cloud.env`
-- `config/local.env.example` to `config/local.env`
 - `jarvis-web/config/web_config.json.example` to `jarvis-web/config/web_config.json`
+- `config/price-alerts.yaml` before using `docker-compose.price-alerts.yml`
 
 Then rerun `docker compose up -d`.
 
@@ -352,7 +362,9 @@ docker compose logs jarvis-api jarvis-web 2>&1 | Select-String "Syncing tools"
 
 You should see both `cloud mode` and `local mode`. If only cloud appears, or local mode still misbehaves after a healthy health check, the manual `--force` sync above is the supported fix.
 
-**Note:** `jarvis-api` startup always runs `sync-tools.py` for **cloud only** (container default mode). Do not rely on API logs alone to confirm local Tool RAG.
+**Note:** Docker init follows `JARVIS_SYNC_MODES`, or the selected
+`JARVIS_MODE` when that override is unset. UI health/status responses expose
+`startup_mode` for mode verification.
 
 ### Build fails on Apple Silicon or ARM Windows
 
@@ -364,7 +376,8 @@ Retry with the `DOCKER_DEFAULT_PLATFORM=linux/amd64` fallback shown above. If it
 docker compose --profile extras config
 ```
 
-This output should not contain API key values. Runtime secrets belong only in the bind-mounted `config/cloud.env` and `config/local.env` files.
+This output should not contain API key values. Runtime secrets belong in the
+selected file under the bind-mounted `config/` directory, not in root `.env`.
 
 ## Limitations and support boundary
 

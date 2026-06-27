@@ -130,7 +130,7 @@ Workflow definitions live at repo root: ../data/workflows/*.json (not under jarv
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/status` | GET | Health check, mode, version, tool count |
+| `/api/status` | GET | Health check, launcher `startup_mode`, runtime `mode`, version, tool count |
 | `/api/tools` | GET | List all available tools |
 | `/api/tools/:name` | GET | Get specific tool details |
 | `/api/tools/refresh` | POST | Reload tools from disk |

@@ -25,10 +25,13 @@ def main():
         epilog="""
 Examples:
   jarvis-memory                   # Start on port 5002
+  jarvis-memory local             # Load config/local.env
   jarvis-memory --port 8080       # Use custom port
   jarvis-memory --debug           # Enable debug mode
         """
     )
+    parser.add_argument('mode', nargs='?', default=None, choices=['cloud', 'local'],
+                        help='Startup env mode: cloud (default) or local')
     parser.add_argument('--host', default='0.0.0.0',
                         help='Host to bind to (default: 0.0.0.0)')
     parser.add_argument('--port', type=int, default=5002,
@@ -37,6 +40,13 @@ Examples:
                         help='Enable debug mode')
     
     args = parser.parse_args()
+    from jarvis_mode import JarvisModeError, require_local_config, resolve_jarvis_mode
+    try:
+        mode = resolve_jarvis_mode(args.mode)
+        require_local_config(mode, JARVIS_ROOT)
+        os.environ['JARVIS_MODE'] = mode
+    except JarvisModeError as exc:
+        parser.error(str(exc))
     
     # Import and run the app
     try:
@@ -44,6 +54,7 @@ Examples:
         run_server(
             host=args.host,
             port=args.port,
+            mode=mode,
             debug=args.debug
         )
     except ImportError as e:
@@ -55,4 +66,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

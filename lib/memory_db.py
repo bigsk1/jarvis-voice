@@ -1463,6 +1463,12 @@ class MemoryDB:
         self.close()
 
 
-def get_memory_db() -> MemoryDB:
-    """Get memory database instance."""
-    return MemoryDB()
+def get_memory_db(mode: str | None = None) -> MemoryDB:
+    """Get a memory database, optionally selecting data mode explicitly."""
+    if mode is None:
+        return MemoryDB()
+    if mode not in {'cloud', 'local'}:
+        raise ValueError(f"Invalid memory data mode: {mode!r}")
+    project_root = Path(__file__).parent.parent.resolve()
+    suffix = '_local' if mode == 'local' else ''
+    return MemoryDB(str(project_root / 'data' / f'jarvis_memory{suffix}.db'))

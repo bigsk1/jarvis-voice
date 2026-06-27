@@ -20,6 +20,8 @@ from webui_auth import is_auth_enabled, get_token_from_request, verify_token
 from flask_error_logger import setup_error_logging
 from config_loader import load_config
 
+_startup_mode = 'cloud'
+
 
 def _get_jarvis_version():
     """Read Jarvis version from central VERSION file."""
@@ -33,13 +35,22 @@ def _get_jarvis_version():
             return '0.0.0'
 
 
-# Import routes after path setup
-from .routes.experiences import experiences_bp
-from .routes.insights import insights_bp
-from .routes.stats import stats_bp
-from .routes.maintenance import maintenance_bp
-from .routes.feedback import feedback_bp
-from .routes.auth import auth_bp
+# Import routes after path setup. Support both package import and direct execution.
+if __package__:
+    from .routes.experiences import experiences_bp
+    from .routes.insights import insights_bp
+    from .routes.stats import stats_bp
+    from .routes.maintenance import maintenance_bp
+    from .routes.feedback import feedback_bp
+    from .routes.auth import auth_bp
+else:
+    sys.path.insert(0, str(INTELLIGENCE_ROOT))
+    from server.routes.experiences import experiences_bp
+    from server.routes.insights import insights_bp
+    from server.routes.stats import stats_bp
+    from server.routes.maintenance import maintenance_bp
+    from server.routes.feedback import feedback_bp
+    from server.routes.auth import auth_bp
 
 # Create Flask app
 app = Flask(__name__,
@@ -115,6 +126,7 @@ def get_status():
         'ok': True,
         'status': 'running',
         'version': _get_jarvis_version(),
+        'startup_mode': _startup_mode,
         'databases': {
             'cloud': str(DATA_PATH / 'jarvis_intelligence.db'),
             'local': str(DATA_PATH / 'jarvis_intelligence_local.db')
@@ -146,7 +158,14 @@ def server_error(e):
 
 def run_server(host: str = '0.0.0.0', port: int = 5003, mode: str = 'cloud', debug: bool = False):
     """Run the web server"""
+    global _startup_mode
+    _startup_mode = mode
     load_config(mode)
+    if __package__:
+        from .services.intelligence_service import IntelligenceService
+    else:
+        from server.services.intelligence_service import IntelligenceService
+    IntelligenceService(mode)
     auth_status = "ENABLED" if is_auth_enabled() else "DISABLED"
     
     print(f"""
@@ -164,12 +183,21 @@ def run_server(host: str = '0.0.0.0', port: int = 5003, mode: str = 'cloud', deb
 
 if __name__ == '__main__':
     import argparse
+    import os
+    from jarvis_mode import JarvisModeError, require_local_config, resolve_jarvis_mode
     
     parser = argparse.ArgumentParser(description='Jarvis Intelligence Dashboard')
+    parser.add_argument('mode', nargs='?', default=None, choices=['cloud', 'local'],
+                        help='Startup env mode: cloud (default) or local')
     parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
     parser.add_argument('--port', type=int, default=5003, help='Port to bind to')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     
     args = parser.parse_args()
-    run_server(host=args.host, port=args.port, debug=args.debug)
-
+    try:
+        mode = resolve_jarvis_mode(args.mode)
+        require_local_config(mode, JARVIS_ROOT)
+        os.environ['JARVIS_MODE'] = mode
+    except JarvisModeError as exc:
+        parser.error(str(exc))
+    run_server(host=args.host, port=args.port, mode=mode, debug=args.debug)

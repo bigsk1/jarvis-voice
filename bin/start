@@ -7,6 +7,7 @@
 #   ./bin/start              # Start all services (API first, wait, then others)
 #   ./bin/start <service>    # Start one service by name
 #   ./bin/start --ui-only    # Start only UI services (web, canvas, memory, intelligence, docs)
+#   ./bin/start --local      # Start all services with config/local.env
 #   ./bin/start --no-api     # Start everything except API (skip sync)
 #   ./bin/start --list       # Show tmux session status
 #   ./bin/start --stop       # Stop all Jarvis sessions
@@ -32,6 +33,37 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_PATH="${JARVIS_VENV:-$HOME/jarvis-venv}"
 
+MODE_EXPLICIT=""
+ACTION=""
+for arg in "$@"; do
+    case "$arg" in
+        --local)
+            [ -z "$MODE_EXPLICIT" ] || { echo "Duplicate option: --local" >&2; exit 2; }
+            MODE_EXPLICIT="local"
+            ;;
+        --ui-only|--no-api|--list|-l|--stop|-s|--help|-h|api|services|web|canvas|memory|intelligence|docs)
+            [ -z "$ACTION" ] || { echo "Multiple actions specified: $ACTION and $arg" >&2; exit 2; }
+            ACTION="$arg"
+            ;;
+        *)
+            echo "Unknown option: $arg" >&2
+            exit 2
+            ;;
+    esac
+done
+
+require_arg=()
+case "$ACTION" in
+    --list|-l|--stop|-s|--help|-h) ;;
+    *) require_arg=(--require-config) ;;
+esac
+if [ -n "$MODE_EXPLICIT" ]; then
+    MODE="$($PROJECT_ROOT/bin/resolve-jarvis-mode "$MODE_EXPLICIT" "${require_arg[@]}")"
+else
+    MODE="$($PROJECT_ROOT/bin/resolve-jarvis-mode "${require_arg[@]}")"
+fi
+ACTION="${ACTION:-all}"
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -53,20 +85,22 @@ declare -A SESSIONS=(
 # Short-lived sessions created by the TUI while startup is in progress.
 CONTROL_SESSIONS=(
     "jarvis-start-all"
+    "jarvis-start-all-local"
     "jarvis-start-ui"
+    "jarvis-start-ui-local"
     "🚀-start-all-services"  # Legacy dashboard session name
     "🚀-start-ui-only"       # Legacy dashboard session name
 )
 
 # Commands for each service
 declare -A COMMANDS=(
-    ["api"]="./bin/jarvis-api"
-    ["services"]="./bin/jarvis-services"
-    ["web"]="./bin/jarvis-web"
-    ["canvas"]="./bin/jarvis-canvas"
-    ["memory"]="./bin/jarvis-memory"
-    ["intelligence"]="./bin/jarvis-intelligence"
-    ["docs"]="./bin/jarvis-docs"
+    ["api"]="./bin/jarvis-api$([ "$MODE" = local ] && echo ' --local')"
+    ["services"]="./bin/jarvis-services$([ "$MODE" = local ] && echo ' --local')"
+    ["web"]="./bin/jarvis-web$([ "$MODE" = local ] && echo ' local')"
+    ["canvas"]="./bin/jarvis-canvas$([ "$MODE" = local ] && echo ' local')"
+    ["memory"]="./bin/jarvis-memory$([ "$MODE" = local ] && echo ' local')"
+    ["intelligence"]="./bin/jarvis-intelligence$([ "$MODE" = local ] && echo ' local')"
+    ["docs"]="./bin/jarvis-docs$([ "$MODE" = local ] && echo ' local')"
 )
 
 # Ports for health checks
@@ -110,21 +144,53 @@ is_session_running() {
     tmux has-session -t "$1" 2>/dev/null
 }
 
+reported_mode() {
+    local name=$1
+    if [ "$name" = "services" ]; then
+        [ -f "$PROJECT_ROOT/logs/services_mode" ] && tr -d '[:space:]' < "$PROJECT_ROOT/logs/services_mode"
+        return 0
+    fi
+    local port=${PORTS[$name]}
+    local endpoint=${HEALTH_ENDPOINTS[$name]}
+    curl -sf "http://localhost:${port}${endpoint}" 2>/dev/null | python3 -c \
+        'import json,sys; d=json.load(sys.stdin); print(d.get("startup_mode") or d.get("env_mode") or "")' 2>/dev/null || true
+}
+
+verify_running_mode() {
+    local name=$1
+    local actual
+    actual=$(reported_mode "$name")
+    if [ "$actual" = "$MODE" ]; then
+        success "${SESSIONS[$name]} already running in $MODE mode"
+        return 0
+    fi
+    if [ -z "$actual" ] || [ "$actual" = "not set" ]; then
+        error "${SESSIONS[$name]} is running, but its mode cannot be verified; stop and restart this service after the mode-plumbing upgrade."
+    else
+        error "${SESSIONS[$name]} is already running in $actual mode; stop it before starting $MODE mode."
+    fi
+    return 1
+}
+
 start_service() {
     local name=$1
     local session=${SESSIONS[$name]}
     local cmd=${COMMANDS[$name]}
     
     if is_session_running "$session"; then
-        warn "$session already running"
-        return 0
+        verify_running_mode "$name"
+        return $?
+    fi
+    if [ "$name" = "services" ] && [ "$(check_services_pids)" -gt 0 ]; then
+        verify_running_mode "$name"
+        return $?
     fi
     
     log "Starting $session..."
     
     # Create tmux session with venv activation
     tmux new-session -d -s "$session" -n "$name" \
-        "source $VENV_PATH/bin/activate && cd $PROJECT_ROOT && $cmd; read -p 'Press Enter to close...'"
+        "source $VENV_PATH/bin/activate && cd $PROJECT_ROOT && JARVIS_MODE=$MODE $cmd; read -p 'Press Enter to close...'"
     
     success "$session started"
 }
@@ -133,7 +199,7 @@ wait_for_health() {
     local name=$1
     local port=${PORTS[$name]}
     local endpoint=${HEALTH_ENDPOINTS[$name]}
-    local max_wait=60
+    local max_wait=${JARVIS_START_HEALTH_TIMEOUT_SECONDS:-60}
     local waited=0
     
     if [ -z "$port" ]; then
@@ -143,7 +209,7 @@ wait_for_health() {
     log "Waiting for $name to be ready (max ${max_wait}s)..."
     
     while [ $waited -lt $max_wait ]; do
-        if curl -sf "http://localhost:${port}${endpoint}" > /dev/null 2>&1; then
+        if [ "$(reported_mode "$name")" = "$MODE" ]; then
             success "$name is ready!"
             return 0
         fi
@@ -153,8 +219,8 @@ wait_for_health() {
     done
     
     echo ""
-    warn "$name may not be fully ready yet (sync still running)"
-    return 0
+    error "$name did not become ready in $MODE mode within ${max_wait}s"
+    return 1
 }
 
 stop_all() {
@@ -356,12 +422,13 @@ show_help() {
     echo ""
     echo "Usage:"
     echo "  ./bin/start              Start all services (API first, wait for sync, then others)"
-    echo "  ./bin/start <service>    Start one service: api, services, web, canvas, memory, intelligence, or docs"
+    echo "  ./bin/start [--local] [service]  Start all or one service in the selected startup mode"
     echo "  ./bin/start --ui-only    Start only UI services (web, canvas, memory, intelligence, docs)"
     echo "  ./bin/start --no-api     Start everything except API (skip sync wait)"
     echo "  ./bin/start --list       Show tmux session status"
     echo "  ./bin/start --stop       Stop all Jarvis sessions"
     echo "  ./bin/start --help       Show this help"
+    echo "  --local may appear before or after an action; cloud remains the default"
     echo ""
     echo "Sessions:"
     echo "  jarvis-api          API server (port 8880) - does DB/evolution/tool-rag sync"
@@ -374,8 +441,14 @@ show_help() {
     echo ""
 }
 
+# Native launchers intentionally do not read the Compose-only root .env.
+if [ "$MODE" = "cloud" ] && [ ! -f "$PROJECT_ROOT/config/cloud.env" ] && [ -f "$PROJECT_ROOT/config/local.env" ]; then
+    warn "config/cloud.env not found but config/local.env exists."
+    echo "    For a local-only setup use: ./bin/start --local"
+fi
+
 # Main
-case "${1:-}" in
+case "$ACTION" in
     --ui-only)
         start_ui_only
         ;;
@@ -392,14 +465,9 @@ case "${1:-}" in
         show_help
         ;;
     api|services|web|canvas|memory|intelligence|docs)
-        start_service "$1"
+        start_service "$ACTION"
         ;;
-    "")
+    all)
         start_all
-        ;;
-    *)
-        error "Unknown option: $1"
-        show_help
-        exit 1
         ;;
 esac

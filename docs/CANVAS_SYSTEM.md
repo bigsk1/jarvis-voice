@@ -16,6 +16,9 @@ A visual viewer for rich content that Jarvis populates. Think of it as a persona
 # Basic start
 ./bin/jarvis-canvas
 
+# Load auth/URLs from config/local.env (cloud is the default)
+./bin/jarvis-canvas local
+
 # Custom port
 ./bin/jarvis-canvas --port 8890
 
@@ -257,6 +260,8 @@ curl http://localhost:8890/api/health
 {
   "status": "healthy",
   "service": "jarvis-canvas",
+  "startup_mode": "local",
+  "mode": "local",
   "pages": 5,
   "timestamp": "2026-02-01T14:30:22Z"
 }
@@ -643,11 +648,12 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 
 ---
 
-**Version:** 2.3
-**Last Updated:** 2026-04-17
+**Version:** 2.4
+**Last Updated:** 2026-06-27
 
 ### Changelog
 
+- **v2.4** (Jun 2026): Explicit cloud/local startup env selection and mode-aware health reporting; Canvas page storage remains shared and mode-agnostic
 - **v2.3** (Apr 2026): Stash viewer on Canvas (`/stash/view/...`), markdown pipeline for viewer vs `/api/stash` for media, pin sync recognizes viewer/API paths; see *Stash viewer* under Stash Integration
 - **v2.2** (Apr 2026): Explicit `image_url` support for page create/update plus inline `Image: https://...` auto-conversion so Amazon/product pages can reliably save with embedded images
 - **v2.1** (Feb 2026): Hierarchical tree view sidebar, breadcrumb titles, LLM title summarization for research workflow, smart folder segment detection, hash-based polling

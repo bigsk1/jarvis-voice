@@ -111,7 +111,9 @@ COMMANDS: List[Command] = [
     
     # === 🔧 SERVICES ===
     Command("🚀 Start All Services", "./bin/start", "API→wait→services+UIs", "🔧 Services", interactive=True),
+    Command("🚀 Start All Services (Local)", "./bin/start --local", "Local env: API→wait→services+UIs", "🔧 Services", interactive=True),
     Command("🚀 Start UI Only", "./bin/start --ui-only", "Web+Canvas+Memory+Intel+Docs", "🔧 Services", interactive=True),
+    Command("🚀 Start UI Only (Local)", "./bin/start --ui-only --local", "Local env: Web+Canvas+Memory+Intel+Docs", "🔧 Services", interactive=True),
     Command("📊 Service Status", "./bin/start --list", "Show all session status", "🔧 Services"),
     Command("🛑 Stop All Services", "./bin/start --stop", "Stop all tmux sessions", "🔧 Services"),
     Command("Start API (Cloud)", "./bin/jarvis-api", "API server - cloud mode", "🔧 Services", interactive=True),
@@ -612,8 +614,12 @@ class CommandRunner(App):
             # Determine session name based on command type
             if cmd.command == "./bin/start":
                 session_name = "jarvis-start-all"
+            elif cmd.command == "./bin/start --local":
+                session_name = "jarvis-start-all-local"
             elif cmd.command == "./bin/start --ui-only":
                 session_name = "jarvis-start-ui"
+            elif cmd.command == "./bin/start --ui-only --local":
+                session_name = "jarvis-start-ui-local"
             elif "wake-jarvis" in cmd.command:
                 session_name = "jarvis-voice"  # Wake word loop
                 # Drop stale session so an old wake listener can't hold the mic

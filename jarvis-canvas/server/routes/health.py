@@ -2,7 +2,7 @@
 Jarvis Canvas - Health check routes
 """
 from datetime import datetime, timezone
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 
 from server.pages import load_pages
 
@@ -25,9 +25,12 @@ def _get_jarvis_version():
 @health_bp.route('/api/health')
 def health():
     """Health check endpoint."""
+    startup_mode = current_app.config.get('JARVIS_STARTUP_MODE', 'cloud')
     return jsonify({
         "status": "healthy",
         "service": "jarvis-canvas",
+        "startup_mode": startup_mode,
+        "mode": startup_mode,
         "version": _get_jarvis_version(),
         "pages": len(load_pages()),
         "timestamp": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"

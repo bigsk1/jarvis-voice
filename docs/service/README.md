@@ -132,6 +132,9 @@ cron (5 min) → watchdog → self_healing_daemon → reminder_scheduler
 ### Start All Services
 ```bash
 ./bin/jarvis-services
+
+# Load config/local.env and use the local Memory DB
+./bin/jarvis-services --local
 ```
 
 ### Restart Services

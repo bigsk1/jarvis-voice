@@ -117,6 +117,31 @@ Two layers — do not mix them up:
 | **`.env`** (repo root) | Docker Compose only: ports, `JARVIS_MODE`, tool profile, UID/GID, `JARVIS_DOCKER_API_AUTH`. No secrets. |
 | **`config/cloud.env`** / **`config/local.env`** | Jarvis runtime: API keys, LLM provider, `JARVIS_API_KEY`, Ollama URLs, etc. Bind-mounted read-only into containers. |
 
+Compose mounts the `config/` directory read-only and validates only the file
+selected by `JARVIS_MODE`. A local-only checkout therefore needs
+`config/local.env` but does not need an empty `config/cloud.env` placeholder.
+
+Read-only consumers such as the API price-alert endpoints can use other files
+from that directory without additional mounts. To let the Web UI `price_alert`
+tool update thresholds, opt in to a writable mount for that file only:
+
+```bash
+test -f config/price-alerts.yaml
+docker compose -f docker-compose.yml -f docker-compose.price-alerts.yml up -d
+```
+
+Compose overrides are additive, so MCP plus writable price alerts uses all
+three files:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml \
+  -f docker-compose.price-alerts.yml up -d
+```
+
+This leaves env files, `ssh.json`, and the rest of `config/` read-only. The
+override refuses to start if `config/price-alerts.yaml` is absent rather than
+letting Docker create a directory at that path.
+
 ### `JARVIS_MODE` vs `JARVIS_SYNC_MODES`
 
 - **`JARVIS_MODE`** — which stack runs (`cloud` or `local`). Set in `.env`.
@@ -127,6 +152,9 @@ For normal use, set only:
 ```env
 JARVIS_MODE=cloud
 ```
+
+Every container, including Canvas, Memory, Intelligence, and Docs, uses this
+startup mode and reports it as `startup_mode` from its health/status endpoint.
 
 Use `JARVIS_SYNC_MODES="cloud local"` only if you want both tool databases synced on first bring-up while running one mode day-to-day.
 
@@ -170,7 +198,7 @@ docker compose -f docker-compose.yml -f docker-compose.mcp.yml \
   exec -T jarvis-web ./bin/test-mcp --discover
 ```
 
-The override selects the tracked `docker-mcp` profile. It enables configured MCP tools while keeping `docker_control`, host shell, SSH, Spotify, printer, phone, and OpenCode disabled. The MCP config is mounted read-only, so server configuration changes do not require rebuilding the image; recreate `jarvis-web` after changing it.
+The override selects the tracked `docker-mcp` profile. It enables configured MCP tools while keeping `docker_control`, host shell, SSH, Spotify, printer, phone, and OpenCode disabled. The base Compose file already mounts the full `config/` directory read-only, so server configuration changes do not require rebuilding the image; recreate `jarvis-web` after changing `config/mcp-servers.json`.
 
 Remote MCP servers configured with `"type": "http"` or `"type": "sse"` do not need Docker socket access. Use a Compose service URL such as `http://my-mcp:PORT/mcp` for a server on `jarvis-net`, or `http://host.docker.internal:PORT/mcp` for a server running directly on the Docker host.
 

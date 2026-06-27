@@ -5,6 +5,7 @@ Run this once to upgrade existing databases.
 """
 
 import sqlite3
+import argparse
 from pathlib import Path
 
 def migrate_database(db_path: Path):
@@ -135,6 +136,14 @@ def migrate_database(db_path: Path):
     return migrations_applied
 
 def main():
+    parser = argparse.ArgumentParser(description="Apply proactive schema migrations")
+    parser.add_argument("mode", nargs="?", choices=("cloud", "local"),
+                        help="Migrate only the selected mode (default: existing DBs for both modes)")
+    parser.add_argument("--db", type=Path,
+                        help="Migrate one explicit database path (used by embedded UI startup)")
+    args = parser.parse_args()
+    if args.mode and args.db:
+        parser.error("mode and --db are mutually exclusive")
     project_root = Path(__file__).parent.parent
     
     cloud_db = project_root / 'data' / 'jarvis_memory.db'
@@ -147,31 +156,27 @@ def main():
     
     total_migrations = 0
     
-    # Migrate cloud DB
-    if cloud_db.exists():
-        migrations = migrate_database(cloud_db)
+    if args.db:
+        targets = [('selected', args.db)]
+    else:
+        targets = []
+        if args.mode in (None, 'cloud'):
+            targets.append(('cloud', cloud_db))
+        if args.mode in (None, 'local'):
+            targets.append(('local', local_db))
+
+    for label, db_path in targets:
+        if not db_path.exists():
+            print(f"  ⚠️  {label.title()} DB not found (will be created on first use)")
+            print()
+            continue
+        migrations = migrate_database(db_path)
         if migrations:
             total_migrations += migrations
-            print(f"  ✅ Applied {migrations} migration(s) to cloud DB")
+            print(f"  ✅ Applied {migrations} migration(s) to {label} DB")
         else:
-            print(f"  ℹ️  Cloud DB already up to date")
-    else:
-        print(f"  ⚠️  Cloud DB not found (will be created on first use)")
-    
-    print()
-    
-    # Migrate local DB
-    if local_db.exists():
-        migrations = migrate_database(local_db)
-        if migrations:
-            total_migrations += migrations
-            print(f"  ✅ Applied {migrations} migration(s) to local DB")
-        else:
-            print(f"  ℹ️  Local DB already up to date")
-    else:
-        print(f"  ⚠️  Local DB not found (will be created on first use)")
-    
-    print()
+            print(f"  ℹ️  {label.title()} DB already up to date")
+        print()
     print("=" * 60)
     if total_migrations > 0:
         print(f"✅ Migration complete! Applied {total_migrations} total changes.")
@@ -189,4 +194,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

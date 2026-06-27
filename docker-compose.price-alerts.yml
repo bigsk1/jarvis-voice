@@ -1,0 +1,12 @@
+# Optional override: allow the Web UI price_alert tool to update thresholds.
+# Create config/price-alerts.yaml first. create_host_path=false prevents Docker
+# from silently replacing a missing file with a directory.
+services:
+  jarvis-web:
+    volumes:
+      - type: bind
+        source: ./config/price-alerts.yaml
+        target: /app/config/price-alerts.yaml
+        read_only: false
+        bind:
+          create_host_path: false

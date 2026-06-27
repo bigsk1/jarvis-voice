@@ -11,7 +11,7 @@ import sys
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
-from memory_db import MemoryDB
+from memory_db import get_memory_db
 from tts_normalizer import normalize_tts_text
 
 class AlertManager:
@@ -38,7 +38,7 @@ class AlertManager:
             provider = get_config_value('LLM_PROVIDER', 'anthropic')
             self.mode = 'local' if provider == 'ollama' else 'cloud'
         
-        self.db = MemoryDB()  # Use existing memory system
+        self.db = get_memory_db(self.mode)
         self.project_root = Path(__file__).parent.parent.parent
 
     def _sanitize_weather_watch_speech(self, text: str) -> str:

@@ -3,6 +3,7 @@ Jarvis Memory Browser - Main Application
 Flask server for viewing/managing Jarvis memory database
 """
 import sys
+import subprocess
 from pathlib import Path
 from flask import Flask, send_from_directory, jsonify, request, redirect
 from flask_cors import CORS
@@ -21,6 +22,8 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from webui_auth import is_auth_enabled, get_token_from_request, verify_token
 from flask_error_logger import setup_error_logging
 from config_loader import load_config
+
+_startup_mode = 'cloud'
 
 
 def _get_jarvis_version():
@@ -127,6 +130,7 @@ def get_status():
         'ok': True,
         'status': 'running',
         'version': _get_jarvis_version(),
+        'startup_mode': _startup_mode,
         'databases': {
             'cloud': str(DATA_PATH / 'jarvis_memory.db'),
             'local': str(DATA_PATH / 'jarvis_memory_local.db')
@@ -158,7 +162,26 @@ def server_error(e):
 
 def run_server(host: str = '0.0.0.0', port: int = 5002, mode: str = 'cloud', debug: bool = False):
     """Run the web server"""
+    global _startup_mode
+    _startup_mode = mode
     load_config(mode)
+    from memory_db import MemoryDB
+    db_path = DATA_PATH / ('jarvis_memory_local.db' if mode == 'local' else 'jarvis_memory.db')
+    initializer = MemoryDB(str(db_path))
+    initializer.close()
+    subprocess.run(
+        [
+            sys.executable,
+            str(JARVIS_ROOT / 'bin' / 'migrate-proactive-db.py'),
+            '--db',
+            str(db_path),
+        ],
+        check=True,
+    )
+    sys.path.insert(0, str(JARVIS_ROOT))
+    from api.managers.scheduled_task_manager import ScheduledTaskManager
+    scheduled_manager = ScheduledTaskManager(mode)
+    scheduled_manager.db.close()
     auth_status = "ENABLED" if is_auth_enabled() else "DISABLED"
     
     print(f"""

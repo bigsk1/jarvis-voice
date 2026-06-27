@@ -33,8 +33,22 @@ let insightPagination = { offset: 0, total: 0, hasMore: false, loading: false, o
 // Initialization
 // ============================================================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('app')?.classList.add('has-desktop-sidebar');
+  const urlMode = new URLSearchParams(window.location.search).get('mode');
+  const savedMode = localStorage.getItem('jarvis-intelligence-mode');
+  let mode = ['cloud', 'local'].includes(urlMode) ? urlMode : null;
+  if (!mode && ['cloud', 'local'].includes(savedMode)) mode = savedMode;
+  if (!mode) {
+    try {
+      const status = await api.getStatus();
+      mode = ['cloud', 'local'].includes(status.startup_mode) ? status.startup_mode : 'cloud';
+    } catch (_) {
+      mode = 'cloud';
+    }
+  }
+  api.setMode(mode);
+  document.getElementById('modeSelect').value = mode;
   setupEventListeners();
   loadInitialData();
 });
@@ -43,6 +57,7 @@ function setupEventListeners() {
   // Mode selector
   document.getElementById('modeSelect').addEventListener('change', (e) => {
     api.setMode(e.target.value);
+    localStorage.setItem('jarvis-intelligence-mode', e.target.value);
     loadInitialData();
   });
   

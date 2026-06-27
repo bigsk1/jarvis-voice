@@ -1783,7 +1783,10 @@ Does **not** replace `jarvis-intel` files — those remain the manual override l
 
 ## Intelligence Dashboard (port 5003)
 
-Dedicated UI at **`http://localhost:5003`** (`jarvis-intelligence/`). Start with `./bin/jarvis-intelligence` or `./bin/start --ui-only`.
+Dedicated UI at **`http://localhost:5003`** (`jarvis-intelligence/`). Start
+cloud/default with `./bin/jarvis-intelligence` or `./bin/start --ui-only`; use
+`./bin/jarvis-intelligence local` or `./bin/start --ui-only --local` to load
+`config/local.env`.
 
 | Tab | Capabilities |
 |-----|----------------|

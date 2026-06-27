@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Print the canonical Jarvis startup mode for shell launchers."""
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "lib"))
+
+from jarvis_mode import JarvisModeError, require_local_config, resolve_jarvis_mode
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Resolve cloud/local Jarvis startup mode")
+    parser.add_argument("mode", nargs="?", choices=("cloud", "local"))
+    parser.add_argument("--require-config", action="store_true")
+    args = parser.parse_args()
+    try:
+        mode = resolve_jarvis_mode(args.mode)
+        if args.require_config:
+            require_local_config(mode, ROOT)
+    except JarvisModeError as exc:
+        parser.error(str(exc))
+    print(mode)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

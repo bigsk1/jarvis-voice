@@ -45,10 +45,20 @@ const SEARCH_PLACEHOLDERS = {
 // =========================================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Initialize mode from URL or localStorage
+  // Runtime data mode: URL override, saved preference, then server startup mode.
   const urlParams = new URLSearchParams(window.location.search);
-  const savedMode = localStorage.getItem('jarvis-memory-mode') || 'cloud';
-  const mode = urlParams.get('mode') || savedMode;
+  const urlMode = urlParams.get('mode');
+  const savedMode = localStorage.getItem('jarvis-memory-mode');
+  let mode = ['cloud', 'local'].includes(urlMode) ? urlMode : null;
+  if (!mode && ['cloud', 'local'].includes(savedMode)) mode = savedMode;
+  if (!mode) {
+    try {
+      const status = await api.getStatus();
+      mode = ['cloud', 'local'].includes(status.startup_mode) ? status.startup_mode : 'cloud';
+    } catch (_) {
+      mode = 'cloud';
+    }
+  }
   
   document.getElementById('modeSelect').value = mode;
   api.setMode(mode);

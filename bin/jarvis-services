@@ -12,13 +12,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Parse arguments
+MODE_EXPLICIT=""
 MODE="cloud"
 STOP=false
 STATUS=false
 
 for arg in "$@"; do
     if [ "$arg" == "--local" ]; then
-        MODE="local"
+        MODE_EXPLICIT="local"
     elif [ "$arg" == "--stop" ]; then
         STOP=true
     elif [ "$arg" == "--status" ]; then
@@ -191,6 +192,21 @@ if [ "$STATUS" = true ]; then
     show_status
 fi
 
+if [ -n "$MODE_EXPLICIT" ]; then
+    MODE="$($PROJECT_ROOT/bin/resolve-jarvis-mode "$MODE_EXPLICIT")" || exit $?
+else
+    MODE="$($PROJECT_ROOT/bin/resolve-jarvis-mode)" || exit $?
+fi
+
+ENV_FILE="$PROJECT_ROOT/config/$MODE.env"
+if [ ! -f "$ENV_FILE" ]; then
+    echo -e "${RED}❌ config/$MODE.env not found${NC}"
+    exit 1
+fi
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+export JARVIS_MODE="$MODE"
+
 # Banner
 echo -e "${BLUE}╔═══════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     Jarvis Background Services Daemon                 ║${NC}"
@@ -255,10 +271,12 @@ if [ -z "$VIRTUAL_ENV" ]; then
     fi
 fi
 
-# Check if database is migrated
-if ! sqlite3 "$PROJECT_ROOT/data/jarvis_memory.db" "SELECT name FROM sqlite_master WHERE type='table' AND name='alerts'" 2>/dev/null | grep -q alerts; then
+# Initialize and migrate only the selected Memory database.
+SELECTED_DB="$PROJECT_ROOT/data/jarvis_memory$([ "$MODE" = local ] && echo _local).db"
+python3 -c "import sys; sys.path.insert(0, '$PROJECT_ROOT/lib'); from memory_db import MemoryDB; db=MemoryDB('$SELECTED_DB'); db.close()"
+if ! sqlite3 "$SELECTED_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='alerts'" 2>/dev/null | grep -q alerts; then
     echo -e "${YELLOW}⚠️  Database not migrated. Running migration...${NC}"
-    "$PROJECT_ROOT/bin/migrate-proactive-db.py"
+    "$PROJECT_ROOT/bin/migrate-proactive-db.py" "$MODE"
     echo ""
 fi
 
@@ -297,25 +315,6 @@ else
     # Don't exit, but warn loudly
 fi
 echo ""
-
-# Load appropriate config
-if [ "$MODE" == "local" ]; then
-    if [ -f "$PROJECT_ROOT/config/local.env" ]; then
-        source "$PROJECT_ROOT/config/local.env"
-        export LLM_PROVIDER="ollama"
-    else
-        echo -e "${RED}❌ config/local.env not found${NC}"
-        exit 1
-    fi
-else
-    if [ -f "$PROJECT_ROOT/config/cloud.env" ]; then
-        source "$PROJECT_ROOT/config/cloud.env"
-        export LLM_PROVIDER="${LLM_PROVIDER:-anthropic}"
-    else
-        echo -e "${RED}❌ config/cloud.env not found${NC}"
-        exit 1
-    fi
-fi
 
 # Save mode for watchdog cron to pick up on restart
 echo "$MODE" > "$PIDDIR/services_mode"

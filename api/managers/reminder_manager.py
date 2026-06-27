@@ -10,7 +10,7 @@ import sys
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 from config_loader import load_config
-from memory_db import MemoryDB
+from memory_db import get_memory_db
 
 class ReminderManager:
     """Manages reminders: creation, triggering, notifications"""
@@ -29,10 +29,12 @@ class ReminderManager:
         
         if mode:
             load_config(mode)
+            self.mode = mode
         else:
             load_config()  # Auto-detect
+            self.mode = None
         
-        self.db = MemoryDB()
+        self.db = get_memory_db(self.mode)
     
     def create_reminder(self,
                        title: str,

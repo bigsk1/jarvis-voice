@@ -10,4 +10,3 @@ services:
       - "${JARVIS_DOCKER_SOCKET_GID:?Set JARVIS_DOCKER_SOCKET_GID to the group ID of /var/run/docker.sock}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./config/mcp-servers.json:/app/config/mcp-servers.json:ro

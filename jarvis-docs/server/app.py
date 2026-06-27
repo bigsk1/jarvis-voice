@@ -27,6 +27,8 @@ from .routes.auth import auth_bp
 from .routes.docs import docs_bp
 from .services.docs_explorer import DocsExplorerError, get_docs_explorer
 
+_startup_mode = 'cloud'
+
 
 def _get_jarvis_version():
     try:
@@ -115,6 +117,7 @@ def get_status():
         'ok': True,
         'status': 'running',
         'version': _get_jarvis_version(),
+        'startup_mode': _startup_mode,
         'docs_root': str(DOCS_PATH),
         'folders': folder_count,
         'documents': doc_count,
@@ -135,6 +138,8 @@ def server_error(_error):
 
 
 def run_server(host: str = '0.0.0.0', port: int = 5004, mode: str = 'cloud', debug: bool = False):
+    global _startup_mode
+    _startup_mode = mode
     load_config(mode)
     app.config['docs_explorer'] = get_docs_explorer(DOCS_PATH)
     docs_explorer = app.config['docs_explorer']

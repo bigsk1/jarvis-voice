@@ -1,7 +1,14 @@
 # Ollama Cloud Mode: Integration Game Plan
 
-**Status:** Planning (still accurate as of **2026-05-25**)  
+**Status:** Provider/model decoupling plan (reviewed **2026-06-27**)
 **Scope:** Decouple `LLM_PROVIDER=ollama` from `mode=local` so Ollama `:cloud` models can be primary LLM in cloud mode.
+
+> **Startup-mode plumbing is now implemented separately.** Native and Docker
+> launchers resolve `cloud|local` through `lib/jarvis_mode.py`, propagate
+> `JARVIS_MODE`, and choose `config/<mode>.env` explicitly. The remaining work
+> in this document concerns legacy nested `load_config(None)` and
+> provider/model-dependent call sites; do not use `LLM_PROVIDER` to select a
+> startup env file.
 
 > **Quick answer:** Ollama works as **primary LLM in local mode** and as **Completion Guard eval in cloud mode**. Setting `LLM_PROVIDER=ollama` in `cloud.env` as primary LLM is **still blocked** by mode-detection plumbing below.
 
