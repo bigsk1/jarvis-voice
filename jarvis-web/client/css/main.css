@@ -528,6 +528,38 @@ body {
   border-bottom-left-radius: var(--radius-sm);
 }
 
+.message-actions {
+  display: flex;
+  gap: var(--space-xs);
+  padding: 0 var(--space-xs);
+}
+
+.message-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.message-action-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+}
+
+.message-action-btn:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 /* Restore readable markdown list spacing inside chat bubbles */
 .message-bubble ul,
 .message-bubble ol {

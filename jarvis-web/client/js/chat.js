@@ -2801,6 +2801,12 @@ class ChatUI {
       data = obj.data || data || {};
     }
     text = text || '';
+
+    // Only the latest Jarvis response can be sent to Canvas. This keeps the
+    // action unambiguous and also works while conversation history is rebuilt.
+    this.messagesContainer.querySelectorAll('.send-to-canvas-actions').forEach(actions => {
+      actions.remove();
+    });
     
     const messageEl = document.createElement('div');
     messageEl.className = 'message assistant new-message';
@@ -3527,7 +3533,21 @@ class ChatUI {
         ${parsedText}
         ${detailsHtml}
       </div>
+      ${toolsUsed.includes('canvas') ? '' : `
+        <div class="message-actions send-to-canvas-actions">
+          <button type="button" class="message-action-btn send-to-canvas-btn" title="Create a Canvas page from this response and its supporting context">
+            <span aria-hidden="true">📄</span> Send to Canvas
+          </button>
+        </div>
+      `}
     `;
+
+    const sendToCanvasBtn = messageEl.querySelector('.send-to-canvas-btn');
+    if (sendToCanvasBtn) {
+      sendToCanvasBtn.addEventListener('click', () => {
+        this.sendResponseToCanvas(text, sendToCanvasBtn);
+      });
+    }
     
     // Add click handler for details toggle
     const detailsToggle = messageEl.querySelector('.details-toggle');
@@ -3559,6 +3579,49 @@ class ChatUI {
     
     // Clear pending tools
     this.pendingTools = {};
+  }
+
+  sendResponseToCanvas(responseText, button = null) {
+    if (this.isProcessing) {
+      Utils.toast('Wait for the current response to finish first', 'info');
+      return;
+    }
+    if (!window.jarvisSocket?.connected) {
+      Utils.toast('Jarvis is not connected', 'error');
+      return;
+    }
+
+    const excerpt = this._normalizeDisplayText(responseText).slice(0, 180);
+    const prompt = [
+      'Create a new Canvas page from the selected Jarvis response and its relevant supporting results in this conversation.',
+      'Preserve useful source links and any image, video, audio, or stash references so Canvas can render the original media.',
+      'Use a descriptive title and organize the result as readable Markdown.',
+      excerpt ? `The selected response begins: "${excerpt}${excerpt.length >= 180 ? '…' : ''}"` : ''
+    ].filter(Boolean).join(' ');
+
+    if (window.jarvisApp?.stopAudioPlayback) {
+      window.jarvisApp.stopAudioPlayback();
+    }
+    this._expirePendingCompletionGuardCards();
+    this.addUserMessage(prompt, null, '<span class="badge">📄 Canvas</span>');
+    this.isProcessing = true;
+    this.pendingTools = {};
+    this.updateSendButton();
+
+    if (button) {
+      button.disabled = true;
+      setTimeout(() => {
+        button.disabled = false;
+      }, 1000);
+    }
+
+    window.jarvisSocket.sendMessage(
+      prompt,
+      null,
+      { tool_hints: ['canvas'] },
+      false,
+      null
+    );
   }
 
   _normalizeDisplayText(text) {

@@ -581,6 +581,163 @@ function renderYouTubeEmbeds(embeds) {
     return `<div class="canvas-video-embeds">${cards}</div>`;
 }
 
+function inferVideoMimeType(urlOrName = '', declaredMime = '') {
+    if (String(declaredMime).toLowerCase().startsWith('video/')) {
+        return String(declaredMime).toLowerCase();
+    }
+
+    let candidate = String(urlOrName || '').toLowerCase();
+    try {
+        candidate = new URL(candidate, window.location.origin).pathname.toLowerCase();
+    } catch (err) {
+        // Keep the original candidate for relative or partially encoded paths.
+    }
+
+    if (candidate.endsWith('.webm')) return 'video/webm';
+    if (candidate.endsWith('.mov')) return 'video/quicktime';
+    if (candidate.endsWith('.avi')) return 'video/x-msvideo';
+    if (candidate.endsWith('.mkv')) return 'video/x-matroska';
+    if (candidate.endsWith('.ogv') || candidate.endsWith('.ogg')) return 'video/ogg';
+    return 'video/mp4';
+}
+
+function isDirectVideoUrl(rawUrl) {
+    try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        return /\.(?:mp4|webm|mov|avi|mkv|m4v|ogv|ogg)$/i.test(parsed.pathname);
+    } catch (err) {
+        return false;
+    }
+}
+
+function collectPageVideoCandidates(content, sourceQuery = '') {
+    const directUrls = [];
+    const stashRefs = [];
+    const seenDirect = new Set();
+    const seenStash = new Set();
+    const sources = [content, sourceQuery];
+    const urlRegex = /https?:\/\/[^\s<>"')\]]+/gi;
+    const stashRegex = /stash:\/\/([^/\s)`"']+)\/([^\s)`"']+)/gi;
+    const stashPathRegex = /\/(?:stash\/view|api\/stash)\/([^/\s)`"']+)\/([^/\s)`"']+)/gi;
+
+    for (const source of sources) {
+        if (!source) continue;
+        const text = String(source);
+
+        for (const rawUrl of text.match(urlRegex) || []) {
+            const cleaned = rawUrl.replace(/[.,;:!?]+$/, '');
+            if (!isDirectVideoUrl(cleaned) || seenDirect.has(cleaned)) continue;
+            seenDirect.add(cleaned);
+            directUrls.push(cleaned);
+        }
+
+        for (const regex of [stashRegex, stashPathRegex]) {
+            regex.lastIndex = 0;
+            let match;
+            while ((match = regex.exec(text)) !== null) {
+                const spaceId = String(cleanStashFileIdSegment(match[1]) || '').replace(/[.,;:!?\]]+$/, '');
+                const fileId = String(cleanStashFileIdSegment(match[2]) || '').replace(/[.,;:!?\]]+$/, '');
+                const key = `${spaceId}/${fileId}`;
+                if (!spaceId || !fileId || seenStash.has(key)) continue;
+                seenStash.add(key);
+                stashRefs.push({ spaceId, fileId });
+            }
+        }
+    }
+
+    return { directUrls, stashRefs };
+}
+
+function videoTitleFromUrl(rawUrl) {
+    try {
+        const name = decodeURIComponent(new URL(rawUrl, window.location.origin).pathname.split('/').pop() || 'Video');
+        return name.replace(/[_-]+/g, ' ').replace(/\.[^.]+$/, '').trim() || 'Video';
+    } catch (err) {
+        return 'Video';
+    }
+}
+
+async function resolveStashVideoCandidate(candidate) {
+    const spaceId = encodeURIComponent(candidate.spaceId);
+    const fileId = encodeURIComponent(candidate.fileId);
+    const metadataUrl = `/api/stash/${spaceId}/${fileId}/metadata`;
+
+    try {
+        const response = await fetch(metadataUrl);
+        if (!response.ok) return null;
+        const metadata = await response.json();
+        const name = metadata.name || candidate.fileId;
+        const mimeType = String(metadata.mime_type || '').toLowerCase();
+        if (!mimeType.startsWith('video/') && !isDirectVideoUrl(name)) return null;
+
+        return {
+            playbackUrl: `/api/stash/${spaceId}/${fileId}`,
+            sourceUrl: metadata.source_url || null,
+            title: videoTitleFromUrl(name),
+            mimeType: inferVideoMimeType(name, mimeType),
+            stashed: true
+        };
+    } catch (err) {
+        console.warn('Failed to inspect Canvas stash media:', err);
+        return null;
+    }
+}
+
+async function collectPageVideoEmbeds(content, sourceQuery = '') {
+    const candidates = collectPageVideoCandidates(content, sourceQuery);
+    const stashVideos = (await Promise.all(
+        candidates.stashRefs.map(resolveStashVideoCandidate)
+    )).filter(Boolean);
+    const stashedSourceUrls = new Set(stashVideos.map(video => video.sourceUrl).filter(Boolean));
+    const directVideos = candidates.directUrls
+        .filter(url => !stashedSourceUrls.has(url))
+        .map(url => ({
+            playbackUrl: url,
+            sourceUrl: url,
+            title: videoTitleFromUrl(url),
+            mimeType: inferVideoMimeType(url),
+            stashed: false
+        }));
+
+    return [...stashVideos, ...directVideos].slice(0, 5);
+}
+
+function renderNativeVideoEmbeds(embeds) {
+    if (!embeds || embeds.length === 0) return '';
+
+    return embeds.map((embed, index) => {
+        const title = embed.title || (embeds.length === 1 ? 'Video' : `Video ${index + 1}`);
+        const playbackUrl = escapeHtml(embed.playbackUrl);
+        const mimeType = escapeHtml(embed.mimeType || 'video/mp4');
+        return `
+            <div class="canvas-video-card canvas-native-video-card">
+                <div class="canvas-video-header">
+                    <span class="canvas-video-icon">🎬</span>
+                    <span class="canvas-video-title">${escapeHtml(title)}</span>
+                    ${embed.stashed ? '<span class="canvas-video-badge">Stash</span>' : ''}
+                </div>
+                <video class="canvas-video-player" controls preload="metadata">
+                    <source src="${playbackUrl}" type="${mimeType}">
+                    Your browser does not support video playback.
+                </video>
+                <div class="canvas-video-actions">
+                    <a href="${playbackUrl}" target="_blank" rel="noopener noreferrer">Open video</a>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function hydratePageVideoEmbeds(page, pageView) {
+    const mount = pageView.querySelector('[data-canvas-native-videos]');
+    if (!mount) return;
+
+    const embeds = await collectPageVideoEmbeds(page.content || '', page.source_query || '');
+    if (currentPage !== page.id || !pageView.contains(mount)) return;
+    mount.innerHTML = renderNativeVideoEmbeds(embeds);
+    mount.style.display = embeds.length ? 'grid' : 'none';
+}
+
 function getFilteredPages() {
     const q = currentSearchQuery.trim().toLowerCase();
     if (!q) return pages;
@@ -1139,6 +1296,7 @@ function selectPage(id) {
             ${tagsHtml ? `<div class="page-tags">${tagsHtml}</div>` : ''}
         </div>
         ${youtubeEmbedsHtml}
+        <div class="canvas-video-embeds canvas-native-video-embeds" data-canvas-native-videos style="display: none;"></div>
         <div class="page-content">${content}</div>
         ${sourceHtml}
     `;
@@ -1156,6 +1314,7 @@ function selectPage(id) {
         hljs.highlightElement(block);
     });
     hydrateCryptoCharts(pageView);
+    hydratePageVideoEmbeds(page, pageView);
 
     // Setup content interaction handlers
     setupImageHandlers();

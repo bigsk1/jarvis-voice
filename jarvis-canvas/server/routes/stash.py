@@ -5,7 +5,7 @@ import json
 import mimetypes
 from pathlib import Path
 
-from flask import Blueprint, send_file, send_from_directory, abort
+from flask import Blueprint, send_file, send_from_directory, abort, jsonify
 
 from config import STASH_DIR
 from server.utils import normalize_space_id
@@ -27,6 +27,62 @@ def stash_viewer_page(space_id, file_id):
     return send_from_directory(_CLIENT_STATIC, "stash-viewer.html")
 
 
+def _resolve_stash_file(space_id, file_id):
+    """Resolve a stash id to its file and public metadata."""
+    normalized_space_id = normalize_space_id(space_id)
+    space_dir = STASH_DIR / normalized_space_id
+    if not space_dir.exists():
+        abort(404, f"Stash space not found: {normalized_space_id}")
+
+    target_file = None
+    file_info = None
+    meta_file = space_dir / "meta.json"
+    if meta_file.exists():
+        try:
+            with open(meta_file) as f:
+                meta = json.load(f)
+
+            for candidate in meta.get('files', []):
+                if candidate.get('file_id') != file_id:
+                    continue
+                filename = candidate.get('stored_name') or candidate.get('name')
+                if filename:
+                    target_file = space_dir / filename
+                    file_info = dict(candidate)
+                break
+        except Exception:
+            pass
+
+    if target_file is None or not target_file.exists():
+        target_file = space_dir / file_id
+
+    if not target_file.exists():
+        abort(404, f"File not found in stash: {file_id}")
+
+    return normalized_space_id, target_file, file_info or {}
+
+
+@stash_bp.route('/api/stash/<space_id>/<file_id>/metadata')
+def get_stash_file_metadata(space_id, file_id):
+    """Return the media fields Canvas needs without exposing a local path."""
+    normalized_space_id, target_file, file_info = _resolve_stash_file(space_id, file_id)
+    mime_type = (
+        file_info.get('mime_type')
+        or mimetypes.guess_type(str(target_file))[0]
+        or 'application/octet-stream'
+    )
+    return jsonify({
+        'space_id': normalized_space_id,
+        'file_id': file_id,
+        'name': file_info.get('name') or target_file.name,
+        'mime_type': mime_type,
+        'size_bytes': file_info.get('size_bytes') or target_file.stat().st_size,
+        'source_url': file_info.get('source_url'),
+        'tool_origin': file_info.get('tool_origin'),
+        'tags': file_info.get('tags', []),
+    })
+
+
 @stash_bp.route('/api/stash/<space_id>/<file_id>')
 def serve_stash_file(space_id, file_id):
     """
@@ -36,42 +92,11 @@ def serve_stash_file(space_id, file_id):
     - stash://space_id/file_id format (resolved via meta.json)
     - Direct filename if file_id is actually a filename
     """
-    # Normalize space_id to handle date format variations
-    space_id = normalize_space_id(space_id)
-    
-    space_dir = STASH_DIR / space_id
-    
-    if not space_dir.exists():
-        abort(404, f"Stash space not found: {space_id}")
-    
-    # Try to resolve file_id via meta.json first
-    meta_file = space_dir / "meta.json"
-    target_file = None
-    
-    if meta_file.exists():
-        try:
-            with open(meta_file) as f:
-                meta = json.load(f)
-            
-            # Check if file_id matches any file ID in meta
-            for file_info in meta.get('files', []):
-                if file_info.get('file_id') == file_id:
-                    # Try stored_name first, then name as fallback
-                    filename = file_info.get('stored_name') or file_info.get('name')
-                    if filename:
-                        target_file = space_dir / filename
-                        break
-        except Exception:
-            pass
-    
-    # Fallback: treat file_id as direct filename
-    if target_file is None or not target_file.exists():
-        target_file = space_dir / file_id
-    
-    if not target_file.exists():
-        abort(404, f"File not found in stash: {file_id}")
-    
-    # Determine MIME type
-    mime_type = mimetypes.guess_type(str(target_file))[0] or 'application/octet-stream'
+    _, target_file, file_info = _resolve_stash_file(space_id, file_id)
+    mime_type = (
+        file_info.get('mime_type')
+        or mimetypes.guess_type(str(target_file))[0]
+        or 'application/octet-stream'
+    )
     
     return send_file(target_file, mimetype=mime_type)
