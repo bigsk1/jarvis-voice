@@ -192,7 +192,9 @@ class AlertManager:
                     status: str | None = None,
                     severity: str | None = None,
                     source: str | None = None,
-                    limit: int = 100) -> list[dict[str, Any]]:
+                    limit: int = 100,
+                    offset: int = 0,
+                    search: str | None = None) -> list[dict[str, Any]]:
         """List alerts with optional filters"""
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
@@ -212,9 +214,18 @@ class AlertManager:
         if source:
             query += " AND source = ?"
             params.append(source)
-        
-        query += " ORDER BY created_at DESC LIMIT ?"
-        params.append(limit)
+
+        if search:
+            pattern = f"%{search}%"
+            query += """ AND (
+                title LIKE ? OR description LIKE ? OR source LIKE ? OR
+                status LIKE ? OR severity LIKE ? OR related_intel_file LIKE ? OR
+                metadata LIKE ?
+            )"""
+            params.extend([pattern] * 7)
+
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
         
         results = cursor.execute(query, params).fetchall()
         conn.close()

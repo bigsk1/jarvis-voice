@@ -15,6 +15,8 @@ A web-based interface for viewing, searching, and managing Jarvis's memory datab
 - **Conversation Viewer**: Browse conversation history with full detail popup
 - **Reminders Manager**: View pending/triggered/acknowledged reminders with local-time display, filters, sorting, acknowledge, cancel, edit, delete, and friendly daily/weekly/monthly recurrence controls
 - **Scheduled Tasks Manager**: Create, inspect, update, run-now, cancel, delete, and review recent scheduled task runs
+- **Alerts Manager**: Server-backed status/severity/search filters with lazy loading for older alerts
+- **Background Alert Indicator**: Shows pending-alert counts in the browser title/favicon, flashes for newly observed alerts, and offers an optional default-off ding on the Alerts screen
 - **Statistics Dashboard**: Database stats, category breakdown, embedding health
 - **Dual Database Support**: Switch between cloud and local modes
 - **Memory Health Indicators**: Size badges (S/M/L/XL), missing embedding warnings ⚠️

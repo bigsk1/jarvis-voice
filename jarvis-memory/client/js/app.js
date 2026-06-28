@@ -28,6 +28,12 @@ let scheduledTaskRuns = {};
 let scheduledTaskRunsLoading = {};
 let scheduledTaskRunsExpanded = {};
 let intelEditorView = 'raw';
+let alertTabMonitor = null;
+const ALERT_PAGE_SIZE = 100;
+let alertOffset = 0;
+let alertsHasMore = true;
+let alertsLoading = false;
+let alertLoadGeneration = 0;
 
 // Search placeholders per tab
 const SEARCH_PLACEHOLDERS = {
@@ -69,6 +75,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Load initial data
   await loadData();
+
+  // Monitor pending alerts even when another Memory UI tab is active.
+  if (window.AlertTabMonitor) {
+    alertTabMonitor = new window.AlertTabMonitor({
+      api,
+      soundButton: document.getElementById('alertSoundToggleBtn'),
+      isAlertsViewActive: () => currentTab === 'alerts' && !document.hidden && document.hasFocus(),
+      onPendingChange: () => {
+        if (currentTab === 'alerts') return loadAlerts();
+      },
+      onSoundChange: enabled => showToast(`Alert sound ${enabled ? 'on' : 'off'}`, 'success'),
+      onSoundUnavailable: () => showToast('Alert sound is not available in this browser', 'error')
+    });
+    alertTabMonitor.setControlVisible(currentTab === 'alerts');
+    await alertTabMonitor.init();
+    window.addEventListener('beforeunload', () => alertTabMonitor?.destroy(), { once: true });
+  }
 });
 
 function setupEventListeners() {
@@ -77,6 +100,7 @@ function setupEventListeners() {
     const mode = e.target.value;
     api.setMode(mode);
     localStorage.setItem('jarvis-memory-mode', mode);
+    await alertTabMonitor?.reset();
     await loadData();
   });
   
@@ -150,13 +174,16 @@ function setupEventListeners() {
   document.getElementById('ackTriggeredRemindersBtn')?.addEventListener('click', acknowledgeTriggeredReminders);
   document.getElementById('alertStatusFilter')?.addEventListener('change', (e) => {
     alertStatusFilter = e.target.value;
-    renderAlerts();
+    resetAlertListScroll();
+    loadAlerts();
   });
   document.getElementById('alertSeverityFilter')?.addEventListener('change', (e) => {
     alertSeverityFilter = e.target.value;
-    renderAlerts();
+    resetAlertListScroll();
+    loadAlerts();
   });
   document.getElementById('ackPendingAlertsBtn')?.addEventListener('click', acknowledgePendingAlerts);
+  document.getElementById('alertList')?.addEventListener('scroll', handleAlertListScroll);
   
   // Refresh buttons
   document.getElementById('refreshBtn').addEventListener('click', loadData);
@@ -276,16 +303,56 @@ async function loadReminders() {
   }
 }
 
-async function loadAlerts() {
+async function loadAlerts({ append = false } = {}) {
+  if (append && (!alertsHasMore || alertsLoading)) return;
+
+  const generation = append ? alertLoadGeneration : ++alertLoadGeneration;
+  if (!append) {
+    alertOffset = 0;
+    alertsHasMore = true;
+  }
+  alertsLoading = true;
+
   try {
-    const result = await api.listAlerts({ status: 'all', limit: 300 });
-    alerts = result.alerts || [];
-    renderAlerts();
+    const result = await api.listAlerts({
+      status: alertStatusFilter,
+      severity: alertSeverityFilter,
+      search: searchQuery,
+      limit: ALERT_PAGE_SIZE,
+      offset: append ? alertOffset : 0
+    });
+    if (generation !== alertLoadGeneration) return;
+
+    const page = result.alerts || [];
+    if (append) {
+      const knownIds = new Set(alerts.map(alert => String(alert.id)));
+      alerts = alerts.concat(page.filter(alert => !knownIds.has(String(alert.id))));
+    } else {
+      alerts = page;
+    }
+    alertOffset = result.next_offset ?? (alertOffset + page.length);
+    alertsHasMore = result.has_more ?? page.length === ALERT_PAGE_SIZE;
   } catch (error) {
     console.error('Error loading alerts:', error);
-    alerts = [];
-    renderAlerts();
+    if (!append && generation === alertLoadGeneration) alerts = [];
+    if (generation === alertLoadGeneration) alertsHasMore = false;
+  } finally {
+    if (generation === alertLoadGeneration) {
+      alertsLoading = false;
+      renderAlerts();
+    }
   }
+}
+
+function handleAlertListScroll(event) {
+  const container = event.currentTarget;
+  const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
+  if (remaining < 240) loadAlerts({ append: true });
+}
+
+function resetAlertListScroll() {
+  const container = document.getElementById('alertList');
+  if (container) container.scrollTop = 0;
 }
 
 async function loadStats() {
@@ -668,6 +735,11 @@ function renderAlerts() {
     <div class="memory-grid">
       ${filteredAlerts.map(alert => renderAlertCard(alert)).join('')}
     </div>
+    ${alertsHasMore ? `
+      <div class="alert-pagination-status">
+        ${alertsLoading ? '<span class="spinner"></span> Loading older alerts...' : 'Scroll for older alerts'}
+      </div>
+    ` : alerts.length > 0 ? '<div class="alert-pagination-status">All matching alerts loaded</div>' : ''}
   `;
 }
 
@@ -906,6 +978,8 @@ function switchTab(tab) {
   document.getElementById('addScheduledTaskBtn').style.display = tab === 'scheduled' ? 'flex' : 'none';
   document.getElementById('uploadIntelBtn').style.display = tab === 'intel' ? 'flex' : 'none';
   document.getElementById('ingestIntelBtn').style.display = tab === 'intel' ? 'flex' : 'none';
+  alertTabMonitor?.setControlVisible(tab === 'alerts');
+  if (tab === 'alerts') alertTabMonitor?.acknowledgeAttention();
   
   // Load data for tab
   loadData();
@@ -1501,6 +1575,7 @@ async function acknowledgeAlert(id) {
     await api.acknowledgeAlert(id);
     showToast('Alert acknowledged', 'success');
     await loadAlerts();
+    await alertTabMonitor?.check({ force: true });
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
@@ -1514,6 +1589,7 @@ async function acknowledgePendingAlerts() {
     const result = await api.acknowledgeAllAlerts('pending');
     showToast(result.message || 'Pending alerts acknowledged', 'success');
     await loadAlerts();
+    await alertTabMonitor?.check({ force: true });
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }
@@ -1527,6 +1603,7 @@ async function cancelAlert(id) {
     await api.cancelAlert(id);
     showToast('Alert canceled', 'success');
     await loadAlerts();
+    await alertTabMonitor?.check({ force: true });
   } catch (error) {
     showToast(`Error: ${error.message}`, 'error');
   }

@@ -122,6 +122,26 @@ class AlertManagerDedupeTests(unittest.TestCase):
         self.assertNotIn("°F", spoken)
         self.assertNotIn("°C", spoken)
 
+    def test_list_alerts_supports_filtered_pagination_and_search(self):
+        alert_ids = []
+        for index in range(5):
+            alert_ids.append(self.manager.create_alert(
+                title=f"Camera event {index}",
+                source="unifi-protect",
+                description=f"Person detected at zone {index}",
+                severity="high",
+                speak_immediately=False,
+            ))
+        self.manager.acknowledge_alert(alert_ids[3])
+
+        first_page = self.manager.list_alerts(status="pending", limit=2, offset=0)
+        second_page = self.manager.list_alerts(status="pending", limit=2, offset=2)
+        search_results = self.manager.list_alerts(search="zone 1", limit=10)
+
+        self.assertEqual([item["id"] for item in first_page], [alert_ids[4], alert_ids[2]])
+        self.assertEqual([item["id"] for item in second_page], [alert_ids[1], alert_ids[0]])
+        self.assertEqual([item["id"] for item in search_results], [alert_ids[1]])
+
 
 if __name__ == "__main__":
     unittest.main()

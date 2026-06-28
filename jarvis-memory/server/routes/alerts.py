@@ -28,18 +28,28 @@ def list_alerts():
     status = request.args.get('status')
     severity = request.args.get('severity')
     source = request.args.get('source')
+    search = request.args.get('search', '').strip()
     limit = request.args.get('limit', 200, type=int)
+    offset = request.args.get('offset', 0, type=int)
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
     alerts = manager.list_alerts(
         status=status if status and status != 'all' else None,
         severity=severity if severity and severity != 'all' else None,
         source=source if source and source != 'all' else None,
-        limit=limit
+        limit=limit + 1,
+        offset=offset,
+        search=search or None
     )
+    has_more = len(alerts) > limit
+    alerts = alerts[:limit]
     return jsonify({
         'ok': True,
         'mode': get_mode(),
         'count': len(alerts),
-        'alerts': alerts
+        'alerts': alerts,
+        'has_more': has_more,
+        'next_offset': offset + len(alerts)
     })
 
 

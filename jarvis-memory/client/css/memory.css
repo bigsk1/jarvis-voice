@@ -323,6 +323,12 @@ body {
   gap: var(--space-sm);
 }
 
+#alertSoundToggleBtn.sound-enabled {
+  color: var(--success);
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -388,6 +394,21 @@ body {
 .memory-grid {
   display: grid;
   gap: var(--space-md);
+}
+
+.alert-pagination-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg) var(--space-md);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.alert-pagination-status .spinner {
+  width: 16px;
+  height: 16px;
 }
 
 /* Memory card */

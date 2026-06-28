@@ -235,7 +235,9 @@ class MemoryAPI {
     if (options.status) params.set('status', options.status);
     if (options.severity) params.set('severity', options.severity);
     if (options.source) params.set('source', options.source);
+    if (options.search) params.set('search', options.search);
     if (options.limit) params.set('limit', options.limit);
+    if (options.offset !== undefined) params.set('offset', options.offset);
     const query = params.toString();
     return this.fetch(`/api/alerts${query ? '?' + query : ''}`);
   }

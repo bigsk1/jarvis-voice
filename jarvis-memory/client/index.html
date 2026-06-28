@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jarvis Memory Browser</title>
+  <title>Jarvis Memory</title>
   
   <!-- Self-hosted fonts (symlink → jarvis-web/client/fonts) -->
   <link rel="stylesheet" href="/css/fonts.css">
@@ -13,7 +13,7 @@
   <!-- Markdown renderer (local vendor; CDN fallback) -->
   <script src="/vendor/marked.min.js" onerror="this.removeAttribute('onerror');this.src='https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js'"></script>
   
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+  <link rel="icon" id="memoryFavicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
 </head>
 <body>
   <div id="app">
@@ -97,6 +97,7 @@
           </div>
           
           <div class="toolbar-actions">
+            <button class="btn btn-icon" id="alertSoundToggleBtn" type="button" style="display: none;" aria-pressed="false" aria-label="Turn alert sound on" title="Alert sound is off">🔕</button>
             <button class="btn btn-icon" id="refreshBtn" title="Refresh">🔄</button>
             <button class="btn btn-primary" id="addMemoryBtn">+ Add Memory</button>
             <button class="btn btn-primary" id="addIntelBtn" style="display: none;">+ Create File</button>
@@ -512,6 +513,7 @@
   
   <!-- Scripts -->
   <script src="/js/api.js"></script>
+  <script src="/js/alert-tab-monitor.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>
