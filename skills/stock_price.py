@@ -92,6 +92,7 @@ STOCK_MAP = {
     "boeing": "BA",
     "lockheed": "LMT",
     "raytheon": "RTX",
+    "spacex": "SPCX",
     # Indices (ETFs)
     "spy": "SPY",
     "s&p": "SPY",
