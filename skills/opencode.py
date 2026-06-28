@@ -12,7 +12,7 @@ import re
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-from opencode_client import OpenCodeClient
+from opencode_client import OpenCodeClient, resolve_opencode_defaults
 from config_loader import get_config_value, load_config
 from memory_db import MemoryDB
 from paths import get_jarvis_workspace
@@ -57,29 +57,8 @@ def main():
             )
             return 1
 
-        # Determine model from OpenCode-specific config first.
-        # Falling back to mode-specific defaults keeps older setups working,
-        # but we should respect OPENCODE_PROVIDER / OPENCODE_MODEL when set.
         if model is None:
-            configured_provider = get_config_value("OPENCODE_PROVIDER", "").strip()
-            configured_model = get_config_value("OPENCODE_MODEL", "").strip()
-
-            if configured_provider and configured_model:
-                model = {
-                    "providerID": configured_provider,
-                    "modelID": configured_model
-                }
-            elif mode == "local":
-                ollama_model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
-                model = {
-                    "providerID": "ollama",
-                    "modelID": ollama_model
-                }
-            else:
-                model = {
-                    "providerID": "anthropic",
-                    "modelID": "claude-sonnet-4-6"
-                }
+            model = resolve_opencode_defaults(mode)
 
         include_memory = get_config_value("OPENCODE_INCLUDE_MEMORY", "false").strip().lower() == "true"
 

@@ -51,6 +51,7 @@ class OpenCodeToolTests(unittest.TestCase):
         with patch("skills.opencode.OpenCodeClient", return_value=FakeClient()), \
              patch("skills.opencode.load_config"), \
              patch("skills.opencode.get_config_value", side_effect=fake_get_config), \
+             patch("config_loader.get_config_value", side_effect=fake_get_config), \
              patch("skills.opencode.get_memory_context", return_value={}), \
              patch.object(sys, "argv", ["opencode.py", json.dumps({
                  "task": "Build a demo app",
@@ -96,6 +97,7 @@ class OpenCodeToolTests(unittest.TestCase):
         with patch("skills.opencode.OpenCodeClient", return_value=FakeClient()), \
              patch("skills.opencode.load_config"), \
              patch("skills.opencode.get_config_value", side_effect=fake_get_config), \
+             patch("config_loader.get_config_value", side_effect=fake_get_config), \
              patch("skills.opencode.get_memory_context", return_value={"relevant_memories": [{"key": "x"}]}), \
              patch.object(sys, "argv", ["opencode.py", json.dumps({
                  "task": "Build a demo app",

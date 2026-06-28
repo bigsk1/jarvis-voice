@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from opencode_client import OpenCodeClient
+from opencode_client import OpenCodeClient, resolve_opencode_defaults
 
 
 class FakeResponse:
@@ -77,6 +77,38 @@ class OpenCodeClientTests(unittest.TestCase):
             timeout=client.timeout,
             auth=("jarvis", "secret"),
         )
+
+    def test_resolve_opencode_defaults_uses_catalog_when_model_unset(self):
+        def fake_get_config(key, default=""):
+            values = {
+                "OPENCODE_PROVIDER": "xai",
+                "OPENCODE_MODEL": "",
+            }
+            return values.get(key, default)
+
+        with patch("config_loader.get_config_value", side_effect=fake_get_config):
+            defaults = resolve_opencode_defaults("cloud")
+
+        self.assertEqual(defaults["providerID"], "xai")
+        self.assertEqual(defaults["modelID"], "grok-4.3")
+
+    def test_client_uses_catalog_fallback_when_opencode_model_unset(self):
+        def fake_get_config(key, default=None):
+            values = {
+                "OPENCODE_PROVIDER": "anthropic",
+                "OPENCODE_MODEL": "",
+                "OPENCODE_SERVER_PASSWORD": "",
+                "OPENCODE_SERVER_USERNAME": "opencode",
+            }
+            return values.get(key, default)
+
+        with patch("opencode_client.requests.get", return_value=FakeResponse({"ok": True})), \
+             patch("config_loader.get_config_value", side_effect=fake_get_config), \
+             patch("opencode_client.OpenCodeLogger", return_value=MagicMock()):
+            client = OpenCodeClient(base_url="http://opencode.test")
+
+        self.assertEqual(client.default_provider_id, "anthropic")
+        self.assertEqual(client.default_model_id, "claude-sonnet-4-5-20250929")
 
     def test_execute_task_accepts_session_id_response_key(self):
         client = self._make_client()

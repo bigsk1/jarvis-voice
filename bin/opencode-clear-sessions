@@ -1,14 +1,46 @@
 #!/bin/bash
 # Clear all OpenCode sessions (remove junk/test sessions)
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/config_loader.sh"
+
+if [ -n "${OPENCODE_ENV_FILE:-}" ] && [ -f "$OPENCODE_ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$OPENCODE_ENV_FILE"
+    set +a
+else
+    load_config "${JARVIS_MODE:-cloud}" 2>/dev/null || true
+fi
+
 OPENCODE_URL="${OPENCODE_BASE_URL:-http://localhost:4096}"
+OPENCODE_USERNAME="${OPENCODE_SERVER_USERNAME:-opencode}"
+OPENCODE_PASSWORD="${OPENCODE_SERVER_PASSWORD:-}"
+
+CURL_AUTH=()
+if [ -n "$OPENCODE_PASSWORD" ]; then
+    CURL_AUTH=(-u "${OPENCODE_USERNAME}:${OPENCODE_PASSWORD}")
+fi
+
+curl_opencode() {
+    curl -sf "${CURL_AUTH[@]}" "$@"
+}
 
 echo "🧹 Clearing OpenCode sessions..."
 
 # Get all session IDs
-SESSION_IDS=$(curl -s "$OPENCODE_URL/session" 2>/dev/null | jq -r '.[].id')
+if ! SESSION_JSON=$(curl_opencode "$OPENCODE_URL/session" 2>/dev/null); then
+    if [ -n "$OPENCODE_PASSWORD" ]; then
+        echo "❌ Failed to list sessions (check OpenCode URL and auth credentials)"
+    else
+        echo "❌ Failed to list sessions (is OpenCode running at $OPENCODE_URL?)"
+    fi
+    exit 1
+fi
 
-if [ -z "$SESSION_IDS" ]; then
+SESSION_IDS=$(echo "$SESSION_JSON" | jq -r '.[].id')
+
+if [ -z "$SESSION_IDS" ] || [ "$SESSION_IDS" = "null" ]; then
     echo "✅ No sessions to clear"
     exit 0
 fi
@@ -22,7 +54,7 @@ DELETED=0
 FAILED=0
 
 for SESSION_ID in $SESSION_IDS; do
-    if curl -s -X DELETE "$OPENCODE_URL/session/$SESSION_ID" >/dev/null 2>&1; then
+    if curl_opencode -X DELETE "$OPENCODE_URL/session/$SESSION_ID" >/dev/null 2>&1; then
         ((DELETED++))
         echo "  ✓ Deleted: $SESSION_ID"
     else
@@ -36,4 +68,3 @@ echo "✅ Cleared $DELETED sessions"
 [ $FAILED -gt 0 ] && echo "⚠️  Failed to delete $FAILED sessions"
 
 exit 0
-

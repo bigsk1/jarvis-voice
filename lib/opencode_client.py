@@ -5,11 +5,45 @@ Python wrapper for OpenCode HTTP API.
 """
 
 import json
+import os
 import time
 from typing import Any
 import requests
+from model_catalog import get_provider_fallback_model
 from opencode_logger import OpenCodeLogger
 from paths import get_jarvis_workspace, get_project_root
+
+
+def resolve_opencode_defaults(mode: str | None = None) -> dict[str, str]:
+    """Resolve OpenCode provider/model from config with model_catalog fallbacks."""
+    try:
+        from config_loader import get_config_value
+    except ImportError:
+        get_config_value = lambda key, default="": default  # noqa: E731
+
+    if mode is None:
+        mode = os.environ.get("JARVIS_MODE", "cloud")
+
+    configured_provider = get_config_value("OPENCODE_PROVIDER", "").strip()
+    configured_model = get_config_value("OPENCODE_MODEL", "").strip()
+
+    if configured_provider and configured_model:
+        provider, model_id = configured_provider, configured_model
+    elif configured_provider:
+        provider = configured_provider
+        model_id = get_provider_fallback_model(provider)
+    elif configured_model:
+        provider = "ollama" if mode == "local" else "anthropic"
+        model_id = configured_model
+    elif mode == "local":
+        provider = "ollama"
+        ollama_model = get_config_value("OLLAMA_MODEL", "").strip()
+        model_id = ollama_model or get_provider_fallback_model("ollama")
+    else:
+        provider = "anthropic"
+        model_id = get_provider_fallback_model(provider)
+
+    return {"providerID": provider, "modelID": model_id}
 
 
 class OpenCodeClient:
@@ -37,13 +71,15 @@ class OpenCodeClient:
         # Load model config from environment
         try:
             from config_loader import get_config_value
-            self.default_model_id = get_config_value("OPENCODE_MODEL", "claude-sonnet-4-6")
-            self.default_provider_id = get_config_value("OPENCODE_PROVIDER", "anthropic")
+
+            defaults = resolve_opencode_defaults()
+            self.default_provider_id = defaults["providerID"]
+            self.default_model_id = defaults["modelID"]
             server_password = get_config_value("OPENCODE_SERVER_PASSWORD", "").strip()
             server_username = get_config_value("OPENCODE_SERVER_USERNAME", "opencode").strip() or "opencode"
-        except:
-            self.default_model_id = "claude-sonnet-4-6"
+        except Exception:
             self.default_provider_id = "anthropic"
+            self.default_model_id = get_provider_fallback_model("anthropic")
             server_password = ""
             server_username = "opencode"
 
