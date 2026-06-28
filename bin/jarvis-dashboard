@@ -168,7 +168,7 @@ COMMANDS: List[Command] = [
     Command("Test All (Local)", "./test-all-tools-local.sh", "All tool tests - local", "🧪 Testing"),
     Command("Test Memory Tools", "./tests/integration/test-memory-tools.sh", "Memory tool selection", "🧪 Testing"),
     Command("Test Intelligence", "python3 tests/integration/test_intelligence_integration.py", "Intelligence layer", "🧪 Testing"),
-    Command("Compare Models", "./tests/integration/compare-models.sh local qwen3-vl qwen3.5:latest", "Compare two models", "🧪 Testing"),
+    Command("Compare Models", "./tests/integration/compare-models.sh local gemma4 qwen3.5:latest", "Compare two models", "🧪 Testing"),
     Command("Feedback Summary", "./bin/jarvis-feedback summary --days 7", "LLM feedback summary", "🧪 Testing"),
     Command("Feedback Issues", "./bin/jarvis-feedback issues --days 7", "Show feedback issues only", "🧪 Testing"),
     Command("Feedback Test", './bin/jarvis-feedback run "What time is it?"', "Run query with feedback", "🧪 Testing"),

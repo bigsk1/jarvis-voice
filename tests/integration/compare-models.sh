@@ -12,7 +12,7 @@ if [ -z "$MODE" ] || [ -z "$MODEL1" ] || [ -z "$MODEL2" ]; then
     echo "Usage: $0 <mode> <model1> <model2>"
     echo ""
     echo "Examples:"
-    echo "  Local:  $0 local qwen3-vl qwen2.5:7b"
+    echo "  Local:  $0 local gemma4 qwen3.5:latest"
     echo "  Cloud:  $0 cloud claude-sonnet-4-5-20250929 gpt-4o"
     exit 1
 fi
