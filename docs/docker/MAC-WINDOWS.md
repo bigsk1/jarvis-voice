@@ -250,6 +250,36 @@ What does **not** work:
 
 **Typical delay:** Reminder scheduler runs about every 60 seconds; proactive polls about every 10 seconds — expect up to roughly a minute after the due time before speech.
 
+### Test proactive audio from the host
+
+Use the API on **`127.0.0.1:8880`** (default `JARVIS_API_PORT`). These calls hit `jarvis-api` only — Web UI login (`WEBUI_PASSWORD`) is separate. With `JARVIS_API_AUTH=true`, add `-H "Authorization: Bearer YOUR_JARVIS_API_KEY"` to each request.
+
+Before testing: full stack running (including `jarvis-services`), Jarvis Web open on `:5001`, **🔊 TTS enabled**, and TTS provider keys configured.
+
+**Windows (PowerShell)** — use `curl.exe` (not `curl`, which aliases to `Invoke-WebRequest`):
+
+```powershell
+curl.exe -s http://127.0.0.1:8880/api/health
+
+curl.exe -s -X POST http://127.0.0.1:8880/api/alerts -H "Content-Type: application/json" -d '{"title":"Docker alert test","description":"Manual test alert","severity":"medium","source":"docker_test"}'
+
+curl.exe -s -X POST http://127.0.0.1:8880/api/reminders -H "Content-Type: application/json" -d '{"title":"Docker reminder test","description":"Should speak after scheduler runs","trigger_time":"2020-01-01T00:00:00Z"}'
+```
+
+The alert should speak in the browser within about 10 seconds. The reminder uses a past `trigger_time` so the scheduler picks it up on its next pass (up to ~60 seconds), then proactive TTS follows.
+
+**macOS (Terminal)** — same payloads with `curl`:
+
+```bash
+curl -s http://127.0.0.1:8880/api/health
+
+curl -s -X POST http://127.0.0.1:8880/api/alerts -H "Content-Type: application/json" -d '{"title":"Docker alert test","description":"Manual test alert","severity":"medium","source":"docker_test"}'
+
+curl -s -X POST http://127.0.0.1:8880/api/reminders -H "Content-Type: application/json" -d '{"title":"Docker reminder test","description":"Should speak after scheduler runs","trigger_time":"2020-01-01T00:00:00Z"}'
+```
+
+Acknowledge items from the Jarvis Web notification panel (🔔) or the Memory UI when finished testing.
+
 ## Cloud and local modes
 
 Cloud mode is the simplest Docker Desktop starting point:
