@@ -17,7 +17,6 @@ Usage:
 """
 
 import sys
-import os
 import sqlite3
 import json
 from pathlib import Path
@@ -26,7 +25,7 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
-from config_loader import load_config
+from config_loader import config_scope
 from embeddings import get_embedding
 
 
@@ -77,7 +76,13 @@ def _ensure_user_model_schema(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_model_key ON user_model(key)")
 
 
-def sync_databases(source_mode='cloud', target_mode='local', verbose=True, project_root: Path | None = None):
+def sync_databases(
+    source_mode='cloud',
+    target_mode='local',
+    verbose=True,
+    project_root: Path | None = None,
+    _scoped: bool = False,
+):
     """
     Sync knowledge_base, conversations, and user_model from source DB to target DB.
     Regenerates embeddings for target mode's embedding model.
@@ -86,6 +91,16 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True, proje
     (see docs/PROACTIVE_ASSISTANT_SYSTEM.md)
     """
     
+    if not _scoped:
+        with config_scope(target_mode):
+            return sync_databases(
+                source_mode=source_mode,
+                target_mode=target_mode,
+                verbose=verbose,
+                project_root=project_root,
+                _scoped=True,
+            )
+
     project_root = project_root or Path(__file__).parent.parent
     
     # Database paths
@@ -111,16 +126,6 @@ def sync_databases(source_mode='cloud', target_mode='local', verbose=True, proje
         print(f"Source: {source_db}")
         print(f"Target: {target_db}")
         print()
-    
-    # Load target mode config (for embeddings) BEFORE importing embeddings
-    # Temporarily set provider to ensure correct embedding model
-    os.environ.get('LLM_PROVIDER')
-    if target_mode == 'local':
-        os.environ['LLM_PROVIDER'] = 'ollama'
-    else:
-        os.environ['LLM_PROVIDER'] = 'anthropic'
-    
-    load_config(target_mode)
     
     # Connect to both databases
     source_conn = sqlite3.connect(str(source_db))

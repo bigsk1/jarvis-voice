@@ -24,7 +24,6 @@ Usage:
 """
 
 import sys
-import os
 import sqlite3
 import pickle
 import shutil
@@ -34,7 +33,7 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
-from config_loader import load_config
+from config_loader import config_scope
 from embeddings import get_embedding
 
 # ANSI colors
@@ -196,7 +195,12 @@ def find_existing_evidence(
     return existing['id'] if existing else None
 
 
-def sync_intelligence(target_mode: str, dry_run: bool = False, replace: bool = False):
+def sync_intelligence(
+    target_mode: str,
+    dry_run: bool = False,
+    replace: bool = False,
+    _scoped: bool = False,
+):
     """
     Sync intelligence data from source mode to target mode.
 
@@ -211,6 +215,15 @@ def sync_intelligence(target_mode: str, dry_run: bool = False, replace: bool = F
 
     Regenerates embeddings using the target mode's embedding model.
     """
+    if not _scoped:
+        with config_scope(target_mode):
+            return sync_intelligence(
+                target_mode,
+                dry_run=dry_run,
+                replace=replace,
+                _scoped=True,
+            )
+
     paths = get_db_paths()
 
     # Determine source and target
@@ -235,9 +248,6 @@ def sync_intelligence(target_mode: str, dry_run: bool = False, replace: bool = F
     if not source_path.exists():
         print(f"{RED}❌ Source database doesn't exist: {source_path}{NC}")
         return False
-
-    # Load target mode config for embeddings
-    load_config(target_mode)
 
     # Connect to source
     source_conn = sqlite3.connect(str(source_path))
@@ -279,10 +289,6 @@ def sync_intelligence(target_mode: str, dry_run: bool = False, replace: bool = F
 
     # Initialize target database (this creates tables if needed)
     from intelligence import IntelligenceLayer
-
-    # Temporarily set LLM_PROVIDER for correct DB selection
-    old_provider = os.environ.get('LLM_PROVIDER')
-    os.environ['LLM_PROVIDER'] = 'ollama' if target_mode == 'local' else 'anthropic'
 
     target_intel = IntelligenceLayer(str(target_path))
     target_conn = target_intel.conn
@@ -687,12 +693,6 @@ def sync_intelligence(target_mode: str, dry_run: bool = False, replace: bool = F
     # ============================================
     # CLEANUP
     # ============================================
-
-    # Restore env
-    if old_provider:
-        os.environ['LLM_PROVIDER'] = old_provider
-    elif 'LLM_PROVIDER' in os.environ:
-        del os.environ['LLM_PROVIDER']
 
     source_conn.close()
     target_intel.close()

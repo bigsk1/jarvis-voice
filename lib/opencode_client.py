@@ -15,14 +15,27 @@ from paths import get_jarvis_workspace, get_project_root
 
 
 def resolve_opencode_defaults(mode: str | None = None) -> dict[str, str]:
-    """Resolve OpenCode provider/model from config with model_catalog fallbacks."""
+    """Resolve OpenCode provider/model from config with model_catalog fallbacks.
+
+    OpenCode remains independently configurable: explicit OPENCODE_PROVIDER /
+    OPENCODE_MODEL always win. When OpenCode's provider resolves to Ollama with
+    no OpenCode-specific model, the mode-aware Ollama resolver is used so cloud
+    mode picks OLLAMA_CLOUD_MODEL rather than the local OLLAMA_MODEL.
+    """
     try:
-        from config_loader import get_config_value
+        from config_loader import get_config_value, get_active_config_mode
+        mode = get_active_config_mode(mode)
     except ImportError:
         get_config_value = lambda key, default="": default  # noqa: E731
+        if mode is None:
+            mode = os.environ.get("JARVIS_MODE", "cloud")
 
-    if mode is None:
-        mode = os.environ.get("JARVIS_MODE", "cloud")
+    def _ollama_default_model() -> str:
+        try:
+            from ollama_utils import resolve_ollama_model
+            return resolve_ollama_model(mode)
+        except Exception:
+            return get_provider_fallback_model("ollama")
 
     configured_provider = get_config_value("OPENCODE_PROVIDER", "").strip()
     configured_model = get_config_value("OPENCODE_MODEL", "").strip()
@@ -31,14 +44,13 @@ def resolve_opencode_defaults(mode: str | None = None) -> dict[str, str]:
         provider, model_id = configured_provider, configured_model
     elif configured_provider:
         provider = configured_provider
-        model_id = get_provider_fallback_model(provider)
+        model_id = _ollama_default_model() if provider == "ollama" else get_provider_fallback_model(provider)
     elif configured_model:
         provider = "ollama" if mode == "local" else "anthropic"
         model_id = configured_model
     elif mode == "local":
         provider = "ollama"
-        ollama_model = get_config_value("OLLAMA_MODEL", "").strip()
-        model_id = ollama_model or get_provider_fallback_model("ollama")
+        model_id = _ollama_default_model()
     else:
         provider = "anthropic"
         model_id = get_provider_fallback_model(provider)

@@ -21,6 +21,32 @@ class DummyProvider:
     pass
 
 
+class UnknownCostProvider:
+    def __init__(self):
+        self.tool_calls = 0
+        self.fallback_calls = 0
+
+    def chat_with_tools(self, **_kwargs):
+        self.tool_calls += 1
+        return (
+            "first response",
+            None,
+            {
+                "input_tokens": 3,
+                "output_tokens": 2,
+                "total_tokens": 5,
+                "cost_usd": None,
+                "cost_known": False,
+                "billing_mode": "ollama_cloud_subscription",
+            },
+            None,
+        )
+
+    def chat(self, *_args):
+        self.fallback_calls += 1
+        return "unexpected fallback"
+
+
 class PipelineExecutorResolutionTests(unittest.TestCase):
     def setUp(self):
         self.executor = PipelineExecutor(
@@ -115,6 +141,23 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         )
 
         self.assertFalse(should_execute)
+
+    def test_unknown_subscription_cost_does_not_retry_llm_call(self):
+        provider = UnknownCostProvider()
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *args, **kwargs: {}),
+            provider=provider,
+        )
+
+        result = executor._chat_with_usage("probe")
+
+        self.assertEqual(result, "first response")
+        self.assertEqual(provider.tool_calls, 1)
+        self.assertEqual(provider.fallback_calls, 0)
+        self.assertEqual(executor._total_usage["cost_usd"], 0.0)
+        self.assertTrue(executor._total_usage["has_unknown_cost"])
+        self.assertFalse(executor._total_usage["cost_known"])
 
 
 if __name__ == "__main__":

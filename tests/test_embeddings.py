@@ -44,6 +44,7 @@ class EmbeddingsTests(unittest.TestCase):
         self.assertIn("end", compacted)
         self.assertIn(" ... ", compacted)
 
+    @patch.dict("os.environ", {"OLLAMA_BASE_URL": "http://ollama-test:11434"}, clear=False)
     @patch("requests.request")
     def test_ollama_embedding_retries_with_compacted_text_on_context_error(self, mock_request):
         mock_request.side_effect = [

@@ -14,7 +14,7 @@ from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
+from config_loader import load_config, export_config_environment
 from tool_logger import get_logger
 from tool_search_runtime import search_tools_runtime
 
@@ -180,8 +180,11 @@ class ToolExecutor:
             # Subprocess timeout settings see tool.json for HTTP timeouts
             timeout = self._get_subprocess_timeout(tool_name)
             
-            # Pass current environment to subprocess so tools inherit LLM_PROVIDER
-            tool_env = os.environ.copy()
+            # Materialize the request's deployment mode into the child env and
+            # stamp JARVIS_MODE explicitly so tools never infer mode from the
+            # chat provider. Starts from the current environment, so per-request
+            # JARVIS_OVERRIDE_* values and session context still propagate.
+            tool_env = export_config_environment(self.mode)
             if self.jarvis_session_id:
                 tool_env['JARVIS_SESSION_ID'] = str(self.jarvis_session_id)
             if self.web_conversation_id:

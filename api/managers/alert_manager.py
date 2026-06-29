@@ -10,7 +10,7 @@ import sys
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config, get_config_value, get_active_config_mode
 from memory_db import get_memory_db
 from tts_normalizer import normalize_tts_text
 
@@ -33,10 +33,9 @@ class AlertManager:
             load_config(mode)
             self.mode = mode
         else:
-            # Auto-detect from config
+            # Resolve from JARVIS_MODE (launcher-provided), never the provider.
             load_config()
-            provider = get_config_value('LLM_PROVIDER', 'anthropic')
-            self.mode = 'local' if provider == 'ollama' else 'cloud'
+            self.mode = get_active_config_mode()
         
         self.db = get_memory_db(self.mode)
         self.project_root = Path(__file__).parent.parent.parent

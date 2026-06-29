@@ -96,7 +96,8 @@ class PromptVersionDB:
     def __init__(self, mode: str = None):
         """Initialize with database connection."""
         if mode is None:
-            mode = 'local' if os.environ.get('LLM_PROVIDER') == 'ollama' else 'cloud'
+            from config_loader import get_active_config_mode
+            mode = get_active_config_mode()
         
         self.mode = mode
         base_path = os.path.join(os.path.dirname(__file__), '..', 'data')

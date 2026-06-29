@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / 'orchestrator'))
 
-from config_loader import load_config, get_config_value, get_int
+from config_loader import load_config, get_config_value, get_int, get_active_config_mode
 from service_logger import ServiceLogger
 from api.managers.scheduled_task_manager import ScheduledTaskManager
 
@@ -27,13 +27,13 @@ NOTIFICATION_RATE_LIMIT_FILE = PROJECT_ROOT / "data" / ".scheduled_task_notifica
 
 def _load_mode() -> str:
     load_config()
-    provider = get_config_value('LLM_PROVIDER', 'anthropic')
-    return 'local' if provider == 'ollama' else 'cloud'
+    return get_active_config_mode()
 
 
 def _run_query_task(mode: str, query: str) -> dict:
-    if mode == 'local':
-        os.environ['LLM_PROVIDER'] = 'ollama'
+    # Hydrate the task's execution mode from its config file rather than
+    # forcing LLM_PROVIDER=ollama to communicate local mode.
+    load_config(mode)
 
     from orchestrator_v2 import Orchestrator
 
@@ -42,8 +42,7 @@ def _run_query_task(mode: str, query: str) -> dict:
 
 
 def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) -> dict:
-    if mode == 'local':
-        os.environ['LLM_PROVIDER'] = 'ollama'
+    load_config(mode)
 
     from executor import ToolExecutor
     from workflow_loader import WorkflowLoader

@@ -147,7 +147,7 @@ class CommandSystem {
    */
   getSuggestions(input) {
     const suggestions = [];
-    
+
     // Check for /workflow prefix
     if (input.startsWith('/')) {
       const query = input.slice(1).toLowerCase();
@@ -408,6 +408,10 @@ class ChatUI {
     this.tokenCostEl = document.getElementById('tokenCost');
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
     this.cumulativeCost = 0;
+    // Ollama Cloud is subscription/compute-metered: cost is unknown, not $0.
+    this.cumulativeUnknownCost = false;
+    // Set when input tokens were approximated (provider omitted prompt_eval_count).
+    this.cumulativeInputEstimated = false;
     this.contextWindow = 2000000;  // Default to xAI's 2M, updated from server
     this.llmProvider = 'xai';      // Default, updated from server
     this.systemConfig = {};
@@ -475,26 +479,50 @@ class ChatUI {
         } else if (provider === 'openai') {
           this.contextWindow = 128000;
         } else if (provider === 'ollama') {
-          // Local models - check for configured context window
-          // Try to get from system config as a fallback
-          try {
-            const sysRes = await fetch(`/api/settings/system?mode=${currentMode}`);
-            if (sysRes.ok) {
-              const sysData = await sysRes.json();
-              const sysConfig = sysData.config || {};
-              this.contextWindow = parseInt(sysConfig.OLLAMA_CONTEXT_WINDOW) || 32768;
-            } else {
+          // Ollama (local or cloud-tagged). Catalog "context" is "cloud" for
+          // cloud models, so ask the daemon for the real context length via
+          // /api/show. A managed cloud context remains unknown when the daemon
+          // does not expose metadata; never substitute a local 32K window.
+          const cloudTaggedModel = /(?:\:cloud|-cloud)$/i.test(String(modelId || ''));
+          let resolved = null;
+          if (modelId) {
+            try {
+              const ctxRes = await fetch(`/api/ollama/model-context?mode=${currentMode}&model=${encodeURIComponent(modelId)}`);
+              if (ctxRes.ok) {
+                const ctxData = await ctxRes.json();
+                if (ctxData.context_length) resolved = parseInt(ctxData.context_length);
+              }
+            } catch {
+              resolved = null;
+            }
+          }
+          if (resolved) {
+            this.contextWindow = resolved;
+          } else if (currentMode === 'cloud' && cloudTaggedModel) {
+            this.contextWindow = null;
+          } else {
+            try {
+              const sysRes = await fetch(`/api/settings/system?mode=${currentMode}`);
+              if (sysRes.ok) {
+                const sysData = await sysRes.json();
+                const sysConfig = sysData.config || {};
+                this.contextWindow = parseInt(sysConfig.OLLAMA_CONTEXT_WINDOW) || 32768;
+              } else {
+                this.contextWindow = 32768;
+              }
+            } catch {
               this.contextWindow = 32768;
             }
-          } catch {
-            this.contextWindow = 32768;
           }
         }
 
         await this._refreshSystemConfig(currentMode);
         
         this.llmProvider = provider;  // Store for display
-        console.log('[Chat] LLM Provider:', provider, '| Context window:', this.contextWindow.toLocaleString(), 'tokens');
+        const contextLabel = Number.isFinite(this.contextWindow)
+          ? `${this.contextWindow.toLocaleString()} tokens`
+          : 'managed/unknown';
+        console.log('[Chat] LLM Provider:', provider, '| Context window:', contextLabel);
       }
     } catch (err) {
       console.warn('[Chat] Could not fetch context window:', err);
@@ -5064,38 +5092,73 @@ class ChatUI {
     const inputTokens = usage.input_tokens || 0;
     const outputTokens = usage.output_tokens || 0;
     const totalTokens = usage.total_tokens || (inputTokens + outputTokens);
-    const cost = usage.cost_usd || 0;
+    const cost = typeof usage.cost_usd === 'number' ? usage.cost_usd : 0;
+    // Subscription/compute-metered providers (Ollama Cloud) report no dollar cost.
+    const unknownCost = usage.has_unknown_cost === true
+      || usage.cost_known === false
+      || usage.billing_mode === 'ollama_cloud_subscription';
     
     this.cumulativeTokens.input += inputTokens;
     this.cumulativeTokens.output += outputTokens;
     this.cumulativeTokens.total += totalTokens;
     this.cumulativeCost += cost;
-    
-    // Format token count
-    const tokenStr = this.cumulativeTokens.total.toLocaleString();
-    this.tokenCountEl.textContent = `${tokenStr} tokens`;
-    
-    // Show cost only for cloud mode (cost > 0)
-    if (this.cumulativeCost > 0) {
-      // Format cost nicely
-      const costStr = this.cumulativeCost < 0.01 
-        ? `$${this.cumulativeCost.toFixed(4)}` 
-        : `$${this.cumulativeCost.toFixed(2)}`;
-      this.tokenCostEl.textContent = costStr;
-    } else {
-      this.tokenCostEl.textContent = '';
-    }
+    if (unknownCost) this.cumulativeUnknownCost = true;
+    if (usage.input_estimated === true) this.cumulativeInputEstimated = true;
+
+    this._renderTokenCount();
+    this._renderCostLabel();
     
     // Show the counter
     this.tokenCounterEl.style.display = 'flex';
     
-    // Add warning classes based on context usage
-    const usagePercent = (this.cumulativeTokens.total / this.contextWindow) * 100;
+    this._renderContextUsageState();
+  }
+
+  /**
+   * Render the token count, prefixing "~" when the input tokens were estimated
+   * (provider omitted prompt_eval_count, e.g. Ollama Cloud).
+   */
+  _renderTokenCount() {
+    if (!this.tokenCountEl) return;
+    const tokenStr = this.cumulativeTokens.total.toLocaleString();
+    const prefix = this.cumulativeInputEstimated ? '~' : '';
+    this.tokenCountEl.textContent = `${prefix}${tokenStr} tokens`;
+    this.tokenCountEl.title = this.cumulativeInputEstimated
+      ? 'Input tokens estimated — Ollama Cloud did not report exact prompt token counts'
+      : '';
+  }
+
+  /**
+   * Render the cost label, accounting for subscription/compute-metered providers
+   * (e.g. Ollama Cloud) where the dollar cost is unknown rather than $0.
+   */
+  _renderCostLabel() {
+    if (!this.tokenCostEl) return;
+    if (this.cumulativeCost > 0) {
+      this.tokenCostEl.textContent = this.cumulativeCost < 0.01
+        ? `$${this.cumulativeCost.toFixed(4)}`
+        : `$${this.cumulativeCost.toFixed(2)}`;
+      this.tokenCostEl.title = 'Estimated metered cost';
+    } else if (this.cumulativeUnknownCost) {
+      this.tokenCostEl.textContent = 'subscription';
+      this.tokenCostEl.title = 'Ollama Cloud is subscription/compute-metered — no per-token dollar cost';
+    } else {
+      this.tokenCostEl.textContent = '';
+      this.tokenCostEl.title = '';
+    }
+  }
+
+  _renderContextUsageState() {
+    if (!this.tokenCounterEl) return;
     this.tokenCounterEl.classList.remove('warning', 'danger');
-    
-    // Build tooltip with provider info
+
     const providerInfo = this.llmProvider ? ` (${this.llmProvider.toUpperCase()})` : '';
-    
+    if (!Number.isFinite(this.contextWindow) || this.contextWindow <= 0) {
+      this.tokenCounterEl.title = `Managed cloud context window not reported${providerInfo}`;
+      return;
+    }
+
+    const usagePercent = (this.cumulativeTokens.total / this.contextWindow) * 100;
     if (usagePercent > 80) {
       this.tokenCounterEl.classList.add('danger');
       this.tokenCounterEl.title = `⚠️ ${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
@@ -5113,6 +5176,8 @@ class ChatUI {
   _resetTokenCounter() {
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
     this.cumulativeCost = 0;
+    this.cumulativeUnknownCost = false;
+    this.cumulativeInputEstimated = false;
     
     if (this.tokenCounterEl) {
       this.tokenCounterEl.style.display = 'none';
@@ -5130,46 +5195,26 @@ class ChatUI {
    * Restore token counter from historical data (when loading a conversation)
    * @param {Object} tokens - {input, output, total}
    * @param {number} cost - cumulative cost in USD
+   * @param {boolean} unknownCost - true for subscription/compute-metered providers
+   * @param {boolean} inputEstimated - true when input tokens were approximated
    */
-  restoreTokenCounter(tokens, cost) {
+  restoreTokenCounter(tokens, cost, unknownCost = false, inputEstimated = false) {
     if (!this.tokenCounterEl) return;
     
     // Set cumulative values
     this.cumulativeTokens = { ...tokens };
     this.cumulativeCost = cost || 0;
+    this.cumulativeUnknownCost = unknownCost === true;
+    this.cumulativeInputEstimated = inputEstimated === true;
     
-    // Format and display
-    const tokenStr = this.cumulativeTokens.total.toLocaleString();
-    this.tokenCountEl.textContent = `${tokenStr} tokens`;
+    this._renderTokenCount();
     
-    // Show cost only for cloud mode (cost > 0)
-    if (this.cumulativeCost > 0) {
-      const costStr = this.cumulativeCost < 0.01 
-        ? `$${this.cumulativeCost.toFixed(4)}` 
-        : `$${this.cumulativeCost.toFixed(2)}`;
-      this.tokenCostEl.textContent = costStr;
-    } else {
-      this.tokenCostEl.textContent = '';
-    }
+    this._renderCostLabel();
     
     // Show the counter
     this.tokenCounterEl.style.display = 'flex';
     
-    // Update warning classes
-    const usagePercent = (this.cumulativeTokens.total / this.contextWindow) * 100;
-    this.tokenCounterEl.classList.remove('warning', 'danger');
-    
-    const providerInfo = this.llmProvider ? ` (${this.llmProvider.toUpperCase()})` : '';
-    
-    if (usagePercent > 80) {
-      this.tokenCounterEl.classList.add('danger');
-      this.tokenCounterEl.title = `⚠️ ${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
-    } else if (usagePercent > 50) {
-      this.tokenCounterEl.classList.add('warning');
-      this.tokenCounterEl.title = `${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
-    } else {
-      this.tokenCounterEl.title = `${usagePercent.toFixed(1)}% of ${this.contextWindow.toLocaleString()} token context${providerInfo}`;
-    }
+    this._renderContextUsageState();
   }
 
   /**

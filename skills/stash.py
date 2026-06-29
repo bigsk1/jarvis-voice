@@ -154,7 +154,12 @@ Do NOT add commentary or opinions - just the facts."""
         
         elif provider == 'ollama':
             base_urls = get_ollama_base_urls()
-            model = get_config_value('STASH_SUMMARIZE_MODEL', 'qwen3.5:latest')
+            stash_model = (get_config_value('STASH_SUMMARIZE_MODEL', '') or '').strip()
+            if stash_model:
+                model = stash_model
+            else:
+                from ollama_utils import resolve_ollama_model
+                model = resolve_ollama_model()
             
             response, _ = request_ollama(
                 'post',

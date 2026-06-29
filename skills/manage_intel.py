@@ -23,6 +23,7 @@ import subprocess
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from intel_content import normalize_intel_content
+from config_loader import export_config_environment
 from memory_db import MemoryDB
 from time_utils import now_local
 
@@ -33,11 +34,6 @@ def _mode_for_db_path(db_path: str) -> str:
     if name == "jarvis_memory_local.db":
         return "local"
     return "cloud"
-
-
-def _llm_provider_for_mode(mode: str) -> str:
-    """Map memory mode to the embedding provider selection used by MemoryDB."""
-    return "ollama" if mode == "local" else "anthropic"
 
 
 def _format_mode_list(modes: list[str]) -> str:
@@ -329,8 +325,7 @@ def auto_ingest(project_root: Path, current_mode: str) -> dict[str, Any]:
     
     try:
         for index, mode in enumerate(modes_to_ingest):
-            env = os.environ.copy()
-            env["LLM_PROVIDER"] = _llm_provider_for_mode(mode)
+            env = export_config_environment(mode)
             result = subprocess.run(
                 ['python3', str(ingest_script)],
                 capture_output=True,

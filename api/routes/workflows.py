@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, HTTPException
 import sys
-import os
 import json
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -258,19 +257,19 @@ async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest = N
     
     **Note**: Workflow execution can take 30-120+ seconds depending on the workflow.
     """
-    import time
-    
     if request is None:
         request = WorkflowExecuteRequest()
-    
+
+    from config_loader import config_scope
+    with config_scope(request.mode):
+        return await _execute_workflow_scoped(workflow_id, request)
+
+
+async def _execute_workflow_scoped(workflow_id: str, request: WorkflowExecuteRequest):
+    """Execute one workflow inside its immutable mode/config scope."""
+    import time
+
     try:
-        # Load config
-        from config_loader import load_config
-        load_config(request.mode)
-        
-        if request.mode == "local":
-            os.environ['LLM_PROVIDER'] = 'ollama'
-        
         # Load workflow
         workflows_dir = Path(__file__).parent.parent.parent / "data" / "workflows"
         wf_file = workflows_dir / f"{workflow_id}.json"

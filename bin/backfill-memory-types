@@ -116,10 +116,9 @@ def main() -> int:
     load_config()
 
     if args.mode == "auto":
-        from config_loader import get_config_value
+        from config_loader import get_active_config_mode
 
-        provider = get_config_value("LLM_PROVIDER", "openai").strip().lower()
-        modes = ["local"] if provider == "ollama" else ["cloud"]
+        modes = [get_active_config_mode()]
     elif args.mode == "both":
         modes = ["cloud", "local"]
     else:

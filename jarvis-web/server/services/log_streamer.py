@@ -204,7 +204,15 @@ class LogStreamer:
             input_tokens = self._safe_number(data.get('input_tokens'), 0)
             output_tokens = self._safe_number(data.get('output_tokens'), 0)
             total_tokens = self._safe_number(data.get('total_tokens'), input_tokens + output_tokens)
-            cost = self._safe_number(data.get('cost_usd'), 0.0)
+            raw_cost = data.get('cost_usd')
+            billing_mode = data.get('billing_mode')
+            # Ollama Cloud is subscription/compute-metered: unknown cost, not $0.
+            cost_unknown = (
+                raw_cost is None
+                or billing_mode == 'ollama_cloud_subscription'
+                or data.get('cost_known') is False
+            )
+            cost = self._safe_number(raw_cost, 0.0)
             duration = self._safe_number(data.get('duration_ms'), 0.0)  # Correct field name
             success = data.get('success', True)
             
@@ -223,7 +231,9 @@ class LogStreamer:
             
             # Format title
             title = f"{provider}/{model} → {total_tokens} tokens"
-            if cost > 0:
+            if cost_unknown and total_tokens:
+                title += " (subscription)"
+            elif cost > 0:
                 title += f" (${cost:.4f})"
             if duration > 0:
                 title += f" [{duration_str}]"
@@ -243,7 +253,9 @@ class LogStreamer:
                     'input_tokens': input_tokens,
                     'output_tokens': output_tokens,
                     'total_tokens': total_tokens,
-                    'cost_usd': cost,
+                    'cost_usd': None if cost_unknown else cost,
+                    'cost_known': not cost_unknown,
+                    'billing_mode': billing_mode,
                     'duration_ms': duration,
                     'response_type': response_type,
                     'tool_called': tool_name or 'none',

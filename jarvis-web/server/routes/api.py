@@ -4,6 +4,7 @@ REST endpoints for status, tools, settings, and more
 """
 import os
 import json
+import functools
 from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory, abort
@@ -44,7 +45,7 @@ def _get_jarvis_version():
 
 
 def _apply_tts_provider_override(mode: str) -> str | None:
-    """Apply the per-mode Web UI TTS provider override to config lookups."""
+    """Return the validated per-mode Web UI TTS provider override."""
     from ..config import load_web_config
 
     web_config = load_web_config()
@@ -53,11 +54,29 @@ def _apply_tts_provider_override(mode: str) -> str | None:
     allowed = LOCAL_TTS_PROVIDER_OPTIONS if mode == 'local' else CLOUD_TTS_PROVIDER_OPTIONS
     if tts_provider not in (None, *allowed):
         tts_provider = None
-    if tts_provider:
-        os.environ['JARVIS_OVERRIDE_TTS_PROVIDER'] = str(tts_provider)
-    else:
-        os.environ.pop('JARVIS_OVERRIDE_TTS_PROVIDER', None)
     return tts_provider
+
+
+def _scoped_request_config(handler):
+    """Run a Web API handler in its requested immutable config scope."""
+    @functools.wraps(handler)
+    def wrapper(*args, **kwargs):
+        payload = request.get_json(silent=True) if request.method != 'GET' else None
+        mode = (
+            request.args.get('mode')
+            or ((payload or {}).get('mode') if isinstance(payload, dict) else None)
+            or request.form.get('mode')
+            or get_web_setting('defaults.mode', 'cloud')
+        )
+        mode = str(mode).strip().lower()
+        if mode not in ('cloud', 'local'):
+            return jsonify({'ok': False, 'error': 'Mode must be "cloud" or "local"'}), 400
+        tts_provider = _apply_tts_provider_override(mode)
+        overrides = {'TTS_PROVIDER': str(tts_provider)} if tts_provider else None
+        from config_loader import config_scope
+        with config_scope(mode, overrides=overrides):
+            return handler(*args, **kwargs)
+    return wrapper
 
 
 # Path to generated images
@@ -215,6 +234,7 @@ def refresh_tools():
 
 
 @api_bp.route('/settings', methods=['GET'])
+@_scoped_request_config
 def get_settings():
     """Get current settings for UI"""
     # REST requests do not carry the Socket.IO session, so callers should pass
@@ -235,6 +255,7 @@ def get_settings():
 
 
 @api_bp.route('/settings/schema', methods=['GET'])
+@_scoped_request_config
 def get_settings_schema():
     """Get settings schema for UI form generation"""
     settings = get_settings_manager()
@@ -246,6 +267,7 @@ def get_settings_schema():
 
 
 @api_bp.route('/settings/system', methods=['GET'])
+@_scoped_request_config
 def get_system_config():
     """Get read-only system config values from current mode's env file"""
     from ..config import load_jarvis_config, get_jarvis_setting
@@ -287,6 +309,9 @@ def get_system_config():
         config['XAI_MODEL'] = get_jarvis_setting('XAI_MODEL', '')
         config['ANTHROPIC_MODEL'] = get_jarvis_setting('ANTHROPIC_MODEL', '')
         config['OPENAI_MODEL'] = get_jarvis_setting('OPENAI_MODEL', '')
+        # Ollama-cloud-primary (safe metadata only; never OLLAMA_API_KEY)
+        config['OLLAMA_CLOUD_MODEL'] = get_jarvis_setting('OLLAMA_CLOUD_MODEL', '')
+        config['OLLAMA_BASE_URL'] = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
         config['TTS_MODEL'] = get_jarvis_setting('TTS_MODEL', 'gpt-4o-mini-tts')
         config['VOICE'] = get_jarvis_setting('VOICE', 'alloy')
         config['QWEN3_TTS_URL'] = get_jarvis_setting('QWEN3_TTS_URL', '')
@@ -334,6 +359,7 @@ def get_system_config():
 
 
 @api_bp.route('/settings/web', methods=['PUT'])
+@_scoped_request_config
 def update_web_settings():
     """Update web UI settings/overrides"""
     data = request.get_json()
@@ -387,6 +413,7 @@ def update_web_settings():
 
 
 @api_bp.route('/settings/reset', methods=['POST'])
+@_scoped_request_config
 def reset_settings():
     """Reset web overrides to cloud.env defaults"""
     settings = get_settings_manager()
@@ -399,6 +426,7 @@ def reset_settings():
 
 
 @api_bp.route('/settings/models/<provider>', methods=['GET'])
+@_scoped_request_config
 def get_provider_models(provider):
     """Get available models for a provider"""
     mode = request.args.get('mode') or get_web_setting('defaults.mode', 'cloud')
@@ -430,6 +458,7 @@ def get_provider_models(provider):
 
 
 @api_bp.route('/tts/usage', methods=['GET'])
+@_scoped_request_config
 def get_tts_usage():
     """Get TTS usage/quota for ElevenLabs (only applicable for cloud mode with ElevenLabs)"""
     import requests as http_requests
@@ -506,6 +535,191 @@ def get_tts_usage():
             'provider': 'elevenlabs',
             'error': str(e)
         })
+
+
+_OLLAMA_CLOUD_STATUS_CACHE = {}
+_OLLAMA_CLOUD_STATUS_TTL_SECONDS = 45
+
+_OLLAMA_MODEL_CONTEXT_CACHE = {}
+_OLLAMA_MODEL_CONTEXT_TTL_SECONDS = 600
+
+
+def _extract_ollama_context_length(show_data):
+    """Pull the context window from an Ollama /api/show payload.
+
+    The architecture-specific key (e.g. ``qwen3.context_length``) lives under
+    ``model_info``. Falls back to any ``*context_length`` key. Returns an int or
+    ``None`` when the daemon does not report it (common for proxied cloud models).
+    """
+    if not isinstance(show_data, dict):
+        return None
+    info = show_data.get('model_info')
+    if isinstance(info, dict):
+        for key, value in info.items():
+            if isinstance(key, str) and key.endswith('context_length'):
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    continue
+    return None
+
+
+def _validate_ollama_signin_url(url):
+    """Only allow https://ollama.com[...] sign-in URLs into the UI payload."""
+    if not url or not isinstance(url, str):
+        return None
+    candidate = url.strip()
+    if candidate.startswith('https://ollama.com/') or candidate == 'https://ollama.com':
+        return candidate
+    return None
+
+
+@api_bp.route('/ollama/cloud-status', methods=['GET'])
+@_scoped_request_config
+def get_ollama_cloud_status():
+    """Lazy, best-effort Ollama host/account readiness for the System tab.
+
+    Mirrors the ElevenLabs usage flow: only call this when the System tab opens
+    and the effective cloud provider is Ollama. Calls POST {OLLAMA_BASE_URL}/api/me
+    with a short timeout and bounded cache. Returns a sanitized shape only;
+    never exposes OLLAMA_API_KEY, raw /api/me profile data, or daemon keys.
+    """
+    import time
+    import requests as http_requests
+    from ..config import load_jarvis_config, get_jarvis_setting
+
+    mode = request.args.get('mode', 'cloud')
+    load_jarvis_config(mode)
+
+    # Resolve the effective base URL (first configured host; no localhost
+    # fallback injected here for cloud topologies).
+    raw_base = (get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434') or '').strip()
+    base_url = raw_base.split(',')[0].strip().rstrip('/') if raw_base else 'http://localhost:11434'
+
+    effective_provider = (get_jarvis_setting('LLM_PROVIDER', 'xai' if mode == 'cloud' else 'ollama') or '').lower()
+
+    cache_key = f"{mode}:{base_url}"
+    now = time.time()
+    cached = _OLLAMA_CLOUD_STATUS_CACHE.get(cache_key)
+    if cached and (now - cached['ts']) < _OLLAMA_CLOUD_STATUS_TTL_SECONDS:
+        return jsonify(cached['payload'])
+
+    payload = {
+        'provider': 'ollama',
+        'connection_mode': 'signed_in_host',
+        'effective_provider': effective_provider,
+        'reachable': False,
+        'signed_in': 'unknown',
+        'plan': None,
+        # /api/me does not expose quota/usage; treat it as unknown rather than
+        # claiming "no quota". Usage limits live on the ollama.com dashboard.
+        'quota_available': None,
+        'dashboard_url': 'https://ollama.com/settings',
+        'signin_url': None,
+    }
+
+    try:
+        response = http_requests.post(f"{base_url}/api/me", timeout=(3, 6))
+        payload['reachable'] = True
+        if response.status_code == 200:
+            try:
+                data = response.json()
+            except ValueError:
+                data = None
+            # Treat malformed/empty success payloads as an unsupported schema,
+            # not proof of authentication. Surface only plan/state; identity
+            # fields are used solely as a capability hint and never returned.
+            plan = data.get('plan') if isinstance(data, dict) else None
+            looks_like_account = isinstance(data, dict) and bool(data) and (
+                isinstance(plan, str)
+                or any(data.get(key) for key in ('id', 'email', 'name', 'username'))
+            )
+            if looks_like_account:
+                payload['signed_in'] = True
+                payload['plan'] = plan if isinstance(plan, str) else None
+            else:
+                payload['signed_in'] = 'unknown'
+        elif response.status_code in (401, 403):
+            payload['signed_in'] = False
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+            payload['signin_url'] = _validate_ollama_signin_url(
+                (data or {}).get('signin_url') if isinstance(data, dict) else None
+            )
+        elif response.status_code == 404:
+            # Older/incompatible daemon without /api/me — capability not present.
+            payload['signed_in'] = 'unknown'
+        else:
+            payload['signed_in'] = 'unknown'
+    except http_requests.exceptions.Timeout:
+        payload['reachable'] = False
+        payload['signed_in'] = 'unknown'
+        payload['error'] = 'Ollama host timed out'
+    except http_requests.exceptions.RequestException:
+        payload['reachable'] = False
+        payload['signed_in'] = 'unknown'
+        payload['error'] = 'Ollama host unreachable'
+    except Exception:
+        payload['signed_in'] = 'unknown'
+        payload['error'] = 'Status check failed'
+
+    _OLLAMA_CLOUD_STATUS_CACHE[cache_key] = {'ts': now, 'payload': payload}
+    return jsonify(payload)
+
+
+@api_bp.route('/ollama/model-context', methods=['GET'])
+@_scoped_request_config
+def get_ollama_model_context():
+    """Return the true context window for an Ollama model via POST /api/show.
+
+    Lets the chat UI show an accurate context-usage percentage for cloud-tagged
+    models (whose catalog ``context`` is just the string ``"cloud"``) instead of
+    guessing. Best-effort and cached; returns ``context_length: null`` when the
+    daemon does not report it, so the client keeps its own fallback.
+    """
+    import time
+    import requests as http_requests
+    from ..config import load_jarvis_config, get_jarvis_setting
+
+    mode = request.args.get('mode', 'cloud')
+    model = (request.args.get('model') or '').strip()
+    if not model:
+        return jsonify({'ok': False, 'error': 'model required'}), 400
+
+    load_jarvis_config(mode)
+    raw_base = (get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434') or '').strip()
+    base_url = raw_base.split(',')[0].strip().rstrip('/') if raw_base else 'http://localhost:11434'
+
+    cache_key = f"{base_url}:{model}"
+    now = time.time()
+    cached = _OLLAMA_MODEL_CONTEXT_CACHE.get(cache_key)
+    if cached and (now - cached['ts']) < _OLLAMA_MODEL_CONTEXT_TTL_SECONDS:
+        return jsonify(cached['payload'])
+
+    payload = {'ok': True, 'model': model, 'context_length': None}
+    try:
+        response = http_requests.post(f"{base_url}/api/show", json={'model': model}, timeout=(3, 6))
+        if response.status_code == 200:
+            try:
+                payload['context_length'] = _extract_ollama_context_length(response.json())
+            except ValueError:
+                payload['context_length'] = None
+        else:
+            payload['ok'] = False
+            payload['error'] = f'Ollama /api/show returned {response.status_code}'
+    except http_requests.exceptions.RequestException:
+        payload['ok'] = False
+        payload['error'] = 'Ollama host unreachable'
+    except Exception:
+        payload['ok'] = False
+        payload['error'] = 'Context lookup failed'
+
+    # Cache successful lookups (with a real value) to avoid hammering the daemon.
+    if payload.get('context_length'):
+        _OLLAMA_MODEL_CONTEXT_CACHE[cache_key] = {'ts': now, 'payload': payload}
+    return jsonify(payload)
 
 
 @api_bp.route('/settings/blocked-tools', methods=['GET'])
@@ -1019,6 +1233,7 @@ def upload_intel_file():
 
 
 @api_bp.route('/stt', methods=['POST'])
+@_scoped_request_config
 def speech_to_text():
     """Transcribe audio to text - uses mode-specific provider
     
@@ -1189,6 +1404,7 @@ def _convert_to_wav(input_path: str) -> str:
 
 
 @api_bp.route('/tts', methods=['POST'])
+@_scoped_request_config
 def text_to_speech():
     """Generate TTS audio from text - uses mode-specific provider"""
     data = request.get_json() or {}
@@ -2183,9 +2399,10 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
         provider_type = get_config_value('LLM_PROVIDER', 'xai')
         
         if provider_type == 'ollama':
+            from ollama_utils import resolve_ollama_model
             provider = create_provider(
                 'ollama',
-                model=get_config_value('OLLAMA_MODEL', 'qwen3.5:latest'),
+                model=resolve_ollama_model(),
                 base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
             )
         elif provider_type == 'xai':

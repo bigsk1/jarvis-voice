@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
-from config_loader import load_config, get_config_value
+from config_loader import load_config, get_config_value, get_active_config_mode
 from prompt_versioning import PromptVersionDB, EVOLUTION_CONFIG
 
 
@@ -86,7 +86,7 @@ class PromptEvolutionEngine:
     def __init__(self, mode: str = None):
         """Initialize evolution engine."""
         if mode is None:
-            mode = 'local' if os.environ.get('LLM_PROVIDER') == 'ollama' else 'cloud'
+            mode = get_active_config_mode()
         
         self.mode = mode
         self.db = PromptVersionDB(mode)

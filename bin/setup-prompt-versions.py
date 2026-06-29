@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 def get_db_path(mode: str = None) -> str:
     """Get database path based on mode."""
     if mode is None:
-        mode = 'local' if os.environ.get('LLM_PROVIDER') == 'ollama' else 'cloud'
+        from config_loader import get_active_config_mode
+        mode = get_active_config_mode()
     
     base_path = os.path.join(os.path.dirname(__file__), '..', 'data')
     if mode == 'local':

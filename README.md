@@ -1867,6 +1867,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.52.0 (June 2026)
+**Current Version:** v2.53.0 (June 2026)
 **Status:** Production Ready ✅  
 **Latest Features:** v2.51.0 adds `create_social_clip` (MoneyPrinterTurbo B-roll social videos), multi-image Web UI vision, OpenCode service/auth/workspace hardening, the experimental local Docker Web stack, hybrid Docker/native tool-profile workflow, internal container routing/auth, foreground daemon supervision, and Docker operations documentation — alongside cross-turn correction learning, Profile Card injection, memory-type filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog support.

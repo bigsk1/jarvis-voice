@@ -671,9 +671,10 @@ class ToolBuilder:
                 model=model or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
             )
         elif provider_type == 'ollama':
+            from ollama_utils import resolve_ollama_model
             self.provider = create_provider(
                 provider_type,
-                model=model or get_config_value('OLLAMA_MODEL', 'qwen3.5:latest'),
+                model=resolve_ollama_model(getattr(self, "mode", None), model_override=model),
                 base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
             )
         else:

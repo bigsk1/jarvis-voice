@@ -638,9 +638,10 @@ Generate {count} queries:"""
         provider_type = get_config_value("LLM_PROVIDER", "anthropic")
         
         if provider_type == "ollama":
+            from ollama_utils import resolve_ollama_model
             return create_provider(
                 "ollama",
-                model=get_config_value("OLLAMA_MODEL", "qwen3.5:latest"),
+                model=resolve_ollama_model(getattr(self, "mode", None)),
                 base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
             )
         elif provider_type == "xai":

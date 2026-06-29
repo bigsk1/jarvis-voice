@@ -8,11 +8,25 @@ Supports:
 import threading
 from importlib.util import find_spec
 
-from config_loader import get_config_value, get_int
+from config_loader import get_config_value, get_int, get_active_config_mode
 from ollama_utils import get_ollama_base_urls, request_ollama
 
 
 _EMBEDDING_FALLBACK_STATE = threading.local()
+
+
+def get_effective_embedding_provider(mode: "str | None" = None) -> str:
+    """Resolve the embedding provider independently of the chat provider.
+
+    Priority: explicit ``EMBEDDING_PROVIDER`` -> ``ollama`` for local mode ->
+    ``openai`` for cloud mode. The chat ``LLM_PROVIDER`` is never used as the
+    embedding fallback, so a cloud database keeps its OpenAI/1536-dim vectors
+    even when chat uses Ollama.
+    """
+    explicit = (get_config_value("EMBEDDING_PROVIDER", "") or "").strip().lower()
+    if explicit:
+        return explicit
+    return "ollama" if get_active_config_mode(mode) == "local" else "openai"
 
 
 def reset_embedding_fallback_tracking():
@@ -109,11 +123,9 @@ def get_embedding(text: str, provider: str = None) -> list[float]:
     Returns:
         List of floats representing the embedding vector
     """
-    # Auto-detect provider from config if not specified
+    # Resolve provider from embedding policy (mode-based), never chat provider.
     if provider is None:
-        llm_provider = get_config_value("LLM_PROVIDER", "openai")
-        # Use same provider as LLM unless explicitly configured differently
-        provider = get_config_value("EMBEDDING_PROVIDER", llm_provider)
+        provider = get_effective_embedding_provider()
     
     if provider == "ollama":
         return _get_ollama_embedding(text)
@@ -280,10 +292,9 @@ def get_embeddings_batch(texts: list[str], provider: str = None) -> list[list[fl
     Returns:
         List of embedding vectors
     """
-    # Auto-detect provider
+    # Resolve provider from embedding policy (mode-based), never chat provider.
     if provider is None:
-        llm_provider = get_config_value("LLM_PROVIDER", "openai")
-        provider = get_config_value("EMBEDDING_PROVIDER", llm_provider)
+        provider = get_effective_embedding_provider()
     
     if provider == "ollama":
         # Ollama doesn't support batch, do one at a time

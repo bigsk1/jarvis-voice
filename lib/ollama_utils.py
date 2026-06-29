@@ -5,10 +5,112 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from config_loader import get_config_value
+from config_loader import get_config_value, get_active_config_mode
 
 
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
+
+
+class OllamaModelError(ValueError):
+    """Raised when no valid Ollama model can be resolved for the active mode."""
+
+
+def is_ollama_cloud_model(model: "str | None") -> bool:
+    """Recognize Ollama Cloud model identifiers.
+
+    Cloud models appear in two official forms:
+
+    - ``qwen3.5:cloud`` (``:cloud`` runtime suffix)
+    - ``gpt-oss:120b-cloud`` (tag ending in ``-cloud``)
+
+    Detection that only checks ``':cloud' in model`` misses the second form, so
+    both are handled explicitly here.
+    """
+    if not model:
+        return False
+    normalized = str(model).strip().lower()
+    if not normalized:
+        return False
+    tag = normalized.split(":", 1)[1] if ":" in normalized else ""
+    if tag == "cloud" or tag.endswith("-cloud"):
+        return True
+    # Bare ``model-cloud`` form without a tag separator.
+    if normalized.endswith("-cloud") and ":" not in normalized:
+        return True
+    return False
+
+
+def get_effective_ollama_model(
+    mode: "str | None" = None,
+    model_override: "str | None" = None,
+) -> str:
+    """Resolve the effective Ollama model for the active execution mode.
+
+    Resolution order:
+
+    1. explicit request/Web/task ``model_override``;
+    2. ``OLLAMA_CLOUD_MODEL`` when the active mode is cloud;
+    3. ``OLLAMA_MODEL`` when the active mode is local;
+    4. compatibility fallback: a cloud-tagged ``OLLAMA_MODEL`` is allowed in
+       cloud mode;
+    5. otherwise raise :class:`OllamaModelError`.
+
+    The deployment mode is never inferred from the model name; cloud detection
+    only affects request tuning and usage labels elsewhere.
+    """
+    if model_override and str(model_override).strip():
+        return str(model_override).strip()
+
+    resolved_mode = get_active_config_mode(mode)
+
+    cloud_model = (get_config_value("OLLAMA_CLOUD_MODEL", "") or "").strip()
+    local_model = (get_config_value("OLLAMA_MODEL", "") or "").strip()
+
+    if resolved_mode == "cloud":
+        if cloud_model:
+            if not is_ollama_cloud_model(cloud_model):
+                raise OllamaModelError(
+                    "OLLAMA_CLOUD_MODEL must be a cloud-tagged Ollama model "
+                    "(for example 'qwen3.5:cloud' or 'gpt-oss:120b-cloud'); "
+                    f"got {cloud_model!r}."
+                )
+            return cloud_model
+        # Compatibility: allow a legacy OLLAMA_MODEL only if already cloud-tagged.
+        if local_model and is_ollama_cloud_model(local_model):
+            return local_model
+        raise OllamaModelError(
+            "No cloud Ollama model configured. Set OLLAMA_CLOUD_MODEL to a "
+            "cloud-tagged model (e.g. 'qwen3.5:cloud')."
+        )
+
+    if local_model:
+        return local_model
+
+    raise OllamaModelError(
+        "No local Ollama model configured. Set OLLAMA_MODEL for local mode."
+    )
+
+
+def resolve_ollama_model(
+    mode: "str | None" = None,
+    model_override: "str | None" = None,
+    local_fallback: "str | None" = "qwen3.5:latest",
+) -> str:
+    """Resolve the effective Ollama model with a safe local-mode fallback.
+
+    Cloud mode still fails clearly (via :class:`OllamaModelError`) when no
+    cloud-tagged model is available, but local mode falls back to
+    ``local_fallback`` when ``OLLAMA_MODEL`` is unset, preserving existing
+    behavior for auxiliary tasks (feedback, self-play, tool builder, etc.).
+    """
+    try:
+        return get_effective_ollama_model(mode, model_override=model_override)
+    except OllamaModelError:
+        if get_active_config_mode(mode) == "cloud":
+            raise
+        if model_override and str(model_override).strip():
+            return str(model_override).strip()
+        return get_config_value("OLLAMA_MODEL", local_fallback)
 
 
 def _dedupe_urls(urls: Iterable[str]) -> list[str]:
@@ -48,11 +150,31 @@ def parse_ollama_base_urls(
     return _dedupe_urls(candidates)
 
 
+def _localhost_fallback_is_default() -> bool:
+    """Localhost fallback is local-mode-only by default.
+
+    Cloud mode must not silently append or fail over to localhost when a
+    configured remote host is down (container localhost is the Jarvis container,
+    not the host Ollama daemon). An explicitly listed localhost is always kept.
+    """
+    try:
+        return get_active_config_mode() == "local"
+    except Exception:
+        # If mode cannot be resolved, be conservative and do not inject localhost.
+        return False
+
+
 def get_ollama_base_urls(
     default: str = DEFAULT_OLLAMA_BASE_URL,
-    include_localhost_fallback: bool = True,
+    include_localhost_fallback: "bool | None" = None,
 ) -> list[str]:
-    """Return Ollama base URLs from config in fallback order."""
+    """Return Ollama base URLs from config in fallback order.
+
+    By default the localhost fallback is only added in local mode; callers may
+    force it on/off explicitly.
+    """
+    if include_localhost_fallback is None:
+        include_localhost_fallback = _localhost_fallback_is_default()
     return parse_ollama_base_urls(
         get_config_value("OLLAMA_BASE_URL", None),
         default=default,
@@ -62,7 +184,7 @@ def get_ollama_base_urls(
 
 def get_primary_ollama_base_url(
     default: str = DEFAULT_OLLAMA_BASE_URL,
-    include_localhost_fallback: bool = True,
+    include_localhost_fallback: "bool | None" = None,
 ) -> str:
     """Return the first configured Ollama URL."""
     return get_ollama_base_urls(
@@ -97,10 +219,13 @@ def request_ollama(
     """Send an Ollama request, falling back across configured hosts on outages."""
     import requests
 
-    candidate_urls = parse_ollama_base_urls(
-        base_urls if base_urls is not None else base_url,
-        include_localhost_fallback=True,
-    )
+    if base_urls is None and base_url is None:
+        candidate_urls = get_ollama_base_urls()
+    else:
+        candidate_urls = parse_ollama_base_urls(
+            base_urls if base_urls is not None else base_url,
+            include_localhost_fallback=_localhost_fallback_is_default(),
+        )
     if not candidate_urls:
         raise RuntimeError("No Ollama base URLs configured")
 

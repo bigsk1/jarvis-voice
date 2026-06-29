@@ -13,11 +13,19 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from intelligence import IntelligenceLayer
+from intelligence import IntelligenceLayer, _reflection_cost_from_usage
 from intelligence_hooks import format_insights_for_prompt
 
 
 class IntelligenceProvenanceTests(unittest.TestCase):
+    def test_unknown_reflection_cost_remains_unknown(self):
+        self.assertIsNone(_reflection_cost_from_usage({
+            "cost_usd": None,
+            "cost_known": False,
+            "billing_mode": "ollama_cloud_subscription",
+        }))
+        self.assertEqual(_reflection_cost_from_usage({"cost_usd": 0.25}), 0.25)
+
     def _make_intel(self, tmpdir: str) -> IntelligenceLayer:
         intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
         intel._get_embedding = lambda text: np.array([1.0, 0.25, 0.5])

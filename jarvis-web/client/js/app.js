@@ -312,6 +312,14 @@ class JarvisApp {
       document.getElementById('setting-llm-model').value = '';  // Reset model selection
     });
 
+    // Preview the selected mode's settings before Save. Without this, changing
+    // cloud → local copied every value still visible in the cloud form into
+    // the local override section (and vice versa).
+    document.getElementById('setting-mode')?.addEventListener('change', async (e) => {
+      const mode = e.target.value === 'local' ? 'local' : 'cloud';
+      await this._loadSettings(mode);
+    });
+
     document.getElementById('setting-completion-guard-eval-provider')?.addEventListener('change', async (e) => {
       const provider = this._getCompletionGuardEvalProviderSelection(e.target.value);
       await this._ensureProviderModelsLoaded(provider);
@@ -594,7 +602,7 @@ class JarvisApp {
     // Sync audio toggle with server TTS setting on startup
     this._syncAudioWithServer();
   }
-  
+
   /**
    * Sync audio toggle state with server TTS setting
    */
@@ -649,7 +657,7 @@ class JarvisApp {
    */
   _playAudio(url) {
     console.log('[App] Playing audio:', url);
-    
+
     // Stop any currently playing audio
     if (this.currentAudio) {
       this.currentAudio.pause();
@@ -689,12 +697,12 @@ class JarvisApp {
     audio.addEventListener('ended', () => {
       this.isPlaying = false;
       this._updateSpeakerButton();
-      
+
       // Reset progress bar
       if (progressBar) {
         progressBar.style.width = '0%';
       }
-      
+
       // Keep button visible for replay for 10 seconds, then hide
       setTimeout(() => {
         // Only hide if this is still the same audio (not replaced by new audio)
@@ -784,7 +792,7 @@ class JarvisApp {
     if (this.currentAudio) {
       // Show speaker button when audio is available
       this.speakerBtn.style.display = 'flex';
-      
+
       if (this.isPlaying) {
         // Currently playing
         this.speakerBtn.classList.add('playing');
@@ -820,7 +828,7 @@ class JarvisApp {
     
     try {
       console.log('[App] Generating TTS for:', text.substring(0, 50) + '...', 'mode:', this.socket.mode);
-      
+
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -908,7 +916,7 @@ class JarvisApp {
       container.innerHTML = `<p style="color: var(--error); padding: var(--space-md);">Error: ${err.message}</p>`;
     }
   }
-  
+
   /**
    * Setup hover tooltips for tool items (desktop only)
    * Tooltip stays visible when hovering over item OR tooltip, with delay before hide
@@ -1259,9 +1267,9 @@ class JarvisApp {
   /**
    * Load and display settings
    */
-  async _loadSettings() {
+  async _loadSettings(requestedMode = null) {
     try {
-      const mode = this.socket?.mode || 'cloud';
+      const mode = requestedMode || this.socket?.mode || 'cloud';
       const response = await fetch(`/api/settings?mode=${encodeURIComponent(mode)}`);
       const data = await response.json();
       
@@ -1526,7 +1534,8 @@ class JarvisApp {
    */
   async _loadSystemConfig() {
     try {
-      const response = await fetch(`/api/settings/system?mode=${this.socket.mode}`);
+      const mode = this._settingsData?.mode || this.socket.mode;
+      const response = await fetch(`/api/settings/system?mode=${encodeURIComponent(mode)}`);
       const data = await response.json();
       
       if (data.ok && data.config) {
@@ -1570,7 +1579,22 @@ class JarvisApp {
             <span class="config-label">OPENAI_MODEL</span>
             <span class="config-value">${c.OPENAI_MODEL || '(not set)'}</span>
           </div>
+          ${String(effectiveProvider).toLowerCase() === 'ollama' ? `
+          <div class="config-item">
+            <span class="config-label">OLLAMA_CLOUD_MODEL</span>
+            <span class="config-value">${c.OLLAMA_CLOUD_MODEL || c.OLLAMA_MODEL || '(not set)'}</span>
+          </div>
+          <div class="config-item">
+            <span class="config-label">OLLAMA_BASE_URL</span>
+            <span class="config-value">${c.OLLAMA_BASE_URL || '(not set)'}</span>
+          </div>
+          <div class="config-item" id="ollama-cloud-status">
+            <span class="config-label">Ollama Cloud</span>
+            <span class="config-value loading">Loading...</span>
+          </div>
+          ` : ''}
         `;
+        const showOllamaCloudCard = !isLocal && String(effectiveProvider).toLowerCase() === 'ollama';
 
         const audioProviderHtml = ttsProvider === 'qwen3-tts'
           ? `
@@ -1786,6 +1810,10 @@ class JarvisApp {
         if (!isLocal && ttsProvider === 'elevenlabs') {
           this._loadElevenLabsUsage();
         }
+        // Fetch Ollama Cloud account/connectivity status when ollama is the cloud provider
+        if (showOllamaCloudCard) {
+          this._loadOllamaCloudStatus();
+        }
       }
     } catch (err) {
       console.error('[App] Failed to load system config:', err);
@@ -1833,7 +1861,8 @@ class JarvisApp {
     if (!usageEl) return;
     
     try {
-      const response = await fetch(`/api/tts/usage?mode=${this.socket.mode}`);
+      const mode = this._settingsData?.mode || this.socket.mode;
+      const response = await fetch(`/api/tts/usage?mode=${encodeURIComponent(mode)}`);
       const data = await response.json();
       
       if (data.ok && data.usage) {
@@ -1875,6 +1904,71 @@ class JarvisApp {
   }
   
   /**
+   * Load Ollama Cloud account/connectivity status and update the System tab card.
+   * Mirrors the ElevenLabs usage card. Backed by GET /api/ollama/cloud-status.
+   */
+  async _loadOllamaCloudStatus() {
+    const el = document.getElementById('ollama-cloud-status');
+    if (!el) return;
+
+    try {
+      const mode = this._settingsData?.mode || this.socket.mode;
+      const response = await fetch(`/api/ollama/cloud-status?mode=${encodeURIComponent(mode)}`);
+      const data = await response.json();
+
+      if (data.ok === false && data.error) {
+        el.innerHTML = `
+          <span class="config-label">Ollama Cloud</span>
+          <span class="config-value error">${data.error}</span>
+        `;
+        return;
+      }
+
+      const reachable = data.reachable === true;
+      const signedIn = data.signed_in === true;
+      const quota = data.quota_available;
+      const plan = data.plan || (signedIn ? 'unknown' : '');
+
+      let statusClass = 'usage-ok';
+      let label = 'Connected';
+      if (!reachable) {
+        statusClass = 'usage-critical';
+        label = 'Unreachable';
+      } else if (!signedIn) {
+        statusClass = 'usage-warning';
+        label = 'Not signed in';
+      } else if (quota === false) {
+        // Only when the host explicitly reports quota exhausted.
+        statusClass = 'usage-warning';
+        label = plan ? `Signed in · ${plan} · quota exhausted` : 'Signed in · quota exhausted';
+      } else {
+        // quota unknown (null) or available: just show plan. Usage limits live
+        // on the ollama.com dashboard, not in /api/me.
+        label = plan ? `Signed in · ${plan}` : 'Signed in';
+      }
+
+      const link = (!signedIn && data.signin_url)
+        ? data.signin_url
+        : (data.dashboard_url || 'https://ollama.com/settings');
+      const linkText = (!signedIn && data.signin_url) ? 'Sign in' : 'Manage';
+
+      el.innerHTML = `
+        <span class="config-label">Ollama Cloud</span>
+        <span class="config-value ${statusClass}">
+          ${label}${link ? ` · <a href="${link}" target="_blank" rel="noopener">${linkText}</a>` : ''}
+        </span>
+      `;
+      el.title = data.connection_mode ? `Connection: ${data.connection_mode}` : '';
+    } catch (err) {
+      console.error('[App] Failed to load Ollama Cloud status:', err);
+      el.innerHTML = `
+        <span class="config-label">Ollama Cloud</span>
+        <span class="config-value error">Error loading</span>
+      `;
+    }
+  }
+
+  /**
    * Populate model dropdown based on selected provider
    */
   _populateModelDropdown(provider) {
@@ -1900,7 +1994,8 @@ class JarvisApp {
   async _ensureProviderModelsLoaded(provider) {
     if (!provider || provider !== 'ollama') return;
     try {
-      const response = await fetch(`/api/settings/models/${provider}?mode=${this.socket.mode}`);
+      const mode = this._settingsData?.mode || this.socket.mode;
+      const response = await fetch(`/api/settings/models/${provider}?mode=${encodeURIComponent(mode)}`);
       const data = await response.json();
       if (data.ok && Array.isArray(data.models)) {
         this._settingsData = this._settingsData || {};
@@ -1913,7 +2008,7 @@ class JarvisApp {
   }
 
   _getCompletionGuardEvalProviderSelection(overrideValue = null) {
-    if (this.socket.mode === 'local') return 'ollama';
+    if ((this._settingsData?.mode || this.socket.mode) === 'local') return 'ollama';
     return overrideValue
       || document.getElementById('setting-completion-guard-eval-provider')?.value
       || this._settingsData?.completion_guard?.eval_provider?.default
@@ -1923,7 +2018,7 @@ class JarvisApp {
   _configureCompletionGuardEvalProviderSelect() {
     const select = document.getElementById('setting-completion-guard-eval-provider');
     if (!select) return;
-    const isLocal = this.socket.mode === 'local';
+    const isLocal = (this._settingsData?.mode || this.socket.mode) === 'local';
     const ollamaOption = select.querySelector('option[value="ollama"]');
     if (ollamaOption) {
       ollamaOption.textContent = isLocal ? 'Ollama (Local)' : 'Ollama (Cloud)';
@@ -1939,7 +2034,7 @@ class JarvisApp {
   }
 
   _configureProviderSelectLabels() {
-    const isLocal = this.socket.mode === 'local';
+    const isLocal = (this._settingsData?.mode || this.socket.mode) === 'local';
     const llmSelect = document.getElementById('setting-llm-provider');
     const cgEvalSelect = document.getElementById('setting-completion-guard-eval-provider');
     const llmOllamaOption = llmSelect?.querySelector('option[value="ollama"]');
@@ -2459,6 +2554,8 @@ class JarvisApp {
     // Calculate cumulative token usage from historical messages
     let cumulativeTokens = { input: 0, output: 0, total: 0 };
     let cumulativeCost = 0;
+    let cumulativeUnknownCost = false;
+    let cumulativeInputEstimated = false;
     
     // Add each message
     for (const msg of conversation.messages || []) {
@@ -2483,14 +2580,21 @@ class JarvisApp {
           cumulativeTokens.input += usage.input_tokens || 0;
           cumulativeTokens.output += usage.output_tokens || 0;
           cumulativeTokens.total += usage.total_tokens || (usage.input_tokens || 0) + (usage.output_tokens || 0);
-          cumulativeCost += usage.cost_usd || 0;
+          cumulativeCost += typeof usage.cost_usd === 'number' ? usage.cost_usd : 0;
+          if (usage.has_unknown_cost === true || usage.cost_known === false
+              || usage.billing_mode === 'ollama_cloud_subscription') {
+            cumulativeUnknownCost = true;
+          }
+          if (usage.input_estimated === true) {
+            cumulativeInputEstimated = true;
+          }
         }
       }
     }
     
     // Restore token counter state if we have historical data
     if (cumulativeTokens.total > 0) {
-      this.chat.restoreTokenCounter(cumulativeTokens, cumulativeCost);
+      this.chat.restoreTokenCounter(cumulativeTokens, cumulativeCost, cumulativeUnknownCost, cumulativeInputEstimated);
     }
     
     // Update history UI
@@ -2551,6 +2655,11 @@ class JarvisApp {
   async _saveSettings() {
     try {
       const selectedMode = document.getElementById('setting-mode').value;
+      // The mode-change preview is asynchronous. If Save wins that race, load
+      // the target form now before reading any provider/model fields.
+      if (this._settingsData?.mode !== selectedMode) {
+        await this._loadSettings(selectedMode);
+      }
       const qaWordLimitRaw = document.getElementById('setting-qa-word-limit').value.trim();
       const multiTurnWordLimitRaw = document.getElementById('setting-multi-turn-word-limit').value.trim();
       const completionGuardAutoThresholdRaw = document.getElementById('setting-completion-guard-auto-threshold').value.trim();

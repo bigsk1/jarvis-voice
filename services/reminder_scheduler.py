@@ -16,7 +16,7 @@ from typing import List, Dict, Any
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config, get_config_value, get_active_config_mode
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
 from tts_normalizer import normalize_tts_text
@@ -224,7 +224,7 @@ def main():
     
     # Load config
     load_config()
-    mode = 'local' if get_config_value('LLM_PROVIDER', 'anthropic') == 'ollama' else 'cloud'
+    mode = get_active_config_mode()
     
     project_root = Path(__file__).parent.parent
     db = MemoryDB()

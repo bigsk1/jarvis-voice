@@ -1294,7 +1294,13 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 model=model
             )
         elif provider_type == "ollama":
-            model = self._model_override or get_config_value("OLLAMA_MODEL", "gemma4")
+            from ollama_utils import get_effective_ollama_model, OllamaModelError
+            try:
+                model = get_effective_ollama_model(self.mode, model_override=self._model_override)
+            except OllamaModelError:
+                if self.mode == "cloud":
+                    raise
+                model = self._model_override or get_config_value("OLLAMA_MODEL", "gemma4")
             return create_provider(
                 "ollama",
                 base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),

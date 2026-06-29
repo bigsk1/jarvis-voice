@@ -51,7 +51,9 @@ class PipelineExecutor:
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
-            "cost_usd": 0.0
+            "cost_usd": 0.0,
+            "has_unknown_cost": False,
+            "cost_known": True,
         }
     
     def _chat_with_usage(self, message: str, system_prompt: str = None, max_tokens: int = 1024) -> str:
@@ -76,7 +78,16 @@ class PipelineExecutor:
                 self._total_usage["input_tokens"] += usage_info.get("input_tokens", 0)
                 self._total_usage["output_tokens"] += usage_info.get("output_tokens", 0)
                 self._total_usage["total_tokens"] += usage_info.get("total_tokens", 0)
-                self._total_usage["cost_usd"] += usage_info.get("cost_usd", 0)
+                cost = usage_info.get("cost_usd")
+                if isinstance(cost, (int, float)):
+                    self._total_usage["cost_usd"] += cost
+                if (
+                    usage_info.get("cost_known") is False
+                    or usage_info.get("billing_mode") == "ollama_cloud_subscription"
+                    or cost is None
+                ):
+                    self._total_usage["has_unknown_cost"] = True
+                    self._total_usage["cost_known"] = False
                 
                 # Track server-side tools (xAI web_search, x_search, Anthropic web search)
                 if usage_info.get("server_side_tools"):
@@ -128,7 +139,13 @@ class PipelineExecutor:
                 config["api_key"] = get_config_value("XAI_API_KEY")
                 config["model"] = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
             elif provider_type == "ollama":
-                config["model"] = get_config_value("OLLAMA_MODEL", "qwen3.5:latest")
+                from ollama_utils import get_effective_ollama_model, OllamaModelError
+                try:
+                    config["model"] = get_effective_ollama_model(getattr(self, "mode", None))
+                except OllamaModelError:
+                    if getattr(self, "mode", None) == "cloud":
+                        raise
+                    config["model"] = get_config_value("OLLAMA_MODEL", "qwen3.5:latest")
                 config["base_url"] = get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
             
             return create_provider(provider_type, **config)
@@ -163,7 +180,9 @@ class PipelineExecutor:
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
-            "cost_usd": 0.0
+            "cost_usd": 0.0,
+            "has_unknown_cost": False,
+            "cost_known": True,
         }
         
         # Track server-side tool usage from LLM providers (xAI web_search, x_search, etc.)

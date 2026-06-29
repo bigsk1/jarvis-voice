@@ -21,9 +21,9 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
-from config_loader import load_config, get_config_value
+from config_loader import config_scope, get_config_value
 from memory_db import MemoryDB
-from embeddings import get_embedding
+from embeddings import get_embedding, get_effective_embedding_provider
 
 # ANSI color codes
 GREEN = '\033[92m'
@@ -35,13 +35,12 @@ NC = '\033[0m'  # No Color
 
 
 def _effective_embedding_backend() -> str:
-    """Match lib/embeddings.get_embedding(): only 'ollama' uses Ollama; all else use OpenAI API."""
-    llm = get_config_value("LLM_PROVIDER", "openai")
-    resolved = get_config_value("EMBEDDING_PROVIDER", llm)
+    """Match the runtime embedding resolver exactly."""
+    resolved = get_effective_embedding_provider()
     return "ollama" if resolved == "ollama" else "openai"
 
 
-def check_embedding_dimensions(mode='cloud'):
+def check_embedding_dimensions(mode='cloud', _scoped=False):
     """
     Check if embeddings in the database match expected dimensions for the mode.
     
@@ -51,8 +50,9 @@ def check_embedding_dimensions(mode='cloud'):
     Returns:
         dict with health status
     """
-    # Load config for the mode
-    load_config(mode)
+    if not _scoped:
+        with config_scope(mode):
+            return check_embedding_dimensions(mode, _scoped=True)
     
     # Determine expected dimensions
     if mode == 'local':
@@ -299,4 +299,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

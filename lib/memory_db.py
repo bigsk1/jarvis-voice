@@ -181,10 +181,13 @@ class MemoryDB:
             data_dir = project_root / "data"
             data_dir.mkdir(exist_ok=True)
             
-            # Check if we're in local mode (ollama provider)
-            llm_provider = os.environ.get('LLM_PROVIDER', 'anthropic').lower()
-            
-            if llm_provider == 'ollama':
+            # Resolve data mode from the active config scope / JARVIS_MODE,
+            # never from the chat provider. Cloud mode keeps the main DB and its
+            # OpenAI embeddings even when LLM_PROVIDER=ollama.
+            from config_loader import get_active_config_mode
+            mode = get_active_config_mode()
+
+            if mode == 'local':
                 # Local mode - use separate database with nomic embeddings
                 db_path = str(data_dir / "jarvis_memory_local.db")
             else:

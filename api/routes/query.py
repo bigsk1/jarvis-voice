@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, Request
 import sys
-import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
@@ -43,18 +42,14 @@ async def query_jarvis(request: Request, body: QueryRequest):
     
     **Note**: Long-running queries may take 10-60+ seconds depending on tools used.
     """
+    from config_loader import config_scope
+    with config_scope(body.mode):
+        return await _query_jarvis_scoped(body)
+
+
+async def _query_jarvis_scoped(body: QueryRequest):
+    """Execute one API query inside its immutable mode/config scope."""
     try:
-        # Load config for the requested mode
-        from config_loader import load_config
-        load_config(body.mode)
-        
-        # Set mode in environment for downstream components
-        if body.mode == "local":
-            os.environ['LLM_PROVIDER'] = 'ollama'
-        else:
-            # Keep existing provider for cloud mode
-            pass
-        
         # Import orchestrator after config is loaded
         from orchestrator_v2 import Orchestrator
         

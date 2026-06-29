@@ -11,6 +11,8 @@ import json
 import re
 import copy
 import threading
+import functools
+import inspect
 from urllib.parse import urlparse
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +36,81 @@ from ..services.followup_extractor import (
     FOLLOWUP_EVIDENCE_MAX_CANDIDATES as _FOLLOWUP_EVIDENCE_MAX_CANDIDATES,
     FOLLOWUP_SUMMARY_MAX_CHARS as _FOLLOWUP_SUMMARY_MAX_CHARS,
 )
+
+def _scoped_by_mode(method):
+    """Run a thread-entry handler inside a request-scoped config overlay.
+
+    Web chat work runs in dedicated OS threads (see ``_start_blocking_task``),
+    which each start with an empty ``contextvars`` context. Installing a
+    ``config_scope`` at the thread entry keeps that thread's deployment mode and
+    resolved ``config/<mode>.env`` values isolated, so a concurrent local
+    request can never clobber a cloud request's provider/model/db/embedding
+    selection through global ``os.environ`` mutation (the old ``load_config``
+    behaviour). Per-mode Web overrides are installed in the same scope and are
+    exported deliberately to child tools.
+
+    The wrapped method's ``mode`` is taken from a ``mode`` parameter when present,
+    otherwise from a ``record['mode']`` argument; it defaults to ``cloud``.
+    """
+    sig = inspect.signature(method)
+
+    @functools.wraps(method)
+    def wrapper(*args, **kwargs):
+        mode = None
+        arguments = {}
+        try:
+            bound = sig.bind_partial(*args, **kwargs)
+            arguments = bound.arguments
+            mode = arguments.get('mode')
+            if not mode and isinstance(arguments.get('record'), dict):
+                mode = arguments['record'].get('mode')
+        except TypeError:
+            mode = None
+
+        mode = mode or 'cloud'
+        from ..config import load_web_config
+        from ..services.settings_manager import (
+            CLOUD_TTS_PROVIDER_OPTIONS,
+            LOCAL_TTS_PROVIDER_OPTIONS,
+        )
+
+        web_config = load_web_config()
+        mode_overrides = web_config.get(mode, {}) if isinstance(web_config, dict) else {}
+        scoped_overrides = {}
+        key_map = {
+            'image_provider': 'IMAGE_TOOL_PROVIDER',
+            'video_provider': 'VIDEO_TOOL_PROVIDER',
+            'tts_provider': 'TTS_PROVIDER',
+            'response_style': 'JARVIS_RESPONSE_STYLE',
+            'qa_word_limit': 'JARVIS_QA_WORD_LIMIT',
+            'multi_turn_word_limit': 'JARVIS_MULTI_TURN_WORD_LIMIT',
+        }
+        for web_key, config_key in key_map.items():
+            value = mode_overrides.get(web_key)
+            if value is not None:
+                scoped_overrides[config_key] = str(value)
+
+        tts_provider = mode_overrides.get('tts_provider')
+        allowed_tts = LOCAL_TTS_PROVIDER_OPTIONS if mode == 'local' else CLOUD_TTS_PROVIDER_OPTIONS
+        if tts_provider not in (None, *allowed_tts):
+            scoped_overrides.pop('TTS_PROVIDER', None)
+
+        # One-shot image/video modal choices outrank saved per-mode settings.
+        image_data = arguments.get('image_data')
+        if isinstance(image_data, dict):
+            action = image_data.get('action')
+            modal_provider = (image_data.get('settings') or {}).get('provider')
+            if action == 'video':
+                scoped_overrides['VIDEO_TOOL_PROVIDER'] = str(modal_provider or 'xai')
+            elif action == 'image' and modal_provider:
+                scoped_overrides['IMAGE_TOOL_PROVIDER'] = str(modal_provider)
+
+        from config_loader import config_scope
+        with config_scope(mode, overrides=scoped_overrides):
+            return method(*args, **kwargs)
+
+    return wrapper
+
 
 class ChatHandler:
     """Handles WebSocket chat events"""
@@ -654,11 +731,11 @@ class ChatHandler:
                 model=model_name or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
             )
 
-        return provider_name, (
-            model_name or get_config_value('OLLAMA_MODEL', 'qwen3.5:latest')
-        ), create_provider(
+        from ollama_utils import resolve_ollama_model
+        ollama_model = resolve_ollama_model(mode, model_override=(model_name or None))
+        return provider_name, ollama_model, create_provider(
             'ollama',
-            model=model_name or get_config_value('OLLAMA_MODEL', 'qwen3.5:latest'),
+            model=ollama_model,
             base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
         )
 
@@ -1026,6 +1103,7 @@ Returned tool data:
         ticket_path.write_text(content, encoding='utf-8')
         return ticket_path
 
+    @_scoped_by_mode
     def _run_completion_guard_auto_eval(self, session_id: str, record: dict):
         """Evaluate a completed response and auto-trigger repair when the audit score is high enough."""
         message_id = record.get('message_id')
@@ -1173,6 +1251,7 @@ Returned tool data:
                 'none'
             )
 
+    @_scoped_by_mode
     def _run_completion_guard_repair(self, session_id: str, record: dict, note: str = ''):
         """Run one bounded repair attempt before falling back to ticketing."""
         conversation_id = record.get('conversation_id')
@@ -2205,22 +2284,15 @@ Previous structured data:
                 
                 # Update settings manager and reload config for new mode
                 from ..services.settings_manager import get_settings_manager
-                from ..config import reload_web_config, load_jarvis_config
+                from ..config import reload_web_config
                 
                 settings = get_settings_manager()
                 settings.set_mode(mode)
                 reload_web_config()
                 
-                # Force reload Jarvis config for new mode
-                load_jarvis_config(mode)
-                
-                # Reset singletons that cache mode-specific data
-                try:
-                    from intelligence import reset_intelligence_layer
-                    reset_intelligence_layer()
-                    print(f"[MODE] Reset intelligence layer for {mode} mode")
-                except Exception as e:
-                    print(f"[MODE] Warning: Could not reset intelligence: {e}")
+                # Intelligence instances are resolved per request/data mode.
+                # Do not close them here: another in-flight chat may still be
+                # recording to the other mode's database.
                 
                 # Reset tool registry (cleans up MCP containers)
                 try:
@@ -2757,6 +2829,7 @@ Previous structured data:
         inherited['derived_from_prior'] = True
         return inherited
     
+    @_scoped_by_mode
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
                          prompt_meta: dict = None, request_feedback: bool = False,
@@ -2773,9 +2846,6 @@ Previous structured data:
         
         try:
             completion_guard_config = self._get_completion_guard_config(mode)
-            prev_feedback_random_override = os.environ.get('JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED')
-            if completion_guard_config.get('enabled'):
-                os.environ['JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED'] = 'false'
 
             # Debug image data
             if image_data:
@@ -2803,9 +2873,7 @@ Previous structured data:
             if provider_override:
                 print(f"[CHAT] Using {mode} override: provider={provider_override}, model={model_override}")
             
-            # Apply image/video provider overrides via JARVIS_OVERRIDE_ prefix
-            # These survive load_config() in tool subprocesses (which re-reads cloud.env)
-            # get_config_value() checks JARVIS_OVERRIDE_{key} before os.environ[key]
+            # These per-mode values are already in the request config scope.
             image_provider_override = mode_overrides.get('image_provider')
             video_provider_override = mode_overrides.get('video_provider')
             tts_provider_override = mode_overrides.get('tts_provider')
@@ -2816,37 +2884,6 @@ Previous structured data:
             qa_word_limit_override = mode_overrides.get('qa_word_limit')
             multi_turn_word_limit_override = mode_overrides.get('multi_turn_word_limit')
             
-            # Set or clear override env vars (cleared = fall back to cloud.env default)
-            if image_provider_override:
-                os.environ['JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER'] = image_provider_override
-            else:
-                os.environ.pop('JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER', None)
-            
-            if video_provider_override:
-                os.environ['JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER'] = video_provider_override
-            else:
-                os.environ.pop('JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER', None)
-
-            if tts_provider_override:
-                os.environ['JARVIS_OVERRIDE_TTS_PROVIDER'] = tts_provider_override
-            else:
-                os.environ.pop('JARVIS_OVERRIDE_TTS_PROVIDER', None)
-
-            if response_style_override:
-                os.environ['JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE'] = str(response_style_override)
-            else:
-                os.environ.pop('JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE', None)
-
-            if qa_word_limit_override is not None:
-                os.environ['JARVIS_OVERRIDE_JARVIS_QA_WORD_LIMIT'] = str(qa_word_limit_override)
-            else:
-                os.environ.pop('JARVIS_OVERRIDE_JARVIS_QA_WORD_LIMIT', None)
-
-            if multi_turn_word_limit_override is not None:
-                os.environ['JARVIS_OVERRIDE_JARVIS_MULTI_TURN_WORD_LIMIT'] = str(multi_turn_word_limit_override)
-            else:
-                os.environ.pop('JARVIS_OVERRIDE_JARVIS_MULTI_TURN_WORD_LIMIT', None)
-
             print(
                 "[CHAT] Provider overrides - "
                 f"image: {image_provider_override or '(env default)'}, "
@@ -2857,16 +2894,15 @@ Previous structured data:
                 f"multi_turn_limit: {multi_turn_word_limit_override if multi_turn_word_limit_override is not None else '(env default)'}"
             )
             
-            # Image action modal can override providers further (takes priority over AI config)
+            # Modal overrides were also installed into the request scope by the
+            # decorator; retain these messages for operator visibility.
             if image_data and image_data.get('action') == 'video':
                 # Image-to-video - use provider from modal settings (xai, openai, or gemini)
                 modal_video_provider = image_data.get('settings', {}).get('provider', 'xai')
-                os.environ['JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER'] = modal_video_provider
                 print(f"[CHAT] Image modal override - video provider: {modal_video_provider} (image-to-video)")
             elif image_data and image_data.get('action') == 'image':
                 modal_provider = image_data.get('settings', {}).get('provider')
                 if modal_provider:
-                    os.environ['JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER'] = modal_provider
                     print(f"[CHAT] Image modal override - image provider: {modal_provider}")
             
             # Handle text file context if provided - prepend to message
@@ -3205,7 +3241,13 @@ Previous structured data:
             if vision_pre_analyzed:
                 print("[CHAT] Web upload vision complete - native server-side tools disabled for this request")
             print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools{override_info}...")
-            try:
+            from config_loader import config_override_scope
+            feedback_overrides = (
+                {'FEEDBACK_RANDOM_ENABLED': 'false'}
+                if completion_guard_config.get('enabled')
+                else {}
+            )
+            with config_override_scope(feedback_overrides):
                 result = orchestrator.process(
                     enhanced_message,
                     conversation_history=conversation_history,
@@ -3213,11 +3255,6 @@ Previous structured data:
                     tool_overrides=tool_overrides if tool_overrides else None,
                     vision_pre_analyzed=vision_pre_analyzed,
                 )
-            finally:
-                if prev_feedback_random_override is None:
-                    os.environ.pop('JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED', None)
-                else:
-                    os.environ['JARVIS_OVERRIDE_FEEDBACK_RANDOM_ENABLED'] = prev_feedback_random_override
             
             # Clean up cancellation flag
             if message_id in self.pending_cancellations:
@@ -3575,6 +3612,7 @@ Previous structured data:
                 'traceback': traceback.format_exc()
             }, room=delivery_room)
     
+    @_scoped_by_mode
     def _collect_feedback_async(self, session_id: str, source_message_id: str, query: str, mode: str,
                                  message_id: str, conversation_id: str,
                                  result: dict, tools_used: list,
@@ -3664,10 +3702,6 @@ Tools Available: {num_tools}
 Mode: {mode}
 """
             
-            # Force logging for manually triggered feedback
-            import os
-            os.environ['JARVIS_FEEDBACK_ALWAYS_LOG'] = '1'
-            
             # Collect feedback
             feedback = collector.collect(
                 query=query,
@@ -3681,9 +3715,6 @@ Mode: {mode}
                 session_id=orchestrator.session_id,
                 completion_guard_context=completion_guard_context
             )
-            
-            # Clean up env var
-            os.environ.pop('JARVIS_FEEDBACK_ALWAYS_LOG', None)
             
             duration_ms = int((time_module.time() - start_time) * 1000)
             

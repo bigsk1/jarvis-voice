@@ -51,9 +51,48 @@ class OllamaUtilsTests(unittest.TestCase):
         {"OLLAMA_BASE_URL": "http://mini-ai:11434,http://desktop:11434"},
         clear=False,
     )
-    def test_get_ollama_base_urls_uses_env_order(self):
+    def test_get_ollama_base_urls_local_mode_appends_localhost(self):
+        from config_loader import config_scope
+
+        # Use temp configs so config_scope("local") can load a mode file.
+        import tempfile, os
+        from pathlib import Path
+        import config_loader
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config"
+            cfg.mkdir()
+            (cfg / "cloud.env").write_text("")
+            (cfg / "local.env").write_text("")
+            orig_root = config_loader.get_project_root
+            config_loader.get_project_root = lambda: Path(tmp)
+            try:
+                with config_scope("local"):
+                    self.assertEqual(
+                        get_ollama_base_urls(),
+                        [
+                            "http://mini-ai:11434",
+                            "http://desktop:11434",
+                            "http://localhost:11434",
+                        ],
+                    )
+                with config_scope("cloud"):
+                    # Cloud mode must NOT silently append localhost.
+                    self.assertEqual(
+                        get_ollama_base_urls(),
+                        ["http://mini-ai:11434", "http://desktop:11434"],
+                    )
+            finally:
+                config_loader.get_project_root = orig_root
+
+    @patch.dict(
+        "os.environ",
+        {"OLLAMA_BASE_URL": "http://mini-ai:11434,http://desktop:11434"},
+        clear=False,
+    )
+    def test_get_ollama_base_urls_can_force_localhost(self):
         self.assertEqual(
-            get_ollama_base_urls(),
+            get_ollama_base_urls(include_localhost_fallback=True),
             [
                 "http://mini-ai:11434",
                 "http://desktop:11434",
@@ -84,6 +123,24 @@ class OllamaUtilsTests(unittest.TestCase):
         self.assertEqual(
             mock_request.call_args_list[1].args[1],
             "http://secondary:11434/api/tags",
+        )
+
+    @patch.dict(
+        "os.environ",
+        {"OLLAMA_BASE_URL": "http://configured:11434"},
+        clear=False,
+    )
+    @patch("requests.request")
+    def test_request_without_explicit_url_uses_ollama_base_url(self, mock_request):
+        mock_request.return_value = _FakeResponse(200, {"models": []})
+
+        response, used_base_url = request_ollama("get", "/api/tags", timeout=5)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(used_base_url, "http://configured:11434")
+        self.assertEqual(
+            mock_request.call_args.args[1],
+            "http://configured:11434/api/tags",
         )
 
     @patch("requests.request")

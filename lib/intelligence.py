@@ -39,12 +39,28 @@ from typing import Any
 from pathlib import Path
 import numpy as np
 import logging
+import threading
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
-from config_loader import load_config, get_float, get_int
+from config_loader import load_config, get_float, get_int, get_active_config_mode
 from security_utils import redact_sensitive_data, redact_sensitive_text
 from time_utils import now_utc
+
+
+def _reflection_cost_from_usage(usage_info: dict) -> "float | None":
+    """Preserve unknown hosted cost as NULL instead of fabricating free usage."""
+    raw = usage_info.get('cost_usd')
+    if (
+        usage_info.get('cost_known') is False
+        or usage_info.get('billing_mode') == 'ollama_cloud_subscription'
+        or raw in (None, '')
+    ):
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
 
 logger = logging.getLogger(__name__)
 
@@ -328,9 +344,11 @@ class IntelligenceLayer:
             data_dir = project_root / "data"
             data_dir.mkdir(exist_ok=True)
 
-            # Use same DB selection logic as memory_db
-            llm_provider = os.environ.get('LLM_PROVIDER', 'anthropic').lower()
-            if llm_provider == 'ollama':
+            # Resolve data mode from the active config scope / JARVIS_MODE,
+            # never from the chat provider (matches memory_db selection).
+            from config_loader import get_active_config_mode
+            mode = get_active_config_mode()
+            if mode == 'local':
                 db_path = str(data_dir / "jarvis_intelligence_local.db")
             else:
                 db_path = str(data_dir / "jarvis_intelligence.db")
@@ -1379,10 +1397,11 @@ Example for FACTUAL (should NOT be stored here):
                     model=get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
                 )
             elif provider_type == "ollama":
+                from ollama_utils import resolve_ollama_model
                 provider = create_provider(
                     "ollama",
                     base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                    model=get_config_value("OLLAMA_MODEL", "qwen3.5:latest")
+                    model=resolve_ollama_model()
                 )
             else:
                 logger.error(f"Unknown provider type: {provider_type}")
@@ -1390,7 +1409,7 @@ Example for FACTUAL (should NOT be stored here):
 
             # Get model name for logging
             model_name = getattr(provider, 'model', 'unknown')
-            override_mode = "local" if provider_type == "ollama" else "cloud"
+            override_mode = get_active_config_mode()
             override = load_model_prompt_override(
                 provider=provider_type,
                 model=model_name,
@@ -1671,15 +1690,7 @@ Example for FACTUAL (should NOT be stored here):
             or (reflection_input_tokens + reflection_output_tokens)
             or 0
         )
-        reflection_cost_raw = usage_info.get('cost_usd')
-        try:
-            reflection_cost_usd = (
-                float(reflection_cost_raw)
-                if reflection_cost_raw not in (None, '')
-                else 0.0
-            )
-        except (TypeError, ValueError):
-            reflection_cost_usd = 0.0
+        reflection_cost_usd = _reflection_cost_from_usage(usage_info)
 
         # Extract constraint type
         constraint_type = reflection.get('constraint_type', 'positive')
@@ -1752,7 +1763,10 @@ Example for FACTUAL (should NOT be stored here):
                     reflection_input_tokens = COALESCE(reflection_input_tokens, 0) + ?,
                     reflection_output_tokens = COALESCE(reflection_output_tokens, 0) + ?,
                     reflection_total_tokens = COALESCE(reflection_total_tokens, 0) + ?,
-                    reflection_cost_usd = COALESCE(reflection_cost_usd, 0) + ?
+                    reflection_cost_usd = CASE
+                        WHEN reflection_cost_usd IS NULL OR ? IS NULL THEN NULL
+                        ELSE reflection_cost_usd + ?
+                    END
                 WHERE id = ?
             """, (
                 new_confidence,
@@ -1774,6 +1788,7 @@ Example for FACTUAL (should NOT be stored here):
                 reflection_input_tokens,
                 reflection_output_tokens,
                 reflection_total_tokens,
+                reflection_cost_usd,
                 reflection_cost_usd,
                 existing['id']
             ))
@@ -2705,36 +2720,56 @@ Example for FACTUAL (should NOT be stored here):
         }
 
 
-# Singleton instance
+# One instance per data mode. Cloud and local requests may coexist in the Web
+# process, so switching one request must never close another request's DB.
+_intelligence_layers: dict[str, IntelligenceLayer] = {}
+_intelligence_lock = threading.RLock()
+
+# Backward-compatible references to the most recently requested instance.
 _intelligence_layer = None
 _intelligence_mode = None
+
+def _intelligence_db_path_for_mode(mode: str) -> str:
+    """Resolve the Intelligence DB path for an explicit mode."""
+    if mode not in {'cloud', 'local'}:
+        raise ValueError(f"Invalid intelligence data mode: {mode!r}")
+    project_root = Path(__file__).parent.parent.resolve()
+    suffix = '_local' if mode == 'local' else ''
+    return str(project_root / 'data' / f'jarvis_intelligence{suffix}.db')
+
 
 def get_intelligence_layer(mode: str = None) -> IntelligenceLayer:
     """Get intelligence layer instance for the current mode."""
     global _intelligence_layer, _intelligence_mode
 
-    # Determine current mode from env if not provided
-    if mode is None:
-        llm_provider = os.environ.get('LLM_PROVIDER', 'anthropic').lower()
-        mode = 'local' if llm_provider == 'ollama' else 'cloud'
+    # Resolve mode from the active config scope / JARVIS_MODE, never the provider.
+    mode = get_active_config_mode(mode)
 
-    # Recreate if mode changed or not initialized
-    if _intelligence_layer is None or _intelligence_mode != mode:
-        if _intelligence_layer is not None:
-            _intelligence_layer.close()
-        _intelligence_layer = IntelligenceLayer()
+    with _intelligence_lock:
+        layer = _intelligence_layers.get(mode)
+        if layer is None or layer.conn is None:
+            layer = IntelligenceLayer(db_path=_intelligence_db_path_for_mode(mode))
+            _intelligence_layers[mode] = layer
+        _intelligence_layer = layer
         _intelligence_mode = mode
+        return layer
 
-    return _intelligence_layer
 
-
-def reset_intelligence_layer():
-    """Reset the intelligence layer singleton (call when mode changes)."""
+def reset_intelligence_layer(mode: str = None):
+    """Close cached Intelligence layers, optionally for only one data mode."""
     global _intelligence_layer, _intelligence_mode
-    if _intelligence_layer is not None:
-        _intelligence_layer.close()
-    _intelligence_layer = None
-    _intelligence_mode = None
+    with _intelligence_lock:
+        if mode is None:
+            layers = list(_intelligence_layers.values())
+            _intelligence_layers.clear()
+        else:
+            resolved_mode = get_active_config_mode(mode)
+            layer = _intelligence_layers.pop(resolved_mode, None)
+            layers = [layer] if layer is not None else []
+        for layer in layers:
+            layer.close()
+        _intelligence_layer = None
+        _intelligence_mode = None
 
 
 # ============================================

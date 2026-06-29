@@ -17,6 +17,16 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 sys.path.insert(0, str(WEB_ROOT))
 
 def main():
+    # Defensive: keep logs streaming in real time even when stdout is a pipe/file
+    # instead of a TTY (e.g. `bin/jarvis-web > log.txt` or a non-pty launcher),
+    # where Python would otherwise block-buffer stdout and delay print() output.
+    # In a normal tmux pty stdout is already line-buffered, so this is a no-op there.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(line_buffering=True)
+        except (AttributeError, ValueError):
+            pass
+
     import argparse
     
     parser = argparse.ArgumentParser(

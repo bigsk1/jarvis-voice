@@ -57,7 +57,12 @@ Only output the status phrase, nothing else."""
             self.base_url = 'https://api.anthropic.com/v1'
         elif self.provider == 'ollama':
             self.base_url = get_primary_ollama_base_url()
-            self.model = get_config_value('STATUS_LLM_MODEL', 'qwen3')
+            status_model = (get_config_value('STATUS_LLM_MODEL', '') or '').strip()
+            if status_model:
+                self.model = status_model
+            else:
+                from ollama_utils import resolve_ollama_model
+                self.model = resolve_ollama_model()
     
     def _build_system_prompt(self) -> str:
         """Build system prompt based on personality settings."""

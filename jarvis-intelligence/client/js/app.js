@@ -987,6 +987,7 @@ function getReflectionTotalTokens(insight) {
 }
 
 function formatReflectionCost(cost) {
+  if (cost === null || cost === undefined || cost === '') return 'unknown';
   const numeric = Number(cost || 0);
   if (!Number.isFinite(numeric) || numeric <= 0) return '$0';
   return numeric < 0.01 ? `$${numeric.toFixed(4)}` : `$${numeric.toFixed(2)}`;

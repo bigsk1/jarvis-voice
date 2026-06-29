@@ -10,7 +10,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'orchestrator'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config, get_config_value, get_active_config_mode
 from memory_db import get_memory_db
 from schedule_parser import calculate_next_run, parse_schedule_expression
 from time_utils import format_utc_db, now_utc
@@ -29,8 +29,7 @@ class ScheduledTaskManager:
             self.mode = mode
         else:
             load_config()
-            provider = get_config_value('LLM_PROVIDER', 'anthropic')
-            self.mode = 'local' if provider == 'ollama' else 'cloud'
+            self.mode = get_active_config_mode()
 
         self.db = get_memory_db(self.mode)
         self._ensure_tables()

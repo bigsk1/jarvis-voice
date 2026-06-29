@@ -151,10 +151,10 @@ async def announce(request: AnnounceRequest):
     
     For full control (cloud/local mode), use /speak instead.
     """
-    import os
-    
-    # Auto-detect mode from environment
-    mode = "local" if os.environ.get('LLM_PROVIDER') == 'ollama' else "cloud"
+    from config_loader import get_active_config_mode
+
+    # Resolve mode from launcher-provided JARVIS_MODE, never the provider.
+    mode = get_active_config_mode()
     
     # Use existing speak() function
     speak_req = SpeakRequest(message=request.message, mode=mode)

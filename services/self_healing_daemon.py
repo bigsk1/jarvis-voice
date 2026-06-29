@@ -23,7 +23,7 @@ from typing import List, Dict, Any, Optional
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config, get_config_value, get_active_config_mode
 from internal_api import get_internal_api_base_url, get_internal_api_headers
 from memory_db import MemoryDB
 from service_logger import ServiceLogger
@@ -499,7 +499,7 @@ def main():
     
     # Load config
     load_config()
-    mode = 'local' if get_config_value('LLM_PROVIDER', 'anthropic') == 'ollama' else 'cloud'
+    mode = get_active_config_mode()
     if get_config_value("JARVIS_DEPLOYMENT", "") == "docker":
         # Docker runs daemons in a separate container namespace; shared logs/*.pid
         # files collide with native installs and cause false crash/restart loops.

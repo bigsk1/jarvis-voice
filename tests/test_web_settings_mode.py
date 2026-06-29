@@ -105,6 +105,102 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIn("web_config.json", response.get_json()["error"])
         settings.save_web_overrides.assert_not_called()
 
+    def test_ollama_default_follows_effective_provider_not_env_provider(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {
+            "cloud": {
+                "llm_provider": "ollama",
+                "llm_model": None,
+                "completion_guard_eval_provider": "ollama",
+                "completion_guard_eval_model": None,
+            },
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        env = {
+            "LLM_PROVIDER": "xai",
+            "XAI_MODEL": "grok-build-0.1",
+            "OLLAMA_CLOUD_MODEL": "minimax-m3:cloud",
+        }
+
+        def get_setting(key, default=""):
+            return env.get(key, default)
+
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=get_setting),
+            patch.object(
+                settings,
+                "_get_provider_models",
+                return_value={"ollama": [{"id": "minimax-m3:cloud", "name": "minimax-m3:cloud", "context": "cloud"}]},
+            ),
+        ):
+            result = settings.get_settings_for_ui()
+
+        self.assertEqual(result["llm"]["model"]["value"], "minimax-m3:cloud")
+        self.assertEqual(result["llm"]["model"]["default"], "minimax-m3:cloud")
+        self.assertFalse(result["llm"]["model"]["is_override"])
+        self.assertEqual(result["completion_guard"]["eval_model"]["value"], "minimax-m3:cloud")
+        self.assertEqual(result["completion_guard"]["eval_model"]["default"], "minimax-m3:cloud")
+
+    def test_stale_cloud_catalog_model_is_ignored_for_local_ollama(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {
+            "local": {"llm_provider": "ollama", "llm_model": "grok-build-0.1"},
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        env = {"LLM_PROVIDER": "ollama", "OLLAMA_MODEL": "gemma4:12b"}
+
+        def get_setting(key, default=""):
+            return env.get(key, default)
+
+        settings = SettingsManager("local")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=get_setting),
+            patch.object(
+                settings,
+                "_get_provider_models",
+                return_value={"ollama": [{"id": "gemma4:12b", "name": "gemma4:12b", "context": "local"}]},
+            ),
+        ):
+            result = settings.get_settings_for_ui()
+
+        self.assertEqual(result["llm"]["model"]["value"], "gemma4:12b")
+        self.assertFalse(result["llm"]["model"]["is_override"])
+
+    def test_save_rejects_cross_mode_ollama_model(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {"local": {}}
+        settings = SettingsManager("local")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=lambda key, default="": "ollama" if key == "LLM_PROVIDER" else default),
+            patch.object(settings_module, "save_web_config", return_value=True),
+        ):
+            success = settings.save_web_overrides({
+                "llm_provider": "ollama",
+                "llm_model": "minimax-m3:cloud",
+            })
+
+        self.assertTrue(success)
+        self.assertIsNone(web_config["local"]["llm_model"])
+
 
 if __name__ == "__main__":
     unittest.main()

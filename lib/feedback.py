@@ -353,9 +353,10 @@ class FeedbackCollector:
                     model=feedback_model or get_provider_fallback_model("xai")
                 )
             elif feedback_provider == "ollama":
+                from ollama_utils import resolve_ollama_model
                 self.provider = create_provider(
                     "ollama",
-                    model=feedback_model or get_config_value("OLLAMA_MODEL", "qwen3.5:latest"),
+                    model=resolve_ollama_model(mode, model_override=feedback_model),
                     base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
                 )
             else:
@@ -363,8 +364,9 @@ class FeedbackCollector:
         else:
             # Fallback: Use same provider as mode (not ideal but works)
             if mode == 'local':
+                from ollama_utils import resolve_ollama_model
                 self.provider_name = "ollama"
-                self.model_name = get_config_value("OLLAMA_MODEL", "qwen3.5:latest")
+                self.model_name = resolve_ollama_model(mode)
                 self.provider = create_provider(
                     "ollama",
                     model=self.model_name,
@@ -375,7 +377,15 @@ class FeedbackCollector:
                 provider_type = get_config_value("LLM_PROVIDER", "anthropic")
                 self.provider_name = provider_type
                 
-                if provider_type == "xai":
+                if provider_type == "ollama":
+                    from ollama_utils import resolve_ollama_model
+                    self.model_name = resolve_ollama_model(mode)
+                    self.provider = create_provider(
+                        "ollama",
+                        model=self.model_name,
+                        base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
+                    )
+                elif provider_type == "xai":
                     self.model_name = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
                     self.provider = create_provider(
                         "xai",

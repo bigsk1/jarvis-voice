@@ -1453,7 +1453,16 @@ class OllamaProvider(LLMProvider):
     
     def __init__(self, base_url: str, model: str):
         """Initialize Ollama provider."""
-        self.base_urls = parse_ollama_base_urls(base_url)
+        from config_loader import get_active_config_mode
+
+        # Native local mode keeps the historical localhost safety fallback.
+        # Cloud mode must use only explicitly configured hosts: silently trying
+        # localhost can route a hosted-model request through the wrong daemon,
+        # and in Docker it points back into the Jarvis container.
+        self.base_urls = parse_ollama_base_urls(
+            base_url,
+            include_localhost_fallback=(get_active_config_mode() == "local"),
+        )
         self.base_url = self.base_urls[0]
         self.model = model
 
@@ -1514,7 +1523,7 @@ class OllamaProvider(LLMProvider):
             # Cloud-tagged models (e.g. minimax-m2.5:cloud) proxy to a remote
             # backend that doesn't support Ollama's grammar-level structured
             # format schema.  Use simple "json" format instead.
-            is_cloud = ':cloud' in self.model.lower()
+            is_cloud = self._is_cloud_model()
 
             if json_mode:
                 request_data["think"] = False
@@ -1613,10 +1622,99 @@ class OllamaProvider(LLMProvider):
             print(f"Ollama API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
     
+    def _is_cloud_model(self) -> bool:
+        """True when the active model is an Ollama Cloud-tagged model."""
+        from ollama_utils import is_ollama_cloud_model
+        return is_ollama_cloud_model(self.model)
+
+    def _correct_tool_call_for_execution_class(self, raw_call: dict) -> dict:
+        """Apply compatibility rewrites only to locally executed models."""
+        if self._is_cloud_model():
+            return raw_call
+        from local_model_corrections import correct_tool_call
+        return correct_tool_call(raw_call)
+
+    def _estimate_prompt_tokens(
+        self,
+        messages: list[dict[str, Any]] | None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> int:
+        """Approximate input tokens when Ollama omits ``prompt_eval_count``.
+
+        Ollama Cloud frequently drops ``prompt_eval_count`` from ``/api/chat``
+        responses (observed whenever the prompt is non-trivial), which would
+        otherwise make us report 0 input tokens. We estimate from the serialized
+        prompt text at roughly 4 characters per token so the token counter and
+        context gauge stay meaningful. Always flagged via ``input_estimated``.
+        """
+        try:
+            chars = 0
+            for message in messages or []:
+                if not isinstance(message, dict):
+                    continue
+                content = message.get("content")
+                if isinstance(content, str):
+                    chars += len(content)
+                elif content is not None:
+                    chars += len(str(content))
+            if tools:
+                try:
+                    chars += len(json.dumps(tools))
+                except (TypeError, ValueError):
+                    pass
+            if chars <= 0:
+                return 0
+            return max(1, chars // 4)
+        except Exception:
+            return 0
+
+    def _build_usage(
+        self,
+        prompt_eval_count: int,
+        eval_count: int,
+        note_suffix: str = "",
+        input_estimated: bool = False,
+    ) -> dict:
+        """Build truthful usage metadata for local vs Ollama Cloud models.
+
+        Cloud-tagged Ollama models are subscription/compute-metered, so per-token
+        dollar cost is unknown rather than ``$0``. Local models remain free.
+        When ``input_estimated`` is set the input token count is an approximation
+        (Ollama did not return ``prompt_eval_count``) and is flagged as such.
+        """
+        if input_estimated:
+            note_suffix = f"{note_suffix} (input tokens estimated)"
+        base = {
+            "input_tokens": prompt_eval_count,
+            "output_tokens": eval_count,
+            "total_tokens": prompt_eval_count + eval_count,
+        }
+        if input_estimated:
+            base["input_estimated"] = True
+        if self._is_cloud_model():
+            base.update({
+                "cost_usd": None,
+                "cost_known": False,
+                "billing_mode": "ollama_cloud_subscription",
+                "note": "Ollama Cloud (subscription/compute-metered; per-token cost not applicable)" + note_suffix,
+            })
+        else:
+            base.update({
+                "cost_usd": 0.0,
+                "cost_known": True,
+                "billing_mode": "local",
+                "note": "local model - no cost" + note_suffix,
+            })
+        return base
+
     def _get_context_options(self) -> dict[str, Any]:
         """Get context window options for the current model."""
         options = {}
-        # For Ollama-backed requests, always honor the configured context window.
+        # Cloud-tagged models proxy to a managed backend that uses its maximum
+        # context by default; do not send a local GPU num_ctx for them.
+        if self._is_cloud_model():
+            return options
+        # For local Ollama requests, always honor the configured context window.
         # Whether the model/runtime can fully use that budget is up to Ollama/model support,
         # but the app should consistently request the configured window instead of using a
         # hardcoded allowlist of model names.
@@ -1780,18 +1878,22 @@ class OllamaProvider(LLMProvider):
             content = message.get("content", "")
             tool_calls = message.get("tool_calls", [])
             
-            # Extract token counts from Ollama response
+            # Extract token counts from Ollama response. Ollama Cloud often omits
+            # prompt_eval_count for non-trivial prompts, so estimate input tokens
+            # in that case instead of reporting 0.
             usage_info = None
-            eval_count = result.get("eval_count", 0)
-            prompt_eval_count = result.get("prompt_eval_count", 0)
+            eval_count = result.get("eval_count", 0) or 0
+            prompt_eval_count = result.get("prompt_eval_count", 0) or 0
+            input_estimated = False
+            if not prompt_eval_count:
+                estimated = self._estimate_prompt_tokens(full_messages, ollama_tools)
+                if estimated:
+                    prompt_eval_count = estimated
+                    input_estimated = True
             if eval_count or prompt_eval_count:
-                usage_info = {
-                    "input_tokens": prompt_eval_count,
-                    "output_tokens": eval_count,
-                    "total_tokens": prompt_eval_count + eval_count,
-                    "cost_usd": 0.0,  # Local models have no cost
-                    "note": "local model - no cost"
-                }
+                usage_info = self._build_usage(
+                    prompt_eval_count, eval_count, input_estimated=input_estimated
+                )
             
             # Extract thinking if present (qwen3.5:latest and other reasoning models)
             thinking = None
@@ -1819,9 +1921,7 @@ class OllamaProvider(LLMProvider):
                     "arguments": arguments
                 }
                 
-                # Apply smart corrections for local models
-                from local_model_corrections import correct_tool_call
-                corrected_call = correct_tool_call(raw_call)
+                corrected_call = self._correct_tool_call_for_execution_class(raw_call)
                 
                 if os.environ.get('JARVIS_DEBUG'):
                     print(f"DEBUG: Ollama tool call - {corrected_call['name']} with {corrected_call['arguments']}", file=sys.stderr)
@@ -1926,18 +2026,22 @@ CRITICAL RULES:
             content = result.get("message", {}).get("content", "")
             parse_content = self._strip_reasoning_content(content)
             
-            # Extract token counts
+            # Extract token counts (estimate input when Ollama omits the count).
             usage_info = None
-            eval_count = result.get("eval_count", 0)
-            prompt_eval_count = result.get("prompt_eval_count", 0)
+            eval_count = result.get("eval_count", 0) or 0
+            prompt_eval_count = result.get("prompt_eval_count", 0) or 0
+            input_estimated = False
+            if not prompt_eval_count:
+                estimated = self._estimate_prompt_tokens(full_messages)
+                if estimated:
+                    prompt_eval_count = estimated
+                    input_estimated = True
             if eval_count or prompt_eval_count:
-                usage_info = {
-                    "input_tokens": prompt_eval_count,
-                    "output_tokens": eval_count,
-                    "total_tokens": prompt_eval_count + eval_count,
-                    "cost_usd": 0.0,
-                    "note": "local model - no cost (structured prompting fallback)"
-                }
+                usage_info = self._build_usage(
+                    prompt_eval_count, eval_count,
+                    note_suffix=" (structured prompting fallback)",
+                    input_estimated=input_estimated,
+                )
             
             # Extract thinking if present
             thinking = None
@@ -1973,9 +2077,7 @@ CRITICAL RULES:
                             "arguments": tool_call.get("arguments", {})
                         }
                         
-                        # Apply smart corrections for local models
-                        from local_model_corrections import correct_tool_call
-                        corrected_call = correct_tool_call(raw_call)
+                        corrected_call = self._correct_tool_call_for_execution_class(raw_call)
                         
                         return None, corrected_call, usage_info, thinking
             except (json.JSONDecodeError, ValueError):
@@ -2096,7 +2198,17 @@ def create_configured_provider(
                     os.environ["JARVIS_OVERRIDE_XAI_SEARCH"] = previous
         return provider_type, model, provider
     if provider_type == "ollama":
-        model = model or get_config_value("OLLAMA_MODEL", get_provider_fallback_model("ollama"))
+        from config_loader import get_active_config_mode
+        from ollama_utils import get_effective_ollama_model, OllamaModelError
+        # Resolve via the central mode-aware resolver: explicit/task model wins,
+        # else OLLAMA_CLOUD_MODEL in cloud / OLLAMA_MODEL in local. Cloud mode
+        # with no valid cloud model fails clearly; local keeps a safe fallback.
+        try:
+            model = get_effective_ollama_model(model_override=model)
+        except OllamaModelError:
+            if get_active_config_mode() == "cloud":
+                raise
+            model = model or get_config_value("OLLAMA_MODEL", get_provider_fallback_model("ollama"))
         return provider_type, model, create_provider(
             "ollama",
             base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),

@@ -12,9 +12,10 @@ from model_catalog import (
     get_catalog_providers,
     get_default_model_id,
     get_model_context_label,
+    get_provider_catalog,
     get_provider_model_options,
 )
-from ollama_utils import get_ollama_base_urls, request_ollama
+from ollama_utils import get_ollama_base_urls, request_ollama, is_ollama_cloud_model
 
 
 def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
@@ -33,7 +34,7 @@ def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
             models = []
             for model in data.get('models', []):
                 name = model.get('name', '')
-                is_cloud_model = ':cloud' in name.lower()
+                is_cloud_model = is_ollama_cloud_model(name)
                 # Get size info if available
                 size_gb = model.get('size', 0) / (1024**3)
                 size_str = f"{size_gb:.1f}GB" if size_gb > 0 else ''
@@ -55,9 +56,17 @@ def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
     except Exception as e:
         print(f"[Settings] Failed to fetch Ollama models: {e}")
     
-    # Fallback to default from config
-    default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
-    fallback_context = 'cloud' if mode == 'cloud' and ':cloud' in default_model.lower() else 'local'
+    # Fallback to default from config. Cloud mode must surface the configured
+    # cloud model (OLLAMA_CLOUD_MODEL) even when discovery is unavailable.
+    if mode == 'cloud':
+        default_model = (
+            get_jarvis_setting('OLLAMA_CLOUD_MODEL', '').strip()
+            or get_jarvis_setting('OLLAMA_MODEL', '').strip()
+            or 'qwen3.5:cloud'
+        )
+    else:
+        default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
+    fallback_context = 'cloud' if is_ollama_cloud_model(default_model) else 'local'
     return [{'id': default_model, 'name': f'{default_model} (default)', 'context': fallback_context}]
 
 IMAGE_PROVIDERS = {
@@ -103,6 +112,7 @@ class SettingsManager:
         'MODE',
         'OWNER_NAME',
         'LLM_PROVIDER',
+        'OLLAMA_CLOUD_MODEL',
         'TTS_PROVIDER',
         'IMAGE_TOOL_PROVIDER',
         'VIDEO_TOOL_PROVIDER',
@@ -118,13 +128,10 @@ class SettingsManager:
     
     def __init__(self, mode: str = 'cloud'):
         self.mode = mode
-        self._jarvis_loaded = False
-    
+
     def _ensure_jarvis_config(self):
-        """Ensure Jarvis config is loaded"""
-        if not self._jarvis_loaded:
-            load_jarvis_config(self.mode)
-            self._jarvis_loaded = True
+        """Resolve Jarvis config for this operation's request/startup scope."""
+        load_jarvis_config(self.mode)
 
     def _get_model_options_with_current(self, provider: str, current_model: str | None) -> list[dict[str, str]]:
         """Return curated provider options plus any active custom model."""
@@ -154,6 +161,22 @@ class SettingsManager:
         if current_provider and current_provider not in options:
             return [current_provider, *options]
         return options
+
+    def _model_is_compatible_with_provider(self, provider: str, model: str | None) -> bool:
+        """Reject a model override that clearly belongs to another provider/mode."""
+        if not model or provider != 'ollama':
+            return True
+
+        normalized = model.strip().lower()
+        for catalog_provider in get_catalog_providers():
+            for entry in get_provider_catalog(catalog_provider):
+                known_ids = [entry.get('id'), *(entry.get('aliases') or [])]
+                if normalized in {str(value).lower() for value in known_ids if value}:
+                    return False
+
+        # Ollama Cloud identifiers must be cloud-tagged; local Ollama must not
+        # accidentally retain a :cloud model when switching modes.
+        return is_ollama_cloud_model(model) == (self.mode == 'cloud')
     
     def _is_sensitive(self, key: str) -> bool:
         """Check if a setting key is sensitive"""
@@ -213,7 +236,7 @@ class SettingsManager:
         env_completion_guard_eval_model = get_jarvis_setting(
             'JARVIS_COMPLETION_GUARD_EVAL_MODEL',
             (
-                get_jarvis_setting('OLLAMA_MODEL', 'qwen3.5:latest')
+                self._ollama_env_default_model()
                 if env_completion_guard_eval_provider == 'ollama'
                 else get_default_model_id(env_completion_guard_eval_provider)
             )
@@ -251,6 +274,8 @@ class SettingsManager:
         
         # Calculate effective values
         effective_provider = web_provider or env_provider
+        if not self._model_is_compatible_with_provider(effective_provider, web_model):
+            web_model = None
         effective_model = web_model or self._get_env_provider_model(effective_provider)
         effective_image = web_image or env_image_provider
         effective_video = web_video or env_video_provider
@@ -292,10 +317,19 @@ class SettingsManager:
             else env_completion_guard_auto_threshold
         )
         effective_completion_guard_eval_provider = web_completion_guard_eval_provider or env_completion_guard_eval_provider
+        if not self._model_is_compatible_with_provider(
+            effective_completion_guard_eval_provider,
+            web_completion_guard_eval_model,
+        ):
+            web_completion_guard_eval_model = None
+        effective_completion_guard_eval_default = (
+            env_completion_guard_eval_model
+            if effective_completion_guard_eval_provider == env_completion_guard_eval_provider
+            else self._get_env_provider_model(effective_completion_guard_eval_provider)
+        )
         effective_completion_guard_eval_model = (
             web_completion_guard_eval_model
-            or env_completion_guard_eval_model
-            or self._get_env_provider_model(effective_completion_guard_eval_provider)
+            or effective_completion_guard_eval_default
         )
         
         _full_raw = get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD_FULL', '').strip()
@@ -317,7 +351,7 @@ class SettingsManager:
                 },
                 'model': {
                     'value': effective_model,
-                    'default': self._get_env_provider_model(env_provider),
+                    'default': self._get_env_provider_model(effective_provider),
                     'is_override': web_model is not None,
                     'options': self._get_model_options_with_current(effective_provider, effective_model)
                 }
@@ -418,7 +452,7 @@ class SettingsManager:
                 },
                 'eval_model': {
                     'value': effective_completion_guard_eval_model,
-                    'default': env_completion_guard_eval_model or self._get_env_provider_model(env_completion_guard_eval_provider),
+                    'default': effective_completion_guard_eval_default,
                     'is_override': web_completion_guard_eval_model is not None,
                     'options': self._get_model_options_with_current(
                         effective_completion_guard_eval_provider,
@@ -477,6 +511,9 @@ class SettingsManager:
         mode_overrides = web_config.get(self.mode, {}) if isinstance(web_config, dict) else {}
         ollama_needed = (
             self.mode == 'local'
+            # First boot: cloud env LLM_PROVIDER=ollama with no saved web override
+            # must still discover cloud models and select OLLAMA_CLOUD_MODEL.
+            or get_jarvis_setting('LLM_PROVIDER', '') == 'ollama'
             or mode_overrides.get('llm_provider') == 'ollama'
             or mode_overrides.get('completion_guard_eval_provider') == 'ollama'
             or get_jarvis_setting('JARVIS_COMPLETION_GUARD_EVAL_PROVIDER', 'openai') == 'ollama'
@@ -485,27 +522,46 @@ class SettingsManager:
             ollama_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
             models['ollama'] = fetch_ollama_models(ollama_url, mode=self.mode)
         else:
-            # Fallback for cloud mode
-            default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
-            models['ollama'] = [{'id': default_model, 'name': f'{default_model}', 'context': 'local'}]
+            # Fallback when Ollama is not the active provider.
+            default_model = self._ollama_env_default_model()
+            context = 'cloud' if is_ollama_cloud_model(default_model) else 'local'
+            models['ollama'] = [{'id': default_model, 'name': f'{default_model}', 'context': context}]
         
         return models
+
+    def _ollama_env_default_model(self) -> str:
+        """Resolve the env default Ollama model for this mode (cloud-aware).
+
+        Cloud mode prefers OLLAMA_CLOUD_MODEL (or a cloud-tagged legacy
+        OLLAMA_MODEL); local mode uses OLLAMA_MODEL.
+        """
+        if self.mode == 'cloud':
+            cloud = (get_jarvis_setting('OLLAMA_CLOUD_MODEL', '') or '').strip()
+            if cloud:
+                return cloud
+            legacy = (get_jarvis_setting('OLLAMA_MODEL', '') or '').strip()
+            if legacy and is_ollama_cloud_model(legacy):
+                return legacy
+            return 'qwen3.5:cloud'
+        return (get_jarvis_setting('OLLAMA_MODEL', '') or '').strip() or 'qwen3'
     
     def _get_default_model(self, provider: str) -> str:
         """Get the default model for a provider"""
         if provider == 'ollama':
-            # For Ollama, use the configured model from env
-            return get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
+            # Mode-aware: cloud uses OLLAMA_CLOUD_MODEL, local uses OLLAMA_MODEL.
+            return self._ollama_env_default_model()
 
         return get_default_model_id(provider)
 
     def _get_env_provider_model(self, provider: str) -> str:
         """Get the configured model from env for a provider, or fall back to the provider default."""
+        if provider == 'ollama':
+            # Mode-aware Ollama default (OLLAMA_CLOUD_MODEL in cloud).
+            return self._ollama_env_default_model()
         env_key_map = {
             'xai': 'XAI_MODEL',
             'anthropic': 'ANTHROPIC_MODEL',
             'openai': 'OPENAI_MODEL',
-            'ollama': 'OLLAMA_MODEL',
         }
         env_key = env_key_map.get(provider)
         if env_key:
@@ -558,6 +614,7 @@ class SettingsManager:
     
     def save_web_overrides(self, overrides: dict[str, Any]) -> bool:
         """Save web UI overrides (per-mode for LLM/image)"""
+        self._ensure_jarvis_config()
         config = load_web_config()
         
         # Ensure mode section exists
@@ -573,7 +630,14 @@ class SettingsManager:
             mode_config['llm_provider'] = value
         
         if 'llm_model' in overrides:
-            mode_config['llm_model'] = overrides['llm_model'] or None
+            value = overrides['llm_model'] or None
+            effective_provider = (
+                mode_config.get('llm_provider')
+                or get_jarvis_setting('LLM_PROVIDER', 'xai' if self.mode == 'cloud' else 'ollama')
+            )
+            if not self._model_is_compatible_with_provider(effective_provider, value):
+                value = None
+            mode_config['llm_model'] = value
         
         # Handle image overrides (per-mode)
         if 'image_provider' in overrides:
@@ -635,7 +699,16 @@ class SettingsManager:
             mode_config['completion_guard_eval_provider'] = value
 
         if 'completion_guard_eval_model' in overrides:
-            value = overrides['completion_guard_eval_model']
+            value = overrides['completion_guard_eval_model'] or None
+            effective_provider = (
+                mode_config.get('completion_guard_eval_provider')
+                or get_jarvis_setting(
+                    'JARVIS_COMPLETION_GUARD_EVAL_PROVIDER',
+                    'ollama' if self.mode == 'local' else 'openai',
+                )
+            )
+            if not self._model_is_compatible_with_provider(effective_provider, value):
+                value = None
             mode_config['completion_guard_eval_model'] = value or None
         
         # Handle audio overrides (global, not per-mode)
@@ -720,22 +793,28 @@ class SettingsManager:
             return False
         
         self.mode = mode
-        self._jarvis_loaded = False
-        self._ensure_jarvis_config()
         
         # Also update web config default
         return self.update_web_setting('defaults.mode', mode)
 
 
-# Singleton instance
-_settings_manager: SettingsManager | None = None
-
-
 def get_settings_manager(mode: str = None) -> SettingsManager:
-    """Get or create the settings manager singleton"""
-    global _settings_manager
-    if _settings_manager is None:
-        _settings_manager = SettingsManager(mode or 'cloud')
-    elif mode and mode != _settings_manager.mode:
-        _settings_manager.set_mode(mode)
-    return _settings_manager
+    """Create a request-local settings manager for one stable mode.
+
+    Managers are lightweight. Avoiding a mutable singleton prevents a mode
+    switch in one request from changing another request's model discovery or
+    defaults while it is still running.
+    """
+    if mode is None:
+        try:
+            from config_loader import get_scoped_config, get_active_config_mode
+            mode = (
+                get_active_config_mode()
+                if get_scoped_config() is not None
+                else load_web_config().get('defaults', {}).get('mode', 'cloud')
+            )
+        except Exception:
+            mode = 'cloud'
+    if mode not in ('cloud', 'local'):
+        mode = 'cloud'
+    return SettingsManager(mode)

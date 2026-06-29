@@ -1223,6 +1223,13 @@ Mode: {self.mode}
             "output_tokens": 0,
             "total_tokens": 0,
             "cost_usd": 0.0,
+            # has_unknown_cost is set when any turn used subscription/compute-metered
+            # billing (e.g. Ollama Cloud) where per-token dollar cost is unknown.
+            "has_unknown_cost": False,
+            "cost_known": True,
+            # input_estimated is set when any turn's input tokens were approximated
+            # because the provider (e.g. Ollama Cloud) omitted prompt_eval_count.
+            "input_estimated": False,
             "cache_creation_tokens": 0,
             "cache_read_tokens": 0,
             "cache_savings_usd": 0.0,
@@ -1453,8 +1460,15 @@ Mode: {self.mode}
                     total_usage["output_tokens"] += usage["output_tokens"]
                 if usage.get("total_tokens"):
                     total_usage["total_tokens"] += usage["total_tokens"]
-                if usage.get("cost_usd"):
+                # Sum only numeric known costs; flag unknown/subscription usage
+                # (e.g. Ollama Cloud) instead of coercing None to $0.
+                if isinstance(usage.get("cost_usd"), (int, float)):
                     total_usage["cost_usd"] += usage["cost_usd"]
+                if usage.get("cost_known") is False or usage.get("billing_mode") == "ollama_cloud_subscription":
+                    total_usage["has_unknown_cost"] = True
+                    total_usage["cost_known"] = False
+                if usage.get("input_estimated"):
+                    total_usage["input_estimated"] = True
                 # Accumulate cache metrics
                 if usage.get("cache_creation_tokens"):
                     total_usage["cache_creation_tokens"] += usage["cache_creation_tokens"]
@@ -3350,9 +3364,11 @@ Your synthesized response:"""
             if execution_time_ms is not None:
                 metadata["execution_time_ms"] = round(execution_time_ms, 2)
             
-            # Add token/cost info for cloud providers only
+            # Add token/cost info for metered providers. Ollama Cloud tokens are
+            # persisted too (with has_unknown_cost), so cumulative token totals
+            # include hosted Ollama usage instead of being silently dropped.
             provider = metadata.get("provider", "")
-            if token_info and provider in ["openai", "anthropic"]:
+            if token_info and provider in ["openai", "anthropic", "ollama"]:
                 metadata.update(token_info)
             if token_info and token_info.get("server_side_tools"):
                 server_side_tools = dict(token_info.get("server_side_tools") or {})
@@ -3484,18 +3500,23 @@ def main():
         print(f"🎯 Processing: '{transcript}'")
         print(f"📡 Mode: {mode}")
         
-        # Show model being used
+        # Show provider/model being used
         if mode == "cloud":
             provider = get_config_value("LLM_PROVIDER", "anthropic")
             if provider == "openai":
                 model = get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
             elif provider == "xai":
                 model = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
+            elif provider == "ollama":
+                from ollama_utils import resolve_ollama_model
+                model = resolve_ollama_model(mode)
             else:
                 model = get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
+            print(f"🤖 Provider: {provider}  Model: {model}")
         else:
-            model = get_config_value("OLLAMA_MODEL", "qwen3-vl")
-        print(f"🤖 Model: {model}")
+            from ollama_utils import resolve_ollama_model
+            model = resolve_ollama_model(mode)
+            print(f"🤖 Model: {model}")
         
         print("=" * 60)
 
