@@ -1740,7 +1740,12 @@ Previous structured data:
             emit('connected', {
                 'session_id': session_id,
                 'mode': default_mode,
-                'tools_count': tool_service.get_tool_count()
+                'tools_count': tool_service.get_tool_count(),
+                'deployment': (
+                    'docker'
+                    if os.environ.get('JARVIS_DEPLOYMENT', '').strip().lower() == 'docker'
+                    else 'native'
+                )
             })
             print(f"[WS] Client connected: {session_id} (default mode: {default_mode})")
         

@@ -202,8 +202,9 @@ class ProactiveManager {
       alert.severity
     );
     
-    // Play TTS if enabled
-    if (this.app.audioEnabled) {
+    // Docker has no host speaker, so route proactive speech through the
+    // browser. Native installs keep using their existing local speaker path.
+    if (this._shouldPlayBrowserTTS()) {
       const message = `Alert: ${alert.title}. ${alert.description || ''}`;
       this.app._generateAndPlayTTS(message);
     }
@@ -229,8 +230,9 @@ class ProactiveManager {
       reminder.description || ''
     );
     
-    // Play TTS if enabled
-    if (this.app.audioEnabled) {
+    // Docker has no host speaker, so route proactive speech through the
+    // browser. Native installs keep using their existing local speaker path.
+    if (this._shouldPlayBrowserTTS()) {
       const message = `Reminder: ${reminder.title}. ${reminder.description || ''}`;
       this.app._generateAndPlayTTS(message);
     }
@@ -241,6 +243,10 @@ class ProactiveManager {
     
     // Flash the badge
     this._flashBadge();
+  }
+
+  _shouldPlayBrowserTTS() {
+    return this.app.deployment === 'docker' && this.app.audioEnabled;
   }
   
   _showBrowserNotification(title, body, severity = 'medium') {
@@ -391,4 +397,3 @@ class ProactiveManager {
 
 // Export for use in app.js
 window.ProactiveManager = ProactiveManager;
-

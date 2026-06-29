@@ -209,6 +209,47 @@ Choose one hostname and use it for every Jarvis UI port. For example, use either
 
 The shared authentication cookie works across ports on the same hostname, but browsers intentionally isolate cookies between different hostnames. Signing in at `http://localhost:5001` therefore shares authentication with `http://localhost:8890`, but not with `http://127.0.0.1:8890` or a LAN-IP URL.
 
+## Browser audio, reminders, and alerts
+
+Docker containers cannot drive system's physical speaker. Browser TTS is the intended path when you use Jarvis from a laptop or desktop.
+
+### Chat TTS (Jarvis Web replies)
+
+When **🔊 TTS is enabled** in Jarvis Web, chat responses are synthesized via `POST /api/tts` and played in **your browser**. That is true for both **Docker** and **native** installs when you access Jarvis through the browser on a headless server — chat audio does not come out of the server’s speaker.
+
+### Proactive speech (reminders and alerts)
+
+Spoken reminders and alerts use a **separate** path from chat. On **Docker**, Jarvis Web polls the API and plays TTS in the browser when a new reminder or alert arrives. On a **native** install, the background daemons speak through the **host speaker** (`bin/say.sh` / `say-local.sh`); Jarvis Web does **not** repeat them in the browser (avoids double audio).
+
+| | Chat TTS in browser | Spoken reminders/alerts |
+|---|---|---|
+| **Docker** (browser on laptop/desktop) | Yes — `/api/tts` | Yes — Jarvis Web proactive + `/api/tts` |
+| **Native** (headless server + browser on another device) | Yes — `/api/tts` | No in browser — host speaker only |
+
+The Memory UI alert **ding** (port 5002) is unrelated: it is a short tab alert when the Memory browser tab is open, not full spoken TTS.
+
+### Requirements for spoken reminders/alerts in Docker
+
+1. **`jarvis-services` must be running** — use the full-stack `docker compose --profile extras up -d` line, not the UIs-only line that omits `jarvis-services`. The reminder scheduler inside that container marks reminders as `triggered`; without it, nothing reaches the proactive poller.
+2. **🔊 TTS enabled** in Jarvis Web (header toggle or Settings).
+3. **TTS provider configured** in `config/cloud.env` or `config/local.env` (same keys chat TTS uses — ElevenLabs, xAI, Qwen3, etc.).
+4. **Jarvis Web tab must stay open** — see below.
+
+### Keep the Jarvis Web tab open (it does not need to be the active tab)
+
+Proactive polling runs in **Jarvis Web’s JavaScript** on port **5001**. It is client-side: closing that tab stops checks and spoken notifications.
+
+You do **not** need Jarvis Web to be the front-most tab. You can work in **Memory** (`:5002`), **Intelligence** (`:5003`), or another app while a **background** Jarvis Web tab stays open — polling and TTS can still run there.
+
+What does **not** work:
+
+- **Closing** the Jarvis Web tab entirely — proactive stops.
+- Expecting Memory or Intelligence tabs alone to play spoken reminders — those UIs are separate apps; they do not run Jarvis Web’s proactive poller (Memory’s alert ding is separate).
+
+**Browser caveats:** Background tabs may poll slower than every 10 seconds (browser throttling). Some browsers block autoplay until you have clicked or toggled audio on the Jarvis Web tab at least once in that session. If speech is delayed, bring the Jarvis Web tab forward once or click 🔊.
+
+**Typical delay:** Reminder scheduler runs about every 60 seconds; proactive polls about every 10 seconds — expect up to roughly a minute after the due time before speech.
+
 ## Cloud and local modes
 
 Cloud mode is the simplest Docker Desktop starting point:

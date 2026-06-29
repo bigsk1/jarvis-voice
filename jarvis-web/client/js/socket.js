@@ -134,6 +134,22 @@ class JarvisSocket {
     this.socket.on('tools:updated', (data) => {
       this._emit('toolsUpdated', data);
     });
+
+    // Proactive notifications keep their Socket.IO event names because the
+    // ProactiveManager subscribes to them through this wrapper. Without these
+    // pass-through handlers, the server events reach Socket.IO but never reach
+    // the browser notification, reminder TTS, badge, or acknowledgment UI.
+    [
+      'proactive:counts',
+      'proactive:alert',
+      'proactive:reminder',
+      'proactive:ack_success',
+      'proactive:error'
+    ].forEach((event) => {
+      this.socket.on(event, (data) => {
+        this._emit(event, data);
+      });
+    });
     
     // Conversation events
     this.socket.on('conversation:created', (data) => {

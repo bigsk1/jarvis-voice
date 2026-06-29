@@ -27,6 +27,7 @@ class JarvisApp {
     
     // State
     this.audioEnabled = Utils.storage.get('audioEnabled', false);
+    this.deployment = 'native';
     this.glowIntensity = Utils.storage.get('glowIntensity', 'low');
     this._settingsData = null;
     this._conversations = [];
@@ -69,6 +70,7 @@ class JarvisApp {
     
     this.socket.on('sessionReady', (data) => {
       console.log('[App] Session ready:', data);
+      this.deployment = data.deployment === 'docker' ? 'docker' : 'native';
       this._updateConnectionStatus(true);
       this.statusText.textContent = 'Connected';
       const toolsCount = document.getElementById('toolsCount');
