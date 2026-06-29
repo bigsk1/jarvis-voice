@@ -1,4 +1,13 @@
+x-jarvis-mcp-base-service: &jarvis-mcp-base-service
+  environment:
+    # Only jarvis-web receives the Docker CLI/socket and owns Tool RAG sync.
+    JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker
+    JARVIS_DEFER_TOOL_SYNC: "1"
+
 services:
+  jarvis-api:
+    <<: *jarvis-mcp-base-service
+
   jarvis-web:
     build:
       context: .
@@ -12,3 +21,18 @@ services:
       - "${JARVIS_DOCKER_SOCKET_GID:?Set JARVIS_DOCKER_SOCKET_GID to the group ID of /var/run/docker.sock}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
+  jarvis-services:
+    <<: *jarvis-mcp-base-service
+
+  jarvis-canvas:
+    <<: *jarvis-mcp-base-service
+
+  jarvis-memory:
+    <<: *jarvis-mcp-base-service
+
+  jarvis-intelligence:
+    <<: *jarvis-mcp-base-service
+
+  jarvis-docs:
+    <<: *jarvis-mcp-base-service

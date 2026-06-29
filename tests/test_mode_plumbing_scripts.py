@@ -8,9 +8,32 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_mcp_compose_assigns_web_as_only_tool_sync_owner():
+    compose = yaml.safe_load((ROOT / "docker-compose.mcp.yml").read_text())
+    services = compose["services"]
+
+    web = services["jarvis-web"]
+    assert web["build"]["target"] == "mcp"
+    assert web["environment"]["JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE"] == "docker-mcp"
+    assert web["environment"]["JARVIS_MCP_SYNC_STRICT"] == "1"
+
+    for name in (
+        "jarvis-api",
+        "jarvis-services",
+        "jarvis-canvas",
+        "jarvis-memory",
+        "jarvis-intelligence",
+        "jarvis-docs",
+    ):
+        environment = services[name]["environment"]
+        assert environment["JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE"] == "docker"
+        assert environment["JARVIS_DEFER_TOOL_SYNC"] == "1"
 
 
 def _copy_mode_resolver(checkout: Path) -> None:
@@ -188,3 +211,38 @@ def test_docker_entrypoint_rejects_missing_selected_config_before_launch(tmp_pat
     assert result.returncode != 0
     assert "config/local.env" in result.stderr
     assert not launch_log.exists()
+
+
+def test_mcp_override_base_service_defers_tool_sync_to_web(tmp_path):
+    checkout, env, launch_log = _docker_checkout(tmp_path)
+    fake_bin = Path(env["PATH"].split(os.pathsep)[0])
+    python_log = checkout / "python.log"
+    _write_executable(
+        fake_bin / "python",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PYTHON_LOG"
+exit 0
+""",
+    )
+    env.pop("JARVIS_SKIP_INIT")
+    env.update(
+        {
+            "JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE": "docker",
+            "JARVIS_DEFER_TOOL_SYNC": "1",
+            "PYTHON_LOG": str(python_log),
+        }
+    )
+
+    result = subprocess.run(
+        ["bash", str(checkout / "docker" / "entrypoint.sh"), "web"],
+        cwd=checkout,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "deferring tool sync" in result.stdout
+    assert "sync-tools.py" not in python_log.read_text()
+    assert not (checkout / "data" / ".docker_tool_profile_synced").exists()
+    assert launch_log.read_text().strip() == "web:local"

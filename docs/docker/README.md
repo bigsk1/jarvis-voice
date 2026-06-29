@@ -104,6 +104,15 @@ docker compose exec jarvis-api python bin/sync-tools.py cloud --force
 docker compose exec jarvis-api python bin/sync-tools.py local --force
 ```
 
+For an MCP stack, keep `JARVIS_DOCKER_TOOL_PROFILE=docker` in root `.env` and
+run discovery through the MCP-capable `jarvis-web` startup path instead of
+`jarvis-api`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml exec -T jarvis-web rm -f data/.docker_tool_profile_synced
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d --force-recreate jarvis-web
+```
+
 Compose uses `--force-recreate`; there is no `--force-restart` flag.
 
 ---
@@ -171,6 +180,11 @@ The `docker` profile remains the safer choice when all requests execute inside c
 ### Optional Docker MCP tools
 
 Brave Search and Fetch in `config/mcp-servers.json` are stdio MCP servers launched with `docker run`. The normal Jarvis image intentionally has neither the Docker CLI nor access to the host daemon. Use the opt-in Compose override to enable them:
+
+Keep root `.env` set to `JARVIS_DOCKER_TOOL_PROFILE=docker`. The MCP override
+changes only `jarvis-web` to `docker-mcp`; do not set `docker-mcp` as the
+stack-wide profile because the API and other base services do not have the
+Docker CLI or socket.
 
 ```bash
 # Add the host Docker socket group to root .env (one time).

@@ -49,8 +49,19 @@ run_init() {
     fi
     local marker="data/.docker_tool_profile_synced"
     # Bump when marker semantics change so older partial-sync markers are retried.
-    local marker_value="v2:${profile}:${sync_modes}:${profile_hash}"
+    local marker_value="v3:${profile}:${sync_modes}:${profile_hash}"
     local needs_sync=0
+    local can_sync_profile=1
+
+    # Only the jarvis-web service in docker-compose.mcp.yml has the MCP image,
+    # Docker socket, and strict partial-sync handling. If docker-mcp was set as
+    # the stack-wide profile, base services must defer instead of writing a
+    # misleading completed marker after failing to launch sidecars.
+    if [ "${JARVIS_DEFER_TOOL_SYNC:-0}" = "1" ]; then
+      can_sync_profile=0
+    elif [ "$profile" = "docker-mcp" ] && [ "${JARVIS_MCP_SYNC_STRICT:-0}" != "1" ]; then
+      can_sync_profile=0
+    fi
 
     local missing_selected_db=0
     for mode in $sync_modes; do
@@ -78,7 +89,9 @@ run_init() {
       python bin/migrate-proactive-db.py "$mode"
     done
 
-    if [ "$needs_sync" = "1" ]; then
+    if [ "$needs_sync" = "1" ] && [ "$can_sync_profile" = "0" ]; then
+      echo "Docker init: deferring tool sync to the MCP-capable jarvis-web service."
+    elif [ "$needs_sync" = "1" ]; then
       local mcp_sync_incomplete=0
       local sync_status=0
       for mode in $sync_modes; do

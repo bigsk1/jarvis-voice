@@ -332,8 +332,18 @@ and payloads that match the newly pulled code.
 If the update adds or changes tools, refresh Tool RAG after the stack is up:
 
 ```bash
+# Standard stack
 docker compose exec jarvis-api python bin/sync-tools.py cloud --force
 docker compose exec jarvis-api python bin/sync-tools.py local --force
+```
+
+For the MCP stack, do not run tool sync in `jarvis-api`; that base image has no
+Docker CLI or socket. Remove the shared sync marker and recreate `jarvis-web`
+so discovery runs before the Web process starts in the MCP-capable container:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml exec -T jarvis-web rm -f data/.docker_tool_profile_synced
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d --force-recreate jarvis-web
 ```
 
 Back up `data/` and your live configuration files before major upgrades. Never commit `config/cloud.env`, `config/local.env`, root `.env`, `jarvis-web/config/web_config.json`, or database files.
@@ -345,6 +355,11 @@ Remote HTTP or SSE MCP servers can work without Docker socket access when their 
 The tracked `docker` tool profile disables the existing stdio MCP servers because they launch child containers through the host Docker daemon. The optional `docker-compose.mcp.yml` socket workflow is currently tested only on a trusted Linux host. It relies on a Unix socket and numeric socket GID. Treat macOS and Windows as **experimental** if you try it.
 
 ### Optional: stdio MCP via `docker-compose.mcp.yml` (experimental)
+
+Keep `JARVIS_DOCKER_TOOL_PROFILE=docker` in root `.env`. This override assigns
+`docker-mcp` only to `jarvis-web`, which is the only service receiving the
+Docker CLI and socket. A stack-wide `docker-mcp` value makes base services try
+to discover sidecars they cannot launch.
 
 `stat -c '%g' /var/run/docker.sock` is a Linux command and does not run in PowerShell or macOS Terminal. Use Docker instead — it reads the same `/var/run/docker.sock` path that Compose mounts:
 
@@ -456,7 +471,7 @@ Use `host.docker.internal` instead of `127.0.0.1` or `localhost`. From inside a 
 
 **Memory sync ≠ tool sync.** API startup logs such as `Syncing data: local → cloud` come from `sync-memory-db.py`. They do **not** populate `tool_definitions` in `jarvis_memory_local.db`. Tool RAG is filled only by `bin/sync-tools.py local`.
 
-Compose init is supposed to run both modes when root `.env` has `JARVIS_SYNC_MODES="cloud local"`, and `data/.docker_tool_profile_synced` may already show `docker:cloud local:<hash>`. If Web UI **local mode** still loops on `tool_search` (bitcoin price, SerpAPI, etc.), the local tools DB may never have been embedded at first boot — run the checks below from **PowerShell** in the repo directory.
+Compose init is supposed to run both modes when root `.env` has `JARVIS_SYNC_MODES="cloud local"`, and `data/.docker_tool_profile_synced` may already show `v3:docker:cloud local:<hash>`. If Web UI **local mode** still loops on `tool_search` (bitcoin price, SerpAPI, etc.), the local tools DB may never have been embedded at first boot — run the checks below from **PowerShell** in the repo directory.
 
 **1. Check local tool embeddings** (expect dozens of tools, 768 dimensions for local/Ollama):
 
@@ -471,6 +486,10 @@ If **Tool Definitions** shows `Checked: 0 tools` or errors, local Tool RAG was n
 ```powershell
 docker compose exec jarvis-api python bin/sync-tools.py local --force
 ```
+
+If this is an MCP stack, use the marker-removal and `jarvis-web` recreate
+commands in [Updating Jarvis](#updating-jarvis) instead; `jarvis-api` cannot
+launch MCP sidecars.
 
 Then switch Web UI back to **local** mode and retry the request.
 
