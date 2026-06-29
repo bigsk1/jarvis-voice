@@ -284,15 +284,72 @@ docker compose exec jarvis-api python bin/sync-tools.py cloud --force
 docker compose exec jarvis-api python bin/sync-tools.py local --force
 ```
 
-Compose uses `--force-recreate`; there is no `--force-restart` flag.
-
 Back up `data/` and your live configuration files before major upgrades. Never commit `config/cloud.env`, `config/local.env`, root `.env`, `jarvis-web/config/web_config.json`, or database files.
 
 ## MCP on Docker Desktop
 
 Remote HTTP or SSE MCP servers can work without Docker socket access when their URL is reachable from the Jarvis containers. A server running directly on the Mac or Windows host should normally use `host.docker.internal`, not `localhost`, in `config/mcp-servers.json`.
 
-The tracked `docker` tool profile disables the existing stdio MCP servers because they launch child containers through the host Docker daemon. The optional `docker-compose.mcp.yml` socket workflow is currently tested only on a trusted Linux host. It relies on a Unix socket and numeric socket GID, so it is not included in these macOS and Windows steps.
+The tracked `docker` tool profile disables the existing stdio MCP servers because they launch child containers through the host Docker daemon. The optional `docker-compose.mcp.yml` socket workflow is currently tested only on a trusted Linux host. It relies on a Unix socket and numeric socket GID. Treat macOS and Windows as **experimental** if you try it.
+
+### Optional: stdio MCP via `docker-compose.mcp.yml` (experimental)
+
+`stat -c '%g' /var/run/docker.sock` is a Linux command and does not run in PowerShell or macOS Terminal. Use Docker instead — it reads the same `/var/run/docker.sock` path that Compose mounts:
+
+**PowerShell** (from the repo directory, Docker Desktop running):
+
+```powershell
+$gid = docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine stat -c '%g' /var/run/docker.sock
+Add-Content -Path .env -Value "JARVIS_DOCKER_SOCKET_GID=$gid"
+```
+
+**macOS Terminal** (same one-liner, then append manually or use `echo "JARVIS_DOCKER_SOCKET_GID=$gid" >> .env`).
+
+**Optional WSL-only check** (Docker Desktop WSL 2 backend): `wsl stat -c '%g' /var/run/docker.sock` — the value should match the Docker one-liner above. **`0` is valid** on some Docker Desktop installs.
+
+### Pull MCP sidecar images first (required for stdio MCP)
+
+Stdio MCP servers in `config/mcp-servers.json` run as **`docker run …`** sidecars from inside `jarvis-web`. On a fresh clone, Docker init runs **`sync-tools.py`**, which discovers MCP tools before the Web UI starts. If an enabled server's image is not on the host yet, that server is skipped (same effect as disabled) and logged. The Web UI still starts, but Docker init does not record the tool sync as complete, so recreating `jarvis-web` retries it after the images become available. Pulling first avoids the partial first sync and empty MCP tool lists.
+
+Check which servers have `"enabled": true`, then pull each **image** referenced in `"args"` (the token after `run`, before flags like `-e` or `--network`).
+
+With the stock config (`fetch` and `brave_search` enabled):
+
+```powershell
+docker pull mcp/fetch
+docker pull mcp/brave-search
+```
+
+If you enable other entries (for example `mcp/sequentialthinking` or `mcr.microsoft.com/playwright/mcp`), pull those images too before starting.
+
+The MCP override only changes **`jarvis-web`**. Every other service is unchanged; use the same **`--profile extras`** pattern as the standard install, with both compose files on every command.
+
+**PowerShell** — build and start (pick one `up` line):
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml build
+
+# APIs + all Web UIs (extras), no background daemons
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d jarvis-api jarvis-web jarvis-canvas jarvis-memory jarvis-intelligence jarvis-docs
+
+# Full stack including jarvis-services (reminders, scheduled tasks, self-healing)
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d
+
+Start-Process http://localhost:5001
+```
+
+**Verify MCP inside jarvis-web:**
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml exec -T jarvis-web docker version
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml exec -T jarvis-web ./bin/test-mcp --discover
+```
+
+**macOS Terminal** — same compose flags; swap `Start-Process` for `open http://localhost:5001`.
+
+**Command Prompt** — same `docker compose -f docker-compose.yml -f docker-compose.mcp.yml ...` lines; use `start http://localhost:5001` to open the UI.
+
+If `docker version` inside `jarvis-web` fails with permission denied, the GID may not match your Docker Desktop socket — re-run the Alpine `stat` command and recreate `jarvis-web`. See [README.md](README.md) for security notes on mounting `docker.sock`.
 
 ## Troubleshooting
 
@@ -326,6 +383,18 @@ docker inspect jarvis-voice-jarvis-canvas-1 --format '{{json .Mounts}}' |
 ### Port already allocated
 
 Stop native Jarvis processes or other applications using ports `5001`-`5004`, `8880`, or `8890`. Alternatively, change the corresponding `JARVIS_*_PORT` value in root `.env`.
+
+### MCP stdio: `brave_search crashed (exit code: 9)` or Web UI slow to start
+
+Usually the MCP sidecar image was not pulled yet (`mcp/fetch`, `mcp/brave-search`, etc.). Pull images for every `"enabled": true` server in `config/mcp-servers.json`, then recreate `jarvis-web`:
+
+```powershell
+docker pull mcp/fetch
+docker pull mcp/brave-search
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d --force-recreate jarvis-web
+```
+
+Init logs may show `MCP servers skipped` — those tools stay out of Tool RAG until the image is available. The recreate above reruns an incomplete MCP sync; after a successful retry, the tools are added to Tool RAG and the completed-sync marker is written. Runtime auto-restart still applies during chat; discovery/sync skips unavailable servers instead of looping restarts.
 
 ### Web UI cannot reach host Ollama or another host service
 

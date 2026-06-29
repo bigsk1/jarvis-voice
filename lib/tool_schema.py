@@ -326,6 +326,7 @@ class ToolRegistry:
         self.tools: dict[str, ToolSchema] = {}
         self.mcp_clients: dict[str, Any] = {}
         self.mcp_manager = None
+        self.mcp_unavailable: dict[str, str] = {}
         self._registry_verbose = sys.stdout.isatty() and not os.environ.get("JARVIS_JSON_MODE")
         self._profile_name = get_active_profile_name()
         self._profile_overrides = load_active_profile_overrides()
@@ -462,16 +463,32 @@ class ToolRegistry:
                         print(f"  ⊝ {server_name} (disabled)")
                     continue
                 
+                # Discovery is a bounded startup probe. Disable stdio crash
+                # recovery before start(), because start() performs the MCP
+                # initialize handshake and can otherwise enter the runtime
+                # restart loop before tools/list is reached.
+                previous_auto_restart = getattr(client, "_auto_restart", None)
+                if previous_auto_restart is not None:
+                    client._auto_restart = False
+
                 try:
                     if verbose:
                         print(f"  ⏳ Starting {server_name}...")
                     client.start()
-                    enabled_servers.append((server_name, client))
+                    enabled_servers.append((server_name, client, previous_auto_restart))
                     if verbose:
                         print(f"  ✓ {server_name} started")
                 except Exception as e:
+                    reason = str(e).strip() or "failed to start"
+                    self.mcp_unavailable[server_name] = reason
                     if verbose:
-                        print(f"  ✗ {server_name} failed to start: {str(e)[:60]}")
+                        print(f"  ⚠️ {server_name} unavailable (skipped): {reason[:120]}")
+                    try:
+                        client.stop()
+                    except Exception:
+                        pass
+                    if previous_auto_restart is not None:
+                        client._auto_restart = previous_auto_restart
             
             if not enabled_servers:
                 if verbose:
@@ -490,14 +507,28 @@ class ToolRegistry:
             # Sort servers alphabetically for consistent ordering
             enabled_servers_sorted = sorted(enabled_servers, key=lambda x: x[0])
             
-            for server_name, client in enabled_servers_sorted:
+            for server_name, client, previous_auto_restart in enabled_servers_sorted:
                 try:
                     # Get tools from started server
                     tools = client.list_tools()
-                    
+
+                    # Remote HTTP/SSE clients have no subprocess. Only inspect
+                    # an exit code when this transport actually owns one.
+                    process = getattr(client, "process", None)
+                    exit_code = process.poll() if process else None
                     if not tools:
+                        reason = (
+                            f"exited during discovery (code {exit_code})"
+                            if exit_code is not None
+                            else "no tools returned"
+                        )
+                        self.mcp_unavailable[server_name] = reason
                         if verbose:
-                            print(f"  ⚠️  {server_name}: no tools")
+                            print(f"  ⚠️ {server_name} unavailable (skipped): {reason}")
+                        try:
+                            client.stop()
+                        except Exception:
+                            pass
                         continue
                     
                     # Store client for later use
@@ -530,13 +561,17 @@ class ToolRegistry:
                         print(f"  ✅ {server_name}: {len(tools)} tools")
                 
                 except Exception as e:
+                    reason = str(e).strip() or "discovery failed"
+                    self.mcp_unavailable[server_name] = reason
                     if verbose:
-                        print(f"  ✗ {server_name}: {str(e)[:60]}")
-                    # Clean up failed client
+                        print(f"  ⚠️ {server_name} unavailable (skipped): {reason[:120]}")
                     try:
                         client.stop()
-                    except:
+                    except Exception:
                         pass
+                finally:
+                    if previous_auto_restart is not None:
+                        client._auto_restart = previous_auto_restart
         
         except Exception as e:
             if verbose:

@@ -83,7 +83,10 @@ from tool_schema import ToolRegistry
 from memory_db import get_memory_db
 from config_loader import load_config
 
-def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False):
+MCP_UNAVAILABLE_EXIT_CODE = 3
+
+
+def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[str, str]:
     """Sync all tools to the vector database."""
     load_config(mode)
     
@@ -96,6 +99,13 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False):
     
     print("🔍 Discovering tools...")
     registry = ToolRegistry(skills_dir, mcp_config)
+
+    if registry.mcp_unavailable and verbose:
+        print(
+            f"⚠️ MCP servers skipped ({len(registry.mcp_unavailable)}): "
+            + ", ".join(sorted(registry.mcp_unavailable.keys()))
+        )
+        print("   Pull missing Docker images or set enabled=false in config/mcp-servers.json.")
     
     # Get DB connection
     db = get_memory_db()
@@ -197,6 +207,10 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False):
         print(f"   Disabled {disabled_count} stale/removed tools in DB.")
     print("   Tools are now ready for dynamic retrieval.")
 
+    unavailable_mcp = dict(registry.mcp_unavailable)
+    registry.cleanup()
+    return unavailable_mcp
+
 
 def _disable_stale_tools(db, active_tools: set, verbose: bool) -> int:
     """
@@ -254,7 +268,13 @@ def main():
     if mode not in ("cloud", "local"):
         print("mode must be 'cloud' or 'local'")
         sys.exit(1)
-    sync_tools(mode, force_reembed=force_reembed)
+    unavailable_mcp = sync_tools(mode, force_reembed=force_reembed)
+    if unavailable_mcp and os.environ.get("JARVIS_MCP_SYNC_STRICT", "0") == "1":
+        print(
+            "⚠️ MCP tool sync was incomplete; Docker init will retry on the next start.",
+            file=sys.stderr,
+        )
+        sys.exit(MCP_UNAVAILABLE_EXIT_CODE)
 
 if __name__ == "__main__":
     main()

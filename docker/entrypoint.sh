@@ -48,7 +48,8 @@ run_init() {
       profile_hash="$(sha256sum "$profile_path" | cut -d' ' -f1)"
     fi
     local marker="data/.docker_tool_profile_synced"
-    local marker_value="${profile}:${sync_modes}:${profile_hash}"
+    # Bump when marker semantics change so older partial-sync markers are retried.
+    local marker_value="v2:${profile}:${sync_modes}:${profile_hash}"
     local needs_sync=0
 
     local missing_selected_db=0
@@ -78,11 +79,28 @@ run_init() {
     done
 
     if [ "$needs_sync" = "1" ]; then
+      local mcp_sync_incomplete=0
+      local sync_status=0
       for mode in $sync_modes; do
         echo "Syncing tools for Docker profile in ${mode} mode..."
-        python bin/sync-tools.py "$mode"
+        if python bin/sync-tools.py "$mode"; then
+          :
+        else
+          sync_status=$?
+          if [ "$sync_status" = "3" ]; then
+            mcp_sync_incomplete=1
+            echo "MCP tool sync incomplete in ${mode} mode; continuing startup and retrying next time." >&2
+          else
+            status=$sync_status
+            break
+          fi
+        fi
       done
-      printf "%s" "$marker_value" > "$marker"
+      if [ "$status" != "0" ] || [ "$mcp_sync_incomplete" = "1" ]; then
+        rm -f "$marker"
+      else
+        printf "%s" "$marker_value" > "$marker"
+      fi
     else
       echo "Docker init: DBs exist and Docker tool profile is already synced."
     fi

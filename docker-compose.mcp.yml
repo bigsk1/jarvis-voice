@@ -6,6 +6,8 @@ services:
     image: jarvis-voice:mcp
     environment:
       JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: docker-mcp
+      # Report partial MCP discovery to the entrypoint without blocking Web UI startup.
+      JARVIS_MCP_SYNC_STRICT: "1"
     group_add:
       - "${JARVIS_DOCKER_SOCKET_GID:?Set JARVIS_DOCKER_SOCKET_GID to the group ID of /var/run/docker.sock}"
     volumes:

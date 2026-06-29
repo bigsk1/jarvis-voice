@@ -48,6 +48,8 @@ class MCPClient:
         self._restart_count = 0
         self._last_restart_time = 0
         self._in_cooldown = False
+        # Runtime tool calls auto-restart crashed servers; discovery/sync must fail fast.
+        self._auto_restart = True
 
     def _force_restart(self, reason: str = "unknown"):
         """
@@ -99,6 +101,9 @@ class MCPClient:
         
         # Process has died
         print(f"⚠️ MCP {self.name} crashed (exit code: {exit_code})", file=sys.stderr)
+
+        if not self._auto_restart:
+            return False
         
         # Check if we're in cooldown
         if self._in_cooldown:

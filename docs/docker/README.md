@@ -174,14 +174,42 @@ Brave Search and Fetch in `config/mcp-servers.json` are stdio MCP servers launch
 
 ```bash
 # Add the host Docker socket group to root .env (one time).
+# Linux native shell:
 printf 'JARVIS_DOCKER_SOCKET_GID=%s\n' \
   "$(stat -c '%g' /var/run/docker.sock)" >> .env
+```
 
-# Build and start with the MCP override.
-docker compose -f docker-compose.yml -f docker-compose.mcp.yml build jarvis-web
-docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d
+On **Windows (PowerShell)**, **macOS**, or any host without GNU `stat`, use the same socket path Compose mounts:
 
-# Confirm Docker access and MCP discovery from jarvis-web.
+```powershell
+$gid = docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine stat -c '%g' /var/run/docker.sock
+Add-Content -Path .env -Value "JARVIS_DOCKER_SOCKET_GID=$gid"
+```
+
+Optional on Windows with Docker Desktop’s WSL 2 backend: `wsl stat -c '%g' /var/run/docker.sock`
+
+**Pull MCP sidecar images before first start.** Enabled stdio servers in `config/mcp-servers.json` use `docker run` from inside `jarvis-web`. Missing images are skipped during tool sync (logged as unavailable — same as disabled for Tool RAG). The Web UI still starts, but Docker init withholds its completed-sync marker so recreating `jarvis-web` retries Tool RAG sync after the images become available. Pull each image for enabled servers so discovery succeeds on first boot:
+
+```bash
+docker pull mcp/fetch
+docker pull mcp/brave-search
+# Add any other enabled server images from mcp-servers.json "args"
+```
+
+The override only changes **`jarvis-web`** (Docker CLI, socket mount, `docker-mcp` profile). All other services use the same images and settings as the base stack. Combine both compose files with **`--profile extras`** the same way as a normal bring-up.
+
+```bash
+# Build (jarvis-web uses the MCP image target; other services unchanged)
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml build
+
+# APIs + all Web UIs (extras), no background daemons — same scope as the quick-start UIs-only command
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d \
+  jarvis-api jarvis-web jarvis-canvas jarvis-memory jarvis-intelligence jarvis-docs
+
+# Full stack including jarvis-services (reminders, scheduled tasks, self-healing)
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d
+
+# Confirm Docker access and MCP discovery from jarvis-web
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml \
   exec -T jarvis-web docker version
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml \
