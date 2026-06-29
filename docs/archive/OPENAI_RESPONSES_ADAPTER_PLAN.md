@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-10
 
-Status: Implemented behind config gates in Jarvis v2.50.0. This document remains the design record and rollout checklist; the live provider reference is [OPENAI_PROVIDER.md](OPENAI_PROVIDER.md).
+Status: Implemented behind config gates in Jarvis v2.50.0. This document remains the design record and rollout checklist; the live provider reference is [OPENAI_PROVIDER.md](../OPENAI_PROVIDER.md).
 
 This plan is a working design note for evaluating OpenAI's Responses API in Jarvis without destabilizing the existing xAI provider path.
 

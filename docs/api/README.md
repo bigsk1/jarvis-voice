@@ -129,7 +129,7 @@ jarvis_intelligence_pending_reflections{mode="cloud"}
 ```
 
 ### Reference
-- **[Fixes Log](FIXES_LOG.md)** - Historical fixes and updates
+- **[Fixes Log](../archive/api/FIXES_LOG.md)** - Historical fixes and updates
 
 ### Architecture (see `docs/service/`)
 - [Proactive System Architecture](../service/PROACTIVE_ASSISTANT_SYSTEM.md)

@@ -15,11 +15,11 @@ This document describes a **future architecture** for conditional multi-step rea
 
 | Capability | Live doc / code | Notes |
 |------------|-----------------|-------|
-| **Extended thinking blocks** | [EXTENDED_THINKING.md](EXTENDED_THINKING.md), `lib/thinking.py` | Provider-native reasoning (`reasoning_content`, `--debug-thinking`). Works on supported cloud models. |
-| **Intelligence reflection** | [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md), `lib/intelligence.py` | Post-hoc LLM analysis of experiences → insights (PREFER/AVOID tools). Queued, not inline. |
-| **Duplicate tool guard + freshness** | [JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md#duplicate-tool-guard) | In-request loop prevention, not sequential MCP thinking. |
-| **Profile Card + correction learning** | [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) | Cross-turn user prefs and correction detection. |
-| **Sequential Thinking MCP** | `config/mcp-servers.json` | **`sequentialthinking` server is disabled** — see [TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md). |
+| **Extended thinking blocks** | [EXTENDED_THINKING.md](../EXTENDED_THINKING.md), `lib/thinking.py` | Provider-native reasoning (`reasoning_content`, `--debug-thinking`). Works on supported cloud models. |
+| **Intelligence reflection** | [INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md), `lib/intelligence.py` | Post-hoc LLM analysis of experiences → insights (PREFER/AVOID tools). Queued, not inline. |
+| **Duplicate tool guard + freshness** | [JARVIS_WORKFLOW.md](../JARVIS_WORKFLOW.md#duplicate-tool-guard) | In-request loop prevention, not sequential MCP thinking. |
+| **Profile Card + correction learning** | [USER_PROFILE_SYSTEM.md](../USER_PROFILE_SYSTEM.md) | Cross-turn user prefs and correction detection. |
+| **Sequential Thinking MCP** | `config/mcp-servers.json` | **`sequentialthinking` server is disabled** — see [TOOL_MANAGEMENT.md](../TOOL_MANAGEMENT.md). |
 
 ### Partial / stubbed code paths
 
@@ -31,13 +31,13 @@ This document describes a **future architecture** for conditional multi-step rea
 
 - Designing a future **inline** thinking step before tool selection
 - Understanding the **original vision** for self-correction loops
-- Comparing against [EXTENDED_THINKING.md](EXTENDED_THINKING.md) (provider reasoning) and intelligence reflection (post-hoc learning)
+- Comparing against [EXTENDED_THINKING.md](../EXTENDED_THINKING.md) (provider reasoning) and intelligence reflection (post-hoc learning)
 
 ### Recommended reading order
 
-1. [JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md) — current request pipeline
-2. [EXTENDED_THINKING.md](EXTENDED_THINKING.md) — thinking mode that works today
-3. [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) — learning after the fact
+1. [JARVIS_WORKFLOW.md](../JARVIS_WORKFLOW.md) — current request pipeline
+2. [EXTENDED_THINKING.md](../EXTENDED_THINKING.md) — thinking mode that works today
+3. [INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md) — learning after the fact
 4. **This file** — historical design for conditional sequential thinking
 
 ---

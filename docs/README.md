@@ -9,7 +9,6 @@
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
 - **[docker/README.md](docker/README.md)** - 🐳 **Docker guide** — run Web UIs + API in containers (commands, `.env`, hybrid mode)
-- **[docker/DOCKER_PLANNING.md](docker/DOCKER_PLANNING.md)** - Original Docker design record; use `docker/README.md` for operations
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` recommended default; also `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
@@ -219,7 +218,6 @@
 | **TOOL_BUILDER.md** | 🔧 **Dynamic Tool Creation** - Autonomous tool building with safety checks  |
 | **JARVIS_PLAYGROUND.md** | 🎮 **Playground Design** - Self-play, Docker, VM workspace, Carvis twin  |
 | **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
-| **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Implemented design history; current values are in env examples |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
 
 ### Developer Tools
@@ -250,9 +248,14 @@
 | **[DOCS_STATUS.md](DOCS_STATUS.md)** | Documentation health and maintenance checklist |
 | **archive/** | Historical docs, changelogs, and phase milestones |
 | **[archive/thinking/](archive/thinking/)** | Thinking-mode branch notes (see `EXTENDED_THINKING.md`) |
-| **XAI_NATIVE_CONTINUATION_PLAN.md** | Implemented historical design; live guide: `XAI_PROVIDER.md` |
-| **OPENAI_RESPONSES_ADAPTER_PLAN.md** | Implemented historical design; live guide: `OPENAI_PROVIDER.md` |
-| **OAuth/README.md** | Unimplemented provider OAuth research; not a setup guide |
+| **[archive/XAI_NATIVE_CONTINUATION_PLAN.md](archive/XAI_NATIVE_CONTINUATION_PLAN.md)** | Implemented historical design; live guide: `XAI_PROVIDER.md` |
+| **[archive/OPENAI_RESPONSES_ADAPTER_PLAN.md](archive/OPENAI_RESPONSES_ADAPTER_PLAN.md)** | Implemented historical design; live guide: `OPENAI_PROVIDER.md` |
+| **[archive/STATUS_UPDATES_DESIGN.md](archive/STATUS_UPDATES_DESIGN.md)** | Implemented voice-progress design history; current values are in env examples |
+| **[archive/SEQUENTIAL_THINKING_ARCHITECTURE.md](archive/SEQUENTIAL_THINKING_ARCHITECTURE.md)** | Unimplemented sequential-thinking research design |
+| **[archive/OAuth/README.md](archive/OAuth/README.md)** | Unimplemented provider OAuth research; not a setup guide |
+| **[archive/docker/DOCKER_PLANNING.md](archive/docker/DOCKER_PLANNING.md)** | Original Docker design record; use `docker/README.md` for operations |
+| **[archive/api/FIXES_LOG.md](archive/api/FIXES_LOG.md)** | Historical API fix log |
+| **[archive/service/FIXES.md](archive/service/FIXES.md)** | Historical service fix log |
 
 ## 🔧 Configuration
 
@@ -370,7 +373,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Added the tracked `skills/profiles/docker.json` baseline plus configurable `JARVIS_DOCKER_TOOL_PROFILE`; hybrid installs can use `default` Tool RAG while blocking container-incompatible tools only in Web UI Settings.
   - Added in-container shell/CLI examples, Docker-specific environment guidance, LAN UI access notes, and separate planning/design documentation.
   - Pinned FastAPI below `0.137` pending prometheus instrumentator compatibility and corrected the unavailable `fpdf2` dependency pin.
-  - See: [`docs/docker/README.md`](docker/README.md), [`docs/docker/DOCKER_PLANNING.md`](docker/DOCKER_PLANNING.md)
+  - See: [`docs/docker/README.md`](docker/README.md), [`docs/archive/docker/DOCKER_PLANNING.md`](archive/docker/DOCKER_PLANNING.md)
 
 **2026-05-21:**
 - ✅ **Cross-turn correction learning (v2.53.0)**
@@ -405,7 +408,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Optional OpenAI-hosted tools (`web_search`, `file_search`, `code_interpreter`) have separate config gates and budgets so they do not piggyback on xAI native-search controls.
   - Provider-facing tool result previews now preserve exact source candidates and valid JSON when bounded, reducing repeated search/canvas hallucination risk.
   - Web upload vision supports multi-image analysis, keeps socket payloads lightweight, and OpenAI vision follows `OPENAI_MODEL` when `VISION_MODEL` is blank or provider-mismatched while forwarding supported `VISION_DETAIL`.
-  - See: [`docs/OPENAI_PROVIDER.md`](OPENAI_PROVIDER.md), [`docs/OPENAI_RESPONSES_ADAPTER_PLAN.md`](OPENAI_RESPONSES_ADAPTER_PLAN.md), [`docs/CONVERSATION_STATE_ARCHITECTURE.md`](CONVERSATION_STATE_ARCHITECTURE.md)
+  - See: [`docs/OPENAI_PROVIDER.md`](OPENAI_PROVIDER.md), [`docs/archive/OPENAI_RESPONSES_ADAPTER_PLAN.md`](archive/OPENAI_RESPONSES_ADAPTER_PLAN.md), [`docs/CONVERSATION_STATE_ARCHITECTURE.md`](CONVERSATION_STATE_ARCHITECTURE.md)
 
 **2026-05-03:**
 - ✅ **xAI SDK client-tool routing + in-flight continuation**
@@ -1489,7 +1492,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - **Phrase modes**: `normal` (professional) or `unhinged` (chaotic/funny)
   - **Silence padding**: Prevents speaker wake-up cutoff (`STATUS_SILENCE_PAD_MS`)
   - **Audio caching**: Pre-gen static phrases to reduce TTS calls (`./bin/status-cache`)
-  - See: `docs/STATUS_UPDATES_DESIGN.md`
+  - See: `docs/archive/STATUS_UPDATES_DESIGN.md`
 - ✅ **Weather Tool** - OpenWeatherMap integration with geocoding
   - Accurate location via Geocoding API (lat/lon)
   - US state code handling ("Denver, CO" → "Denver, Colorado")

@@ -122,7 +122,7 @@ chmod 755 logs/thinking/
 
 These were explored in planning but are **not** the current implementation:
 
-- **Sequential Thinking MCP** — structured `think_step` tools via MCP (see `SEQUENTIAL_THINKING_ARCHITECTURE.md` for design notes)
+- **Sequential Thinking MCP** — structured `think_step` tools via MCP (see the [archived architecture proposal](archive/SEQUENTIAL_THINKING_ARCHITECTURE.md) for design notes)
 - **Always-on thinking in production** — today opt-in only
 - **OpenAI non-o-series** — no thinking unless using o1/o3-family models
 

@@ -2,7 +2,7 @@
 
 Run Jarvis **Web UIs, API, and background services** in Docker on your own machine. This is a **local build** workflow (`docker compose build`) — there is no published image on Docker Hub.
 
-For architecture notes, networking deep-dives, and the original design doc, see **[DOCKER_PLANNING.md](DOCKER_PLANNING.md)**.
+For architecture notes, networking deep-dives, and the original design doc, see **[DOCKER_PLANNING.md](../archive/docker/DOCKER_PLANNING.md)**.
 
 ---
 
@@ -409,6 +409,6 @@ Set `JARVIS_DOCKER_UID` / `JARVIS_DOCKER_GID` in `.env` to your host user (`id -
 
 - [MAC-WINDOWS.md](MAC-WINDOWS.md) - experimental Docker Desktop setup for macOS, PowerShell, and Command Prompt
 - [INSTALL_GUIDE.md](../INSTALL_GUIDE.md) — full native install (watchdog cron notes)
-- [DOCKER_PLANNING.md](DOCKER_PLANNING.md) — design, auth matrix, MCP, TTS/mic TLS
+- [DOCKER_PLANNING.md](../archive/docker/DOCKER_PLANNING.md) — design, auth matrix, MCP, TTS/mic TLS
 - [skills/README.md](../../skills/README.md) — tool profiles
 - [SECURITY_HARDENING.md](../SECURITY_HARDENING.md) — `JARVIS_API_AUTH` behavior

@@ -8,8 +8,8 @@ This file tracks doc health and maintenance. For the live index, see [README.md]
 
 ## Current state
 
-**Tracked docs:** 168 Markdown files under `docs/`: 145 active-tree docs and
-23 files under `docs/archive/`. The QMD collection can also include ignored
+**Tracked docs:** 165 Markdown files under `docs/`: 134 active-tree docs and
+31 files under `docs/archive/`. The QMD collection can also include ignored
 personal directories present on a particular machine, so its count is not the
 tracked-repository count.
 
@@ -57,7 +57,7 @@ QMD does not respect `.gitignore`. After `qmd update`, verify private dirs were 
 ## Pass 4 completed (2026-05-25)
 
 - **`JARVIS_WORKFLOW.md`** — Added v2.50.x request pipeline (pre-router stack, duplicate guard, continuation, env vars); fixed `MAX_TOOL_TURNS` / retry defaults; tool counts 75+
-- **`SEQUENTIAL_THINKING_ARCHITECTURE.md`** — Implementation status banner: planning doc vs live paths (`EXTENDED_THINKING`, intelligence reflection, disabled MCP)
+- **`archive/SEQUENTIAL_THINKING_ARCHITECTURE.md`** — Implementation status banner: planning doc vs live paths (`EXTENDED_THINKING`, intelligence reflection, disabled MCP)
 - **`INTELLIGENCE_LAYER.md`** — Correction learning, Profile Card, dashboard port 5003, schema, 8880 API table, CG bridge; fixed `last_outcome` values; removed editorial debris; Grafana → metrics + port 5003 UI
 - **`ollama/README.md`** — Verified planning status (2026-05-25); fixed `config_loader.py` line ref
 
@@ -86,21 +86,28 @@ stores: relative-link scan, referenced-command/path scan, mode/provider wording
 scan, Compose config rendering, shell/Python syntax checks, and the project test
 collection boundary.
 
-## Archive candidates
+## Pass 6 completed (2026-06-29)
 
-These files are now clearly labelled but should move to `docs/archive/` in a
-dedicated cleanup commit if preserving their history remains useful:
+- Moved one-time fix logs, superseded implementation plans, unimplemented
+  research, and the original Docker design into topic-preserving paths under
+  `docs/archive/`.
+- Updated active guides to link to archived design context only where it remains
+  useful.
+- Repaired relative links inside the moved documents so the archive remains
+  browsable and passes the public documentation integrity checks.
+
+## Archived design and fix records
 
 | File | Reason |
 |------|--------|
-| `api/FIXES_LOG.md` | One-time API fix log; live commands are elsewhere |
-| `service/FIXES.md` | November 2025 fix log with obsolete mode/manual-patch details |
-| `OAuth/README.md` | Unimplemented provider-auth research proposal |
-| `XAI_NATIVE_CONTINUATION_PLAN.md` | Implemented design record; live guide is `XAI_PROVIDER.md` |
-| `OPENAI_RESPONSES_ADAPTER_PLAN.md` | Implemented design record; live guide is `OPENAI_PROVIDER.md` |
-| `STATUS_UPDATES_DESIGN.md` | Implemented design history; operational values live in env examples |
-| `SEQUENTIAL_THINKING_ARCHITECTURE.md` | Explicit unimplemented future design |
-| `docker/DOCKER_PLANNING.md` | Original design record; live guide is `docker/README.md` |
+| `archive/api/FIXES_LOG.md` | One-time API fix log; live commands are elsewhere |
+| `archive/service/FIXES.md` | November 2025 fix log with obsolete mode/manual-patch details |
+| `archive/OAuth/README.md` | Unimplemented provider-auth research proposal |
+| `archive/XAI_NATIVE_CONTINUATION_PLAN.md` | Implemented design record; live guide is `XAI_PROVIDER.md` |
+| `archive/OPENAI_RESPONSES_ADAPTER_PLAN.md` | Implemented design record; live guide is `OPENAI_PROVIDER.md` |
+| `archive/STATUS_UPDATES_DESIGN.md` | Implemented design history; operational values live in env examples |
+| `archive/SEQUENTIAL_THINKING_ARCHITECTURE.md` | Explicit unimplemented future design |
+| `archive/docker/DOCKER_PLANNING.md` | Original design record; live guide is `docker/README.md` |
 
 Roadmaps such as `FUTURE_ENHANCEMENTS.md`, `ADVANCED_AI_TECHNIQUES.md`,
 `JARVIS_PLAYGROUND.md`, `Psychological-Profile-Ideas.md`, and

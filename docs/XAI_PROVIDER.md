@@ -730,7 +730,7 @@ Expected result from the last run: `8 passed`.
 
 **Next best steps:**
 
-Detailed implementation plan: [xAI Native Continuation Implementation Plan](XAI_NATIVE_CONTINUATION_PLAN.md).
+Detailed implementation plan: [xAI Native Continuation Implementation Plan](archive/XAI_NATIVE_CONTINUATION_PLAN.md).
 
 1. Keep testing `XAI_STORE_MESSAGES=true` with Grok 4.3 on multi-tool tasks that previously looped or hit duplicate guards. Compare latency, native server-side tool counts, duplicate-guard frequency, and response quality against `XAI_STORE_MESSAGES=false`.
 2. If xAI SDK/gRPC failures still happen often, keep the OpenAI-compatible fallback and watch logs for when continuation is dropped or retried as local text context.

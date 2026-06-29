@@ -247,7 +247,7 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - Configurable phrases with humor/encouragement toggles
   - Phrase modes: `normal` or `unhinged` (chaotic/funny)
   - Audio caching for instant playback of repeated phrases
-  - See [`docs/STATUS_UPDATES_DESIGN.md`](docs/STATUS_UPDATES_DESIGN.md)
+  - See [`docs/archive/STATUS_UPDATES_DESIGN.md`](docs/archive/STATUS_UPDATES_DESIGN.md)
 
 
 ![jarvis-tui](docs/images/jarvis-tui.png)

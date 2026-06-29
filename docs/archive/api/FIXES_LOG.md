@@ -1,9 +1,9 @@
 # Fixes Log - Jarvis Proactive Assistant
 
 > **Historical fix log.** This records earlier implementation changes and is
-> not a current setup or troubleshooting guide. Use [API_OVERVIEW.md](API_OVERVIEW.md)
-> and [TEST_API.md](TEST_API.md) for live commands. This file is an archive
-> candidate retained temporarily for traceability.
+> not a current setup or troubleshooting guide. Use [API_OVERVIEW.md](../../api/API_OVERVIEW.md)
+> and [TEST_API.md](../../api/TEST_API.md) for live commands. It is retained in
+> `docs/archive/api/` for traceability.
 
 ## ✅ manage_intel Subfolder Creation Breaks Ingestion (Latest - Nov 19, 2025)
 
@@ -416,7 +416,7 @@ docker compose up -d
 curl -X POST http://localhost:8880/api/alerts/acknowledge-all
 ```
 
-See [REMOTE_MONITORING.md](REMOTE_MONITORING.md) for current deployment guidance.
+See [REMOTE_MONITORING.md](../../api/REMOTE_MONITORING.md) for current deployment guidance.
 
 ---
 
@@ -452,7 +452,7 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
-See [REMOTE_MONITORING.md](REMOTE_MONITORING.md) for current monitoring-agent guidance.
+See [REMOTE_MONITORING.md](../../api/REMOTE_MONITORING.md) for current monitoring-agent guidance.
 
 ---
 
@@ -524,4 +524,4 @@ curl -X POST http://localhost:8880/api/alerts/acknowledge-all
 
 ## Detailed Documentation
 
-- **[Remote Monitoring Guide](REMOTE_MONITORING.md)** - Setup guide
+- **[Remote Monitoring Guide](../../api/REMOTE_MONITORING.md)** - Setup guide

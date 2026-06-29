@@ -155,7 +155,7 @@ Simple alerts from bash scripts
 - [Service Logging](../service/SERVICE_LOGGING.md)
 
 **History:**
-- [Fixes Log](FIXES_LOG.md) - All fixes applied
+- [Fixes Log](../archive/api/FIXES_LOG.md) - All fixes applied
 
 ---
 

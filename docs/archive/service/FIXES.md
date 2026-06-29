@@ -2,10 +2,10 @@
 
 > **Historical fix log (November 2025).** Commands, mode variables, and manual
 > patch suggestions below describe the state at that time and are not the
-> current operator guide. Use [README.md](README.md),
-> [../EMBEDDING_HEALTH_CHECKS.md](../EMBEDDING_HEALTH_CHECKS.md), and
-> [../DUAL_DATABASE_SYSTEM.md](../DUAL_DATABASE_SYSTEM.md) for current behavior.
-> This file is an archive candidate retained temporarily for traceability.
+> current operator guide. Use [README.md](../../service/README.md),
+> [../EMBEDDING_HEALTH_CHECKS.md](../../EMBEDDING_HEALTH_CHECKS.md), and
+> [../DUAL_DATABASE_SYSTEM.md](../../DUAL_DATABASE_SYSTEM.md) for current behavior.
+> It is retained in `docs/archive/service/` for traceability.
 
 ## ✅ Monitoring Agent Fixes (Latest - Nov 18, 2025)
 

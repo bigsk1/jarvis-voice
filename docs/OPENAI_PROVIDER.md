@@ -1,6 +1,6 @@
 # OpenAI provider in Jarvis
 
-This document describes how Jarvis uses OpenAI today: **Chat Completions** (default) for most cloud text + tool routing, and the optional **Responses API** (`/v1/responses`) path when you explicitly enable it. For design rationale, phases, and non-goals, see [OPENAI_RESPONSES_ADAPTER_PLAN.md](OPENAI_RESPONSES_ADAPTER_PLAN.md).
+This document describes how Jarvis uses OpenAI today: **Chat Completions** (default) for most cloud text + tool routing, and the optional **Responses API** (`/v1/responses`) path when you explicitly enable it. For design rationale, phases, and non-goals, see [OPENAI_RESPONSES_ADAPTER_PLAN.md](archive/OPENAI_RESPONSES_ADAPTER_PLAN.md).
 
 ## Where OpenAI fits in Jarvis
 
@@ -94,7 +94,7 @@ After each Responses call, `OpenAIProvider` fills **`_openai_responses_diag_hold
 
 Jarvis **does not** take a failing Responses continuation and blindly send Responses-only payload shapes (e.g. `function_call_output`) through **Chat Completions**. On structural failure the router returns **`openai_continuation_error`**; the orchestrator retries once with normal **local text context** (`turn_input` string) and no structural continuation payloads.
 
-This matches the separation described in [OPENAI_RESPONSES_ADAPTER_PLAN.md](OPENAI_RESPONSES_ADAPTER_PLAN.md): structural provider payloads are not mixed into incompatible APIs.
+This matches the separation described in [OPENAI_RESPONSES_ADAPTER_PLAN.md](archive/OPENAI_RESPONSES_ADAPTER_PLAN.md): structural provider payloads are not mixed into incompatible APIs.
 
 ## Orchestrator: in-flight continuation (OpenAI)
 
@@ -164,4 +164,4 @@ flowchart TD
 - **Chat path**: Familiar messages + nested function tools.
 - **Responses path**: Typed `input` + flatter tools + optional hosted tools + optional `previous_response_id` chain inside one task.
 
-For acceptance-style checks and smoke-test ideas, see the checklist in [OPENAI_RESPONSES_ADAPTER_PLAN.md](OPENAI_RESPONSES_ADAPTER_PLAN.md).
+For acceptance-style checks and smoke-test ideas, see the checklist in [OPENAI_RESPONSES_ADAPTER_PLAN.md](archive/OPENAI_RESPONSES_ADAPTER_PLAN.md).

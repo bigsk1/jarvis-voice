@@ -13,7 +13,7 @@ Background services that run 24/7 to manage alerts, auto-resolve issues, monitor
 
 ### Service Details
 - **[Service Logging](SERVICE_LOGGING.md)** - Structured logging system
-- **[Fixes](FIXES.md)** - Service-related fixes
+- **[Historical Fixes](../archive/service/FIXES.md)** - November 2025 service fix log
 - **[../tools/scheduled-tasks/scheduled-tasks.md](../tools/scheduled-tasks/scheduled-tasks.md)** - Scheduled Tasks architecture, API, runner, and UI
 
 ---

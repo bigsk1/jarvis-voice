@@ -6,7 +6,7 @@ Last updated: 2026-05-03
 > structural continuation path now lives in
 > `orchestrator/orchestrator_v2.py` (`ProviderRouteInput`,
 > `_build_xai_structural_route_input`) and is documented for operators in
-> [XAI_PROVIDER.md](XAI_PROVIDER.md). Statements below labelled "current" or
+> [XAI_PROVIDER.md](../XAI_PROVIDER.md). Statements below labelled "current" or
 > "remaining gap" describe the May 3 planning snapshot, not the live code.
 
 This plan describes how to wire xAI `store_messages=True`, `previous_response_id`, and structural client-side tool results into Jarvis for real, without replacing Jarvis' existing intelligence, logging, feedback, completion guard, auto-context, Tool RAG, or memory systems.

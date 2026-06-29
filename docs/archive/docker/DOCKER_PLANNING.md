@@ -1,8 +1,8 @@
 # Jarvis Docker Deployment (Planning & Design)
 
-> **User guide:** For day-to-day Docker usage (commands, `.env`, hybrid mode, troubleshooting), see **[README.md](README.md)**.
+> **User guide:** For day-to-day Docker usage (commands, `.env`, hybrid mode, troubleshooting), see **[README.md](../../docker/README.md)**.
 
-**Status:** Experimental. Jarvis ships a root [`Dockerfile`](../../Dockerfile) and [`docker-compose.yml`](../../docker-compose.yml) for local testing, but this is not a production/published image path yet.
+**Status:** Experimental. Jarvis ships a root [`Dockerfile`](../../../Dockerfile) and [`docker-compose.yml`](../../../docker-compose.yml) for local testing, but this is not a production/published image path yet.
 
 > **Implemented mode plumbing (2026-06-27):** Compose injects `JARVIS_MODE`
 > into every service, the entrypoint validates `config/<mode>.env` before init,
@@ -134,7 +134,7 @@ Do **not** combine root containers with privileged mounts like `/var/run/docker.
 
 ## `.dockerignore` (required)
 
-The build context must **not** copy runtime state — or secrets — into the image. Root **[`.dockerignore`](../../.dockerignore)** mirrors [`.gitignore`](../../.gitignore) and adds Docker-specific exclusions.
+The build context must **not** copy runtime state — or secrets — into the image. Root **[`.dockerignore`](../../../.dockerignore)** mirrors [`.gitignore`](../../../.gitignore) and adds Docker-specific exclusions.
 
 **Never in the image (always mount or omit):**
 
@@ -190,7 +190,7 @@ Cloud mode may use xAI, Anthropic, OpenAI, or **Ollama Cloud**. When
 `LLM_PROVIDER=ollama` in `config/cloud.env`, use a signed-in daemon reachable
 from the container and set a cloud-tagged `OLLAMA_CLOUD_MODEL`. Normal local
 Ollama models remain the supported default for local mode. See
-[../ollama/README.md](../ollama/README.md).
+[../ollama/README.md](../../ollama/README.md).
 
 ---
 
@@ -203,7 +203,7 @@ data/jarvis_memory.db        → cloud mode (OpenAI-class embeddings)
 data/jarvis_memory_local.db  → local mode (Ollama embeddings)
 ```
 
-Startup sync keeps them aligned when you switch modes. See [DUAL_DATABASE_SYSTEM.md](../DUAL_DATABASE_SYSTEM.md).
+Startup sync keeps them aligned when you switch modes. See [DUAL_DATABASE_SYSTEM.md](../../DUAL_DATABASE_SYSTEM.md).
 
 **Docker implication:** sync only the modes you intend to use. Compose defaults
 `JARVIS_SYNC_MODES` to the selected `JARVIS_MODE`; set it to `"cloud local"`
@@ -334,11 +334,11 @@ After changing profile:
 
 Inspect: `./bin/manage-tools.py profile show`
 
-See [skills/README.md](../../skills/README.md) (Tool profiles) and [ADVANCED_AI_TECHNIQUES.md](../ADVANCED_AI_TECHNIQUES.md#design-note-runtime-aware-capability-narration-qa) for the known Q&A vs profile gap.
+See [skills/README.md](../../../skills/README.md) (Tool profiles) and [ADVANCED_AI_TECHNIQUES.md](../../ADVANCED_AI_TECHNIQUES.md#design-note-runtime-aware-capability-narration-qa) for the known Q&A vs profile gap.
 
 **Optional advanced:** Mount `/var/run/docker.sock` and remove MCP / `docker_control` overrides from a custom profile — only on trusted single-user hosts.
 
-Template: [`skills/profiles/examples/docker.json`](../../skills/profiles/examples/docker.json)
+Template: [`skills/profiles/examples/docker.json`](../../../skills/profiles/examples/docker.json)
 
 ---
 
@@ -443,7 +443,7 @@ services:
 | Strategy | When | Notes |
 |----------|------|-------|
 | **`JARVIS_API_AUTH=false` on private `jarvis-net`** | Simplest v1 | Stack not published to internet; only edge ports (5001, 8880) exposed on host |
-| **Pass `JARVIS_API_KEY` on internal HTTP clients** | Auth enabled | Same key as external; requires code/env updates in callers (canvas gallery, proactive service, daemons) — see [auth/README.md](../auth/README.md) |
+| **Pass `JARVIS_API_KEY` on internal HTTP clients** | Auth enabled | Same key as external; requires code/env updates in callers (canvas gallery, proactive service, daemons) — see [auth/README.md](../../auth/README.md) |
 | **Extend trusted IP list** (future env) | Auth enabled | e.g. trust Docker `172.18.0.0/16` — fragile if network CIDR changes |
 | **Single container + supervisord** | Avoid networking/auth churn | All `localhost` calls work; heavier container, worse isolation |
 
@@ -462,7 +462,7 @@ Expose `jarvis-web` to LAN or a reverse proxy; keep direct API access private un
 
 Remote webhooks are the exception: n8n, UniFi Protect, `jarvis-monitor`, or other machines cannot POST to `127.0.0.1:8880`. For those, expose the API through a LAN bind plus `JARVIS_API_AUTH=true`, a reverse proxy with auth, a tunnel, or a webhook sidecar on the same host.
 
-See also: [SECURITY_HARDENING.md](../SECURITY_HARDENING.md) (API auth), [auth/README.md](../auth/README.md) (Web UI SSO).
+See also: [SECURITY_HARDENING.md](../../SECURITY_HARDENING.md) (API auth), [auth/README.md](../../auth/README.md) (Web UI SSO).
 
 ---
 
@@ -488,7 +488,7 @@ python orchestrator/orchestrator_v2.py cloud "Hello"
 
 ## Compose sketch
 
-The root [`docker-compose.yml`](../../docker-compose.yml) is the runnable source. The sketch below is a trimmed reference for the important wiring:
+The root [`docker-compose.yml`](../../../docker-compose.yml) is the runnable source. The sketch below is a trimmed reference for the important wiring:
 
 ```yaml
 networks:
@@ -604,7 +604,7 @@ The current native `./bin/jarvis-services` script is not a Docker foreground pro
 
 Base: Python 3.12 on Debian/Ubuntu slim.
 
-System packages from [`system-packages.txt`](../../system-packages.txt) (subset for Web UI stack):
+System packages from [`system-packages.txt`](../../../system-packages.txt) (subset for Web UI stack):
 
 - `ffmpeg`, `sox`, `jq`, `curl`, `sqlite3`, `imagemagick`, …
 - Skip or optional: `alsa-utils` (voice not in container v1)
@@ -668,10 +668,10 @@ Do not let runtime containers install missing packages on boot. Build all depend
 
 ## Related docs
 
-- [INSTALL_GUIDE.md](../INSTALL_GUIDE.md) — native install path
-- [JARVIS_WEB_UI.md](../JARVIS_WEB_UI.md) — Web UI features and ports
-- [DUAL_DATABASE_SYSTEM.md](../DUAL_DATABASE_SYSTEM.md) — cloud/local DB sync
-- [config/README.md](../../config/README.md) — env file reference
-- [skills/README.md](../../skills/README.md) — tool profiles
-- [JARVIS_PLAYGROUND.md](../JARVIS_PLAYGROUND.md) — earlier CLI-only Docker sketch (superseded by this doc for Web UI scope)
-- [monitoring/docker-compose.yml](../../monitoring/docker-compose.yml) — Grafana/Loki stack (already containerized; mounts host `logs/`)
+- [INSTALL_GUIDE.md](../../INSTALL_GUIDE.md) — native install path
+- [JARVIS_WEB_UI.md](../../JARVIS_WEB_UI.md) — Web UI features and ports
+- [DUAL_DATABASE_SYSTEM.md](../../DUAL_DATABASE_SYSTEM.md) — cloud/local DB sync
+- [config/README.md](../../../config/README.md) — env file reference
+- [skills/README.md](../../../skills/README.md) — tool profiles
+- [JARVIS_PLAYGROUND.md](../../JARVIS_PLAYGROUND.md) — earlier CLI-only Docker sketch (superseded by this doc for Web UI scope)
+- [monitoring/docker-compose.yml](../../../monitoring/docker-compose.yml) — Grafana/Loki stack (already containerized; mounts host `logs/`)

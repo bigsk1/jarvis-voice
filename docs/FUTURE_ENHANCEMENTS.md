@@ -242,7 +242,7 @@ A single command that checks:
 
 Jarvis is past the "add more features" phase. The next gains come from **tighter feedback loops**, **cross-surface continuity**, and **memory quality** - not pivoting to SOUL.md/MEMORY.md-style harnesses. Code-driven orchestration stays; borrow the *idea* of always-loaded persona/preferences via a structured user model, not unstructured markdown files.
 
-Guiding bet: keep Jarvis' canonical state local (sessions, tool traces, completion guard, feedback). Use provider continuation (xAI, OpenAI Responses) only as an in-flight optimization — see [XAI_NATIVE_CONTINUATION_PLAN.md](XAI_NATIVE_CONTINUATION_PLAN.md) and [CONVERSATION_STATE_ARCHITECTURE.md](CONVERSATION_STATE_ARCHITECTURE.md).
+Guiding bet: keep Jarvis' canonical state local (sessions, tool traces, completion guard, feedback). Use provider continuation (xAI, OpenAI Responses) only as an in-flight optimization — see [XAI_NATIVE_CONTINUATION_PLAN.md](archive/XAI_NATIVE_CONTINUATION_PLAN.md) and [CONVERSATION_STATE_ARCHITECTURE.md](CONVERSATION_STATE_ARCHITECTURE.md).
 
 **Important framing:** the following phases are hypotheses from code exploration, not a command to plow ahead with implementation. Treat them as a research-first roadmap: verify the actual gap, check for regressions or existing partial coverage, then make the smallest code change that proves the improvement.
 

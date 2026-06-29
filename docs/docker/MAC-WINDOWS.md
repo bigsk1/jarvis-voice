@@ -605,4 +605,4 @@ selected file under the bind-mounted `config/` directory, not in root `.env`.
 - Native Ubuntu and Docker-on-Ubuntu remain the currently tested environments.
 - No promises and no formal support.
 
-For the Linux-tested Docker architecture and advanced options, see [README.md](README.md) and [DOCKER_PLANNING.md](DOCKER_PLANNING.md).
+For the Linux-tested Docker architecture and advanced options, see [README.md](README.md) and [DOCKER_PLANNING.md](../archive/docker/DOCKER_PLANNING.md).

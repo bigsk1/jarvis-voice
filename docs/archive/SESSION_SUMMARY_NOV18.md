@@ -139,7 +139,7 @@ Jarvis speaks: "Boss, good news! kokoro-cpu is back up"
 
 ### Updated
 - Main `README.md` - Added Proactive System section
-- `docs/api/FIXES_LOG.md` - Added today's fixes
+- `docs/archive/api/FIXES_LOG.md` - Added today's fixes (later archived)
 
 ---
 
@@ -216,7 +216,7 @@ docker compose up -d
 
 **Reference**:
 - `docs/api/API_QUICK_START.md` - API endpoints
-- `docs/api/FIXES_LOG.md` - Historical fixes
+- `docs/archive/api/FIXES_LOG.md` - Historical fixes
 - `docs/service/SERVICE_LOGGING.md` - Logging system
 
 ---
@@ -294,4 +294,3 @@ docker compose up -d
 **Outcome**: Production-ready proactive assistant system with comprehensive documentation
 
 **Ready to use!** 🎉
-
