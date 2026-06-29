@@ -11,6 +11,7 @@ from flask_cors import CORS
 INTELLIGENCE_ROOT = Path(__file__).parent.parent
 JARVIS_ROOT = INTELLIGENCE_ROOT.parent
 CLIENT_PATH = INTELLIGENCE_ROOT / 'client'
+FONTS_PATH = JARVIS_ROOT / 'jarvis-web' / 'client' / 'fonts'
 DATA_PATH = JARVIS_ROOT / 'data'
 
 # Add lib to path
@@ -73,7 +74,7 @@ setup_error_logging(app, 'intelligence-ui')
 
 # Auth middleware
 PUBLIC_ROUTES = {'/login', '/api/auth/login', '/api/auth/status', '/api/auth/verify', '/api/status'}
-PUBLIC_EXTENSIONS = {'.css', '.js', '.ico', '.png', '.jpg', '.svg'}
+PUBLIC_EXTENSIONS = {'.css', '.js', '.ico', '.png', '.jpg', '.svg', '.woff', '.woff2'}
 
 @app.before_request
 def check_auth():
@@ -107,6 +108,12 @@ def serve_login():
 def serve_index():
     """Serve the main HTML page"""
     return send_from_directory(CLIENT_PATH, 'index.html')
+
+
+@app.route('/fonts/<path:path>')
+def serve_fonts(path):
+    """Serve shared fonts without relying on checkout symlink support."""
+    return send_from_directory(FONTS_PATH, path)
 
 
 @app.route('/<path:path>')

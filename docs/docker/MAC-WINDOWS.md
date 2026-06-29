@@ -263,19 +263,71 @@ If you only changed bind-mounted config or runtime files, recreate containers wi
 docker compose --profile extras up -d --force-recreate
 ```
 
+For the MCP stack, keep both Compose files on the recreate command:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d --force-recreate
+```
+
+Use the same Compose file set that started the current stack. Omitting the MCP
+override during a recreate replaces `jarvis-web` with the base image and removes
+its Docker socket configuration.
+
 Bind mounts include the read-only `config/` directory,
 `jarvis-web/config/web_config.json`, `data/`, `logs/`, `audio/`, and uploads.
 Root `.env` is read by Compose for interpolation; it is not mounted into a
 container.
 
-After pulling app code, frontend, route, tool, script, Dockerfile, or dependency changes from GitHub, rebuild the image:
+Before pulling, inspect what GitHub will change. The commands below assume the
+tracked branch is `origin/main`, as it is after the normal clone instructions:
 
 ```bash
-docker compose down
-git pull
-docker compose build --pull
+git status --short
+git fetch origin
+git log --oneline --decorate HEAD..origin/main
+git diff --stat HEAD..origin/main
+git diff --name-status HEAD..origin/main
+git pull --ff-only
+```
+
+`git status --short` should be clean before pulling. The live env files,
+`web_config.json`, root `.env`, and databases are gitignored, so back them up
+separately when an update changes configuration examples or database behavior.
+
+After pulling app code, frontend, routes, tools, scripts, the Dockerfile, or
+dependencies, a no-cache rebuild is the most predictable update path. It is
+slower, but avoids accidentally reusing an older application layer.
+
+### Clean rebuild: standard stack
+
+Use this when the stack was started without `docker-compose.mcp.yml`:
+
+```bash
+docker compose --profile extras down
+docker compose build --pull --no-cache
 docker compose --profile extras up -d --force-recreate
 ```
+
+### Clean rebuild: MCP stack
+
+Use both Compose files on **every** command when the stack uses the MCP Docker
+socket override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras down
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml build --pull --no-cache
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d --force-recreate
+```
+
+The MCP override runs `jarvis-web` from the separate `jarvis-voice:mcp` image.
+Running only `docker compose build --pull` rebuilds the base
+`jarvis-voice:local` image and can leave an older MCP Web UI running. Adding the
+override files only to `up` does not rebuild that MCP image.
+
+After a frontend update, use **Ctrl+Shift+R** or **Ctrl+F5** on Windows, or
+**Cmd+Shift+R** on macOS. If behavior still looks stale, enable **Disable Cache**
+in browser DevTools while reloading. The Network panel should show request URLs
+and payloads that match the newly pulled code.
 
 If the update adds or changes tools, refresh Tool RAG after the stack is up:
 
@@ -327,7 +379,7 @@ The MCP override only changes **`jarvis-web`**. Every other service is unchanged
 **PowerShell** — build and start (pick one `up` line):
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.mcp.yml build
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml build --pull --no-cache
 
 # APIs + all Web UIs (extras), no background daemons
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d jarvis-api jarvis-web jarvis-canvas jarvis-memory jarvis-intelligence jarvis-docs

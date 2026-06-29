@@ -5,6 +5,7 @@ import re
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FONTS_CSS = PROJECT_ROOT / "jarvis-web" / "client" / "css" / "fonts.css"
@@ -59,7 +60,7 @@ class WebFontsTests(unittest.TestCase):
             self.assertEqual(r_css.status_code, 200)
             self.assertIn(b"@font-face", r_css.data)
 
-    def test_02_memory_browser_fonts_symlink(self):
+    def test_02_memory_browser_serves_shared_font_bytes(self):
         _purge_server_modules()
         web = str(PROJECT_ROOT / "jarvis-web")
         if web in sys.path:
@@ -67,11 +68,31 @@ class WebFontsTests(unittest.TestCase):
         sys.path.insert(0, str(PROJECT_ROOT / "jarvis-memory"))
         from server.app import app as mem_app
 
-        with mem_app.test_client() as client:
+        with (
+            mock.patch.object(sys.modules["server.app"], "is_auth_enabled", return_value=True),
+            mem_app.test_client() as client,
+        ):
             r = client.get("/fonts/InterVariable.woff2")
-            self.assertEqual(r.status_code, 200, "memory client/fonts should symlink to jarvis-web")
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data[:4], b"wOF2", "memory UI must return font bytes, not HTML fallback")
 
-    def test_03_canvas_static_fonts_and_vendor(self):
+    def test_03_intelligence_browser_serves_shared_font_bytes(self):
+        _purge_server_modules()
+        for p in (str(PROJECT_ROOT / "jarvis-web"), str(PROJECT_ROOT / "jarvis-memory")):
+            if p in sys.path:
+                sys.path.remove(p)
+        sys.path.insert(0, str(PROJECT_ROOT / "jarvis-intelligence"))
+        from server.app import app as intelligence_app
+
+        with (
+            mock.patch.object(sys.modules["server.app"], "is_auth_enabled", return_value=True),
+            intelligence_app.test_client() as client,
+        ):
+            r = client.get("/fonts/JetBrainsMono-Regular.woff2")
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data[:4], b"wOF2", "intelligence UI must return font bytes, not HTML fallback")
+
+    def test_04_canvas_static_fonts_and_vendor(self):
         _purge_server_modules()
         for p in (str(PROJECT_ROOT / "jarvis-web"), str(PROJECT_ROOT / "jarvis-memory")):
             if p in sys.path:
@@ -83,6 +104,7 @@ class WebFontsTests(unittest.TestCase):
         with app.test_client() as client:
             r = client.get("/static/fonts/InterVariable.woff2")
             self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data[:4], b"wOF2", "Canvas must return font bytes, not a 404 or HTML fallback")
             self.assertEqual(client.get("/static/vendor/marked.min.js").status_code, 200)
 
 

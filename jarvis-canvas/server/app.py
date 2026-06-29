@@ -3,7 +3,7 @@ Jarvis Canvas - Flask Application Factory
 """
 import sys
 from pathlib import Path
-from flask import Flask, request, redirect, render_template
+from flask import Flask, request, redirect, render_template, send_from_directory
 from flask_cors import CORS
 
 from config import GENERATED_IMAGES_DIR, GENERATED_VIDEOS_DIR
@@ -25,6 +25,7 @@ def create_app(mode='cloud'):
     package_root = Path(__file__).parent.parent
     template_dir = package_root / 'client' / 'templates'
     static_dir = package_root / 'client' / 'static'
+    fonts_dir = JARVIS_ROOT / 'jarvis-web' / 'client' / 'fonts'
     
     app = Flask(
         __name__,
@@ -87,6 +88,11 @@ def create_app(mode='cloud'):
     @app.route('/login')
     def login_page():
         return render_template('login.html')
+
+    @app.route('/static/fonts/<path:path>')
+    def shared_fonts(path):
+        """Serve shared fonts without relying on checkout symlink support."""
+        return send_from_directory(fonts_dir, path)
     
     return app
 
