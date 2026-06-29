@@ -19,7 +19,11 @@ fake_flask = types.ModuleType("flask")
 fake_flask.request = object()
 sys.modules.setdefault("flask", fake_flask)
 
-from server.sockets.chat import ChatHandler
+from server_package_utils import load_server_package
+
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
+
+from jarvis_web_test_server.sockets.chat import ChatHandler
 
 
 def _handler():

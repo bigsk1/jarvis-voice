@@ -13,9 +13,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
+from server_package_utils import load_server_package
+
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
+
 from provider_errors import classify_provider_error, is_provider_error_text, sanitize_provider_error
 from router_v2 import LLMRouter
-from server.services.log_streamer import LogStreamer
+from jarvis_web_test_server.services.log_streamer import LogStreamer
 from tool_schema import ToolSchema
 
 

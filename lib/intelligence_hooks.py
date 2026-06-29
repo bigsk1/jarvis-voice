@@ -23,6 +23,7 @@ import sqlite3
 import asyncio
 import logging
 import concurrent.futures
+import contextvars
 from typing import Any
 from datetime import datetime
 
@@ -68,17 +69,19 @@ def _run_async(coro):
         # Check if there's already a running event loop (e.g., FastAPI)
         asyncio.get_running_loop()
         # Already in async context - run in thread to avoid blocking
+        context = contextvars.copy_context()
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, coro)
+            future = executor.submit(context.run, asyncio.run, coro)
             return future.result(timeout=30)
     except RuntimeError:
         # No running loop - safe to use asyncio.run()
         return asyncio.run(coro)
 
-# Lazy import to avoid circular dependencies
+# Backward-compatible injection hook used by isolated tests. Runtime ownership
+# lives in intelligence.get_intelligence_layer(), whose cache is keyed and locked
+# per data mode; duplicating that cache here reintroduced cross-mode races.
 _intelligence_layer = None
 _intelligence_checked = False
-_intelligence_mode = None
 
 def _is_intelligence_enabled() -> bool:
     """Check if intelligence is enabled via config.
@@ -90,41 +93,25 @@ def _is_intelligence_enabled() -> bool:
     return enabled in ('true', '1', 'yes', 'on')
 
 def _get_intel():
-    """Lazy load intelligence layer (if enabled)."""
-    global _intelligence_layer, _intelligence_checked, _intelligence_mode
+    """Resolve the Intelligence layer for the active request/data mode."""
     
     # Check if disabled
     if not _is_intelligence_enabled():
         return None
     
+    # Preserve the existing test-injection contract without using this mutable
+    # module global as a runtime cache.
+    if _intelligence_checked:
+        return _intelligence_layer if _intelligence_layer else None
+
     from config_loader import get_active_config_mode
     mode = get_active_config_mode()
-
-    # A mode-less cached object is retained for test/injected layers. Normal
-    # runtime layers are refreshed when the request's data mode changes or a
-    # previous owner closed their connection.
-    cached_conn = getattr(_intelligence_layer, 'conn', None) if _intelligence_layer else None
-    if _intelligence_layer and _intelligence_mode in (None, mode) and cached_conn is not None:
-        return _intelligence_layer
-    if _intelligence_layer is False and _intelligence_checked and _intelligence_mode == mode:
+    try:
+        from intelligence import get_intelligence_layer
+        return get_intelligence_layer(mode)
+    except Exception as e:
+        logger.warning(f"Intelligence layer unavailable for {mode} mode: {e}")
         return None
-
-    if _intelligence_mode != mode:
-        _intelligence_checked = False
-
-    if not _intelligence_checked or cached_conn is None:
-        _intelligence_checked = True
-        try:
-            from intelligence import get_intelligence_layer
-            _intelligence_layer = get_intelligence_layer(mode)
-            _intelligence_mode = mode
-            logger.info("Intelligence layer initialized")
-        except Exception as e:
-            logger.warning(f"Intelligence layer unavailable: {e}")
-            _intelligence_layer = False  # Mark as failed, don't retry
-            _intelligence_mode = mode
-    
-    return _intelligence_layer if _intelligence_layer else None
 
 
 # ============================================

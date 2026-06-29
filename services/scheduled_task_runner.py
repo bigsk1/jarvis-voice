@@ -17,7 +17,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / 'orchestrator'))
 
-from config_loader import load_config, get_config_value, get_int, get_active_config_mode
+from config_loader import (
+    config_scope,
+    get_active_config_mode,
+    get_config_value,
+    get_int,
+    load_config,
+)
 from service_logger import ServiceLogger
 from api.managers.scheduled_task_manager import ScheduledTaskManager
 
@@ -31,40 +37,55 @@ def _load_mode() -> str:
 
 
 def _run_query_task(mode: str, query: str) -> dict:
-    # Hydrate the task's execution mode from its config file rather than
-    # forcing LLM_PROVIDER=ollama to communicate local mode.
-    load_config(mode)
+    with config_scope(mode):
+        from orchestrator_v2 import Orchestrator
 
-    from orchestrator_v2 import Orchestrator
-
-    orch = Orchestrator(mode)
-    return orch.process(query)
+        orch = Orchestrator(mode)
+        return orch.process(query)
 
 
 def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) -> dict:
-    load_config(mode)
+    with config_scope(mode):
+        from executor import ToolExecutor
+        from workflow_loader import WorkflowLoader
+        from pipeline_executor import PipelineExecutor
 
-    from executor import ToolExecutor
-    from workflow_loader import WorkflowLoader
-    from pipeline_executor import PipelineExecutor
+        loader = WorkflowLoader(explicit_only=True)
+        workflow = loader.get_workflow(workflow_id)
+        if not workflow:
+            normalized = workflow_id if workflow_id.startswith('/') else f"/{workflow_id}"
+            for candidate in loader.workflows.values():
+                explicit = candidate.get("triggers", {}).get("explicit", [])
+                if workflow_id in explicit or normalized in explicit:
+                    workflow = candidate
+                    break
+        if not workflow:
+            raise ValueError(f"Workflow '{workflow_id}' not found")
 
-    loader = WorkflowLoader(explicit_only=True)
-    workflow = loader.get_workflow(workflow_id)
-    if not workflow:
-        normalized = workflow_id if workflow_id.startswith('/') else f"/{workflow_id}"
-        for candidate in loader.workflows.values():
-            explicit = candidate.get("triggers", {}).get("explicit", [])
-            if workflow_id in explicit or normalized in explicit:
-                workflow = candidate
-                break
-    if not workflow:
-        raise ValueError(f"Workflow '{workflow_id}' not found")
+        tool_executor = ToolExecutor(mode=mode)
+        executor = PipelineExecutor(mode, tool_executor)
 
-    tool_executor = ToolExecutor(mode=mode)
-    executor = PipelineExecutor(mode, tool_executor)
+        transcript = query or workflow.get("triggers", {}).get("explicit", [f"/{workflow['id']}"])[0]
+        return executor.execute(workflow, transcript)
 
-    transcript = query or workflow.get("triggers", {}).get("explicit", [f"/{workflow['id']}"])[0]
-    return executor.execute(workflow, transcript)
+
+def _execution_identity(mode: str) -> tuple[str | None, str | None]:
+    """Resolve truthful provider/model metadata inside a task's config scope."""
+    with config_scope(mode):
+        provider = (get_config_value('LLM_PROVIDER', '') or '').strip().lower() or None
+        if provider == 'ollama':
+            from ollama_utils import resolve_ollama_model
+
+            return provider, resolve_ollama_model(mode)
+
+        model_keys = {
+            'openai': 'OPENAI_MODEL',
+            'anthropic': 'ANTHROPIC_MODEL',
+            'xai': 'XAI_MODEL',
+        }
+        model_key = model_keys.get(provider)
+        model = (get_config_value(model_key, '') or '').strip() if model_key else ''
+        return provider, (model or None)
 
 
 def _parse_json_field(value):
@@ -279,6 +300,8 @@ def main():
                 error = None
                 summary = None
                 result = {}
+                execution_provider = None
+                execution_model = None
                 scheduled_for = task.get('next_run_at')
 
                 try:
@@ -291,6 +314,8 @@ def main():
                         result = _run_workflow_task(task['mode'], task['task_target'], payload.get('query'))
                     else:
                         raise ValueError(f"Unsupported task_type: {task['task_type']}")
+
+                    execution_provider, execution_model = _execution_identity(task['mode'])
 
                     status = 'success' if result.get('ok', True) else 'failure'
                     error = result.get('error')
@@ -324,8 +349,8 @@ def main():
                     run_id,
                     status=status,
                     mode=task['mode'],
-                    provider=os.environ.get('LLM_PROVIDER'),
-                    model=os.environ.get('LLM_MODEL'),
+                    provider=execution_provider,
+                    model=execution_model,
                     workflow_id=task.get('task_target') if task['task_type'] == 'workflow' else None,
                     tools_used=result.get('tools_used', []),
                     speech=result.get('speech'),

@@ -1,7 +1,7 @@
 """Scheduled task API models"""
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,7 @@ class ScheduledTaskCreate(BaseModel):
     workflow_id: str | None = Field(None, description="Workflow ID for workflow tasks")
     when: str = Field(..., description="Natural schedule expression")
     timezone: str | None = Field(None, description="IANA timezone name")
-    mode: str = Field("cloud", description="Execution mode: cloud or local")
+    mode: Literal["cloud", "local"] = Field("cloud", description="Execution mode: cloud or local")
     enabled: bool = Field(True, description="Whether the task is enabled")
     allow_overlap: bool = Field(False, description="Allow overlapping runs")
     max_retries: int = Field(1, description="Maximum retry attempts")
@@ -38,7 +38,7 @@ class ScheduledTaskUpdate(BaseModel):
     workflow_id: str | None = None
     when: str | None = None
     timezone: str | None = None
-    mode: str | None = None
+    mode: Literal["cloud", "local"] | None = None
     enabled: bool | None = None
     allow_overlap: bool | None = None
     max_retries: int | None = None

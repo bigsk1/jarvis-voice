@@ -89,3 +89,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "off"
 reportMissingImports = false
 reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+# Keep the project suite separate from optional example/vendor tests under docs/.
+testpaths = ["tests"]

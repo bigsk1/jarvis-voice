@@ -29,6 +29,9 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
         from server.app import app
 
         cls.app = app
+        cls.auth_patcher = patch("server.app.is_auth_enabled", return_value=False)
+        cls.auth_patcher.start()
+        cls.addClassCleanup(cls.auth_patcher.stop)
 
     def test_ingest_route_uses_dual_mode_helper(self) -> None:
         fake_result = {

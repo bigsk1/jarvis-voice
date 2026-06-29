@@ -415,7 +415,7 @@ def update_web_settings():
 @api_bp.route('/settings/reset', methods=['POST'])
 @_scoped_request_config
 def reset_settings():
-    """Reset web overrides to cloud.env defaults"""
+    """Reset web overrides to the explicitly scoped mode's env defaults."""
     settings = get_settings_manager()
     success = settings.reset_to_defaults()
     

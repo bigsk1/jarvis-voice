@@ -1,7 +1,7 @@
 """Workflow API models"""
 
 from pydantic import BaseModel, Field
-from typing import Any
+from typing import Any, Literal
 
 
 class WorkflowInfo(BaseModel):
@@ -33,7 +33,7 @@ class WorkflowInfo(BaseModel):
 class WorkflowExecuteRequest(BaseModel):
     """Request to execute a workflow"""
     query: str | None = Field(None, description="Optional query/parameters (e.g., 'ethereum xrp' for /crypto)")
-    mode: str = Field("cloud", description="LLM mode: 'cloud' or 'local'")
+    mode: Literal["cloud", "local"] = Field("cloud", description="LLM mode: 'cloud' or 'local'")
     
     class Config:
         json_schema_extra = {

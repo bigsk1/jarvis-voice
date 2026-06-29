@@ -12,7 +12,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
 
-from server.services.log_explorer import LogExplorerService
+from server_package_utils import load_server_package
+
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
+
+from jarvis_web_test_server.services.log_explorer import LogExplorerService
 
 
 class LogExplorerServiceTests(unittest.TestCase):

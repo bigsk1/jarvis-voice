@@ -2785,14 +2785,21 @@ class JarvisApp {
    */
   async _resetToDefaults() {
     if (!confirm('Reset all web overrides to the current mode env defaults?')) return;
-    
+
     try {
-      const response = await fetch('/api/settings/reset', { method: 'POST' });
+      const mode = document.getElementById('setting-mode')?.value
+        || this._settingsData?.mode
+        || this.socket.mode;
+      const response = await fetch('/api/settings/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
       const result = await response.json();
-      
+
       if (result.ok) {
         Utils.toast('Reset to defaults!', 'success');
-        this._loadSettings();  // Reload to show defaults
+        await this._loadSettings(mode);  // Reload the mode that was reset
       } else {
         Utils.toast('Failed to reset', 'error');
       }

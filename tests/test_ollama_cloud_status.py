@@ -3,6 +3,7 @@
 
 import sys
 import os
+import importlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,9 +12,21 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "jarvis-web"))
 sys.path.insert(0, str(ROOT / "lib"))
 
-from server.app import app  # noqa: E402
-from server.routes import api  # noqa: E402
-from server.sockets.chat import _scoped_by_mode  # noqa: E402
+# Several lightweight ChatHandler tests install collection-time Flask stubs.
+# This test creates the real app, so replace those stubs with installed modules.
+for module_name in ("flask", "flask_socketio"):
+    module = sys.modules.get(module_name)
+    if module is not None and not getattr(module, "__file__", None):
+        del sys.modules[module_name]
+    importlib.import_module(module_name)
+
+from server_package_utils import load_server_package  # noqa: E402
+
+load_server_package("jarvis_web_test_server", ROOT / "jarvis-web" / "server")
+
+from jarvis_web_test_server.app import app  # noqa: E402
+from jarvis_web_test_server.routes import api  # noqa: E402
+from jarvis_web_test_server.sockets.chat import _scoped_by_mode  # noqa: E402
 from config_loader import export_config_environment, get_config_value  # noqa: E402
 
 
@@ -79,7 +92,7 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
     }
     image_data = {"action": "image", "settings": {"provider": "openai"}}
     before = dict(os.environ)
-    with patch("server.config.load_web_config", return_value=web_config):
+    with patch("jarvis_web_test_server.config.load_web_config", return_value=web_config):
         result = probe("cloud", image_data=image_data)
 
     assert result == {

@@ -73,6 +73,26 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertFalse(response.get_json()["ok"])
 
+    def test_reset_uses_explicit_preview_mode(self):
+        settings = MagicMock()
+        settings.reset_to_defaults.return_value = True
+
+        with (
+            self.app.test_request_context(
+                "/api/settings/reset",
+                method="POST",
+                json={"mode": "local"},
+            ),
+            patch.object(self.api, "get_settings_manager", return_value=settings),
+            patch.object(self.api, "get_web_setting") as get_default,
+        ):
+            response = self.api.reset_settings()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["ok"])
+        settings.reset_to_defaults.assert_called_once_with()
+        get_default.assert_not_called()
+
     def test_set_mode_reports_web_config_write_failure(self):
         from server.services.settings_manager import SettingsManager
 

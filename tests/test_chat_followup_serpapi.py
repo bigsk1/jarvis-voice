@@ -20,8 +20,12 @@ fake_flask = types.ModuleType("flask")
 fake_flask.request = object()
 sys.modules.setdefault("flask", fake_flask)
 
-from server.sockets.chat import ChatHandler
-from server.services.followup_extractor import FOLLOWUP_SUMMARY_MAX_CHARS
+from server_package_utils import load_server_package
+
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
+
+from jarvis_web_test_server.sockets.chat import ChatHandler
+from jarvis_web_test_server.services.followup_extractor import FOLLOWUP_SUMMARY_MAX_CHARS
 
 
 def _handler():

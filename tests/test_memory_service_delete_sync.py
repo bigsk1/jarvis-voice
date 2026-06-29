@@ -10,8 +10,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-memory"))
 
-from server.services import memory_service as memory_service_module
-from server.services.memory_service import MemoryService
+from server_package_utils import load_server_package
+
+load_server_package("jarvis_memory_test_server", PROJECT_ROOT / "jarvis-memory" / "server")
+
+from jarvis_memory_test_server.services import memory_service as memory_service_module
+from jarvis_memory_test_server.services.memory_service import MemoryService
 
 
 class MemoryServiceDeleteSyncTests(unittest.TestCase):

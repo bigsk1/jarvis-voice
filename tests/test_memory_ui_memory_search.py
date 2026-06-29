@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -44,6 +45,9 @@ class MemoryUiMemorySearchTests(unittest.TestCase):
 
         self.app = app
         self.MemoryService = MemoryService
+        self.auth_patcher = patch("server.app.is_auth_enabled", return_value=False)
+        self.auth_patcher.start()
+        self.addCleanup(self.auth_patcher.stop)
 
         self._create_schema(self.cloud_path)
         self._create_schema(self.local_path)

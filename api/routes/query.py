@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Request
 import sys
 from pathlib import Path
+from typing import Literal
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'orchestrator'))
@@ -114,7 +115,7 @@ async def quick_query(http_request: Request, body: QuickQueryRequest):
 async def quick_query_get(
     http_request: Request,
     q: str,
-    mode: str = "cloud"
+    mode: Literal["cloud", "local"] = "cloud"
 ):
     """
     Quick query via GET (for easy browser/webhook testing).

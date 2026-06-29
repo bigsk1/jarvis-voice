@@ -21,6 +21,13 @@ from ingest_intel import extract_facts_from_content
 from manage_intel import append_intel_file, auto_ingest, format_ingest_summary
 
 
+def _fake_export_environment(mode):
+    return {
+        "JARVIS_MODE": mode,
+        "LLM_PROVIDER": "xai" if mode == "cloud" else "ollama",
+    }
+
+
 class TestIntelContentNormalization(unittest.TestCase):
     def test_normalizes_escaped_multiline_markdown(self) -> None:
         content = (
@@ -106,7 +113,7 @@ class TestIntelContentNormalization(unittest.TestCase):
             calls = []
 
             def fake_run(cmd, capture_output, text, timeout, env):
-                calls.append(env["LLM_PROVIDER"])
+                calls.append((env["JARVIS_MODE"], env["LLM_PROVIDER"]))
 
                 class Result:
                     returncode = 0
@@ -115,12 +122,15 @@ class TestIntelContentNormalization(unittest.TestCase):
 
                 return Result()
 
-            with patch("manage_intel.subprocess.run", side_effect=fake_run):
+            with (
+                patch("manage_intel.export_config_environment", side_effect=_fake_export_environment),
+                patch("manage_intel.subprocess.run", side_effect=fake_run),
+            ):
                 result = auto_ingest(root, "cloud")
 
             self.assertTrue(result["ingested"])
             self.assertEqual(result["modes"], ["cloud", "local"])
-            self.assertEqual(calls, ["anthropic", "ollama"])
+            self.assertEqual(calls, [("cloud", "xai"), ("local", "ollama")])
 
     def test_auto_ingest_skips_missing_sibling_db(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -135,7 +145,7 @@ class TestIntelContentNormalization(unittest.TestCase):
             calls = []
 
             def fake_run(cmd, capture_output, text, timeout, env):
-                calls.append(env["LLM_PROVIDER"])
+                calls.append((env["JARVIS_MODE"], env["LLM_PROVIDER"]))
 
                 class Result:
                     returncode = 0
@@ -144,12 +154,15 @@ class TestIntelContentNormalization(unittest.TestCase):
 
                 return Result()
 
-            with patch("manage_intel.subprocess.run", side_effect=fake_run):
+            with (
+                patch("manage_intel.export_config_environment", side_effect=_fake_export_environment),
+                patch("manage_intel.subprocess.run", side_effect=fake_run),
+            ):
                 result = auto_ingest(root, "local")
 
             self.assertTrue(result["ingested"])
             self.assertEqual(result["modes"], ["local"])
-            self.assertEqual(calls, ["ollama"])
+            self.assertEqual(calls, [("local", "ollama")])
 
     def test_auto_ingest_treats_sibling_failure_as_warning(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -165,13 +178,13 @@ class TestIntelContentNormalization(unittest.TestCase):
             calls = []
 
             def fake_run(cmd, capture_output, text, timeout, env):
-                calls.append(env["LLM_PROVIDER"])
+                calls.append((env["JARVIS_MODE"], env["LLM_PROVIDER"]))
 
                 class Result:
                     stderr = ""
 
                 result = Result()
-                if env["LLM_PROVIDER"] == "anthropic":
+                if env["JARVIS_MODE"] == "cloud":
                     result.returncode = 0
                     result.stdout = '{"ok": true, "data": {"new_files": 1, "total_facts": 3}}'
                 else:
@@ -180,7 +193,10 @@ class TestIntelContentNormalization(unittest.TestCase):
                     result.stderr = "ollama unavailable"
                 return result
 
-            with patch("manage_intel.subprocess.run", side_effect=fake_run):
+            with (
+                patch("manage_intel.export_config_environment", side_effect=_fake_export_environment),
+                patch("manage_intel.subprocess.run", side_effect=fake_run),
+            ):
                 result = auto_ingest(root, "cloud")
 
             self.assertTrue(result["ingested"])
@@ -188,7 +204,7 @@ class TestIntelContentNormalization(unittest.TestCase):
             self.assertEqual(result["modes"], ["cloud"])
             self.assertEqual(result["failed_modes"], ["local"])
             self.assertIn("local ingest failed", result["warning"])
-            self.assertEqual(calls, ["anthropic", "ollama"])
+            self.assertEqual(calls, [("cloud", "xai"), ("local", "ollama")])
 
     def test_auto_ingest_fails_when_current_mode_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -208,7 +224,10 @@ class TestIntelContentNormalization(unittest.TestCase):
 
                 return Result()
 
-            with patch("manage_intel.subprocess.run", side_effect=fake_run):
+            with (
+                patch("manage_intel.export_config_environment", side_effect=_fake_export_environment),
+                patch("manage_intel.subprocess.run", side_effect=fake_run),
+            ):
                 result = auto_ingest(root, "cloud")
 
             self.assertFalse(result["ingested"])

@@ -20,7 +20,11 @@ fake_flask = types.ModuleType("flask")
 fake_flask.request = object()
 sys.modules.setdefault("flask", fake_flask)
 
-from server.sockets.chat import ChatHandler
+from server_package_utils import load_server_package
+
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
+
+from jarvis_web_test_server.sockets.chat import ChatHandler
 
 
 class _Response:
@@ -50,7 +54,7 @@ class OpenAIVisionModelTests(unittest.TestCase):
             "OPENAI_MODEL": "gpt-5.4-mini",
         })
 
-        with patch("server.config.get_jarvis_setting", side_effect=settings), \
+        with patch("jarvis_web_test_server.config.get_jarvis_setting", side_effect=settings), \
              patch("requests.post", return_value=_Response()) as post:
             result = self.handler._vision_openai("base64", "what is this?", "")
 
@@ -69,7 +73,7 @@ class OpenAIVisionModelTests(unittest.TestCase):
             "OPENAI_MODEL": "gpt-5.4-mini",
         })
 
-        with patch("server.config.get_jarvis_setting", side_effect=settings), \
+        with patch("jarvis_web_test_server.config.get_jarvis_setting", side_effect=settings), \
              patch("requests.post", return_value=_Response()) as post:
             result = self.handler._vision_openai("base64", "what is this?", "grok-4.3")
 
@@ -84,7 +88,7 @@ class OpenAIVisionModelTests(unittest.TestCase):
             "OPENAI_MODEL": "gpt-5.4-mini",
         })
 
-        with patch("server.config.get_jarvis_setting", side_effect=settings), \
+        with patch("jarvis_web_test_server.config.get_jarvis_setting", side_effect=settings), \
              patch("requests.post", return_value=_Response()) as post:
             result = self.handler._vision_openai("base64", "what is this?", "gpt-4o")
 
@@ -101,7 +105,7 @@ class OpenAIVisionModelTests(unittest.TestCase):
             "VISION_DETAIL": "original",
         })
 
-        with patch("server.config.get_jarvis_setting", side_effect=settings), \
+        with patch("jarvis_web_test_server.config.get_jarvis_setting", side_effect=settings), \
              patch("requests.post", return_value=_Response()) as post:
             result = self.handler._vision_openai("base64", "what is this?", "")
 
@@ -118,7 +122,7 @@ class OpenAIVisionModelTests(unittest.TestCase):
             "VISION_DETAIL": "original",
         })
 
-        with patch("server.config.get_jarvis_setting", side_effect=settings), \
+        with patch("jarvis_web_test_server.config.get_jarvis_setting", side_effect=settings), \
              patch("requests.post", return_value=_Response()) as post:
             result = self.handler._vision_openai("base64", "what is this?", "")
 
@@ -135,7 +139,7 @@ class OpenAIVisionModelTests(unittest.TestCase):
             "VISION_DETAIL": "full-blast",
         })
 
-        with patch("server.config.get_jarvis_setting", side_effect=settings), \
+        with patch("jarvis_web_test_server.config.get_jarvis_setting", side_effect=settings), \
              patch("requests.post", return_value=_Response()) as post:
             result = self.handler._vision_openai("base64", "what is this?", "")
 

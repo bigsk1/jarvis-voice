@@ -27,8 +27,12 @@ fake_flask = types.ModuleType("flask")
 fake_flask.request = object()
 sys.modules.setdefault("flask", fake_flask)
 
+from server_package_utils import load_server_package
+
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
+
 from orchestrator.orchestrator_v2 import Orchestrator, SINGLE_CALL_TOOLS
-from server.sockets.chat import ChatHandler
+from jarvis_web_test_server.sockets.chat import ChatHandler
 
 
 class _FakeProvider:

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Regression coverage for concurrent cloud/local Intelligence ownership."""
 
+import asyncio
 import sys
+import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -11,6 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
 import intelligence
+import intelligence_hooks
+import config_loader
 
 
 class FakeLayer:
@@ -27,9 +32,13 @@ class FakeLayer:
 class IntelligenceModeCacheTests(unittest.TestCase):
     def setUp(self):
         intelligence.reset_intelligence_layer()
+        intelligence_hooks._intelligence_layer = None
+        intelligence_hooks._intelligence_checked = False
 
     def tearDown(self):
         intelligence.reset_intelligence_layer()
+        intelligence_hooks._intelligence_layer = None
+        intelligence_hooks._intelligence_checked = False
 
     def test_switching_modes_does_not_close_other_mode_layer(self):
         with patch.object(intelligence, "IntelligenceLayer", side_effect=FakeLayer) as layer_class:
@@ -55,6 +64,52 @@ class IntelligenceModeCacheTests(unittest.TestCase):
         self.assertIsNone(local.conn)
         self.assertEqual(cloud.close_calls, 0)
         self.assertEqual(local.close_calls, 1)
+
+    def test_hooks_resolve_each_concurrent_request_by_mode(self):
+        layers = {mode: FakeLayer(f"{mode}.db") for mode in ("cloud", "local")}
+        barrier = threading.Barrier(2)
+        results = {}
+
+        def get_layer(mode):
+            barrier.wait()
+            return layers[mode]
+
+        def worker(mode):
+            with config_loader.config_scope(mode):
+                results[mode] = intelligence_hooks._get_intel()
+
+        with patch.object(intelligence, "get_intelligence_layer", side_effect=get_layer):
+            threads = [threading.Thread(target=worker, args=(mode,)) for mode in ("cloud", "local")]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        self.assertIs(results["cloud"], layers["cloud"])
+        self.assertIs(results["local"], layers["local"])
+
+    def test_run_async_preserves_scoped_config_from_running_loop(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            config_dir = root / "config"
+            config_dir.mkdir()
+            (config_dir / "cloud.env").write_text("EMBEDDING_PROVIDER=openai\n")
+            (config_dir / "local.env").write_text("EMBEDDING_PROVIDER=ollama\n")
+
+            async def probe():
+                return (
+                    config_loader.get_active_config_mode(),
+                    config_loader.get_config_value("EMBEDDING_PROVIDER"),
+                )
+
+            async def run_probe():
+                with config_loader.config_scope("local"):
+                    return intelligence_hooks._run_async(probe())
+
+            with patch.object(config_loader, "get_project_root", return_value=root):
+                observed = asyncio.run(run_probe())
+
+        self.assertEqual(observed, ("local", "ollama"))
 
 
 if __name__ == "__main__":

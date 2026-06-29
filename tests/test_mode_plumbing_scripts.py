@@ -215,7 +215,9 @@ def test_docker_entrypoint_rejects_missing_selected_config_before_launch(tmp_pat
 
 def test_mcp_override_base_service_defers_tool_sync_to_web(tmp_path):
     checkout, env, launch_log = _docker_checkout(tmp_path)
-    fake_bin = Path(env["PATH"].split(os.pathsep)[0])
+    fake_bin = checkout / "fake-bin"
+    fake_bin.mkdir()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
     python_log = checkout / "python.log"
     _write_executable(
         fake_bin / "python",

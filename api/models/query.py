@@ -1,13 +1,13 @@
 """Query/Chat API models"""
 
 from pydantic import BaseModel, Field
-from typing import Any
+from typing import Any, Literal
 
 
 class QueryRequest(BaseModel):
     """Request to query Jarvis"""
     query: str = Field(..., description="The question or command for Jarvis")
-    mode: str = Field("cloud", description="LLM mode: 'cloud' or 'local'")
+    mode: Literal["cloud", "local"] = Field("cloud", description="LLM mode: 'cloud' or 'local'")
     session_id: str | None = Field(None, description="Optional session ID for conversation continuity")
     context: dict[str, Any] | None = Field(None, description="Additional context to include")
 
@@ -24,7 +24,7 @@ class QueryRequest(BaseModel):
 class QuickQueryRequest(BaseModel):
     """Simple query request for /quick endpoint"""
     query: str = Field(..., description="The question or command")
-    mode: str = Field("cloud", description="LLM mode: 'cloud' or 'local'")
+    mode: Literal["cloud", "local"] = Field("cloud", description="LLM mode: 'cloud' or 'local'")
     
     class Config:
         json_schema_extra = {

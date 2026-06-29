@@ -12,6 +12,7 @@ import unittest
 import json
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
@@ -124,10 +125,14 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
             priority=0.2,
         )
 
-        updated = update_experience_from_user_correction(
-            previous_experience_id=exp_id,
-            correction_query="No, I meant Portland OR, not Portland ME.",
-        )
+        with patch(
+            "user_profile.append_correction_to_learned_lessons",
+            return_value={"appended": True, "path": "test-only"},
+        ):
+            updated = update_experience_from_user_correction(
+                previous_experience_id=exp_id,
+                correction_query="No, I meant Portland OR, not Portland ME.",
+            )
 
         self.assertTrue(updated)
         row = conn.execute("SELECT * FROM experiences WHERE id = ?", (exp_id,)).fetchone()

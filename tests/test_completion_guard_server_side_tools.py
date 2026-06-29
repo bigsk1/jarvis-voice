@@ -25,7 +25,11 @@ fake_flask = types.ModuleType("flask")
 fake_flask.request = object()
 sys.modules.setdefault("flask", fake_flask)
 
-from server.sockets.chat import ChatHandler
+from server_package_utils import load_server_package
+
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
+
+from jarvis_web_test_server.sockets.chat import ChatHandler
 
 
 class _FakeSocketIO:
@@ -44,8 +48,8 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
                 "JARVIS_DEFAULT_POSTAL_CODE": "97201",
             }.get(key, default)
 
-        with patch("server.services.completion_guard.load_config"), patch(
-            "server.services.completion_guard.get_config_value", side_effect=fake_config
+        with patch("jarvis_web_test_server.services.completion_guard.load_config"), patch(
+            "jarvis_web_test_server.services.completion_guard.get_config_value", side_effect=fake_config
         ):
             context = ChatHandler._get_completion_guard_location_context("cloud")
 
@@ -145,8 +149,8 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             "completion_guard": {},
         }
 
-        with patch("server.services.completion_guard.load_config"), patch(
-            "server.services.completion_guard.get_config_value", side_effect=fake_config
+        with patch("jarvis_web_test_server.services.completion_guard.load_config"), patch(
+            "jarvis_web_test_server.services.completion_guard.get_config_value", side_effect=fake_config
         ):
             parsed = handler._evaluate_completion_guard_auto(record)
 
@@ -196,9 +200,9 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         record = handler.sessions["sid"]["completion_guard_records"]["msg1"]
         self.assertEqual(record["expires_at"], 130.0)
 
-        with patch("server.sockets.chat.time.time", return_value=129.0):
+        with patch("jarvis_web_test_server.sockets.chat.time.time", return_value=129.0):
             self.assertFalse(ChatHandler._completion_guard_record_expired(record))
-        with patch("server.sockets.chat.time.time", return_value=130.0):
+        with patch("jarvis_web_test_server.sockets.chat.time.time", return_value=130.0):
             self.assertTrue(ChatHandler._completion_guard_record_expired(record))
 
     def test_supersede_pending_manual_prompt_when_conversation_continues(self):
