@@ -433,7 +433,8 @@ class ChatUI {
   async refreshContextWindow(mode = null) {
     try {
       // Use /api/settings which returns EFFECTIVE settings (with UI overrides)
-      const res = await fetch('/api/settings');
+      const requestedMode = mode || this.socket?.mode || 'cloud';
+      const res = await fetch(`/api/settings?mode=${encodeURIComponent(requestedMode)}`);
       if (res.ok) {
         const data = await res.json();
         const settings = data.settings || {};

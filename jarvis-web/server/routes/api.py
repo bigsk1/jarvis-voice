@@ -217,8 +217,12 @@ def refresh_tools():
 @api_bp.route('/settings', methods=['GET'])
 def get_settings():
     """Get current settings for UI"""
-    # Ensure settings manager has correct mode
-    current_mode = get_web_setting('defaults.mode', 'cloud')
+    # REST requests do not carry the Socket.IO session, so callers should pass
+    # the active session mode explicitly. Keep the persisted default as a
+    # backward-compatible fallback for older clients.
+    current_mode = request.args.get('mode') or get_web_setting('defaults.mode', 'cloud')
+    if current_mode not in ('cloud', 'local'):
+        return jsonify({'ok': False, 'error': 'Mode must be "cloud" or "local"'}), 400
     settings = get_settings_manager(current_mode)
     
     return jsonify({
@@ -332,11 +336,25 @@ def get_system_config():
 @api_bp.route('/settings/web', methods=['PUT'])
 def update_web_settings():
     """Update web UI settings/overrides"""
-    settings = get_settings_manager()
     data = request.get_json()
     
     if not data:
         return jsonify({'ok': False, 'error': 'No data provided'}), 400
+
+    # The settings modal can be showing a different mode than the stale
+    # persisted default. Persist its explicit selection even when the active
+    # socket session is already in that mode and no mode:set event will fire.
+    data = dict(data)
+    requested_mode = data.pop('mode', None)
+    if requested_mode is not None and requested_mode not in ('cloud', 'local'):
+        return jsonify({'ok': False, 'error': 'Mode must be "cloud" or "local"'}), 400
+
+    settings = get_settings_manager()
+    if requested_mode is not None and not settings.set_mode(requested_mode):
+        return jsonify({
+            'ok': False,
+            'error': 'Failed to persist mode in jarvis-web/config/web_config.json'
+        }), 500
     
     # Use new override system if structured data provided
     if any(k in data for k in [

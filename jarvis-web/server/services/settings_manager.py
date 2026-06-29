@@ -724,8 +724,7 @@ class SettingsManager:
         self._ensure_jarvis_config()
         
         # Also update web config default
-        self.update_web_setting('defaults.mode', mode)
-        return True
+        return self.update_web_setting('defaults.mode', mode)
 
 
 # Singleton instance

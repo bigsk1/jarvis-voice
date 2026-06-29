@@ -598,7 +598,8 @@ class JarvisApp {
    */
   async _syncAudioWithServer() {
     try {
-      const response = await fetch('/api/settings');
+      const mode = this.socket?.mode || 'cloud';
+      const response = await fetch(`/api/settings?mode=${encodeURIComponent(mode)}`);
       const data = await response.json();
       if (data.ok && data.settings) {
         const serverTtsEnabled = data.settings.audio?.tts_enabled || false;
@@ -1198,7 +1199,8 @@ class JarvisApp {
     }
 
     try {
-      const response = await fetch('/api/settings');
+      const mode = this.socket?.mode || 'cloud';
+      const response = await fetch(`/api/settings?mode=${encodeURIComponent(mode)}`);
       const data = await response.json();
       if (data.ok && data.settings) {
         this._settingsData = data.settings;
@@ -1257,7 +1259,8 @@ class JarvisApp {
    */
   async _loadSettings() {
     try {
-      const response = await fetch('/api/settings');
+      const mode = this.socket?.mode || 'cloud';
+      const response = await fetch(`/api/settings?mode=${encodeURIComponent(mode)}`);
       const data = await response.json();
       
       if (data.ok && data.settings) {
@@ -2545,6 +2548,7 @@ class JarvisApp {
    */
   async _saveSettings() {
     try {
+      const selectedMode = document.getElementById('setting-mode').value;
       const qaWordLimitRaw = document.getElementById('setting-qa-word-limit').value.trim();
       const multiTurnWordLimitRaw = document.getElementById('setting-multi-turn-word-limit').value.trim();
       const completionGuardAutoThresholdRaw = document.getElementById('setting-completion-guard-auto-threshold').value.trim();
@@ -2557,6 +2561,7 @@ class JarvisApp {
 
       // Collect all settings
       const settings = {
+        mode: selectedMode,
         tts_enabled: ttsCheckbox.checked,
         progress_events: document.getElementById('setting-progress-events').checked,
         llm_provider: document.getElementById('setting-llm-provider').value || null,
@@ -2574,7 +2579,7 @@ class JarvisApp {
         completion_guard_include_qa: parseNullableBool(document.getElementById('setting-completion-guard-include-qa').value),
         completion_guard_include_tool_tasks: parseNullableBool(document.getElementById('setting-completion-guard-include-tool-tasks').value),
         completion_guard_auto_threshold: completionGuardAutoThresholdRaw === '' ? null : parseFloat(completionGuardAutoThresholdRaw),
-        completion_guard_eval_provider: this.socket.mode === 'local'
+        completion_guard_eval_provider: selectedMode === 'local'
           ? (document.getElementById('setting-completion-guard-eval-provider').value ? 'ollama' : null)
           : (document.getElementById('setting-completion-guard-eval-provider').value || null),
         completion_guard_eval_model: document.getElementById('setting-completion-guard-eval-model').value || null,
@@ -2628,7 +2633,7 @@ class JarvisApp {
       
       if (result.ok) {
         // Update mode if changed
-        const newMode = document.getElementById('setting-mode').value;
+        const newMode = selectedMode;
         if (newMode !== this.socket.mode) {
           this.socket.setMode(newMode);
           this.modeSelect.value = newMode;
@@ -2657,7 +2662,7 @@ class JarvisApp {
           await window.chatUI.refreshContextWindow(newMode);
         }
       } else {
-        Utils.toast('Failed to save settings', 'error');
+        Utils.toast(result.error || 'Failed to save settings', 'error');
       }
     } catch (err) {
       Utils.toast(`Error: ${err.message}`, 'error');
